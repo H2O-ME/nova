@@ -1,0 +1,183 @@
+import { styledWidth } from './width.js';
+
+/**
+ * Line-level differential renderer (pi-tui style): the caller supplies the
+ * full frame as styled lines; only lines that changed since the previous
+ * frame are rewritten. Alternate-screen raw terminal.
+ */
+export class LineScreen {
+  private prev: string[] | undefined;
+
+  constructor(private readonly out: NodeJS.WriteStream & { write(s: string): unknown }) {}
+
+  get rows(): number {
+    return Math.max(1, this.out.rows ?? 24);
+  }
+
+  get cols(): number {
+    return Math.max(10, this.out.columns ?? 80);
+  }
+
+  enter(): void {
+    this.out.write('\x1b[?1049h'); // alternate screen
+    this.out.write('\x1b[?25l'); // hide cursor
+    this.out.write('\x1b[?2004h'); // bracketed paste
+    this.prev = undefined;
+  }
+
+  exit(): void {
+    this.out.write('\x1b[?2004l'); // bracketed paste off
+    this.out.write('\x1b[?25h'); // show cursor
+    this.out.write('\x1b[?1049l'); // leave alternate screen
+    this.prev = undefined;
+  }
+
+  /** Forget the previous frame: next render repaints everything. */
+  invalidate(): void {
+    this.prev = undefined;
+  }
+
+  /**
+   * Render a frame. Lines longer than the terminal width are truncated here;
+   * use wrapLine upstream for soft wrapping. `cursor` places the hardware
+   * cursor (0-based row within this frame, 0-based display column).
+   */
+  render(lines: string[], cursor?: { row: number; col: number }): void {
+    const rows = this.rows;
+    // Never write into the last column: a single off-by-one glyph width would
+    // wrap the row, scroll the buffer, and permanently desync the diff cache.
+    const safeCols = Math.max(1, this.cols - 1);
+    const frame: string[] = [];
+    for (let i = 0; i < rows; i++) {
+      const line = lines[i];
+      if (line === undefined) {
+        frame.push('');
+      } else if (styledWidth(line) > safeCols) {
+        frame.push(truncateStyled(line, safeCols));
+      } else {
+        frame.push(line);
+      }
+    }
+
+    for (let row = 0; row < rows; row++) {
+      const next = frame[row] ?? '';
+      if (this.prev?.[row] === next) continue;
+      // Reset SGR before erasing: a line truncated mid-color leaves style
+      // state open, which would otherwise bleed into erase and content.
+      this.out.write(`\x1b[${row + 1};1H\x1b[0m\x1b[0K${next}`);
+    }
+    this.prev = frame;
+
+    if (cursor !== undefined) {
+      this.out.write(`\x1b[${Math.min(rows, cursor.row + 1)};${Math.max(1, cursor.col + 1)}H`);
+    }
+  }
+}
+
+function truncateStyled(line: string, maxWidth: number): string {
+  let width = 0;
+  let result = '';
+  const pattern = /\x1b\[[0-9;]*m/g;
+  let lastIndex = 0;
+  for (;;) {
+    const match = pattern.exec(line);
+    const plainEnd = match === null ? line.length : match.index;
+    for (const ch of line.slice(lastIndex, plainEnd)) {
+      const w = styledWidth(ch);
+      if (width + w > maxWidth) return `${result}…`;
+      result += ch;
+      width += w;
+    }
+    if (match === null) break;
+    result += match[0];
+    lastIndex = pattern.lastIndex;
+  }
+  return result;
+}
+
+/**
+ * Soft-wrap a styled line to the given display width, preserving ANSI
+ * sequences and re-emitting resets/opens across break points. Embedded
+ * `\r\n`/`\n` split into separate rows first (streamed assistant text,
+ * pretty-printed tool args and error strings all contain raw newlines —
+ * writing them inside one frame row would corrupt the whole screen), blank
+ * lines are kept, and open styles carry across the break.
+ */
+export function wrapLine(line: string, width: number): string[] {
+  if (width <= 0) return [line];
+  const rows: string[] = [];
+  let open = '';
+  for (const segment of line.replace(/\r\n?/g, '\n').split('\n')) {
+    rows.push(...wrapSegment(segment, width, open));
+    open = openStyleAtEnd(segment, open);
+  }
+  return rows;
+}
+
+/** SGR state still active at the end of a text run. */
+function openStyleAtEnd(text: string, initial: string): string {
+  let open = initial;
+  // eslint-disable-next-line no-control-regex
+  for (const token of text.split(/(\x1b\[[0-9;]*m)/)) {
+    if (token.startsWith('\x1b[')) open = token === '\x1b[0m' ? '' : open + token;
+  }
+  return open;
+}
+
+function wrapSegment(segment: string, width: number, prefixStyle: string): string[] {
+  const out: string[] = [];
+  let current = prefixStyle;
+  let currentWidth = 0;
+  let openStyles = prefixStyle;
+
+  const tokens = segment.split(/(\x1b\[[0-9;]*m)/);
+  for (const token of tokens) {
+    if (token === '') continue;
+    if (token.startsWith('\x1b[')) {
+      current += token;
+      openStyles = token === '\x1b[0m' ? '' : openStyles + token;
+      continue;
+    }
+    // Break preferentially at spaces; hard-break long words as fallback.
+    let wordBuffer = '';
+    let wordWidth = 0;
+    const flushWord = (force: boolean): void => {
+      if (wordWidth === 0 && !force) return;
+      if (currentWidth + wordWidth > width) {
+        out.push(current);
+        current = openStyles;
+        currentWidth = 0;
+      }
+      current += wordBuffer;
+      currentWidth += wordWidth;
+      wordBuffer = '';
+      wordWidth = 0;
+    };
+    for (const ch of token) {
+      const w = styledWidth(ch);
+      if (ch === ' ') {
+        flushWord(false);
+        if (currentWidth + 1 > width) {
+          out.push(current);
+          current = openStyles;
+          currentWidth = 0;
+        }
+        current += ' ';
+        currentWidth += 1;
+        continue;
+      }
+      if (wordWidth + w > width) {
+        // single char wider than the line: hard emit
+        flushWord(false);
+      }
+      wordBuffer += ch;
+      wordWidth += w;
+      if (currentWidth + wordWidth > width) {
+        flushWord(true);
+      }
+    }
+    flushWord(false);
+  }
+  out.push(current);
+  return out.filter((l, idx) => idx === 0 || l.length > 0);
+}

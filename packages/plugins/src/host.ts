@@ -1,0 +1,123 @@
+import type { AgentHooks, ToolCallVerdict, ToolDefinition } from '@nova-agent/core';
+import { PermissionService } from './permission.js';
+import type {
+  CommandDefinition,
+  HookEvent,
+  HookMap,
+  PermissionKind,
+  Plugin,
+  PluginContext,
+  ToolOptions,
+} from './types.js';
+
+export interface ToolEntry {
+  plugin: string;
+  tool: ToolDefinition;
+  permission: PermissionKind;
+}
+
+export interface CommandEntry {
+  plugin: string;
+  command: CommandDefinition;
+}
+
+/**
+ * The plugin container: activation, registries, and hook composition.
+ * Everything the agent can do (tools, commands, hooks) is registered through
+ * PluginContext — built-in capabilities are just first-party plugins.
+ */
+export class PluginHost {
+  private readonly plugins: Plugin[] = [];
+  private readonly hooks = new Map<HookEvent, Array<HookMap[HookEvent]>>();
+  private activatedCount = 0;
+  readonly toolEntries: ToolEntry[] = [];
+  readonly commandEntries: CommandEntry[] = [];
+
+  constructor(readonly rootDir: string) {}
+
+  use(plugin: Plugin): this {
+    this.plugins.push(plugin);
+    return this;
+  }
+
+  /**
+   * Activates only plugins `use`d since the last call, so runners can attach
+   * lazily-loaded plugins (MCP on-demand startup) after the initial boot
+   * activation without re-running the built-ins.
+   */
+  async activate(): Promise<void> {
+    for (const plugin of this.plugins.slice(this.activatedCount)) {
+      await plugin.activate(this.contextFor(plugin));
+    }
+    this.activatedCount = this.plugins.length;
+  }
+
+  private contextFor(plugin: Plugin): PluginContext {
+    return {
+      pluginName: plugin.name,
+      rootDir: this.rootDir,
+      registerTool: (def: ToolDefinition, opts?: ToolOptions) => {
+        if (this.toolEntries.some((entry) => entry.tool.name === def.name)) {
+          throw new Error(`duplicate tool name "${def.name}" (plugin "${plugin.name}")`);
+        }
+        this.toolEntries.push({ plugin: plugin.name, tool: def, permission: opts?.permission ?? 'read' });
+      },
+      registerCommand: (def: CommandDefinition) => {
+        if (this.commandEntries.some((entry) => entry.command.name === def.name)) {
+          throw new Error(`duplicate command "/${def.name}" (plugin "${plugin.name}")`);
+        }
+        this.commandEntries.push({ plugin: plugin.name, command: def });
+      },
+      registerHook: <K extends HookEvent>(event: K, fn: HookMap[K]) => {
+        const list = this.hooks.get(event) ?? [];
+        list.push(fn as HookMap[HookEvent]);
+        this.hooks.set(event, list);
+      },
+    };
+  }
+
+  get tools(): ToolDefinition[] {
+    return this.toolEntries.map((entry) => entry.tool);
+  }
+
+  permissionFor(toolName: string): PermissionKind | undefined {
+    return this.toolEntries.find((entry) => entry.tool.name === toolName)?.permission;
+  }
+
+  /**
+   * Compose all plugin hooks (plus the optional permission gate) into the
+   * single AgentHooks implementation runAgent consumes.
+   */
+  agentHooks(permission?: PermissionService): AgentHooks {
+    return {
+      beforeLLMCall: async (req) => {
+        for (const fn of this.hooks.get('beforeLLMCall') ?? []) {
+          req = await (fn as HookMap['beforeLLMCall'])(req);
+        }
+        return req;
+      },
+      beforeToolCall: async (call) => {
+        if (permission) {
+          const kind = this.permissionFor(call.name);
+          if (kind) {
+            const decision = await permission.decide(call.name, kind, call);
+            if (decision === 'deny') return { action: 'deny', reason: 'by user' };
+          }
+        }
+        let effective: ToolCallVerdict = { action: 'allow' };
+        for (const fn of this.hooks.get('beforeToolCall') ?? []) {
+          const verdict = await (fn as HookMap['beforeToolCall'])(call);
+          if (verdict.action === 'deny') return verdict;
+          if (verdict.action === 'rewrite') effective = verdict;
+        }
+        return effective;
+      },
+      afterToolResult: async (call, result) => {
+        for (const fn of this.hooks.get('afterToolResult') ?? []) {
+          result = await (fn as HookMap['afterToolResult'])(call, result);
+        }
+        return result;
+      },
+    };
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "@nova-agent/mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Minimal MCP (Model Context Protocol) client: config discovery, stdio + Streamable HTTP transports; server tools register into the plugin host.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova-agent/core": "workspace:*",
+    "@nova-agent/plugins": "workspace:*",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

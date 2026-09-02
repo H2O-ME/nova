@@ -1,0 +1,38 @@
+{
+  "name": "@nova-agent/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "nova CLI: readline REPL over the core agent loop. Data lives in .nova/ under the working directory.",
+  "bin": {
+    "nova": "./dist/index.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova-agent/ai": "workspace:*",
+    "@nova-agent/core": "workspace:*",
+    "@nova-agent/mcp": "workspace:*",
+    "@nova-agent/plugins": "workspace:*",
+    "@nova-agent/tui": "workspace:*",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsx": "^4.20.6"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

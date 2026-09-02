@@ -1,0 +1,146 @@
+#!/usr/bin/env node
+import process from 'node:process';
+import { findRootDir, loadConfig } from './config.js';
+import { startRepl } from './repl.js';
+
+const VERSION = '0.1.0';
+
+const HELP = `nova — 自研本地编码智能体
+
+usage:
+  nova [--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full]
+  nova exec "<task>" [--json] [--approval ...] [--resume <session.jsonl>]
+
+options:
+  exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
+  --repl          强制使用 readline REPL（默认 TTY 下进全屏 TUI）
+  --resume        续接历史会话文件
+  --approval      临时覆盖审批档位；exec 模式下无法交互确认，未放行的请求会被拒绝
+  --version/-v    显示版本
+  --help/-h       显示本帮助
+
+运行于当前工作目录；配置在 .nova/config.json；所有数据（mcp、skills、sessions、cache）
+都保存在 .nova/ 下。`;
+
+interface ParsedArgs {
+  resumeFile?: string;
+  approvalOverride?: 'read-only' | 'auto-edit' | 'full';
+  json: boolean;
+  repl: boolean;
+  positional: string[];
+}
+
+function parseArgs(args: string[]): ParsedArgs | undefined {
+  const parsed: ParsedArgs = { json: false, repl: false, positional: [] };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === '--resume') {
+      const value = args[++i];
+      if (!value) {
+        console.error('--resume requires a session file path');
+        process.exitCode = 1;
+        return undefined;
+      }
+      parsed.resumeFile = value;
+    } else if (arg === '--approval') {
+      const value = args[++i];
+      if (value !== 'read-only' && value !== 'auto-edit' && value !== 'full') {
+        console.error('--approval must be one of: read-only, auto-edit, full');
+        process.exitCode = 1;
+        return undefined;
+      }
+      parsed.approvalOverride = value;
+    } else if (arg === '--json') {
+      parsed.json = true;
+    } else if (arg === '--repl') {
+      parsed.repl = true;
+    } else if (arg.startsWith('-')) {
+      console.error(`unknown option: ${arg}（--help 查看用法）`);
+      process.exitCode = 1;
+      return undefined;
+    } else {
+      parsed.positional.push(arg);
+    }
+  }
+  return parsed;
+}
+
+function readStdin(): Promise<string> {
+  return new Promise((resolve) => {
+    let text = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk: string) => {
+      text += chunk;
+    });
+    process.stdin.on('end', () => resolve(text));
+  });
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  if (args.includes('--version') || args.includes('-v')) {
+    console.log(`nova ${VERSION}`);
+    return;
+  }
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(HELP);
+    return;
+  }
+  const parsed = parseArgs(args);
+  if (parsed === undefined) return;
+  const execMode = parsed.positional[0] === 'exec';
+  const taskParts = execMode ? parsed.positional.slice(1) : parsed.positional;
+
+  const rootDir = await findRootDir(process.cwd());
+  try {
+    const config = await loadConfig(rootDir);
+    if (execMode) {
+      let prompt = taskParts.join(' ').trim();
+      if (prompt.length === 0 && process.stdin.isTTY !== true) {
+        prompt = (await readStdin()).trim();
+      }
+      if (prompt.length === 0) {
+        console.error('usage: nova exec "<task>"（或通过管道传入任务文本）');
+        process.exitCode = 1;
+        return;
+      }
+      const { runExec } = await import('./exec.js');
+      await runExec({
+        rootDir,
+        config,
+        prompt,
+        json: parsed.json,
+        ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
+        ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
+      });
+      return;
+    }
+    if (parsed.json) {
+      console.error('--json 仅在 exec 模式有效');
+      process.exitCode = 1;
+      return;
+    }
+    const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
+    if (interactive && !parsed.repl) {
+      const { startTui } = await import('./tui-mode.js');
+      await startTui({
+        rootDir,
+        config,
+        ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
+        ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
+      });
+    } else {
+      await startRepl({
+        rootDir,
+        config,
+        ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
+        ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
+      });
+    }
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exitCode = 1;
+  }
+}
+
+await main();

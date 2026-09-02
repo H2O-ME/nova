@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest';
+import { estimateMessageTokens, estimateNextPromptTokens, type AssistantMessage, type UserMessage } from '../src/index.js';
+
+function userMsg(content: string): UserMessage {
+  return { id: 'm', ts: 0, role: 'user', content };
+}
+
+function assistantMsg(content: string): AssistantMessage {
+  return { id: 'a', ts: 0, role: 'assistant', content };
+}
+
+describe('estimateMessageTokens', () => {
+  it('prices CJK characters at roughly one token each', () => {
+    const text = '你好世界'; // 4 CJK chars
+    const estimate = estimateMessageTokens(userMsg(text));
+    expect(estimate).toBeGreaterThanOrEqual(4);
+    expect(estimate).toBeLessThan(12);
+  });
+
+  it('prices ASCII text at roughly four characters per token', () => {
+    const estimate = estimateMessageTokens(userMsg('abcdefgh')); // 8 ascii chars
+    expect(estimate).toBeGreaterThanOrEqual(2);
+    expect(estimate).toBeLessThan(8);
+  });
+
+  it('adds role framing on top of content', () => {
+    expect(estimateMessageTokens(assistantMsg(''))).toBeGreaterThan(0);
+  });
+});
+
+describe('estimateNextPromptTokens', () => {
+  it('anchors on the last usage and prices only the added messages', () => {
+    const anchor = { promptTokens: 1000, completionTokens: 0, cachedTokens: 0 };
+    const added = [userMsg('hello'), assistantMsg('hi')];
+    const estimate = estimateNextPromptTokens(anchor, added);
+    const perMessage = added.reduce((sum, m) => sum + estimateMessageTokens(m), 0);
+    expect(estimate).toBe(1000 + perMessage);
+  });
+
+  it('returns the anchor unchanged for an empty delta', () => {
+    const anchor = { promptTokens: 500, completionTokens: 10, cachedTokens: 400 };
+    expect(estimateNextPromptTokens(anchor, [])).toBe(500);
+  });
+});

@@ -1,0 +1,28 @@
+{
+  "name": "@nova-agent/plugins",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Micro plugin container: services, tools, commands, hooks; built-in fs/bash tool plugins.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova-agent/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,208 @@
+import { mkdtemp, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  POWERSHELL_UTF8_PREFIX,
+  PluginHost,
+  builtinPlugins,
+  powershellInvocation,
+  PermissionService,
+  type AskFn,
+  type Plugin,
+  type PluginContext,
+} from '../src/index.js';
+
+function demoPlugin(): Plugin {
+  return {
+    name: 'demo',
+    activate(ctx: PluginContext) {
+      ctx.registerTool({
+        name: 'echo_tool',
+        description: 'echoes',
+        parameters: { type: 'object' },
+        execute: (args) => `echo:${String(args['text'])}`,
+      }, { permission: 'execute' });
+      ctx.registerCommand({
+        name: 'ping',
+        description: 'prints pong',
+        run: (_args, c) => c.log('pong'),
+      });
+      ctx.registerHook('beforeLLMCall', async (req) => ({
+        ...req,
+        systemPrompt: `${req.systemPrompt ?? ''}+demo`,
+      }));
+      ctx.registerHook('afterToolResult', async (_call, result) => result.toUpperCase());
+    },
+  };
+}
+
+describe('PluginHost', () => {
+  it('activates plugins and collects tools, commands and hooks', async () => {
+    const host = new PluginHost('.');
+    host.use(demoPlugin());
+    await host.activate();
+
+    expect(host.tools.map((t) => t.name)).toEqual(['echo_tool']);
+    expect(host.commandEntries.map((c) => c.command.name)).toEqual(['ping']);
+    expect(host.permissionFor('echo_tool')).toBe('execute');
+
+    const hooks = host.agentHooks();
+    const req = await hooks.beforeLLMCall!({ messages: [], systemPrompt: 'base' });
+    expect(req.systemPrompt).toBe('base+demo');
+    expect(await hooks.afterToolResult!({ id: 'c', name: 'echo_tool', args: {}, rawArgs: '' }, 'ok')).toBe('OK');
+  });
+
+  it('rejects duplicate tool names across plugins', async () => {
+    const make = (name: string): Plugin => ({
+      name,
+      activate(ctx: PluginContext) {
+        ctx.registerTool({ name: 'same', description: '', parameters: { type: 'object' }, execute: () => '' });
+      },
+    });
+    const host = new PluginHost('.');
+    host.use(make('a')).use(make('b'));
+    await expect(host.activate()).rejects.toThrow(/duplicate tool name/);
+  });
+});
+
+describe('PermissionService', () => {
+  it('auto-allows by mode and falls back to ask otherwise', async () => {
+    const answers: string[] = [];
+    const ask: AskFn = async (call, kind) => {
+      answers.push(`${call.name}:${kind}`);
+      return 'allow';
+    };
+    const readOnly = new PermissionService('read-only', ask);
+    expect(await readOnly.decide('read_file', 'read', call('read_file'))).toBe('allow');
+    expect(await readOnly.decide('write_file', 'write', call('write_file'))).toBe('allow'); // via ask
+    expect(answers).toEqual(['write_file:write']);
+
+    const autoEdit = new PermissionService('auto-edit', ask);
+    expect(await autoEdit.decide('write_file', 'write', call('write_file'))).toBe('allow');
+    expect(await autoEdit.decide('bash', 'execute', call('bash'))).toBe('allow'); // via ask
+
+    const full = new PermissionService('full', async () => 'deny');
+    expect(await full.decide('bash', 'execute', call('bash'))).toBe('allow');
+  });
+
+  it('remembers bash "always" by command program prefix, other tools by name', async () => {
+    let asked = 0;
+    const permission = new PermissionService('read-only', async () => {
+      asked += 1;
+      return 'always';
+    });
+    const gitCall = { id: 'c1', name: 'bash', args: { command: 'git status' }, rawArgs: '{"command":"git status"}' };
+    expect(await permission.decide('bash', 'execute', gitCall)).toBe('allow');
+    // same program prefix: no new ask
+    expect(await permission.decide('bash', 'execute', gitCall)).toBe('allow');
+    expect(asked).toBe(1);
+    // different program: asks again
+    const rmCall = { id: 'c2', name: 'bash', args: { command: 'rm -rf x' }, rawArgs: '{"command":"rm -rf x"}' };
+    expect(await permission.decide('bash', 'execute', rmCall)).toBe('allow');
+    expect(asked).toBe(2);
+    // non-execute tools still remember per tool name
+    expect(await permission.decide('write_file', 'write', call('write_file'))).toBe('allow');
+    expect(await permission.decide('write_file', 'write', call('write_file'))).toBe('allow');
+    expect(asked).toBe(3);
+  });
+
+  it('fails closed when the asker throws, and never-policy denies without asking', async () => {
+    const throwing = new PermissionService('read-only', async () => {
+      throw new Error('UI blew up');
+    });
+    expect(await throwing.decide('bash', 'execute', call('bash'))).toBe('deny');
+
+    let asked = 0;
+    const audits: string[] = [];
+    const permission = new PermissionService(
+      'read-only',
+      async () => {
+        asked += 1;
+        return 'allow';
+      },
+      (entry) => audits.push(`${entry.toolName}:${entry.outcome}`),
+    );
+    permission.setPolicy('never');
+    expect(await permission.decide('bash', 'execute', call('bash'))).toBe('deny');
+    expect(asked).toBe(0);
+    expect(audits).toEqual(['bash:deny']);
+  });
+});
+
+describe('builtinPlugins', () => {
+  it('activates all built-in tools in a host', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-builtin-'));
+    const host = new PluginHost(root);
+    for (const plugin of builtinPlugins()) host.use(plugin);
+    await host.activate();
+    expect(host.tools.map((t) => t.name)).toEqual([
+      'read_file',
+      'list_dir',
+      'write_file',
+      'edit_file',
+      'bash',
+      'jobs',
+      'todo_write',
+    ]);
+
+    const write = host.tools.find((t) => t.name === 'write_file')!;
+    await write.execute({ path: 'a/b.txt', content: 'hello' }, { rootDir: root });
+    expect(await readFile(path.join(root, 'a', 'b.txt'), 'utf8')).toBe('hello');
+
+    const read = host.tools.find((t) => t.name === 'read_file')!;
+    expect(await read.execute({ path: 'a/b.txt' }, { rootDir: root })).toBe('hello');
+
+    const edit = host.tools.find((t) => t.name === 'edit_file')!;
+    expect(await edit.execute({ path: 'a/b.txt', old_string: 'hello', new_string: 'hi' }, { rootDir: root }))
+      .toContain('1 occurrence');
+    expect(await readFile(path.join(root, 'a', 'b.txt'), 'utf8')).toBe('hi');
+
+    const escaping = host.tools.find((t) => t.name === 'read_file')!;
+    await expect(escaping.execute({ path: '../outside.txt' }, { rootDir: root })).rejects.toThrow(/escapes workspace root/);
+  });
+
+  it('can disable the bash plugin', async () => {
+    const host = new PluginHost('.');
+    for (const plugin of builtinPlugins({ bash: false })) host.use(plugin);
+    await host.activate();
+    expect(host.tools.map((t) => t.name)).not.toContain('bash');
+  });
+});
+
+describe('bash plugin', () => {
+  it('runs a command and captures stdout and exit code', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-bash-'));
+    const host = new PluginHost(root);
+    for (const plugin of builtinPlugins({ bash: { timeoutMs: 15_000 } })) host.use(plugin);
+    await host.activate();
+    const bash = host.tools.find((t) => t.name === 'bash')!;
+    const result = await bash.execute({ command: 'echo hello' }, { rootDir: root });
+    expect(result).toContain('exit: 0');
+    expect(result).toContain('hello');
+  });
+
+  it('captures non-zero exit codes and stderr', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-bash-'));
+    const host = new PluginHost(root);
+    for (const plugin of builtinPlugins({ bash: { timeoutMs: 15_000 } })) host.use(plugin);
+    await host.activate();
+    const bash = host.tools.find((t) => t.name === 'bash')!;
+    const result = await bash.execute({ command: 'echo oops >&2; exit 3' }, { rootDir: root });
+    expect(result).toContain('exit: 3');
+    expect(result).toContain('oops');
+  });
+
+  it('prepends the UTF-8 encoding statement to PowerShell invocations', async () => {
+    const inv = powershellInvocation('Get-ChildItem');
+    expect(inv.cmd).toBe('powershell.exe');
+    expect(inv.args[0]).toBe('-NoProfile');
+    const script = inv.args[2] ?? '';
+    expect(script.startsWith(POWERSHELL_UTF8_PREFIX)).toBe(true);
+    expect(script.endsWith('Get-ChildItem')).toBe(true);
+  });
+});
+
+function call(name: string) {
+  return { id: 'c1', name, args: {}, rawArgs: '{}' };
+}
