@@ -3,6 +3,7 @@ import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from '../src/system-prompt.j
 import { createMarkdownRenderer, renderMarkdownLite } from '../src/markdown.js';
 import {
   contextBar,
+  fitTail,
   isReadOnlyTool,
   plainPalette,
   statusLine,
@@ -119,6 +120,19 @@ describe('ui helpers', () => {
     expect(contextBar(0.5, 8)).toBe('████░░░░');
     expect(contextBar(0, 8)).toBe('░░░░░░░░');
     expect(contextBar(1.4, 8)).toBe('████████');
+  });
+
+  it('fits the reasoning tail to display columns without splitting wide chars', () => {
+    expect(fitTail('hello', 10)).toBe('hello');
+    expect(fitTail('hello', 4)).toBe('ello');
+    // CJK counts 2 columns each: 5 chars = 10 columns fit exactly.
+    expect(fitTail('你好世界', 10)).toBe('你好世界');
+    // 8 columns still fit a budget of 9; a budget of 7 drops 你 (6 kept).
+    expect(fitTail('你好世界', 9)).toBe('你好世界');
+    expect(fitTail('你好世界', 7)).toBe('好世界');
+    // The result never exceeds the budget even for mixed-width text.
+    const tail = fitTail('a你b好c', 5);
+    expect([...tail].reduce((sum, ch) => sum + (ch.charCodeAt(0) > 0x2e7f ? 2 : 1), 0)).toBeLessThanOrEqual(5);
   });
 });
 

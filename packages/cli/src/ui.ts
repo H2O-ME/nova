@@ -1,5 +1,7 @@
 /** 终端渲染辅助：配色、汉化标签、状态指示、工具块与状态行。 */
 
+import { styledWidth } from '@nova-agent/tui';
+
 export interface Palette {
   dim(text: string): string;
   cyan(text: string): string;
@@ -76,6 +78,25 @@ export function permissionLabel(kind: string): string {
 
 export const SPINNER_VERBS = ['思考中', '推敲中', '酝酿中', '翻找中', '梳理中', '盘算中'];
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+/**
+ * Last part of `text` that fits maxWidth display columns (CJK counts 2). The
+ * REPL reasoning tail is rewritten in place with `\r\x1b[2K`, which clears
+ * exactly ONE physical row — an overlong tail would wrap and leave stale
+ * garbage above, so it must be width-trimmed before writing.
+ */
+export function fitTail(text: string, maxWidth: number): string {
+  const chars = [...text];
+  let total = 0;
+  let start = chars.length;
+  while (start > 0) {
+    const w = styledWidth(chars[start - 1] ?? '');
+    if (total + w > maxWidth) break;
+    total += w;
+    start -= 1;
+  }
+  return chars.slice(start).join('');
+}
 
 /** codex 同款状态指示文本：`思考中 (3.2s · Esc 中断)`。 */
 export function statusIndicator(streaming: boolean, elapsedMs: number, verbIndex: number): string {

@@ -80,6 +80,10 @@ const INVERSE = '\x1b[7m';
 const COMPOSER_PREFIX = `  ${CYAN}${BOLD}❯${RESET} `;
 const COMPOSER_PREFIX_WIDTH = styledWidth(COMPOSER_PREFIX);
 
+/** Reasoning display caps: committed lines kept, and the live line's tail. */
+const REASONING_MAX_LINES = 6;
+const REASONING_MAX_PARTIAL_CHARS = 600;
+
 interface Block {
   lines: string[];
   wrapped: string[] | undefined;
@@ -456,7 +460,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     let assistantSeparator: Block | undefined;
     /** Incremental markdown renderer; re-created when a new answer opens. */
     let md: MarkdownRenderer | undefined;
-    let reasoningText = '';
+    /**
+     * Reasoning renders line-based: committed lines are wrapped ONCE and then
+     * never move (only the front falls off past the cap); the live tail row
+     * is the only thing that repaints per delta. The old sliding-500-char
+     * single-line window shifted every row on every delta, which repainted
+     * the whole block at stream speed and scrolled the screen.
+     */
+    const reasoningDone: string[] = [];
+    let reasoningPartial = '';
     let reasoningOpen = false;
     try {
       // Lazy MCP: connect (or retry failed servers) before the first request.
@@ -492,7 +504,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               reasoningOpen = false;
               closeReadGroup();
               discardReasoning();
-              reasoningText = '';
+              reasoningDone.length = 0;
+              reasoningPartial = '';
               md = createMarkdownRenderer(paint);
               // A dedicated separator block between the question and the
               // answer — the answer gets its OWN block so the separator
@@ -518,19 +531,29 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             if (assistantOpen) return;
             if (!reasoningOpen) {
               reasoningOpen = true;
-              reasoningText = '';
+              reasoningDone.length = 0;
+              reasoningPartial = '';
               pushBlock([], { first: '  ', rest: '    ' });
               reasoningBlock = blocks[blocks.length - 1];
             }
-            reasoningText += text;
-            // Render only the tail: reasoning trails can be long and
-            // re-wrapping the whole trail on every delta is quadratic. The
-            // update goes to the block's stable ref — the last block may be
-            // a tool line, and clobbering it must not erase history.
-            const tail = reasoningText.length > 500 ? `…${reasoningText.slice(-500)}` : reasoningText;
-            const line = `${DIM}⋯ ${tail.replaceAll('\n', ' ⏎ ')}${RESET}`;
-            if (reasoningBlock !== undefined) replaceBlock(reasoningBlock, [line]);
-            else updateLastBlock([line]);
+            // Split complete lines off the live buffer; only the partial row
+            // churns, committed rows above it are stable across deltas.
+            const parts = `${reasoningPartial}${text}`.split('\n');
+            reasoningPartial = parts.pop() ?? '';
+            for (const line of parts) {
+              reasoningDone.push(line);
+              if (reasoningDone.length > REASONING_MAX_LINES) reasoningDone.shift();
+            }
+            // A paragraph without newlines must not wrap forever: keep only
+            // the tail of the live line (one reflow when the cap trips).
+            if (reasoningPartial.length > REASONING_MAX_PARTIAL_CHARS) {
+              reasoningPartial = `…${reasoningPartial.slice(-REASONING_MAX_PARTIAL_CHARS)}`;
+            }
+            const lines = [...reasoningDone, `${DIM}⋯ ${reasoningPartial}${RESET}`];
+            // The update goes to the block's stable ref — the last block may
+            // be a tool line, and clobbering it must not erase history.
+            if (reasoningBlock !== undefined) replaceBlock(reasoningBlock, lines);
+            else updateLastBlock(lines);
           },
           closeAssistant() {
             if (assistantOpen && assistantText.trim().length === 0) {
@@ -544,7 +567,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           },
           foldReasoning() {
             discardReasoning();
-            reasoningText = '';
+            reasoningDone.length = 0;
+            reasoningPartial = '';
             reasoningOpen = false;
           },
           resetAssistant() {
@@ -558,7 +582,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             assistantText = '';
             discardReasoning();
             reasoningOpen = false;
-            reasoningText = '';
+            reasoningDone.length = 0;
+            reasoningPartial = '';
           },
         });
       }
@@ -581,7 +606,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // tail here so no transient line survives into history.
       discardReasoning();
       reasoningOpen = false;
-      reasoningText = '';
+      reasoningDone.length = 0;
+      reasoningPartial = '';
       closeReadGroup();
       // Runtime invariant (NOVA_DEBUG): the live surface must stay equal to
       // the session log projection — "model-visible means logged".

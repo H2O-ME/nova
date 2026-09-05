@@ -1,6 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { styledWidth } from '@nova-agent/tui';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   emptyStats,
@@ -35,6 +36,7 @@ import {
   approvalLabel,
   APPROVAL_ORDER,
   banner,
+  fitTail,
   palette,
   permissionLabel,
   plainPalette,
@@ -310,11 +312,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       }
       case 'reasoning_delta': {
         // Single dim status line showing the tail of the reasoning stream
-        // (DeepSeek reasoner style); skipped entirely without a TTY.
+        // (DeepSeek reasoner style); skipped entirely without a TTY. The
+        // tail is width-trimmed to one physical row: `\r\x1b[2K` clears
+        // exactly that row, and an overwriting wrap would leave garbage.
         if (!useColor) break;
         spinner.stop();
-        reasoningTail = `${reasoningTail}${event.text}`.slice(-160);
-        process.stdout.write(`\r\x1b[2K\x1b[2m  ⋯ ${reasoningTail.replaceAll('\n', ' ⏎ ')}`);
+        const maxCols = Math.max(10, (process.stdout.columns ?? 80) - styledWidth('  ⋯ ') - 1);
+        reasoningTail = fitTail(`${reasoningTail}${event.text}`.replaceAll('\n', ' ⏎ '), maxCols);
+        process.stdout.write(`\r\x1b[2K\x1b[2m  ⋯ ${reasoningTail}`);
         reasoningLive = true;
         break;
       }
