@@ -16,7 +16,7 @@ const configSchema = z.object({
     maxTokens: z.number().int().positive().max(1_000_000).optional(),
   }),
   systemPrompt: z.string().optional(),
-  maxTurns: z.number().int().positive().max(50).optional(),
+  maxTurns: z.number().int().positive().max(500).optional(),
   approval: z.enum(['read-only', 'auto-edit', 'full']).optional(),
   /**
    * 系统通知开关（审批请求 / 长任务完成 / 出错时弹 Windows toast 等系统
@@ -58,19 +58,30 @@ export function userConfigPath(homedir: string = os.homedir()): string {
  * contains it is the workspace root (all agent data lives in <root>/.nova/).
  * Returns startDir unchanged when nothing is found, so loadConfig can emit a
  * precise error pointing at the expected location.
+ *
+ * The user-level config at ~/.nova/config.json is a loadConfig fallback only,
+ * NEVER a workspace boundary: the upward walk stops at the home directory
+ * (on Windows %TEMP% lives under the profile — without this, running nova in
+ * a temp dir would silently adopt home as the workspace root and coalesce
+ * all sessions there).
  */
-export async function findRootDir(startDir: string): Promise<string> {
+export async function findRootDir(startDir: string, homedir: string = os.homedir()): Promise<string> {
   const start = path.resolve(startDir);
+  const home = path.resolve(homedir);
   let dir = start;
   for (let depth = 0; depth < 32; depth++) {
+    // Stop the walk at the home directory — the user-level config zone above
+    // it is not workspace material, so nothing up there may match.
+    if (dir === home) return start;
     try {
       await access(configPath(dir));
       return dir;
     } catch {
-      const parent = path.dirname(dir);
-      if (parent === dir) return start;
-      dir = parent;
+      // keep walking
     }
+    const parent = path.dirname(dir);
+    if (parent === dir) return start;
+    dir = parent;
   }
   return start;
 }

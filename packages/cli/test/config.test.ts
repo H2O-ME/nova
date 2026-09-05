@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { expandRefs, findRootDir, loadConfig } from '../src/config.js';
@@ -21,6 +21,27 @@ describe('findRootDir', () => {
   it('returns the start directory when no config exists anywhere above', async () => {
     const start = await mkdtemp(path.join(tmpdir(), 'nova-none-'));
     expect(await findRootDir(start)).toBe(start);
+  });
+
+  it('never adopts the home directory as a workspace root (user-level config is a fallback only)', async () => {
+    // Production semantics: the walk stops at the home directory, whatever
+    // it contains — %TEMP% lives under the profile on Windows, so a
+    // user-level ~/.nova/config.json must not turn home into the root.
+    const start = await mkdtemp(path.join(tmpdir(), 'nova-none-'));
+    expect(await findRootDir(start, os.homedir())).toBe(start);
+
+    // A workspace nested under home still resolves normally: the walk stops
+    // at home only after the directories below it had their chance to match.
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    await mkdir(path.join(home, 'project', '.nova'), { recursive: true });
+    await writeFile(
+      path.join(home, 'project', '.nova', 'config.json'),
+      JSON.stringify({ provider: { baseURL: 'u', apiKey: 'k', model: 'm' } }),
+      'utf8',
+    );
+    const nested = path.join(home, 'project', 'sub');
+    await mkdir(nested, { recursive: true });
+    expect(await findRootDir(nested, home)).toBe(path.join(home, 'project'));
   });
 });
 

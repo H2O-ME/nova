@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline/promises';
 import { styledWidth } from '@nova-agent/tui';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
+  DEFAULT_MAX_TURNS,
   emptyStats,
   estimateNextPromptTokens,
   JobRegistry,
@@ -389,6 +390,11 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         spinner.stop();
         const kind = event.stopReason;
         console.log(statusLine(paint, kind === 'complete' ? 'complete' : kind, stats, Date.now() - requestStartedAt));
+        if (kind === 'max_turns') {
+          console.log(
+            paint.dim(`  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 .nova/config.json 调大后 /resume 继续）`),
+          );
+        }
         break;
       }
     }

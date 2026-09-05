@@ -3,6 +3,7 @@ import path from 'node:path';
 import { KeyDecoder, LineScreen, styledWidth, wrapLine, type Key } from '@nova-agent/tui';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
+  DEFAULT_MAX_TURNS,
   emptyStats,
   estimateNextPromptTokens,
   JobRegistry,
@@ -798,6 +799,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         if (event.stopReason !== 'complete') {
           const kind: StopKind = event.stopReason;
           pushBlock([statusLine(paint, kind, stats, Date.now() - startedAt)]);
+          if (kind === 'max_turns') {
+            pushBlock([
+              `${DIM}  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 .nova/config.json 调大后 /resume 继续）${RESET}`,
+            ]);
+          }
         }
         break;
       }
@@ -810,6 +816,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     switch (cmd) {
       case '/exit':
       case '/quit':
+        // Reachable mid-turn now (stream-safe whitelist): stop the running
+        // turn first so the in-flight request doesn't outlive the UI.
+        for (const aborter of aborters) aborter.abort();
         exitApp();
         return true;
       case '/help': {
@@ -935,12 +944,36 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   }
 
   // ---- input handling ---------------------------------------------------
+  /**
+   * Commands that are safe to run WHILE a turn is streaming: read-only
+   * queries and global switches. In particular /approvals must work mid-turn
+   * — switching the gate mode while the agent works is the whole point.
+   * Session-mutating commands (/new /compact /clear /init) stay blocked.
+   */
+  const STREAM_SAFE_COMMANDS = new Set(['/approvals', '/help', '/model', '/session', '/plugins', '/mcp', '/exit', '/quit']);
+
   async function handleSubmit(): Promise<void> {
+    const text = input.trim();
     if (streaming || compactRunning) {
-      pushBlock([`${DIM}  上一轮仍在进行，请先按 Esc 中断再发送${RESET}`]);
+      const cmd = text.split(/\s+/)[0]?.toLowerCase() ?? '';
+      if (STREAM_SAFE_COMMANDS.has(cmd)) {
+        input = '';
+        cursorPos = 0;
+        popupIndex = 0;
+        void runCommand(text)
+          .catch((err: unknown) => {
+            pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+            scheduleRender();
+          })
+          .then(() => scheduleRender());
+        return;
+      }
+      pushBlock([
+        `${DIM}  上一轮仍在进行：Esc 中断当前轮；/approvals /model /session /plugins /mcp 等查看类命令仍可用${RESET}`,
+      ]);
+      scheduleRender();
       return;
     }
-    const text = input.trim();
     input = '';
     cursorPos = 0;
     popupIndex = 0;
@@ -1084,12 +1117,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       case 'enter': {
         if (popupMatches.length > 0) {
           const selected = popupMatches[Math.min(popupIndex, popupMatches.length - 1)];
-          if (selected !== undefined && input.trim() === selected.name) {
-            void handleSubmit();
-          } else if (selected !== undefined) {
-            input = `${selected.name} `;
+          if (selected !== undefined) {
+            // 回车直接执行选中的命令（codex 面板语义），不再"补全加空格等
+            // 二次回车"。带参数的命令用 Tab 补全：一旦输入空格面板即关闭
+            // （filterCommands 只匹配裸命令），参数不会被丢弃。
+            input = selected.name;
             cursorPos = input.length;
-            popupIndex = 0;
+            void handleSubmit();
           }
           break;
         }

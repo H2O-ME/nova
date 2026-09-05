@@ -43,7 +43,8 @@ export interface AgentOptions {
   signal?: AbortSignal;
 }
 
-const DEFAULT_MAX_TURNS = 10;
+/** Exported so UIs can display the effective limit in hints. */
+export const DEFAULT_MAX_TURNS = 30;
 const DEFAULT_MAX_TOOL_RESULT_BYTES = 40 * 1024;
 /** How long a running tool may keep the turn open after the user aborted. */
 const ABORT_GRACE_MS = 2_000;
