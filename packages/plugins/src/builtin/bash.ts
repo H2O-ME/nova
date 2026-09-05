@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import type { ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
@@ -94,6 +95,7 @@ function runOnce(
   timeoutMs: number,
   maxOutputBytes: number,
   signal?: AbortSignal,
+  onOutput?: (text: string) => void,
 ): Promise<ShellOutcome> {
   return new Promise((resolve) => {
     let child;
@@ -113,18 +115,29 @@ function runOnce(
     let errCollected = 0;
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
+    // Streaming decoders: a UTF-8 char split across pipe chunks must not
+    // reach the progress feed as replacement glyphs.
+    const outDecoder = new StringDecoder('utf8');
+    const errDecoder = new StringDecoder('utf8');
+    const feed = (text: string): void => {
+      if (text.length > 0) onOutput?.(text);
+    };
 
     const timer = setTimeout(() => killShell(child), timeoutMs);
     const onAbort = () => killShell(child);
     signal?.addEventListener('abort', onAbort, { once: true });
 
     child.stdout?.on('data', (chunk: Buffer) => {
+      // Decode BEFORE the storage cap: progress display stays live even for
+      // commands whose output already exceeded maxOutputBytes.
+      feed(outDecoder.write(chunk));
       if (collected >= maxOutputBytes) return;
       const take = chunk.subarray(0, maxOutputBytes - collected);
       collected += take.length;
       chunks.push(take);
     });
     child.stderr?.on('data', (chunk: Buffer) => {
+      feed(errDecoder.write(chunk));
       if (errCollected >= maxOutputBytes) return;
       const take = chunk.subarray(0, maxOutputBytes - errCollected);
       errCollected += take.length;
@@ -273,12 +286,16 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
             return `Started background job ${snapshot.id}: ${command}\nUse the jobs tool (action=output, id=${snapshot.id}) to poll output, or action=stop to terminate it.`;
           }
 
+          // Long-running commands stream their raw output to the UI as it
+          // arrives, so the tool line can show a live tail instead of looking
+          // frozen until the process exits.
+          const onOutput = c.onProgress !== undefined ? (text: string): void => c.onProgress?.(text) : undefined;
           let inv = invocation(command, options?.shellPath);
-          let outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal);
+          let outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
           if (outcome.spawnError !== undefined && process.platform === 'win32') {
             // No Git Bash on PATH: fall back to PowerShell.
             inv = powershellInvocation(command);
-            outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal);
+            outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
           }
           if (outcome.spawnError !== undefined) {
             return `Error: cannot spawn shell (${inv.cmd}): ${outcome.spawnError}`;

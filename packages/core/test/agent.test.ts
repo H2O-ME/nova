@@ -101,6 +101,41 @@ describe('runAgent', () => {
     });
   });
 
+  it('forwards tool progress chunks to onToolProgress', async () => {
+    const streamingTool: ToolDefinition = {
+      name: 'stream_out',
+      description: 'emits progress chunks while running',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      async execute(_args, ctx) {
+        ctx.onProgress?.('line one\n');
+        ctx.onProgress?.('line two');
+        return 'done';
+      },
+    };
+    const provider = scriptedProvider([
+      [
+        { type: 'tool_call_delta', index: 0, id: 'call_1', name: 'stream_out', argsDelta: '{}' },
+        { type: 'finish', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text_delta', text: 'ok' },
+        { type: 'finish', finishReason: 'stop' },
+      ],
+    ]);
+    const messages: AgentMessage[] = [];
+    const progress: string[] = [];
+    await collect(
+      runAgent({
+        provider,
+        messages,
+        rootDir: '.',
+        tools: [streamingTool],
+        onToolProgress: (text) => progress.push(text),
+      }),
+    );
+    expect(progress).toEqual(['line one\n', 'line two']);
+  });
+
   it('does not let empty-string id/name deltas overwrite captured values', async () => {
     const provider = scriptedProvider([
       [

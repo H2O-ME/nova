@@ -31,6 +31,7 @@ import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache } from './commands.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
+import { createNotifier } from './notify.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
   approvalLabel,
@@ -218,8 +219,11 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     rl.close();
   });
 
+  /** 审批等待期弹系统通知：REPL 停在提示符上看起来像卡住，其实是在等确认。 */
+  const notify = createNotifier({ enabled: config.notify !== false });
   const askApproval: AskFn = async (call, kind) => {
     const argsPreview = call.rawArgs.length > 160 ? `${call.rawArgs.slice(0, 160)}…` : call.rawArgs;
+    notify('需要审批', `${toolLabel(call.name)} · ${argsPreview.slice(0, 80)}`);
     const raw = await lines.next(
       paint.yellow(`允许${permissionLabel(kind)} · ${toolLabel(call.name)} ${argsPreview} [y] 本次允许 / [a] 总是允许 / [n] 拒绝：`),
     );
@@ -246,10 +250,19 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   let compactRunning = false;
   let reasoningTail = '';
   let reasoningLive = false;
+  let progressTail = '';
+  let progressLive = false;
   const endReasoningLine = (): void => {
     if (reasoningLive) {
       process.stdout.write('\x1b[0m\n');
       reasoningLive = false;
+    }
+  };
+  /** Wipe the in-place `└ tail` progress row so the next print starts clean. */
+  const clearProgressLine = (): void => {
+    if (progressLive) {
+      process.stdout.write('\r\x1b[2K');
+      progressLive = false;
     }
   };
 
@@ -343,12 +356,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         endReasoningLine();
         spinner.stop();
         toolStartAt = Date.now();
+        progressTail = '';
         console.log(toolStartLine(paint, event.call.name, event.call.rawArgs));
         break;
       }
       case 'tool_call_result': {
         const duration = Math.max(0, toolStartAt === 0 ? 0 : Date.now() - toolStartAt);
         toolStartAt = 0;
+        clearProgressLine();
         await session.append(event.result);
         for (const line of toolDoneLine(paint, event.call.name, event.call.rawArgs, event.result.content, duration)) {
           console.log(line);
@@ -370,6 +385,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       }
       case 'done': {
         endReasoningLine();
+        clearProgressLine();
         spinner.stop();
         const kind = event.stopReason;
         console.log(statusLine(paint, kind === 'complete' ? 'complete' : kind, stats, Date.now() - requestStartedAt));
@@ -557,20 +573,38 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         hooks,
         systemPrompt,
         maxTurns: config.maxTurns,
+        // Live bash output tail on one in-place dim row (same contract as the
+        // reasoning line: \r\x1b[2K clears exactly one physical row, so the
+        // tail must be width-trimmed before writing).
+        onToolProgress: (text) => {
+          if (!useColor) return;
+          progressTail = (progressTail + text).slice(-2000);
+          const last = progressTail.slice(progressTail.lastIndexOf('\n') + 1).trimEnd();
+          if (last.length === 0) return;
+          const maxCols = Math.max(10, (process.stdout.columns ?? 80) - styledWidth('  └ ') - 1);
+          process.stdout.write(`\r\x1b[2K\x1b[2m  └ ${fitTail(last, maxCols)}\x1b[0m`);
+          progressLive = true;
+        },
         signal: aborter.signal,
       })) {
         await renderEvent(event, requestStartedAt);
       }
     } catch (err) {
       spinner.stop();
+      clearProgressLine();
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof Error && (err.name === 'AbortError' || /abort/i.test(message))) {
         console.log(paint.yellow('  已中断'));
       } else {
         console.error(paint.red(`  出错：${message}`));
+        if (Date.now() - requestStartedAt >= 5000) notify('任务出错', message.slice(0, 120));
       }
     } finally {
       streaming = false;
+      // Long turns end while the user is elsewhere — same cue as the TUI.
+      if (Date.now() - requestStartedAt >= 15_000) {
+        notify('任务已完成', `本轮耗时约 ${Math.max(1, Math.round((Date.now() - requestStartedAt) / 60000))} 分钟，回到终端查看结果`);
+      }
       console.log();
     }
     await maybeAutoCompact();

@@ -38,6 +38,7 @@ pnpm build
 #     "maxTokens": 8192           // 可选：透传 max_tokens
 #   },
 #   "approval": "read-only",      // read-only | auto-edit | full
+#   "notify": true,               // 可选：系统通知（审批/长任务完成/出错弹 toast），NOVA_NO_NOTIFY=1 亦可关闭
 #   "systemPrompt": "补充指令…",    // 可选：附加用户指令，注入会话首条上下文片段
 #   "maxTurns": 10,               // 可选：单次任务最大轮数（默认 10，上限 50）
 #   "autoCompactTokenLimit": 60000, // 可选：上轮 prompt tokens 超限自动压缩会话
@@ -69,7 +70,7 @@ pnpm nova -- --resume .nova/sessions/<id>.jsonl   # 续接历史会话
 pnpm nova -- exec "修复失败的测试" --json         # 非交互单次执行（JSONL 事件流，也可管道传入任务）
 ```
 
-TUI 命令面板：输入 `/` 弹出带边框的下拉面板（命令 + 说明对齐、选中行整行反色、↑↓ 选择、Tab 补全、Enter 执行、Esc 关闭），支持 `/help /init /model /approvals /plugins /mcp /skill /session /new /compact /clear /exit`；PageUp/PageDown 滚动历史；Ctrl+C 中断当前轮（空闲时按两次退出）。
+TUI 命令面板：输入 `/` 弹出带边框的下拉面板（命令 + 说明对齐、选中行整行反色、↑↓ 选择、Tab 补全、Enter 执行、Esc 关闭），支持 `/help /init /model /approvals /plugins /mcp /skill /session /new /compact /clear /exit`；PageUp/PageDown 或鼠标滚轮滚动历史（上滚时状态栏提示，↓/滚轮回到底部）；Ctrl+C 中断当前轮（空闲时按两次退出）。composer 支持多行：粘贴保留换行并软换行显示（最多 8 行窗口，上下溢出有提示），多行输入下 ↑↓ 在行间移动光标。长命令运行时工具行实时显示已耗时与输出尾行。需要审批、长任务完成/出错时弹系统通知（Windows toast / macOS osascript / Linux notify-send，`notify: false` 关闭）。
 
 每轮结束的状态行显示 token 用量与缓存命中率（取自网关返回的 `prompt_tokens_details.cached_tokens`，兼容 DeepSeek 的 `prompt_cache_hit_tokens`）。
 

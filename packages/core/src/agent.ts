@@ -34,6 +34,12 @@ export interface AgentOptions {
   jobs?: JobRegistry;
   /** Session-event sink exposed to tools (log-only events like todo/write). */
   emit?: (evt: import('./session.js').SessionEvent) => void | Promise<void>;
+  /**
+   * Live progress feed from long-running tools (bash stdout tail etc.).
+   * Purely presentational: the loop never waits on it and drops it silently
+   * when unset.
+   */
+  onToolProgress?: (text: string) => void;
   signal?: AbortSignal;
 }
 
@@ -449,6 +455,7 @@ async function executeTool(
         signal,
         ...(opts.jobs !== undefined ? { jobs: opts.jobs } : {}),
         ...(opts.emit !== undefined ? { emit: opts.emit } : {}),
+        ...(opts.onToolProgress !== undefined ? { onProgress: opts.onToolProgress } : {}),
       });
     } catch (err) {
       return `Error: ${err instanceof Error ? err.message : String(err)}`;

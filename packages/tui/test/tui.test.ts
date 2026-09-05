@@ -93,6 +93,18 @@ describe('KeyDecoder', () => {
     expect(decoder.push(Buffer.from('llo\x1b[20', 'utf8'))).toEqual([]);
     expect(decoder.push(Buffer.from('1~', 'utf8'))).toEqual([{ type: 'paste', text: 'hello' }]);
   });
+
+  it('decodes SGR mouse wheel notches and swallows clicks/releases', () => {
+    expect(decode('\x1b[<64;12;3M')).toEqual(['wheelup']);
+    expect(decode('\x1b[<65;12;3M')).toEqual(['wheeldown']);
+    // click press + release, and a wheel release: none of these may leak
+    // into the composer as phantom keys
+    expect(decode('\x1b[<0;5;5M', '\x1b[<0;5;5m', '\x1b[<64;1;1m')).toEqual([]);
+    // sequences split across chunks still decode
+    const decoder = new KeyDecoder();
+    expect(decoder.push(Buffer.from('\x1b[<6', 'utf8'))).toEqual([]);
+    expect(decoder.push(Buffer.from('4;1;1M', 'utf8')).map((k) => k.type)).toEqual(['wheelup']);
+  });
 });
 
 describe('wrapLine', () => {
@@ -230,5 +242,16 @@ describe('LineScreen', () => {
     const all = writes.join('');
     expect(all.indexOf('\x1b[?2004h')).toBeGreaterThanOrEqual(0);
     expect(all.indexOf('\x1b[?2004l')).toBeGreaterThan(all.indexOf('\x1b[?2004h'));
+  });
+
+  it('enables and disables wheel mouse tracking with the screen', () => {
+    const { out, writes } = fakeOut(2, 40);
+    const screen = new LineScreen(out);
+    screen.enter();
+    screen.exit();
+    const all = writes.join('');
+    expect(all.indexOf('\x1b[?1000h')).toBeGreaterThanOrEqual(0);
+    expect(all.indexOf('\x1b[?1006h')).toBeGreaterThan(all.indexOf('\x1b[?1000h'));
+    expect(all.indexOf('\x1b[?1000l')).toBeGreaterThan(all.indexOf('\x1b[?1006h'));
   });
 });

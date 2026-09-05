@@ -293,3 +293,133 @@ function sessionRelPath(rootDir: string, file: string): string {
   const normalizedFile = file.replaceAll('\\', '/');
   return normalizedFile.startsWith(`${normalizedRoot}/`) ? normalizedFile.slice(normalizedRoot.length + 1) : file;
 }
+
+// ---- 多行 composer 布局（纯函数，无 ANSI；输入已被粘贴清洗过）--------------
+
+export interface ComposerWrap {
+  /** 软换行后的所有显示行。 */
+  rows: string[];
+  /** 光标所在行号。 */
+  caretRow: number;
+  /** 光标左侧在该行内占用的显示列数。 */
+  caretCol: number;
+  /** 每行首字符在 input 中的 UTF-16 偏移（跨行移动光标时换算用）。 */
+  rowStart: number[];
+}
+
+/**
+ * 按「显式换行 + 宽度软换行」把输入拆成显示行，并同步定位光标。单趟
+ * O(n)：旧实现的横向窗口每帧都要对光标前的整段文本重算宽度（O(n²)），
+ * 一次大粘贴就能把 UI 卡死。
+ */
+export function wrapComposer(input: string, cursorPos: number, width: number): ComposerWrap {
+  const w = Math.max(1, width);
+  const rows: string[] = [];
+  const rowStart: number[] = [];
+  let cur = '';
+  let curW = 0;
+  let curStart = 0;
+  let units = 0; // 已消费的 UTF-16 单元数
+  let caretRow = 0;
+  let caretCol = 0;
+  let caretSeen = false;
+  const closeRow = (): void => {
+    rows.push(cur);
+    rowStart.push(curStart);
+    cur = '';
+    curW = 0;
+  };
+  for (const ch of input) {
+    // 光标停在某个字符之前；units 恰好等于 cursorPos 时即为该处。
+    if (!caretSeen && units >= cursorPos) {
+      caretRow = rows.length;
+      caretCol = curW;
+      caretSeen = true;
+    }
+    if (ch === '\n') {
+      closeRow();
+      units += 1;
+      curStart = units;
+      continue;
+    }
+    const cw = styledWidth(ch);
+    if (curW > 0 && curW + cw > w) {
+      closeRow();
+      curStart = units;
+    }
+    cur += ch;
+    curW += cw;
+    units += ch.length;
+  }
+  if (!caretSeen) {
+    caretRow = rows.length;
+    caretCol = curW;
+  }
+  closeRow(); // 末行即使为空也要落盘（空输入 → 一行空行 + 行首光标）
+  return { rows, caretRow, caretCol, rowStart };
+}
+
+export interface ComposerRow {
+  text: string;
+  /** 光标在该行文本内的 UTF-16 偏移；-1 表示光标不在这一行。 */
+  caretIdx: number;
+}
+
+export interface ComposerLayout {
+  rows: ComposerRow[];
+  /** 光标行在 `rows`（可见窗口）中的下标。 */
+  cursorRow: number;
+  /** 光标左侧列数（不含 composer 前缀）。 */
+  cursorCol: number;
+  totalRows: number;
+  hiddenAbove: number;
+  hiddenBelow: number;
+}
+
+/**
+ * 在 wrapComposer 之上取「光标附近最多 maxRows 行」的可见窗口；光标行永远
+ * 在窗口内，上下溢出行数以 hiddenAbove/Below 报给调用方渲染提示行。
+ */
+export function layoutComposer(input: string, cursorPos: number, width: number, maxRows: number): ComposerLayout {
+  const wrap = wrapComposer(input, cursorPos, width);
+  const total = wrap.rows.length;
+  const max = Math.max(1, maxRows);
+  const start = total <= max ? 0 : Math.max(0, Math.min(wrap.caretRow - (max - 1), total - max));
+  const slice = wrap.rows.slice(start, start + max);
+  const rows: ComposerRow[] = slice.map((text) => ({ text, caretIdx: -1 }));
+  if (wrap.caretRow >= start && wrap.caretRow < start + slice.length) {
+    rows[wrap.caretRow - start] = { text: slice[wrap.caretRow - start] ?? '', caretIdx: caretIdxInRow(slice[wrap.caretRow - start] ?? '', wrap.caretCol) };
+  }
+  return {
+    rows,
+    cursorRow: Math.max(0, Math.min(slice.length - 1, wrap.caretRow - start)),
+    cursorCol: wrap.caretCol,
+    totalRows: total,
+    hiddenAbove: start,
+    hiddenBelow: Math.max(0, total - (start + slice.length)),
+  };
+}
+
+/** 显示列数 → 该行内 UTF-16 偏移；超过行宽时返回行尾。 */
+function caretIdxInRow(text: string, caretCol: number): number {
+  let acc = 0;
+  let units = 0;
+  for (const ch of text) {
+    if (acc >= caretCol) return units;
+    acc += styledWidth(ch);
+    units += ch.length;
+  }
+  return text.length;
+}
+
+/**
+ * 多行输入下 ↑/↓ 的光标移动：保持可视列位置，目标行更短则落到行尾
+ * （换行符之前）。单行输入不应调用（会绕过历史导航）。
+ */
+export function cursorAfterVerticalMove(input: string, cursorPos: number, width: number, delta: number): number {
+  const wrap = wrapComposer(input, cursorPos, width);
+  const target = Math.max(0, Math.min(wrap.rows.length - 1, wrap.caretRow + delta));
+  if (target === wrap.caretRow) return cursorPos;
+  const idx = caretIdxInRow(wrap.rows[target] ?? '', wrap.caretCol);
+  return (wrap.rowStart[target] ?? 0) + idx;
+}

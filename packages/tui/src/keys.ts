@@ -14,6 +14,8 @@ export type Key =
   | { type: 'end' }
   | { type: 'pageup' }
   | { type: 'pagedown' }
+  | { type: 'wheelup' }
+  | { type: 'wheeldown' }
   | { type: 'tab' }
   | { type: 'shifttab' }
   | { type: 'esc' }
@@ -153,6 +155,12 @@ export class KeyDecoder {
           return { type: 'end' };
         case 'Z':
           return { type: 'shifttab' };
+        case 'M':
+        case 'm':
+          // SGR mouse mode (?1006h): `ESC [ < btn ; col ; row M/m`. Wheel
+          // notches arrive as button 64/65 presses; clicks and drags are
+          // consumed silently so they never leak into the composer.
+          return parseMouseButton(params, finalByte);
         case '~':
           if (params === '200') {
             this.inPaste = true;
@@ -209,4 +217,19 @@ export class KeyDecoder {
     }
     return undefined; // keep buffering until the terminator arrives
   }
+}
+
+/**
+ * SGR mouse event → wheel keys. `params` is the raw `<btn;col;row` string and
+ * `final` distinguishes press (`M`) from release (`m`). Only wheel notches
+ * (64 = up, 65 = down) become keys; mouse buttons, motion and releases are
+ * consumed so enabling tracking never injects phantom input.
+ */
+function parseMouseButton(params: string, final: string): Key | undefined {
+  if (final !== 'M') return undefined; // release / motion: ignore
+  if (!params.startsWith('<')) return undefined; // legacy X10 encoding: not ours
+  const button = Number.parseInt(params.slice(1).split(';')[0] ?? '', 10);
+  if (button === 64) return { type: 'wheelup' };
+  if (button === 65) return { type: 'wheeldown' };
+  return undefined;
 }

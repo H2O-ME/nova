@@ -18,6 +18,11 @@ const configSchema = z.object({
   maxTurns: z.number().int().positive().max(50).optional(),
   approval: z.enum(['read-only', 'auto-edit', 'full']).optional(),
   /**
+   * 系统通知开关（审批请求 / 长任务完成 / 出错时弹 Windows toast 等系统
+   * 通知）。默认开启；设为 false 或环境变量 NOVA_NO_NOTIFY=1 关闭。
+   */
+  notify: z.boolean().optional(),
+  /**
    * Auto-compact threshold in prompt tokens (measured on the latest turn).
    * When exceeded, the session is summarized and restarted automatically
    * (codex-style model_auto_compact_token_limit). Unset disables it.

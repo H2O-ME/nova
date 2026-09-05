@@ -22,10 +22,17 @@ export class LineScreen {
     this.out.write('\x1b[?1049h'); // alternate screen
     this.out.write('\x1b[?25l'); // hide cursor
     this.out.write('\x1b[?2004h'); // bracketed paste
+    // Wheel tracking (SGR encoding): the alternate screen has no scrollback,
+    // so without this the terminal turns wheel notches into arrow keys that
+    // clobber the composer's history navigation. Text selection needs Shift.
+    this.out.write('\x1b[?1000h');
+    this.out.write('\x1b[?1006h');
     this.prev = undefined;
   }
 
   exit(): void {
+    this.out.write('\x1b[?1006l'); // SGR mouse off
+    this.out.write('\x1b[?1000l'); // mouse tracking off
     this.out.write('\x1b[?2004l'); // bracketed paste off
     this.out.write('\x1b[?25h'); // show cursor
     this.out.write('\x1b[?1049l'); // leave alternate screen

@@ -38,14 +38,17 @@ import {
 import { NOVA_DIR, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
+import { createNotifier } from './notify.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
   approvalLabel,
   APPROVAL_ORDER,
   contextBar,
+  cursorAfterVerticalMove,
   humanTokens,
   isFailureContent,
   isReadOnlyTool,
+  layoutComposer,
   palette,
   permissionLabel,
   plainPalette,
@@ -57,6 +60,8 @@ import {
   toolGroupLine,
   toolLabel,
   toolStartLine,
+  type ComposerLayout,
+  type ComposerRow,
   type StopKind,
 } from './ui.js';
 
@@ -79,6 +84,11 @@ const INVERSE = '\x1b[7m';
 /** Composer prompt prefix; the cursor column math depends on its width. */
 const COMPOSER_PREFIX = `  ${CYAN}${BOLD}❯${RESET} `;
 const COMPOSER_PREFIX_WIDTH = styledWidth(COMPOSER_PREFIX);
+
+/** Composer 最多占用的屏幕行数；超出后窗口随光标滑动并显示上下提示。 */
+const COMPOSER_MAX_ROWS = 8;
+/** 单次粘贴的字符上限：超过即截断（防止一次超巨粘贴把输入区撑爆）。 */
+const PASTE_MAX_CHARS = 200_000;
 
 /** Reasoning display caps: committed lines kept, and the live line's tail. */
 const REASONING_MAX_LINES = 6;
@@ -203,11 +213,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   };
   if (!opts.resumeFile) await seedContextFragment();
 
+  /**
+   * Approval popup + long-turn completion/error surface as OS notifications
+   * too: the user regularly switches away while the agent works, and a
+   * pending approval without a toast just looks like a frozen session.
+   */
+  const notify = createNotifier({ enabled: config.notify !== false });
   const askApproval: AskFn = (call, kind) =>
     new Promise((resolve) => {
       approvalRequest = { call, kind, resolve };
       approvalIndex = 0;
       scrollFromEnd = 0;
+      notify('需要审批', `${toolLabel(call.name)} · ${toolArgSummary(call.name, call.rawArgs, 80)}`);
       scheduleRender();
     });
   const permission = new PermissionService(approvalMode, askApproval, (entry) => {
@@ -291,9 +308,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * Live tool blocks keyed by call id. Parallel tool segments produce
    * consecutive starts before any result, so results must update the block
    * that belongs to THEIR call — updating the last block would clobber a
-   * sibling call's entry.
+   * sibling call's entry. `tailBuf` accumulates the tool's streamed output
+   * (bash) so the spinner tick can show a live "└ tail" progress line.
    */
-  const toolBlocks = new Map<string, { block: Block; startAt: number; name: string; rawArgs: string }>();
+  const toolBlocks = new Map<
+    string,
+    { block: Block; startAt: number; name: string; rawArgs: string; tailBuf?: string }
+  >();
+  /** The tool call currently executing; progress text routes to its block. */
+  let activeToolId: string | undefined;
   /**
    * Consecutive completed read-only calls collapse into one "查看" line
    * (codex "Explored" cell): each result's live block is removed and its
@@ -326,7 +349,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         for (const entry of toolBlocks.values()) {
           const elapsed = now - entry.startAt;
           const suffix = elapsed >= 2000 ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}` : '';
-          replaceBlock(entry.block, [toolStartLine(paint, entry.name, entry.rawArgs, frame) + suffix]);
+          const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame) + suffix];
+          // Live output tail for streaming tools (bash): the last line of
+          // whatever the process has printed so far. This is what keeps a
+          // 2-minute pnpm install from looking like a hang.
+          const tailBuf = entry.tailBuf;
+          if (tailBuf !== undefined) {
+            const last = tailBuf.slice(tailBuf.lastIndexOf('\n') + 1).trimEnd().slice(-160);
+            if (last.length > 0) lines.push(`      ${DIM}└ ${last}${RESET}`);
+          }
+          replaceBlock(entry.block, lines);
         }
         scheduleRender();
       }, 90);
@@ -489,6 +521,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         hooks,
         systemPrompt,
         maxTurns: config.maxTurns,
+        // Live bash output lands in the running tool block's tail buffer; the
+        // spinner tick renders it (never a render per chunk).
+        onToolProgress: (text) => {
+          const entry = activeToolId !== undefined ? toolBlocks.get(activeToolId) : undefined;
+          if (entry === undefined) return;
+          const merged = (entry.tailBuf ?? '') + text;
+          entry.tailBuf = merged.length > 8000 ? merged.slice(-4000) : merged;
+        },
         signal: aborter.signal,
       })) {
         await onAgentEvent(event, startedAt, {
@@ -596,6 +636,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       } else {
         // API errors can be long: hang wrapped rows under the notice column.
         pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], { first: '', rest: '      ' });
+        // A turn that died mid-work (not a user abort) deserves a ping too —
+        // but only when it ran long enough that the user may have walked away.
+        if (!exiting && Date.now() - startedAt >= 5000) {
+          notify('任务出错', message.slice(0, 120));
+        }
       }
     } finally {
       const idx = aborters.indexOf(aborter);
@@ -614,6 +659,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       if (process.env['NOVA_DEBUG'] !== undefined) {
         const divergence = surfaceDivergence(session, messages);
         if (divergence !== undefined) pushBlock([`${RED}  [invariant] ${divergence}${RESET}`]);
+      }
+      // Long turns end while the user is elsewhere: the toast is the "come
+      // back, it's done" cue (short turns stay silent — that's just spam).
+      const elapsed = Date.now() - startedAt;
+      if (!exiting && elapsed >= 15_000) {
+        notify('任务已完成', `本轮耗时约 ${Math.max(1, Math.round(elapsed / 1000 / 60))} 分钟，回到终端查看结果`);
       }
       scheduleRender();
     }
@@ -680,6 +731,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         };
         blocks.push(block);
         toolBlocks.set(event.call.id, { block, startAt: Date.now(), name: event.call.name, rawArgs: event.call.rawArgs });
+        activeToolId = event.call.id;
         scheduleRender();
         break;
       }
@@ -687,6 +739,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         await session.append(event.result);
         const entry = toolBlocks.get(event.call.id);
         toolBlocks.delete(event.call.id);
+        if (activeToolId === event.call.id) activeToolId = undefined;
         const duration = entry === undefined ? 0 : Math.max(0, Date.now() - entry.startAt);
         const failed = isFailureContent(event.result.content);
         if (isReadOnlyTool(event.call.name) && !failed) {
@@ -965,6 +1018,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         picker.index = Math.max(0, picker.index - winSize);
       } else if (k.type === 'pagedown') {
         picker.index = Math.min(picker.models.length - 1, picker.index + winSize);
+      } else if (k.type === 'wheelup') {
+        picker.index = Math.max(0, picker.index - 1);
+      } else if (k.type === 'wheeldown') {
+        picker.index = Math.min(picker.models.length - 1, picker.index + 1);
       } else if (k.type === 'enter') {
         const model = picker.models[picker.index];
         modelPicker = undefined;
@@ -1047,6 +1104,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           popupIndex = Math.max(0, popupIndex - 1);
           break;
         }
+        // Multi-line input: arrows walk the wrapped rows (visual column kept),
+        // not the prompt history — history returns once the input is one line.
+        if (input.includes('\n')) {
+          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerAvailable(), -1);
+          break;
+        }
         if (historyIdx === -1) {
           historyDraft = input;
           historyIdx = historyStack.length - 1;
@@ -1062,6 +1125,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       case 'down': {
         if (popupMatches.length > 0) {
           popupIndex = Math.min(popupMatches.length - 1, popupIndex + 1);
+          break;
+        }
+        if (input.includes('\n')) {
+          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerAvailable(), 1);
           break;
         }
         if (historyIdx >= 0) {
@@ -1083,6 +1150,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       case 'pagedown':
         scrollFromEnd = Math.max(0, scrollFromEnd - Math.max(3, screen.rows - 6));
         scheduleRender();
+        return;
+      case 'wheelup':
+        // Wheel notch ≈ 3 lines; paint synchronously so scrolling feels
+        // attached to the wheel instead of lagging a frame behind.
+        scrollFromEnd = Math.min(scrollFromEnd + 3, totalWrappedLines());
+        preemptRender();
+        return;
+      case 'wheeldown':
+        scrollFromEnd = Math.max(0, scrollFromEnd - 3);
+        preemptRender();
         return;
       case 'left':
         cursorPos = Math.max(0, cursorPos - 1);
@@ -1126,16 +1203,27 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         popupDismissed = false;
         break;
       case 'paste': {
-        // The composer is single-line: fold newlines to spaces and drop any
-        // control characters (a pasted escape sequence must not reach the UI).
-        const cleaned = k.text
-          .replace(/\r\n|\r|\n/g, ' ')
+        // Multi-line paste stays multi-line (the composer soft-wraps it);
+        // other control characters are dropped — a pasted escape sequence
+        // must never reach the UI. Tabs become spaces so no raw \t can
+        // corrupt a rendered row.
+        let cleaned = k.text
+          .replace(/\r\n?/g, '\n')
           // eslint-disable-next-line no-control-regex
-          .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
+          .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+          .replaceAll('\t', '  ');
+        let truncated = false;
+        if (cleaned.length > PASTE_MAX_CHARS) {
+          cleaned = cleaned.slice(0, PASTE_MAX_CHARS);
+          truncated = true;
+        }
         if (cleaned.length > 0) {
           input = input.slice(0, cursorPos) + cleaned + input.slice(cursorPos);
           cursorPos += cleaned.length;
           popupDismissed = false;
+        }
+        if (truncated) {
+          pushBlock([`${DIM}  （粘贴内容超过 ${PASTE_MAX_CHARS} 字符，已截断）${RESET}`]);
         }
         break;
       }
@@ -1254,11 +1342,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       );
     }
 
-    const composerRows = 1;
-    const statusRows = 1;
     // One breathing row between the newest content and the composer.
     const breatheRows = 1;
-    const historyRows = Math.max(3, rows - popupLines.length - composerRows - statusRows - breatheRows);
+    const layout = layoutComposer(input, cursorPos, composerAvailable(), COMPOSER_MAX_ROWS);
+    const composerZoneRows = composerZone(layout);
+    const statusRows = 1;
+    const historyRows = Math.max(
+      3,
+      rows - popupLines.length - composerZoneRows.length - statusRows - breatheRows,
+    );
 
     const flat: string[] = [];
     for (const block of blocks) flat.push(...wrapBlock(block));
@@ -1271,60 +1363,41 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // viewport the pad disappears and paging takes over.
     while (historyLines.length < historyRows) historyLines.push('');
 
-    const composer = composerLine(cols);
     const status = statusBarLine();
 
     // The breathing row separates history from the popup/composer zone.
     screen.render(
-      [...historyLines, '', ...popupLines, composer, status],
-      cursorPosition(historyRows),
+      [...historyLines, '', ...popupLines, ...composerZoneRows, status],
+      cursorPosition(historyRows, layout),
     );
   }
 
-  /** One prompt row (`  ❯ input`) with the cursor as an inverse block. */
-  function composerLine(cols: number): string {
-    const available = Math.max(1, cols - COMPOSER_PREFIX_WIDTH - 2);
-    const win = visibleWindow(available);
-    return `${COMPOSER_PREFIX}${win.before}${INVERSE}${win.at}${RESET}${win.after}`;
-  }
+  /** Wrap budget inside the composer: prompt prefix + right margin + caret cell. */
+  const composerAvailable = (): number => Math.max(1, screen.cols - COMPOSER_PREFIX_WIDTH - 2);
 
   /**
-   * 输入的横向窗口：光标附近的可见片段。按码点切分（astral 字符不撕裂、
-   * 宽度计算与光标偏移同单位），并把光标位置物化为一个反色字符格。
+   * The composer zone: up to COMPOSER_MAX_ROWS wrapped input rows between
+   * optional "more above/below" hints. The first visible row carries the
+   * `❯` prompt; continuation rows align under it.
    */
-  function visibleWindow(available: number): { before: string; at: string; after: string; width: number } {
-    const chars = [...input];
-    const cursorCp = Array.from(input.slice(0, cursorPos)).length;
-    let windowStart = 0;
-    while (windowStart < cursorCp && styledWidth(chars.slice(windowStart, cursorCp).join('')) > available - 4) {
-      windowStart += 1;
-    }
-    const segs: string[] = [];
-    let width = 0;
-    for (let i = windowStart; i < chars.length; i++) {
-      const ch = chars[i] ?? '';
-      const w = styledWidth(ch);
-      if (width + w > available) break;
-      segs.push(ch);
-      width += w;
-    }
-    const caretIdx = cursorCp - windowStart;
-    if (caretIdx >= segs.length) {
-      // 光标在可见文本末尾：为块光标预留一格；超宽时丢弃最旧（最左）的字符，
-      // 保证光标一侧始终可见。
-      if (width + 1 > available && segs.length > 0) {
-        const dropped = segs.shift();
-        width -= dropped !== undefined ? styledWidth(dropped) : 0;
-      }
-      return { before: segs.join(''), at: ' ', after: '', width: width + 1 };
-    }
-    const at = segs[caretIdx] ?? ' ';
-    return {
-      before: segs.slice(0, caretIdx).join(''),
-      at,
-      after: segs.slice(caretIdx + 1).join(''),
-      width,
-    };
+  function composerZone(layout: ComposerLayout): string[] {
+    const zone: string[] = [];
+    if (layout.hiddenAbove > 0) zone.push(`  ${DIM}⋯ 上方还有 ${layout.hiddenAbove} 行${RESET}`);
+    const indent = ' '.repeat(COMPOSER_PREFIX_WIDTH);
+    layout.rows.forEach((row, i) => {
+      const lead = i === 0 && layout.hiddenAbove === 0 ? COMPOSER_PREFIX : indent;
+      zone.push(lead + renderComposerRow(row));
+    });
+    if (layout.hiddenBelow > 0) zone.push(`  ${DIM}⋯ 下方还有 ${layout.hiddenBelow} 行${RESET}`);
+    return zone;
+  }
+
+  /** One input row; the caret renders as an inverse block on the char it sits on. */
+  function renderComposerRow(row: ComposerRow): string {
+    if (row.caretIdx < 0) return row.text;
+    const rest = row.text.slice(row.caretIdx);
+    const at = [...rest][0] ?? ' ';
+    return `${row.text.slice(0, row.caretIdx)}${INVERSE}${at}${RESET}${rest.slice(at.length)}`;
   }
 
   function popupHeight(): number {
@@ -1338,12 +1411,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     return Math.min(6, matches.length) + 2;
   }
 
-  function cursorPosition(historyRows: number): { row: number; col: number } {
-    // Layout: history · breathe · popup · composer · status. The cursor sits
-    // in the composer row right after the prompt prefix + visible text.
-    const available = Math.max(1, screen.cols - COMPOSER_PREFIX_WIDTH - 2);
-    const { before } = visibleWindow(available);
-    return { row: historyRows + popupHeight() + 1, col: COMPOSER_PREFIX_WIDTH + styledWidth(before) };
+  function cursorPosition(historyRows: number, layout: ComposerLayout): { row: number; col: number } {
+    // Layout: history · breathe · popup · composer zone · status. The caret
+    // row sits inside the zone; the "more above" hint (when present) occupies
+    // the zone's first row and shifts everything down one.
+    const hintRows = layout.hiddenAbove > 0 ? 1 : 0;
+    return {
+      row: historyRows + popupHeight() + hintRows + layout.cursorRow,
+      col: COMPOSER_PREFIX_WIDTH + layout.cursorCol,
+    };
   }
 
   function statusBarLine(): string {
@@ -1356,6 +1432,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] ?? '•';
       parts.push(`${frame} ${statusIndicator(true, elapsed, spinnerFrame)}`);
     }
+    // Scrolled-away indicator: the viewport is anchored while scrolled up and
+    // new output keeps arriving below — without this marker the screen just
+    // looks frozen, with no hint that ↓ returns to the live tail.
+    if (scrollFromEnd > 0) parts.push(`${CYAN}已上滚 ${scrollFromEnd} 行 · ↓/滚轮到底${RESET}`);
     if (!streaming && input.length === 0 && Date.now() - lastCtrlC < 2000) {
       parts.push(`${YELLOW}再按一次 Ctrl+C 退出${RESET}`);
     }

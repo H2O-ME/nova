@@ -1,16 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from '../src/system-prompt.js';
 import { createMarkdownRenderer, renderMarkdownLite } from '../src/markdown.js';
+import { buildWindowsToastScript } from '../src/notify.js';
 import {
   contextBar,
+  cursorAfterVerticalMove,
   fitTail,
   isReadOnlyTool,
+  layoutComposer,
   plainPalette,
   statusLine,
   toolArgSummary,
   toolDoneLine,
   toolGroupLine,
   toolStartLine,
+  wrapComposer,
   type Palette,
 } from '../src/ui.js';
 
@@ -164,5 +168,76 @@ describe('markdown lite', () => {
     expect(md.push('`\ncode();\n```\n')).toEqual(['标题', '第一行', '第二行', 'code();']);
     // A new open fence renders its lines dim; the state survives pushes.
     expect(md.push('```js\nconst x = 1;\n')).toEqual(['标题', '第一行', '第二行', 'code();', 'const x = 1;']);
+  });
+});
+
+describe('composer layout', () => {
+  it('wraps a short single line with the caret at its end', () => {
+    const wrap = wrapComposer('hello', 5, 20);
+    expect(wrap.rows).toEqual(['hello']);
+    expect(wrap.caretRow).toBe(0);
+    expect(wrap.caretCol).toBe(5);
+    expect(wrap.rowStart).toEqual([0]);
+  });
+
+  it('wraps CJK input by display width and keeps the caret inside its row', () => {
+    const wrap = wrapComposer('你好世界', 4, 6);
+    expect(wrap.rows).toEqual(['你好世', '界']);
+    expect(wrap.caretRow).toBe(1);
+    expect(wrap.caretCol).toBe(2); // 界 = 2 columns
+    // caret sits past the last char → UTF-16 offset equals the row length
+    expect(layoutComposer('你好世界', 4, 6, 8).rows[1]?.caretIdx).toBe(1);
+  });
+
+  it('splits explicit newlines into rows and locates the caret per row', () => {
+    const layout = layoutComposer('ab\ncd', 3, 20, 8);
+    expect(layout.totalRows).toBe(2);
+    expect(layout.cursorRow).toBe(1);
+    expect(layout.cursorCol).toBe(0);
+    expect(layout.rows[0]).toEqual({ text: 'ab', caretIdx: -1 });
+    expect(layout.rows[1]).toEqual({ text: 'cd', caretIdx: 0 });
+  });
+
+  it('windows long input around the caret with overflow hints', () => {
+    const input = Array.from({ length: 12 }, (_, i) => `l${i}`).join('\n');
+    const end = input.length;
+    const atEnd = layoutComposer(input, end, 20, 4);
+    expect(atEnd.totalRows).toBe(12);
+    expect(atEnd.hiddenAbove).toBe(8);
+    expect(atEnd.hiddenBelow).toBe(0);
+    expect(atEnd.cursorRow).toBe(3);
+    expect(atEnd.rows).toHaveLength(4);
+    const atTop = layoutComposer(input, 0, 20, 4);
+    expect(atTop.hiddenAbove).toBe(0);
+    expect(atTop.hiddenBelow).toBe(8);
+    expect(atTop.cursorRow).toBe(0);
+  });
+
+  it('handles empty input as one empty row with the caret at the origin', () => {
+    const layout = layoutComposer('', 0, 20, 8);
+    expect(layout.rows).toEqual([{ text: '', caretIdx: 0 }]);
+    expect(layout.cursorRow).toBe(0);
+    expect(layout.cursorCol).toBe(0);
+  });
+
+  it('moves the cursor across visual rows keeping the column', () => {
+    // 'abcdef' / 'xy': caret at end of row 1 (utf16 pos 9), up → row 0 col 2
+    expect(cursorAfterVerticalMove('abcdef\nxy', 9, 20, -1)).toBe(2);
+    expect(cursorAfterVerticalMove('abcdef\nxy', 2, 20, 1)).toBe(9);
+    // clamped at both ends
+    expect(cursorAfterVerticalMove('abcdef\nxy', 9, 20, 1)).toBe(9);
+    expect(cursorAfterVerticalMove('abcdef\nxy', 2, 20, -1)).toBe(2);
+    // CJK row: caretCol 1 clamps to the first char boundary past it
+    expect(cursorAfterVerticalMove('中文\na', 4, 20, -1)).toBe(1);
+  });
+});
+
+describe('windows toast script', () => {
+  it('escapes quotes and flattens newlines for the PowerShell string literals', () => {
+    const script = buildWindowsToastScript('Nova', "it's done\nline2");
+    expect(script).toContain("$t='Nova'");
+    expect(script).toContain("$b='it''s done line2'");
+    expect(script).toContain('ToastNotificationManager');
+    expect(script).toContain('ShowBalloonTip'); // balloon fallback present
   });
 });

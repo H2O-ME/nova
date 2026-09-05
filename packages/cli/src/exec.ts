@@ -24,6 +24,7 @@ import type { McpPlugin } from '@nova-agent/mcp';
 import { collectProjectDocs } from './agents-md.js';
 import { NOVA_DIR, type Config } from './config.js';
 import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
+import { createNotifier } from './notify.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
 
@@ -138,6 +139,12 @@ export async function runExec(opts: ExecOptions): Promise<void> {
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
   let toolStartAt = 0;
+  // Headless runs are exactly the ones the user walks away from; completion
+  // and failure notifications matter most here (30s threshold: short runs
+  // finish before the user can even switch windows). Disabled for injected
+  // test sinks.
+  const notify = createNotifier({ enabled: opts.out === undefined && config.notify !== false });
+  const execStartedAt = Date.now();
   try {
     // Lazy MCP: connect right before the first request.
     if (mcp !== undefined) {
@@ -174,8 +181,14 @@ export async function runExec(opts: ExecOptions): Promise<void> {
           break;
       }
     }
+    const elapsed = Date.now() - execStartedAt;
+    if (elapsed >= 30_000) {
+      notify('任务已完成', `exec 运行约 ${Math.max(1, Math.round(elapsed / 60000))} 分钟，回到终端查看结果`);
+    }
   } catch (err) {
-    console.error(`出错：${err instanceof Error ? err.message : String(err)}`);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`出错：${message}`);
+    if (Date.now() - execStartedAt >= 30_000) notify('任务出错', message.slice(0, 120));
     process.exitCode = 1;
   } finally {
     // Kill background jobs before the process exits, or the spawned shells

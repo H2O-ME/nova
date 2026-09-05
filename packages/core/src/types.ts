@@ -91,6 +91,12 @@ export interface ToolExecuteContext {
    * joining the model surface. Wired by the host to the open session log.
    */
   emit?: (evt: import('./session.js').SessionEvent) => void | Promise<void>;
+  /**
+   * Live progress feed for long-running tools (bash output tail etc.),
+   * forwarded from AgentOptions.onToolProgress. Fire-and-forget: consumers
+   * render it best-effort and tools must not depend on it existing.
+   */
+  onProgress?: (text: string) => void;
 }
 
 /** Internal tool IR; provider adapters map this to wire formats. */
