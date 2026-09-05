@@ -136,6 +136,40 @@ describe('runAgent', () => {
     expect(progress).toEqual(['line one\n', 'line two']);
   });
 
+  it('ends the turn promptly when the user aborts while a tool runs', async () => {
+    const hangTool: ToolDefinition = {
+      name: 'hang',
+      description: 'never resolves on its own',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      // A tool that ignores its cancellation signal entirely.
+      execute() {
+        return new Promise<string>(() => {});
+      },
+    };
+    const provider = scriptedProvider([
+      [
+        { type: 'tool_call_delta', index: 0, id: 'call_1', name: 'hang', argsDelta: '{}' },
+        { type: 'finish', finishReason: 'tool_calls' },
+      ],
+    ]);
+    const messages: AgentMessage[] = [];
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 50);
+    try {
+      const events = await collect(
+        runAgent({ provider, messages, rootDir: '.', tools: [hangTool], signal: ac.signal }),
+      );
+      // The run must END (the abort race settles the tool call), with a
+      // synthesized tool result plus the turn-aborted guidance marker.
+      expect(events.at(-1)?.type).toBe('done');
+      const toolResult = messages.find((m): m is ToolResultMessage => m.role === 'tool');
+      expect(toolResult?.content).toContain('aborted by user interrupt');
+      expect(messages.at(-1)?.role).toBe('user');
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
   it('does not let empty-string id/name deltas overwrite captured values', async () => {
     const provider = scriptedProvider([
       [

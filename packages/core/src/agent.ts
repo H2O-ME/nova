@@ -45,6 +45,8 @@ export interface AgentOptions {
 
 const DEFAULT_MAX_TURNS = 10;
 const DEFAULT_MAX_TOOL_RESULT_BYTES = 40 * 1024;
+/** How long a running tool may keep the turn open after the user aborted. */
+const ABORT_GRACE_MS = 2_000;
 
 /**
  * Appended to the log when a run is cut short by abort (codex-style
@@ -462,19 +464,50 @@ async function executeTool(
     }
   })();
 
-  if (tool.timeoutMs === undefined) return run;
-
-  // Cooperative timeout: abort the merged signal and stop waiting. In-process
-  // code that ignores the signal keeps running — the loop never hard-kills it.
+  /**
+   * The tool result is decided by whichever comes first: the run settles, the
+   * per-tool timeout fires, or — after a short abort grace — the parent
+   * signal (user interrupt) cuts it off. The grace lets a tool that finishes
+   * right around the abort record its real result; one that ignores its
+   * cancellation signal gets cut off, so Esc/Ctrl+C always ends the run
+   * promptly (codex interrupt guarantee). The abandoned run keeps going in
+   * the background; its value is dropped.
+   */
   return new Promise<string>((resolve) => {
-    const timer = setTimeout(() => {
-      timeoutController?.abort();
-      resolve(`Error: tool "${call.name}" timed out after ${tool.timeoutMs}ms (cancellation was requested; work that ignores the signal may still be running)`);
-    }, tool.timeoutMs);
-    void run.then((value) => {
-      clearTimeout(timer);
+    let settled = false;
+    let timer: NodeJS.Timeout | undefined;
+    let abortGrace: NodeJS.Timeout | undefined;
+    const settle = (value: string): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      if (abortGrace !== undefined) clearTimeout(abortGrace);
+      if (onAbort !== undefined) parent?.removeEventListener('abort', onAbort);
       resolve(value);
-    });
+    };
+    const onAbort =
+      parent === undefined
+        ? undefined
+        : () => {
+            abortGrace ??= setTimeout(
+              () => settle(`Error: tool "${call.name}" aborted by user interrupt`),
+              ABORT_GRACE_MS,
+            );
+          };
+    if (tool.timeoutMs !== undefined) {
+      timer = setTimeout(() => {
+        timeoutController?.abort();
+        settle(`Error: tool "${call.name}" timed out after ${tool.timeoutMs}ms (cancellation was requested; work that ignores the signal may still be running)`);
+      }, tool.timeoutMs);
+    }
+    if (parent !== undefined && onAbort !== undefined) {
+      if (parent.aborted) {
+        onAbort();
+      } else {
+        parent.addEventListener('abort', onAbort, { once: true });
+      }
+    }
+    void run.then((value) => settle(value));
   });
 }
 

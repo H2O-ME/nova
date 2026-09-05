@@ -123,8 +123,48 @@ function runOnce(
       if (text.length > 0) onOutput?.(text);
     };
 
-    const timer = setTimeout(() => killShell(child), timeoutMs);
-    const onAbort = () => killShell(child);
+    let settled = false;
+    let exitCode: number | null = null;
+    let killed = false;
+    let closeGrace: NodeJS.Timeout | undefined;
+    let killSettle: NodeJS.Timeout | undefined;
+    let timer: NodeJS.Timeout | undefined;
+
+    /**
+     * The single settle point. On Windows a tree-kill can leave the stdio
+     * pipes open (MSYS grandchildren escape the taskkill snapshot), and the
+     * `close` event may then never fire — waiting on it alone hangs the tool
+     * forever (observed: a killed command reported as running for 13+ min).
+     * We destroy the pipes ourselves and settle with whatever output was
+     * collected; `exit` alone is enough to decide the outcome.
+     */
+    const finish = (spawnError?: string): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      if (closeGrace !== undefined) clearTimeout(closeGrace);
+      if (killSettle !== undefined) clearTimeout(killSettle);
+      signal?.removeEventListener('abort', onAbort);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      resolve({
+        code: exitCode,
+        stdout: Buffer.concat(chunks).toString('utf8'),
+        stderr: Buffer.concat(errChunks).toString('utf8'),
+        ...(spawnError !== undefined ? { spawnError } : {}),
+      });
+    };
+
+    const kill = (): void => {
+      killed = true;
+      killShell(child);
+      // If the tree kill leaves the pipes open, neither `close` nor even
+      // `exit` may arrive in time — settle deterministically right after.
+      killSettle ??= setTimeout(() => finish(), 3_000);
+    };
+
+    timer = setTimeout(() => kill(), timeoutMs);
+    const onAbort = () => kill();
     signal?.addEventListener('abort', onAbort, { once: true });
 
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -144,18 +184,19 @@ function runOnce(
       errChunks.push(take);
     });
     child.on('error', (err: NodeJS.ErrnoException) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-      resolve({ code: null, stdout: '', stderr: '', spawnError: `${err.code ?? 'ERROR'}: ${err.message}` });
+      finish(`${err.code ?? 'ERROR'}: ${err.message}`);
+    });
+    child.on('exit', (code) => {
+      // Process is dead — the outcome is decided. Give `close` a short grace
+      // to flush the last buffered output, then finish regardless. A killed
+      // process reports exit code 1 on Windows — report null instead so the
+      // result reads as "did not exit", not as a command that failed.
+      exitCode = killed ? null : code;
+      closeGrace = setTimeout(() => finish(), 2_000);
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
-      resolve({
-        code,
-        stdout: Buffer.concat(chunks).toString('utf8'),
-        stderr: Buffer.concat(errChunks).toString('utf8'),
-      });
+      exitCode = killed ? null : (code ?? exitCode);
+      finish();
     });
   });
 }

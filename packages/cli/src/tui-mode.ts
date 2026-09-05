@@ -274,6 +274,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let spinnerStartedAt = 0;
   let exitNow: (() => void) | undefined;
   let lastCtrlC = 0;
+  /** Timestamp of the last Esc/Ctrl+C interrupt request; 0 when idle. Drives the "正在中断…" feedback. */
+  let interruptAt = 0;
 
   // Blocks never touch scrollFromEnd: when the user has scrolled up, the
   // viewport stays anchored to their position instead of snapping to bottom
@@ -348,7 +350,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const now = Date.now();
         for (const entry of toolBlocks.values()) {
           const elapsed = now - entry.startAt;
-          const suffix = elapsed >= 2000 ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}` : '';
+          const suffix = interruptAt > 0
+            ? `${YELLOW} · 正在中断…${RESET}`
+            : elapsed >= 2000
+              ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}`
+              : '';
           const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame) + suffix];
           // Live output tail for streaming tools (bash): the last line of
           // whatever the process has printed so far. This is what keeps a
@@ -646,6 +652,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       const idx = aborters.indexOf(aborter);
       if (idx >= 0) aborters.splice(idx, 1);
       streaming = false;
+      interruptAt = 0;
       spinner.stop();
       // An abort/error never reaches the 'done' event: recycle the reasoning
       // tail here so no transient line survives into history.
@@ -1040,7 +1047,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
     if (k.type === 'ctrl+c') {
       if (streaming) {
+        interruptAt = Date.now();
         aborters.at(-1)?.abort();
+        scheduleRender();
         return;
       }
       if (input.length > 0) {
@@ -1063,7 +1072,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       return;
     }
     if (k.type === 'esc' && streaming) {
+      interruptAt = Date.now();
       aborters.at(-1)?.abort();
+      scheduleRender();
       return;
     }
 
@@ -1436,6 +1447,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // new output keeps arriving below — without this marker the screen just
     // looks frozen, with no hint that ↓ returns to the live tail.
     if (scrollFromEnd > 0) parts.push(`${CYAN}已上滚 ${scrollFromEnd} 行 · ↓/滚轮到底${RESET}`);
+    if (streaming && interruptAt > 0) parts.push(`${YELLOW}■ 已请求中断，等待工具退出…${RESET}`);
     if (!streaming && input.length === 0 && Date.now() - lastCtrlC < 2000) {
       parts.push(`${YELLOW}再按一次 Ctrl+C 退出${RESET}`);
     }
@@ -1500,8 +1512,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     scheduleRender();
   });
   process.on('SIGINT', () => {
-    if (streaming) aborters.at(-1)?.abort();
-    else exitApp();
+    if (streaming) {
+      interruptAt = Date.now();
+      aborters.at(-1)?.abort();
+      scheduleRender();
+    } else exitApp();
   });
 
   // run

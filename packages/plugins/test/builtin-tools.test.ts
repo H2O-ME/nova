@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { JobRegistry, type TodoItem } from '@nova-agent/core';
 import { PluginHost, builtinPlugins } from '../src/index.js';
+import { bashOnPath } from '../src/builtin/bash.js';
 
 async function activatedHost(): Promise<{ host: PluginHost; jobs: JobRegistry; emitted: unknown[] }> {
   const host = new PluginHost('.');
@@ -79,4 +80,23 @@ describe('jobs plugin', () => {
       'unknown job',
     );
   });
+});
+
+describe('bash plugin', () => {
+  // Requires a POSIX shell (Git Bash on Windows); PowerShell has no `sleep`.
+  it.runIf(bashOnPath())('kills a command past the timeout and settles deterministically', async () => {
+    const host = new PluginHost('.');
+    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 } })) host.use(plugin);
+    await host.activate();
+    const tool = host.tools.find((t) => t.name === 'bash')!;
+
+    const started = Date.now();
+    const result = await tool.execute({ command: 'sleep 30' }, { rootDir: '.' });
+    const elapsed = Date.now() - started;
+
+    // The timeout (1s) + tree kill + forced settle must stay far below the
+    // 30s the command itself would run; close-never-fires must not hang it.
+    expect(elapsed).toBeLessThan(10_000);
+    expect(result).toContain('did not exit');
+  }, 20_000);
 });
