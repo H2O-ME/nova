@@ -71,6 +71,47 @@ describe('loadConfig', () => {
 
   it('gives a helpful error when config is missing', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-cfg-'));
-    await expect(loadConfig(root)).rejects.toThrow(/missing config/);
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    await expect(loadConfig(root, home)).rejects.toThrow(/missing config[\s\S]*~\/\.nova\/config\.json/);
+  });
+
+  it('falls back to the user-level ~/.nova/config.json when the workspace has none', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-cfg-'));
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    await mkdir(path.join(home, '.nova'), { recursive: true });
+    await writeFile(
+      path.join(home, '.nova', 'config.json'),
+      JSON.stringify({ provider: { baseURL: 'https://user.test/v1', apiKey: 'sk-user', model: 'user-model' } }),
+      'utf8',
+    );
+    const config = await loadConfig(root, home);
+    expect(config.provider.model).toBe('user-model');
+  });
+
+  it('prefers the workspace config over the user-level one', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-cfg-'));
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    await mkdir(path.join(root, '.nova'), { recursive: true });
+    await mkdir(path.join(home, '.nova'), { recursive: true });
+    await writeFile(
+      path.join(root, '.nova', 'config.json'),
+      JSON.stringify({ provider: { baseURL: 'https://ws.test/v1', apiKey: 'k', model: 'ws-model' } }),
+      'utf8',
+    );
+    await writeFile(
+      path.join(home, '.nova', 'config.json'),
+      JSON.stringify({ provider: { baseURL: 'https://user.test/v1', apiKey: 'k', model: 'user-model' } }),
+      'utf8',
+    );
+    const config = await loadConfig(root, home);
+    expect(config.provider.model).toBe('ws-model');
+  });
+
+  it('names the user-level file when the fallback config is invalid', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-cfg-'));
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    await mkdir(path.join(home, '.nova'), { recursive: true });
+    await writeFile(path.join(home, '.nova', 'config.json'), JSON.stringify({ provider: {} }), 'utf8');
+    await expect(loadConfig(root, home)).rejects.toThrow(/invalid config[\s\S]*nova-home-[\s\S]*config\.json/);
   });
 });

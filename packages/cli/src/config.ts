@@ -1,4 +1,5 @@
 import { access, readFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 
@@ -47,6 +48,11 @@ export function configPath(rootDir: string): string {
   return path.join(rootDir, NOVA_DIR, 'config.json');
 }
 
+/** 用户级兜底配置：工作区没有 .nova/config.json 时使用（配一次，所有项目通用）。 */
+export function userConfigPath(homedir: string = os.homedir()): string {
+  return path.join(homedir, NOVA_DIR, 'config.json');
+}
+
 /**
  * Walks up from startDir looking for .nova/config.json; the directory that
  * contains it is the workspace root (all agent data lives in <root>/.nova/).
@@ -92,24 +98,34 @@ function expandDeep(value: unknown): unknown {
  * config, sessions, cache, logs — lives under <rootDir>/.nova/; nothing is
  * written to the user's home directory or the system drive.
  */
-export async function loadConfig(rootDir: string): Promise<Config> {
+export async function loadConfig(rootDir: string, homedir: string = os.homedir()): Promise<Config> {
   const file = configPath(rootDir);
   let raw: string;
+  let source = file;
   try {
     raw = await readFile(file, 'utf8');
   } catch (err) {
-    if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(
-        `missing config: ${file} (searched upward from the working directory)\ncreate .nova/config.json, e.g.\n{\n  "provider": {\n    "baseURL": "https://api.example.com/v1",\n    "apiKey": "{env:MY_API_KEY}",\n    "model": "model-name"\n  }\n}`,
-      );
+    if (!(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')) throw err;
+    // Workspace config missing → user-level fallback, so configuring the
+    // provider once in ~/.nova/config.json makes nova runnable in ANY
+    // directory (per-project data still lives in that project's .nova/).
+    source = userConfigPath(homedir);
+    try {
+      raw = await readFile(source, 'utf8');
+    } catch (userErr) {
+      if (userErr instanceof Error && 'code' in userErr && (userErr as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(
+          `missing config: ${file}\ncreate .nova/config.json in the workspace, or ~/.nova/config.json once for all projects, e.g.\n{\n  "provider": {\n    "baseURL": "https://api.example.com/v1",\n    "apiKey": "{env:MY_API_KEY}",\n    "model": "model-name"\n  }\n}`,
+        );
+      }
+      throw userErr;
     }
-    throw err;
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`invalid JSON in ${file}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`invalid JSON in ${source}: ${err instanceof Error ? err.message : String(err)}`);
   }
   const expanded = expandDeep(parsed);
   const result = configSchema.safeParse(expanded);
@@ -117,7 +133,7 @@ export async function loadConfig(rootDir: string): Promise<Config> {
     const issues = result.error.issues
       .map((issue) => `  ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
-    throw new Error(`invalid config ${file}:\n${issues}`);
+    throw new Error(`invalid config ${source}:\n${issues}`);
   }
   return result.data;
 }

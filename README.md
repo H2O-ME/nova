@@ -28,7 +28,9 @@
 pnpm install
 pnpm build
 
-# .nova/config.json —— 必需（{env:MY_KEY} 引用环境变量）
+# .nova/config.json —— 工作区级配置（{env:MY_KEY} 引用环境变量）
+# 也可以只在 ~/.nova/config.json 配一份用户级兜底：任何没有 .nova/config.json
+# 的目录都能直接运行 nova（会话/缓存仍存在当前项目的 .nova/ 下）。
 # {
 #   "provider": {
 #     "baseURL": "https://api.example.com/v1",
@@ -68,6 +70,9 @@ pnpm nova          # 交互运行（TTY 下全屏 TUI；非 TTY 自动回落 rea
 pnpm nova -- --approval auto-edit                 # 临时覆盖审批档位
 pnpm nova -- --resume .nova/sessions/<id>.jsonl   # 续接历史会话
 pnpm nova -- exec "修复失败的测试" --json         # 非交互单次执行（JSONL 事件流，也可管道传入任务）
+
+# 全局命令（任意工作目录直接 `nova`）：
+cd packages/cli && npm link    # 生成 nova.cmd 到 npm 全局 bin（已在 PATH）；改代码后重新 pnpm build 即生效
 ```
 
 TUI 命令面板：输入 `/` 弹出带边框的下拉面板（命令 + 说明对齐、选中行整行反色、↑↓ 选择、Tab 补全、Enter 执行、Esc 关闭），支持 `/help /init /model /approvals /plugins /mcp /skill /session /new /compact /clear /exit`；PageUp/PageDown 或鼠标滚轮滚动历史（上滚时状态栏提示，↓/滚轮回到底部）；Ctrl+C 中断当前轮（空闲时按两次退出）。composer 支持多行：粘贴保留换行并软换行显示（最多 8 行窗口，上下溢出有提示），多行输入下 ↑↓ 在行间移动光标。长命令运行时工具行实时显示已耗时与输出尾行。需要审批、长任务完成/出错时弹系统通知（Windows toast / macOS osascript / Linux notify-send，`notify: false` 关闭）。
