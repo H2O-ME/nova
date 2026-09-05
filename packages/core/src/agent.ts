@@ -102,6 +102,10 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
     };
     if (opts.hooks?.beforeLLMCall) request = await opts.hooks.beforeLLMCall(request);
     const stream = opts.provider.stream(request);
+    // Cumulative stats as of the start of the in-flight attempt: a provider
+    // reset rolls the running stats back to this snapshot, discarding usage
+    // reported by the failed attempt.
+    let attemptStats: UsageStats = { ...stats };
 
     // An abort surfaces either as the signal firing between events or as an
     // AbortError thrown by the provider; both end the run the same way.
@@ -113,6 +117,25 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
           break;
         }
         switch (ev.type) {
+          case 'reset': {
+            // The provider discarded this attempt's response and is
+            // re-requesting: roll every accumulator back so the replay starts
+            // from a clean slate (partial text, tool-call deltas, usage and
+            // finish reason all belonged to the failed attempt).
+            content = '';
+            partialCalls.clear();
+            finishReason = undefined;
+            usage = undefined;
+            Object.assign(stats, attemptStats);
+            yield {
+              type: 'llm_retry',
+              attempt: ev.attempt,
+              maxRetries: ev.maxRetries,
+              error: ev.error,
+              stats: { ...stats },
+            };
+            break;
+          }
           case 'text_delta': {
             content += ev.text;
             yield { type: 'text_delta', messageId, text: ev.text };

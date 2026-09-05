@@ -72,6 +72,9 @@ export class PermissionService {
   private autoAllows(kind: PermissionKind): boolean {
     if (this.mode === 'full') return true;
     if (kind === 'read') return true;
+    // Reads reaching outside the workspace root are gated in every mode
+    // except `full`: the sandbox boundary is exactly what they cross.
+    if (kind === 'read-external') return false;
     if (kind === 'write') return this.mode === 'auto-edit';
     return false;
   }

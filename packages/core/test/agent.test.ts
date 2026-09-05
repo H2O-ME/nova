@@ -401,6 +401,60 @@ describe('length cutoff defense', () => {
   });
 });
 
+describe('provider reset (mid-stream retry)', () => {
+  it('rolls back accumulators and stats, then keeps only the replayed attempt', async () => {
+    const provider = scriptedProvider([
+      [
+        { type: 'text_delta', text: 'par' },
+        { type: 'usage', usage: { promptTokens: 100, completionTokens: 10, cachedTokens: 50 } },
+        { type: 'reset', attempt: 1, maxRetries: 3, error: 'upstream dropped' },
+        { type: 'text_delta', text: 'final' },
+        { type: 'usage', usage: { promptTokens: 120, completionTokens: 6, cachedTokens: 100 } },
+        { type: 'finish', finishReason: 'stop' },
+      ],
+    ]);
+    const messages: AgentMessage[] = [];
+    const events = await collect(runAgent({ provider, messages, rootDir: '.' }));
+
+    const retry = events.find((e): e is Extract<AgentEvent, { type: 'llm_retry' }> => e.type === 'llm_retry');
+    expect(retry).toMatchObject({ type: 'llm_retry', attempt: 1, maxRetries: 3, error: 'upstream dropped' });
+    // the failed attempt's usage is rolled back out of the cumulative stats
+    expect(retry?.stats.promptTokens).toBe(0);
+
+    // the persisted assistant message carries ONLY the replayed attempt
+    const assistant = messages.find((m): m is Extract<AgentMessage, { role: 'assistant' }> => m.role === 'assistant');
+    expect(assistant?.content).toBe('final');
+    expect(assistant?.usage).toEqual({ promptTokens: 120, completionTokens: 6, cachedTokens: 100 });
+
+    const lastUsage = events
+      .filter((e): e is Extract<AgentEvent, { type: 'usage' }> => e.type === 'usage')
+      .at(-1);
+    expect(lastUsage?.stats).toMatchObject({ promptTokens: 120, completionTokens: 6, cachedTokens: 100 });
+    expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
+  });
+
+  it('discards partial tool-call deltas from the failed attempt', async () => {
+    const provider = scriptedProvider([
+      [
+        { type: 'tool_call_delta', index: 0, id: 'c_stale', name: 'get_time', argsDelta: '{"time' },
+        { type: 'reset', attempt: 1, maxRetries: 3, error: 'upstream dropped' },
+        { type: 'tool_call_delta', index: 0, id: 'c_fresh', name: 'get_time', argsDelta: '{}' },
+        { type: 'finish', finishReason: 'tool_calls' },
+      ],
+      [{ type: 'text_delta', text: 'ok' }, { type: 'finish', finishReason: 'stop' }],
+    ]);
+    const messages: AgentMessage[] = [];
+    await collect(runAgent({ provider, messages, rootDir: '.', tools: [getTimeTool] }));
+
+    const assistant = messages.find(
+      (m): m is Extract<AgentMessage, { role: 'assistant' }> => m.role === 'assistant' && m.toolCalls !== undefined,
+    );
+    expect(assistant?.toolCalls?.[0]).toMatchObject({ id: 'c_fresh', args: {} });
+    const toolResult = messages.find((m): m is Extract<AgentMessage, { role: 'tool' }> => m.role === 'tool');
+    expect(toolResult?.toolCallId).toBe('c_fresh');
+  });
+});
+
 describe('cache miss audit', () => {
   it('counts misses only after the provider reported cache activity and above the noise floor', async () => {
     const provider = scriptedProvider([

@@ -80,8 +80,22 @@ export class PluginHost {
     return this.toolEntries.map((entry) => entry.tool);
   }
 
-  permissionFor(toolName: string): PermissionKind | undefined {
-    return this.toolEntries.find((entry) => entry.tool.name === toolName)?.permission;
+  /**
+   * Effective permission kind for one call: the tool's `permissionFor(args)`
+   * classifier wins when present (e.g. fs reads escalate out-of-workspace
+   * paths to `read-external`), otherwise the static registered kind.
+   */
+  permissionFor(toolName: string, args?: Record<string, unknown>): PermissionKind | undefined {
+    const entry = this.toolEntries.find((item) => item.tool.name === toolName);
+    if (entry === undefined) return undefined;
+    if (args !== undefined && entry.tool.permissionFor !== undefined) {
+      try {
+        return entry.tool.permissionFor(args);
+      } catch {
+        return entry.permission;
+      }
+    }
+    return entry.permission;
   }
 
   /**
@@ -98,7 +112,7 @@ export class PluginHost {
       },
       beforeToolCall: async (call) => {
         if (permission) {
-          const kind = this.permissionFor(call.name);
+          const kind = this.permissionFor(call.name, call.args);
           if (kind) {
             const decision = await permission.decide(call.name, kind, call);
             if (decision === 'deny') return { action: 'deny', reason: 'by user' };

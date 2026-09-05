@@ -27,6 +27,19 @@ function sseResponse(body: string, status = 200): Response {
   return new Response(stream, { status, headers: { 'content-type': 'text/event-stream' } });
 }
 
+/** A 200 SSE response whose body dies mid-stream (gateway drop). */
+function failingSseResponse(partialBody: string): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(partialBody));
+      // error() discards queued chunks, so the partial delivery only happens
+      // if the reader drains it before the failure fires.
+      setTimeout(() => controller.error(new Error('terminated')), 5);
+    },
+  });
+  return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
+
 function clientWith(fetchImpl: typeof fetch): OpenAICompatClient {
   return new OpenAICompatClient({
     baseURL: 'https://example.test/v1',
@@ -147,6 +160,74 @@ describe('OpenAICompatClient', () => {
       Promise.resolve(new Response('{"error":{"message":"bad request"}}', { status: 400 }));
     const client = clientWith(fetchImpl);
     await expect(drain(client.stream({ messages: [] }))).rejects.toThrow('HTTP 400');
+  });
+
+  it('retries a mid-stream failure after emitting reset, then succeeds', async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = () => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve(failingSseResponse('data: {"choices":[{"delta":{"content":"par"}}]}\n\n'));
+      }
+      return Promise.resolve(
+        sseResponse('data: {"choices":[{"delta":{"content":"fresh"}}]}\n\ndata: [DONE]\n\n'),
+      );
+    };
+    const client = clientWith(fetchImpl);
+    const events = await drain(client.stream({ messages: [] }));
+
+    expect(calls).toBe(2);
+    // the partial attempt reached the consumer, so the retry announced itself
+    expect(events.some((e) => e.type === 'text_delta' && e.text === 'par')).toBe(true);
+    const reset = events.find((e): e is Extract<StreamEvent, { type: 'reset' }> => e.type === 'reset');
+    expect(reset).toMatchObject({ type: 'reset', attempt: 1, maxRetries: 3, error: 'terminated' });
+    expect(events.some((e) => e.type === 'text_delta' && e.text === 'fresh')).toBe(true);
+  });
+
+  it('retries a stream that ends cleanly without a finish reason', async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = () => {
+      calls += 1;
+      if (calls === 1) {
+        // no finish_reason and no [DONE]: the reply was silently truncated
+        return Promise.resolve(sseResponse('data: {"choices":[{"delta":{"content":"cut"}}]}\n\n'));
+      }
+      return Promise.resolve(
+        sseResponse(
+          'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+        ),
+      );
+    };
+    const client = clientWith(fetchImpl);
+    const events = await drain(client.stream({ messages: [] }));
+
+    expect(calls).toBe(2);
+    expect(events.some((e) => e.type === 'reset')).toBe(true);
+    expect(events.some((e) => e.type === 'text_delta' && e.text === 'ok')).toBe(true);
+  });
+
+  it('throws after the retry budget is exhausted on repeated mid-stream failures', async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = () => {
+      calls += 1;
+      return Promise.resolve(failingSseResponse('data: {"choices":[{"delta":{"content":"par"}}]}\n\n'));
+    };
+    const client = clientWith(fetchImpl);
+    await expect(drain(client.stream({ messages: [] }))).rejects.toThrow('terminated');
+    expect(calls).toBe(4); // initial attempt + maxRetries(3)
+  });
+
+  it('does not emit reset when the failure precedes the first event', async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = () => {
+      calls += 1;
+      if (calls === 1) return Promise.reject(new Error('socket hang up'));
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    };
+    const client = clientWith(fetchImpl);
+    const events = await drain(client.stream({ messages: [] }));
+    expect(calls).toBe(2);
+    expect(events.every((e) => e.type !== 'reset')).toBe(true);
   });
 
   it('maps internal messages and tools to the wire format', async () => {

@@ -28,8 +28,8 @@ import type { McpPlugin } from '@nova-agent/mcp';
 import { NOVA_DIR, type Config } from './config.js';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
-import { COMMAND_SPECS, createModelListCache, resolveModelArg } from './commands.js';
-import { buildContextFragment, expandSkillInvocation, type SessionEnvInfo } from './context.js';
+import { COMMAND_SPECS, createModelListCache } from './commands.js';
+import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
   approvalLabel,
@@ -95,12 +95,6 @@ class LineSource {
       };
     });
   }
-}
-
-function detectShell(): string {
-  const shell = process.env['SHELL'];
-  if (shell !== undefined && shell.length > 0) return shell;
-  return process.platform === 'win32' ? 'powershell' : 'sh';
 }
 
 export async function startRepl(opts: ReplOptions): Promise<void> {
@@ -184,7 +178,8 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const sessionEnv: SessionEnvInfo = {
     platform: process.platform,
     cwd: rootDir,
-    shell: detectShell(),
+    // Must match the shell the bash tool really runs (invocation() resolution).
+    shell: declaredShell(bashConfig?.shellPath),
     today: new Date().toISOString().slice(0, 10),
   };
   // AGENTS.md chain is session-stable by design; /init results land in the next session.
@@ -323,6 +318,15 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         reasoningLive = true;
         break;
       }
+      case 'llm_retry': {
+        // Already-streamed text cannot be un-printed here; the notice marks
+        // the boundary before the retry replays the answer from scratch.
+        Object.assign(stats, event.stats);
+        endReasoningLine();
+        spinner.stop();
+        console.log(paint.dim(`  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…`));
+        break;
+      }
       case 'message': {
         endReasoningLine();
         spinner.stop();
@@ -385,8 +389,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     }
 
     if (input.startsWith('/')) {
-      const [cmd = '', ...rest] = input.split(/\s+/);
-      const arg = rest.join(' ');
+      const [cmd = ''] = input.split(/\s+/);
       switch (cmd) {
         case '/exit':
         case '/quit':
@@ -437,29 +440,36 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           break;
         }
         case '/model': {
-          if (arg.length > 0) {
-            try {
-              const model = await resolveModelArg(arg, fetchModelList);
-              client.setModel(model);
-              console.log(`模型已切换为 ${model}`);
-            } catch (err) {
-              console.log(`切换失败：${err instanceof Error ? err.message : String(err)}`);
+          try {
+            const models = await fetchModelList();
+            if (models.length === 0) {
+              console.log('站点未返回任何模型');
+              break;
             }
-          } else {
             console.log(`当前模型：${client.model}`);
-            try {
-              const models = await fetchModelList();
-              if (models.length === 0) {
-                console.log('站点未返回任何模型');
-              } else {
-                for (const [i, model] of models.entries()) {
-                  console.log(`  ${model === client.model ? '❯' : ' '} ${i + 1}. ${model}${model === client.model ? '（当前）' : ''}`);
-                }
-                console.log('用 /model <序号|名称> 切换');
-              }
-            } catch (err) {
-              console.log(`模型列表获取失败：${err instanceof Error ? err.message : String(err)}`);
+            for (const [i, model] of models.entries()) {
+              console.log(`  ${model === client.model ? '❯' : ' '} ${i + 1}. ${model}${model === client.model ? '（当前）' : ''}`);
             }
+            const raw = await lines.next(paint.cyan('输入序号切换模型，回车取消：'));
+            const pick = raw?.trim();
+            if (pick === undefined || pick === null || pick.length === 0) {
+              console.log('已取消');
+              break;
+            }
+            const idx = Number.parseInt(pick, 10);
+            const model = Number.isInteger(idx) ? models[idx - 1] : undefined;
+            if (model === undefined) {
+              console.log(`无效序号：${pick}`);
+              break;
+            }
+            if (model === client.model) {
+              console.log(`已是当前模型：${model}`);
+              break;
+            }
+            client.setModel(model);
+            console.log(`模型已切换为 ${model}`);
+          } catch (err) {
+            console.log(`模型列表获取失败：${err instanceof Error ? err.message : String(err)}`);
           }
           break;
         }

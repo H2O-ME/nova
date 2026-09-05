@@ -118,6 +118,7 @@ export async function compactConversation(
   const req: ChatRequest = { messages: [askMsg] };
   for await (const ev of client.stream(req)) {
     if (ev.type === 'text_delta') summary += ev.text;
+    else if (ev.type === 'reset') summary = ''; // retry replays from scratch
   }
   return summary.trim();
 }

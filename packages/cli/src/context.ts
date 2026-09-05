@@ -1,5 +1,5 @@
 import type { AgentMessage } from '@nova-agent/core';
-import { readSkillBody, type SkillMetadata } from '@nova-agent/plugins';
+import { bashOnPath, readSkillBody, type SkillMetadata } from '@nova-agent/plugins';
 
 /**
  * Session-start context fragment (codex WorldState-style, simplified): all
@@ -17,6 +17,20 @@ export interface SessionEnvInfo {
   shell: string;
   /** ISO date, e.g. 2026-08-31 — models have no clock of their own. */
   today: string;
+}
+
+/**
+ * The shell as the bash tool will REALLY execute commands, mirroring
+ * builtin/bash's invocation() resolution: an explicit shellPath or a POSIX
+ * platform means bash syntax; on Windows a bash.exe on PATH (Git/WSL bash)
+ * means bash, anything else falls back to PowerShell. Declaring the shell the
+ * model actually gets matters — a "powershell" declaration while bash runs
+ * the command makes every PowerShell-ism fail with a bare non-zero exit.
+ */
+export function declaredShell(bashShellPath?: string): string {
+  if (bashShellPath !== undefined && bashShellPath.length > 0) return 'bash';
+  if (process.platform === 'win32') return bashOnPath() ? 'bash' : 'powershell';
+  return 'bash';
 }
 
 export function buildContextFragment(

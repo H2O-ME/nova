@@ -187,9 +187,16 @@ export function toolDoneLine(p: Palette, name: string, rawArgs: string, content:
   if (isFailureContent(content)) {
     const lines = [`    ${p.red('✗')} ${label}${secs}`];
     // bash results lead with bare `exit: N` / `stdout:` markers; the
-    // informative error line is the first one carrying actual content.
-    const first = flat.find((l) => !/^exit: \d+$/.test(l) && !/^(stdout|stderr):\s*$/.test(l));
-    if (first !== undefined) lines.push(`      ${p.dim(`└ ${clip(first, 100)}`)}`);
+    // informative error line is the first one carrying actual content. The
+    // `(empty)` stdout placeholder is not information — when a command fails
+    // with no output at all, surface the exit code instead.
+    const first = flat.find((l) => !/^exit: \d+$/.test(l) && !/^(stdout|stderr):\s*$/.test(l) && l !== '(empty)');
+    if (first !== undefined) {
+      lines.push(`      ${p.dim(`└ ${clip(first, 100)}`)}`);
+    } else {
+      const code = /exit: (\d+|null)/.exec(content)?.[1];
+      lines.push(`      ${p.dim(`└ 命令无输出${code !== undefined ? `（退出码 ${code}）` : ''}`)}`);
+    }
     return lines;
   }
   let meta = '';

@@ -23,7 +23,7 @@ import {
 import type { McpPlugin } from '@nova-agent/mcp';
 import { collectProjectDocs } from './agents-md.js';
 import { NOVA_DIR, type Config } from './config.js';
-import { buildContextFragment, type SessionEnvInfo } from './context.js';
+import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
 
@@ -112,7 +112,8 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const sessionEnv: SessionEnvInfo = {
     platform: process.platform,
     cwd: rootDir,
-    shell: process.env['SHELL'] ?? (process.platform === 'win32' ? 'powershell' : 'sh'),
+    // Must match the shell the bash tool really runs (invocation() resolution).
+    shell: declaredShell(bashConfig?.shellPath),
     today: new Date().toISOString().slice(0, 10),
   };
   const projectDocs = await collectProjectDocs(rootDir, process.cwd());
@@ -187,6 +188,9 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     switch (event.type) {
       case 'text_delta':
         sink(event.text);
+        break;
+      case 'llm_retry':
+        sink(`\n${p.dim(`⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…`)}\n`);
         break;
       case 'message':
         if (event.message.content.length > 0) sink('\n');

@@ -36,6 +36,8 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Parsed `retry-after` hint; authoritative delay for the retry backoff. */
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = 'HttpError';
@@ -72,8 +74,11 @@ interface ProviderChunk {
  * Hand-rolled OpenAI-compatible streaming client.
  * - Internal AgentMessage/ToolDefinition IR is mapped to the wire format here,
  *   so core stays provider-agnostic.
- * - Retries only apply before the stream starts; a broken mid-stream response
- *   surfaces as an error (no partial-stream resume in M1).
+ * - Every retry policy lives in stream(): 429/5xx/network errors before the
+ *   stream starts, and mid-stream failures (dropped connections, provider
+ *   error chunks, streams that end without a finish reason) retry within the
+ *   same budget — after partial output a `reset` event lets consumers discard
+ *   their in-flight state before the retry replays from scratch.
  */
 export class OpenAICompatClient implements ChatProvider {
   private readonly config: OpenAICompatConfig;
@@ -100,24 +105,102 @@ export class OpenAICompatClient implements ChatProvider {
 
   async *stream(req: ChatRequest): AsyncGenerator<StreamEvent> {
     const body = this.buildBody(req);
-    const response = await this.fetchWithRetry(body, req.signal);
-    try {
-      const responseBody = response.body;
-      if (!responseBody) throw new Error('response has no body');
-      for await (const sse of parseSse(responseBody)) {
-        if (sse.data === '[DONE]') return;
-        let chunk: ProviderChunk;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      if (req.signal?.aborted) throw abortError();
+      // Whether any event of THIS attempt reached the consumer. A retry after
+      // that must announce itself (reset) so partial state can be discarded;
+      // before the first event a retry is transparent.
+      let yielded = false;
+      try {
+        const response = await this.fetchOnce(body, req.signal);
         try {
-          chunk = JSON.parse(sse.data) as ProviderChunk;
-        } catch {
-          continue;
+          const responseBody = response.body;
+          if (!responseBody) throw new Error('response has no body');
+          let sawFinish = false;
+          for await (const sse of parseSse(responseBody)) {
+            if (sse.data === '[DONE]') {
+              sawFinish = true;
+              return;
+            }
+            let chunk: ProviderChunk;
+            try {
+              chunk = JSON.parse(sse.data) as ProviderChunk;
+            } catch {
+              continue;
+            }
+            if (chunk.error) throw new Error(chunk.error.message ?? 'provider returned an error');
+            const events = [...translateChunk(chunk)];
+            if (events.length === 0) continue;
+            yielded = true;
+            for (const ev of events) {
+              if (ev.type === 'finish') sawFinish = true;
+              yield ev;
+            }
+          }
+          // A stream that ends cleanly without a finish reason was cut off by
+          // the gateway (dsh/codex "stream terminated before completion"):
+          // treat it as a failure so it retries instead of silently
+          // truncating the reply and reporting a complete turn.
+          if (!sawFinish) throw new Error('upstream stream ended before completion (no finish reason)');
+          return;
+        } finally {
+          await response.body?.cancel().catch(() => undefined);
         }
-        if (chunk.error) throw new Error(chunk.error.message ?? 'provider returned an error');
-        yield* translateChunk(chunk);
+      } catch (err) {
+        if (isAbortError(err)) throw err;
+        if (req.signal?.aborted) throw abortError();
+        lastError = err;
+        if (!isRetryableError(err) || attempt === this.maxRetries) {
+          throw lastError instanceof Error ? lastError : new Error(String(lastError));
+        }
+        if (yielded) {
+          yield {
+            type: 'reset',
+            attempt: attempt + 1,
+            maxRetries: this.maxRetries,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+        const retryAfterMs = err instanceof HttpError ? err.retryAfterMs : undefined;
+        await sleep(retryAfterMs ?? this.backoffDelay(attempt), req.signal);
       }
-    } finally {
-      await response.body?.cancel().catch(() => undefined);
     }
+  }
+
+  /** ONE request attempt — every retry policy lives in stream(). */
+  private async fetchOnce(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+    const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`;
+    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
+    const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    const sessionHeaders =
+      this.config.sessionId !== undefined
+        ? {
+            'x-session-id': this.config.sessionId,
+            'x-client-request-id': this.config.sessionId,
+            'x-session-affinity': this.config.sessionId,
+          }
+        : {};
+    const response = await this.fetchImpl(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${this.config.apiKey}`,
+        ...sessionHeaders,
+      },
+      body: JSON.stringify(body),
+      signal: combined,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new HttpError(
+        response.status,
+        `HTTP ${response.status}: ${text.slice(0, 500)}`,
+        parseRetryAfterMs(response.headers),
+      );
+    }
+    return response;
   }
 
   /**
@@ -166,59 +249,6 @@ export class OpenAICompatClient implements ChatProvider {
       body['tools'] = req.tools.map(toProviderTool);
     }
     return body;
-  }
-
-  private async fetchWithRetry(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
-    const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`;
-    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
-    const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-    const sessionHeaders =
-      this.config.sessionId !== undefined
-        ? {
-            'x-session-id': this.config.sessionId,
-            'x-client-request-id': this.config.sessionId,
-            'x-session-affinity': this.config.sessionId,
-          }
-        : {};
-    const headers = {
-      'content-type': 'application/json',
-      authorization: `Bearer ${this.config.apiKey}`,
-      ...sessionHeaders,
-    };
-    let lastError: unknown;
-
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      if (signal?.aborted) throw abortError();
-      try {
-        const response = await this.fetchImpl(url, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-          signal: combined,
-        });
-        if (response.ok) return response;
-        const text = await response.text().catch(() => '');
-        const err = new HttpError(response.status, `HTTP ${response.status}: ${text.slice(0, 500)}`);
-        if (isRetryableStatus(response.status) && attempt < this.maxRetries) {
-          lastError = err;
-          // A server-provided delay (429 Retry-After) is authoritative; fall
-          // back to exponential backoff only when it is absent or unparseable.
-          const retryAfterMs = parseRetryAfterMs(response.headers);
-          await sleep(retryAfterMs ?? this.backoffDelay(attempt), signal);
-          continue;
-        }
-        throw err;
-      } catch (err) {
-        if (isAbortError(err)) throw err;
-        if (err instanceof HttpError) throw err;
-        lastError = err;
-        if (attempt < this.maxRetries) {
-          await sleep(this.backoffDelay(attempt), signal);
-          continue;
-        }
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   private backoffDelay(attempt: number): number {
@@ -308,6 +338,17 @@ function* translateChunk(chunk: ProviderChunk): Generator<StreamEvent> {
 
 function isRetryableStatus(status: number): boolean {
   return status === 429 || (status >= 500 && status <= 599);
+}
+
+/**
+ * Retry-worthiness of one failed attempt. HTTP 4xx (except 429) is terminal —
+ * the request itself is wrong and retrying cannot fix it. Everything else
+ * (network errors, 429/5xx, mid-stream drops, provider error chunks, streams
+ * that ended without a finish reason) is retried within the attempt budget.
+ */
+function isRetryableError(err: unknown): boolean {
+  if (err instanceof HttpError) return isRetryableStatus(err.status);
+  return true;
 }
 
 /** Server-provided retry delay in ms (delta-seconds form of `retry-after`). */

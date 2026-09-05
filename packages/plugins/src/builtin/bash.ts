@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import type { JobStart, ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
@@ -32,6 +34,27 @@ function invocation(command: string, shellPath?: string): ShellInvocation {
     return { cmd: 'bash.exe', args: ['-c', command] };
   }
   return { cmd: 'bash', args: ['-c', command] };
+}
+
+/**
+ * Whether `bash.exe` is resolvable on PATH on Windows — i.e. whether the bash
+ * tool will actually run commands through a POSIX shell or fall back to
+ * PowerShell. The context fragment reports this SAME resolution so the model
+ * writes commands for the shell that will really execute them (a "shell:
+ * powershell" declaration while bash.exe runs the command makes every
+ * PowerShell-ism fail with a bare non-zero exit).
+ */
+export function bashOnPath(): boolean {
+  if (process.platform !== 'win32') return false;
+  const dirs = (process.env['PATH'] ?? '').split(';');
+  return dirs.some((dir) => {
+    if (dir.trim().length === 0) return false;
+    try {
+      return existsSync(path.join(dir, 'bash.exe'));
+    } catch {
+      return false;
+    }
+  });
 }
 
 /**

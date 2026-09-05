@@ -20,7 +20,7 @@
 - **数据落盘**：一切数据都在工作区根目录 `.nova/` 下（config、mcp、skills、sessions、cache、logs），不占用用户主目录或系统盘其他位置。
 - **轮数上限与自定义 shell**：`maxTurns` 限制单次任务最大轮数（默认 10，上限 50，到顶以 `max_turns` 停止）；`tools.bash.shellPath` 显式指定 bash 可执行文件（默认自动探测）；`systemPrompt` 作为附加用户指令注入会话首条上下文片段（不是替换内核系统提示，前缀缓存不受影响）。
 - **输出截断防御 + 缓存浪费审计**（pi cache-stats 式）：`finishReason=length`（输出 token 上限截断）时，该批工具调用全部判失败——流式参数可能静默半截，模型下一轮重发完整调用；usage 统计含缓存浪费（`missTokens`：仅统计超出噪声底 1024 tok 的全价 token，供应商从未上报过缓存则不计），`/session` 与 TUI 状态栏可见。
-- **模型接入**：任意 OpenAI 兼容端点（`baseURL` + `apiKey` + `model`，可选 `temperature` / `maxTokens`），支持流式、工具调用、429/5xx 指数退避重试（优先尊重 `Retry-After` 头）、usage/缓存命中统计（兼容 DeepSeek 的 `prompt_cache_hit_tokens`）；推理模型的 `reasoning_content` 流以暗色尾迹实时显示（REPL/TUI），不写入会话日志、不破坏前缀缓存。`/model` 无参自动拉取站点模型目录（`GET /models`，60s 缓存）并列出全部可用模型（标注当前项），`/model <序号|名称>` 切换。
+- **模型接入**：任意 OpenAI 兼容端点（`baseURL` + `apiKey` + `model`，可选 `temperature` / `maxTokens`），支持流式、工具调用、重试与断流自愈（429/5xx 指数退避并优先尊重 `Retry-After`；流中途断开、网关 error 事件、无 finish_reason 收尾同样自动重试，半截输出先以 `reset` 事件通知消费者丢弃再从头重放）、usage/缓存命中统计（兼容 DeepSeek 的 `prompt_cache_hit_tokens`）；推理模型的 `reasoning_content` 流以暗色尾迹实时显示（REPL/TUI），不写入会话日志、不破坏前缀缓存。`/model` 自动拉取站点模型目录（`GET /models`，60s 缓存）：TUI 弹出**交互式选择面板**（↑↓ 滚动、Enter 切换、Esc 取消，长列表滑动窗口不灌历史），REPL 列出后追问序号切换。
 
 ## 快速开始
 

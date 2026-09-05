@@ -11,7 +11,7 @@ export interface CommandSpec {
 export const COMMAND_SPECS: CommandSpec[] = [
   { name: '/help', usage: '/help', description: '显示可用命令' },
   { name: '/init', usage: '/init', description: '扫描工作区并生成 AGENTS.md' },
-  { name: '/model', usage: '/model [序号|名称]', description: '列出站点模型或切换模型' },
+  { name: '/model', usage: '/model', description: '打开模型选择面板（从站点目录切换模型）' },
   { name: '/approvals', usage: '/approvals', description: '循环切换审批档位（只读 → 自动编辑 → 全部放行）' },
   { name: '/plugins', usage: '/plugins', description: '列出插件、工具与权限级别' },
   { name: '/mcp', usage: '/mcp', description: '查看 MCP 服务器与工具加载状态' },
@@ -37,7 +37,7 @@ export function findCommand(input: string): CommandSpec | undefined {
 
 /**
  * /model 的模型列表缓存：站点目录短时间内不会变，60s 内复用上次结果，
- * 避免连续 `/model 2` 之类操作反复打 /models 接口。
+ * 避免连续打开选择面板时反复打 /models 接口。
  */
 export function createModelListCache(fetchList: () => Promise<string[]>, ttlMs = 60_000): () => Promise<string[]> {
   let cache: { at: number; models: string[] } | undefined;
@@ -47,18 +47,4 @@ export function createModelListCache(fetchList: () => Promise<string[]>, ttlMs =
     cache = { at: Date.now(), models };
     return models;
   };
-}
-
-/**
- * 解析 /model 的参数：纯数字按（1 基）列表序号取模型名，其余按名称原样返回。
- * 序号越界抛错，由调用方决定如何展示。
- */
-export async function resolveModelArg(arg: string, fetchList: () => Promise<string[]>): Promise<string> {
-  if (!/^\d+$/.test(arg)) return arg;
-  const models = await fetchList();
-  const picked = models[Number.parseInt(arg, 10) - 1];
-  if (picked === undefined) {
-    throw new Error(`序号 ${arg} 超出范围（模型列表共 ${models.length} 个）`);
-  }
-  return picked;
 }

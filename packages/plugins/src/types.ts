@@ -1,6 +1,6 @@
-import type { ChatRequest, ToolCall, ToolDefinition, ToolCallVerdict } from '@nova-agent/core';
+import type { ChatRequest, ToolCall, ToolDefinition, ToolCallVerdict, ToolPermissionKind } from '@nova-agent/core';
 
-export type PermissionKind = 'read' | 'write' | 'execute' | 'network';
+export type PermissionKind = ToolPermissionKind;
 
 export interface ToolOptions {
   /** Highest-impact permission this tool needs; drives the approval gate. */

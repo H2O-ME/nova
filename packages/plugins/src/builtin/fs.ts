@@ -8,13 +8,24 @@ import type { Plugin } from '../types.js';
  * anything that escapes it. This is the M1 sandbox: no writes outside root.
  */
 export function resolveInRoot(rootDir: string, raw: unknown): string {
-  if (typeof raw !== 'string' || raw.length === 0) throw new Error('path is required');
+  const file = resolveAnywhere(rootDir, raw);
   const root = path.resolve(rootDir);
-  const resolved = path.resolve(root, raw);
-  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
-    throw new Error(`path escapes workspace root: ${raw}`);
+  if (file !== root && !file.startsWith(root + path.sep)) {
+    throw new Error(`path escapes workspace root: ${raw as string}`);
   }
-  return resolved;
+  return file;
+}
+
+/** Resolve without the workspace restriction (reads may cross it, gated). */
+export function resolveAnywhere(rootDir: string, raw: unknown): string {
+  if (typeof raw !== 'string' || raw.length === 0) throw new Error('path is required');
+  return path.resolve(path.resolve(rootDir), raw);
+}
+
+/** True when a resolved path stays inside the workspace root. */
+export function isInsideRoot(rootDir: string, resolved: string): boolean {
+  const root = path.resolve(rootDir);
+  return resolved === root || resolved.startsWith(root + path.sep);
 }
 
 function strArg(args: Record<string, unknown>, key: string): string | undefined {
@@ -37,22 +48,28 @@ export function fsReadPlugin(): Plugin {
     name: 'fs-read',
     description: 'Read files and list directories inside the workspace.',
     activate(ctx) {
+      const rootDir = ctx.rootDir;
       ctx.registerTool({
         name: 'read_file',
         description:
-          'Reads a text file inside the workspace. Args: path (required), offset (1-based start line, optional), limit (max lines, default 400).',
+          'Reads a text file. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (required, absolute or workspace-relative), offset (1-based start line, optional), limit (max lines, default 400).',
         parameters: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'File path, workspace-relative or absolute inside the workspace root.' },
+            path: { type: 'string', description: 'File path, workspace-relative or absolute.' },
             offset: { type: 'number', description: '1-based line number to start from.' },
             limit: { type: 'number', description: 'Maximum number of lines to return (default 400).' },
           },
           required: ['path'],
           additionalProperties: false,
         },
+        /** In-root reads are free; out-of-root reads cross the sandbox boundary. */
+        permissionFor(args) {
+          const file = resolveAnywhere(rootDir, args['path']);
+          return isInsideRoot(rootDir, file) ? 'read' : 'read-external';
+        },
         async execute(args, c: ToolExecuteContext) {
-          const file = resolveInRoot(c.rootDir, args['path']);
+          const file = resolveAnywhere(c.rootDir, args['path']);
           const info = await stat(file).catch(() => undefined);
           if (!info) return `Error: file not found: ${args['path'] as string}`;
           if (info.isDirectory()) return `Error: path is a directory, use list_dir: ${args['path'] as string}`;
@@ -77,16 +94,20 @@ export function fsReadPlugin(): Plugin {
       ctx.registerTool({
         name: 'list_dir',
         description:
-          'Lists the entries of a directory inside the workspace (directories first). Args: path (optional, defaults to the workspace root).',
+          'Lists the entries of a directory (directories first). Paths inside the workspace are read freely; paths outside it require user approval. Args: path (optional, defaults to the workspace root).',
         parameters: {
           type: 'object',
           properties: {
-            path: { type: 'string', description: 'Directory path, defaults to the workspace root.' },
+            path: { type: 'string', description: 'Directory path, workspace-relative or absolute.' },
           },
           additionalProperties: false,
         },
+        permissionFor(args) {
+          const dir = resolveAnywhere(rootDir, strArg(args, 'path') ?? '.');
+          return isInsideRoot(rootDir, dir) ? 'read' : 'read-external';
+        },
         async execute(args, c: ToolExecuteContext) {
-          const dir = resolveInRoot(c.rootDir, strArg(args, 'path') ?? '.');
+          const dir = resolveAnywhere(c.rootDir, strArg(args, 'path') ?? '.');
           const entries = await readdir(dir, { withFileTypes: true }).catch(() => undefined);
           if (!entries) return `Error: cannot read directory: ${strArg(args, 'path') ?? '.'}`;
           const sorted = [...entries].sort((a, b) => {

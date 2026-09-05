@@ -112,7 +112,21 @@ export interface ToolDefinition {
    * not mutate shared state and must tolerate concurrent dispatch.
    */
   isConcurrencySafe?(args: Record<string, unknown>): boolean;
+  /**
+   * Per-call permission classification: overrides the tool's static kind for
+   * one specific invocation. Used by fs reads to escalate out-of-workspace
+   * paths to the approval-gated `read-external` kind while in-workspace reads
+   * stay auto-allowed.
+   */
+  permissionFor?(args: Record<string, unknown>): ToolPermissionKind;
 }
+
+/**
+ * Approval kinds a tool call can require. `read-external` is a read that
+ * reaches outside the workspace root: auto-allowed only in `full` mode,
+ * otherwise it goes through the interactive approval gate.
+ */
+export type ToolPermissionKind = 'read' | 'read-external' | 'write' | 'execute' | 'network';
 
 /** Events emitted by a ChatProvider during a single completion stream. */
 export type StreamEvent =
@@ -120,7 +134,15 @@ export type StreamEvent =
   | { type: 'reasoning_delta'; text: string }
   | { type: 'tool_call_delta'; index: number; id?: string; name?: string; argsDelta?: string }
   | { type: 'usage'; usage: Usage }
-  | { type: 'finish'; finishReason?: string };
+  | { type: 'finish'; finishReason?: string }
+  /**
+   * The provider discarded its in-flight response (mid-stream failure) and is
+   * re-requesting within its retry budget. Consumers must drop every
+   * accumulator fed by this attempt (partial text, tool-call deltas, usage,
+   * finish reason) — the retry replays from scratch. Never emitted before the
+   * first event of an attempt (those retries are transparent).
+   */
+  | { type: 'reset'; attempt: number; maxRetries: number; error: string };
 
 export interface ChatRequest {
   messages: AgentMessage[];
@@ -175,4 +197,12 @@ export type AgentEvent =
    * <turn_aborted> marker) so the model learns the turn was cut short.
    */
   | { type: 'turn_aborted'; message: UserMessage }
+  /**
+   * The provider's in-flight response failed mid-stream and is being
+   * re-requested (attempt N of maxRetries). The loop has already rolled back
+   * its accumulators and usage stats (`stats` carries the corrected
+   * cumulative numbers); UIs discard partial output rendered for the failed
+   * attempt.
+   */
+  | { type: 'llm_retry'; attempt: number; maxRetries: number; error: string; stats: UsageStats }
   | { type: 'done'; stopReason: 'complete' | 'max_turns' | 'aborted' };

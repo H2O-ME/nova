@@ -33,11 +33,10 @@ import {
   COMMAND_SPECS,
   createModelListCache,
   filterCommands,
-  resolveModelArg,
   type CommandSpec,
 } from './commands.js';
 import { NOVA_DIR, type Config } from './config.js';
-import { buildContextFragment, expandSkillInvocation, type SessionEnvInfo } from './context.js';
+import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { renderMarkdownLite } from './markdown.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
@@ -86,12 +85,6 @@ interface Block {
    * produced by soft wrapping — aligns under it with `rest`.
    */
   gutter?: { first: string; rest: string };
-}
-
-function detectShell(): string {
-  const shell = process.env['SHELL'];
-  if (shell !== undefined && shell.length > 0) return shell;
-  return process.platform === 'win32' ? 'powershell' : 'sh';
 }
 
 function padDisplay(text: string, width: number): string {
@@ -186,7 +179,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const sessionEnv: SessionEnvInfo = {
     platform: process.platform,
     cwd: rootDir,
-    shell: detectShell(),
+    // Must match the shell the bash tool really runs (invocation() resolution),
+    // or the model writes commands for the wrong interpreter.
+    shell: declaredShell(bashConfig?.shellPath),
     today: new Date().toISOString().slice(0, 10),
   };
   // AGENTS.md chain is session-stable by design; /init results land in the next session.
@@ -230,6 +225,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    */
   let popupDismissed = false;
   const commandPopupMatches = (): CommandSpec[] => (popupDismissed ? [] : filterCommands(input));
+  /**
+   * Interactive model picker (opened by bare /model): a floating overlay like
+   * the approval dialog, NOT a history dump — long catalogs scroll inside the
+   * panel with a sliding window instead of flooding the transcript.
+   */
+  const MODEL_PICKER_WINDOW = 10;
+  let modelPicker: { models: string[]; index: number } | undefined;
   let historyIdx = -1;
   let historyDraft = '';
   let lastUsage: Usage | undefined;
@@ -437,6 +439,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     let assistantText = '';
     let assistantOpen = false;
     let assistantBlock: Block | undefined;
+    /** The blank separator block openAssistant pushes before each answer. */
+    let assistantSeparator: Block | undefined;
     let reasoningText = '';
     let reasoningOpen = false;
     try {
@@ -461,8 +465,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         signal: aborter.signal,
       })) {
         await onAgentEvent(event, startedAt, {
-          openAssistant() {
+          appendAssistant(text: string) {
             if (!assistantOpen) {
+              // Whitespace-only leading deltas (models often emit blank lines
+              // before tool calls) must not anchor a blank answer block above
+              // the tool lines — skip them until real content arrives.
+              if (text.trim().length === 0) return;
               assistantOpen = true;
               assistantText = '';
               assistantBlock = undefined;
@@ -474,9 +482,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               // answer — the answer gets its OWN block so the separator
               // survives every delta update.
               pushBlock(['']);
+              assistantSeparator = blocks[blocks.length - 1];
             }
-          },
-          appendAssistant(text: string) {
             assistantText += text;
             // Claude Code / codex both anchor each reply with a dot marker.
             // The marker lives in the block gutter (applied at wrap time), so
@@ -509,13 +516,32 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             else updateLastBlock([line]);
           },
           closeAssistant() {
-            if (assistantOpen && assistantText.length === 0) blocks.pop();
+            if (assistantOpen && assistantText.trim().length === 0) {
+              // A whitespace-only answer (blank lines before tool calls)
+              // leaves no trace: drop the blank block and its separator by
+              // identity — tool blocks may sit after them by now.
+              if (assistantBlock !== undefined) removeBlock(assistantBlock);
+              if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+            }
             assistantOpen = false;
           },
           foldReasoning() {
             discardReasoning();
             reasoningText = '';
             reasoningOpen = false;
+          },
+          resetAssistant() {
+            // A provider retry replays the answer from scratch: the partial
+            // text and its separator belong to the failed attempt — drop both.
+            if (assistantBlock !== undefined) removeBlock(assistantBlock);
+            if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+            assistantBlock = undefined;
+            assistantSeparator = undefined;
+            assistantOpen = false;
+            assistantText = '';
+            discardReasoning();
+            reasoningOpen = false;
+            reasoningText = '';
           },
         });
       }
@@ -556,21 +582,33 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     event: AgentEvent,
     startedAt: number,
     io: {
-      openAssistant(): void;
       appendAssistant(text: string): void;
       appendReasoning(text: string): void;
       closeAssistant(): void;
       foldReasoning(): void;
+      resetAssistant(): void;
     },
   ): Promise<void> {
     switch (event.type) {
       case 'turn_start':
         break;
+      case 'llm_retry': {
+        // The provider dropped the response mid-stream and is re-requesting:
+        // discard the partial answer, adopt the corrected stats, and leave a
+        // dim audit line. The failed attempt's usage stays a valid anchor —
+        // the retry sends the same prompt prefix.
+        Object.assign(stats, event.stats);
+        io.resetAssistant();
+        pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], {
+          first: '',
+          rest: '      ',
+        });
+        break;
+      }
       case 'text_delta':
-        // Empty deltas must not reset the reasoning phase (openAssistant
-        // folds the trail); some models emit them between reasoning bursts.
+        // Empty deltas do nothing: the assistant opens lazily on the first
+        // non-blank delta, so reasoning phase is never reset by padding.
         if (event.text.length === 0) break;
-        io.openAssistant();
         io.appendAssistant(event.text);
         break;
       case 'reasoning_delta':
@@ -663,8 +701,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   // ---- commands ---------------------------------------------------------
   async function runCommand(raw: string): Promise<boolean> {
-    const [cmd = '', ...rest] = raw.trim().split(/\s+/);
-    const arg = rest.join(' ');
+    const [cmd = ''] = raw.trim().split(/\s+/);
     switch (cmd) {
       case '/exit':
       case '/quit':
@@ -676,32 +713,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return true;
       }
       case '/model': {
-        if (arg.length > 0) {
-          try {
-            const model = await resolveModelArg(arg, fetchModelList);
-            client.setModel(model);
-            pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
-          } catch (err) {
-            pushBlock([`${RED}  ${err instanceof Error ? err.message : String(err)}${RESET}`]);
+        try {
+          const models = await fetchModelList();
+          if (models.length === 0) {
+            pushBlock([`${DIM}  站点未返回任何模型${RESET}`]);
+          } else {
+            // Interactive picker overlay (↑↓ Enter Esc), not a history dump.
+            const current = models.indexOf(client.model);
+            modelPicker = { models, index: Math.max(0, current) };
+            scheduleRender();
           }
-        } else {
-          pushBlock([`  ${BOLD}当前模型：${client.model}${RESET}`]);
-          try {
-            const models = await fetchModelList();
-            if (models.length === 0) {
-              pushBlock([`${DIM}  站点未返回任何模型${RESET}`]);
-            } else {
-              pushBlock([
-                ...models.map(
-                  (model, i) =>
-                    `${DIM}  ${model === client.model ? '❯' : ' '} ${i + 1}. ${model}${model === client.model ? '（当前）' : ''}${RESET}`,
-                ),
-                `${DIM}  用 /model <序号|名称> 切换${RESET}`,
-              ]);
-            }
-          } catch (err) {
-            pushBlock([`${RED}  模型列表获取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
-          }
+        } catch (err) {
+          pushBlock([`${RED}  模型列表获取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
         }
         return true;
       }
@@ -863,6 +886,36 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         else if (k.ch === '3') approvalIndex = 2;
       } else if (k.type === 'esc') {
         resolve('deny');
+      }
+      scheduleRender();
+      return;
+    }
+
+    // model picker swallows keys while open (↑↓ scroll · Enter switch · Esc cancel)
+    if (modelPicker !== undefined) {
+      const picker = modelPicker;
+      const winSize = Math.min(MODEL_PICKER_WINDOW, picker.models.length);
+      if (k.type === 'ctrl+c' || k.type === 'esc') {
+        modelPicker = undefined;
+      } else if (k.type === 'up') {
+        picker.index = Math.max(0, picker.index - 1);
+      } else if (k.type === 'down') {
+        picker.index = Math.min(picker.models.length - 1, picker.index + 1);
+      } else if (k.type === 'pageup') {
+        picker.index = Math.max(0, picker.index - winSize);
+      } else if (k.type === 'pagedown') {
+        picker.index = Math.min(picker.models.length - 1, picker.index + winSize);
+      } else if (k.type === 'enter') {
+        const model = picker.models[picker.index];
+        modelPicker = undefined;
+        if (model !== undefined && model !== client.model) {
+          client.setModel(model);
+          pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
+        } else if (model !== undefined) {
+          pushBlock([`${DIM}  已是当前模型：${model}${RESET}`]);
+        }
+      } else {
+        return; // any other key: swallowed by the picker, never reaches the composer
       }
       scheduleRender();
       return;
@@ -1074,7 +1127,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const rows = screen.rows;
 
     const matches = commandPopupMatches();
-    const popupOpen = approvalRequest === undefined && matches.length > 0;
+    const popupOpen = approvalRequest === undefined && modelPicker === undefined && matches.length > 0;
     // Sliding 6-row window: the highlighted entry stays visible even when the
     // match list is longer than the popup.
     const visibleStart = Math.max(0, Math.min(popupIndex - 5, matches.length - 6));
@@ -1092,6 +1145,30 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         popupLines.push(i === approvalIndex ? `  ${CYAN}${BOLD}❯ ${label}${RESET}` : `    ${DIM}${label}${RESET}`);
       }
       popupLines.push(`  ${DIM}↑↓ 选择 · Enter 确认 · Esc 拒绝${RESET}`);
+    } else if (modelPicker !== undefined) {
+      // Model catalog in a bordered panel with a sliding window: long lists
+      // scroll inside the popup instead of flooding the transcript.
+      const models = modelPicker.models;
+      const winSize = Math.min(MODEL_PICKER_WINDOW, models.length);
+      const start = Math.max(0, Math.min(modelPicker.index - (MODEL_PICKER_WINDOW - 1), models.length - winSize));
+      const inner = cols - 3;
+      popupLines.push(`╭─ ${DIM}模型${RESET} ${'─'.repeat(Math.max(0, inner - styledWidth('─ 模型 ')))}╮`);
+      for (let i = 0; i < winSize; i++) {
+        const idx = start + i;
+        const name = models[idx] ?? '';
+        const content = ` ${idx === modelPicker.index ? '❯' : ' '} ${idx + 1}. ${name}${name === client.model ? '（当前）' : ''}`;
+        const pad = Math.max(0, inner - 2 - styledWidth(content));
+        popupLines.push(
+          idx === modelPicker.index
+            ? `│ ${INVERSE}${content}${' '.repeat(pad)}${RESET} │`
+            : `│ ${DIM}${content}${' '.repeat(pad)}${RESET} │`,
+        );
+      }
+      popupLines.push(
+        `╰${DIM}↑↓ 选择 · Enter 切换 · Esc 取消${RESET}${'─'.repeat(
+          Math.max(0, inner - styledWidth('↑↓ 选择 · Enter 切换 · Esc 取消')),
+        )}╯`,
+      );
     } else if (popupOpen && visibleMatches.length > 0) {
       // Bordered dropdown matching the composer box; the selected row is
       // inverse-video across the full row width, not just the label.
@@ -1207,6 +1284,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   function popupHeight(): number {
     if (approvalRequest !== undefined) return 5; // header + 3 options + hint
+    if (modelPicker !== undefined) {
+      return Math.min(MODEL_PICKER_WINDOW, modelPicker.models.length) + 2; // rows + title + hint border
+    }
     const matches = commandPopupMatches();
     if (matches.length === 0) return 0;
     // title + rows + hint bottom border

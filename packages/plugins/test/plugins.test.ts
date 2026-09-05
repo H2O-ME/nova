@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -86,6 +86,29 @@ describe('PermissionService', () => {
     expect(await full.decide('bash', 'execute', call('bash'))).toBe('allow');
   });
 
+  it('gates read-external in every mode except full', async () => {
+    const answers: string[] = [];
+    const ask: AskFn = async (call, kind) => {
+      answers.push(`${call.name}:${kind}`);
+      return 'always';
+    };
+    const readOnly = new PermissionService('read-only', ask);
+    expect(await readOnly.decide('read_file', 'read-external', call('read_file'))).toBe('allow'); // via ask
+    expect(answers).toEqual(['read_file:read-external']);
+
+    // "always" is remembered per tool+kind, so later external reads pass free
+    expect(await readOnly.decide('read_file', 'read-external', call('read_file'))).toBe('allow');
+    expect(answers).toEqual(['read_file:read-external']);
+
+    const autoEdit = new PermissionService('auto-edit', ask);
+    expect(await autoEdit.decide('list_dir', 'read-external', call('list_dir'))).toBe('allow'); // via ask
+
+    const full = new PermissionService('full', async () => {
+      throw new Error('must not ask');
+    });
+    expect(await full.decide('read_file', 'read-external', call('read_file'))).toBe('allow');
+  });
+
   it('remembers bash "always" by command program prefix, other tools by name', async () => {
     let asked = 0;
     const permission = new PermissionService('read-only', async () => {
@@ -158,8 +181,22 @@ describe('builtinPlugins', () => {
       .toContain('1 occurrence');
     expect(await readFile(path.join(root, 'a', 'b.txt'), 'utf8')).toBe('hi');
 
-    const escaping = host.tools.find((t) => t.name === 'read_file')!;
-    await expect(escaping.execute({ path: '../outside.txt' }, { rootDir: root })).rejects.toThrow(/escapes workspace root/);
+    // Out-of-root reads no longer hard-fail: they are classified as
+    // `read-external` (approval-gated) and actually execute when approved.
+    const external = host.tools.find((t) => t.name === 'read_file')!;
+    expect(external.permissionFor?.({ path: '../outside.txt' })).toBe('read-external');
+    expect(external.permissionFor?.({ path: 'a/b.txt' })).toBe('read');
+    const outsideDir = await mkdtemp(path.join(tmpdir(), 'nova-outside-'));
+    await writeFile(path.join(outsideDir, 'outside.txt'), 'secret', 'utf8');
+    expect(
+      await external.execute({ path: path.join(outsideDir, 'outside.txt') }, { rootDir: root }),
+    ).toBe('secret');
+
+    // Writes stay sandboxed: out-of-root writes still reject.
+    const externalWrite = host.tools.find((t) => t.name === 'write_file')!;
+    await expect(
+      externalWrite.execute({ path: path.join(outsideDir, 'x.txt'), content: 'no' }, { rootDir: root }),
+    ).rejects.toThrow(/escapes workspace root/);
   });
 
   it('can disable the bash plugin', async () => {
