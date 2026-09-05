@@ -22,7 +22,7 @@ import {
 } from '@nova-agent/plugins';
 import type { McpPlugin } from '@nova-agent/mcp';
 import { collectProjectDocs } from './agents-md.js';
-import { NOVA_DIR, resolveDataDir, type Config } from './config.js';
+import { NOVA_DIR, dataDirFor, type Config } from './config.js';
 import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
 import { buildSystemPrompt } from './system-prompt.js';
@@ -54,8 +54,8 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const write = opts.out ?? ((text: string) => process.stdout.write(text));
   const paint = opts.out === undefined && process.stdout.isTTY === true ? palette : plainPalette;
 
-  // 项目有 .nova/config.json → 数据存项目内；否则集中在 ~/.nova/projects/<slug>/。
-  const { dir: dataDir } = await resolveDataDir(rootDir);
+  // 数据永远集中在 ~/.nova/projects/<slug>/，工作区零写入。
+  const dataDir = dataDirFor(rootDir);
   const sessionsDir = path.join(dataDir, 'sessions');
   let messages: AgentMessage[] = [];
   let session: Session;

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import path from 'node:path';
 import process from 'node:process';
-import { findRootDir, loadConfig } from './config.js';
+import { loadConfig } from './config.js';
 import { startRepl } from './repl.js';
 
 const VERSION = '0.1.0';
@@ -19,9 +20,9 @@ options:
   --version/-v    显示版本
   --help/-h       显示本帮助
 
-运行于当前工作目录；配置在 .nova/config.json（缺失时回落 ~/.nova/config.json）。
-数据（sessions/cache）默认集中在 ~/.nova/projects/<slug>/，工作区零写入；项目内
-放 .nova/config.json 即改为存项目 .nova/ 下。mcp.json 与技能仍按项目+用户两级查找。`;
+运行于当前工作目录（即工作区，nova 不会在项目里创建或读取任何文件）；配置唯一
+来源是 ~/.nova/config.json；会话与大输出缓存在 ~/.nova/projects/<slug>/ 下。
+MCP（.nova/mcp.json）与技能按 用户级 → 向上查找 两级解析。`;
 
 interface ParsedArgs {
   resumeFile?: string;
@@ -92,9 +93,9 @@ async function main(): Promise<void> {
   const execMode = parsed.positional[0] === 'exec';
   const taskParts = execMode ? parsed.positional.slice(1) : parsed.positional;
 
-  const rootDir = await findRootDir(process.cwd());
+  const rootDir = path.resolve(process.cwd());
   try {
-    const config = await loadConfig(rootDir);
+    const config = await loadConfig();
     if (execMode) {
       let prompt = taskParts.join(' ').trim();
       if (prompt.length === 0 && process.stdin.isTTY !== true) {

@@ -1,26 +1,14 @@
-import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Session, type ChatProvider, type StreamEvent } from '@nova-agent/core';
 import { runExec } from '../src/exec.js';
-import type { Config } from '../src/config.js';
+import { projectSlug, type Config } from '../src/config.js';
 
 const config: Config = {
   provider: { baseURL: 'https://unused.example.com/v1', apiKey: 'sk-test', model: 'test-model' },
 };
-
-/** Temp workspace that opts into workspace-local storage via .nova/config.json. */
-async function optedInRoot(prefix: string): Promise<string> {
-  const root = await mkdtemp(path.join(tmpdir(), prefix));
-  await mkdir(path.join(root, '.nova'), { recursive: true });
-  await writeFile(
-    path.join(root, '.nova', 'config.json'),
-    JSON.stringify({ provider: config.provider }),
-    'utf8',
-  );
-  return root;
-}
 
 function scriptedProvider(scripts: StreamEvent[][]): ChatProvider {
   let call = 0;
@@ -40,31 +28,46 @@ const TEXT_ONLY: StreamEvent[] = [
 ];
 
 describe('runExec', () => {
-  it('emits JSONL events and persists fragment + prompt + assistant reply', async () => {
-    const root = await optedInRoot('nova-exec-');
-    const lines: string[] = [];
-    await runExec({
-      rootDir: root,
-      config,
-      prompt: '打个招呼',
-      json: true,
-      provider: scriptedProvider([TEXT_ONLY]),
-      out: (text) => lines.push(text),
-    });
+  it('emits JSONL events and persists fragment + prompt + assistant reply under ~/.nova/projects', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    // os.homedir() re-reads these per call on each platform, so runExec's
+    // dataDirFor lands in the isolated fake home, never the real ~/.nova.
+    const prevProfile = process.env['USERPROFILE'];
+    const prevHome = process.env['HOME'];
+    process.env['USERPROFILE'] = home;
+    process.env['HOME'] = home;
+    try {
+      const lines: string[] = [];
+      await runExec({
+        rootDir: root,
+        config,
+        prompt: '打个招呼',
+        json: true,
+        provider: scriptedProvider([TEXT_ONLY]),
+        out: (text) => lines.push(text),
+      });
 
-    const events = lines.map((line) => JSON.parse(line) as { type: string });
-    expect(events.map((e) => e.type)).toEqual(['turn_start', 'text_delta', 'usage', 'message', 'done']);
-    expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
+      const events = lines.map((line) => JSON.parse(line) as { type: string });
+      expect(events.map((e) => e.type)).toEqual(['turn_start', 'text_delta', 'usage', 'message', 'done']);
+      expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
 
-    const files = await readdir(path.join(root, '.nova', 'sessions'));
-    const replayed = await Session.replay(path.join(root, '.nova', 'sessions', files[0]!));
-    expect(replayed.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant']);
-    expect(replayed.messages[0]).toMatchObject({ role: 'user', content: expect.stringContaining('<environment>') });
-    expect(replayed.messages[2]).toMatchObject({ role: 'assistant', content: 'Hello from Nova' });
+      const sessionsDir = path.join(home, '.nova', 'projects', projectSlug(root, home), 'sessions');
+      const files = await readdir(sessionsDir);
+      const replayed = await Session.replay(path.join(sessionsDir, files[0]!));
+      expect(replayed.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant']);
+      expect(replayed.messages[0]).toMatchObject({ role: 'user', content: expect.stringContaining('<environment>') });
+      expect(replayed.messages[2]).toMatchObject({ role: 'assistant', content: 'Hello from Nova' });
+    } finally {
+      if (prevProfile === undefined) delete process.env['USERPROFILE'];
+      else process.env['USERPROFILE'] = prevProfile;
+      if (prevHome === undefined) delete process.env['HOME'];
+      else process.env['HOME'] = prevHome;
+    }
   });
 
   it('auto-denies execute tools in non-interactive mode and streams human output', async () => {
-    const root = await optedInRoot('nova-exec-');
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
     const out: string[] = [];
     await runExec({
       rootDir: root,

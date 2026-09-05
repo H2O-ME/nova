@@ -1,4 +1,4 @@
-import { access, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
@@ -44,23 +44,17 @@ const configSchema = z.object({
 
 export type Config = z.infer<typeof configSchema>;
 
-export function configPath(rootDir: string): string {
-  return path.join(rootDir, NOVA_DIR, 'config.json');
+/**
+ * nova 的家：~/.nova/。配置、MCP、技能、会话与缓存全部集中在这里 ——
+ * 项目（工作区）永远零写入，也不会出现 .nova/ 目录；工作区只是 nova
+ * 运行时所在的当前目录。
+ */
+export function novaHome(homedir: string = os.homedir()): string {
+  return path.join(homedir, NOVA_DIR);
 }
 
-/** 用户级兜底配置：工作区没有 .nova/config.json 时使用（配一次，所有项目通用）。 */
 export function userConfigPath(homedir: string = os.homedir()): string {
-  return path.join(homedir, NOVA_DIR, 'config.json');
-}
-
-/** 项目是否显式 opt-in 了工作区内存储（以 .nova/config.json 的存在为标记）。 */
-export async function hasWorkspaceConfig(rootDir: string): Promise<boolean> {
-  try {
-    await access(configPath(rootDir));
-    return true;
-  } catch {
-    return false;
-  }
+  return path.join(novaHome(homedir), 'config.json');
 }
 
 /**
@@ -77,57 +71,9 @@ export function projectSlug(rootDir: string, homedir: string = os.homedir()): st
   return `${base}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
-/** 默认（非 opt-in）的数据目录：集中在用户目录，工作区零写入。 */
-export function defaultDataDir(rootDir: string, homedir: string = os.homedir()): string {
-  return path.join(homedir, NOVA_DIR, 'projects', projectSlug(rootDir, homedir));
-}
-
-/**
- * 数据目录解析：项目里有 .nova/config.json → 数据存项目内（<root>/.nova/，
- * 完全自包含）；没有 → 集中存 ~/.nova/projects/<slug>/，工作区零写入。
- * 会话、缓存走这里；mcp.json 与技能的查找不受影响（读取不产生写入）。
- */
-export async function resolveDataDir(
-  rootDir: string,
-  homedir: string = os.homedir(),
-): Promise<{ dir: string; local: boolean }> {
-  if (await hasWorkspaceConfig(rootDir)) {
-    return { dir: path.join(rootDir, NOVA_DIR), local: true };
-  }
-  return { dir: defaultDataDir(rootDir, homedir), local: false };
-}
-
-/**
- * Walks up from startDir looking for .nova/config.json; the directory that
- * contains it is the workspace root (all agent data lives in <root>/.nova/).
- * Returns startDir unchanged when nothing is found, so loadConfig can emit a
- * precise error pointing at the expected location.
- *
- * The user-level config at ~/.nova/config.json is a loadConfig fallback only,
- * NEVER a workspace boundary: the upward walk stops at the home directory
- * (on Windows %TEMP% lives under the profile — without this, running nova in
- * a temp dir would silently adopt home as the workspace root and coalesce
- * all sessions there).
- */
-export async function findRootDir(startDir: string, homedir: string = os.homedir()): Promise<string> {
-  const start = path.resolve(startDir);
-  const home = path.resolve(homedir);
-  let dir = start;
-  for (let depth = 0; depth < 32; depth++) {
-    // Stop the walk at the home directory — the user-level config zone above
-    // it is not workspace material, so nothing up there may match.
-    if (dir === home) return start;
-    try {
-      await access(configPath(dir));
-      return dir;
-    } catch {
-      // keep walking
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return start;
-    dir = parent;
-  }
-  return start;
+/** 该工作区（运行 nova 的目录）的数据目录：~/.nova/projects/<slug>/，sessions 与 cache 存这里。 */
+export function dataDirFor(rootDir: string, homedir: string = os.homedir()): string {
+  return path.join(novaHome(homedir), 'projects', projectSlug(rootDir, homedir));
 }
 
 /** Expands `{env:NAME}` references; unset variables expand to an empty string. */
@@ -149,38 +95,28 @@ function expandDeep(value: unknown): unknown {
 }
 
 /**
- * Loads .nova/config.json from the working directory root. All agent data —
- * config, sessions, cache, logs — lives under <rootDir>/.nova/; nothing is
- * written to the user's home directory or the system drive.
+ * Loads ~/.nova/config.json — the ONLY config location. Nothing is ever read
+ * from (or written to) the workspace: per-project behaviour comes from where
+ * you run nova, not from files planted in it.
  */
-export async function loadConfig(rootDir: string, homedir: string = os.homedir()): Promise<Config> {
-  const file = configPath(rootDir);
+export async function loadConfig(homedir: string = os.homedir()): Promise<Config> {
+  const file = userConfigPath(homedir);
   let raw: string;
-  let source = file;
   try {
     raw = await readFile(file, 'utf8');
   } catch (err) {
-    if (!(err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')) throw err;
-    // Workspace config missing → user-level fallback, so configuring the
-    // provider once in ~/.nova/config.json makes nova runnable in ANY
-    // directory (per-project data still lives in that project's .nova/).
-    source = userConfigPath(homedir);
-    try {
-      raw = await readFile(source, 'utf8');
-    } catch (userErr) {
-      if (userErr instanceof Error && 'code' in userErr && (userErr as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Error(
-          `missing config: ${file}\ncreate .nova/config.json in the workspace, or ~/.nova/config.json once for all projects, e.g.\n{\n  "provider": {\n    "baseURL": "https://api.example.com/v1",\n    "apiKey": "{env:MY_API_KEY}",\n    "model": "model-name"\n  }\n}`,
-        );
-      }
-      throw userErr;
+    if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(
+        `missing config: ${file}\ncreate it, e.g.\n{\n  "provider": {\n    "baseURL": "https://api.example.com/v1",\n    "apiKey": "{env:MY_API_KEY}",\n    "model": "model-name"\n  }\n}`,
+      );
     }
+    throw err;
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`invalid JSON in ${source}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`invalid JSON in ${file}: ${err instanceof Error ? err.message : String(err)}`);
   }
   const expanded = expandDeep(parsed);
   const result = configSchema.safeParse(expanded);
@@ -188,7 +124,7 @@ export async function loadConfig(rootDir: string, homedir: string = os.homedir()
     const issues = result.error.issues
       .map((issue) => `  ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
-    throw new Error(`invalid config ${source}:\n${issues}`);
+    throw new Error(`invalid config ${file}:\n${issues}`);
   }
   return result.data;
 }

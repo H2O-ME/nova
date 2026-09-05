@@ -36,7 +36,7 @@ import {
   filterCommands,
   type CommandSpec,
 } from './commands.js';
-import { NOVA_DIR, resolveDataDir, type Config } from './config.js';
+import { NOVA_DIR, dataDirFor, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { createNotifier } from './notify.js';
@@ -118,9 +118,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const decoder = new KeyDecoder();
 
   // ---- persistent state -------------------------------------------------
-  // 项目有 .nova/config.json → 数据存项目内；否则集中在 ~/.nova/projects/<slug>/
-  // （工作区零写入）。rootDir 本身不变：工具沙箱、AGENTS.md、项目技能仍指向项目。
-  const { dir: dataDir, local: dataLocal } = await resolveDataDir(rootDir);
+  // 数据永远集中在 ~/.nova/projects/<slug>/：工作区（运行 nova 的目录）零写入。
+  // rootDir 仅作为工具沙箱/cwd/AGENTS.md 的定位，不承载任何 nova 数据。
+  const dataDir = dataDirFor(rootDir);
   const sessionsDir = path.join(dataDir, 'sessions');
   let messages: AgentMessage[] = [];
   let session: Session;
@@ -1564,10 +1564,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const bannerLines = [
     `${CYAN}${BOLD}  Nova${RESET} ${DIM}v0.1.0${RESET}`,
     `${DIM}  ${rootDir} · / 命令面板 · Esc 中断 · Ctrl+C×2 退出${RESET}`,
+    `${DIM}  数据 ${dataDir}${RESET}`,
   ];
-  if (!dataLocal) {
-    bannerLines.push(`${DIM}  数据 ${dataDir}（项目内放 .nova/config.json 可改存工作区）${RESET}`);
-  }
   if (skills.length > 0) {
     bannerLines.push(`${DIM}  技能 ${skills.map((s) => s.name).join('、')}${RESET}`);
   }
