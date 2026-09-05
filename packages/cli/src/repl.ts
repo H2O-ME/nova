@@ -401,8 +401,16 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           break;
         case '/new': {
           session = await Session.create(sessionsDir);
+          // Rebind the cache-affinity identity and drop the old usage anchor:
+          // keeping either would send the old session's cache key (or trigger
+          // a spurious compaction) in the fresh session.
+          client.setSessionId(session.id);
           messages = [];
           Object.assign(stats, emptyStats());
+          lastUsage = undefined;
+          lastPromptTokens = 0;
+          usageAnchor = undefined;
+          anchorMsgCount = 0;
           await seedContextFragment();
           console.log(`新会话：${session.file}`);
           break;
@@ -474,7 +482,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           break;
         }
         case '/plugins': {
-          console.log(`审批档位：${approvalLabel(approvalMode)}${opts.approvalOverride !== undefined ? '（来自 --approval）' : ''}`);
+          console.log(`审批档位：${approvalLabel(permission.approvalMode)}${opts.approvalOverride !== undefined ? '（来自 --approval）' : ''}`);
           if (host.toolEntries.length === 0) console.log('（没有已注册的工具）');
           for (const entry of host.toolEntries) {
             console.log(`  插件=${entry.plugin} · 工具=${entry.tool.name} · 权限=${permissionLabel(entry.permission)}`);
@@ -564,5 +572,8 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   }
 
   rl.close();
+  // Kill background jobs before the process exits, or the spawned shells
+  // outlive the session (dsh jobs dispose contract).
+  await jobs.dispose().catch(() => undefined);
   if (mcp !== undefined) await mcp.close().catch(() => undefined);
 }

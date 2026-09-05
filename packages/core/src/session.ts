@@ -65,17 +65,6 @@ function parseEventLine(line: string): SessionEvent {
   return JSON.parse(line) as SessionEvent;
 }
 
-function isSessionEvent(value: unknown): value is SessionEvent {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === 'string' &&
-    ['message', 'compaction/start', 'compaction/summary', 'compaction/end', 'todo/write', 'approval'].includes(
-      (value as { type: string }).type,
-    )
-  );
-}
-
 /**
  * Index of the LAST unmatched compaction/start (an orphaned lock from a crash
  * mid-compaction), or -1 when every compaction is properly closed.

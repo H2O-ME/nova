@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from '../src/system-prompt.js';
-import { renderMarkdownLite } from '../src/markdown.js';
+import { createMarkdownRenderer, renderMarkdownLite } from '../src/markdown.js';
 import {
   contextBar,
   isReadOnlyTool,
@@ -137,5 +137,18 @@ describe('markdown lite', () => {
 
   it('keeps plain paragraphs byte-identical', () => {
     expect(renderMarkdownLite('你好\n世界', p)).toEqual(['你好', '世界']);
+  });
+
+  it('streams incrementally: complete lines cache, only the tail re-renders', () => {
+    const md = createMarkdownRenderer(p);
+    expect(md.push('# 标题\n')).toEqual(['标题']);
+    expect(md.push('第一行\n第二')).toEqual(['标题', '第一行', '第二']);
+    expect(md.push('行')).toEqual(['标题', '第一行', '第二行']);
+    // A partially typed fence marker must not toggle fence state early and
+    // leaves no premature output; the committed newline confirms the line.
+    expect(md.push('\n```')).toEqual(['标题', '第一行', '第二行']);
+    expect(md.push('`\ncode();\n```\n')).toEqual(['标题', '第一行', '第二行', 'code();']);
+    // A new open fence renders its lines dim; the state survives pushes.
+    expect(md.push('```js\nconst x = 1;\n')).toEqual(['标题', '第一行', '第二行', 'code();', 'const x = 1;']);
   });
 });

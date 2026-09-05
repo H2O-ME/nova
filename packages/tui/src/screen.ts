@@ -76,7 +76,10 @@ export class LineScreen {
 
 function truncateStyled(line: string, maxWidth: number): string {
   let width = 0;
-  let result = '';
+  // chars (with their widths) kept so far; on overflow the tail is trimmed
+  // again to make room for the ellipsis marker itself.
+  const kept: Array<{ ch: string; w: number }> = [];
+  // eslint-disable-next-line no-control-regex
   const pattern = /\x1b\[[0-9;]*m/g;
   let lastIndex = 0;
   for (;;) {
@@ -84,13 +87,26 @@ function truncateStyled(line: string, maxWidth: number): string {
     const plainEnd = match === null ? line.length : match.index;
     for (const ch of line.slice(lastIndex, plainEnd)) {
       const w = styledWidth(ch);
-      if (width + w > maxWidth) return `${result}…`;
-      result += ch;
+      if (width + w > maxWidth) return `${assemble(kept, maxWidth - styledWidth(ELLIPSIS))}${ELLIPSIS}`;
+      kept.push({ ch, w });
       width += w;
     }
     if (match === null) break;
-    result += match[0];
+    kept.push({ ch: match[0]!, w: 0 }); // ANSI sequences occupy no columns
     lastIndex = pattern.lastIndex;
+  }
+  return assemble(kept, maxWidth);
+}
+
+const ELLIPSIS = '…';
+
+function assemble(kept: Array<{ ch: string; w: number }>, maxWidth: number): string {
+  let width = 0;
+  let result = '';
+  for (const { ch, w } of kept) {
+    if (w > 0 && width + w > maxWidth) break;
+    result += ch;
+    width += w;
   }
   return result;
 }
@@ -130,6 +146,7 @@ function wrapSegment(segment: string, width: number, prefixStyle: string): strin
   let currentWidth = 0;
   let openStyles = prefixStyle;
 
+  // eslint-disable-next-line no-control-regex
   const tokens = segment.split(/(\x1b\[[0-9;]*m)/);
   for (const token of tokens) {
     if (token === '') continue;

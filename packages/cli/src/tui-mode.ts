@@ -37,7 +37,7 @@ import {
 } from './commands.js';
 import { NOVA_DIR, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
-import { renderMarkdownLite } from './markdown.js';
+import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
   approvalLabel,
@@ -75,6 +75,10 @@ const RED = '\x1b[31m';
 const BOLD = '\x1b[1m';
 const RESET = '\x1b[0m';
 const INVERSE = '\x1b[7m';
+
+/** Composer prompt prefix; the cursor column math depends on its width. */
+const COMPOSER_PREFIX = `  ${CYAN}${BOLD}❯${RESET} `;
+const COMPOSER_PREFIX_WIDTH = styledWidth(COMPOSER_PREFIX);
 
 interface Block {
   lines: string[];
@@ -390,8 +394,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const estimate = estimateNextPromptTokens(usageAnchor, messages.slice(anchorMsgCount));
     if (estimate <= limit) return;
     pushBlock([`${YELLOW}  ⋯ 预估下轮 ${humanTokens(estimate)} tok 超阈值 ${humanTokens(limit)}，提前压缩…${RESET}`]);
-    const outcome = await runCompact('auto');
-    pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]);
+    try {
+      const outcome = await runCompact('auto');
+      pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]);
+    } catch (err) {
+      // A failed compaction must not kill the turn (agentTurn is invoked
+      // fire-and-forget); the conversation continues uncompressed.
+      pushBlock([`${RED}  ✗ 预压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], {
+        first: '',
+        rest: '      ',
+      });
+    }
   };
 
   /** Fallback: auto-compact AFTER a turn when its prompt tokens exceeded the threshold. */
@@ -441,6 +454,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     let assistantBlock: Block | undefined;
     /** The blank separator block openAssistant pushes before each answer. */
     let assistantSeparator: Block | undefined;
+    /** Incremental markdown renderer; re-created when a new answer opens. */
+    let md: MarkdownRenderer | undefined;
     let reasoningText = '';
     let reasoningOpen = false;
     try {
@@ -478,6 +493,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               closeReadGroup();
               discardReasoning();
               reasoningText = '';
+              md = createMarkdownRenderer(paint);
               // A dedicated separator block between the question and the
               // answer — the answer gets its OWN block so the separator
               // survives every delta update.
@@ -488,8 +504,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             // Claude Code / codex both anchor each reply with a dot marker.
             // The marker lives in the block gutter (applied at wrap time), so
             // soft-wrapped continuation lines align under the text column.
-            // Markdown symbols are rendered to ANSI instead of showing raw.
-            const lines = renderMarkdownLite(assistantText, paint);
+            // Complete markdown lines render once and are cached — only the
+            // trailing unfinished line re-renders per delta.
+            const lines = md !== undefined ? md.push(text) : [];
             if (assistantBlock === undefined) {
               pushBlock(lines, { first: `  ${DIM}•${RESET} `, rest: '    ' });
               assistantBlock = blocks[blocks.length - 1];
@@ -616,9 +633,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         break;
       case 'message': {
         io.closeAssistant();
-        if (event.message.content.length > 0) {
-          await session.append(event.message);
-        }
+        // Append EVERY assistant message, including content-less pure
+        // tool-call turns: the log must mirror the model surface ("model
+        // visible means logged"), or resume/compact projects orphan tool
+        // results with no matching tool_calls.
+        await session.append(event.message);
         break;
       }
       case 'tool_call_start': {
@@ -763,8 +782,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       case '/new': {
         session = await Session.create(sessionsDir);
+        // Rebind the cache-affinity identity and drop the old usage anchor:
+        // keeping either would send the old session's cache key (or trigger
+        // a spurious compaction) in the fresh session.
+        client.setSessionId(session.id);
         messages = [];
         Object.assign(stats, emptyStats());
+        lastUsage = undefined;
+        lastPromptTokens = 0;
+        usageAnchor = undefined;
+        anchorMsgCount = 0;
         await seedContextFragment();
         pushBlock([`${DIM}  新会话：${session.file}${RESET}`]);
         return true;
@@ -851,7 +878,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     }
 
     if (effective.startsWith('/')) {
-      void runCommand(effective).then(() => scheduleRender());
+      void runCommand(effective)
+        .catch((err: unknown) => {
+          // /new, /init & co. do real IO: a failure must surface as a block,
+          // not as an unhandled rejection that kills the process.
+          pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+          scheduleRender();
+        })
+        .then(() => scheduleRender());
       return;
     }
     scrollFromEnd = 0;
@@ -1137,7 +1171,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (approvalRequest !== undefined) {
       const summary = toolArgSummary(approvalRequest.call.name, approvalRequest.call.rawArgs, 100);
       popupLines.push(
-        `  ${YELLOW}${BOLD}! 需要审批${RESET} ${toolLabel(approvalRequest.call.name)} ${DIM}${summary}${RESET}`,
+        `  ${YELLOW}${BOLD}! 需要审批${RESET} ${DIM}[${permissionLabel(approvalRequest.kind)}]${RESET} ${toolLabel(approvalRequest.call.name)} ${DIM}${summary}${RESET}`,
       );
       const labels = ['允许一次', '总是允许', '拒绝'];
       for (let i = 0; i < labels.length; i++) {
@@ -1194,7 +1228,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       );
     }
 
-    const composerRows = 3;
+    const composerRows = 1;
     const statusRows = 1;
     // One breathing row between the newest content and the composer.
     const breatheRows = 1;
@@ -1211,36 +1245,21 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // viewport the pad disappears and paging takes over.
     while (historyLines.length < historyRows) historyLines.push('');
 
-    const composer = composerLines(cols);
+    const composer = composerLine(cols);
     const status = statusBarLine();
 
     // The breathing row separates history from the popup/composer zone.
     screen.render(
-      [...historyLines, '', ...popupLines, ...composer, status],
-      cursorPosition(popupLines.length + historyRows),
+      [...historyLines, '', ...popupLines, composer, status],
+      cursorPosition(historyRows),
     );
   }
 
-  function composerLines(cols: number): string[] {
-    // Borders span cols-1: LineScreen keeps the last column as a safety
-    // margin, so an exactly-full-width border would get its corner cut.
-    const inner = cols - 3;
-    const elapsed = spinnerStartedAt === 0 ? 0 : Date.now() - spinnerStartedAt;
-    const title = streaming
-      ? statusIndicator(true, elapsed, spinnerFrame)
-      : Date.now() - lastCtrlC < 2000 && input.length === 0
-        ? '再按一次 Ctrl+C 退出'
-        : '输入';
-    const top = `╭─ ${title} ${'─'.repeat(Math.max(0, inner - styledWidth(`─ ${title} `)))}╮`;
-    const bottom = `╰${'─'.repeat(inner)}╯`;
-
-    // mid line: '│' + ' ' + 内容 + pad + ' ' + '│' —— 显示宽度与上下边框一致
-    //（旧实现少算一列，右边框错位）；光标物化为反色块光标（终端光标全程隐藏）。
-    const available = Math.max(1, inner - 2);
+  /** One prompt row (`  ❯ input`) with the cursor as an inverse block. */
+  function composerLine(cols: number): string {
+    const available = Math.max(1, cols - COMPOSER_PREFIX_WIDTH - 2);
     const win = visibleWindow(available);
-    const pad = Math.max(0, available - win.width);
-    const mid = `│ ${win.before}${INVERSE}${win.at}${RESET}${win.after}${' '.repeat(pad)} │`;
-    return [top, mid, bottom];
+    return `${COMPOSER_PREFIX}${win.before}${INVERSE}${win.at}${RESET}${win.after}`;
   }
 
   /**
@@ -1294,20 +1313,31 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   }
 
   function cursorPosition(historyRows: number): { row: number; col: number } {
-    // matches composerLines' visible window: inner(cols-3) - 2; +1 skips the
-    // breathing row inserted between history and the popup zone.
-    const available = Math.max(1, screen.cols - 5);
+    // Layout: history · breathe · popup · composer · status. The cursor sits
+    // in the composer row right after the prompt prefix + visible text.
+    const available = Math.max(1, screen.cols - COMPOSER_PREFIX_WIDTH - 2);
     const { before } = visibleWindow(available);
-    return { row: historyRows + popupHeight() + 2, col: 2 + styledWidth(before) };
+    return { row: historyRows + popupHeight() + 1, col: COMPOSER_PREFIX_WIDTH + styledWidth(before) };
   }
 
   function statusBarLine(): string {
     const hit = stats.promptTokens > 0 ? Math.round((stats.cachedTokens / stats.promptTokens) * 100) : 0;
-    const parts = [
+    const parts: string[] = [];
+    // Streaming indicator lives in the status bar now (the composer is a
+    // single prompt row and has no title strip for it).
+    if (streaming) {
+      const elapsed = spinnerStartedAt === 0 ? 0 : Date.now() - spinnerStartedAt;
+      const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] ?? '•';
+      parts.push(`${frame} ${statusIndicator(true, elapsed, spinnerFrame)}`);
+    }
+    if (!streaming && input.length === 0 && Date.now() - lastCtrlC < 2000) {
+      parts.push(`${YELLOW}再按一次 Ctrl+C 退出${RESET}`);
+    }
+    parts.push(
       `${BOLD}${client.model}${RESET}`,
       `审批 ${approvalLabel(permission.approvalMode)}`,
       `↑${humanTokens(stats.promptTokens)} ↓${humanTokens(stats.completionTokens)}`,
-    ];
+    );
     if (hit > 0) parts.push(`缓存 ${hit}%`);
     // Context pressure toward the auto-compact limit: a bar the user can read
     // at a glance, colored as it approaches the trip point.

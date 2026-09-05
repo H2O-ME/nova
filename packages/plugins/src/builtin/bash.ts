@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
-import type { JobStart, ToolExecuteContext } from '@nova-agent/core';
+import type { ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
 export interface BashPluginOptions {
@@ -72,6 +72,22 @@ export function powershellInvocation(command: string): ShellInvocation {
   };
 }
 
+/**
+ * Kill a spawned shell AND its whole child process tree. A bare
+ * `child.kill()` only terminates the shell itself — on Windows the spawned
+ * grandchildren (vitest under pnpm, node under npm) keep running; POSIX
+ * gets a SIGKILL for the same determinism.
+ */
+function killShell(child: ChildProcess): void {
+  if (child.pid === undefined) return;
+  if (process.platform === 'win32') {
+    // /T = tree, /F = force. Fire-and-forget: the close event settles the outcome.
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
+    return;
+  }
+  child.kill('SIGKILL');
+}
+
 function runOnce(
   inv: ShellInvocation,
   rootDir: string,
@@ -98,8 +114,8 @@ function runOnce(
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
 
-    const timer = setTimeout(() => child.kill(), timeoutMs);
-    const onAbort = () => child.kill();
+    const timer = setTimeout(() => killShell(child), timeoutMs);
+    const onAbort = () => killShell(child);
     signal?.addEventListener('abort', onAbort, { once: true });
 
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -198,7 +214,7 @@ function startBackground(
     cancel: () => {
       if (killed) return;
       killed = true;
-      child.kill();
+      killShell(child);
     },
     readOutput: () => Buffer.concat(chunks.splice(0)).toString('utf8'),
   };
@@ -237,7 +253,13 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
 
           if (args['run_in_background'] === true) {
             if (c.jobs === undefined) return 'Error: background jobs are not available in this context';
-            const inv = invocation(command, options?.shellPath);
+            // Pre-check with the SAME resolution declaredShell reports: a
+            // missing bash.exe surfaces as an async ENOENT event, too late
+            // for a fallback — so pick PowerShell up front.
+            let inv =
+              process.platform === 'win32' && options?.shellPath === undefined && !bashOnPath()
+                ? powershellInvocation(command)
+                : invocation(command, options?.shellPath);
             const handle = startBackground(inv, c.rootDir, maxOutputBytes);
             if (typeof handle === 'string') return `Error: cannot spawn shell (${inv.cmd}): ${handle}`;
             const snapshot = c.jobs.start({

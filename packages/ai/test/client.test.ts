@@ -298,7 +298,8 @@ describe('session cache routing', () => {
 
     const headers = capturedInit?.headers as Record<string, string>;
     expect(headers['x-session-id']).toBe(longId);
-    expect(headers['x-client-request-id']).toBe(longId);
+    // Request-scoped id: unique per request, prefixed by the session id.
+    expect(headers['x-client-request-id']).toBe(`${longId}-1`);
     expect(headers['x-session-affinity']).toBe(longId);
     const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
     expect(body['prompt_cache_key']).toBe(longId.slice(0, 64));
@@ -317,6 +318,29 @@ describe('session cache routing', () => {
     expect(headers['x-session-id']).toBeUndefined();
     const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
     expect(body['prompt_cache_key']).toBeUndefined();
+  });
+
+  it('rebinds the session identity via setSessionId (e.g. /new)', async () => {
+    let capturedInit: RequestInit | undefined;
+    const fetchImpl: typeof fetch = (_input, init) => {
+      capturedInit = init;
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    };
+    const client = new OpenAICompatClient({
+      baseURL: 'https://example.test/v1',
+      apiKey: 'sk-test',
+      model: 'test-model',
+      sessionId: 'sess_old',
+      fetchImpl,
+    });
+    client.setSessionId('sess_new');
+    await drain(client.stream({ messages: [] }));
+
+    const headers = capturedInit?.headers as Record<string, string>;
+    expect(headers['x-session-id']).toBe('sess_new');
+    expect(headers['x-session-affinity']).toBe('sess_new');
+    const body = JSON.parse(String(capturedInit?.body)) as Record<string, unknown>;
+    expect(body['prompt_cache_key']).toBe('sess_new');
   });
 
   it('honors Retry-After from a 429 response before succeeding', async () => {

@@ -31,7 +31,7 @@ export const DEFAULT_SYSTEM_PROMPT = `You are Nova, a local coding agent running
 ## Tools
 - Prefer read-only tools (read_file, list_dir) before anything that writes or executes.
 - bash runs shell commands in the workspace root; prefer \`rg\` over \`grep\` for text search when rg is available.
-- All file paths stay inside the workspace root; the harness rejects anything outside it.
+- File tools read and write freely inside the workspace root. Reads OUTSIDE the root are possible but require explicit user approval in the permission gate — expect an approval prompt and proceed only when granted. Writes outside the root are always rejected.
 - The first user message carries an <environment> block (platform, cwd, shell, today) and may carry <user_instructions>, a <project_docs> block (AGENTS.md content) and an <available_skills> index. Follow <project_docs> instructions for this workspace. When a task matches a listed skill, call the \`skill\` tool to load its full instructions before following them.
 - Tools named \`mcp__<server>__<tool>\` come from configured MCP servers; call them like any other tool.
 

@@ -19,8 +19,7 @@ const WIDE_RANGES: Array<[number, number]> = [
   [0xfe30, 0xfe6f],
   [0xff00, 0xff60], // fullwidth forms
   [0xffe0, 0xffe6],
-  [0x1f300, 0x1f64f], // emoji
-  [0x1f900, 0x1f9ff],
+  [0x1f300, 0x1faff], // emoji (faces, symbols, transport, supplement — 🚀 lives here)
   [0x20000, 0x2fffd],
   [0x30000, 0x3fffd],
 ];
@@ -38,11 +37,14 @@ const AMBIGUOUS_RANGES: Array<[number, number]> = [
   [0x2020, 0x2022], // † ‡ •
   [0x2026, 0x2026], // … ellipsis
   [0x2103, 0x2103], // ℃
-  [0x21b0, 0x21b4], // ↳ arrows
+  [0x2190, 0x21ff], // ← ↑ → ↓ and friends (status bar, popup hints)
   [0x22ef, 0x22ef], // ⋯ midline ellipsis
-  [0x23ce, 0x23ce], // ⏎ return symbol
-  [0x25a0, 0x25a1], // ■ □
-  [0x2610, 0x2611], // ☐ ☑
+  [0x2303, 0x23ff], // ⏎ return symbol and other technical pictographs
+  [0x2500, 0x25ff], // box drawing (╭─╮│╰╯), blocks (█ ░), geometric shapes
+  [0x2600, 0x27bf], // misc symbols + dingbats (✓ ✗ ⚠ ★)
+  [0x2768, 0x2775], // ❯ chevrons and light brackets (composer/approval marker)
+  [0x27f0, 0x27ff], // ⟳ supplemental arrows (retry line)
+  [0x2800, 0x28ff], // braille patterns (spinner frames)
 ];
 
 function inRanges(code: number, ranges: Array<[number, number]>): boolean {
@@ -68,6 +70,7 @@ export function stringWidth(text: string): number {
   return total;
 }
 
+// eslint-disable-next-line no-control-regex
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 
 /** Display width of a string that may contain ANSI SGR sequences. */

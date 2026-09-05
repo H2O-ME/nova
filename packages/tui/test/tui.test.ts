@@ -10,10 +10,22 @@ describe('width', () => {
 
   it('counts East-Asian-ambiguous UI glyphs as 2 columns', () => {
     // On CJK-configured terminals these render 2 cells wide; undercounting
-    // makes full-width rows wrap and desyncs the frame.
+    // makes full-width rows wrap and desyncs the frame. The table must cover
+    // every glyph this UI itself emits (composer, tool lines, status bar).
     expect(stringWidth('·')).toBe(2);
     expect(stringWidth('…')).toBe(2);
     expect(stringWidth('⋯')).toBe(2);
+    expect(stringWidth('❯')).toBe(2); // composer/approval marker
+    expect(stringWidth('✓')).toBe(2); // tool done marker
+    expect(stringWidth('✗')).toBe(2); // tool failure marker
+    expect(stringWidth('⟳')).toBe(2); // retry line
+    expect(stringWidth('↑')).toBe(2); // status bar tokens
+    expect(stringWidth('↓')).toBe(2);
+    expect(stringWidth('█')).toBe(2); // context bar
+    expect(stringWidth('░')).toBe(2);
+    expect(stringWidth('⠋')).toBe(2); // braille spinner frames
+    expect(stringWidth('─')).toBe(2); // box drawing (popups)
+    expect(stringWidth('🚀')).toBe(2); // emoji outside the old narrow range
     expect(stringWidth('a · b')).toBe(6); // 1+1+2+1+1: the · alone is 2 columns per the assertion above
   });
 
@@ -134,6 +146,34 @@ describe('wrapLine', () => {
     const rows = wrapLine('\x1b[2mdim\n\x1b[0mbright', 40);
     // carried prefix is immediately closed by the source's own reset
     expect(rows[1]).toBe('\x1b[2m\x1b[0mbright');
+  });
+});
+
+describe('truncateStyled safety net', () => {
+  function fakeOut(rows: number, cols: number) {
+    const writes: string[] = [];
+    const out = {
+      rows,
+      columns: cols,
+      write(s: string) {
+        writes.push(s);
+      },
+    };
+    return { out, writes } as unknown as { out: NodeJS.WriteStream & { write(s: string): unknown }; writes: string[] };
+  }
+
+  it('keeps the ellipsis inside the safe width instead of overflowing by one', () => {
+    // safeCols = 9: the old implementation kept 8 chars then appended the
+    // 2-column ellipsis → 10 columns → wrap → frame desync.
+    const { out, writes } = fakeOut(2, 10);
+    const screen = new LineScreen(out);
+    screen.enter();
+    writes.length = 0;
+    screen.render(['a'.repeat(20), '']);
+    const line = writes.find((w) => w.includes('aaa')) ?? '';
+    // eslint-disable-next-line no-control-regex
+    const written = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    expect(written).toBe('aaaaaaa…'); // 7 + ellipsis = exactly 9 columns
   });
 });
 

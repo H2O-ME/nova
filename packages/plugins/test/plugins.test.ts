@@ -181,6 +181,17 @@ describe('builtinPlugins', () => {
       .toContain('1 occurrence');
     expect(await readFile(path.join(root, 'a', 'b.txt'), 'utf8')).toBe('hi');
 
+    // CRLF tolerance: a \n old_string matches a CRLF file (the model emits \n
+    // for Windows line endings) and the replacement keeps the \r\n habit.
+    await writeFile(path.join(root, 'crlf.txt'), 'const a = 1;\r\nconst b = 2;\r\n', 'utf8');
+    expect(
+      await edit.execute(
+        { path: 'crlf.txt', old_string: 'const a = 1;\nconst b = 2;', new_string: 'const a = 0;\nconst b = 2;' },
+        { rootDir: root },
+      ),
+    ).toContain('1 occurrence');
+    expect(await readFile(path.join(root, 'crlf.txt'), 'utf8')).toBe('const a = 0;\r\nconst b = 2;\r\n');
+
     // Out-of-root reads no longer hard-fail: they are classified as
     // `read-external` (approval-gated) and actually execute when approved.
     const external = host.tools.find((t) => t.name === 'read_file')!;

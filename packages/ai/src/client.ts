@@ -86,6 +86,7 @@ export class OpenAICompatClient implements ChatProvider {
   private readonly maxRetries: number;
   private readonly retryBaseDelayMs: number;
   private readonly timeoutMs: number;
+  private requestSeq = 0;
 
   constructor(config: OpenAICompatConfig) {
     this.config = config;
@@ -103,6 +104,15 @@ export class OpenAICompatClient implements ChatProvider {
     this.config.model = model;
   }
 
+  /**
+   * Rebind the session identity (e.g. /new starts a fresh session): the
+   * `prompt_cache_key` body field and the x-session-affinity headers follow
+   * the new id from the next request on.
+   */
+  setSessionId(sessionId: string): void {
+    this.config.sessionId = sessionId;
+  }
+
   async *stream(req: ChatRequest): AsyncGenerator<StreamEvent> {
     const body = this.buildBody(req);
     let lastError: unknown;
@@ -114,12 +124,14 @@ export class OpenAICompatClient implements ChatProvider {
       // before the first event a retry is transparent.
       let yielded = false;
       try {
-        const response = await this.fetchOnce(body, req.signal);
+        const { response, armIdleTimeout, disarm } = await this.fetchOnce(body, req.signal);
         try {
           const responseBody = response.body;
           if (!responseBody) throw new Error('response has no body');
           let sawFinish = false;
-          for await (const sse of parseSse(responseBody)) {
+          // Every byte from the wire re-arms the idle timer, so a healthy
+          // stream may run arbitrarily long — only a stalled one is cut.
+          for await (const sse of parseSse(keepAlive(responseBody, armIdleTimeout))) {
             if (sse.data === '[DONE]') {
               sawFinish = true;
               return;
@@ -146,10 +158,18 @@ export class OpenAICompatClient implements ChatProvider {
           if (!sawFinish) throw new Error('upstream stream ended before completion (no finish reason)');
           return;
         } finally {
+          disarm();
           await response.body?.cancel().catch(() => undefined);
         }
       } catch (err) {
-        if (isAbortError(err)) throw err;
+        if (isAbortError(err)) {
+          // A plain AbortError is only the user's signal — the idle timer
+          // aborts with a named TimeoutError reason. Some runtimes drop the
+          // reason, so classify by the request signal: if it never fired,
+          // this was the stall timeout and the attempt is retryable.
+          if (req.signal?.aborted) throw abortError();
+          throw new Error('upstream stream stalled (idle timeout)');
+        }
         if (req.signal?.aborted) throw abortError();
         lastError = err;
         if (!isRetryableError(err) || attempt === this.maxRetries) {
@@ -169,30 +189,68 @@ export class OpenAICompatClient implements ChatProvider {
     }
   }
 
-  /** ONE request attempt — every retry policy lives in stream(). */
-  private async fetchOnce(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+  /**
+   * ONE request attempt — every retry policy lives in stream(). The attempt's
+   * own AbortController drives TWO bounded waits: the timeout covers the wait
+   * for response headers (TTFT), and `armIdleTimeout` re-arms it while the
+   * body streams. A generation that keeps producing bytes is never cut for
+   * being slow; a stalled stream aborts into the retry path above.
+   */
+  private async fetchOnce(
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<{
+    response: Response;
+    armIdleTimeout: () => void;
+    disarm: () => void;
+  }> {
     const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`;
-    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
-    const combined = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+    const attemptController = new AbortController();
+    const attemptSignal = attemptController.signal;
+    const timeoutError = (): Error => {
+      const err = new Error(`upstream stream stalled for ${this.timeoutMs}ms`);
+      err.name = 'TimeoutError';
+      return err;
+    };
+    let timer: NodeJS.Timeout | undefined = setTimeout(() => attemptController.abort(timeoutError()), this.timeoutMs);
+    const armIdleTimeout = (): void => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(() => attemptController.abort(timeoutError()), this.timeoutMs);
+    };
+    const disarm = (): void => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+    };
+    const combined = signal ? AbortSignal.any([signal, attemptSignal]) : attemptSignal;
     const sessionHeaders =
       this.config.sessionId !== undefined
         ? {
             'x-session-id': this.config.sessionId,
-            'x-client-request-id': this.config.sessionId,
+            // Request-scoped id (the header's semantics): unique per attempt.
+            'x-client-request-id': `${this.config.sessionId}-${++this.requestSeq}`,
             'x-session-affinity': this.config.sessionId,
           }
         : {};
-    const response = await this.fetchImpl(url, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${this.config.apiKey}`,
-        ...sessionHeaders,
-      },
-      body: JSON.stringify(body),
-      signal: combined,
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${this.config.apiKey}`,
+          ...sessionHeaders,
+        },
+        body: JSON.stringify(body),
+        signal: combined,
+      });
+    } catch (err) {
+      disarm();
+      throw err;
+    }
     if (!response.ok) {
+      disarm();
       const text = await response.text().catch(() => '');
       throw new HttpError(
         response.status,
@@ -200,7 +258,9 @@ export class OpenAICompatClient implements ChatProvider {
         parseRetryAfterMs(response.headers),
       );
     }
-    return response;
+    // Headers arrived: the TTFT phase is over — the timer now belongs to the
+    // body loop, which re-arms it per chunk via armIdleTimeout().
+    return { response, armIdleTimeout, disarm };
   }
 
   /**
@@ -361,6 +421,28 @@ function parseRetryAfterMs(headers: Headers): number | undefined {
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === 'AbortError';
+}
+
+/**
+ * Pass-through byte stream that re-arms the attempt's idle timer on every
+ * raw chunk — keep-alive comments and partial SSE frames count as liveness
+ * even though parseSse emits no event for them.
+ */
+async function* keepAlive(
+  body: ReadableStream<Uint8Array>,
+  onChunk: () => void,
+): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      onChunk();
+      if (value !== undefined) yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 function abortError(): Error {

@@ -137,6 +137,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const systemPrompt = buildSystemPrompt();
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
+  let toolStartAt = 0;
   try {
     // Lazy MCP: connect right before the first request.
     if (mcp !== undefined) {
@@ -177,6 +178,9 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     console.error(`出错：${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
   } finally {
+    // Kill background jobs before the process exits, or the spawned shells
+    // outlive the session (dsh jobs dispose contract).
+    await jobs.dispose().catch(() => undefined);
     if (mcp !== undefined) await mcp.close().catch(() => undefined);
   }
 
@@ -196,11 +200,15 @@ export async function runExec(opts: ExecOptions): Promise<void> {
         if (event.message.content.length > 0) sink('\n');
         break;
       case 'tool_call_start':
+        toolStartAt = Date.now();
         sink(`${toolStartLine(p, event.call.name, event.call.rawArgs)}\n`);
         break;
-      case 'tool_call_result':
-        sink(`${toolDoneLine(p, event.call.name, event.call.rawArgs, event.result.content, 0).join('\n')}\n`);
+      case 'tool_call_result': {
+        const duration = Math.max(0, toolStartAt === 0 ? 0 : Date.now() - toolStartAt);
+        toolStartAt = 0;
+        sink(`${toolDoneLine(p, event.call.name, event.call.rawArgs, event.result.content, duration).join('\n')}\n`);
         break;
+      }
       case 'done': {
         const kind = event.stopReason === 'complete' ? 'complete' : event.stopReason;
         sink(`\n${statusLine(p, kind, stats, 0)}\n`);

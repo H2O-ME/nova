@@ -33,6 +33,38 @@ function strArg(args: Record<string, unknown>, key: string): string | undefined 
   return typeof value === 'string' ? value : undefined;
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Newline-tolerant replace: matches `oldString` treating every \n as \r?\n
+ * (used after an exact match failed on a CRLF file). The replacement keeps
+ * the file's CRLF habit when both sides are multi-line. Returns undefined
+ * when the tolerant pattern does not match either.
+ */
+function tolerantReplace(
+  text: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean,
+): { next: string; count: number } | undefined {
+  if (!oldString.includes('\n') || !text.includes('\r\n')) return undefined;
+  const pattern = oldString
+    .split('\n')
+    .map((segment) => escapeRegExp(segment))
+    .join('\r?\n');
+  const global = new RegExp(pattern, 'g');
+  const found = text.match(global);
+  if (found === null || found.length === 0) return undefined;
+  const count = found.length;
+  const first = found[0]!;
+  const replacement =
+    first.includes('\r\n') && newString.includes('\n') ? newString.replaceAll('\n', '\r\n') : newString;
+  const next = replaceAll ? text.replace(global, replacement) : text.replace(new RegExp(pattern), replacement);
+  return { next, count };
+}
+
 function intArg(args: Record<string, unknown>, key: string): number | undefined {
   const value = args[key];
   if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
@@ -181,16 +213,25 @@ export function fsWritePlugin(): Plugin {
           } catch {
             return `Error: cannot read file: ${args['path'] as string}`;
           }
-          const occurrences = text.split(oldString).length - 1;
-          if (occurrences === 0) return 'Error: old_string not found in file';
           const replaceAll = args['replace_all'] === true;
+          let occurrences = text.split(oldString).length - 1;
+          let next: string;
+          if (occurrences > 0) {
+            next = replaceAll ? text.replaceAll(oldString, newString) : text.replace(oldString, newString);
+          } else {
+            // Windows CRLF files: the model emits \n while the disk has \r\n,
+            // so an exact match fails on virtually every line. Retry with a
+            // newline-tolerant pattern instead of reporting "not found".
+            const tolerant = tolerantReplace(text, oldString, newString, replaceAll);
+            if (tolerant === undefined) return 'Error: old_string not found in file';
+            occurrences = tolerant.count;
+            next = tolerant.next;
+          }
           if (occurrences > 1 && !replaceAll) {
             return `Error: old_string appears ${occurrences} times; pass replace_all=true or provide a longer unique snippet`;
           }
-          const next = replaceAll ? text.replaceAll(oldString, newString) : text.replace(oldString, newString);
           await writeFile(file, next, 'utf8');
-          const count = replaceAll ? occurrences : 1;
-          return `edited ${count} occurrence(s) in ${path.relative(c.rootDir, file) || file}`;
+          return `edited ${occurrences} occurrence(s) in ${path.relative(c.rootDir, file) || file}`;
         },
       }, { permission: 'write' });
     },

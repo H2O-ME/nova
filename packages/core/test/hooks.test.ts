@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runAgent, type AgentEvent, type AgentMessage, type ChatRequest, type StreamEvent } from '../src/index.js';
 
-interface RecordedRequest extends ChatRequest {
-  providerName: string;
-}
-
 function capturingProvider(onStream: (req: ChatRequest) => StreamEvent[]): {
   provider: { stream(req: ChatRequest): AsyncIterable<StreamEvent> };
   requests: ChatRequest[];

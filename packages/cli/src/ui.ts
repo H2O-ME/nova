@@ -64,6 +64,7 @@ export function toolLabel(name: string): string {
 
 const PERMISSION_LABELS: Record<string, string> = {
   read: '读取',
+  'read-external': '外部读取',
   write: '写入',
   execute: '执行',
   network: '网络',
@@ -262,7 +263,7 @@ export function banner(
   console.log(`  ${p.cyan(p.bold('Nova'))} ${p.dim('v0.1.0 — 本地编码助手')}`);
   console.log(p.dim(`  模型 ${info.model} · 审批 ${approvalLabel(info.approval)} · 插件 ${info.plugins}`));
   console.log(p.dim(`  工作区 ${info.rootDir} · 会话 ${relSession}`));
-  console.log(p.dim(`  输入 / 唤起命令面板 · Esc 中断 · Ctrl+C 退出（按两次）`));
+  console.log(p.dim(`  输入 / 唤起命令面板 · Ctrl+C 中断当前轮（空闲时退出）`));
   console.log();
 }
 
