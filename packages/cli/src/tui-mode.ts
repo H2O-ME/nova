@@ -36,7 +36,7 @@ import {
   filterCommands,
   type CommandSpec,
 } from './commands.js';
-import { NOVA_DIR, type Config } from './config.js';
+import { NOVA_DIR, resolveDataDir, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { createNotifier } from './notify.js';
@@ -118,7 +118,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const decoder = new KeyDecoder();
 
   // ---- persistent state -------------------------------------------------
-  const sessionsDir = path.join(rootDir, NOVA_DIR, 'sessions');
+  // 项目有 .nova/config.json → 数据存项目内；否则集中在 ~/.nova/projects/<slug>/
+  // （工作区零写入）。rootDir 本身不变：工具沙箱、AGENTS.md、项目技能仍指向项目。
+  const { dir: dataDir, local: dataLocal } = await resolveDataDir(rootDir);
+  const sessionsDir = path.join(dataDir, 'sessions');
   let messages: AgentMessage[] = [];
   let session: Session;
   if (opts.resumeFile) {
@@ -521,7 +524,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         messages,
         rootDir,
         // Spilled tool outputs are grouped per session.
-        cacheDir: path.join(rootDir, NOVA_DIR, 'cache', 'tool-outputs', session.id),
+        cacheDir: path.join(dataDir, 'cache', 'tool-outputs', session.id),
         jobs,
         emit: async (evt) => { await session.appendEvent(evt); },
         tools: host.tools,
@@ -1562,6 +1565,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     `${CYAN}${BOLD}  Nova${RESET} ${DIM}v0.1.0${RESET}`,
     `${DIM}  ${rootDir} · / 命令面板 · Esc 中断 · Ctrl+C×2 退出${RESET}`,
   ];
+  if (!dataLocal) {
+    bannerLines.push(`${DIM}  数据 ${dataDir}（项目内放 .nova/config.json 可改存工作区）${RESET}`);
+  }
   if (skills.length > 0) {
     bannerLines.push(`${DIM}  技能 ${skills.map((s) => s.name).join('、')}${RESET}`);
   }

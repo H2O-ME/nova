@@ -1,5 +1,4 @@
-import { readdir } from 'node:fs/promises';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -10,6 +9,18 @@ import type { Config } from '../src/config.js';
 const config: Config = {
   provider: { baseURL: 'https://unused.example.com/v1', apiKey: 'sk-test', model: 'test-model' },
 };
+
+/** Temp workspace that opts into workspace-local storage via .nova/config.json. */
+async function optedInRoot(prefix: string): Promise<string> {
+  const root = await mkdtemp(path.join(tmpdir(), prefix));
+  await mkdir(path.join(root, '.nova'), { recursive: true });
+  await writeFile(
+    path.join(root, '.nova', 'config.json'),
+    JSON.stringify({ provider: config.provider }),
+    'utf8',
+  );
+  return root;
+}
 
 function scriptedProvider(scripts: StreamEvent[][]): ChatProvider {
   let call = 0;
@@ -30,7 +41,7 @@ const TEXT_ONLY: StreamEvent[] = [
 
 describe('runExec', () => {
   it('emits JSONL events and persists fragment + prompt + assistant reply', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
+    const root = await optedInRoot('nova-exec-');
     const lines: string[] = [];
     await runExec({
       rootDir: root,
@@ -53,7 +64,7 @@ describe('runExec', () => {
   });
 
   it('auto-denies execute tools in non-interactive mode and streams human output', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
+    const root = await optedInRoot('nova-exec-');
     const out: string[] = [];
     await runExec({
       rootDir: root,

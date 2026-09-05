@@ -19,9 +19,9 @@ options:
   --version/-v    显示版本
   --help/-h       显示本帮助
 
-运行于当前工作目录；配置在 .nova/config.json（缺失时回落 ~/.nova/config.json，
-配一次即可在所有目录使用）；所有数据（mcp、skills、sessions、cache）都保存在
-当前项目 .nova/ 下。`;
+运行于当前工作目录；配置在 .nova/config.json（缺失时回落 ~/.nova/config.json）。
+数据（sessions/cache）默认集中在 ~/.nova/projects/<slug>/，工作区零写入；项目内
+放 .nova/config.json 即改为存项目 .nova/ 下。mcp.json 与技能仍按项目+用户两级查找。`;
 
 interface ParsedArgs {
   resumeFile?: string;

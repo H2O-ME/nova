@@ -2,7 +2,14 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { expandRefs, findRootDir, loadConfig } from '../src/config.js';
+import {
+  defaultDataDir,
+  expandRefs,
+  findRootDir,
+  loadConfig,
+  projectSlug,
+  resolveDataDir,
+} from '../src/config.js';
 
 describe('findRootDir', () => {
   it('walks up from a nested directory to the workspace root', async () => {
@@ -52,6 +59,38 @@ describe('expandRefs', () => {
     expect(expandRefs('Bearer {env:NOVA_TEST_KEY}')).toBe('Bearer secret');
     expect(expandRefs('{env:NOVA_TEST_UNSET_XYZ}')).toBe('');
     delete process.env['NOVA_TEST_KEY'];
+  });
+});
+
+describe('data dir resolution', () => {
+  it('slugs projects by basename plus a path hash, stable across calls', () => {
+    const home = path.join(tmpdir(), 'nova-home');
+    const a = projectSlug('D:\\web\\agent', home);
+    expect(a).toMatch(/^agent-[0-9a-f]{8}$/);
+    expect(projectSlug('d:/web/agent/', home)).toBe(a); // case/separator/trailing slash normalized
+    expect(projectSlug('D:\\web\\other\\agent', home)).not.toBe(a); // same basename, other path
+    expect(defaultDataDir('D:\\web\\agent', home)).toBe(path.join(home, '.nova', 'projects', a));
+  });
+
+  it('keeps data inside the workspace when it opts in via .nova/config.json', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-data-'));
+    await mkdir(path.join(root, '.nova'), { recursive: true });
+    await writeFile(
+      path.join(root, '.nova', 'config.json'),
+      JSON.stringify({ provider: { baseURL: 'u', apiKey: 'k', model: 'm' } }),
+      'utf8',
+    );
+    const resolved = await resolveDataDir(root, path.join(tmpdir(), 'nova-other-home'));
+    expect(resolved.local).toBe(true);
+    expect(resolved.dir).toBe(path.join(root, '.nova'));
+  });
+
+  it('centralizes data under ~/.nova/projects when the workspace has no config', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-data-'));
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    const resolved = await resolveDataDir(root, home);
+    expect(resolved.local).toBe(false);
+    expect(resolved.dir).toBe(path.join(home, '.nova', 'projects', projectSlug(root, home)));
   });
 });
 

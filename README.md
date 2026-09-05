@@ -30,7 +30,8 @@ pnpm build
 
 # .nova/config.json —— 工作区级配置（{env:MY_KEY} 引用环境变量）
 # 也可以只在 ~/.nova/config.json 配一份用户级兜底：任何没有 .nova/config.json
-# 的目录都能直接运行 nova（会话/缓存仍存在当前项目的 .nova/ 下）。
+# 的目录都能直接运行 nova。此时会话/缓存集中在 ~/.nova/projects/<slug>/，
+# 工作区零写入；项目内放了 .nova/config.json 才把数据存进项目 .nova/。
 # {
 #   "provider": {
 #     "baseURL": "https://api.example.com/v1",

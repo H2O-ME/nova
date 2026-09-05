@@ -53,6 +53,50 @@ export function userConfigPath(homedir: string = os.homedir()): string {
   return path.join(homedir, NOVA_DIR, 'config.json');
 }
 
+/** 项目是否显式 opt-in 了工作区内存储（以 .nova/config.json 的存在为标记）。 */
+export async function hasWorkspaceConfig(rootDir: string): Promise<boolean> {
+  try {
+    await access(configPath(rootDir));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ~/.nova/projects/ 下的项目目录名：可读名 + 全路径短哈希。不同盘符/大小写
+ * 的同一路径归一后同哈希；重名项目靠哈希区分，互不串数据。
+ */
+export function projectSlug(rootDir: string, homedir: string = os.homedir()): string {
+  const normalized = path.resolve(rootDir).replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash * 31 + normalized.charCodeAt(i)) | 0;
+  }
+  const base = path.basename(normalized).replace(/[^a-z0-9_-]+/g, '-') || 'project';
+  return `${base}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+/** 默认（非 opt-in）的数据目录：集中在用户目录，工作区零写入。 */
+export function defaultDataDir(rootDir: string, homedir: string = os.homedir()): string {
+  return path.join(homedir, NOVA_DIR, 'projects', projectSlug(rootDir, homedir));
+}
+
+/**
+ * 数据目录解析：项目里有 .nova/config.json → 数据存项目内（<root>/.nova/，
+ * 完全自包含）；没有 → 集中存 ~/.nova/projects/<slug>/，工作区零写入。
+ * 会话、缓存走这里；mcp.json 与技能的查找不受影响（读取不产生写入）。
+ */
+export async function resolveDataDir(
+  rootDir: string,
+  homedir: string = os.homedir(),
+): Promise<{ dir: string; local: boolean }> {
+  if (await hasWorkspaceConfig(rootDir)) {
+    return { dir: path.join(rootDir, NOVA_DIR), local: true };
+  }
+  return { dir: defaultDataDir(rootDir, homedir), local: false };
+}
+
 /**
  * Walks up from startDir looking for .nova/config.json; the directory that
  * contains it is the workspace root (all agent data lives in <root>/.nova/).

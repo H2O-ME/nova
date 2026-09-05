@@ -22,7 +22,7 @@ import {
 } from '@nova-agent/plugins';
 import type { McpPlugin } from '@nova-agent/mcp';
 import { collectProjectDocs } from './agents-md.js';
-import { NOVA_DIR, type Config } from './config.js';
+import { NOVA_DIR, resolveDataDir, type Config } from './config.js';
 import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
 import { buildSystemPrompt } from './system-prompt.js';
@@ -54,7 +54,9 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const write = opts.out ?? ((text: string) => process.stdout.write(text));
   const paint = opts.out === undefined && process.stdout.isTTY === true ? palette : plainPalette;
 
-  const sessionsDir = path.join(rootDir, NOVA_DIR, 'sessions');
+  // 项目有 .nova/config.json → 数据存项目内；否则集中在 ~/.nova/projects/<slug>/。
+  const { dir: dataDir } = await resolveDataDir(rootDir);
+  const sessionsDir = path.join(dataDir, 'sessions');
   let messages: AgentMessage[] = [];
   let session: Session;
   if (opts.resumeFile) {
@@ -151,12 +153,12 @@ export async function runExec(opts: ExecOptions): Promise<void> {
       host.use(mcp);
       await host.activate();
     }
-    for await (const event of runAgent({
-      provider,
-      messages,
-      rootDir,
-      // Spilled tool outputs are grouped per session.
-      cacheDir: path.join(rootDir, NOVA_DIR, 'cache', 'tool-outputs', session.id),
+      for await (const event of runAgent({
+        provider,
+        messages,
+        rootDir,
+        // Spilled tool outputs are grouped per session.
+        cacheDir: path.join(dataDir, 'cache', 'tool-outputs', session.id),
       jobs,
       emit: async (evt) => { await session.appendEvent(evt); },
       tools: host.tools,

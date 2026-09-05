@@ -27,7 +27,7 @@ import {
   type AskFn,
 } from '@nova-agent/plugins';
 import type { McpPlugin } from '@nova-agent/mcp';
-import { NOVA_DIR, type Config } from './config.js';
+import { NOVA_DIR, resolveDataDir, type Config } from './config.js';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache } from './commands.js';
@@ -106,7 +106,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const useColor = process.stdout.isTTY === true;
   const paint = useColor ? palette : plainPalette;
 
-  const sessionsDir = path.join(rootDir, NOVA_DIR, 'sessions');
+  // 项目有 .nova/config.json → 数据存项目内；否则集中在 ~/.nova/projects/<slug>/。
+  const { dir: dataDir } = await resolveDataDir(rootDir);
+  const sessionsDir = path.join(dataDir, 'sessions');
   let messages: AgentMessage[] = [];
   let session: Session;
   if (opts.resumeFile) {
@@ -572,7 +574,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         messages,
         rootDir,
         // Spilled tool outputs are grouped per session.
-        cacheDir: path.join(rootDir, NOVA_DIR, 'cache', 'tool-outputs', session.id),
+        cacheDir: path.join(dataDir, 'cache', 'tool-outputs', session.id),
         jobs,
         emit: async (evt) => { await session.appendEvent(evt); },
         tools: host.tools,
