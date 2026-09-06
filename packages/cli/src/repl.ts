@@ -31,6 +31,7 @@ import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache } from './commands.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
+import { recordSessionWorkspace } from './sessions.js';
 import { createNotifier } from './notify.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
@@ -117,6 +118,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     for (const warning of session.warnings) console.log(paint.yellow(`  ${warning}`));
   } else {
     session = await Session.create(sessionsDir);
+    await recordSessionWorkspace(session, rootDir);
   }
 
   const client = new OpenAICompatClient({
@@ -404,6 +406,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         case '/new': {
           sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
           session = await Session.create(sessionsDir);
+          await recordSessionWorkspace(session, rootDir);
           // Rebind the cache-affinity identity and drop the old usage anchor:
           // keeping either would send the old session's cache key (or trigger
           // a spurious compaction) in the fresh session.

@@ -42,7 +42,10 @@ export type SessionEvent =
   /** Log-only durable todo snapshot; never joins the model surface. */
   | { type: 'todo/write'; todos: TodoItem[]; at: number }
   /** Log-only approval audit pair record; never joins the model surface. */
-  | { type: 'approval'; toolName: string; kind: string; outcome: 'allow' | 'deny' | 'always'; at: number };
+  | { type: 'approval'; toolName: string; kind: string; outcome: 'allow' | 'deny' | 'always'; at: number }
+  /** Log-only workspace marker (session switching restores the tools' root
+   * from it); never joins the model surface. */
+  | { type: 'workspace'; path: string; at: number };
 
 /** The exported prefix used by the projected compaction summary message. */
 export const COMPACT_SUMMARY_PREFIX = '[已压缩的上一会话摘要]';

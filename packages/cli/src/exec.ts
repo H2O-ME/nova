@@ -24,6 +24,7 @@ import { collectProjectDocs } from './agents-md.js';
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
+import { recordSessionWorkspace } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
 
@@ -62,6 +63,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     messages = session.deriveMessages();
   } else {
     session = await Session.create(sessionsDir);
+    await recordSessionWorkspace(session, rootDir);
   }
 
   const provider = opts.provider ?? new OpenAICompatClient({

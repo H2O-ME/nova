@@ -71,7 +71,7 @@ MCP 支持曾按原 §6 目标交付（`packages/mcp`：stdio + Streamable HTTP�
 
 - `nova`（无参）→ 交互 TUI（TTY 下全屏；非 TTY 自动回落 readline，`--repl` 强制 readline）；`nova exec "<task>"` → 非交互单次任务执行（受 `maxTurns` 约束，CI 友好，codex 模式）。
 - TUI 自写差分渲染（对标 pi-tui）：alternate screen + 行级 diff 重绘，避免 ncurses/React 依赖；支持流式 markdown、工具调用折叠块、审批弹窗、状态栏、PageUp/PageDown 滚动、Ctrl+C 中断当前轮（空闲时两段退出）。
-- 斜杠命令（已落地）：`/help /init /model /approvals /plugins /skill /session /new /compact /clear /exit`（TUI 中输入 `/` 弹出面板，↑↓ 选择、Tab 补全、输入历史）；`/session` 打开会话切换器——最近会话按活跃排序、首条提问作标题，Enter 恢复模型上下文并回放文字记录。
+- 斜杠命令（已落地）：`/help /init /model /approvals /plugins /skill /session /new /compact /clear /exit`（TUI 中输入 `/` 弹出面板，↑↓ 选择、Tab 补全、输入历史）；`/session` 打开会话切换器——最近会话按活跃排序、首条提问作标题，Enter 恢复模型上下文并回放文字记录，同时把工作区切回该会话创建时的目录（工具根目录/项目技能/AGENTS.md 联动，log 里以 `workspace` 事件记录，老会话回退读环境片段的 `cwd=` 行）。
 - AGENTS.md 发现链（已落地）：从工作区根到当前目录逐层收集（根在前），共享 32KB 字节预算，注入会话首条 user 上下文片段 `<project_docs>`（非系统提示，保持前缀字节稳定）；`/init` 生成初版。
 
 ## 9. 上下文管理与缓存命中率（核心差异化目标）

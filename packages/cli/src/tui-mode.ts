@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { KeyDecoder, LineScreen, styledWidth, wrapLine, type Key } from '@nova-agent/tui';
@@ -39,7 +40,7 @@ import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { createNotifier } from './notify.js';
-import { listRecentSessions, type SessionEntry } from './sessions.js';
+import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
   approvalLabel,
@@ -134,7 +135,9 @@ function clipDisplay(text: string, maxWidth: number): string {
 }
 
 export async function startTui(opts: TuiOptions): Promise<void> {
-  const { rootDir, config } = opts;
+  const { config } = opts;
+  // The live workspace: follows the session across /session switches.
+  let rootDir = opts.rootDir;
   const paint = process.stdout.isTTY === true ? palette : plainPalette;
   const screen = new LineScreen(process.stdout);
   const decoder = new KeyDecoder();
@@ -152,6 +155,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     messages = session.deriveMessages();
   } else {
     session = await Session.create(sessionsDir);
+    await recordSessionWorkspace(session, rootDir);
   }
 
   const client = new OpenAICompatClient({
@@ -168,9 +172,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const stats: UsageStats = emptyStats();
   const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
 
-  const host = new PluginHost(rootDir);
   const bashConfig = config.tools?.bash;
-  for (const plugin of builtinPlugins({
+  const bashPluginArgs = (): Parameters<typeof builtinPlugins>[0] => ({
     bash:
       bashConfig?.enabled === false
         ? false
@@ -178,14 +181,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
             ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
           },
-  })) {
+  });
+  const loadWorkspaceSkills = (dir: string): ReturnType<typeof loadSkills> =>
+    loadSkills([
+      { dir: path.join(dir, NOVA_DIR, 'skills'), level: 'project' },
+      { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
+    ]);
+  let host = new PluginHost(rootDir);
+  for (const plugin of builtinPlugins(bashPluginArgs())) {
     host.use(plugin);
   }
 
-  const skills = await loadSkills([
-    { dir: path.join(rootDir, NOVA_DIR, 'skills'), level: 'project' },
-    { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
-  ]);
+  let skills = await loadWorkspaceSkills(rootDir);
   if (skills.length > 0) host.use(skillsPlugin(skills));
   await host.activate();
 
@@ -198,13 +205,33 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     today: new Date().toISOString().slice(0, 10),
   };
   // AGENTS.md chain is session-stable by design; /init results land in the next session.
-  const projectDocs = await collectProjectDocs(rootDir, process.cwd());
+  let projectDocs = await collectProjectDocs(rootDir, process.cwd());
   const buildFragment = (): string => buildContextFragment(sessionEnv, config.systemPrompt, skills, projectDocs);
   /** Re-seed the context fragment when a fresh session starts (/new). */
   const seedContextFragment = async (): Promise<void> => {
     const seed: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: buildFragment() };
     messages.push(seed);
     await session.append(seed);
+  };
+  /**
+   * Re-point the whole workspace-bound surface at `dir`: the tool host (fs
+   * and bash resolve their root from the host per call), project skills,
+   * AGENTS.md docs and the env fragment's cwd. Used when a switched-in
+   * session was created in another workspace, so the restored fragment and
+   * the tools agree — and /new afterwards seeds a consistent fragment.
+   */
+  const applyWorkspace = async (dir: string): Promise<void> => {
+    rootDir = dir;
+    sessionEnv.cwd = dir;
+    projectDocs = await collectProjectDocs(dir, process.cwd());
+    const next = new PluginHost(dir);
+    for (const plugin of builtinPlugins(bashPluginArgs())) {
+      next.use(plugin);
+    }
+    skills = await loadWorkspaceSkills(dir);
+    if (skills.length > 0) next.use(skillsPlugin(skills));
+    await next.activate();
+    host = next;
   };
   if (!opts.resumeFile) await seedContextFragment();
 
@@ -892,6 +919,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       case '/new': {
         sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
         session = await Session.create(sessionsDir);
+        await recordSessionWorkspace(session, rootDir);
         // Rebind the cache-affinity identity and drop the old usage anchor:
         // keeping either would send the old session's cache key (or trigger
         // a spurious compaction) in the fresh session.
@@ -978,6 +1006,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     activeToolId = undefined;
     blocks.length = 0;
     scrollFromEnd = 0;
+    // Follow the session back to the workspace it was created in, so the
+    // restored context fragment and the tools' root agree again.
+    let workspaceLine: string | undefined;
+    const target = sessionWorkspace(loaded);
+    if (target !== undefined && target !== rootDir) {
+      if (existsSync(target)) {
+        await applyWorkspace(target);
+        workspaceLine = `${GREEN}  ✓ 工作区已切换${RESET} ${DIM}${target}${RESET}`;
+      } else {
+        workspaceLine = `${YELLOW}  ⚠ 原工作区已不存在：${target}${RESET} ${DIM}（工具仍指向 ${rootDir}）${RESET}`;
+      }
+    }
     for (const m of restored) {
       if (m.role === 'user') {
         if (m.content.trimStart().startsWith('<')) continue;
@@ -989,6 +1029,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     pushBlock([
       `${GREEN}  ✓ 已切换到会话${RESET} ${DIM}${path.basename(loaded.file)} · 上下文 ${restored.length} 条消息${RESET}`,
     ]);
+    if (workspaceLine !== undefined) pushBlock([workspaceLine]);
     scheduleRender();
   }
 

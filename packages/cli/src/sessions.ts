@@ -1,5 +1,6 @@
 import { open, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import type { Session } from '@nova-agent/core';
 
 /** One listed session: identity plus the bits a switcher row renders. */
 export interface SessionEntry {
@@ -92,4 +93,30 @@ async function peekSession(file: string): Promise<{ id: string; createdAt: numbe
     await fh.close();
   }
   return { id, createdAt, title };
+}
+
+/**
+ * Append the log-only workspace marker so a later `/session` switch can
+ * re-point the tools at the workspace the session was created in.
+ */
+export async function recordSessionWorkspace(session: Session, rootDir: string): Promise<void> {
+  await session.appendEvent({ type: 'workspace', path: rootDir, at: Date.now() });
+}
+
+/**
+ * The workspace a session belongs to: the newest `workspace` marker in the
+ * log; sessions created before the marker existed fall back to the `cwd=`
+ * line of their seeded `<environment>` fragment.
+ */
+export function sessionWorkspace(session: Session): string | undefined {
+  for (let i = session.events.length - 1; i >= 0; i--) {
+    const evt = session.events[i];
+    if (evt !== undefined && evt.type === 'workspace') return evt.path;
+  }
+  for (const msg of session.allMessages()) {
+    if (msg.role !== 'user' || !msg.content.startsWith('<environment>')) continue;
+    const match = /^cwd=(.+)$/m.exec(msg.content);
+    return match?.[1]?.trim();
+  }
+  return undefined;
 }

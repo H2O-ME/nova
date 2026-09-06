@@ -56,7 +56,7 @@ pnpm nova -- exec "修复失败的测试" --json         # 非交互单次执行
 cd packages/cli && npm link    # 生成 nova.cmd 到 npm 全局 bin（已在 PATH）；改代码后重新 pnpm build 即生效
 ```
 
-TUI 命令面板：输入 `/` 弹出带边框的下拉面板（命令 + 说明对齐、选中行整行反色、↑↓ 选择、Tab 补全、Enter 执行、Esc 关闭），支持 `/help /init /model /approvals /plugins /skill /session /new /compact /clear /exit`；`/session` 同时打开会话切换器（最近会话按活跃排序、首条提问作标题，↑↓ 选择、Enter 恢复上下文并切换，Esc 取消）；PageUp/PageDown 或鼠标滚轮滚动历史（上滚时状态栏提示，↓/滚轮回到底部）；Ctrl+C 中断当前轮（空闲时按两次退出）。composer 支持多行：粘贴保留换行并软换行显示（最多 8 行窗口，上下溢出有提示），多行输入下 ↑↓ 在行间移动光标。长命令运行时工具行实时显示已耗时与输出尾行。需要审批、长任务完成/出错时弹系统通知（Windows toast / macOS osascript / Linux notify-send，`notify: false` 关闭）。
+TUI 命令面板：输入 `/` 弹出带边框的下拉面板（命令 + 说明对齐、选中行整行反色、↑↓ 选择、Tab 补全、Enter 执行、Esc 关闭），支持 `/help /init /model /approvals /plugins /skill /session /new /compact /clear /exit`；`/session` 同时打开会话切换器（最近会话按活跃排序、首条提问作标题，↑↓ 选择、Enter 恢复上下文并切换，Esc 取消）；切换会回到该会话创建时的工作区——工具根目录、项目技能、AGENTS.md 一并切过去（原目录已删除时保留现工作区并提示）；PageUp/PageDown 或鼠标滚轮滚动历史（上滚时状态栏提示，↓/滚轮回到底部）；Ctrl+C 中断当前轮（空闲时按两次退出）。composer 支持多行：粘贴保留换行并软换行显示（最多 8 行窗口，上下溢出有提示），多行输入下 ↑↓ 在行间移动光标。长命令运行时工具行实时显示已耗时与输出尾行。需要审批、长任务完成/出错时弹系统通知（Windows toast / macOS osascript / Linux notify-send，`notify: false` 关闭）。
 
 每轮结束的状态行显示 token 用量与缓存命中率（取自网关返回的 `prompt_tokens_details.cached_tokens`，兼容 DeepSeek 的 `prompt_cache_hit_tokens`）。
 

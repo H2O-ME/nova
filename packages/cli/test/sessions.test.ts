@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { listRecentSessions } from '../src/sessions.js';
+import { Session } from '@nova-agent/core';
+import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from '../src/sessions.js';
 
 const writeSession = async (
   file: string,
@@ -62,5 +63,26 @@ describe('listRecentSessions', () => {
     expect(entries.map((e) => e.title)).toEqual(['你好']);
 
     expect(await listRecentSessions(path.join(root, 'nope'), 5)).toEqual([]);
+  });
+
+  it('reads the workspace marker, falling back to the env fragment cwd', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-sessions-'));
+    const dir = path.join(root, '2026', '09', '06');
+    await mkdir(dir, { recursive: true });
+
+    const created = await Session.create(dir);
+    expect(sessionWorkspace(created)).toBeUndefined();
+    await recordSessionWorkspace(created, 'D:\\下载\\新建文件夹');
+    expect(sessionWorkspace(created)).toBe('D:\\下载\\新建文件夹');
+
+    // Legacy session without the marker: the seeded fragment's cwd= line.
+    const legacy = await Session.create(dir);
+    await legacy.append({
+      id: 'm0',
+      ts: 1,
+      role: 'user',
+      content: '<environment>\nplatform=win32\ncwd=D:\\web\\agent\nshell=bash\ntoday=2026-09-06\n</environment>',
+    });
+    expect(sessionWorkspace(legacy)).toBe('D:\\web\\agent');
   });
 });
