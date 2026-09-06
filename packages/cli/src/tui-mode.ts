@@ -39,6 +39,7 @@ import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { createNotifier } from './notify.js';
+import { listRecentSessions, type SessionEntry } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
   approvalLabel,
@@ -108,6 +109,28 @@ interface Block {
 function padDisplay(text: string, width: number): string {
   const pad = Math.max(0, width - styledWidth(text));
   return text + ' '.repeat(pad);
+}
+
+/** `09-06 14:20` stamp for session picker rows. */
+function formatStamp(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Width-aware truncation with an ellipsis (CJK-safe, measures `…` as 2). */
+function clipDisplay(text: string, maxWidth: number): string {
+  if (maxWidth <= 0) return '';
+  if (styledWidth(text) <= maxWidth) return text;
+  let width = 0;
+  let out = '';
+  for (const ch of text) {
+    const w = styledWidth(ch);
+    if (width + w > maxWidth - 2) return `${out}…`;
+    out += ch;
+    width += w;
+  }
+  return out;
 }
 
 export async function startTui(opts: TuiOptions): Promise<void> {
@@ -228,7 +251,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * panel with a sliding window instead of flooding the transcript.
    */
   const MODEL_PICKER_WINDOW = 10;
+  /** 会话切换器：弹窗可视行数与列举条数上限。 */
+  const SESSION_PICKER_WINDOW = 8;
+  const SESSION_LIST_LIMIT = 30;
   let modelPicker: { models: string[]; index: number } | undefined;
+  let sessionPicker: { entries: SessionEntry[]; index: number } | undefined;
   let historyIdx = -1;
   let historyDraft = '';
   let lastUsage: Usage | undefined;
@@ -848,6 +875,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           `${DIM}  缓存浪费 ${stats.missTokens} tok · 超噪声底轮次 ${stats.missTurns}${RESET}`,
           `${DIM}  自动压缩 ${compact}${RESET}`,
         ]);
+        try {
+          const entries = await listRecentSessions(sessionsRoot(), SESSION_LIST_LIMIT);
+          if (entries.length > 0) {
+            sessionPicker = {
+              entries,
+              index: Math.max(0, entries.findIndex((entry) => entry.file === session.file)),
+            };
+            scheduleRender();
+          }
+        } catch (err) {
+          pushBlock([`${RED}  ✗ 会话列表读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+        }
         return true;
       }
       case '/new': {
@@ -900,6 +939,57 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         pushBlock([`${RED}  未知命令：${cmd}${RESET} ${DIM}（输入 /help 查看命令）${RESET}`]);
         return true;
     }
+  }
+
+  /**
+   * Switch the live conversation to a past session: rebind the append-only
+   * log, restore the model-visible surface, and replay user/assistant text
+   * into a fresh transcript (tool traffic stays in the log, not re-rendered).
+   */
+  async function switchToSession(entry: SessionEntry): Promise<void> {
+    if (streaming || compactRunning) {
+      pushBlock([`${YELLOW}  当前轮未结束：先 Esc 中断，再切换会话${RESET}`]);
+      scheduleRender();
+      return;
+    }
+    let loaded: Session;
+    try {
+      loaded = await Session.open(entry.file);
+    } catch (err) {
+      pushBlock([`${RED}  ✗ 会话读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+      scheduleRender();
+      return;
+    }
+    const restored = loaded.deriveMessages();
+    session = loaded;
+    messages = restored;
+    // Rebind the cache-affinity identity and drop the old usage anchor (same
+    // reasoning as /new): the restored history changes the prompt prefix, so
+    // the next turn rebuilds the cache instead of tripping a spurious compact.
+    client.setSessionId(loaded.id);
+    Object.assign(stats, emptyStats());
+    lastUsage = undefined;
+    lastPromptTokens = 0;
+    usageAnchor = undefined;
+    anchorMsgCount = 0;
+    toolBlocks.clear();
+    closeReadGroup();
+    reasoningBlock = undefined;
+    activeToolId = undefined;
+    blocks.length = 0;
+    scrollFromEnd = 0;
+    for (const m of restored) {
+      if (m.role === 'user') {
+        if (m.content.trimStart().startsWith('<')) continue;
+        pushBlock(['', m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` });
+      } else if (m.role === 'assistant' && m.content.trim().length > 0) {
+        pushBlock([m.content], { first: `  ${DIM}•${RESET} `, rest: '    ' });
+      }
+    }
+    pushBlock([
+      `${GREEN}  ✓ 已切换到会话${RESET} ${DIM}${path.basename(loaded.file)} · 上下文 ${restored.length} 条消息${RESET}`,
+    ]);
+    scheduleRender();
   }
 
   // ---- input handling ---------------------------------------------------
@@ -1032,6 +1122,35 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         }
       } else {
         return; // any other key: swallowed by the picker, never reaches the composer
+      }
+      scheduleRender();
+      return;
+    }
+
+    // session picker swallows keys while open (↑↓ scroll · Enter switch · Esc cancel)
+    if (sessionPicker !== undefined) {
+      const picker = sessionPicker;
+      const winSize = Math.min(SESSION_PICKER_WINDOW, picker.entries.length);
+      if (k.type === 'ctrl+c' || k.type === 'esc') {
+        sessionPicker = undefined;
+      } else if (k.type === 'up' || k.type === 'wheelup') {
+        picker.index = Math.max(0, picker.index - 1);
+      } else if (k.type === 'down' || k.type === 'wheeldown') {
+        picker.index = Math.min(picker.entries.length - 1, picker.index + 1);
+      } else if (k.type === 'pageup') {
+        picker.index = Math.max(0, picker.index - winSize);
+      } else if (k.type === 'pagedown') {
+        picker.index = Math.min(picker.entries.length - 1, picker.index + winSize);
+      } else if (k.type === 'enter') {
+        const entry = picker.entries[picker.index];
+        sessionPicker = undefined;
+        if (entry !== undefined && entry.file !== session.file) {
+          void switchToSession(entry);
+        } else if (entry !== undefined) {
+          pushBlock([`${DIM}  已是当前会话${RESET}`]);
+        }
+      } else {
+        return;
       }
       scheduleRender();
       return;
@@ -1279,7 +1398,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const rows = screen.rows;
 
     const matches = commandPopupMatches();
-    const popupOpen = approvalRequest === undefined && modelPicker === undefined && matches.length > 0;
+    const popupOpen =
+      approvalRequest === undefined &&
+      modelPicker === undefined &&
+      sessionPicker === undefined &&
+      matches.length > 0;
     // Sliding 6-row window: the highlighted entry stays visible even when the
     // match list is longer than the popup.
     const visibleStart = Math.max(0, Math.min(popupIndex - 5, matches.length - 6));
@@ -1312,6 +1435,35 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const pad = Math.max(0, inner - 2 - styledWidth(content));
         popupLines.push(
           idx === modelPicker.index
+            ? `│ ${INVERSE}${content}${' '.repeat(pad)}${RESET} │`
+            : `│ ${DIM}${content}${' '.repeat(pad)}${RESET} │`,
+        );
+      }
+      popupLines.push(
+        `╰${DIM}↑↓ 选择 · Enter 切换 · Esc 取消${RESET}${'─'.repeat(
+          Math.max(0, inner - styledWidth('↑↓ 选择 · Enter 切换 · Esc 取消')),
+        )}╯`,
+      );
+    } else if (sessionPicker !== undefined) {
+      // Session switcher: bordered panel like the model picker, a sliding
+      // window over the newest sessions, current one marked.
+      const entries = sessionPicker.entries;
+      const winSize = Math.min(SESSION_PICKER_WINDOW, entries.length);
+      const start = Math.max(0, Math.min(sessionPicker.index - (SESSION_PICKER_WINDOW - 1), entries.length - winSize));
+      const inner = cols - 3;
+      popupLines.push(`╭─ ${DIM}会话${RESET} ${'─'.repeat(Math.max(0, inner - styledWidth('─ 会话 ')))}╮`);
+      for (let i = 0; i < winSize; i++) {
+        const idx = start + i;
+        const entry = entries[idx];
+        if (entry === undefined) continue;
+        const marker = ` ${idx === sessionPicker.index ? '❯' : ' '} `;
+        const stamp = formatStamp(entry.mtime);
+        const suffix = entry.file === session.file ? '（当前）' : '';
+        const maxTitle = Math.max(0, inner - 2 - styledWidth(marker) - styledWidth(stamp) - 1 - styledWidth(suffix));
+        const content = `${marker}${stamp} ${clipDisplay(entry.title, maxTitle)}${suffix}`;
+        const pad = Math.max(0, inner - 2 - styledWidth(content));
+        popupLines.push(
+          idx === sessionPicker.index
             ? `│ ${INVERSE}${content}${' '.repeat(pad)}${RESET} │`
             : `│ ${DIM}${content}${' '.repeat(pad)}${RESET} │`,
         );
@@ -1416,6 +1568,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (approvalRequest !== undefined) return 5; // header + 3 options + hint
     if (modelPicker !== undefined) {
       return Math.min(MODEL_PICKER_WINDOW, modelPicker.models.length) + 2; // rows + title + hint border
+    }
+    if (sessionPicker !== undefined) {
+      return Math.min(SESSION_PICKER_WINDOW, sessionPicker.entries.length) + 2; // rows + title + hint border
     }
     const matches = commandPopupMatches();
     if (matches.length === 0) return 0;
