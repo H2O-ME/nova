@@ -1410,8 +1410,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // row sits inside the zone; the "more above" hint (when present) occupies
     // the zone's first row and shifts everything down one.
     const hintRows = layout.hiddenAbove > 0 ? 1 : 0;
+    // +1 crosses the breathing row between history and the popup/composer zone.
     return {
-      row: historyRows + popupHeight() + hintRows + layout.cursorRow,
+      row: historyRows + 1 + popupHeight() + hintRows + layout.cursorRow,
       col: COMPOSER_PREFIX_WIDTH + layout.cursorCol,
     };
   }
@@ -1449,7 +1450,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       const color = ratio >= 1 ? RED : ratio >= 0.7 ? YELLOW : GREEN;
       parts.push(`ctx ${color}${contextBar(ratio)}${RESET}${DIM} ${Math.round(ratio * 100)}%`);
     }
-    return `${DIM} ${parts.join(' · ')}${RESET}`;
+    return `${DIM}  ${parts.join(' · ')}${RESET}`;
   }
 
   // ---- lifecycle --------------------------------------------------------
@@ -1508,8 +1509,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   const bannerLines = [
     `${CYAN}${BOLD}  Nova${RESET} ${DIM}v0.1.0${RESET}`,
-    `${DIM}  ${rootDir} · / 命令面板 · Esc 中断 · Ctrl+C×2 退出${RESET}`,
-    `${DIM}  数据 ${sessionsRoot()}${RESET}`,
+    `${DIM}  工作区 ${rootDir}${RESET}`,
+    `${DIM}  / 命令面板 · Esc 中断 · Ctrl+C×2 退出${RESET}`,
+    `${DIM}  会话 ${sessionsRoot()}${RESET}`,
   ];
   if (skills.length > 0) {
     bannerLines.push(`${DIM}  技能 ${skills.map((s) => s.name).join('、')}${RESET}`);

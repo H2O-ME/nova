@@ -14,7 +14,6 @@ describe('width', () => {
     // never wrap the frame.
     expect(stringWidth('…')).toBe(2);
     expect(stringWidth('⋯')).toBe(2);
-    expect(stringWidth('❯')).toBe(2); // composer/approval marker
     expect(stringWidth('✓')).toBe(2); // tool done marker
     expect(stringWidth('✗')).toBe(2); // tool failure marker
     expect(stringWidth('⟳')).toBe(2); // retry line
@@ -35,6 +34,7 @@ describe('width', () => {
     expect(stringWidth('↑')).toBe(1);
     expect(stringWidth('↓')).toBe(1);
     expect(stringWidth('·')).toBe(1);
+    expect(stringWidth('❯')).toBe(1); // composer prompt — feeds caret column math
     expect(stringWidth('█')).toBe(1); // context bar
     expect(stringWidth('░')).toBe(1);
     expect(stringWidth('a · b')).toBe(5);

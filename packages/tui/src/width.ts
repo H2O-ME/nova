@@ -26,14 +26,17 @@ const WIDE_RANGES: Array<[number, number]> = [
 
 /**
  * East Asian "ambiguous" glyphs that this UI emits. Modern terminals —
- * Windows Terminal included — render ambiguous glyphs one cell wide. Only
- * width-composed rows care: the popup boxes assemble full-width border rows
- * out of box drawing (╭─╮│╰╯), arrows (↑↓→) and the middle dot (·), so those
- * must be measured at their rendered width — counting 2 made every popup row
- * overflow the safe width, and the renderer chopped the right border off with
- * a trailing `…`. Glyphs that only ever appear in short left-aligned rows
- * (✓ ✗ ⠋ ❯ …) keep the conservative 2: there an overcount can only truncate
- * cosmetically, never wrap the frame.
+ * Windows Terminal included — render ambiguous glyphs one cell wide. Any
+ * glyph whose measured width feeds column arithmetic must be measured at
+ * its rendered width: the popup boxes assemble full-width border rows out
+ * of box drawing (╭─╮│╰╯), arrows (↑↓→) and the middle dot (·), and the
+ * composer prefix `  ❯ ` sets the caret column and the input wrap budget —
+ * counting these 2 made popup rows overflow the safe width (the renderer
+ * chopped the right border off with a trailing `…`) and shifted the caret
+ * a cell right of where the terminal paints it. Glyphs that only ever
+ * appear inside short left-aligned rows (✓ ✗ ⠋ ⋯ …) keep the conservative
+ * 2: there an overcount can only truncate cosmetically, never wrap the
+ * frame.
  */
 const AMBIGUOUS_RANGES: Array<[number, number]> = [
   [0x2013, 0x2014], // – — dashes
@@ -42,8 +45,11 @@ const AMBIGUOUS_RANGES: Array<[number, number]> = [
   [0x2103, 0x2103], // ℃
   [0x22ef, 0x22ef], // ⋯ midline ellipsis
   [0x2303, 0x23ff], // ⏎ return symbol and other technical pictographs
-  [0x2600, 0x27bf], // misc symbols + dingbats (✓ ✗ ⚠ ★)
-  [0x2768, 0x2775], // ❯ chevrons and light brackets (composer/approval marker)
+  // 0x276c-0x276f (❬❭❮❯) are deliberately excluded: the composer prompt
+  // `  ❯ ` and the popup selected-row marker are width-sensitive, and the
+  // terminal paints them one cell wide.
+  [0x2600, 0x276b], // misc symbols + dingbats (✓ ✗ ⚠ ★)
+  [0x2770, 0x27bf], // light brackets ❰❱❲❳❴❵ and the remaining dingbats
   [0x27f0, 0x27ff], // ⟳ supplemental arrows (retry line)
   [0x2800, 0x28ff], // braille patterns (spinner frames)
 ];
