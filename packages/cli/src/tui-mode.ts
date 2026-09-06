@@ -545,7 +545,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               reasoningOpen = true;
               reasoningDone.length = 0;
               reasoningPartial = '';
-              pushBlock([], { first: '  ', rest: '    ' });
+              // Reasoning is secondary content: every row sits at the text
+              // column (no marker on the first row — an unmarked first row at
+              // the marker column just reads as a stray outdented line).
+              pushBlock([], { first: '    ', rest: '    ' });
               reasoningBlock = blocks[blocks.length - 1];
             }
             // Split complete lines off the live buffer; only the partial row
@@ -561,7 +564,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             if (reasoningPartial.length > REASONING_MAX_PARTIAL_CHARS) {
               reasoningPartial = `…${reasoningPartial.slice(-REASONING_MAX_PARTIAL_CHARS)}`;
             }
-            const lines = [...reasoningDone, `${DIM}⋯ ${reasoningPartial}${RESET}`];
+            // The whole block reads as "thinking": every row dim, the live
+            // tail carries the ⋯ marker. Committed rows stay dim — dimming
+            // only the tail made settled lines jump to full brightness the
+            // moment the stream moved past them.
+            const lines = [
+              ...reasoningDone.map((line) => (line.length === 0 ? '' : `${DIM}${line}${RESET}`)),
+              `${DIM}⋯ ${reasoningPartial}${RESET}`,
+            ];
             // The update goes to the block's stable ref — the last block may
             // be a tool line, and clobbering it must not erase history.
             if (reasoningBlock !== undefined) replaceBlock(reasoningBlock, lines);
