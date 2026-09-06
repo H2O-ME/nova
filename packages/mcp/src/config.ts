@@ -63,20 +63,27 @@ export function mcpConfigPath(rootDir: string): string {
 }
 
 /**
- * Walk up from startDir looking for .nova/mcp.json (mirrors config.json
- * discovery). When no workspace file exists, fall back to an explicitly
- * present ~/.nova/mcp.json — nothing is ever written to the home directory.
+ * Walk up from startDir looking for .nova/mcp.json (project layer). The walk
+ * STOPS at the real home directory: everything above it is not "project"
+ * material, and on Windows %TEMP% lives under the profile, so ascending past
+ * home would let any run in a temp dir silently adopt the user's global
+ * config as a "project" layer. The user-level ~/.nova/mcp.json is applied
+ * explicitly by the `homedir` fallback afterwards (injectable so tests stay
+ * hermetic). Nothing is ever written to the home directory.
  */
-export async function findMcpConfigFile(startDir: string): Promise<string | undefined> {
+export async function findMcpConfigFile(startDir: string, homedir: string = os.homedir()): Promise<string | undefined> {
+  const boundary = path.resolve(os.homedir());
   let dir = path.resolve(startDir);
   for (let depth = 0; depth < 32; depth++) {
-    const candidate = mcpConfigPath(dir);
-    if (await exists(candidate)) return candidate;
+    if (dir !== boundary) {
+      const candidate = mcpConfigPath(dir);
+      if (await exists(candidate)) return candidate;
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  const homeCandidate = path.join(os.homedir(), NOVA_DIR, 'mcp.json');
+  const homeCandidate = path.join(homedir, NOVA_DIR, 'mcp.json');
   return (await exists(homeCandidate)) ? homeCandidate : undefined;
 }
 

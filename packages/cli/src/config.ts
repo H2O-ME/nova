@@ -57,23 +57,17 @@ export function userConfigPath(homedir: string = os.homedir()): string {
   return path.join(novaHome(homedir), 'config.json');
 }
 
-/**
- * ~/.nova/projects/ 下的项目目录名：可读名 + 全路径短哈希。不同盘符/大小写
- * 的同一路径归一后同哈希；重名项目靠哈希区分，互不串数据。
- */
-export function projectSlug(rootDir: string, homedir: string = os.homedir()): string {
-  const normalized = path.resolve(rootDir).replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase();
-  let hash = 0;
-  for (let i = 0; i < normalized.length; i++) {
-    hash = (hash * 31 + normalized.charCodeAt(i)) | 0;
-  }
-  const base = path.basename(normalized).replace(/[^a-z0-9_-]+/g, '-') || 'project';
-  return `${base}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+/** 会话根目录（codex 式按日期归档）：~/.nova/sessions/YYYY/MM/DD/sess_<id>.jsonl。 */
+export function sessionsRoot(homedir: string = os.homedir()): string {
+  return path.join(novaHome(homedir), 'sessions');
 }
 
-/** 该工作区（运行 nova 的目录）的数据目录：~/.nova/projects/<slug>/，sessions 与 cache 存这里。 */
-export function dataDirFor(rootDir: string, homedir: string = os.homedir()): string {
-  return path.join(novaHome(homedir), 'projects', projectSlug(rootDir, homedir));
+/** 新会话落盘的日期桶（创建时取当天，跨天启动自动换目录）。 */
+export function sessionDateBucket(now: Date = new Date()): string {
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}/${mm}/${dd}`;
 }
 
 /** Expands `{env:NAME}` references; unset variables expand to an empty string. */

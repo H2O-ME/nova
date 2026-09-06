@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Session, type ChatProvider, type StreamEvent } from '@nova-agent/core';
 import { runExec } from '../src/exec.js';
-import { projectSlug, type Config } from '../src/config.js';
+import { sessionDateBucket, type Config } from '../src/config.js';
 
 const config: Config = {
   provider: { baseURL: 'https://unused.example.com/v1', apiKey: 'sk-test', model: 'test-model' },
@@ -28,11 +28,11 @@ const TEXT_ONLY: StreamEvent[] = [
 ];
 
 describe('runExec', () => {
-  it('emits JSONL events and persists fragment + prompt + assistant reply under ~/.nova/projects', async () => {
+  it('emits JSONL events and persists fragment + prompt + assistant reply under ~/.nova/sessions', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
     const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
     // os.homedir() re-reads these per call on each platform, so runExec's
-    // dataDirFor lands in the isolated fake home, never the real ~/.nova.
+    // sessions root lands in the isolated fake home, never the real ~/.nova.
     const prevProfile = process.env['USERPROFILE'];
     const prevHome = process.env['HOME'];
     process.env['USERPROFILE'] = home;
@@ -52,7 +52,7 @@ describe('runExec', () => {
       expect(events.map((e) => e.type)).toEqual(['turn_start', 'text_delta', 'usage', 'message', 'done']);
       expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
 
-      const sessionsDir = path.join(home, '.nova', 'projects', projectSlug(root, home), 'sessions');
+      const sessionsDir = path.join(home, '.nova', 'sessions', sessionDateBucket());
       const files = await readdir(sessionsDir);
       const replayed = await Session.replay(path.join(sessionsDir, files[0]!));
       expect(replayed.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant']);

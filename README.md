@@ -17,7 +17,7 @@
 - **todo 工具**（dsh 极简式）：`todo_write` 整表替换、last-write-wins，条目仅 `content` + 三态 `status`（故意不给 id/priority）；快照持久化为 log-only `todo/write` 事件，resume 后可从日志重建，不占模型上下文。
 - **AGENTS.md 发现链**（codex 式）：从工作区根到当前目录逐层收集 AGENTS.md（根在前），共享 32KB 字节预算，注入 `<project_docs>` 片段；`/init` 生成初版。
 - **双形态**：`nova`（无参）→ 交互 TUI/readline；`nova exec "<task>"` → 非交互单次执行，`--json` 输出 AgentEvent JSONL（CI 友好，可管道传入任务）；exec 无法交互确认，未放行的审批请求自动拒绝。
-- **数据落盘（零工作区写入）**：一切数据都在 `~/.nova/` 下——配置 `~/.nova/config.json`（唯一来源）、MCP `~/.nova/mcp.json`（也支持项目内 `.nova/mcp.json`，只读查找）、技能 `~/.nova/skills/`（+项目级 `.nova/skills/`，只读）、会话与溢出缓存 `~/.nova/projects/<slug>/`（slug = 目录名+路径哈希，重名项目不串数据）。运行 nova 的目录就是工作区，但 nova 不在其中创建任何文件。
+- **数据落盘（零工作区写入，codex 式）**：一切数据都在 `~/.nova/` 下——配置 `~/.nova/config.json`（唯一来源）、MCP `~/.nova/mcp.json`（也支持项目内 `.nova/mcp.json`，只读查找）、技能 `~/.nova/skills/`（+项目级 `.nova/skills/`，只读）、会话 `~/.nova/sessions/YYYY/MM/DD/`（按日期归档，全局不分项目）、溢出缓存 `~/.nova/cache/tool-outputs/<sessionId>/`。运行 nova 的目录就是工作区，但 nova 不在其中创建任何文件。
 - **轮数上限与自定义 shell**：`maxTurns` 限制单次任务最大轮数（默认 30，上限 500，到顶以 `max_turns` 停止）；`tools.bash.shellPath` 显式指定 bash 可执行文件（默认自动探测）；`systemPrompt` 作为附加用户指令注入会话首条上下文片段（不是替换内核系统提示，前缀缓存不受影响）。
 - **输出截断防御 + 缓存浪费审计**（pi cache-stats 式）：`finishReason=length`（输出 token 上限截断）时，该批工具调用全部判失败——流式参数可能静默半截，模型下一轮重发完整调用；usage 统计含缓存浪费（`missTokens`：仅统计超出噪声底 1024 tok 的全价 token，供应商从未上报过缓存则不计），`/session` 与 TUI 状态栏可见。
 - **模型接入**：任意 OpenAI 兼容端点（`baseURL` + `apiKey` + `model`，可选 `temperature` / `maxTokens`），支持流式、工具调用、重试与断流自愈（429/5xx 指数退避并优先尊重 `Retry-After`；流中途断开、网关 error 事件、无 finish_reason 收尾同样自动重试，半截输出先以 `reset` 事件通知消费者丢弃再从头重放）、usage/缓存命中统计（兼容 DeepSeek 的 `prompt_cache_hit_tokens`）；推理模型的 `reasoning_content` 流以暗色尾迹实时显示（REPL/TUI），不写入会话日志、不破坏前缀缓存。`/model` 自动拉取站点模型目录（`GET /models`，60s 缓存）：TUI 弹出**交互式选择面板**（↑↓ 滚动、Enter 切换、Esc 取消，长列表滑动窗口不灌历史），REPL 列出后追问序号切换。
@@ -29,8 +29,7 @@ pnpm install
 pnpm build
 
 # ~/.nova/config.json —— 唯一的配置文件（{env:MY_KEY} 引用环境变量）
-# 项目目录里不需要、也不会产生任何 .nova/ 文件；换个目录运行 nova
-# 即切换工作区，会话自动归档到 ~/.nova/projects/<目录名-哈希>/。
+# 项目目录里不需要、也不会产生任何 .nova/ 文件；会话在 ~/.nova/sessions/年/月/日/ 下。
 # {
 #   "provider": {
 #     "baseURL": "https://api.example.com/v1",
@@ -68,7 +67,7 @@ pnpm build
 
 pnpm nova          # 交互运行（TTY 下全屏 TUI；非 TTY 自动回落 readline；--repl 强制 readline）
 pnpm nova -- --approval auto-edit                 # 临时覆盖审批档位
-pnpm nova -- --resume ~/.nova/projects/<slug>/sessions/<id>.jsonl   # 续接历史会话
+pnpm nova -- --resume ~/.nova/sessions/<YYYY/MM/DD>/<id>.jsonl      # 续接历史会话
 pnpm nova -- exec "修复失败的测试" --json         # 非交互单次执行（JSONL 事件流，也可管道传入任务）
 
 # 全局命令（任意工作目录直接 `nova`）：

@@ -36,7 +36,7 @@ import {
   filterCommands,
   type CommandSpec,
 } from './commands.js';
-import { NOVA_DIR, dataDirFor, type Config } from './config.js';
+import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { createNotifier } from './notify.js';
@@ -118,10 +118,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const decoder = new KeyDecoder();
 
   // ---- persistent state -------------------------------------------------
-  // 数据永远集中在 ~/.nova/projects/<slug>/：工作区（运行 nova 的目录）零写入。
-  // rootDir 仅作为工具沙箱/cwd/AGENTS.md 的定位，不承载任何 nova 数据。
-  const dataDir = dataDirFor(rootDir);
-  const sessionsDir = path.join(dataDir, 'sessions');
+  // 会话按日期归档（codex 式）：~/.nova/sessions/YYYY/MM/DD/，全局不分项目；
+  // 溢出缓存在 ~/.nova/cache/tool-outputs/<session-id>/（id 全局唯一）。
+  // 工作区（运行 nova 的目录）零写入。
+  const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
+  let sessionsDir = newSessionDir();
   let messages: AgentMessage[] = [];
   let session: Session;
   if (opts.resumeFile) {
@@ -524,7 +525,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         messages,
         rootDir,
         // Spilled tool outputs are grouped per session.
-        cacheDir: path.join(dataDir, 'cache', 'tool-outputs', session.id),
+        cacheDir: path.join(novaHome(), 'cache', 'tool-outputs', session.id),
         jobs,
         emit: async (evt) => { await session.appendEvent(evt); },
         tools: host.tools,
@@ -879,6 +880,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return true;
       }
       case '/new': {
+        sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
         session = await Session.create(sessionsDir);
         // Rebind the cache-affinity identity and drop the old usage anchor:
         // keeping either would send the old session's cache key (or trigger
@@ -1564,7 +1566,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const bannerLines = [
     `${CYAN}${BOLD}  Nova${RESET} ${DIM}v0.1.0${RESET}`,
     `${DIM}  ${rootDir} · / 命令面板 · Esc 中断 · Ctrl+C×2 退出${RESET}`,
-    `${DIM}  数据 ${dataDir}${RESET}`,
+    `${DIM}  数据 ${sessionsRoot()}${RESET}`,
   ];
   if (skills.length > 0) {
     bannerLines.push(`${DIM}  技能 ${skills.map((s) => s.name).join('、')}${RESET}`);

@@ -27,7 +27,7 @@ import {
   type AskFn,
 } from '@nova-agent/plugins';
 import type { McpPlugin } from '@nova-agent/mcp';
-import { NOVA_DIR, dataDirFor, type Config } from './config.js';
+import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache } from './commands.js';
@@ -106,9 +106,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const useColor = process.stdout.isTTY === true;
   const paint = useColor ? palette : plainPalette;
 
-  // 数据永远集中在 ~/.nova/projects/<slug>/，工作区零写入。
-  const dataDir = dataDirFor(rootDir);
-  const sessionsDir = path.join(dataDir, 'sessions');
+  // 会话按日期归档（codex 式）：~/.nova/sessions/YYYY/MM/DD/，工作区零写入。
+  const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
+  let sessionsDir = newSessionDir();
   let messages: AgentMessage[] = [];
   let session: Session;
   if (opts.resumeFile) {
@@ -429,6 +429,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           );
           break;
         case '/new': {
+          sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
           session = await Session.create(sessionsDir);
           // Rebind the cache-affinity identity and drop the old usage anchor:
           // keeping either would send the old session's cache key (or trigger
@@ -574,7 +575,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         messages,
         rootDir,
         // Spilled tool outputs are grouped per session.
-        cacheDir: path.join(dataDir, 'cache', 'tool-outputs', session.id),
+        cacheDir: path.join(novaHome(), 'cache', 'tool-outputs', session.id),
         jobs,
         emit: async (evt) => { await session.appendEvent(evt); },
         tools: host.tools,

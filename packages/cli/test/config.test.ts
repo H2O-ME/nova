@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dataDirFor, expandRefs, loadConfig, projectSlug, userConfigPath } from '../src/config.js';
+import { expandRefs, loadConfig, sessionDateBucket, sessionsRoot, userConfigPath } from '../src/config.js';
 
 describe('expandRefs', () => {
   it('expands {env:NAME} references', () => {
@@ -14,14 +14,12 @@ describe('expandRefs', () => {
   });
 });
 
-describe('data dir resolution', () => {
-  it('slugs projects by basename plus a path hash, stable across calls', () => {
+describe('session storage layout', () => {
+  it('buckets sessions by date under the global sessions root (codex-style)', () => {
     const home = path.join(tmpdir(), 'nova-home');
-    const a = projectSlug('D:\\web\\agent', home);
-    expect(a).toMatch(/^agent-[0-9a-f]{8}$/);
-    expect(projectSlug('d:/web/agent/', home)).toBe(a); // case/separator/trailing slash normalized
-    expect(projectSlug('D:\\web\\other\\agent', home)).not.toBe(a); // same basename, other path
-    expect(dataDirFor('D:\\web\\agent', home)).toBe(path.join(home, '.nova', 'projects', a));
+    expect(sessionsRoot(home)).toBe(path.join(home, '.nova', 'sessions'));
+    const bucket = sessionDateBucket(new Date(2026, 8, 6, 14, 23, 5));
+    expect(bucket).toBe('2026/09/06');
   });
 });
 
