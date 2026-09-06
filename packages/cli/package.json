@@ -23,7 +23,6 @@
   "dependencies": {
     "@nova-agent/ai": "workspace:*",
     "@nova-agent/core": "workspace:*",
-    "@nova-agent/mcp": "workspace:*",
     "@nova-agent/plugins": "workspace:*",
     "@nova-agent/tui": "workspace:*",
     "zod": "^4.1.13"

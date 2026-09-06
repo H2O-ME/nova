@@ -42,8 +42,8 @@ export class PluginHost {
 
   /**
    * Activates only plugins `use`d since the last call, so runners can attach
-   * lazily-loaded plugins (MCP on-demand startup) after the initial boot
-   * activation without re-running the built-ins.
+   * lazily-loaded plugins after the initial boot activation without
+   * re-running the built-ins.
    */
   async activate(): Promise<void> {
     for (const plugin of this.plugins.slice(this.activatedCount)) {

@@ -14,7 +14,6 @@ export const COMMAND_SPECS: CommandSpec[] = [
   { name: '/model', usage: '/model', description: '打开模型选择面板（从站点目录切换模型）' },
   { name: '/approvals', usage: '/approvals', description: '循环切换审批档位（只读 → 自动编辑 → 全部放行）' },
   { name: '/plugins', usage: '/plugins', description: '列出插件、工具与权限级别' },
-  { name: '/mcp', usage: '/mcp', description: '查看 MCP 服务器与工具加载状态' },
   { name: '/skill', usage: '/skill <name>', description: '加载指定技能的完整指令并立即执行' },
   { name: '/session', usage: '/session', description: '查看会话信息与 token 统计' },
   { name: '/new', usage: '/new', description: '开启新会话' },

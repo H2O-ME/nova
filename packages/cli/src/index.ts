@@ -22,7 +22,7 @@ options:
 
 运行于当前工作目录（即工作区，nova 不会在项目里创建或读取任何文件）；配置唯一
 来源是 ~/.nova/config.json；会话按日期归档在 ~/.nova/sessions/YYYY/MM/DD/，
-溢出缓存在 ~/.nova/cache/。MCP（.nova/mcp.json）与技能按 用户级 → 向上查找 两级解析。`;
+溢出缓存在 ~/.nova/cache/。技能按 用户级 → 项目级 两级解析。`;
 
 interface ParsedArgs {
   resumeFile?: string;

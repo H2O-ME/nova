@@ -34,7 +34,6 @@ describe('system prompt', () => {
     // the fragment contract is documented in the prompt itself
     expect(prompt).toContain('<environment>');
     expect(prompt).toContain('<available_skills>');
-    expect(prompt).toContain('mcp__<server>__<tool>');
   });
 });
 

@@ -26,7 +26,6 @@ import {
   type ApprovalMode,
   type AskFn,
 } from '@nova-agent/plugins';
-import type { McpPlugin } from '@nova-agent/mcp';
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
@@ -153,33 +152,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
   ]);
   if (skills.length > 0) host.use(skillsPlugin(skills));
-
-  let mcp: McpPlugin | undefined;
-  try {
-    // Dynamic import: with no mcp.json neither the module nor any connector
-    // ever loads; with servers, connection defers to the first agent turn.
-    const { loadMcpConfig, mcpPlugin } = await import('@nova-agent/mcp');
-    const mcpConfig = await loadMcpConfig(rootDir);
-    if (mcpConfig !== undefined && mcpConfig.servers.length > 0) {
-      mcp = mcpPlugin({ servers: mcpConfig.servers });
-    }
-  } catch (err) {
-    console.error(`MCP 配置加载失败：${err instanceof Error ? err.message : String(err)}`);
-  }
   await host.activate();
-
-  /** MCP connects on demand at the first turn; failed servers retry per turn. */
-  let mcpAttached = false;
-  const ensureMcp = async (): Promise<void> => {
-    if (mcp === undefined) return;
-    if (!mcpAttached) {
-      mcpAttached = true;
-      host.use(mcp);
-      await host.activate();
-      return;
-    }
-    await mcp.ensureConnected();
-  };
 
   const sessionEnv: SessionEnvInfo = {
     platform: process.platform,
@@ -445,21 +418,6 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           console.log(`新会话：${session.file}`);
           break;
         }
-        case '/mcp': {
-          if (mcp === undefined) {
-            console.log('未配置 MCP 服务器（.nova/mcp.json）');
-            break;
-          }
-          const statuses = mcp.status();
-          if (statuses.length === 0) {
-            console.log('MCP 将在首次对话时按需连接');
-            break;
-          }
-          for (const s of statuses) {
-            console.log(`  ${s.server} · ${s.type} · ${s.ok ? `${s.tools} 个工具` : `启动失败：${s.error}`}`);
-          }
-          break;
-        }
         case '/session': {
           const hit =
             stats.promptTokens > 0
@@ -568,8 +526,6 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     reasoningTail = '';
     const requestStartedAt = Date.now();
     try {
-      // Lazy MCP: connect (or retry failed servers) before the first request.
-      await ensureMcp().catch(() => undefined);
       for await (const event of runAgent({
         provider: client,
         messages,
@@ -623,5 +579,4 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   // Kill background jobs before the process exits, or the spawned shells
   // outlive the session (dsh jobs dispose contract).
   await jobs.dispose().catch(() => undefined);
-  if (mcp !== undefined) await mcp.close().catch(() => undefined);
 }

@@ -27,7 +27,6 @@ import {
   type AskFn,
   type PermissionKind,
 } from '@nova-agent/plugins';
-import type { McpPlugin } from '@nova-agent/mcp';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
 import {
@@ -148,7 +147,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   const host = new PluginHost(rootDir);
   const bashConfig = config.tools?.bash;
-  let mcpConfigError: string | undefined;
   for (const plugin of builtinPlugins({
     bash:
       bashConfig?.enabled === false
@@ -166,38 +164,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
   ]);
   if (skills.length > 0) host.use(skillsPlugin(skills));
-
-  let mcp: McpPlugin | undefined;
-  try {
-    // The MCP module is imported dynamically: with no mcp.json (or no
-    // servers) neither the module nor any connector ever loads or starts.
-    const { loadMcpConfig, mcpPlugin } = await import('@nova-agent/mcp');
-    const mcpConfig = await loadMcpConfig(rootDir);
-    if (mcpConfig !== undefined && mcpConfig.servers.length > 0) {
-      mcp = mcpPlugin({ servers: mcpConfig.servers });
-    }
-  } catch (err) {
-    // Surface the error but keep the session usable without MCP.
-    mcpConfigError = err instanceof Error ? err.message : String(err);
-  }
   await host.activate();
-
-  /**
-   * MCP connects on demand: attached and connected at the first agent turn
-   * (so a slow/failing server never blocks boot), with failed servers
-   * retried on each later turn.
-   */
-  let mcpAttached = false;
-  const ensureMcp = async (): Promise<void> => {
-    if (mcp === undefined) return;
-    if (!mcpAttached) {
-      mcpAttached = true;
-      host.use(mcp);
-      await host.activate();
-      return;
-    }
-    await mcp.ensureConnected();
-  };
 
   const sessionEnv: SessionEnvInfo = {
     platform: process.platform,
@@ -514,12 +481,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     let reasoningPartial = '';
     let reasoningOpen = false;
     try {
-      // Lazy MCP: connect (or retry failed servers) before the first request.
-      try {
-        await ensureMcp();
-      } catch {
-        // MCP tools are simply unavailable this turn; the error shows in /mcp.
-      }
       for await (const event of runAgent({
         provider: client,
         messages,
@@ -896,23 +857,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         pushBlock([`${DIM}  新会话：${session.file}${RESET}`]);
         return true;
       }
-      case '/mcp': {
-        if (mcp === undefined) {
-          pushBlock([`${DIM}  未配置 MCP 服务器（.nova/mcp.json）${RESET}`]);
-          return true;
-        }
-        const statuses = mcp.status();
-        if (statuses.length === 0) {
-          pushBlock([`${DIM}  MCP 将在首次对话时按需连接${RESET}`]);
-          return true;
-        }
-        const lines = statuses.map(
-          (s) =>
-            `${DIM}  ${s.server} · ${s.type} · ${s.ok ? `${s.tools} 个工具` : `启动失败：${s.error}`}${RESET}`,
-        );
-        pushBlock([`  ${BOLD}MCP 服务器${RESET}`, ...lines]);
-        return true;
-      }
       case '/compact': {
         pushBlock([`${DIM}  ⋯ 正在压缩会话…${RESET}`]);
         try {
@@ -955,7 +899,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * — switching the gate mode while the agent works is the whole point.
    * Session-mutating commands (/new /compact /clear /init) stay blocked.
    */
-  const STREAM_SAFE_COMMANDS = new Set(['/approvals', '/help', '/model', '/session', '/plugins', '/mcp', '/exit', '/quit']);
+  const STREAM_SAFE_COMMANDS = new Set(['/approvals', '/help', '/model', '/session', '/plugins', '/exit', '/quit']);
 
   async function handleSubmit(): Promise<void> {
     const text = input.trim();
@@ -974,7 +918,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return;
       }
       pushBlock([
-        `${DIM}  上一轮仍在进行：Esc 中断当前轮；/approvals /model /session /plugins /mcp 等查看类命令仍可用${RESET}`,
+        `${DIM}  上一轮仍在进行：Esc 中断当前轮；/approvals /model /session /plugins 等查看类命令仍可用${RESET}`,
       ]);
       scheduleRender();
       return;
@@ -1517,7 +1461,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       clearTimeout(escTimer);
       escTimer = undefined;
     }
-    if (mcp !== undefined) void mcp.close().catch(() => undefined);
     void jobs.dispose();
     screen.exit();
     process.stdin.setRawMode(false);
@@ -1570,9 +1513,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   ];
   if (skills.length > 0) {
     bannerLines.push(`${DIM}  技能 ${skills.map((s) => s.name).join('、')}${RESET}`);
-  }
-  if (mcpConfigError !== undefined) {
-    bannerLines.push(`${YELLOW}  MCP 配置加载失败：${mcpConfigError}${RESET}`);
   }
   for (const warning of session.warnings) {
     bannerLines.push(`${YELLOW}  ${warning}${RESET}`);

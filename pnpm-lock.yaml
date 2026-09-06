@@ -42,9 +42,6 @@ importers:
       '@nova-agent/core':
         specifier: workspace:*
         version: link:../core
-      '@nova-agent/mcp':
-        specifier: workspace:*
-        version: link:../mcp
       '@nova-agent/plugins':
         specifier: workspace:*
         version: link:../plugins
@@ -63,22 +60,6 @@ importers:
         version: 4.23.13
 
   packages/core:
-    devDependencies:
-      '@types/node':
-        specifier: ^26.4.0
-        version: 26.4.0
-
-  packages/mcp:
-    dependencies:
-      '@nova-agent/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova-agent/plugins':
-        specifier: workspace:*
-        version: link:../plugins
-      zod:
-        specifier: ^4.1.13
-        version: 4.5.4
     devDependencies:
       '@types/node':
         specifier: ^26.4.0

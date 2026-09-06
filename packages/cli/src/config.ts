@@ -45,7 +45,7 @@ const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>;
 
 /**
- * nova 的家：~/.nova/。配置、MCP、技能、会话与缓存全部集中在这里 ——
+ * nova 的家：~/.nova/。配置、技能、会话与缓存全部集中在这里 ——
  * 项目（工作区）永远零写入，也不会出现 .nova/ 目录；工作区只是 nova
  * 运行时所在的当前目录。
  */

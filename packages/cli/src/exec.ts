@@ -20,7 +20,6 @@ import {
   skillsPlugin,
   type ApprovalMode,
 } from '@nova-agent/plugins';
-import type { McpPlugin } from '@nova-agent/mcp';
 import { collectProjectDocs } from './agents-md.js';
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
@@ -41,13 +40,6 @@ export interface ExecOptions {
   provider?: ChatProvider;
   /** Injectable raw output sink for tests; defaults to process.stdout.write. */
   out?: (text: string) => void;
-  /**
-   * MCP config override: a path loads exactly that file, `null` disables MCP
-   * entirely, omitted discovers normally. Tests must pass `null` — auto
-   * discovery would find the machine's real ~/.nova/mcp.json and connect to
-   * its remote servers, making them network-dependent.
-   */
-  mcpConfigFile?: string | null;
 }
 
 /**
@@ -103,20 +95,6 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     { dir: path.join(process.env['USERPROFILE'] ?? process.env['HOME'] ?? '', '.nova', 'skills'), level: 'user' },
   ]);
   if (skills.length > 0) host.use(skillsPlugin(skills));
-
-  let mcp: McpPlugin | undefined;
-  try {
-    // Dynamic import: with no mcp.json neither the module nor any connector
-    // ever loads; with servers, connection defers to the agent loop below.
-    const { loadMcpConfig, mcpPlugin } = await import('@nova-agent/mcp');
-    const mcpConfig =
-      opts.mcpConfigFile === null ? undefined : await loadMcpConfig(rootDir, opts.mcpConfigFile);
-    if (mcpConfig !== undefined && mcpConfig.servers.length > 0) {
-      mcp = mcpPlugin({ servers: mcpConfig.servers });
-    }
-  } catch (err) {
-    write(`MCP 配置加载失败：${err instanceof Error ? err.message : String(err)}\n`);
-  }
   await host.activate();
 
   const sessionEnv: SessionEnvInfo = {
@@ -155,12 +133,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const notify = createNotifier({ enabled: opts.out === undefined && config.notify !== false });
   const execStartedAt = Date.now();
   try {
-    // Lazy MCP: connect right before the first request.
-    if (mcp !== undefined) {
-      host.use(mcp);
-      await host.activate();
-    }
-      for await (const event of runAgent({
+    for await (const event of runAgent({
         provider,
         messages,
         rootDir,
@@ -203,7 +176,6 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     // Kill background jobs before the process exits, or the spawned shells
     // outlive the session (dsh jobs dispose contract).
     await jobs.dispose().catch(() => undefined);
-    if (mcp !== undefined) await mcp.close().catch(() => undefined);
   }
 
   function renderHuman(
