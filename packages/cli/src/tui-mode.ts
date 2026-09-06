@@ -1348,6 +1348,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
     const flat: string[] = [];
     for (const block of blocks) flat.push(...wrapBlock(block));
+    // The wheel/pageup handlers pre-cap at the transcript length, but the
+    // viewport is only historyRows tall: once the offset passes
+    // `flat.length - historyRows` an extra notch can't reveal earlier lines —
+    // it just hides newest ones off a fixed top, erasing the transcript
+    // bottom-up to a blank screen. Clamp here, where historyRows is known
+    // (it shrinks while a popup is open, so the handlers can't know it).
+    const maxScroll = Math.max(0, flat.length - historyRows);
+    if (scrollFromEnd > maxScroll) scrollFromEnd = maxScroll;
     const sliceEnd = Math.max(0, flat.length - scrollFromEnd);
     const sliceStart = Math.max(0, sliceEnd - historyRows);
     let historyLines = flat.slice(sliceStart, sliceEnd);
