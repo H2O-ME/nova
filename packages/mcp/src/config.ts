@@ -93,8 +93,8 @@ export interface LoadedMcpConfig {
 }
 
 /** Load, validate, expand and filter (enabled !== false) the MCP config. */
-export async function loadMcpConfig(startDir: string): Promise<LoadedMcpConfig | undefined> {
-  const file = await findMcpConfigFile(startDir);
+export async function loadMcpConfig(startDir: string, explicitFile?: string): Promise<LoadedMcpConfig | undefined> {
+  const file = explicitFile ?? (await findMcpConfigFile(startDir));
   if (file === undefined) return undefined;
   let raw: string;
   try {

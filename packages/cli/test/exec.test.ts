@@ -44,6 +44,10 @@ describe('runExec', () => {
         config,
         prompt: '打个招呼',
         json: true,
+        // Auto discovery would ascend from %TEMP% (which lives under the user
+        // profile on Windows) into the machine's real ~/.nova/mcp.json and
+        // connect to its remote servers — network-dependent and slow.
+        mcpConfigFile: null,
         provider: scriptedProvider([TEXT_ONLY]),
         out: (text) => lines.push(text),
       });
@@ -74,6 +78,7 @@ describe('runExec', () => {
       config,
       prompt: 'run echo for me',
       json: false,
+      mcpConfigFile: null, // never touch the machine's real ~/.nova/mcp.json
       provider: scriptedProvider([
         [
           { type: 'tool_call_delta', index: 0, id: 'c1', name: 'bash', argsDelta: '{"command":"echo hi"}' },

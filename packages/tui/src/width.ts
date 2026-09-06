@@ -25,22 +25,23 @@ const WIDE_RANGES: Array<[number, number]> = [
 ];
 
 /**
- * East Asian "ambiguous" width characters that this UI emits. On CJK-configured
- * terminals (zh-CN Windows, CJK fonts) they render 2 columns wide while a
- * plain count says 1 — undercounting makes full-width status/composer rows
- * wrap in the terminal, scroll the frame, and desync the whole display.
- * Counting them as 2 only ever costs an earlier (cosmetic) truncation.
+ * East Asian "ambiguous" glyphs that this UI emits. Modern terminals —
+ * Windows Terminal included — render ambiguous glyphs one cell wide. Only
+ * width-composed rows care: the popup boxes assemble full-width border rows
+ * out of box drawing (╭─╮│╰╯), arrows (↑↓→) and the middle dot (·), so those
+ * must be measured at their rendered width — counting 2 made every popup row
+ * overflow the safe width, and the renderer chopped the right border off with
+ * a trailing `…`. Glyphs that only ever appear in short left-aligned rows
+ * (✓ ✗ ⠋ ❯ …) keep the conservative 2: there an overcount can only truncate
+ * cosmetically, never wrap the frame.
  */
 const AMBIGUOUS_RANGES: Array<[number, number]> = [
-  [0x00b7, 0x00b7], // · middle dot
   [0x2013, 0x2014], // – — dashes
   [0x2020, 0x2022], // † ‡ •
   [0x2026, 0x2026], // … ellipsis
   [0x2103, 0x2103], // ℃
-  [0x2190, 0x21ff], // ← ↑ → ↓ and friends (status bar, popup hints)
   [0x22ef, 0x22ef], // ⋯ midline ellipsis
   [0x2303, 0x23ff], // ⏎ return symbol and other technical pictographs
-  [0x2500, 0x25ff], // box drawing (╭─╮│╰╯), blocks (█ ░), geometric shapes
   [0x2600, 0x27bf], // misc symbols + dingbats (✓ ✗ ⚠ ★)
   [0x2768, 0x2775], // ❯ chevrons and light brackets (composer/approval marker)
   [0x27f0, 0x27ff], // ⟳ supplemental arrows (retry line)

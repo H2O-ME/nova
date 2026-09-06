@@ -9,24 +9,35 @@ describe('width', () => {
   });
 
   it('counts East-Asian-ambiguous UI glyphs as 2 columns', () => {
-    // On CJK-configured terminals these render 2 cells wide; undercounting
-    // makes full-width rows wrap and desyncs the frame. The table must cover
-    // every glyph this UI itself emits (composer, tool lines, status bar).
-    expect(stringWidth('·')).toBe(2);
+    // These glyphs only ever appear in short left-aligned rows (tool lines,
+    // status bar, hints), so the conservative 2 can only truncate cosmetics,
+    // never wrap the frame.
     expect(stringWidth('…')).toBe(2);
     expect(stringWidth('⋯')).toBe(2);
     expect(stringWidth('❯')).toBe(2); // composer/approval marker
     expect(stringWidth('✓')).toBe(2); // tool done marker
     expect(stringWidth('✗')).toBe(2); // tool failure marker
     expect(stringWidth('⟳')).toBe(2); // retry line
-    expect(stringWidth('↑')).toBe(2); // status bar tokens
-    expect(stringWidth('↓')).toBe(2);
-    expect(stringWidth('█')).toBe(2); // context bar
-    expect(stringWidth('░')).toBe(2);
     expect(stringWidth('⠋')).toBe(2); // braille spinner frames
-    expect(stringWidth('─')).toBe(2); // box drawing (popups)
     expect(stringWidth('🚀')).toBe(2); // emoji outside the old narrow range
-    expect(stringWidth('a · b')).toBe(6); // 1+1+2+1+1: the · alone is 2 columns per the assertion above
+  });
+
+  it('counts box drawing, arrows and middle dot as 1 column', () => {
+    // Windows Terminal (and modern terminals generally) render ambiguous
+    // glyphs one cell wide. The popup boxes assemble full-width border rows
+    // from these chars via styledWidth; counting 2 made every row overflow
+    // the safe width, so the renderer chopped the right border and painted
+    // `…` mid-row (the half-drawn palette bug).
+    expect(stringWidth('─')).toBe(1);
+    expect(stringWidth('│')).toBe(1);
+    expect(stringWidth('╭')).toBe(1);
+    expect(stringWidth('→')).toBe(1);
+    expect(stringWidth('↑')).toBe(1);
+    expect(stringWidth('↓')).toBe(1);
+    expect(stringWidth('·')).toBe(1);
+    expect(stringWidth('█')).toBe(1); // context bar
+    expect(stringWidth('░')).toBe(1);
+    expect(stringWidth('a · b')).toBe(5);
   });
 
   it('ignores ANSI sequences in styledWidth', () => {
@@ -186,6 +197,29 @@ describe('truncateStyled safety net', () => {
     // eslint-disable-next-line no-control-regex
     const written = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
     expect(written).toBe('aaaaaaa…'); // 7 + ellipsis = exactly 9 columns
+  });
+
+  it('leaves full-width popup border rows untruncated', () => {
+    // The command palette / model picker compose their border to exactly
+    // cols-1 columns out of box-drawing chars; the renderer must pass them
+    // through untouched (no trailing `…`, right corner intact).
+    const { out, writes } = fakeOut(3, 60);
+    const screen = new LineScreen(out);
+    screen.enter();
+    writes.length = 0;
+    const top = '╭─ 命令 ' + '─'.repeat(50) + '╮';
+    const hint = '↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭';
+    const bottom = '╰' + hint + '─'.repeat(57 - stringWidth(hint)) + '╯';
+    expect(stringWidth(top)).toBe(59); // cols-1 = safeCols, exactly fits
+    expect(stringWidth(bottom)).toBe(59);
+    screen.render([top, bottom, '']);
+    const clean = (marker: string): string => {
+      const line = writes.find((w) => w.includes(marker)) ?? '';
+      // eslint-disable-next-line no-control-regex
+      return line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+    };
+    expect(clean('命令')).toBe(top);
+    expect(clean('补全')).toBe(bottom);
   });
 });
 

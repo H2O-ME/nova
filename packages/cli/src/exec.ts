@@ -41,6 +41,13 @@ export interface ExecOptions {
   provider?: ChatProvider;
   /** Injectable raw output sink for tests; defaults to process.stdout.write. */
   out?: (text: string) => void;
+  /**
+   * MCP config override: a path loads exactly that file, `null` disables MCP
+   * entirely, omitted discovers normally. Tests must pass `null` — auto
+   * discovery would find the machine's real ~/.nova/mcp.json and connect to
+   * its remote servers, making them network-dependent.
+   */
+  mcpConfigFile?: string | null;
 }
 
 /**
@@ -102,7 +109,8 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     // Dynamic import: with no mcp.json neither the module nor any connector
     // ever loads; with servers, connection defers to the agent loop below.
     const { loadMcpConfig, mcpPlugin } = await import('@nova-agent/mcp');
-    const mcpConfig = await loadMcpConfig(rootDir);
+    const mcpConfig =
+      opts.mcpConfigFile === null ? undefined : await loadMcpConfig(rootDir, opts.mcpConfigFile);
     if (mcpConfig !== undefined && mcpConfig.servers.length > 0) {
       mcp = mcpPlugin({ servers: mcpConfig.servers });
     }
