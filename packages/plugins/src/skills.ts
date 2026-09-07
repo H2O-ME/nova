@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Plugin } from './types.js';
 
 /**
- * Skills (GOALS §7): `.nova/skills/<name>/SKILL.md` with a tiny YAML
+ * Skills (AGENTS.md §5): `.nova/skills/<name>/SKILL.md` with a tiny YAML
  * frontmatter (name, description). Only name+description are loaded at
  * startup; the body is read on demand — via the `skill` agent tool or the
  * `/skill <name>` command — so the system prompt never bloats.
@@ -88,7 +88,7 @@ export async function readSkillBody(skill: SkillMetadata): Promise<string> {
 
 /**
  * Registers the `skill` agent tool: the model can load a skill's full
- * instructions by name before following them (GOALS §7).
+ * instructions by name before following them (AGENTS.md §5).
  */
 export function skillsPlugin(skills: SkillMetadata[]): Plugin {
   return {

@@ -10,7 +10,7 @@ function formatStatus(status: string): string {
  * `bash { run_in_background: true }`. Poll-based by design: v1 has no
  * completion-injection channel into the loop, so the model checks
  * `action: 'output'` to observe progress (the inbox-injection extension
- * point is noted in docs/GOALS.md).
+ * point is noted in AGENTS.md §7).
  */
 export function jobsPlugin(): Plugin {
   return {
