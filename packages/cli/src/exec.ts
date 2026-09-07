@@ -2,11 +2,13 @@ import path from 'node:path';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   emptyStats,
+  estimateMessageTokens,
   JobRegistry,
   newId,
   runAgent,
   Session,
   type AgentEvent,
+  type AgentHooks,
   type AgentMessage,
   type ChatProvider,
   type UsageStats,
@@ -21,6 +23,7 @@ import {
   type ApprovalMode,
 } from '@nova-agent/plugins';
 import { collectProjectDocs } from './agents-md.js';
+import { compactSession } from './compact.js';
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
@@ -80,6 +83,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
   const host = new PluginHost(rootDir);
   const bashConfig = config.tools?.bash;
+  const codeConfig = config.tools?.code;
   for (const plugin of builtinPlugins({
     bash:
       bashConfig?.enabled === false
@@ -88,6 +92,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
             ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
             ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
           },
+    ...(codeConfig !== undefined ? { code: codeConfig } : {}),
   })) {
     host.use(plugin);
   }
@@ -124,6 +129,25 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   // inside the service, without dispatching any asker.
   permission.setPolicy('never');
   const hooks = host.agentHooks(permission);
+  // Auto-compact BEYOND user-message boundaries: exec runs ONE runAgent over
+  // the whole task, so the interactive runners' boundary checks can never
+  // fire here. The beforeLLMCall hook is the per-turn interception point —
+  // the only place a multi-turn headless task can shed context mid-run.
+  wrapAutoCompact(hooks, {
+    enabled: config.autoCompactTokenLimit !== undefined,
+    limit: config.autoCompactTokenLimit ?? 0,
+    compact: async (messages) => {
+      const outcome = await compactSession({ client: provider, session, messages, trigger: 'auto' });
+      // Apply the new surface IN PLACE: runAgent and the outer `messages`
+      // reference the same array object, so a splice keeps every consumer
+      // in sync without plumbed return values.
+      messages.splice(0, messages.length, ...outcome.surface);
+      if (!json) write(`${paint.dim('⟳ 已自动压缩上下文（超过阈值；会话日志保留完整历史）')}\n`);
+    },
+    onError: (err: unknown) => {
+      if (!json) write(`${paint.dim(`⟳ 自动压缩失败（继续运行）：${err instanceof Error ? err.message : String(err)}`)}\n`);
+    },
+  });
   const systemPrompt = buildSystemPrompt();
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
@@ -214,4 +238,51 @@ export async function runExec(opts: ExecOptions): Promise<void> {
         break;
     }
   }
+}
+
+interface AutoCompactOptions {
+  enabled: boolean;
+  limit: number;
+  /** Compact the live surface; the callback splices `messages` in place. */
+  compact: (messages: AgentMessage[]) => Promise<void>;
+  onError: (err: unknown) => void;
+}
+
+/**
+ * Token-gate every outgoing LLM request inside runAgent. The interactive
+ * runners compact at user-message boundaries (before/after a run); exec has
+ * exactly one run for the whole task, so the per-request hook is the only
+ * interception point. The estimate mirrors the repl's anchor-based check:
+ * the full request image (system + tool schemas + messages) against the
+ * configured limit. Compaction happens in place (the log gets its three
+ * compaction events, `messages` becomes the projected surface).
+ */
+function wrapAutoCompact(hooks: AgentHooks, opts: AutoCompactOptions): void {
+  if (!opts.enabled) return;
+  const inner = hooks.beforeLLMCall;
+  let compacting = false;
+  hooks.beforeLLMCall = async (req) => {
+    const next = inner === undefined ? req : await inner(req);
+    if (compacting) return next;
+    let image = estimateMessageTokens({ role: 'system', id: '', ts: 0, content: next.systemPrompt ?? '' });
+    for (const tool of next.tools ?? []) {
+      image += estimateMessageTokens({
+        role: 'system',
+        id: '',
+        ts: 0,
+        content: `${tool.name} ${tool.description} ${JSON.stringify(tool.parameters)}`,
+      });
+    }
+    for (const msg of next.messages) image += estimateMessageTokens(msg);
+    if (image <= opts.limit) return next;
+    compacting = true;
+    try {
+      await opts.compact(next.messages);
+    } catch (err) {
+      opts.onError(err);
+    } finally {
+      compacting = false;
+    }
+    return next;
+  };
 }

@@ -6,7 +6,9 @@ import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   DEFAULT_MAX_TURNS,
   emptyStats,
+  estimateMessageTokens,
   estimateNextPromptTokens,
+  estimateTextTokens,
   JobRegistry,
   newId,
   runAgent,
@@ -20,6 +22,7 @@ import {
 } from '@nova-agent/core';
 import {
   builtinPlugins,
+  codeRuntimeAvailable,
   loadSkills,
   PermissionService,
   PluginHost,
@@ -27,6 +30,7 @@ import {
   type ApprovalMode,
   type AskFn,
   type PermissionKind,
+  type PtcMode,
 } from '@nova-agent/plugins';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
@@ -40,23 +44,29 @@ import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { createNotifier } from './notify.js';
+import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
+  approvalChip,
   approvalLabel,
   APPROVAL_ORDER,
-  contextBar,
+  contextGaugeForms,
+  contextLegend,
   cursorAfterVerticalMove,
   humanTokens,
   isFailureContent,
   isReadOnlyTool,
   layoutComposer,
+  modelTail,
+  padBetween,
   palette,
   permissionLabel,
   plainPalette,
+  sparkline,
   SPINNER_FRAMES,
-  statusIndicator,
   statusLine,
+  type StatusTier,
   toolArgSummary,
   toolDoneLine,
   toolGroupLine,
@@ -64,6 +74,7 @@ import {
   toolStartLine,
   type ComposerLayout,
   type ComposerRow,
+  type ContextSegment,
   type StopKind,
 } from './ui.js';
 
@@ -92,9 +103,12 @@ const COMPOSER_MAX_ROWS = 8;
 /** 单次粘贴的字符上限：超过即截断（防止一次超巨粘贴把输入区撑爆）。 */
 const PASTE_MAX_CHARS = 200_000;
 
-/** Reasoning display caps: committed lines kept, and the live line's tail. */
-const REASONING_MAX_LINES = 6;
-const REASONING_MAX_PARTIAL_CHARS = 600;
+/** Reasoning display caps: committed lines kept, and the live line's tail.
+ * 思考是过程性内容：只保留最后 2 行活尾，结束后整段折成一行耗时摘要。 */
+const REASONING_MAX_LINES = 2;
+const REASONING_MAX_PARTIAL_CHARS = 240;
+/** Approval popup preview cap: diff rows are precious screen real estate. */
+const APPROVAL_PREVIEW_MAX_ROWS = 20;
 
 interface Block {
   lines: string[];
@@ -170,9 +184,29 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const fetchModelList = createModelListCache(() => client.listModels());
   const jobs = new JobRegistry();
   const stats: UsageStats = emptyStats();
+  // 会话级缓存命中累计：provider 可能随机分流到不报缓存的后端，单轮 `stats`
+  // 每轮 runAgent 从零重算 → 某轮 cachedTokens=0 会让 cache 段"闪现"消失。
+  // 状态栏因此改看**会话累计**命中率，并粘住可见性：本会话只要见过一次缓存上报
+  // （cacheSeen）就常驻，不再随单轮是否返回而忽有忽无；从未上报的 provider 则
+  // 整段隐藏（不占屏缘宽度）。/new 与会话切换重置，compact 不重置（同一会话）。
+  let sessPromptTokens = 0;
+  let sessCachedTokens = 0;
+  let cacheSeen = false;
+  const resetSessionCache = (): void => {
+    sessPromptTokens = 0;
+    sessCachedTokens = 0;
+    cacheSeen = false;
+  };
   const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
 
   const bashConfig = config.tools?.bash;
+  const codeConfig = config.tools?.code;
+  // 执行模式：TUI 里 Tab 在新会话开始时循环 普通 → PTC → 混合。config 的
+  // tools.code.mode 只是初始值；其余 tools.code 调参（超时/预算）在每次
+  // 重建 host 时原样带上。
+  let codeMode: PtcMode = codeConfig?.mode ?? 'native';
+  let modeSwitching = false;
+  const codeModeLabel = (m: PtcMode): string => (m === 'native' ? '普通' : m === 'ptc' ? 'PTC' : '混合');
   const bashPluginArgs = (): Parameters<typeof builtinPlugins>[0] => ({
     bash:
       bashConfig?.enabled === false
@@ -181,20 +215,33 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
             ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
           },
+    code: { ...codeConfig, mode: codeMode },
   });
   const loadWorkspaceSkills = (dir: string): ReturnType<typeof loadSkills> =>
     loadSkills([
       { dir: path.join(dir, NOVA_DIR, 'skills'), level: 'project' },
       { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
     ]);
-  let host = new PluginHost(rootDir);
-  for (const plugin of builtinPlugins(bashPluginArgs())) {
-    host.use(plugin);
-  }
-
   let skills = await loadWorkspaceSkills(rootDir);
-  if (skills.length > 0) host.use(skillsPlugin(skills));
-  await host.activate();
+  // 占位：真正的带插件激活在 permission/hooks 就绪后由 rebuildHost() 完成。
+  let host = new PluginHost(rootDir);
+
+  /** models.dev 目录（上下文窗口/模态/推理能力）。启动后台刷新，断网用旧缓存。 */
+  const modelMetaStore = createModelMetaStore();
+  let currentModelMeta: ModelMeta | undefined;
+  /** 每次成功解析后自增，驱动结构行的渲染缓存失效。 */
+  let modelMetaVersion = 0;
+  async function refreshModelMeta(): Promise<void> {
+    try {
+      currentModelMeta = await modelMetaStore.lookup(client.model, config.provider.baseURL);
+    } catch {
+      currentModelMeta = undefined; // 兜底：config.provider.contextWindow
+    }
+    modelMetaVersion += 1;
+    // 不在历史区推送元数据块：窗口容量在结构条分母、能力标签在状态栏，
+    // 底部两行是常驻视图，再打一条就是重复噪声。详情看 /session 与 /model。
+    scheduleRender();
+  }
 
   const sessionEnv: SessionEnvInfo = {
     platform: process.platform,
@@ -214,6 +261,23 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     await session.append(seed);
   };
   /**
+   * Rebuild the plugin host for the current workspace + execution mode and
+   * re-point `host`/`hooks` at it. Both the workspace switch and the Tab
+   * mode toggle go through here: `host` is read live by runAgent (tools) and
+   * `hooks` carries the beforeLLMCall projection that makes PTC mode visible,
+   * so both must be re-derived from the SAME host on every rebuild.
+   */
+  const rebuildHost = async (): Promise<void> => {
+    const next = new PluginHost(rootDir);
+    for (const plugin of builtinPlugins(bashPluginArgs())) {
+      next.use(plugin);
+    }
+    if (skills.length > 0) next.use(skillsPlugin(skills));
+    await next.activate();
+    host = next;
+    hooks = next.agentHooks(permission);
+  };
+  /**
    * Re-point the whole workspace-bound surface at `dir`: the tool host (fs
    * and bash resolve their root from the host per call), project skills,
    * AGENTS.md docs and the env fragment's cwd. Used when a switched-in
@@ -224,14 +288,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     rootDir = dir;
     sessionEnv.cwd = dir;
     projectDocs = await collectProjectDocs(dir, process.cwd());
-    const next = new PluginHost(dir);
-    for (const plugin of builtinPlugins(bashPluginArgs())) {
-      next.use(plugin);
-    }
     skills = await loadWorkspaceSkills(dir);
-    if (skills.length > 0) next.use(skillsPlugin(skills));
-    await next.activate();
-    host = next;
+    await rebuildHost();
   };
   if (!opts.resumeFile) await seedContextFragment();
 
@@ -245,6 +303,21 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     new Promise((resolve) => {
       approvalRequest = { call, kind, resolve };
       approvalIndex = 0;
+      approvalPreview = undefined;
+      // Best-effort effect preview (edit_file's diff etc.) inside the popup —
+      // the user approves what the call WILL do, not just the arg JSON.
+      // Rendered when it lands; dropped when the popup already closed.
+      const entry = host.toolEntries.find((e) => e.tool.name === call.name);
+      if (entry !== undefined && entry.tool.preview !== undefined) {
+        void Promise.resolve(entry.tool.preview(call.args, { rootDir }))
+          .then((text) => {
+            if (approvalRequest !== undefined && approvalRequest.call.id === call.id) {
+              approvalPreview = text.trim().split('\n').slice(0, APPROVAL_PREVIEW_MAX_ROWS);
+              scheduleRender();
+            }
+          })
+          .catch(() => {});
+      }
       scrollFromEnd = 0;
       notify('需要审批', `${toolLabel(call.name)} · ${toolArgSummary(call.name, call.rawArgs, 80)}`);
       scheduleRender();
@@ -255,8 +328,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       .appendEvent({ type: 'approval', toolName: entry.toolName, kind: entry.kind, outcome: entry.outcome, at: Date.now() })
       .catch(() => {});
   });
-  const hooks = host.agentHooks(permission);
+  // Reassigned by rebuildHost(): the agent loop must read hooks from the
+  // SAME host instance it reads tools from (one rebuild = tools + projection).
+  let hooks = host.agentHooks(permission);
   const systemPrompt = buildSystemPrompt();
+  await rebuildHost();
 
   // ---- ui state ---------------------------------------------------------
   const blocks: Block[] = [];
@@ -295,9 +371,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let approvalRequest: { call: ToolCall; kind: PermissionKind; resolve: (a: 'allow' | 'deny' | 'always') => void } | undefined;
   /** Selected option in the approval popup (codex-style: arrows + Enter). */
   let approvalIndex = 0;
+  /** Best-effort effect preview lines for the pending approval (async-filled). */
+  let approvalPreview: string[] | undefined;
   const APPROVAL_CHOICES = ['allow', 'always', 'deny'] as const;
   let spinnerFrame = 0;
-  let spinnerStartedAt = 0;
   let exitNow: (() => void) | undefined;
   let lastCtrlC = 0;
   /** Timestamp of the last Esc/Ctrl+C interrupt request; 0 when idle. Drives the "正在中断…" feedback. */
@@ -363,17 +440,47 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (idx >= 0) blocks.splice(idx, 1);
   };
 
+  // TPS 采样（借鉴"可观察的 Agent 状态"）：delta 里累计估算 token，spinner
+  // tick 每 500ms 折算一次速率进 10 格环形窗口（≈5 秒趋势）。sparkline 长度
+  // 恒定，数字右对齐到 3 位宽——速度表自身不引发横移。
+  const TPS_SAMPLES = 10;
+  const TPS_INTERVAL_MS = 500;
+  const tpsRing: number[] = Array<number>(TPS_SAMPLES).fill(0);
+  let tpsTokens = 0;
+  let tpsLastTokens = 0;
+  let tpsLastAt = 0;
+
+  /**
+   * 生成阶段（驱动 tps 仪表与输入行 spinner 的颜色）。thinking/writing =
+   * 模型正在产出 token（绿，速度表"活"）；tool = 停在工具等待（无 token
+   * 流动，仪表冻结转暗）；idle = 空闲。旧版只有一个 streaming 布尔，思考/
+   * 工具/输出全算"流式"，用户在长思考段里看到的速度表却几乎不动——阶段
+   * 显式化后"绿色 = 正在生成"的含义才立得住。
+   */
+  let genPhase: 'idle' | 'thinking' | 'writing' | 'tool' = 'idle';
+
   const spinner = {
     start() {
-      spinnerStartedAt = Date.now();
       spinnerTimer ??= setInterval(() => {
         spinnerFrame += 1;
         // Animate the bullet of every running tool block (codex-style
-        // activity marker) — the frame also drives the composer verb. After
-        // two seconds a live elapsed suffix appears so a slow command never
+        // activity marker) and the composer-prefix spinner. After two
+        // seconds a live elapsed suffix appears so a slow command never
         // looks frozen (Claude Code's bash progress counter).
         const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] ?? '•';
         const now = Date.now();
+        if (now - tpsLastAt >= TPS_INTERVAL_MS) {
+          const secs = (now - tpsLastAt) / 1000;
+          // 只在确有新增输出时推一个采样——轮内的思考停顿 / 工具等待不推 0，
+          // 否则连续几个 500ms 空窗会把 10 格窗口排空成"▁▁… 0"（用户看到的
+          // "偶尔清零"）。无新数据就只推进时钟、冻结窗口，速度表随真实产出左滚。
+          if (tpsTokens > tpsLastTokens) {
+            tpsRing.push(Math.round((tpsTokens - tpsLastTokens) / secs));
+            if (tpsRing.length > TPS_SAMPLES) tpsRing.shift();
+          }
+          tpsLastTokens = tpsTokens;
+          tpsLastAt = now;
+        }
         for (const entry of toolBlocks.values()) {
           const elapsed = now - entry.startAt;
           const suffix = interruptAt > 0
@@ -516,6 +623,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     aborters.push(aborter);
     streaming = true;
     spinner.start();
+    genPhase = 'thinking';
+    // tps 是会话级连续滚动速度表：新一轮不清空 ring、不把 tpsTokens 归零，
+    // 新采样直接接在旧窗口左移，避免发送时"闪回 0"的跳变。只把基线锚到本轮
+    // 起点——tpsLastTokens 取当前累计值，令本轮首个采样只计新输出的 token；
+    // tpsLastAt 重置，把空闲间隔排除在首样分母外（否则跨分钟的 secs 会压出
+    // 一个假 0）。tpsTokens 全程单调累加。
+    tpsLastTokens = tpsTokens;
+    tpsLastAt = Date.now();
     const startedAt = Date.now();
     let assistantText = '';
     let assistantOpen = false;
@@ -534,6 +649,27 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const reasoningDone: string[] = [];
     let reasoningPartial = '';
     let reasoningOpen = false;
+    let reasoningStartedAt = 0;
+    /**
+     * 思考段收尾：正文不留档，整块折成一行耗时摘要（codex "Thought for Ns"
+     * 式）。答案开始时同样走这里——摘要留在记录里，用户知道模型想过多久，
+     * 但满屏的自言自语不再占据对话区。
+     */
+    const foldToSummary = (): void => {
+      const block = reasoningBlock;
+      const had = block !== undefined && (reasoningDone.length > 0 || reasoningPartial.length > 0);
+      const secs = reasoningStartedAt > 0
+        ? Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
+        : 0;
+      reasoningBlock = undefined;
+      reasoningStartedAt = 0;
+      if (had && block !== undefined) {
+        replaceBlock(block, [`${DIM}已思考 ${secs}s${RESET}`]);
+        scheduleRender();
+      } else {
+        discardReasoning();
+      }
+    };
     try {
       for await (const event of runAgent({
         provider: client,
@@ -559,6 +695,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       })) {
         await onAgentEvent(event, startedAt, {
           appendAssistant(text: string) {
+            tpsTokens += estimateTextTokens(text);
             if (!assistantOpen) {
               // Whitespace-only leading deltas (models often emit blank lines
               // before tool calls) must not anchor a blank answer block above
@@ -567,9 +704,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               assistantOpen = true;
               assistantText = '';
               assistantBlock = undefined;
+              genPhase = 'writing';
               reasoningOpen = false;
               closeReadGroup();
-              discardReasoning();
+              foldToSummary();
               reasoningDone.length = 0;
               reasoningPartial = '';
               md = createMarkdownRenderer(paint);
@@ -594,9 +732,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             }
           },
           appendReasoning(text: string) {
+            tpsTokens += estimateTextTokens(text);
             if (assistantOpen) return;
+            genPhase = 'thinking';
             if (!reasoningOpen) {
               reasoningOpen = true;
+              reasoningStartedAt = Date.now();
               reasoningDone.length = 0;
               reasoningPartial = '';
               // Reasoning is secondary content: every row sits at the text
@@ -642,7 +783,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             assistantOpen = false;
           },
           foldReasoning() {
-            discardReasoning();
+            foldToSummary();
             reasoningDone.length = 0;
             reasoningPartial = '';
             reasoningOpen = false;
@@ -656,7 +797,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             assistantSeparator = undefined;
             assistantOpen = false;
             assistantText = '';
+            // 重试的失败尝试不留任何痕迹（包括思考摘要行）。
             discardReasoning();
+            reasoningStartedAt = 0;
             reasoningOpen = false;
             reasoningDone.length = 0;
             reasoningPartial = '';
@@ -683,6 +826,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       if (idx >= 0) aborters.splice(idx, 1);
       streaming = false;
       interruptAt = 0;
+      genPhase = 'idle';
       spinner.stop();
       // An abort/error never reaches the 'done' event: recycle the reasoning
       // tail here so no transient line survives into history.
@@ -730,6 +874,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // the retry sends the same prompt prefix.
         Object.assign(stats, event.stats);
         io.resetAssistant();
+        genPhase = 'thinking'; // 重新请求在途，属于"生成中"
         pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], {
           first: '',
           rest: '      ',
@@ -758,6 +903,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // The reasoning phase ends when work begins; its transient tail is
         // removed and a later reasoning burst starts a fresh block.
         io.foldReasoning();
+        genPhase = 'tool';
         // A new non-read call ends the current read-only group.
         if (!isReadOnlyTool(event.call.name)) closeReadGroup();
         const block: Block = {
@@ -820,6 +966,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         break;
       case 'done': {
         spinner.stop();
+        // 累计本会话真实用量（此刻 stats = 本轮 runAgent 的累计）。done 每用户
+        // 轮只触发一次，故按轮累加不会重复计同一 LLM 调用。见过缓存上报即置
+        // cacheSeen——之后状态栏 cache 段常驻，不随某轮后端未返回而闪现。
+        sessPromptTokens += stats.promptTokens;
+        sessCachedTokens += stats.cachedTokens;
+        if (stats.cachedTokens > 0) cacheSeen = true;
         closeReadGroup();
         io.foldReasoning();
         // A normal completion ends at the reply — no per-turn stats line (the
@@ -836,6 +988,60 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         }
         break;
       }
+    }
+  }
+
+  // ---- execution mode (Tab) ---------------------------------------------
+  /**
+   * 新会话的"未开始"判据：只有种子片段（或干脆为空），且没有进行中的轮。
+   * Tab 只在这一刻可用——模式决定 run_code 是否注册进 host，会话一旦
+   * 跑起来再换 host 会造成已见工具与后续请求不一致。
+   */
+  const sessionPristine = (): boolean =>
+    !streaming && !compactRunning && !modeSwitching && messages.length <= 1 && input.length === 0;
+
+  /**
+   * 芯片呈现的"未开始"判据：与 sessionPristine 的区别是不看 modeSwitching。
+   * 切换模式时 modeSwitching 会置 true 一整段 rebuild 窗口——若芯片按它
+   * 渲染，三枚会先塌成当前一枚再弹回，整行状态栏随之闪一下（Tab 每次按下
+   * 都同步重绘，这正是用户看到的闪烁）。
+   */
+  const displayPristine = (): boolean =>
+    !streaming && !compactRunning && messages.length <= 1 && input.length === 0;
+
+  const CODE_MODE_HINT: Record<PtcMode, string> = {
+    native: '原生工具调用',
+    ptc: '模型只见 run_code，其余工具以 TS 程序编排',
+    both: 'run_code 与原生调用并存',
+  };
+
+  async function toggleCodeMode(): Promise<void> {
+    const order: PtcMode[] = ['native', 'ptc', 'both'];
+    const next = order[(order.indexOf(codeMode) + 1) % order.length] ?? 'native';
+    if (next !== 'native' && !codeRuntimeAvailable()) {
+      pushBlock([
+        `${YELLOW}  ${codeModeLabel(next)}模式需要 Node ≥ 22.19（当前 ${process.version} 不支持类型剥离）${RESET}`,
+      ]);
+      return;
+    }
+    modeSwitching = true;
+    const prev = codeMode;
+    codeMode = next;
+    scheduleRender();
+    try {
+      // 不往历史区打反馈行：状态栏的模式标会即时变化（PTC/混合高亮），
+      // 每按一次 Tab 记一行，连按几下就把同一信息刷满屏幕。
+      await rebuildHost();
+    } catch (err) {
+      // activate() 在 next host 上抛错：host/hooks 还没换，回滚模式即可。
+      codeMode = prev;
+      pushBlock([
+        `${RED}  ✗ 模式切换失败：${err instanceof Error ? err.message : String(err)}${RESET}`,
+        `${DIM}  已保持${codeModeLabel(prev)}模式${RESET}`,
+      ]);
+    } finally {
+      modeSwitching = false;
+      scheduleRender();
     }
   }
 
@@ -878,6 +1084,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         pushBlock([`${DIM}  审批档位：${approvalLabel(next)}${RESET}`]);
         return true;
       }
+      case '/mode': {
+        pushBlock([
+          `  ${BOLD}执行模式${RESET} ${DIM}· 新会话未开始时按 Tab 循环切换${RESET}`,
+          ...(['native', 'ptc', 'both'] as PtcMode[]).map((m) =>
+            m === codeMode
+              ? `  ${CYAN}${BOLD}❯ ${padDisplay(codeModeLabel(m), 6)}${RESET} ${CODE_MODE_HINT[m]}`
+              : `    ${padDisplay(codeModeLabel(m), 6)} ${DIM}${CODE_MODE_HINT[m]}${RESET}`,
+          ),
+          `${DIM}  模式决定工具集呈现方式；会话一旦跑起来工具集保持稳定，切换只对新会话生效${RESET}`,
+        ]);
+        return true;
+      }
       case '/plugins': {
         const lines = host.toolEntries.map(
           (entry) => `${DIM}  插件=${entry.plugin} · 工具=${entry.tool.name} · 权限=${permissionLabel(entry.permission)}${RESET}`,
@@ -901,6 +1119,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           `${DIM}  输入 ${stats.promptTokens} tok（缓存 ${hit}%${lastHit !== null ? ` · 上轮 ${lastHit}%` : ''}）· 输出 ${stats.completionTokens} tok${RESET}`,
           `${DIM}  缓存浪费 ${stats.missTokens} tok · 超噪声底轮次 ${stats.missTurns}${RESET}`,
           `${DIM}  自动压缩 ${compact}${RESET}`,
+          `  ${BOLD}模型${RESET} ${client.model}`,
+          currentModelMeta !== undefined
+            ? `${DIM}  ${formatModelMeta(currentModelMeta)}（models.dev · ${currentModelMeta.provider}）${RESET}`
+            : `${DIM}  元数据未命中（离线或目录没有该模型；可配 provider.contextWindow 兜底）${RESET}`,
+          `${DIM}  执行模式 ${codeModeLabel(codeMode)}${RESET}`,
+          `${DIM}  ${contextLegend(paint, contextBreakdown().segments.filter((s) => s.tokens > 0))}${RESET}`,
         ]);
         try {
           const entries = await listRecentSessions(sessionsRoot(), SESSION_LIST_LIMIT);
@@ -930,6 +1154,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         lastPromptTokens = 0;
         usageAnchor = undefined;
         anchorMsgCount = 0;
+        resetSessionCache();
         await seedContextFragment();
         pushBlock([`${DIM}  新会话：${session.file}${RESET}`]);
         return true;
@@ -1000,6 +1225,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     lastPromptTokens = 0;
     usageAnchor = undefined;
     anchorMsgCount = 0;
+    resetSessionCache();
     toolBlocks.clear();
     closeReadGroup();
     reasoningBlock = undefined;
@@ -1107,6 +1333,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       const resolve = (answer: 'allow' | 'deny' | 'always'): void => {
         approvalRequest?.resolve(answer);
         approvalRequest = undefined;
+        approvalPreview = undefined;
       };
       if (k.type === 'ctrl+c') {
         resolve('deny');
@@ -1158,6 +1385,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         if (model !== undefined && model !== client.model) {
           client.setModel(model);
           pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
+          void refreshModelMeta();
         } else if (model !== undefined) {
           pushBlock([`${DIM}  已是当前模型：${model}${RESET}`]);
         }
@@ -1256,6 +1484,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             input = `${selected.name} `;
             cursorPos = input.length;
           }
+        } else if (sessionPristine()) {
+          // 新会话未开始：Tab 循环 普通 → PTC → 混合 执行模式。
+          void toggleCodeMode();
         }
         break;
       }
@@ -1455,6 +1686,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       popupLines.push(
         `  ${YELLOW}${BOLD}! 需要审批${RESET} ${DIM}[${permissionLabel(approvalRequest.kind)}]${RESET} ${toolLabel(approvalRequest.call.name)} ${DIM}${summary}${RESET}`,
       );
+      if (approvalPreview !== undefined) {
+        for (const line of approvalPreview) popupLines.push(`  ${DIM}${line}${RESET}`);
+      }
       const labels = ['允许一次', '总是允许', '拒绝'];
       for (let i = 0; i < labels.length; i++) {
         const label = labels[i] ?? '';
@@ -1472,7 +1706,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       for (let i = 0; i < winSize; i++) {
         const idx = start + i;
         const name = models[idx] ?? '';
-        const content = ` ${idx === modelPicker.index ? '❯' : ' '} ${idx + 1}. ${name}${name === client.model ? '（当前）' : ''}`;
+        const meta = modelMetaStore.peek(name, config.provider.baseURL);
+        const ctxTag = meta !== undefined ? ` ${DIM}· ${humanTokens(meta.contextWindow)} tok${RESET}` : '';
+        const content =
+          ` ${idx === modelPicker.index ? '❯' : ' '} ${idx + 1}. ${name}` +
+          `${name === client.model ? '（当前）' : ''}${ctxTag}`;
         const pad = Math.max(0, inner - 2 - styledWidth(content));
         popupLines.push(
           idx === modelPicker.index
@@ -1543,6 +1781,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const breatheRows = 1;
     const layout = layoutComposer(input, cursorPos, composerAvailable(), COMPOSER_MAX_ROWS);
     const composerZoneRows = composerZone(layout);
+    // 单行状态区：上下文仪表+模型+模式芯片+审批 ｜ tps+cache 钉右缘。
     const statusRows = 1;
     const historyRows = Math.max(
       3,
@@ -1568,9 +1807,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // viewport the pad disappears and paging takes over.
     while (historyLines.length < historyRows) historyLines.push('');
 
-    const status = statusBarLine();
+    // 按显示宽裁剪：绝不折行顶动布局（statusBarLine 内部已做截左保右）。
+    const status = clipDisplay(statusBarLine(), cols - 1);
 
     // The breathing row separates history from the popup/composer zone.
+    // Bottom stack: composer rows · single status line.
     screen.render(
       [...historyLines, '', ...popupLines, ...composerZoneRows, status],
       cursorPosition(historyRows, layout),
@@ -1589,8 +1830,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const zone: string[] = [];
     if (layout.hiddenAbove > 0) zone.push(`  ${DIM}⋯ 上方还有 ${layout.hiddenAbove} 行${RESET}`);
     const indent = ' '.repeat(COMPOSER_PREFIX_WIDTH);
+    // 流式时 ❯ 原位换成 spinner 帧（同为 1 列宽）：动画留在输入行上，
+    // 底部状态行不再被逐帧 tick 牵动。帧色跟 genPhase——思考/写作绿、
+    // 等工具黄，和右缘 tps 仪表的"是否在生成"同义。
+    const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] ?? '•';
+    const lead0 = streaming
+      ? `  ${genPhase === 'tool' ? YELLOW : GREEN}${frame}${RESET} `
+      : COMPOSER_PREFIX;
     layout.rows.forEach((row, i) => {
-      const lead = i === 0 && layout.hiddenAbove === 0 ? COMPOSER_PREFIX : indent;
+      const lead = i === 0 && layout.hiddenAbove === 0 ? lead0 : indent;
       zone.push(lead + renderComposerRow(row));
     });
     if (layout.hiddenBelow > 0) zone.push(`  ${DIM}⋯ 下方还有 ${layout.hiddenBelow} 行${RESET}`);
@@ -1606,7 +1854,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   }
 
   function popupHeight(): number {
-    if (approvalRequest !== undefined) return 5; // header + 3 options + hint
+    if (approvalRequest !== undefined) return 5 + (approvalPreview?.length ?? 0); // header + preview + 3 options + hint
     if (modelPicker !== undefined) {
       return Math.min(MODEL_PICKER_WINDOW, modelPicker.models.length) + 2; // rows + title + hint border
     }
@@ -1631,40 +1879,170 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     };
   }
 
+  /**
+   * 执行模式芯片：当前模式反色；会话未开始时并列三枚示意 Tab 循环。
+   * `模式` 标签只在 T0 出现（三枚并列时本身就是图示，芯片里的中文也已自释）。
+   */
+  function modeChips(tier: StatusTier): string {
+    const chip = (m: PtcMode): string =>
+      m === codeMode ? `${INVERSE} ${codeModeLabel(m)} ${RESET}` : `${DIM} ${codeModeLabel(m)} ${RESET}`;
+    const body = displayPristine() && tier < 2
+      ? (['native', 'ptc', 'both'] as PtcMode[]).map(chip).join('')
+      : `${INVERSE} ${codeModeLabel(codeMode)} ${RESET}`;
+    return tier === 0 ? `${DIM}模式${RESET} ${body}` : body;
+  }
+
+  /**
+   * 单行状态栏：三段式 `上下文仪表 │ 模型 · 模式 · 审批 [│ 瞬时提示]`，右缘钉住
+   * tps 速度表与 cache 率。层级靠分隔符表达——`│` 分大组（仪表 / 身份 / 提示），
+   * `·` 分组内（模型·模式·审批 同属"当前会话配置"一件事）。
+   * 空间不足按优先级**整字段降级**，而不是从词中间截断——旧版 `审批 自动编辑`
+   * 被切剩 `审批 自`、模型名切剩 `c` 就是纯字符裁剪的结果：
+   *   T0 全量 → T1 去 `模式/审批` 标签、模型去供应商前缀 → T2 仪表只留条+百分比、
+   *   审批降单字、模型截断 → 极窄时 dropModel 弃模型（banner 与 /model 已可见）。
+   * 模型是被优先牺牲的一段：它最占宽，却已出现在欢迎头与 /model；而上下文压力、
+   * 执行模式、审批档位是"这一轮正在发生什么"，更该留住。全部降完仍放不下才 `…` 兜底。
+   * 右缘仪表组定宽不随 tick 变化（tps 恒 10 格 + 数值 padStart(3) + cache 定宽），
+   * 截左保右的不变量不变；百分比亦 padStart，位数跳动不挪分隔符。
+   */
   function statusBarLine(): string {
-    const hit = stats.promptTokens > 0 ? Math.round((stats.cachedTokens / stats.promptTokens) * 100) : 0;
-    const parts: string[] = [];
-    // Streaming indicator lives in the status bar now (the composer is a
-    // single prompt row and has no title strip for it).
-    if (streaming) {
-      const elapsed = spinnerStartedAt === 0 ? 0 : Date.now() - spinnerStartedAt;
-      const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] ?? '•';
-      parts.push(`${frame} ${statusIndicator(true, elapsed, spinnerFrame)}`);
+    // 右缘仪表组（tps 速度表 + cache 命中率）：sparkline 恒 10 格、数值
+    // padStart(3)、cache 百分比定宽——组自身宽度不随 tick 变化，右缘永不
+    // 横移。旧版把动词/秒数放中段，每 90ms 改行宽，diff 重绘即闪烁。
+    // cache 用**会话累计**命中率（非单轮值）：单轮值会因随机分流的后端未报缓存
+    // 而 0↔N% 抖动，导致整段闪现。会话累计只增不减，一旦见过上报就稳定常驻。
+    const cacheHit = sessPromptTokens > 0 ? Math.round((sessCachedTokens / sessPromptTokens) * 100) : 0;
+    const bits: string[] = [];
+    // tps 表常驻且**始终绿色**（不再随空闲/工具等待转灰）：它是会话级连续滚动的
+    // 速度表，颜色不承载"是否在生成"这层语义（那由 composer 前缀 spinner 表达），
+    // 灰色只会让定格的历史窗口看起来像坏了。sparkline 恒 10 格、数值 padStart(3)、
+    // cache 百分比定宽——右缘布局恒定不横移。
+    const cur = tpsRing[tpsRing.length - 1] ?? 0;
+    const curStr = String(cur).padStart(3);
+    const gauge = `${paint.green(sparkline(tpsRing))} ${paint.bold(curStr)}`;
+    bits.push(`${DIM}tps${RESET} ${gauge}`);
+    if (cacheSeen) bits.push(`${DIM}cache ${String(cacheHit).padStart(2)}%${RESET}`);
+    const right = bits.join(' · ');
+    const budget = screen.cols - 1;
+    if (right.length === 0) return statusLeft(0);
+    const rightW = styledWidth(right);
+    const fits = (left: string): boolean => styledWidth(left) + 2 + rightW <= budget;
+    // 选档顺序即降级优先级：越靠后越"最简"，只留单位宽高的关键信息。
+    for (const tier of [0, 1, 2] as StatusTier[]) {
+      const left = statusLeft(tier);
+      if (fits(left)) return padBetween(left, right, budget);
     }
-    // Scrolled-away indicator: the viewport is anchored while scrolled up and
-    // new output keeps arriving below — without this marker the screen just
-    // looks frozen, with no hint that ↓ returns to the live tail.
-    if (scrollFromEnd > 0) parts.push(`${CYAN}已上滚 ${scrollFromEnd} 行 · ↓/滚轮到底${RESET}`);
-    if (streaming && interruptAt > 0) parts.push(`${YELLOW}■ 已请求中断，等待工具退出…${RESET}`);
+    // 连 T2 带模型都放不下：先丢模型（信息最可推断），仍不够才截断整段。
+    const noModel = statusLeft(2, true);
+    if (fits(noModel)) return padBetween(noModel, right, budget);
+    return `${clipDisplay(noModel, Math.max(1, budget - rightW - 2))}  ${right}`;
+  }
+
+  /**
+   * 左段（截左保右的那一侧）：仪表 │ 身份组 │ 瞬时提示，按档位取形态。
+   * `dropModel` 是比 T2 更窄的最后形态——身份组里只留模式与审批。
+   */
+  function statusLeft(tier: StatusTier, dropModel = false): string {
+    const sep = ` ${DIM}│${RESET} `;
+    const identity: string[] = [];
+    if (!dropModel) {
+      const model =
+        tier === 0
+          ? client.model
+          : clipDisplay(modelTail(client.model), tier === 1 ? 22 : 12);
+      identity.push(`${BOLD}${model}${RESET}`);
+    }
+    identity.push(modeChips(tier), approvalChip(paint, permission.approvalMode, tier));
+    let line = `${contextGauge(tier)}${sep}${identity.join(` ${DIM}·${RESET} `)}`;
+    // 上滚时视口锚定、新输出在下方继续到达——没有这个标记画面看似冻结。
+    if (scrollFromEnd > 0) {
+      line += sep + (tier < 2 ? `${CYAN}已上滚 ${scrollFromEnd} 行 · ↓ 到底${RESET}` : `${CYAN}↑滚 ${scrollFromEnd}${RESET}`);
+    }
+    if (streaming && interruptAt > 0) line += sep + `${YELLOW}■ 等待工具退出…${RESET}`;
     if (!streaming && input.length === 0 && Date.now() - lastCtrlC < 2000) {
-      parts.push(`${YELLOW}再按一次 Ctrl+C 退出${RESET}`);
+      line += sep + `${YELLOW}再按一次 Ctrl+C 退出${RESET}`;
     }
-    parts.push(
-      `${BOLD}${client.model}${RESET}`,
-      `审批 ${approvalLabel(permission.approvalMode)}`,
-      `↑${humanTokens(stats.promptTokens)} ↓${humanTokens(stats.completionTokens)}`,
-    );
-    if (hit > 0) parts.push(`缓存 ${hit}%`);
-    // Context pressure toward the auto-compact limit: a bar the user can read
-    // at a glance, colored as it approaches the trip point.
-    const limit = config.autoCompactTokenLimit;
-    if (limit !== undefined && usageAnchor !== undefined) {
-      const estimate = estimateNextPromptTokens(usageAnchor, messages.slice(anchorMsgCount));
-      const ratio = estimate / limit;
-      const color = ratio >= 1 ? RED : ratio >= 0.7 ? YELLOW : GREEN;
-      parts.push(`ctx ${color}${contextBar(ratio)}${RESET}${DIM} ${Math.round(ratio * 100)}%`);
+    return line;
+  }
+
+  /**
+   * 上下文结构分解（仪表与 /session 明细共用）：提示词/工具/注入/技能/消息
+   * 五段 token 数 + 总用量 + 窗口容量。有 usage 锚点时总量用真实 prompt
+   * tokens（锚点+增量），校准因子把估算段对齐到该总量（段总和 === used）；
+   * 无锚点时纯估算。
+   */
+  function contextBreakdown(): {
+    segments: ContextSegment[];
+    used: number;
+    capacity: number | undefined;
+  } {
+    const sys = estimateTextTokens(systemPrompt);
+    let toolSchemas = 0;
+    for (const t of host.tools) {
+      toolSchemas += estimateTextTokens(`${t.name} ${t.description ?? ''} ${JSON.stringify(t.parameters ?? {})}`);
     }
-    return `${DIM}  ${parts.join(' · ')}${RESET}`;
+    let injected = 0;
+    let skillsTok = 0;
+    let history = 0;
+    const SKILL_OPEN = '<available_skills>';
+    const SKILL_CLOSE = '</available_skills>';
+    for (const m of messages) {
+      const tokens = estimateMessageTokens(m);
+      if (m.role === 'user' && m.content.trimStart().startsWith('<')) {
+        injected += tokens;
+        // 技能索引在注入片段里有独立标记，切出来单列一段——用户想知道
+        // 技能占了多少，而不是把它混进"提示词"。
+        const s = m.content.indexOf(SKILL_OPEN);
+        const e = m.content.indexOf(SKILL_CLOSE);
+        if (s >= 0 && e > s) skillsTok += estimateTextTokens(m.content.slice(s, e + SKILL_CLOSE.length));
+      } else history += tokens;
+    }
+    const estimate = sys + toolSchemas + injected + history;
+    // 有锚点时以真实 prompt tokens 为总量（含框架序列化开销）。
+    const used = usageAnchor !== undefined
+      ? estimateNextPromptTokens(usageAnchor, messages.slice(anchorMsgCount))
+      : estimate;
+    // 段的加总必须恒等于 used（条与旁边的 used/capacity · pct% 不能打架）。
+    // 校准因子 f = used/estimate 把内容段估算整体对齐到真实总量——误差按
+    // 比例摊到每一段，而不是让"提示词"段吞下全部残差（那会扭曲系统提示
+    // 词这一段的占比）。无锚点时 f = 1，段即原始估算。
+    const factor = estimate > 0 && used > 0 ? used / estimate : 1;
+    const scale = (n: number): number => Math.round(n * factor);
+    const segments: ContextSegment[] = [
+      { label: '提示词', tokens: scale(sys), color: 'cyan' },
+      { label: '工具', tokens: scale(toolSchemas), color: 'green' },
+      { label: '注入', tokens: scale(Math.max(0, injected - skillsTok)), color: 'blue' },
+      { label: '技能', tokens: scale(skillsTok), color: 'magenta' },
+      { label: '消息', tokens: scale(history), color: 'yellow' },
+    ];
+    // 逐段取整的残差（±几 tok）并入提示词段，保持总和与 used 精确相等。
+    if (factor !== 1) {
+      const drift = used - segments.reduce((sum, s) => sum + s.tokens, 0);
+      segments[0]!.tokens = Math.max(0, segments[0]!.tokens + drift);
+    }
+    return { segments, used, capacity: config.provider.contextWindow ?? currentModelMeta?.contextWindow };
+  }
+
+  /**
+   * 上下文仪表段（三档形态一次算全，按 key 缓存）：分段明细在 `/session`，
+   * 这里按档位给出 全量/去冗/最简 三种形态供状态栏选档。容量取 models.dev
+   * 元数据（config.provider.contextWindow 兜底），条严格按整窗比例分摊。
+   */
+  let contextLineCache: { key: string; lines: [string, string, string] } | undefined;
+  function contextGauge(tier: StatusTier): string {
+    const capacity = config.provider.contextWindow ?? currentModelMeta?.contextWindow;
+    const key =
+      `${messages.length}|${usageAnchor?.promptTokens ?? -1}|${client.model}|` +
+      `${codeMode}|${modelMetaVersion}|${capacity ?? 0}|${host.tools.length}|` +
+      `${config.autoCompactTokenLimit ?? 0}|${screen.cols}`;
+    if (contextLineCache === undefined || contextLineCache.key !== key) {
+      const { segments, used } = contextBreakdown();
+      contextLineCache = {
+        key,
+        lines: contextGaugeForms(paint, { segments, used, capacity, compact: config.autoCompactTokenLimit }, screen.cols),
+      };
+    }
+    return contextLineCache.lines[tier];
   }
 
   // ---- lifecycle --------------------------------------------------------
@@ -1720,12 +2098,30 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   screen.enter();
   process.stdin.setRawMode(true);
   process.stdin.resume();
+  // models.dev 目录后台加载（磁盘缓存在即秒回）；到达后结构行自动换容量。
+  void refreshModelMeta();
 
-  const bannerLines = [
-    `${CYAN}${BOLD}  Nova${RESET} ${DIM}v0.1.0${RESET}`,
-    `${DIM}  工作区 ${rootDir}${RESET}`,
-    `${DIM}  / 命令面板 · Esc 中断 · Ctrl+C×2 退出${RESET}`,
-    `${DIM}  会话 ${sessionsRoot()}${RESET}`,
+  // First screen: a content-sized bordered panel — the brand sits in the top
+  // border (same title-in-border pattern as the popups), context rows first,
+  // key hints last. Box glyphs measure 1 col (see width.ts), so the right
+  // border lines up exactly. Skills and session warnings stay outside as
+  // plain lines: they can be long and would blow the panel's width.
+  const brand = `${CYAN}${BOLD}Nova${RESET} ${DIM}v0.1.0${RESET}`;
+  // 工作区 is 3 CJK chars (6 cols), the others 2 (4) — pad to 8 so the value
+  // column lines up across rows.
+  const bannerRow = (label: string, value: string): string => ` ${padDisplay(label, 8)}${value}`;
+  const bannerRows = [
+    bannerRow('工作区', rootDir),
+    bannerRow('会话', sessionsRoot()),
+    bannerRow('提示', '/ 命令面板 · 新会话按 Tab 切模式 · Esc 中断 · Ctrl+C×2 退出'),
+  ];
+  const panelInner = Math.max(...bannerRows.map((r) => styledWidth(r) + 2), 14);
+  const bannerLines: string[] = [
+    `${DIM}╭─ ${RESET}${brand}${DIM} ${'─'.repeat(Math.max(0, panelInner - styledWidth(brand) - 3))}╮${RESET}`,
+    ...bannerRows.map(
+      (r) => `${DIM}│ ${r}${' '.repeat(Math.max(0, panelInner - styledWidth(r) - 2))} │${RESET}`,
+    ),
+    `${DIM}╰${'─'.repeat(panelInner)}╯${RESET}`,
   ];
   if (skills.length > 0) {
     bannerLines.push(`${DIM}  技能 ${skills.map((s) => s.name).join('、')}${RESET}`);

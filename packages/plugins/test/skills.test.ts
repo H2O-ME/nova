@@ -68,7 +68,7 @@ describe('skillsPlugin', () => {
     await host.activate();
 
     expect(host.tools.map((t) => t.name)).toEqual(['skill']);
-    expect(host.permissionFor('skill')).toBe('read');
+    expect(await host.permissionFor('skill')).toBe('read');
     const tool = host.tools[0]!;
     await expect(tool.execute({ name: 'deploy-check' }, { rootDir: root })).resolves.toBe('1. Run pnpm verify');
     await expect(tool.execute({ name: 'nope' }, { rootDir: root })).resolves.toContain('unknown skill "nope"');

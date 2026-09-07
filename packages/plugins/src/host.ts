@@ -73,6 +73,7 @@ export class PluginHost {
         list.push(fn as HookMap[HookEvent]);
         this.hooks.set(event, list);
       },
+      tools: () => this.tools,
     };
   }
 
@@ -84,13 +85,15 @@ export class PluginHost {
    * Effective permission kind for one call: the tool's `permissionFor(args)`
    * classifier wins when present (e.g. fs reads escalate out-of-workspace
    * paths to `read-external`), otherwise the static registered kind.
+   * Classifiers may be async (sandbox-aware classification resolves real
+   * paths before deciding).
    */
-  permissionFor(toolName: string, args?: Record<string, unknown>): PermissionKind | undefined {
+  async permissionFor(toolName: string, args?: Record<string, unknown>): Promise<PermissionKind | undefined> {
     const entry = this.toolEntries.find((item) => item.tool.name === toolName);
     if (entry === undefined) return undefined;
     if (args !== undefined && entry.tool.permissionFor !== undefined) {
       try {
-        return entry.tool.permissionFor(args);
+        return await entry.tool.permissionFor(args);
       } catch {
         return entry.permission;
       }
@@ -112,7 +115,7 @@ export class PluginHost {
       },
       beforeToolCall: async (call) => {
         if (permission) {
-          const kind = this.permissionFor(call.name, call.args);
+          const kind = await this.permissionFor(call.name, call.args);
           if (kind) {
             const decision = await permission.decide(call.name, kind, call);
             if (decision === 'deny') return { action: 'deny', reason: 'by user' };

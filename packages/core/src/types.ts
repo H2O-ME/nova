@@ -75,6 +75,20 @@ export type JsonSchema = Record<string, unknown>;
 // Deferred import type to keep jobs.ts colocated with the loop contract.
 type JobRegistry = import('./jobs.js').JobRegistry;
 
+/** One nested tool call dispatched from inside another tool (PTC sub-call). */
+export interface ToolDispatchCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+/**
+ * Outcome of a nested dispatch. `ok: false` covers pipeline-level refusals
+ * (permission denied, unknown tool, aborted run) — the sub-call never reached
+ * a settled execution. A tool that ran and returned its own "Error: ..." text
+ * is `ok: true`: exactly what the native loop would have logged.
+ */
+export type ToolDispatchResult = { ok: true; result: string } | { ok: false; error: string };
+
 export interface ToolExecuteContext {
   rootDir: string;
   /**
@@ -97,6 +111,17 @@ export interface ToolExecuteContext {
    * render it best-effort and tools must not depend on it existing.
    */
   onProgress?: (text: string) => void;
+  /**
+   * Dispatch a nested tool call through the loop's FULL pipeline — the same
+   * permission gate, beforeToolCall hooks, per-tool timeout and cooperative
+   * abort a native call goes through (PTC mode: run_code routes its program
+   * bindings here, so a program can never reach a tool the user would not be
+   * asked about). Sub-calls never touch the message log; the dispatcher
+   * returns their settled text to the calling tool. `signal` overrides the
+   * run signal for this sub-call (run_code passes its run-scoped controller
+   * so budget expiry or settlement aborts in-flight sub-calls).
+   */
+  dispatch?: (call: ToolDispatchCall, signal?: AbortSignal) => Promise<ToolDispatchResult>;
 }
 
 /** Internal tool IR; provider adapters map this to wire formats. */
@@ -122,9 +147,16 @@ export interface ToolDefinition {
    * Per-call permission classification: overrides the tool's static kind for
    * one specific invocation. Used by fs reads to escalate out-of-workspace
    * paths to the approval-gated `read-external` kind while in-workspace reads
-   * stay auto-allowed.
+   * stay auto-allowed. May be async: sandbox-aware classifiers resolve real
+   * paths (symlinks) before deciding.
    */
-  permissionFor?(args: Record<string, unknown>): ToolPermissionKind;
+  permissionFor?(args: Record<string, unknown>): ToolPermissionKind | Promise<ToolPermissionKind>;
+  /**
+   * Optional human-readable preview of a call's effect, rendered above
+   * approval prompts (e.g. the edit diff of edit_file). Must never mutate
+   * state — the caller may invoke it before permission is granted.
+   */
+  preview?(args: Record<string, unknown>, ctx: { rootDir: string }): Promise<string> | string;
 }
 
 /**

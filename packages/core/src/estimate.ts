@@ -12,15 +12,19 @@ const CJK_RANGE = /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/;
 
 const FRAMING_TOKENS = 4;
 
-export function estimateMessageTokens(msg: AgentMessage): number {
-  const text = msg.content;
+/** Price a raw text blob (system prompts, tool schemas) with the same heuristic. */
+export function estimateTextTokens(text: string): number {
   let cjk = 0;
   let other = 0;
   for (const ch of text) {
     if (CJK_RANGE.test(ch)) cjk += 1;
     else other += 1;
   }
-  return FRAMING_TOKENS + cjk + Math.ceil(other / 4);
+  return cjk + Math.ceil(other / 4);
+}
+
+export function estimateMessageTokens(msg: AgentMessage): number {
+  return FRAMING_TOKENS + estimateTextTokens(msg.content);
 }
 
 /**

@@ -1,8 +1,16 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Session, type AssistantMessage, type UserMessage } from '../src/index.js';
+
+function user(id: string, content: string): UserMessage {
+  return { id, ts: 1, role: 'user', content };
+}
+
+function assistant(id: string, content: string): AssistantMessage {
+  return { id, ts: 2, role: 'assistant', content, usage: { promptTokens: 1, completionTokens: 2, cachedTokens: 0 } };
+}
 
 describe('Session', () => {
   it('appends and replays messages as an exact round trip', async () => {
@@ -33,5 +41,67 @@ describe('Session', () => {
     const file = path.join(dir, 'bad.jsonl');
     await writeFile(file, '{"type":"other"}\n', 'utf8');
     await expect(Session.replay(file)).rejects.toThrow('not a session file');
+  });
+
+  it('repairs a truncated trailing line (crash mid-append) and keeps the log clean', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-'));
+    const session = await Session.create(dir, 'sess_crash');
+    const first = user('msg_u1', 'hi');
+    const second = assistant('msg_a1', 'hello');
+    await session.append(first);
+    await session.append(second);
+
+    // Simulate a crash between write() and the trailing newline: the last
+    // line is a partial JSON fragment.
+    const raw = await readFile(session.file, 'utf8');
+    await writeFile(session.file, `${raw}{"type":"mess`, 'utf8');
+
+    const reopened = await Session.open(session.file);
+    expect(reopened.warnings).toEqual([]); // tail repair is silent — not corruption
+    expect(reopened.allMessages()).toEqual([first, second]);
+
+    // Appends continue cleanly after the repair; the log stays parseable.
+    const third = assistant('msg_a2', 'again');
+    await reopened.append(third);
+    const thrice = await Session.open(session.file);
+    expect(thrice.allMessages()).toEqual([first, second, third]);
+    for (const line of (await readFile(session.file, 'utf8')).trimEnd().split('\n')) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
+
+  it('skips a corrupt middle line with a warning instead of failing the open', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-'));
+    const session = await Session.create(dir, 'sess_bad');
+    const first = user('msg_u1', 'hi');
+    await session.append(first);
+
+    // Plant real corruption in the middle of the file (not a truncation).
+    const raw = await readFile(session.file, 'utf8');
+    const lines = raw.trimEnd().split('\n');
+    lines.splice(2, 0, 'not json at all');
+    await writeFile(session.file, `${lines.join('\n')}\n`, 'utf8');
+
+    const reopened = await Session.open(session.file);
+    expect(reopened.warnings).toEqual([expect.stringContaining('损坏')]);
+    expect(reopened.allMessages()).toEqual([first]);
+  });
+
+  it('normalizes a missing trailing newline so appends cannot glue lines', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-'));
+    const session = await Session.create(dir, 'sess_glue');
+    const first = user('msg_u1', 'hi');
+    await session.append(first);
+    // External writer left no trailing newline after the last line.
+    await writeFile(session.file, (await readFile(session.file, 'utf8')).trimEnd(), 'utf8');
+
+    const reopened = await Session.open(session.file);
+    await reopened.append(assistant('msg_a1', 'hello'));
+
+    const thrice = await Session.open(session.file);
+    expect(thrice.allMessages()).toHaveLength(2);
+    for (const line of (await readFile(session.file, 'utf8')).trimEnd().split('\n')) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
   });
 });

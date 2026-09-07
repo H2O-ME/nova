@@ -13,11 +13,12 @@ export const COMMAND_SPECS: CommandSpec[] = [
   { name: '/init', usage: '/init', description: '扫描工作区并生成 AGENTS.md' },
   { name: '/model', usage: '/model', description: '打开模型选择面板（从站点目录切换模型）' },
   { name: '/approvals', usage: '/approvals', description: '循环切换审批档位（只读 → 自动编辑 → 全部放行）' },
+  { name: '/mode', usage: '/mode', description: '查看三种执行模式的区别与当前模式（新会话按 Tab 切换）' },
   { name: '/plugins', usage: '/plugins', description: '列出插件、工具与权限级别' },
   { name: '/skill', usage: '/skill <name>', description: '加载指定技能的完整指令并立即执行' },
   { name: '/session', usage: '/session', description: '查看会话统计，选择并切换历史会话' },
   { name: '/new', usage: '/new', description: '开启新会话' },
-  { name: '/compact', usage: '/compact', description: '总结当前会话并开启新会话（重置上下文）' },
+  { name: '/compact', usage: '/compact', description: '原位压缩当前会话（总结上下文，日志保留完整历史）' },
   { name: '/clear', usage: '/clear', description: '清空当前显示（会话记录保留在磁盘）' },
   { name: '/exit', usage: '/exit', description: '退出 nova（别名 /quit）' },
 ];

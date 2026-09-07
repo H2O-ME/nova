@@ -11,11 +11,16 @@ import type {
   ChatRequest,
   ToolCall,
   ToolDefinition,
+  ToolDispatchCall,
+  ToolDispatchResult,
   ToolResultMessage,
   Usage,
   UsageStats,
   UserMessage,
 } from './types.js';
+
+/** The nested-dispatch seam exposed to tools through ToolExecuteContext. */
+export type ToolDispatcher = (call: ToolDispatchCall, signal?: AbortSignal) => Promise<ToolDispatchResult>;
 
 export interface AgentOptions {
   provider: ChatProvider;
@@ -248,7 +253,7 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
     }
 
     const toolByName = new Map((opts.tools ?? []).map((tool) => [tool.name, tool]));
-    yield* runToolCalls(toolCalls, toolByName, turn, opts, maxBytes);
+    yield* runToolCalls(toolCalls, toolByName, turn, opts, maxBytes, makeDispatcher(opts, toolByName));
   }
 
   yield { type: 'done', stopReason: 'max_turns' };
@@ -293,6 +298,7 @@ async function* runToolCalls(
   turn: number,
   opts: AgentOptions,
   maxBytes: number,
+  dispatch: ToolDispatcher,
 ): AsyncGenerator<AgentEvent> {
   for (const segment of splitToolSegments(toolCalls, toolByName)) {
     if (!segment.parallel) {
@@ -312,7 +318,7 @@ async function* runToolCalls(
           };
           continue;
         }
-        const result = await completeToolCall(verdict.effective, opts, maxBytes, toolByName);
+        const result = await completeToolCall(verdict.effective, opts, maxBytes, toolByName, dispatch);
         opts.messages.push(result);
         yield { type: 'tool_call_result', turn, call: verdict.effective, result };
       }
@@ -340,11 +346,31 @@ async function* runToolCalls(
     }
 
     if (approved.length === 0) continue;
-    const pending = approved.map((entry) => completeToolCall(entry.effective, opts, maxBytes, toolByName));
-    for (let i = 0; i < pending.length; i++) {
-      const result = await pending[i]!;
+    const pending = approved.map((entry) => completeToolCall(entry.effective, opts, maxBytes, toolByName, dispatch));
+    // allSettled: one failing call (e.g. a spill-to-disk error) must not leak
+    // an unhandled rejection from the siblings nobody awaits anymore — the
+    // run would crash mid-turn with an unbalanced log (assistant tool_calls
+    // without their result messages). Every slot resolves to a result.
+    const settled = await Promise.allSettled(pending);
+    for (let i = 0; i < settled.length; i++) {
+      const outcome = settled[i]!;
+      const call = approved[i]!.effective;
+      let result: ToolResultMessage;
+      if (outcome.status === 'fulfilled') {
+        result = outcome.value;
+      } else {
+        const reason = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        result = {
+          id: newId('msg'),
+          ts: Date.now(),
+          role: 'tool',
+          toolCallId: call.id,
+          name: call.name,
+          content: `Error: tool result could not be recorded (${reason})`,
+        };
+      }
       opts.messages.push(result);
-      yield { type: 'tool_call_result', turn, call: approved[i]!.effective, result };
+      yield { type: 'tool_call_result', turn, call, result };
     }
   }
 }
@@ -436,10 +462,44 @@ function parseArgs(raw: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Build the loop's nested-dispatch dispatcher (the PTC seam, dsh
+ * run_code-bridge style): a sub-call runs the SAME pipeline as a native one —
+ * abort checks, the beforeToolCall gate (permission service + plugin hooks),
+ * tool execution with per-tool timeout and abort grace, and the
+ * afterToolResult chain — but never touches the message log; the settled text
+ * is handed back to the calling tool. The optional signal overrides the run
+ * signal so run_code can tie sub-calls to its own run-scoped controller
+ * (budget expiry or settlement aborts in-flight work instead of orphaning it).
+ */
+function makeDispatcher(opts: AgentOptions, toolByName: Map<string, ToolDefinition>): ToolDispatcher {
+  return async (call, signal) => {
+    const subOpts = signal !== undefined ? { ...opts, signal } : opts;
+    const tool = toolByName.get(call.name);
+    if (tool === undefined) return { ok: false, error: `unknown tool "${call.name}"` };
+    if (subOpts.signal?.aborted) return { ok: false, error: 'run is over; the call was not dispatched' };
+    const sub: ToolCall = {
+      id: newId('call'),
+      name: call.name,
+      args: call.args,
+      rawArgs: JSON.stringify(call.args),
+    };
+    const verdict = await preflightToolCall(sub, subOpts);
+    if (verdict.kind === 'skip') return { ok: false, error: 'run is over; the call was not dispatched' };
+    if (verdict.kind === 'deny') return { ok: false, error: verdict.content };
+    const raw = await executeTool(tool, verdict.effective, subOpts);
+    const result = opts.hooks?.afterToolResult
+      ? await opts.hooks.afterToolResult(verdict.effective, raw)
+      : raw;
+    return { ok: true, result };
+  };
+}
+
 async function executeTool(
   tool: ToolDefinition | undefined,
   call: ToolCall,
   opts: AgentOptions,
+  dispatch?: ToolDispatcher,
 ): Promise<string> {
   if (!tool) return `Error: unknown tool "${call.name}"`;
 
@@ -459,6 +519,7 @@ async function executeTool(
         ...(opts.jobs !== undefined ? { jobs: opts.jobs } : {}),
         ...(opts.emit !== undefined ? { emit: opts.emit } : {}),
         ...(opts.onToolProgress !== undefined ? { onProgress: opts.onToolProgress } : {}),
+        ...(dispatch !== undefined ? { dispatch } : {}),
       });
     } catch (err) {
       return `Error: ${err instanceof Error ? err.message : String(err)}`;
@@ -518,8 +579,9 @@ async function completeToolCall(
   opts: AgentOptions,
   maxBytes: number,
   toolByName: Map<string, ToolDefinition>,
+  dispatch?: ToolDispatcher,
 ): Promise<ToolResultMessage> {
-  let rawResult = await executeTool(toolByName.get(call.name), call, opts);
+  let rawResult = await executeTool(toolByName.get(call.name), call, opts, dispatch);
   if (opts.hooks?.afterToolResult) {
     rawResult = await opts.hooks.afterToolResult(call, rawResult);
   }

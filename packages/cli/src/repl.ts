@@ -137,6 +137,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
   const host = new PluginHost(rootDir);
   const bashConfig = config.tools?.bash;
+  const codeConfig = config.tools?.code;
   for (const plugin of builtinPlugins({
     bash:
       bashConfig?.enabled === false
@@ -145,6 +146,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
             ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
             ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
           },
+    ...(codeConfig !== undefined ? { code: codeConfig } : {}),
   })) {
     host.use(plugin);
   }
@@ -200,6 +202,19 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   /** 审批等待期弹系统通知：REPL 停在提示符上看起来像卡住，其实是在等确认。 */
   const notify = createNotifier({ enabled: config.notify !== false });
   const askApproval: AskFn = async (call, kind) => {
+    // Best-effort effect preview (edit_file's diff etc.) above the prompt —
+    // the user approves what the call WILL do, not just the arg JSON.
+    const entry = host.toolEntries.find((e) => e.tool.name === call.name);
+    if (entry !== undefined && entry.tool.preview !== undefined) {
+      try {
+        const preview = (await entry.tool.preview(call.args, { rootDir })).trim();
+        if (preview.length > 0) {
+          for (const line of preview.split('\n')) console.log(paint.dim(`  ${line}`));
+        }
+      } catch {
+        // Preview is a nicety; a failing one must not block the approval flow.
+      }
+    }
     const argsPreview = call.rawArgs.length > 160 ? `${call.rawArgs.slice(0, 160)}…` : call.rawArgs;
     notify('需要审批', `${toolLabel(call.name)} · ${argsPreview.slice(0, 80)}`);
     const raw = await lines.next(

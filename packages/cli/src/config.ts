@@ -14,6 +14,12 @@ const configSchema = z.object({
     temperature: z.number().min(0).max(2).optional(),
     /** Passed through as `max_tokens` when set. */
     maxTokens: z.number().int().positive().max(1_000_000).optional(),
+    /**
+     * Context window size (prompt tokens). Normally resolved from
+     * https://models.dev/api.json by model id; set this to override/兜底 for
+     * self-hosted or unlisted models so the TUI context bar has a denominator.
+     */
+    contextWindow: z.number().int().positive().max(200_000_000).optional(),
   }),
   systemPrompt: z.string().optional(),
   maxTurns: z.number().int().positive().max(500).optional(),
@@ -36,6 +42,22 @@ const configSchema = z.object({
           enabled: z.boolean().optional(),
           timeoutMs: z.number().int().positive().optional(),
           shellPath: z.string().optional(),
+        })
+        .optional(),
+      /**
+       * PTC 模式（Cloudflare Code Mode，dsh 简化版）：模型针对工具注册表
+       * 写 TypeScript 程序经 run_code 在 worker 线程内执行。mode "native"
+       * 或缺省=关闭；"ptc"=只暴露 run_code（其余工具降为程序内 SDK 绑定）；
+       * "both"=原生调用与程序并存。需要 Node >= 22.19。
+       */
+      code: z
+        .object({
+          mode: z.enum(['native', 'ptc', 'both']).optional(),
+          maxParallelSubCalls: z.number().int().positive().max(100).optional(),
+          computeMs: z.number().int().positive().optional(),
+          maxWallMs: z.number().int().positive().optional(),
+          maxOutputBytes: z.number().int().positive().optional(),
+          maxOldGenerationSizeMb: z.number().int().positive().optional(),
         })
         .optional(),
     })

@@ -15,7 +15,7 @@
 | --- | --- | --- |
 | **pi** | 分层包结构：`core`（agent loop + 状态）/ `ai`（多供应商统一 API）/ `tui`（差分渲染终端 UI）/ `coding-agent`（产品壳）；扩展即代码（extension 直接注册工具/命令/UI 块） | pi 无权限系统、依赖 npm；我们改为 pnpm + 内置轻量审批层 |
 | **deepseek-harness** | "Everything is a Plugin"：工具、命令、服务、UI 全部是插件单元，通过统一内核（Cordis 式依赖注入 + 生命周期事件）组合；monorepo + pnpm + tsdown 构建 | 不引入 Cordis 本体，自写约 300 行的微型容器（避免重型范式依赖） |
-| **codex** | AGENTS.md 项目指令发现链、turn 内审批（approval modes）、会话持久化为可回放 JSONL、`--version`/非交互 exec 双模式 | 不用 Rust；不做系统级沙箱（v1 用审批确认 + 目录白名单代替） |
+| **codex** | AGENTS.md 项目指令发现链、turn 内审批（approval modes）、会话持久化为可回放 JSONL、`--version`/非交互 exec 双模式 | 不用 Rust；不做系统级沙箱（v1 用审批确认 + realpath 规范化的工作区边界代替，M6.1 起补审批 diff 预览） |
 
 ## 3. 技术栈与运行环境
 
@@ -71,7 +71,7 @@ MCP 支持曾按原 §6 目标交付（`packages/mcp`：stdio + Streamable HTTP�
 
 - `nova`（无参）→ 交互 TUI（TTY 下全屏；非 TTY 自动回落 readline，`--repl` 强制 readline）；`nova exec "<task>"` → 非交互单次任务执行（受 `maxTurns` 约束，CI 友好，codex 模式）。
 - TUI 自写差分渲染（对标 pi-tui）：alternate screen + 行级 diff 重绘，避免 ncurses/React 依赖；支持流式 markdown、工具调用折叠块、审批弹窗、状态栏、PageUp/PageDown 滚动、Ctrl+C 中断当前轮（空闲时两段退出）。
-- 斜杠命令（已落地）：`/help /init /model /approvals /plugins /skill /session /new /compact /clear /exit`（TUI 中输入 `/` 弹出面板，↑↓ 选择、Tab 补全、输入历史）；`/session` 打开会话切换器——最近会话按活跃排序、首条提问作标题，Enter 恢复模型上下文并回放文字记录，同时把工作区切回该会话创建时的目录（工具根目录/项目技能/AGENTS.md 联动，log 里以 `workspace` 事件记录，老会话回退读环境片段的 `cwd=` 行）。
+- 斜杠命令（已落地）：`/help /init /model /mode /approvals /plugins /skill /session /new /compact /clear /exit`（TUI 中输入 `/` 弹出面板，↑↓ 选择、Tab 补全、输入历史；`/mode` 展示普通/PTC/混合三模式的区别与当前模式）；`/session` 打开会话切换器——最近会话按活跃排序、首条提问作标题，Enter 恢复模型上下文并回放文字记录，同时把工作区切回该会话创建时的目录（工具根目录/项目技能/AGENTS.md 联动，log 里以 `workspace` 事件记录，老会话回退读环境片段的 `cwd=` 行）。
 - AGENTS.md 发现链（已落地）：从工作区根到当前目录逐层收集（根在前），共享 32KB 字节预算，注入会话首条 user 上下文片段 `<project_docs>`（非系统提示，保持前缀字节稳定）；`/init` 生成初版。
 
 ## 9. 上下文管理与缓存命中率（核心差异化目标）
@@ -87,7 +87,7 @@ MCP 支持曾按原 §6 目标交付（`packages/mcp`：stdio + Streamable HTTP�
 
 ## 10. 安全与权限（轻量版，对标 codex 审批）
 
-三档模式（已按 M2/M6 落地）：`read-only`（默认，只读工具自动放行）/ `auto-edit`（工作区内写自动放行）/ `full`（全放行）。execute/write/network 类工具交互确认，支持 `y / n / a(lways)`——bash 的 "always" 按**命令程序前缀**记忆（`git status` 放行后续 `git ...`，不波及 `rm`），其余按工具名+类型记忆；asker 抛错一律拒绝（fail-closed）；exec/CI 走服务内 `never` 策略，确定性拒绝；每次决定写入 `approval` 审计事件（log-only，可回放）。v1 不做进程沙箱，文档明示"容器化建议"（借鉴 pi 的 containerization.md 思路）。
+三档模式（已按 M2/M6 落地）：`read-only`（默认，只读工具自动放行）/ `auto-edit`（工作区内写自动放行）/ `full`（全放行）。execute/write/network 类工具交互确认，支持 `y / n / a(lways)`——bash 的 "always" 按**命令程序前缀**记忆（`git status` 放行后续 `git ...`，不波及 `rm`），其余按工具名+类型记忆；asker 抛错一律拒绝（fail-closed）；exec/CI 走服务内 `never` 策略，确定性拒绝；每次决定写入 `approval` 审计事件（log-only，可回放）。**M6.1 起**：写工具越界检查跑在 realpath 规范路径上（防符号链接跟穿逃逸），`edit_file`/`write_file` 审批弹窗渲染 diff/摘要预览（工具经可选 `preview(args)` 声明）。v1 仍不做进程沙箱，文档明示"容器化建议"（借鉴 pi 的 containerization.md 思路）。
 
 ## 11. 数据落盘布局（codex 式，零工作区写入）
 
@@ -111,6 +111,8 @@ MCP 支持曾按原 §6 目标交付（`packages/mcp`：stdio + Streamable HTTP�
 | **M4（已完成）** | TUI（差分渲染）+ compact + 缓存指标 | 1000+ 轮长会话流畅；第 3 轮起命中率 ≥90% |
 | **M5（已完成）** | `exec` 非交互模式 + 跨平台打磨（Windows 终端/路径/信号） | Linux + Windows CI 全绿 |
 | **M6（已完成）** | 借鉴 deepseek-harness 六项改进：会话日志 v2（不可变事件流 + 投影压缩 + 孤儿锁检测）、token 锚点压缩预判、并行工具执行（isConcurrencySafe）+ 工具级超时、后台 jobs（bash 后台 + jobs 工具，预留 subagent 扩展位）、todo 工具（log-only 整表替换）、审批收紧（bash always 按命令前缀 / fail-closed / never 策略 / approval 审计事件） | 全部测试绿；v1 会话自动升级；投影面 == 日志投影不变量（NOVA_DEBUG 校验） |
+| **M6.2（已完成）** | PTC 模式（Code Mode，Cloudflare/dsh run_code 简化版）：`tools.code.mode` 三态呈现（native/ptc/both）、`run_code` 传输工具、worker 线程代码运行时（剥型/空环境/堆+busy-time+墙钟+输出预算/端口防御）、schema→TypeScript SDK 字节稳定生成、子调用经 `ctx.dispatch` 走完整审批管线、`code-dispatch` 审计事件 | 真实 worker 测试覆盖值/日志/异常/双预算/中止/恶意绑定；三态投影与调度屏障单测；Node ≥22.19 缺失时启动即明确报错 |
+| **M6.3（已完成）** | TUI 执行模式与上下文可视化：新会话 Tab 循环 普通/PTC/混合（rebuildHost 统一重绑 host+hooks，修复会话切换后 hooks 滞留旧 host）、状态区单行三段式（借 dsh 结构骨架：`上下文仪表 │ 模型 · 执行模式芯片 · 审批 │ 右缘 tps + cache`，`│` 分大组、`·` 分组内；空间不足按优先级整字段降级——去标签/去前缀 → 单字审批 → 弃模型名，绝不词中截断，且截左不截右、无逐帧变宽字段——不闪烁、cache 不丢失；分段明细移入 /session，活动指示在 composer 前缀 spinner）、models.dev 模型元数据（context/模态/推理/工具，精简落盘缓存 24h TTL + 断网降级 + `provider.contextWindow` 兜底）、`/model` 面板与 `/session` 能力展示 | model-meta 纯函数与 store 缓存（TTL/磁盘命中/断网保旧）单测；allocateCells largest-remainder 与结构条测试；真实目录快照 7429 模型解析冒烟 |
 
 ## 13. 风险与开放问题（请审批时一并定夺）
 

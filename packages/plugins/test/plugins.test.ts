@@ -45,7 +45,7 @@ describe('PluginHost', () => {
 
     expect(host.tools.map((t) => t.name)).toEqual(['echo_tool']);
     expect(host.commandEntries.map((c) => c.command.name)).toEqual(['ping']);
-    expect(host.permissionFor('echo_tool')).toBe('execute');
+    expect(await host.permissionFor('echo_tool')).toBe('execute');
 
     const hooks = host.agentHooks();
     const req = await hooks.beforeLLMCall!({ messages: [], systemPrompt: 'base' });
@@ -164,6 +164,7 @@ describe('builtinPlugins', () => {
       'list_dir',
       'write_file',
       'edit_file',
+      'search_files',
       'bash',
       'jobs',
       'todo_write',
@@ -194,9 +195,10 @@ describe('builtinPlugins', () => {
 
     // Out-of-root reads no longer hard-fail: they are classified as
     // `read-external` (approval-gated) and actually execute when approved.
+    // The classifier is async: it resolves real paths before deciding.
     const external = host.tools.find((t) => t.name === 'read_file')!;
-    expect(external.permissionFor?.({ path: '../outside.txt' })).toBe('read-external');
-    expect(external.permissionFor?.({ path: 'a/b.txt' })).toBe('read');
+    expect(await external.permissionFor?.({ path: '../outside.txt' })).toBe('read-external');
+    expect(await external.permissionFor?.({ path: 'a/b.txt' })).toBe('read');
     const outsideDir = await mkdtemp(path.join(tmpdir(), 'nova-outside-'));
     await writeFile(path.join(outsideDir, 'outside.txt'), 'secret', 'utf8');
     expect(

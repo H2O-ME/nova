@@ -1,16 +1,19 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ToolExecuteContext } from '@nova-agent/core';
+import type { ToolExecuteContext, ToolPermissionKind } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
 /**
  * Resolve a user/model-supplied path against the workspace root and reject
  * anything that escapes it. This is the M1 sandbox: no writes outside root.
+ * Escapes through symlinks are caught because the containment check runs on
+ * CANONICAL paths (realpath of the deepest existing ancestor), not on the
+ * raw resolved string.
  */
-export function resolveInRoot(rootDir: string, raw: unknown): string {
-  const file = resolveAnywhere(rootDir, raw);
-  const root = path.resolve(rootDir);
-  if (file !== root && !file.startsWith(root + path.sep)) {
+export async function resolveInRoot(rootDir: string, raw: unknown): Promise<string> {
+  const file = await resolveReal(rootDir, raw);
+  const realRoot = await canonicalize(path.resolve(rootDir));
+  if (!isCanonicalInside(realRoot, file)) {
     throw new Error(`path escapes workspace root: ${raw as string}`);
   }
   return file;
@@ -22,10 +25,64 @@ export function resolveAnywhere(rootDir: string, raw: unknown): string {
   return path.resolve(path.resolve(rootDir), raw);
 }
 
-/** True when a resolved path stays inside the workspace root. */
+/** True when a resolved path stays inside the workspace root (string-only). */
 export function isInsideRoot(rootDir: string, resolved: string): boolean {
   const root = path.resolve(rootDir);
-  return resolved === root || resolved.startsWith(root + path.sep);
+  return isCanonicalInside(root, resolved);
+}
+
+/**
+ * Canonical absolute path of the target: realpath of the deepest EXISTING
+ * ancestor plus the not-yet-existing remainder (write targets usually do not
+ * exist). Pure string prefix checks are fooled by a symlink planted inside
+ * the workspace pointing outside it — write_file would silently follow it and
+ * escape the workspace. The real sandbox boundary is canonical, exactly like
+ * codex/pi sandbox resolutions.
+ */
+export async function resolveReal(rootDir: string, raw: unknown): Promise<string> {
+  return canonicalize(resolveAnywhere(rootDir, raw));
+}
+
+async function canonicalize(resolved: string): Promise<string> {
+  let current = resolved;
+  const tail: string[] = [];
+  for (;;) {
+    try {
+      const real = await realpath(current);
+      return tail.length === 0 ? real : path.join(real, ...tail);
+    } catch {
+      const parent = path.dirname(current);
+      if (parent === current) return resolved; // unreachable on real filesystems
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+function isCanonicalInside(canonicalRoot: string, canonicalTarget: string): boolean {
+  if (process.platform === 'win32') {
+    const root = path.resolve(canonicalRoot).toLowerCase();
+    const target = path.resolve(canonicalTarget).toLowerCase();
+    return target === root || target.startsWith(`${root}${path.sep}`);
+  }
+  const root = path.resolve(canonicalRoot);
+  const target = path.resolve(canonicalTarget);
+  return target === root || target.startsWith(`${root}${path.sep}`);
+}
+
+/**
+ * Permission classification against the CANONICAL path (in-root reads are
+ * free, out-of-root reads are approval-gated). Any resolution failure fails
+ * closed to `read-external` — the approval gate is the conservative default.
+ */
+export async function rootPermissionKind(rootDir: string, raw: unknown): Promise<ToolPermissionKind> {
+  try {
+    const realRoot = await canonicalize(path.resolve(rootDir));
+    const file = await resolveReal(rootDir, raw);
+    return isCanonicalInside(realRoot, file) ? 'read' : 'read-external';
+  } catch {
+    return 'read-external';
+  }
 }
 
 function strArg(args: Record<string, unknown>, key: string): string | undefined {
@@ -35,6 +92,22 @@ function strArg(args: Record<string, unknown>, key: string): string | undefined 
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Binary/non-UTF8 probe: a C0 control character (tab/lf/cr excepted) or DEL
+ * in the sample means reading the file as UTF-8 text would garble output.
+ * A charcode scan rather than a regex class — control ranges read clearer
+ * spelled than escaped.
+ */
+export function looksBinary(text: string, sampleChars = 8192): boolean {
+  const limit = Math.min(text.length, sampleChars);
+  for (let i = 0; i < limit; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 32 && code !== 9 && code !== 10 && code !== 13) return true;
+    if (code === 127) return true;
+  }
+  return false;
 }
 
 /**
@@ -63,6 +136,27 @@ function tolerantReplace(
     first.includes('\r\n') && newString.includes('\n') ? newString.replaceAll('\n', '\r\n') : newString;
   const next = replaceAll ? text.replace(global, replacement) : text.replace(new RegExp(pattern), replacement);
   return { next, count };
+}
+
+/**
+ * The shared edit core: exact-match first, newline-tolerant CRLF fallback
+ * second. Used by both edit_file's execution and its approval preview, so
+ * the preview always reflects what the edit really does.
+ */
+function applyEdit(
+  text: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean,
+): { next: string; count: number } | undefined {
+  const occurrences = text.split(oldString).length - 1;
+  if (occurrences > 0) {
+    return {
+      next: replaceAll ? text.replaceAll(oldString, newString) : text.replace(oldString, newString),
+      count: occurrences,
+    };
+  }
+  return tolerantReplace(text, oldString, newString, replaceAll);
 }
 
 function intArg(args: Record<string, unknown>, key: string): number | undefined {
@@ -97,15 +191,25 @@ export function fsReadPlugin(): Plugin {
         },
         /** In-root reads are free; out-of-root reads cross the sandbox boundary. */
         permissionFor(args) {
-          const file = resolveAnywhere(rootDir, args['path']);
-          return isInsideRoot(rootDir, file) ? 'read' : 'read-external';
+          return rootPermissionKind(rootDir, args['path']);
         },
         async execute(args, c: ToolExecuteContext) {
           const file = resolveAnywhere(c.rootDir, args['path']);
           const info = await stat(file).catch(() => undefined);
           if (!info) return `Error: file not found: ${args['path'] as string}`;
           if (info.isDirectory()) return `Error: path is a directory, use list_dir: ${args['path'] as string}`;
+          if (info.size > READ_MAX_BYTES) {
+            return `Error: file is ${info.size} bytes (over the ${READ_MAX_BYTES}-byte read cap); use bash (head/tail/sed) or a script to read it in chunks`;
+          }
           const text = await readFile(file, 'utf8');
+          // Binary probe: control characters in the first 8 KiB mean reading
+          // as UTF-8 would garble the output.
+          if (looksBinary(text)) {
+            return `Error: file looks binary or non-UTF8 — reading it as text would garble the output (${args['path'] as string})`;
+          }
+          // Staleness baseline for edit_file: after this read, an edit of a
+          // file that changed on disk is an error instead of a silent clobber.
+          recordVersion(await resolveReal(c.rootDir, args['path']), info);
           const lines = text.split('\n');
           const total = lines.length;
           const offset = Math.max(1, intArg(args, 'offset') ?? 1);
@@ -135,8 +239,7 @@ export function fsReadPlugin(): Plugin {
           additionalProperties: false,
         },
         permissionFor(args) {
-          const dir = resolveAnywhere(rootDir, strArg(args, 'path') ?? '.');
-          return isInsideRoot(rootDir, dir) ? 'read' : 'read-external';
+          return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.');
         },
         async execute(args, c: ToolExecuteContext) {
           const dir = resolveAnywhere(c.rootDir, strArg(args, 'path') ?? '.');
@@ -160,11 +263,60 @@ export function fsReadPlugin(): Plugin {
   };
 }
 
+/**
+ * Last-known (mtimeMs, size) per canonical path, maintained by read_file and
+ * the write tools. edit_file uses it as a staleness guard: the model edits a
+ * snapshot it read earlier — if the file moved under it (user edits, another
+ * tool), applying old_string against the old bytes silently clobbers or
+ * corrupts. Process-scoped state is fine: one CLI process runs one session.
+ */
+const fileVersions = new Map<string, { mtimeMs: number; size: number }>();
+
+function recordVersion(file: string, info: { mtimeMs: number; size: number }): void {
+  fileVersions.set(file, { mtimeMs: info.mtimeMs, size: info.size });
+}
+
+async function recordVersionNow(file: string): Promise<void> {
+  const info = await stat(file).catch(() => undefined);
+  if (info === undefined) fileVersions.delete(file);
+  else recordVersion(file, info);
+}
+
+/** Error message when the file changed on disk since the last read/write. */
+async function staleError(file: string): Promise<string | undefined> {
+  const known = fileVersions.get(file);
+  if (known === undefined) return undefined; // never seen this session — no baseline
+  const current = await stat(file).catch(() => undefined);
+  if (current === undefined) return 'file was deleted or moved since it was last seen; re-read it before editing';
+  if (current.mtimeMs !== known.mtimeMs || current.size !== known.size) {
+    return `file changed on disk since it was last read (mtime/size differ) — the old snapshot is stale; re-read it with read_file before editing`;
+  }
+  return undefined;
+}
+
+/**
+ * Same-directory tmp + rename: readers never observe a half-written file and
+ * a crash leaves the previous content in place.
+ */
+async function atomicWrite(file: string, content: string): Promise<void> {
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `.nova-tmp-${process.pid}-${(Math.random() * 2 ** 32).toString(36)}`);
+  await writeFile(tmp, content, { encoding: 'utf8', flag: 'wx' });
+  try {
+    await rename(tmp, file);
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => undefined);
+    throw err;
+  }
+}
+
 export function fsWritePlugin(): Plugin {
   return {
     name: 'fs-write',
     description: 'Create, overwrite and edit files inside the workspace.',
     activate(ctx) {
+      const rootDir = ctx.rootDir;
       ctx.registerTool({
         name: 'write_file',
         description:
@@ -178,11 +330,26 @@ export function fsWritePlugin(): Plugin {
           required: ['path', 'content'],
           additionalProperties: false,
         },
+        /** Show what an approval would actually write (read-only). */
+        async preview(args) {
+          try {
+            const file = await resolveInRoot(rootDir, args['path']);
+            const content = typeof args['content'] === 'string' ? args['content'] : '';
+            const rel = path.relative(rootDir, file) || file;
+            const firstLine = (content.split('\n', 1)[0] ?? '').slice(0, 80);
+            return `写入 ${rel}（${content.length} 字符）${content.length > 0 ? `\n首行: ${firstLine}` : '（空文件）'}`;
+          } catch {
+            return '';
+          }
+        },
         async execute(args, c: ToolExecuteContext) {
-          const file = resolveInRoot(c.rootDir, args['path']);
-          const content = typeof args['content'] === 'string' ? args['content'] : '';
-          await mkdir(path.dirname(file), { recursive: true });
-          await writeFile(file, content, 'utf8');
+          if (typeof args['content'] !== 'string') {
+            return 'Error: content must be a string (write_file takes path + content)';
+          }
+          const file = await resolveInRoot(c.rootDir, args['path']);
+          const content = args['content'];
+          await atomicWrite(file, content);
+          await recordVersionNow(file);
           return `wrote ${content.length} chars to ${path.relative(c.rootDir, file) || file}`;
         },
       }, { permission: 'write' });
@@ -202,8 +369,44 @@ export function fsWritePlugin(): Plugin {
           required: ['path', 'old_string', 'new_string'],
           additionalProperties: false,
         },
+        /** Unified-ish diff shown above the approval prompt (read-only). */
+        async preview(args) {
+          let file: string;
+          let oldString: string;
+          let newString: string;
+          try {
+            file = await resolveInRoot(rootDir, args['path']);
+            oldString = strArg(args, 'old_string') ?? '';
+            newString = strArg(args, 'new_string') ?? '';
+            if (oldString.length === 0) return '';
+          } catch {
+            return '';
+          }
+          let text: string;
+          try {
+            text = await readFile(file, 'utf8');
+          } catch {
+            return '';
+          }
+          const played = applyEdit(text, oldString, newString, args['replace_all'] === true);
+          const rel = path.relative(rootDir, file) || file;
+          if (played === undefined) return `编辑 ${rel}：old_string 未命中（预览不可用）`;
+          const out: string[] = [`编辑 ${rel}（${played.count} 处替换）：`];
+          const add = (prefix: string, side: string): void => {
+            for (const line of side.split('\n')) {
+              if (out.length >= PREVIEW_MAX_LINES) {
+                out.push('  …');
+                return;
+              }
+              out.push(`${prefix}${line}`);
+            }
+          };
+          add('- ', oldString);
+          add('+ ', newString);
+          return out.join('\n');
+        },
         async execute(args, c: ToolExecuteContext) {
-          const file = resolveInRoot(c.rootDir, args['path']);
+          const file = await resolveInRoot(c.rootDir, args['path']);
           const oldString = strArg(args, 'old_string');
           const newString = strArg(args, 'new_string') ?? '';
           if (oldString === undefined || oldString.length === 0) return 'Error: old_string must be a non-empty string';
@@ -213,27 +416,23 @@ export function fsWritePlugin(): Plugin {
           } catch {
             return `Error: cannot read file: ${args['path'] as string}`;
           }
-          const replaceAll = args['replace_all'] === true;
-          let occurrences = text.split(oldString).length - 1;
-          let next: string;
-          if (occurrences > 0) {
-            next = replaceAll ? text.replaceAll(oldString, newString) : text.replace(oldString, newString);
-          } else {
-            // Windows CRLF files: the model emits \n while the disk has \r\n,
-            // so an exact match fails on virtually every line. Retry with a
-            // newline-tolerant pattern instead of reporting "not found".
-            const tolerant = tolerantReplace(text, oldString, newString, replaceAll);
-            if (tolerant === undefined) return 'Error: old_string not found in file';
-            occurrences = tolerant.count;
-            next = tolerant.next;
+          const pendingStale = await staleError(file);
+          if (pendingStale !== undefined) return `Error: ${pendingStale}`;
+          const played = applyEdit(text, oldString, newString, args['replace_all'] === true);
+          if (played === undefined) return 'Error: old_string not found in file';
+          if (played.count > 1 && args['replace_all'] !== true) {
+            return `Error: old_string appears ${played.count} times; pass replace_all=true or provide a longer unique snippet`;
           }
-          if (occurrences > 1 && !replaceAll) {
-            return `Error: old_string appears ${occurrences} times; pass replace_all=true or provide a longer unique snippet`;
-          }
-          await writeFile(file, next, 'utf8');
-          return `edited ${occurrences} occurrence(s) in ${path.relative(c.rootDir, file) || file}`;
+          await atomicWrite(file, played.next);
+          await recordVersionNow(file);
+          return `edited ${played.count} occurrence(s) in ${path.relative(c.rootDir, file) || file}`;
         },
       }, { permission: 'write' });
     },
   };
 }
+
+/** Byte cap for read_file (an 8 MiB text file is already a wall of noise). */
+export const READ_MAX_BYTES = 8 * 1024 * 1024;
+/** Preview diff side length cap (approval popup rows are precious). */
+const PREVIEW_MAX_LINES = 17;

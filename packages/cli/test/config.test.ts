@@ -67,4 +67,29 @@ describe('loadConfig', () => {
     const home = await withConfig('{ not json');
     await expect(loadConfig(home)).rejects.toThrow(/invalid JSON/);
   });
+
+  it('accepts tools.code (PTC mode) settings and rejects invalid ones', async () => {
+    const provider = { baseURL: 'https://x.test/v1', apiKey: 'sk-1', model: 'm' };
+    const home = await withConfig(
+      JSON.stringify({ provider, tools: { code: { mode: 'ptc', maxParallelSubCalls: 4, computeMs: 5000, maxOutputBytes: 65536 } } }),
+    );
+    const config = await loadConfig(home);
+    expect(config.tools?.code?.mode).toBe('ptc');
+    expect(config.tools?.code?.maxParallelSubCalls).toBe(4);
+    expect(config.tools?.code?.computeMs).toBe(5000);
+    const bad = await withConfig(JSON.stringify({ provider, tools: { code: { mode: 'code-first' } } }));
+    await expect(loadConfig(bad)).rejects.toThrow(/mode/);
+  });
+
+  it('accepts provider.contextWindow (TUI bar denominator) and rejects junk', async () => {
+    const home = await withConfig(
+      JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-1', model: 'm', contextWindow: 200000 } }),
+    );
+    const config = await loadConfig(home);
+    expect(config.provider.contextWindow).toBe(200000);
+    const bad = await withConfig(
+      JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-1', model: 'm', contextWindow: 0 } }),
+    );
+    await expect(loadConfig(bad)).rejects.toThrow(/contextWindow/);
+  });
 });

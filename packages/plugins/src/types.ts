@@ -37,6 +37,12 @@ export interface PluginContext {
   registerTool(def: ToolDefinition, opts?: ToolOptions): void;
   registerCommand(def: CommandDefinition): void;
   registerHook<K extends HookEvent>(event: K, fn: HookMap[K]): void;
+  /**
+   * Live view of every tool registered so far across all plugins. Read it
+   * AT CALL TIME, not at activation time: later-activated plugins (skills)
+   * add tools this view must include.
+   */
+  tools(): ToolDefinition[];
 }
 
 /**

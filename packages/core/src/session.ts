@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, open, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { newId } from './ids.js';
 import type { AgentMessage, UserMessage } from './types.js';
@@ -45,7 +45,23 @@ export type SessionEvent =
   | { type: 'approval'; toolName: string; kind: string; outcome: 'allow' | 'deny' | 'always'; at: number }
   /** Log-only workspace marker (session switching restores the tools' root
    * from it); never joins the model surface. */
-  | { type: 'workspace'; path: string; at: number };
+  | { type: 'workspace'; path: string; at: number }
+  /**
+   * Log-only PTC sub-dispatch audit record: one per settled `run_code`
+   * binding call (dsh tool/code-dispatch). The only durable trace of what a
+   * program actually did — intermediate results never enter the model
+   * surface, so without this record a PTC turn would be unreconstructable.
+   * Args and result are preview-capped string copies; the byte budgets keep
+   * a program's fan-out from flooding the log.
+   */
+  | {
+      type: 'code-dispatch';
+      toolName: string;
+      argsPreview: string;
+      isError: boolean;
+      resultPreview: string;
+      at: number;
+    };
 
 /** The exported prefix used by the projected compaction summary message. */
 export const COMPACT_SUMMARY_PREFIX = '[已压缩的上一会话摘要]';
@@ -113,11 +129,10 @@ export class Session {
   }
 
   static async open(file: string): Promise<Session> {
-    const { header, events } = await readEvents(file);
+    const { header, events, warnings } = await readEvents(file, { repairTail: true });
     if (header.v < SESSION_VERSION) {
       await upgradeToV2(file, header, events);
     }
-    const warnings: string[] = [];
     if (findOrphanCompaction(events) !== -1) {
       warnings.push('检测到未完成的压缩（孤儿锁）：该次压缩被丢弃，历史消息保持完整。');
     }
@@ -200,25 +215,83 @@ export class Session {
   }
 }
 
-async function readEvents(file: string): Promise<{ header: SessionHeader; events: SessionEvent[] }> {
+interface ReadResult {
+  header: SessionHeader;
+  events: SessionEvent[];
+  warnings: string[];
+}
+
+/**
+ * Read the JSONL session log with corruption tolerance. Two failure shapes
+ * are handled:
+ * - a truncated FINAL line (a crash between write() and the trailing
+ *   newline): dropped and the file truncated at the damage point, so future
+ *   appends line up and the log stays clean JSONL;
+ * - a corrupt MIDDLE line (real disk damage): skipped with a warning, the
+ *   rest of the log stays intact and every other consumer keeps replaying.
+ * Without either tolerance a single bad line would make the session
+ * unopenable — no resume, no audit, no recovery (codex repairs its rollout
+ * logs for the same reason).
+ */
+async function readEvents(file: string, opts?: { repairTail?: boolean }): Promise<ReadResult> {
   const raw = await readFile(file, 'utf8');
-  const lines = raw.split('\n').filter((line) => line.trim().length > 0);
+  const warnings: string[] = [];
+  const lines = raw.split('\n');
   const headerLine = lines[0];
   if (headerLine === undefined) throw new Error(`empty session file: ${file}`);
-  const header = JSON.parse(headerLine) as SessionHeader;
-  if (header.type !== 'session') throw new Error(`not a session file: ${file}`);
+  let header: SessionHeader;
+  try {
+    const parsed = JSON.parse(headerLine) as SessionHeader;
+    if (parsed.type !== 'session') throw new Error('not a session header');
+    header = parsed;
+  } catch {
+    throw new Error(`not a session file: ${file}`);
+  }
 
   const events: SessionEvent[] = [];
-  for (const line of lines.slice(1)) {
-    if (header.v >= SESSION_VERSION) {
-      events.push(parseEventLine(line));
-      continue;
+  // Byte offset of the first body line — the loop below starts at i=1, so
+  // the header's own bytes (and its newline) seed the offset bookkeeping.
+  let offset = Buffer.byteLength(headerLine, 'utf8') + 1;
+  let truncatedTailOffset: number | undefined;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]!;
+    const isFinal = i === lines.length - 1;
+    const endsWithNewline = !isFinal || raw.endsWith('\n');
+    const lineStart = offset;
+    offset += Buffer.byteLength(line, 'utf8') + (endsWithNewline ? 1 : 0);
+    if (line.trim().length === 0) continue;
+    try {
+      if (header.v >= SESSION_VERSION) {
+        events.push(parseEventLine(line));
+      } else {
+        // v1: bare message lines.
+        const message = JSON.parse(line) as AgentMessage;
+        events.push({ type: 'message', message });
+      }
+    } catch {
+      if (isFinal && !endsWithNewline && opts?.repairTail === true) {
+        truncatedTailOffset ??= lineStart;
+      } else {
+        warnings.push(`跳过损坏的事件行（第 ${i + 1} 行）；该行相关消息可能不完整。`);
+      }
     }
-    // v1: bare message lines.
-    const message = JSON.parse(line) as AgentMessage;
-    events.push({ type: 'message', message });
   }
-  return { header, events };
+
+  if (truncatedTailOffset !== undefined) {
+    // Drop the half-written line: the file now ends exactly at the previous
+    // line's newline, so appends continue cleanly from here.
+    const fh = await open(file, 'r+');
+    try {
+      await fh.truncate(truncatedTailOffset);
+    } finally {
+      await fh.close();
+    }
+  } else if (!raw.endsWith('\n')) {
+    // A valid final line without a trailing newline (some external writer):
+    // the next append would glue onto it and corrupt two lines at once.
+    await appendFile(file, '\n', 'utf8');
+  }
+  return { header, events, warnings };
 }
 
 /**
