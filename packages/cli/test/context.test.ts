@@ -32,7 +32,10 @@ describe('buildContextFragment', () => {
     expect(text).toContain('platform=win32');
     expect(text).toContain('cwd=D:\\web\\agent');
     expect(text).toContain('today=2026-08-31');
-    expect(text).toContain('<user_instructions>\nAlways answer in haiku.');
+    expect(text).toContain('<user_instructions>');
+    // 指令帧：权威会话指令语境，不是"可能相关的参考"
+    expect(text).toContain('active session directives');
+    expect(text).toContain('Always answer in haiku.');
     expect(text).toContain('- alpha: alpha description');
     expect(text).toContain('- beta: beta description');
     expect(text).toContain('`skill` tool');
@@ -52,6 +55,7 @@ describe('buildContextFragment', () => {
   it('renders project docs as a project_docs section between instructions and skills', () => {
     const text = buildContextFragment(env, undefined, [fakeSkill('alpha')], ['# Workspace rules', 'use pnpm']);
     expect(text).toContain('<project_docs>');
+    expect(text).toContain('Active and mandatory');
     expect(text).toContain('# Workspace rules\n\n--- project-doc ---\n\nuse pnpm');
     expect(text.indexOf('<project_docs>')).toBeLessThan(text.indexOf('<available_skills>'));
   });
