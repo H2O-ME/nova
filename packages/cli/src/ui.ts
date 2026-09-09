@@ -643,6 +643,19 @@ export function padBetween(left: string, right: string, width: number): string {
   return gap > 1 ? `${left}${' '.repeat(gap)}${right}` : `${left} ${right}`;
 }
 
+/** 补白到显示宽度（CJK 计 2 列）；超长原样返回。 */
+export function padDisplay(text: string, width: number): string {
+  const pad = Math.max(0, width - styledWidth(text));
+  return text + ' '.repeat(pad);
+}
+
+/** `09-06 14:20` stamp for session picker rows. */
+export function formatStamp(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 /** 彩色极简欢迎头（不用制表框，避免中英混排对不齐）。 */
 export function banner(
   p: Palette,

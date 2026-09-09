@@ -59,6 +59,7 @@ import {
   isFailureContent,
   isReadOnlyTool,
   layoutComposer,
+  padDisplay,
   palette,
   permissionLabel,
   plainPalette,
@@ -71,6 +72,7 @@ import {
   toolStartLine,
   type StopKind,
 } from './ui.js';
+import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
 import {
   codeModeLabel,
   contextBreakdown,
@@ -94,7 +96,6 @@ const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const BOLD = '\x1b[1m';
 const RESET = '\x1b[0m';
-const INVERSE = '\x1b[7m';
 
 /** Composer prompt prefix; the cursor column math depends on its width. */
 // （COMPOSER_PREFIX / 宽度基准已移至 ./composer.ts——换行预算与光标列数都在那边。）
@@ -120,18 +121,6 @@ interface Block {
    * produced by soft wrapping — aligns under it with `rest`.
    */
   gutter?: { first: string; rest: string };
-}
-
-function padDisplay(text: string, width: number): string {
-  const pad = Math.max(0, width - styledWidth(text));
-  return text + ' '.repeat(pad);
-}
-
-/** `09-06 14:20` stamp for session picker rows. */
-function formatStamp(ms: number): string {
-  const d = new Date(ms);
-  const p = (n: number): string => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 export async function startTui(opts: TuiOptions): Promise<void> {
@@ -1678,104 +1667,59 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
     const popupLines: string[] = [];
     if (approvalRequest !== undefined) {
-      // 弹窗行折行会把整体顶出视口：头部与 diff 预览都按剩余列数裁剪，恒单行。
-      const headPlain = `  ! 需要审批 [${permissionLabel(approvalRequest.kind)}] ${toolLabel(approvalRequest.call.name)} `;
-      const summary = clipToWidth(
-        toolArgSummary(approvalRequest.call.name, approvalRequest.call.rawArgs, 100),
-        Math.max(12, cols - 1 - styledWidth(headPlain)),
-      );
+      // 弹窗行折行会把整体顶出视口：头部与 diff 预览都按剩余列数裁剪（纯
+      // 构建器在 ./popup.ts，键交互留在 handleKey 的责任链层）。
       popupLines.push(
-        `  ${YELLOW}${BOLD}! 需要审批${RESET} ${DIM}[${permissionLabel(approvalRequest.kind)}]${RESET} ${toolLabel(approvalRequest.call.name)} ${DIM}${summary}${RESET}`,
+        ...buildApprovalPopup(
+          paint,
+          {
+            permissionLabel: permissionLabel(approvalRequest.kind),
+            toolLabel: toolLabel(approvalRequest.call.name),
+            argSummary: toolArgSummary(approvalRequest.call.name, approvalRequest.call.rawArgs, 100),
+            previewLines: approvalPreview,
+            index: approvalIndex,
+          },
+          cols,
+        ),
       );
-      if (approvalPreview !== undefined) {
-        for (const line of approvalPreview) popupLines.push(`  ${DIM}${clipToWidth(line, Math.max(12, cols - 3))}${RESET}`);
-      }
-      const labels = ['允许一次', '总是允许', '拒绝'];
-      for (let i = 0; i < labels.length; i++) {
-        const label = labels[i] ?? '';
-        popupLines.push(i === approvalIndex ? `  ${CYAN}${BOLD}❯ ${label}${RESET}` : `    ${DIM}${label}${RESET}`);
-      }
-      popupLines.push(`  ${DIM}↑↓ 选择 · Enter 确认 · Esc 拒绝${RESET}`);
     } else if (modelPicker !== undefined) {
       // Model catalog in a bordered panel with a sliding window: long lists
       // scroll inside the popup instead of flooding the transcript.
-      const models = modelPicker.models;
-      const winSize = Math.min(MODEL_PICKER_WINDOW, models.length);
-      const start = Math.max(0, Math.min(modelPicker.index - (MODEL_PICKER_WINDOW - 1), models.length - winSize));
-      const inner = cols - 3;
-      popupLines.push(`╭─ ${DIM}模型${RESET} ${'─'.repeat(Math.max(0, inner - styledWidth('─ 模型 ')))}╮`);
-      for (let i = 0; i < winSize; i++) {
-        const idx = start + i;
-        const name = models[idx] ?? '';
-        const meta = modelMetaStore.peek(name, config.provider.baseURL);
-        const ctxTag = meta !== undefined ? ` ${DIM}· ${humanTokens(meta.contextWindow)} tok${RESET}` : '';
-        const content =
-          ` ${idx === modelPicker.index ? '❯' : ' '} ${idx + 1}. ${name}` +
-          `${name === client.model ? '（当前）' : ''}${ctxTag}`;
-        const pad = Math.max(0, inner - 2 - styledWidth(content));
-        popupLines.push(
-          idx === modelPicker.index
-            ? `│ ${INVERSE}${content}${' '.repeat(pad)}${RESET} │`
-            : `│ ${DIM}${content}${' '.repeat(pad)}${RESET} │`,
-        );
-      }
       popupLines.push(
-        `╰${DIM}↑↓ 选择 · Enter 切换 · Esc 取消${RESET}${'─'.repeat(
-          Math.max(0, inner - styledWidth('↑↓ 选择 · Enter 切换 · Esc 取消')),
-        )}╯`,
+        ...buildModelPopup(
+          paint,
+          {
+            items: modelPicker.models.map((name) => ({
+              name,
+              contextTokens: modelMetaStore.peek(name, config.provider.baseURL)?.contextWindow,
+            })),
+            index: modelPicker.index,
+            current: client.model,
+          },
+          cols,
+        ),
       );
     } else if (sessionPicker !== undefined) {
       // Session switcher: bordered panel like the model picker, a sliding
       // window over the newest sessions, current one marked.
-      const entries = sessionPicker.entries;
-      const winSize = Math.min(SESSION_PICKER_WINDOW, entries.length);
-      const start = Math.max(0, Math.min(sessionPicker.index - (SESSION_PICKER_WINDOW - 1), entries.length - winSize));
-      const inner = cols - 3;
-      popupLines.push(`╭─ ${DIM}会话${RESET} ${'─'.repeat(Math.max(0, inner - styledWidth('─ 会话 ')))}╮`);
-      for (let i = 0; i < winSize; i++) {
-        const idx = start + i;
-        const entry = entries[idx];
-        if (entry === undefined) continue;
-        const marker = ` ${idx === sessionPicker.index ? '❯' : ' '} `;
-        const stamp = formatStamp(entry.mtime);
-        const suffix = entry.file === session.file ? '（当前）' : '';
-        const maxTitle = Math.max(0, inner - 2 - styledWidth(marker) - styledWidth(stamp) - 1 - styledWidth(suffix));
-        const content = `${marker}${stamp} ${clipToWidth(entry.title, maxTitle)}${suffix}`;
-        const pad = Math.max(0, inner - 2 - styledWidth(content));
-        popupLines.push(
-          idx === sessionPicker.index
-            ? `│ ${INVERSE}${content}${' '.repeat(pad)}${RESET} │`
-            : `│ ${DIM}${content}${' '.repeat(pad)}${RESET} │`,
-        );
-      }
       popupLines.push(
-        `╰${DIM}↑↓ 选择 · Enter 切换 · Esc 取消${RESET}${'─'.repeat(
-          Math.max(0, inner - styledWidth('↑↓ 选择 · Enter 切换 · Esc 取消')),
-        )}╯`,
+        ...buildSessionPopup(
+          paint,
+          {
+            items: sessionPicker.entries.map((entry) => ({
+              mtime: entry.mtime,
+              title: entry.title,
+              isCurrent: entry.file === session.file,
+            })),
+            index: sessionPicker.index,
+          },
+          cols,
+        ),
       );
     } else if (popupOpen && visibleMatches.length > 0) {
       // Bordered dropdown matching the composer box; the selected row is
       // inverse-video across the full row width, not just the label.
-      const inner = cols - 3;
-      popupLines.push(`╭─ ${DIM}命令${RESET} ${'─'.repeat(Math.max(0, inner - styledWidth('─ 命令 ')))}╮`);
-      for (let i = 0; i < visibleMatches.length; i++) {
-        const spec = visibleMatches[i];
-        if (spec === undefined) continue;
-        const label = padDisplay(spec.usage, 22);
-        const content = ` ${label} ${spec.description}`;
-        const pad = Math.max(0, inner - 2 - styledWidth(content));
-        const selected = visibleStart + i === popupIndex;
-        popupLines.push(
-          selected
-            ? `│ ${INVERSE}${content}${' '.repeat(pad)}${RESET} │`
-            : `│ ${DIM}${content}${' '.repeat(pad)}${RESET} │`,
-        );
-      }
-      popupLines.push(
-        `╰${DIM}↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭${RESET}${'─'.repeat(
-          Math.max(0, inner - styledWidth('↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭')),
-        )}╯`,
-      );
+      popupLines.push(...buildCommandPopup(paint, { matches: visibleMatches, index: popupIndex }, cols));
     }
 
     // One breathing row between the newest content and the composer.
