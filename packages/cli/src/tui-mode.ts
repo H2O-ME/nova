@@ -33,6 +33,7 @@ import {
 } from '@nova-agent/plugins';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
+import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
 import {
   COMMAND_SPECS,
   createModelListCache,
@@ -68,8 +69,6 @@ import {
   toolGroupLine,
   toolLabel,
   toolStartLine,
-  type ComposerLayout,
-  type ComposerRow,
   type StopKind,
 } from './ui.js';
 import {
@@ -98,8 +97,7 @@ const RESET = '\x1b[0m';
 const INVERSE = '\x1b[7m';
 
 /** Composer prompt prefix; the cursor column math depends on its width. */
-const COMPOSER_PREFIX = `  ${CYAN}${BOLD}❯${RESET} `;
-const COMPOSER_PREFIX_WIDTH = styledWidth(COMPOSER_PREFIX);
+// （COMPOSER_PREFIX / 宽度基准已移至 ./composer.ts——换行预算与光标列数都在那边。）
 
 /** Composer 最多占用的屏幕行数；超出后窗口随光标滑动并显示上下提示。 */
 const COMPOSER_MAX_ROWS = 8;
@@ -1500,7 +1498,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // Multi-line input: arrows walk the wrapped rows (visual column kept),
         // not the prompt history — history returns once the input is one line.
         if (input.includes('\n')) {
-          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerAvailable(), -1);
+          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerWrapBudget(screen.cols), -1);
           break;
         }
         if (historyIdx === -1) {
@@ -1521,7 +1519,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           break;
         }
         if (input.includes('\n')) {
-          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerAvailable(), 1);
+          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerWrapBudget(screen.cols), 1);
           break;
         }
         if (historyIdx >= 0) {
@@ -1782,8 +1780,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
     // One breathing row between the newest content and the composer.
     const breatheRows = 1;
-    const layout = layoutComposer(input, cursorPos, composerAvailable(), COMPOSER_MAX_ROWS);
-    const composerZoneRows = composerZone(layout);
+    const layout = layoutComposer(input, cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
+    const composerZoneRows = composerZone(paint, layout, { spinnerFrame, streaming, genPhase });
     // 单行状态区：上下文仪表+模型+模式芯片+审批 ｜ tps+cache 钉右缘。
     const statusRows = 1;
     const historyRows = Math.max(
@@ -1817,69 +1815,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // Bottom stack: composer rows · single status line.
     screen.render(
       [...historyLines, '', ...popupLines, ...composerZoneRows, status],
-      cursorPosition(historyRows, layout),
+      cursorPosition({ historyRows, popupRows: popupLines.length, layout }),
     );
-  }
-
-  /** Wrap budget inside the composer: prompt prefix + right margin + caret cell. */
-  const composerAvailable = (): number => Math.max(1, screen.cols - COMPOSER_PREFIX_WIDTH - 2);
-
-  /**
-   * The composer zone: up to COMPOSER_MAX_ROWS wrapped input rows between
-   * optional "more above/below" hints. The first visible row carries the
-   * `❯` prompt; continuation rows align under it.
-   */
-  function composerZone(layout: ComposerLayout): string[] {
-    const zone: string[] = [];
-    if (layout.hiddenAbove > 0) zone.push(`  ${DIM}⋯ 上方还有 ${layout.hiddenAbove} 行${RESET}`);
-    const indent = ' '.repeat(COMPOSER_PREFIX_WIDTH);
-    // 流式时 ❯ 原位换成 spinner 帧（同为 1 列宽）：动画留在输入行上，
-    // 底部状态行不再被逐帧 tick 牵动。帧色跟 genPhase——思考/写作绿、
-    // 等工具黄，和右缘 tps 仪表的"是否在生成"同义。
-    const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] ?? '•';
-    const lead0 = streaming
-      ? `  ${genPhase === 'tool' ? YELLOW : GREEN}${frame}${RESET} `
-      : COMPOSER_PREFIX;
-    layout.rows.forEach((row, i) => {
-      const lead = i === 0 && layout.hiddenAbove === 0 ? lead0 : indent;
-      zone.push(lead + renderComposerRow(row));
-    });
-    if (layout.hiddenBelow > 0) zone.push(`  ${DIM}⋯ 下方还有 ${layout.hiddenBelow} 行${RESET}`);
-    return zone;
-  }
-
-  /** One input row; the caret renders as an inverse block on the char it sits on. */
-  function renderComposerRow(row: ComposerRow): string {
-    if (row.caretIdx < 0) return row.text;
-    const rest = row.text.slice(row.caretIdx);
-    const at = [...rest][0] ?? ' ';
-    return `${row.text.slice(0, row.caretIdx)}${INVERSE}${at}${RESET}${rest.slice(at.length)}`;
-  }
-
-  function popupHeight(): number {
-    if (approvalRequest !== undefined) return 5 + (approvalPreview?.length ?? 0); // header + preview + 3 options + hint
-    if (modelPicker !== undefined) {
-      return Math.min(MODEL_PICKER_WINDOW, modelPicker.models.length) + 2; // rows + title + hint border
-    }
-    if (sessionPicker !== undefined) {
-      return Math.min(SESSION_PICKER_WINDOW, sessionPicker.entries.length) + 2; // rows + title + hint border
-    }
-    const matches = commandPopupMatches();
-    if (matches.length === 0) return 0;
-    // title + rows + hint bottom border
-    return Math.min(6, matches.length) + 2;
-  }
-
-  function cursorPosition(historyRows: number, layout: ComposerLayout): { row: number; col: number } {
-    // Layout: history · breathe · popup · composer zone · status. The caret
-    // row sits inside the zone; the "more above" hint (when present) occupies
-    // the zone's first row and shifts everything down one.
-    const hintRows = layout.hiddenAbove > 0 ? 1 : 0;
-    // +1 crosses the breathing row between history and the popup/composer zone.
-    return {
-      row: historyRows + 1 + popupHeight() + hintRows + layout.cursorRow,
-      col: COMPOSER_PREFIX_WIDTH + layout.cursorCol,
-    };
   }
 
   /**
