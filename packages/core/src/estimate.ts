@@ -24,7 +24,19 @@ export function estimateTextTokens(text: string): number {
 }
 
 export function estimateMessageTokens(msg: AgentMessage): number {
-  return FRAMING_TOKENS + estimateTextTokens(msg.content);
+  let total = FRAMING_TOKENS + estimateTextTokens(msg.content);
+  // Assistant tool-call arguments join the next request verbatim (replayed in
+  // the assistant turn), but live in `toolCalls`, not `content`. A run_code
+  // program or a heredoc bash command can be tens of KB — pricing them as
+  // free made the auto-compact gate lag the real prompt by an order of
+  // magnitude, so the request that "fit under the limit" could still blow
+  // the provider context window (and exec dies on the resulting 400).
+  if (msg.role === 'assistant' && msg.toolCalls !== undefined) {
+    for (const call of msg.toolCalls) {
+      total += estimateTextTokens(`${call.name}${call.rawArgs}`);
+    }
+  }
+  return total;
 }
 
 /**

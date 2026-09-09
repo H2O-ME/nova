@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JobRegistry, type JobOutcome } from '../src/index.js';
+import { JobRegistry, formatJobNotices, type JobNotice, type JobOutcome } from '../src/index.js';
 
 function deferred(): { promise: Promise<JobOutcome>; resolve: (o: JobOutcome) => void } {
   let resolve!: (o: JobOutcome) => void;
@@ -85,5 +85,111 @@ describe('JobRegistry', () => {
     expect(registry.get(snapshot.id)?.kind).toBe('subagent');
     expect(registry.get('bash-99')).toBeUndefined();
     expect(registry.readOutput('bash-99')).toBeUndefined();
+  });
+});
+
+describe('JobRegistry completion notices', () => {
+  async function flush(): Promise<void> {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+
+  it('queues each completed/failed job once, in settlement order, and drains it exactly once', async () => {
+    const registry = new JobRegistry();
+    const a = deferred();
+    const b = deferred();
+    registry.start({ kind: 'bash', label: 'sleep 10', cancel: () => {}, done: a.promise });
+    registry.start({ kind: 'bash', label: 'curl site', cancel: () => {}, done: b.promise });
+
+    expect(registry.drainFinished()).toEqual([]); // nothing before settlement
+    a.resolve({ status: 'completed', detail: 'exit code: 0' });
+    b.resolve({ status: 'failed', detail: 'exit code: 3' });
+    await a.promise;
+    await b.promise;
+    await flush();
+
+    const notices = registry.drainFinished();
+    expect(notices.map((n) => n.id)).toEqual(['bash-1', 'bash-2']);
+    expect(notices[0]).toMatchObject({ kind: 'bash', status: 'completed', detail: 'exit code: 0' });
+    expect(notices[1]).toMatchObject({ status: 'failed', detail: 'exit code: 3' });
+    expect(registry.drainFinished()).toEqual([]); // one drain = one announcement
+  });
+
+  it('requeue puts a failed delivery back at the head, keeping order and later drains', async () => {
+    const registry = new JobRegistry();
+    registry.start({
+      kind: 'bash',
+      label: 'curl site',
+      cancel: () => {},
+      done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),
+    });
+    await flush();
+
+    const first = registry.drainFinished();
+    expect(first.map((n) => n.id)).toEqual(['bash-1']);
+    registry.requeue(first); // the carrying request died before the model saw it
+    const again = registry.drainFinished();
+    expect(again).toEqual(first); // identical batch, delivered at-least-once now
+
+    // A fresh notice queues behind the requeued one, and requeue([]) is a no-op.
+    registry.start({ kind: 'bash', label: 'second', cancel: () => {}, done: Promise.resolve({ status: 'completed' }) });
+    await flush();
+    registry.requeue(first);
+    registry.requeue([]);
+    expect(registry.drainFinished().map((n) => n.id)).toEqual(['bash-1', 'bash-2']);
+    expect(registry.drainFinished()).toEqual([]);
+  });
+
+  it('does not announce a stop-initiated kill (the model already knows it stopped)', async () => {
+    const registry = new JobRegistry();
+    const d = deferred();
+    registry.start({
+      kind: 'bash',
+      label: 'long task',
+      cancel: () => d.resolve({ status: 'killed', detail: 'exit code: null' }),
+      done: d.promise,
+    });
+    await registry.stop('bash-1');
+    await d.promise;
+    await flush();
+    expect(registry.get('bash-1')?.status).toBe('killed');
+    expect(registry.drainFinished()).toEqual([]);
+  });
+
+  it('announces a producer-bug rejection as a failed job', async () => {
+    const registry = new JobRegistry();
+    registry.start({
+      kind: 'bash',
+      label: 'buggy producer',
+      cancel: () => {},
+      done: Promise.reject(new Error('boom')),
+    });
+    await flush();
+    const notices = registry.drainFinished();
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ status: 'failed', detail: 'boom' });
+  });
+
+  it('formatJobNotices renders jobs-list-shaped rows with the output hint', () => {
+    const notices: JobNotice[] = [
+      { id: 'bash-1', kind: 'bash', label: 'sleep 10', status: 'completed', detail: 'exit code: 0' },
+    ];
+    expect(formatJobNotices(notices)).toBe(
+      [
+        'Background job finished:',
+        '- bash-1 [completed] sleep 10 (exit code: 0)',
+        'Read the output with the jobs tool (action=output, id=<id>) as needed.',
+      ].join('\n'),
+    );
+  });
+
+  it('truncates over-long command labels and handles multiple jobs', () => {
+    const long = 'x'.repeat(90);
+    const text = formatJobNotices([
+      { id: 'bash-1', kind: 'bash', label: long, status: 'completed' },
+      { id: 'bash-2', kind: 'bash', label: 'second', status: 'failed', detail: 'exit code: 1' },
+    ]);
+    expect(text).toContain(`- bash-1 [completed] ${'x'.repeat(79)}…`);
+    expect(text).toContain('- bash-2 [failed] second (exit code: 1)');
+    expect(text.startsWith('Background jobs finished:')).toBe(true);
   });
 });

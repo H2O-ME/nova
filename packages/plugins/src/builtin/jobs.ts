@@ -20,7 +20,7 @@ export function jobsPlugin(): Plugin {
       ctx.registerTool({
         name: 'jobs',
         description:
-          'Lists, reads output of, or stops background jobs. Args: action ("list" | "output" | "stop", required), id (required for output/stop). Use action=output to poll progress of a background command.',
+          'Lists, reads output of, or stops background jobs. Args: action ("list" | "output" | "stop", required), id (required for output/stop). A background job that finishes is announced to you automatically — do not poll in a loop; when notified, read its output once with action=output.',
         parameters: {
           type: 'object',
           properties: {

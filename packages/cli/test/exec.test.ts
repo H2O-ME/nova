@@ -96,7 +96,7 @@ describe('runExec', () => {
     expect(text).toContain('缓存 80%');
   });
 
-  it('auto-compacts mid-run when the request image exceeds the limit', async () => {
+  it('auto-compacts once when over the limit, then fuses when the retained floor stays over it', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
     const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
     const prevProfile = process.env['USERPROFILE'];
@@ -105,7 +105,10 @@ describe('runExec', () => {
     process.env['HOME'] = home;
     try {
       // ~10k tokens by the 4-chars-per-token heuristic: over the 1000-token
-      // test limit on every request, so every turn's pre-flight compacts.
+      // test limit. Compaction keeps fragment + the 20k-char-capped prompt +
+      // summary, so the post-compaction image stays above the limit — the
+      // second pre-flight must FUSE (no more summarizer requests) instead of
+      // compacting every turn.
       const bigPrompt = 'y'.repeat(40_000);
       const requests: ChatRequest[] = [];
       const provider = scriptedProvider(
@@ -117,9 +120,7 @@ describe('runExec', () => {
             { type: 'tool_call_delta', index: 0, id: 'c1', name: 'bash', argsDelta: '{"command":"echo hi"}' },
             { type: 'finish', finishReason: 'tool_calls' },
           ],
-          // compaction summary request of the SECOND turn's pre-flight
-          [{ type: 'text_delta', text: '追加进度' }, { type: 'finish', finishReason: 'stop' }],
-          // turn 2: final answer
+          // turn 2: final answer — NO second summary request: the fuse held.
           [
             { type: 'usage', usage: { promptTokens: 5, completionTokens: 3, cachedTokens: 2 } },
             { type: 'text_delta', text: 'done compacted' },
@@ -137,14 +138,14 @@ describe('runExec', () => {
         out: () => {},
       });
 
-      // Call order: [summary1, turn1, summary2, turn2].
-      expect(requests).toHaveLength(4);
+      // Call order: [summary1, turn1, turn2] — exactly one compaction request.
+      expect(requests).toHaveLength(3);
       // The summary request is one tool-less user message.
       expect(requests[0]!.messages).toHaveLength(1);
       expect(requests[0]!.messages[0]).toMatchObject({ role: 'user' });
       // The turn requests go out with the compacted surface: fragment first,
       // synthesized summary message in place of the raw history.
-      for (const idx of [1, 3] as const) {
+      for (const idx of [1, 2] as const) {
         expect(requests[idx]!.messages[0]).toMatchObject({
           role: 'user',
           content: expect.stringContaining('<environment>'),
@@ -156,17 +157,50 @@ describe('runExec', () => {
         ).toBe(true);
       }
 
-      // The session log carries the compaction events and stays replayable;
-      // the projected surface ends with the final answer.
+      // The session log carries exactly one replayable compaction triple, not
+      // one per turn; the projected surface ends with the final answer.
       const sessionsDir = path.join(home, '.nova', 'sessions', sessionDateBucket());
       const files = await readdir(sessionsDir);
       const session = await Session.open(path.join(sessionsDir, files[0]!));
       const types = session.events.map((e) => e.type);
-      expect(types).toContain('compaction/start');
+      expect(types.filter((t) => t === 'compaction/start')).toHaveLength(1);
       expect(types).toContain('compaction/summary');
-      expect(types).toContain('compaction/end');
+      expect(types.filter((t) => t === 'compaction/end')).toHaveLength(1);
       const surface = session.deriveMessages();
       expect(surface.at(-1)).toMatchObject({ role: 'assistant', content: 'done compacted' });
+    } finally {
+      if (prevProfile === undefined) delete process.env['USERPROFILE'];
+      else process.env['USERPROFILE'] = prevProfile;
+      if (prevHome === undefined) delete process.env['HOME'];
+      else process.env['HOME'] = prevHome;
+    }
+  });
+
+  it('surfaces the compaction fuse warning once in human mode', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
+    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
+    const prevProfile = process.env['USERPROFILE'];
+    const prevHome = process.env['HOME'];
+    process.env['USERPROFILE'] = home;
+    process.env['HOME'] = home;
+    try {
+      const out: string[] = [];
+      await runExec({
+        rootDir: root,
+        config: { ...config, autoCompactTokenLimit: 1000 },
+        prompt: 'y'.repeat(40_000),
+        json: false,
+        provider: scriptedProvider([
+          [{ type: 'text_delta', text: '摘要' }, { type: 'finish', finishReason: 'stop' }],
+          [{ type: 'text_delta', text: 'done' }, { type: 'finish', finishReason: 'stop' }],
+        ]),
+        out: (text) => out.push(text),
+      });
+      const text = out.join('');
+      expect(text).toContain('已自动压缩上下文');
+      // Fuse line: compaction stopped because the retained floor itself exceeds
+      // the limit — and it must appear exactly once, not per turn.
+      expect(text.match(/停用自动压缩/g)).toHaveLength(1);
     } finally {
       if (prevProfile === undefined) delete process.env['USERPROFILE'];
       else process.env['USERPROFILE'] = prevProfile;

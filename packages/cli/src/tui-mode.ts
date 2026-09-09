@@ -51,9 +51,11 @@ import {
   approvalChip,
   approvalLabel,
   APPROVAL_ORDER,
+  clipToWidth,
   contextGaugeForms,
   contextLegend,
   cursorAfterVerticalMove,
+  fitTail,
   humanTokens,
   isFailureContent,
   isReadOnlyTool,
@@ -131,21 +133,6 @@ function formatStamp(ms: number): string {
   const d = new Date(ms);
   const p = (n: number): string => String(n).padStart(2, '0');
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/** Width-aware truncation with an ellipsis (CJK-safe, measures `…` as 2). */
-function clipDisplay(text: string, maxWidth: number): string {
-  if (maxWidth <= 0) return '';
-  if (styledWidth(text) <= maxWidth) return text;
-  let width = 0;
-  let out = '';
-  for (const ch of text) {
-    const w = styledWidth(ch);
-    if (width + w > maxWidth - 2) return `${out}…`;
-    out += ch;
-    width += w;
-  }
-  return out;
 }
 
 export async function startTui(opts: TuiOptions): Promise<void> {
@@ -488,14 +475,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             : elapsed >= 2000
               ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}`
               : '';
-          const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame) + suffix];
+          // 预算扣掉 suffix 的位（` · Ns` / ` · 正在中断…`），整行含后缀恒单行。
+          const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame, screen.cols - 15) + suffix];
           // Live output tail for streaming tools (bash): the last line of
           // whatever the process has printed so far. This is what keeps a
           // 2-minute pnpm install from looking like a hang.
           const tailBuf = entry.tailBuf;
           if (tailBuf !== undefined) {
-            const last = tailBuf.slice(tailBuf.lastIndexOf('\n') + 1).trimEnd().slice(-160);
-            if (last.length > 0) lines.push(`      ${DIM}└ ${last}${RESET}`);
+            const last = tailBuf.slice(tailBuf.lastIndexOf('\n') + 1).trimEnd();
+            if (last.length > 0) {
+              lines.push(`      ${DIM}└ ${fitTail(last, Math.max(10, screen.cols - 9))}${RESET}`);
+            }
           }
           replaceBlock(entry.block, lines);
         }
@@ -907,7 +897,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // A new non-read call ends the current read-only group.
         if (!isReadOnlyTool(event.call.name)) closeReadGroup();
         const block: Block = {
-          lines: [toolStartLine(paint, event.call.name, event.call.rawArgs)],
+          lines: [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', screen.cols - 1)],
           wrapped: undefined,
           // Soft-wrapped continuation rows hang under the summary column.
           gutter: { first: '', rest: '      ' },
@@ -929,7 +919,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           // codex "Explored": the read's own line disappears and its summary
           // folds into the running group line.
           if (entry !== undefined) removeBlock(entry.block);
-          const raw = toolArgSummary(event.call.name, event.call.rawArgs);
+          // 宽预算存原文：公共目录折叠与最终排布都发生在 toolGroupLine 渲染时。
+          const raw = toolArgSummary(event.call.name, event.call.rawArgs, 400);
           const summary = raw.length === 0 || raw === '{}' ? toolLabel(event.call.name) : raw;
           if (readGroup === undefined) {
             const block: Block = { lines: [], wrapped: undefined, gutter: { first: '', rest: '      ' } };
@@ -943,11 +934,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             readGroup.entries.push(summary);
           }
           replaceBlock(readGroup.block, [
-            toolGroupLine(paint, readGroup.entries, Date.now() - readGroup.startAt),
+            toolGroupLine(paint, readGroup.entries, Date.now() - readGroup.startAt, screen.cols - 1),
           ]);
         } else {
           closeReadGroup();
-          const lines = toolDoneLine(paint, event.call.name, event.call.rawArgs, event.result.content, duration);
+          const lines = toolDoneLine(
+            paint,
+            event.call.name,
+            event.call.rawArgs,
+            event.result.content,
+            duration,
+            screen.cols - 1,
+          );
           if (entry !== undefined) replaceBlock(entry.block, lines);
           else pushBlock(lines);
         }
@@ -1682,12 +1680,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
     const popupLines: string[] = [];
     if (approvalRequest !== undefined) {
-      const summary = toolArgSummary(approvalRequest.call.name, approvalRequest.call.rawArgs, 100);
+      // 弹窗行折行会把整体顶出视口：头部与 diff 预览都按剩余列数裁剪，恒单行。
+      const headPlain = `  ! 需要审批 [${permissionLabel(approvalRequest.kind)}] ${toolLabel(approvalRequest.call.name)} `;
+      const summary = clipToWidth(
+        toolArgSummary(approvalRequest.call.name, approvalRequest.call.rawArgs, 100),
+        Math.max(12, cols - 1 - styledWidth(headPlain)),
+      );
       popupLines.push(
         `  ${YELLOW}${BOLD}! 需要审批${RESET} ${DIM}[${permissionLabel(approvalRequest.kind)}]${RESET} ${toolLabel(approvalRequest.call.name)} ${DIM}${summary}${RESET}`,
       );
       if (approvalPreview !== undefined) {
-        for (const line of approvalPreview) popupLines.push(`  ${DIM}${line}${RESET}`);
+        for (const line of approvalPreview) popupLines.push(`  ${DIM}${clipToWidth(line, Math.max(12, cols - 3))}${RESET}`);
       }
       const labels = ['允许一次', '总是允许', '拒绝'];
       for (let i = 0; i < labels.length; i++) {
@@ -1739,7 +1742,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const stamp = formatStamp(entry.mtime);
         const suffix = entry.file === session.file ? '（当前）' : '';
         const maxTitle = Math.max(0, inner - 2 - styledWidth(marker) - styledWidth(stamp) - 1 - styledWidth(suffix));
-        const content = `${marker}${stamp} ${clipDisplay(entry.title, maxTitle)}${suffix}`;
+        const content = `${marker}${stamp} ${clipToWidth(entry.title, maxTitle)}${suffix}`;
         const pad = Math.max(0, inner - 2 - styledWidth(content));
         popupLines.push(
           idx === sessionPicker.index
@@ -1808,7 +1811,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     while (historyLines.length < historyRows) historyLines.push('');
 
     // 按显示宽裁剪：绝不折行顶动布局（statusBarLine 内部已做截左保右）。
-    const status = clipDisplay(statusBarLine(), cols - 1);
+    const status = clipToWidth(statusBarLine(), cols - 1);
 
     // The breathing row separates history from the popup/composer zone.
     // Bottom stack: composer rows · single status line.
@@ -1927,37 +1930,43 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (right.length === 0) return statusLeft(0);
     const rightW = styledWidth(right);
     const fits = (left: string): boolean => styledWidth(left) + 2 + rightW <= budget;
-    // 选档顺序即降级优先级：越靠后越"最简"，只留单位宽高的关键信息。
+    // 降级优先级：同一档位内先丢**瞬时提示**（中断/退出），再降档——提示
+    // 只是锦上添花，不该把"已用/总量"数字挤出状态栏。上滚提示已整体移除：
+    // 常驻视图不该因滚动变样式。
     for (const tier of [0, 1, 2] as StatusTier[]) {
-      const left = statusLeft(tier);
-      if (fits(left)) return padBetween(left, right, budget);
+      const full = statusLeft(tier, false, true);
+      if (fits(full)) return padBetween(full, right, budget);
+      const bare = statusLeft(tier, false, false);
+      if (fits(bare)) return padBetween(bare, right, budget);
     }
     // 连 T2 带模型都放不下：先丢模型（信息最可推断），仍不够才截断整段。
-    const noModel = statusLeft(2, true);
+    const noModelFull = statusLeft(2, true, true);
+    if (fits(noModelFull)) return padBetween(noModelFull, right, budget);
+    const noModel = statusLeft(2, true, false);
     if (fits(noModel)) return padBetween(noModel, right, budget);
-    return `${clipDisplay(noModel, Math.max(1, budget - rightW - 2))}  ${right}`;
+    return `${clipToWidth(noModel, Math.max(1, budget - rightW - 2))}  ${right}`;
   }
 
   /**
    * 左段（截左保右的那一侧）：仪表 │ 身份组 │ 瞬时提示，按档位取形态。
    * `dropModel` 是比 T2 更窄的最后形态——身份组里只留模式与审批。
+   * `hints=false` 去掉瞬时提示段（中断/退出），供状态栏在"降档之前"先丢提示。
+   * 上滚**不**进状态栏：滚动位置从画面本身就能看出来，而状态栏是常驻视图，
+   * 一上滑就变样式（多出提示段、甚至整段降档）比不提示更扰人。
    */
-  function statusLeft(tier: StatusTier, dropModel = false): string {
+  function statusLeft(tier: StatusTier, dropModel = false, hints = true): string {
     const sep = ` ${DIM}│${RESET} `;
     const identity: string[] = [];
     if (!dropModel) {
       const model =
         tier === 0
           ? client.model
-          : clipDisplay(modelTail(client.model), tier === 1 ? 22 : 12);
+          : clipToWidth(modelTail(client.model), tier === 1 ? 22 : 12);
       identity.push(`${BOLD}${model}${RESET}`);
     }
     identity.push(modeChips(tier), approvalChip(paint, permission.approvalMode, tier));
     let line = `${contextGauge(tier)}${sep}${identity.join(` ${DIM}·${RESET} `)}`;
-    // 上滚时视口锚定、新输出在下方继续到达——没有这个标记画面看似冻结。
-    if (scrollFromEnd > 0) {
-      line += sep + (tier < 2 ? `${CYAN}已上滚 ${scrollFromEnd} 行 · ↓ 到底${RESET}` : `${CYAN}↑滚 ${scrollFromEnd}${RESET}`);
-    }
+    if (!hints) return line;
     if (streaming && interruptAt > 0) line += sep + `${YELLOW}■ 等待工具退出…${RESET}`;
     if (!streaming && input.length === 0 && Date.now() - lastCtrlC < 2000) {
       line += sep + `${YELLOW}再按一次 Ctrl+C 退出${RESET}`;

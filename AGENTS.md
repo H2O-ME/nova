@@ -84,7 +84,7 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, plugins, ai, core}`，
 目标：**稳定前缀 = 高缓存命中**。四层机制：
 1. **前缀冻结**：系统提示字节稳定（persona + 工作方式 + 工具规则）；环境信息、AGENTS.md、用户指令、技能索引注入为**会话首条 user 消息片段**，append-only 不回改。
 2. **追加式日志**：对话严格 append-only；工具结果超 40KB 时全文落盘 `~/.nova/cache/tool-outputs/<sessionId>/`，消息体保留头部 60% + 尾部 40%（尾部常带测试失败详情）并附读取提示。
-3. **compact**：`/compact`、自动阈值（`autoCompactTokenLimit`，以最近一次 usage 为锚点发请求**前**预判）共用同一实现；压缩**原位追加** `compaction/start → summary → end` 三事件，模型可见面由 `Session.deriveMessages()` 投影重建，原始历史永不改写；crash 半路的压缩留下可检测的孤儿锁（自动丢弃并告警）。摘要请求以序列化裁剪后的 transcript 发送，已有摘要时走增量合并。
+3. **compact**：`/compact`、自动阈值（`autoCompactTokenLimit`，以最近一次 usage 为锚点发请求**前**预判）共用同一实现；压缩**原位追加** `compaction/start → summary → end` 三事件，模型可见面由 `Session.deriveMessages()` 投影重建，原始历史永不改写；crash 半路的压缩留下可检测的孤儿锁（自动丢弃并告警）。摘要请求以序列化裁剪后的 transcript 发送，已有摘要时走增量合并。**token 预估计入 assistant 的 tool call 参数**（`rawArgs`，PTC/bash 大程序曾是估算盲区）。exec 的轮内预检逐请求全量估算，并带**熔断**：一次压缩后仍超阈值（保留片段 + 工具 schema 构成下限）即停用本任务后续自动压缩并告警一次，避免每轮白烧摘要请求、日志被压缩三事件刷屏；同时校验原位压缩的 messages 别名契约（插件钩子若替换数组则告警停用而非静默失效）。
 4. **供应商对齐**：请求携带 `prompt_cache_key` 与 `x-session-id`/`x-session-affinity` 会话亲和头（sessionId=会话 id），让网关把同一会话固定路由到同一缓存节点。指标目标：会话第 3 轮起 prompt cache 命中率 ≥ 90%（`/session` 可查）。
 
 ### 会话日志 v2（不可变事件流 + 投影）
@@ -103,21 +103,23 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 `tools.code.mode` 三态 `native|ptc|both`。开启后模型获得 `run_code {code, description}` 传输工具：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断，经 `ctx.dispatch` 回流）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算、端口协议逐字段防御。SDK 声明由 schema 字典序生成（字节稳定不吃缓存）。`ptc` 态只暴露 `run_code`。需 Node ≥ 22.19。
 
 ### 后台 jobs / todo
-`bash { run_in_background: true }` 立即返回 `bash-N` 句柄，`jobs` 工具（list/output/stop）轮询增量输出；`JobKindMap` 预留 `subagent` 扩展位。`todo_write` 整表替换、last-write-wins，快照持久化为 log-only `todo/write` 事件，不占模型上下文。
+`bash { run_in_background: true }` 立即返回 `bash-N` 句柄，`jobs` 工具（list/output/stop）读写增量输出。job 自然结束（completed/failed）时，**下一次 LLM 请求会自动注入一行"bash-N 已完成"通知**（`runAgent` 每次发请求前经 `JobRegistry.drainFinished()` 取队列，以克隆消息数组追加临时 user 消息——不落会话日志、不破坏投影不变量，每个 job 只通知一次；**送达性为至少一次**：请求在回复提交前失败/中断时经 `requeue()` 回队，下个请求重播，不会静默丢失），模型无需空转轮询；显式 stop 导致的 killed 不通知（模型已知）。`JobKindMap` 预留 `subagent` 扩展位。`todo_write` 整表替换、last-write-wins，快照持久化为 log-only `todo/write` 事件，不占模型上下文。
 
 ### Skills（渐进加载）
 启动只把每个 skill 的 name+description 注入索引，命中触发词时才加载正文——模型可自调用 `skill` 工具，也可 `/skill <name>` 手动触发。项目级 `.nova/skills/` 优先于用户级 `~/.nova/skills/`。
 
 ### TUI（自研差分渲染，codex 风格）
-alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a）；PageUp/PageDown/滚轮滚动（上滚时状态栏提示，↓/滚轮回到底）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动）；流式 markdown、工具调用折叠块、reasoning 暗色尾迹（结束后折成"已思考 Ns"）；长命令实时显示已耗时与输出尾行；系统通知（Windows toast / macOS osascript / Linux notify-send）。
+alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a）；PageUp/PageDown/滚轮滚动（上滚不改状态栏样式——常驻视图保持稳定，↓/滚轮回到底）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动）；流式 markdown、工具调用折叠块、reasoning 暗色尾迹（结束后折成"已思考 Ns"）；长命令实时显示已耗时与输出尾行；系统通知（Windows toast / macOS osascript / Linux notify-send）。
 
 **单行状态栏**三段式 `上下文仪表 │ 模型 · 执行模式 · 审批档位 │（右缘）tps · cache`——`│` 分大组、`·` 分组内，层级靠分隔符而非字数堆砌：
 - **上下文仪表**：按整窗真实比例分段上色（提示词青 / 工具 schema 绿 / 注入片段蓝 / 技能索引品红 / 消息黄），加粗「已用/总量 · 百分比」，超窗标红；`压缩 %` 只在真正逼近阈值时出现（T0 常驻、T1 ≥50%、T2 ≥70%）。
-- **空间不足按优先级整字段降级，绝不词中截断**：T0 全量 → T1 去 `模式/审批` 标签、模型去供应商前缀 → T2 仪表只留条+百分比、审批降单字（读/编/全）、模型截断 → 极窄时弃模型名（banner 与 `/model` 已可见）。右缘仪表组定宽不随 tick 变宽、百分比与数值 `padStart` 位数跳动不挪分隔符、截左不截右。
+- **空间不足按优先级整字段降级，绝不词中截断**：同一档位内**先丢瞬时提示**（中断/退出——它们只是锦上添花，不该把「已用/总量」挤出状态栏），再降档：T0 全量 → T1 去 `模式/审批` 标签、模型去供应商前缀 → T2 仪表只留条+百分比、审批降单字（读/编/全）、模型截断 → 极窄时弃模型名（banner 与 `/model` 已可见）。上滚**不进**状态栏：滚动位置从画面本身可见，状态栏样式恒定。右缘仪表组定宽不随 tick 变宽、百分比与数值 `padStart` 位数跳动不挪分隔符、截左不截右。
 - **tps 速度表**：500ms×10 环形窗口，**会话级连续滚动**（发新消息不清空、无新输出不排空到 0），恒绿色（"是否在生成"由 composer 前缀 spinner 表达）。
 - **cache 命中率**：取**会话累计**值且**粘住可见性**——provider 随机分流到不报缓存的后端会让单轮值抖动、整段闪现，故一旦本会话见过缓存上报就常驻，从未上报则整段隐藏。
 - **模型元数据（models.dev）**：启动后台拉 `https://models.dev/api.json`，解析为精简目录落盘缓存（`~/.nova/cache/models-dev.json`，24h TTL，断网用旧缓存），按模型 id 精确→尾段匹配解析上下文窗口/模态/推理/工具/附件能力，喂给结构进度条分母；明细在 `/model` 面板与 `/session`。
 - **执行模式**：新会话未开始时按 Tab 循环 普通 → PTC → 混合（rebuildHost 统一重绑 host+hooks；Node 不满足 22.19 时拒绝并保持原模式；区别见 `/mode`，切换不留历史行、状态栏模式标即时变化）。
+
+**工具行单行预算**：工具行（运行/完成/分组）拿终端列数渲染，参数摘要吸收剩余宽度——` · 行数 · 耗时` 尾巴恒留本行，不再折出孤儿续行。截断按**显示列数**而非字符数（CJK 计 2 列）：命令在参数边界切（`cd "…" && ls …`），路径切头保文件名（`…\manifest.json`）。只读分组行逐级收紧：折叠公共目录前缀（只出现一次）→ 收窄前缀保尾段（`…1.26.0_解压\`）→ 保留最近若干名字、省略处以 `…` 占位——计数由 `N 次` 后缀承载，不靠名字数。审批弹窗头部与 diff 预览同样按列裁剪，弹窗不折行。
 
 累计 token 与分段明细在 `/session`，模态能力标在 `/model` 与 `/session`；`/session` 另报缓存浪费审计（missTokens，噪声底 1024 tok）并可作会话切换器（↑↓ 选择、Enter 恢复上下文并切回该会话创建时的工作区）。
 
@@ -153,10 +155,12 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 - **M6.1** 日志抗损坏、文件工具硬化、`search_files`、审批 diff 预览、exec 轮内自动压缩、并行段 `Promise.allSettled`。
 - **M6.2** PTC / Code Mode（`run_code` + worker 运行时 + schema→SDK 生成 + `ctx.dispatch` 审批管线 + 审计 + 三态投影）。
 - **M6.3** TUI 执行模式与上下文可视化：Tab 循环模式（rebuildHost 重绑）、单行三段式状态栏（按优先级整字段降级、tps 连续滚动恒绿、cache 会话累计粘住）、models.dev 模型元数据、`/model`/`/session` 能力展示。
+- **M6.4** jobs 完成通知注入（替代轮询）：`JobRegistry` 终态通知队列 `drainFinished()` + `runAgent` 每次发请求前把"bash-N 已完成"作为临时 user 消息注入（克隆数组不落日志）；bash 后台返回与 `jobs` 工具文案改为"完成自动通知、无需轮询"。
+- **M6.5** exec auto-compact 三处缺陷修复：①**熔断**——压缩后仍超阈值即停用本任务后续压缩并告警一次（修复下限超阈时"每轮一次摘要请求"的风暴：2× 成本 + 日志刷屏）；②**估算盲区**——`estimateMessageTokens` 计入 assistant tool call 的 `rawArgs`（此前 160KB 的 run_code 程序按 4 token 计，压缩触发滞后直指上下文窗 400）；③**通知送达**——请求在回复提交前失败/中断时 `drainFinished()` 批次经 `requeue()` 回队（此前 drain-once 在失败路径退化为"永不播报"）。附带：原位压缩的 messages 别名契约显式校验（防未来外部插件克隆数组导致压缩静默失效与日志投影背离）。
 
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 
-**后续（roadmap）**：按 provider 的缓存能力探测表、jobs 完成通知改钩子注入（替代轮询）、subagent 能力（`JobKindMap` 已预留）、token 逐节点定价、长会话压测与 Windows 终端细节打磨。
+**后续（roadmap）**：按 provider 的缓存能力探测表、subagent 能力（`JobKindMap` 已预留）、token 逐节点定价、长会话压测与 Windows 终端细节打磨。
 
 ## 8. 设计决策来源
 

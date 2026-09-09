@@ -141,14 +141,85 @@ export class Spinner {
   }
 }
 
-function clip(text: string, max: number): string {
+/**
+ * Width-aware head clip: keep the leading text up to `maxCols` **display
+ * columns** (CJK counts 2, `…` counts 2). The old char-count clip let a
+ * CJK-heavy path blow past the row budget several-fold — columns, not
+ * code units, are what the terminal wraps on.
+ */
+export function clipToWidth(text: string, maxCols: number): string {
+  if (maxCols <= 0) return '';
+  if (styledWidth(text) <= maxCols) return text;
+  let width = 0;
+  let out = '';
+  for (const ch of text) {
+    const w = styledWidth(ch);
+    if (width + w > maxCols - 2) return `${out}…`;
+    out += ch;
+    width += w;
+  }
+  return out;
+}
+
+/**
+ * Path clip: the basename is the informative end, so drop from the FRONT
+ * (`…\manifest.json`). Walks segment boundaries from the tail so a parent
+ * dir is never cut in half; only the innermost kept segment gets trimmed.
+ */
+export function clipPath(text: string, maxCols: number): string {
+  if (maxCols <= 0) return '';
+  if (styledWidth(text) <= maxCols) return text;
+  const sep = text.includes('\\') ? '\\' : '/';
+  const segs = text.split(sep);
+  let out = '';
+  for (let i = segs.length - 1; i >= 0; i--) {
+    const seg = segs[i] ?? '';
+    const cand = out.length === 0 ? seg : `${seg}${sep}${out}`;
+    if (styledWidth(`…${cand}`) > maxCols) {
+      if (out.length === 0) return `…${fitTail(seg, Math.max(0, maxCols - 2))}`;
+      return `…${out}`;
+    }
+    out = cand;
+  }
+  return out;
+}
+
+/**
+ * Command clip: cut at argument boundaries so no token is sliced in half
+ * (`… ls -R | ta…` reads as garbage; `… ls -R …` reads as "and more").
+ * Falls back to a plain head clip when even the first token overflows.
+ */
+export function clipCommand(text: string, maxCols: number): string {
+  if (maxCols <= 0) return '';
+  if (styledWidth(text) <= maxCols) return text;
+  const tokens = text.split(/\s+/).filter((t) => t.length > 0);
+  let out = '';
+  let width = 0;
+  for (const tok of tokens) {
+    const w = styledWidth(tok) + (out.length === 0 ? 0 : 1);
+    if (width + w + 3 > maxCols) break; // keep room for ` …` (space + 2-col ellipsis)
+    out = out.length === 0 ? tok : `${out} ${tok}`;
+    width += w;
+  }
+  if (out.length === 0) return clipToWidth(text, maxCols);
+  return `${out} …`;
+}
+
+/** Path-valued tools: their summary is a location, so the tail is the story. */
+const PATH_ARG_TOOLS = new Set(['read_file', 'write_file', 'edit_file', 'list_dir']);
+
+/** Pick the clip style by tool semantics, then flatten whitespace. */
+function clipArg(name: string, text: string, maxCols: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();
-  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+  if (name === 'bash') return clipCommand(flat, maxCols);
+  if (PATH_ARG_TOOLS.has(name)) return clipPath(flat, maxCols);
+  return clipToWidth(flat, maxCols);
 }
 
 /**
  * One-glance summary of a tool call's key argument: the file path for fs
  * tools, the command line for bash, action+id for jobs — never raw JSON.
+ * `max` is a **display-column** budget.
  */
 export function toolArgSummary(name: string, rawArgs: string, max = 72): string {
   let args: Record<string, unknown> | undefined;
@@ -173,9 +244,9 @@ export function toolArgSummary(name: string, rawArgs: string, max = 72): string 
         : undefined) ??
       (name === 'todo_write' && Array.isArray(args['todos']) ? `${args['todos'].length} 项待办` : undefined) ??
       Object.values(args).find((v): v is string => typeof v === 'string' && v.length > 0);
-    if (keyed !== undefined && keyed.length > 0) return clip(keyed, max);
+    if (keyed !== undefined && keyed.length > 0) return clipArg(name, keyed, max);
   }
-  return clip(rawArgs, max);
+  return clipArg(name, rawArgs, max);
 }
 
 /** 只读探索类工具：完成的调用按 codex "Explored" 语义折叠成分组行。 */
@@ -188,9 +259,19 @@ export function isReadOnlyTool(name: string): boolean {
 /**
  * `    ⠙ 执行命令 pnpm test` —— 工具运行中。圆点可动画（braille 帧），
  * 动词粗体、对象高亮，与 codex 的 "Running/Explored" 行同构。
+ * 给出 `cols`（终端可用列数）时参数摘要吸收剩余宽度，整行恒单行。
  */
-export function toolStartLine(p: Palette, name: string, rawArgs: string, frame = '•'): string {
-  return `    ${p.dim(frame)} ${p.bold(toolLabel(name))} ${p.cyan(toolArgSummary(name, rawArgs))}`;
+export function toolStartLine(
+  p: Palette,
+  name: string,
+  rawArgs: string,
+  frame = '•',
+  cols?: number,
+): string {
+  const label = toolLabel(name);
+  const fixed = `    ${frame} ${label} `;
+  const budget = cols === undefined ? 72 : Math.max(12, cols - 1 - styledWidth(fixed));
+  return `    ${p.dim(frame)} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, budget))}`;
 }
 
 export function isFailureContent(content: string): boolean {
@@ -206,23 +287,36 @@ export function isFailureContent(content: string): boolean {
  * Collapsed tool outcome, one line on success:
  * `    ✓ 读取文件 src/a.ts · 42 行 · 0.1s`
  * Failures hang the first error line off a dim tree prefix.
+ * 给出 `cols` 时参数摘要吸收剩余宽度——` · 行数 · 耗时` 尾巴永远留在本行，
+ * 不再折出孤零零的 `1.7s` 续行（折行只可能发生在摘要内部，gutter 已对齐）。
  */
-export function toolDoneLine(p: Palette, name: string, rawArgs: string, content: string, durationMs: number): string[] {
-  const label = `${p.bold(toolLabel(name))} ${p.cyan(toolArgSummary(name, rawArgs))}`;
-  const secs = p.dim(` · ${(durationMs / 1000).toFixed(1)}s`);
+export function toolDoneLine(
+  p: Palette,
+  name: string,
+  rawArgs: string,
+  content: string,
+  durationMs: number,
+  cols?: number,
+): string[] {
+  const label = toolLabel(name);
+  const secs = ` · ${(durationMs / 1000).toFixed(1)}s`;
+  const summaryBudget = (fixedPlain: string): number =>
+    cols === undefined ? 72 : Math.max(12, cols - 1 - styledWidth(fixedPlain));
   const flat = content
     .replaceAll('\r', '')
     .split('\n')
     .filter((l) => l.trim().length > 0);
   if (isFailureContent(content)) {
-    const lines = [`    ${p.red('✗')} ${label}${secs}`];
+    const head = `    ✗ ${label} `;
+    const lines = [`    ${p.red('✗')} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, summaryBudget(head + secs)))}${p.dim(secs)}`];
     // bash results lead with bare `exit: N` / `stdout:` markers; the
     // informative error line is the first one carrying actual content. The
     // `(empty)` stdout placeholder is not information — when a command fails
     // with no output at all, surface the exit code instead.
     const first = flat.find((l) => !/^exit: \d+$/.test(l) && !/^(stdout|stderr):\s*$/.test(l) && l !== '(empty)');
+    const inner = cols === undefined ? 100 : Math.max(12, cols - 1 - 8);
     if (first !== undefined) {
-      lines.push(`      ${p.dim(`└ ${clip(first, 100)}`)}`);
+      lines.push(`      ${p.dim(`└ ${clipToWidth(first, inner)}`)}`);
     } else {
       const code = /exit: (\d+|null)/.exec(content)?.[1];
       lines.push(`      ${p.dim(`└ 命令无输出${code !== undefined ? `（退出码 ${code}）` : ''}`)}`);
@@ -230,20 +324,73 @@ export function toolDoneLine(p: Palette, name: string, rawArgs: string, content:
     return lines;
   }
   let meta = '';
-  if (flat.length === 1) meta = ` · ${clip(flat[0] ?? '', 60)}`;
+  if (flat.length === 1) meta = ` · ${clipToWidth(flat[0] ?? '', 60)}`;
   else if (flat.length > 1) meta = ` · ${flat.length} 行`;
-  return [`    ${p.green('✓')} ${label}${p.dim(meta)}${secs}`];
+  const head = `    ✓ ${label} ${meta}${secs}`;
+  return [
+    `    ${p.green('✓')} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, summaryBudget(head)))}${p.dim(meta)}${p.dim(secs)}`,
+  ];
+}
+
+/**
+ * 探索分组行的名字排布：整行必须单行放得下，` · N 次 · 耗时` 后缀恒定占位。
+ * 超宽时逐级收紧：① 折叠公共目录前缀（只出现一次）；② 收窄前缀保尾段
+ * （`…1.26.0_解压\`）；③ 保留最近的若干名字、省略处以 `…` 占位——总数由
+ * `N 次` 后缀承载，不靠名字数。
+ */
+function fitGroupNames(entries: string[], budget: number): string {
+  const joined = entries.join(', ');
+  if (styledWidth(joined) <= budget) return joined;
+  let prefix = '';
+  let pathSep = '/';
+  let items = entries;
+  if (entries.length > 1) {
+    const parts = entries.map((e) => e.split(/[\\/]/));
+    pathSep = entries[0]?.includes('\\') === true ? '\\' : '/';
+    let common = 0;
+    while (
+      common < (parts[0]?.length ?? 0) - 1 &&
+      parts.every((p) => p.length > common && p[common] === parts[0]?.[common])
+    ) {
+      common += 1;
+    }
+    if (common > 0) {
+      prefix = `${parts[0]?.slice(0, common).join(pathSep) ?? ''}${pathSep}`;
+      items = entries.map((e) => (e.startsWith(prefix) ? e.slice(prefix.length) : e));
+    }
+  }
+  const render = (names: string[]): string => `${prefix}${names.join(', ')}`;
+  let out = render(items);
+  if (styledWidth(out) <= budget) return out;
+  if (prefix.length > 0) {
+    const clipped = clipPath(prefix.slice(0, -pathSep.length), Math.max(4, Math.floor(budget / 4)));
+    prefix = `${clipped}${pathSep}`;
+    out = render(items);
+    if (styledWidth(out) <= budget) return out;
+  }
+  const kept: string[] = [];
+  let width = styledWidth(prefix);
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i] ?? '';
+    const w = styledWidth(item) + (kept.length > 0 ? 2 : 0);
+    if (width + w + 4 > budget) break; // room for the leading `…, ` (2+1+1 cols)
+    kept.unshift(item);
+    width += w;
+  }
+  if (kept.length === 0) return clipPath(items[items.length - 1] ?? '', budget);
+  return render(kept.length < items.length ? ['…', ...kept] : kept);
 }
 
 /**
  * `    ✓ 查看 a.ts, b.ts · 3 次 · 0.5s` —— codex "Explored" 式分组行：连续的
- * 只读调用折叠为一行，名字列表超宽时截断。
+ * 只读调用折叠为一行。给出 `cols` 时名字列表按剩余宽度排布（见 fitGroupNames），
+ * 整行恒单行。
  */
-export function toolGroupLine(p: Palette, entries: string[], durationMs: number): string {
-  let names = entries.join(', ');
-  if (names.length > 80) names = `${names.slice(0, 80)}…`;
-  const secs = p.dim(` · ${entries.length} 次 · ${(durationMs / 1000).toFixed(1)}s`);
-  return `    ${p.green('✓')} ${p.bold('查看')} ${p.cyan(names)}${secs}`;
+export function toolGroupLine(p: Palette, entries: string[], durationMs: number, cols?: number): string {
+  const suffix = ` · ${entries.length} 次 · ${(durationMs / 1000).toFixed(1)}s`;
+  const fixed = `    ✓ 查看 ${suffix}`;
+  const budget = cols === undefined ? 80 : Math.max(12, cols - 1 - styledWidth(fixed));
+  return `    ${p.green('✓')} ${p.bold('查看')} ${p.cyan(fitGroupNames(entries, budget))}${p.dim(suffix)}`;
 }
 
 export type StopKind = 'complete' | 'max_turns' | 'aborted';

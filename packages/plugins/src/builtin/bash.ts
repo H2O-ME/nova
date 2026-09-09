@@ -324,7 +324,7 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
               done: handle.done,
               readOutput: handle.readOutput,
             });
-            return `Started background job ${snapshot.id}: ${command}\nUse the jobs tool (action=output, id=${snapshot.id}) to poll output, or action=stop to terminate it.`;
+            return `Started background job ${snapshot.id}: ${command}\nYou will be notified automatically when it finishes — do not poll. When notified, read its output once with the jobs tool (action=output, id=${snapshot.id}); use action=stop to terminate it early.`;
           }
 
           // Long-running commands stream their raw output to the UI as it

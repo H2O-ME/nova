@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { newId } from './ids.js';
-import type { JobRegistry } from './jobs.js';
+import { formatJobNotices, type JobRegistry } from './jobs.js';
 import type {
   AgentEvent,
   AgentHooks,
@@ -114,7 +114,30 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
       tools: opts.tools,
       signal: opts.signal,
     };
+    // Finished-job notices are injected AFTER the hook chain on purpose. The
+    // beforeLLMCall hooks (notably exec's in-place auto-compact) assume
+    // request.messages aliases opts.messages — a shared reference they splice
+    // to shrink the outer log. Injecting a clone before them would swallow that
+    // splice (the outer array would never shrink and every following turn would
+    // re-compact). Here the hook first sees the clean append-only log; the
+    // notice then becomes an ephemeral tail on a fresh clone, so it reaches the
+    // model but never the log (resume/compact unaffected) and the drain-once
+    // registry queue still announces each job exactly once. Delivery is
+    // at-least-once though: if this request dies before its assistant reply
+    // commits (network exhausted, context-window 400…), the drained notices go
+    // back on the queue — announce-zero would silently strand the task.
     if (opts.hooks?.beforeLLMCall) request = await opts.hooks.beforeLLMCall(request);
+    const finished = opts.jobs?.drainFinished() ?? [];
+    let noticeAccounted = finished.length === 0;
+    if (finished.length > 0) {
+      const notice: UserMessage = {
+        id: newId('msg'),
+        ts: Date.now(),
+        role: 'user',
+        content: formatJobNotices(finished),
+      };
+      request = { ...request, messages: [...request.messages, notice] };
+    }
     const stream = opts.provider.stream(request);
     // Cumulative stats as of the start of the in-flight attempt: a provider
     // reset rolls the running stats back to this snapshot, discarding usage
@@ -197,12 +220,25 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
         }
       }
     } catch (err) {
+      // The model never answered this request: hand the drained notices back
+      // before the error escapes (the registry outlives the run in
+      // interactive mode, so the next run re-announces them).
+      if (!noticeAccounted) {
+        opts.jobs?.requeue(finished);
+        noticeAccounted = true;
+      }
       // Once the user asked to stop, unwind as an interruption regardless of
       // which error the abort raced with.
       if (!opts.signal?.aborted) throw err;
       interrupted = true;
     }
     if (interrupted) {
+      // The partial response is discarded, so from the log's point of view
+      // the model never saw the notice either.
+      if (!noticeAccounted) {
+        opts.jobs?.requeue(finished);
+        noticeAccounted = true;
+      }
       yield* finishAborted(opts);
       return;
     }
@@ -226,6 +262,8 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
       ...(finishReason !== undefined ? { finishReason } : {}),
     };
     opts.messages.push(assistant);
+    // The model answered — the announcement has landed and stays consumed.
+    noticeAccounted = true;
     yield { type: 'message', message: assistant };
 
     if (toolCalls.length === 0) {

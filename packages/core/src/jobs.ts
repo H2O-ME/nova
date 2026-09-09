@@ -24,6 +24,21 @@ export interface JobOutcome {
   detail?: string;
 }
 
+/**
+ * A job that reached a natural terminal state and has not yet been announced.
+ * `killed` is deliberately absent: that outcome only ever follows an explicit
+ * `stop()`/dispose (the model already knows, or the session is over), so there
+ * is nothing to announce. Consumers drain these and inject them into the next
+ * LLM request, replacing the need for the model to poll `jobs output`.
+ */
+export interface JobNotice {
+  id: string;
+  kind: JobKind;
+  label: string;
+  status: 'completed' | 'failed';
+  detail?: string;
+}
+
 export interface JobStart {
   kind: JobKind;
   label: string;
@@ -51,6 +66,8 @@ const DEFAULT_JOB_OUTPUT_LIMIT = 256 * 1024;
 
 export class JobRegistry {
   private readonly jobs = new Map<string, JobEntry>();
+  /** Terminal jobs (completed/failed) awaiting announcement; drainFinished consumes. */
+  private readonly pendingNotices: JobNotice[] = [];
   private counter = 0;
 
   /** Register a started job; returns its model-facing snapshot. */
@@ -70,8 +87,22 @@ export class JobRegistry {
     this.jobs.set(id, entry);
     void start.done
       .then((outcome) => {
-        if (entry.status === 'stopping') entry.status = 'killed';
-        else entry.status = outcome.status;
+        // Natural completion/failure is announced once; a stop-initiated kill
+        // (entry was 'stopping') is not — the caller already knows it stopped.
+        if (entry.status !== 'stopping') {
+          entry.status = outcome.status;
+          if (outcome.status !== 'killed') {
+            this.pendingNotices.push({
+              id,
+              kind: entry.kind,
+              label: entry.label,
+              status: outcome.status,
+              ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
+            });
+          }
+        } else {
+          entry.status = 'killed';
+        }
         if (outcome.detail !== undefined) entry.detail = outcome.detail;
       })
       .catch((err: unknown) => {
@@ -79,6 +110,13 @@ export class JobRegistry {
         // record failure instead of leaving the job stuck as running.
         entry.status = 'failed';
         entry.detail = err instanceof Error ? err.message : String(err);
+        this.pendingNotices.push({
+          id,
+          kind: entry.kind,
+          label: entry.label,
+          status: 'failed',
+          detail: entry.detail,
+        });
       });
     return snapshotOf(entry);
   }
@@ -90,6 +128,31 @@ export class JobRegistry {
   get(id: string): JobSnapshot | undefined {
     const entry = this.jobs.get(id);
     return entry === undefined ? undefined : snapshotOf(entry);
+  }
+
+  /**
+   * Consume and clear the terminal-job notices queued since the last call.
+   * One drain = one announcement per job, UNLESS the carrying request dies
+   * before the model acknowledges it (the runner requeues, making delivery
+   * at-least-once). The runner calls this right before each LLM request and
+   * injects the result.
+   */
+  drainFinished(): JobNotice[] {
+    if (this.pendingNotices.length === 0) return [];
+    const drained = this.pendingNotices.splice(0);
+    return drained;
+  }
+
+  /**
+   * Put notices back at the queue head when the request that carried them
+   * failed or was aborted before its assistant reply was committed — the
+   * model never got to act on them, so "drain-once" would silence the
+   * announcement forever. A requeued batch announces at-least-once; a rare
+   * duplicate costs one idle line, a lost one costs a stalled task.
+   */
+  requeue(notices: JobNotice[]): void {
+    if (notices.length === 0) return;
+    this.pendingNotices.unshift(...notices);
   }
 
   /** Consume output produced since the previous call, with a per-read cap. */
@@ -137,4 +200,29 @@ function snapshotOf(entry: JobEntry): JobSnapshot {
     status: entry.status,
     ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
   };
+}
+
+/** Cap for a job label inside a notice: the raw command can be very long. */
+const JOB_NOTICE_LABEL_MAX = 80;
+
+/**
+ * One model-facing body per drain: a line per finished job in the same shape
+ * as the `jobs` tool's list rows (`- bash-1 [completed] sleep 10 (exit code:
+ * 0)`), so the injected notice reads like tool output the model already knows.
+ * Output itself stays behind the `jobs output` cursor — the notice only says
+ * a job is done, keeping the context lean.
+ */
+export function formatJobNotices(notices: JobNotice[]): string {
+  const body = notices
+    .map((n) => {
+      const label = n.label.length > JOB_NOTICE_LABEL_MAX ? `${n.label.slice(0, JOB_NOTICE_LABEL_MAX - 1)}…` : n.label;
+      const detail = n.detail !== undefined ? ` (${n.detail})` : '';
+      return `- ${n.id} [${n.status}] ${label}${detail}`;
+    })
+    .join('\n');
+  return [
+    `Background job${notices.length === 1 ? '' : 's'} finished:`,
+    body,
+    'Read the output with the jobs tool (action=output, id=<id>) as needed.',
+  ].join('\n');
 }

@@ -5,14 +5,17 @@ import { describe, expect, it } from 'vitest';
 import {
   TURN_ABORTED_GUIDANCE,
   LENGTH_CUTOFF_TOOL_GUIDANCE,
+  JobRegistry,
   getTimeTool,
   runAgent,
   type AgentEvent,
   type AgentMessage,
   type ChatProvider,
+  type ChatRequest,
   type StreamEvent,
   type ToolDefinition,
   type ToolResultMessage,
+  type UserMessage,
 } from '../src/index.js';
 
 function scriptedProvider(scripts: StreamEvent[][]): ChatProvider {
@@ -554,5 +557,174 @@ describe('cache miss audit', () => {
     // turn 3: miss 500 below floor → not counted
     expect(lastUsage?.stats.missTokens).toBe(2000);
     expect(lastUsage?.stats.missTurns).toBe(1);
+  });
+});
+
+describe('background-job completion notices', () => {
+  const flush = async (): Promise<void> => {
+    await new Promise((resolve) => setImmediate(resolve));
+  };
+
+  async function completedRegistry(): Promise<JobRegistry> {
+    const registry = new JobRegistry();
+    registry.start({
+      kind: 'bash',
+      label: 'sleep 10',
+      cancel: () => {},
+      done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),
+    });
+    await flush();
+    return registry;
+  }
+
+  it('returns the notice to the queue when the request dies before the model answers', async () => {
+    const registry = await completedRegistry();
+    const provider: ChatProvider = {
+      // Deliberately yield-less: the request dies BEFORE its first event. The
+      // generator form is what makes runAgent's catch see the throw (a plain
+      // function's sync throw would escape before the stream is even created).
+      // oxlint-disable-next-line require-yield
+      async *stream() {
+        throw new Error('context window exceeded');
+      },
+    };
+    await expect(
+      collect(runAgent({ provider, messages: [], rootDir: '.', jobs: registry })),
+    ).rejects.toThrow('context window exceeded');
+    // At-least-once: the drained batch is back, so the next run re-announces.
+    expect(registry.drainFinished().map((n) => n.id)).toEqual(['bash-1']);
+  });
+
+  it('returns the notice when the stream dies mid-response (the reply never commits)', async () => {
+    const registry = await completedRegistry();
+    const provider: ChatProvider = {
+      async *stream() {
+        yield { type: 'text_delta', text: 'partial' };
+        throw new Error('upstream exploded');
+      },
+    };
+    const messages: AgentMessage[] = [];
+    await expect(
+      collect(runAgent({ provider, messages, rootDir: '.', jobs: registry })),
+    ).rejects.toThrow('upstream exploded');
+    expect(messages).toHaveLength(0); // no committed assistant turn
+    expect(registry.drainFinished().map((n) => n.id)).toEqual(['bash-1']);
+  });
+
+  function capturingProvider(seen: AgentMessage[][]): ChatProvider {
+    return {
+      async *stream(req: ChatRequest) {
+        seen.push(req.messages);
+        yield { type: 'text_delta', text: 'ok' };
+        yield { type: 'usage', usage: { promptTokens: 3, completionTokens: 1, cachedTokens: 0 } };
+        yield { type: 'finish', finishReason: 'stop' };
+      },
+    };
+  }
+
+  it('injects the finished-job notice into the request but never into the log', async () => {
+    const registry = new JobRegistry();
+    registry.start({
+      kind: 'bash',
+      label: 'sleep 10',
+      cancel: () => {},
+      done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),
+    });
+    await flush(); // let the registry settle the job before the run starts
+
+    const seen: AgentMessage[][] = [];
+    const messages: AgentMessage[] = [];
+    await collect(runAgent({ provider: capturingProvider(seen), messages, rootDir: '.', jobs: registry }));
+
+    expect(seen).toHaveLength(1);
+    const tail = seen[0]!.at(-1);
+    expect(tail?.role).toBe('user');
+    expect((tail as UserMessage).content).toContain('bash-1 [completed] sleep 10 (exit code: 0)');
+    // append-only log stays clean: no injected user message survived the run.
+    expect(messages).toHaveLength(1);
+    expect(messages.some((m) => m.role === 'user')).toBe(false);
+    // the notice was consumed once and is not re-announced.
+    expect(registry.drainFinished()).toEqual([]);
+  });
+
+  it('announces once across separate runs: the next run sees nothing stale', async () => {
+    const registry = new JobRegistry();
+    registry.start({
+      kind: 'bash',
+      label: 'curl site',
+      cancel: () => {},
+      done: Promise.resolve({ status: 'failed', detail: 'exit code: 3' }),
+    });
+    await flush();
+
+    const seen: AgentMessage[][] = [];
+    const first = await collect(runAgent({ provider: capturingProvider(seen), messages: [], rootDir: '.', jobs: registry }));
+    const second = await collect(runAgent({ provider: capturingProvider(seen), messages: [], rootDir: '.', jobs: registry }));
+    expect(first.some((e) => e.type === 'done')).toBe(true);
+    expect(second.some((e) => e.type === 'done')).toBe(true);
+    expect(seen).toHaveLength(2);
+    expect((seen[0]!.at(-1) as UserMessage).content).toContain('bash-1 [failed]');
+    expect(seen[1]!.some((m) => m.role === 'user')).toBe(false); // drained on the first run
+  });
+
+  it('runs beforeLLMCall hooks BEFORE appending the notice, so in-place hooks still shrink the log', async () => {
+    const registry = new JobRegistry();
+    registry.start({
+      kind: 'bash',
+      label: 'sleep 10',
+      cancel: () => {},
+      done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),
+    });
+    await flush();
+
+    // Simulate exec's wrapAutoCompact: the hook splices request.messages in
+    // place to shrink the live surface. The hook must see the ALIASED array
+    // (notice not yet appended), so its splice lands in the outer `messages`
+    // log — otherwise compaction would run every turn and never shrink.
+    const dropped: AgentMessage[] = [];
+    const seen: AgentMessage[][] = [];
+    const messages: AgentMessage[] = [
+      { id: 'seed', ts: 0, role: 'user', content: 'seed' },
+      { id: 'a1', ts: 0, role: 'assistant', content: 'old' },
+    ];
+    let receivedAfterHook: AgentMessage[] | undefined;
+    const provider: ChatProvider = {
+      async *stream(req: ChatRequest) {
+        receivedAfterHook = req.messages;
+        seen.push(req.messages);
+        yield { type: 'text_delta', text: 'ok' };
+        yield { type: 'finish', finishReason: 'stop' };
+      },
+    };
+    await collect(
+      runAgent({
+        provider,
+        messages,
+        rootDir: '.',
+        jobs: registry,
+        hooks: {
+          beforeLLMCall: async (req) => {
+            // Here the request must still alias the append-only log: the
+            // notice has not been synthesized yet, so this splice lands in
+            // the outer array (exec's compact contract).
+            expect(req.messages).toBe(messages);
+            dropped.push(...req.messages.splice(0, req.messages.length - 1));
+            return req;
+          },
+        },
+      }),
+    );
+
+// The outer log was shrunk by the hook's in-place splice (the run then
+    // appended its assistant reply, which the run owns).
+    expect(dropped.map((m) => m.id)).toEqual(['seed']);
+    expect(messages.map((m) => m.id)).toEqual(['a1', expect.any(String)]);
+    expect(messages.at(-1)?.role).toBe('assistant');
+    // ...and the notice was appended AFTER the hook, on top of the shrunk
+    // surface, still without touching the log.
+    expect(seen).toHaveLength(1);
+    expect(receivedAfterHook?.at(-1)).toMatchObject({ role: 'user' });
+    expect((receivedAfterHook!.at(-1) as UserMessage).content).toContain('bash-1 [completed]');
+    expect(messages.some((m) => m.role === 'user')).toBe(false);
   });
 });

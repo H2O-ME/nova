@@ -125,6 +125,45 @@ describe('ui helpers', () => {
     expect(errored[0]).toContain('✗');
   });
 
+  it('clips by display columns: CJK paths keep the basename, commands cut at tokens', () => {
+    const path = 'D:\\下载\\com.highschool.learningbox_1.26.0_解压\\manifest.json';
+    const clipped = toolArgSummary('read_file', JSON.stringify({ path }), 30);
+    expect(styledWidth(clipped)).toBeLessThanOrEqual(30);
+    expect(clipped).toContain('manifest.json'); // tail survives
+    expect(clipped.startsWith('…')).toBe(true);
+    // Commands never split a token in half — the cut lands on whitespace.
+    const cmd = 'cd "D:/下载/app" && ls -R pages/game | tail -20';
+    const cut = toolArgSummary('bash', JSON.stringify({ command: cmd }), 24);
+    expect(styledWidth(cut)).toBeLessThanOrEqual(24);
+    expect(cut.endsWith('…')).toBe(true);
+    expect(cut).toBe('cd "D:/下载/app" && …');
+  });
+
+  it('keeps the whole tool line on one row when given a terminal budget', () => {
+    const cols = 80;
+    const longPath = 'D:\\下载\\com.highschool.learningbox_1.26.0_解压\\manifest.json';
+    const done = toolDoneLine(p, 'read_file', JSON.stringify({ path: longPath }), 'a\nb\nc', 1700, cols)[0]!;
+    expect(styledWidth(done)).toBeLessThanOrEqual(cols - 1);
+    expect(done.endsWith('1.7s')).toBe(true); // duration never orphans onto its own row
+    const start = toolStartLine(p, 'bash', JSON.stringify({ command: `cd ${longPath} && ls -R` }), '⠙', cols);
+    expect(styledWidth(start)).toBeLessThanOrEqual(cols - 1);
+  });
+
+  it('collapses the shared directory in exploration group lines', () => {
+    const dir = 'D:\\下载\\com.highschool.learningbox_1.26.0_解压';
+    const entries = [`${dir}\\manifest.json`, `${dir}\\common\\bf1.py`, `${dir}\\pages\\buy\\buy.js`];
+    const line = toolGroupLine(p, entries, 1700, 80);
+    expect(styledWidth(line)).toBeLessThanOrEqual(79);
+    expect(line).toContain('3 次');
+    expect(line.endsWith('1.7s')).toBe(true);
+    // 公共前缀只出现一次（收窄保尾段），名字以相对尾段呈现。
+    expect(line.match(/1\.26\.0_解压/g)).toHaveLength(1);
+    expect(line).toContain('bf1.py');
+    // 足够宽的终端：不折叠，原样拼接全路径。
+    const wide = toolGroupLine(p, entries, 1700, 220);
+    expect(wide).toContain(`${dir}\\manifest.json, ${dir}\\common\\bf1.py`);
+  });
+
   it('formats the status line with cache hit and stop word', () => {
     const line = statusLine(
       p,

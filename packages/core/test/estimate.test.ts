@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { estimateMessageTokens, estimateNextPromptTokens, type AssistantMessage, type UserMessage } from '../src/index.js';
+import {
+  estimateMessageTokens,
+  estimateNextPromptTokens,
+  type AssistantMessage,
+  type UserMessage,
+} from '../src/index.js';
 
 function userMsg(content: string): UserMessage {
   return { id: 'm', ts: 0, role: 'user', content };
@@ -25,6 +30,21 @@ describe('estimateMessageTokens', () => {
 
   it('adds role framing on top of content', () => {
     expect(estimateMessageTokens(assistantMsg(''))).toBeGreaterThan(0);
+  });
+
+  it('prices assistant tool-call arguments, not just content', () => {
+    const bigArgs = JSON.stringify({ code: 'p'.repeat(160_000) });
+    const withCalls: AssistantMessage = {
+      id: 'a',
+      ts: 0,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 'c', name: 'run_code', args: {}, rawArgs: bigArgs }],
+    };
+    // The 160KB program (~40K tokens) must be visible to the compaction gate;
+    // an empty-content assistant turn is otherwise priced as a bare frame.
+    expect(estimateMessageTokens(withCalls)).toBeGreaterThan(30_000);
+    expect(estimateMessageTokens(withCalls)).toBeLessThan(50_000);
   });
 });
 
