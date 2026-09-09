@@ -24,7 +24,9 @@ function renderLine(raw: string, state: { inFence: boolean }, p: Palette, commit
   if (heading !== null) return p.bold(p.cyan(heading[1] ?? ''));
   const bullet = line.match(/^(\s*)[-*]\s+(.*)$/);
   if (bullet !== null) {
-    return `${bullet[1]}· ${renderInline(bullet[2] ?? '', p)}`;
+    // 列表项统一缩进 2 列再挂圆点：与正文同列时层级读不出来。wrapBlock 把
+    // 这段前导空格算进悬挂缩进，换行续行对齐到条目文本列。
+    return `${bullet[1]}  · ${renderInline(bullet[2] ?? '', p)}`;
   }
   return renderInline(line, p);
 }

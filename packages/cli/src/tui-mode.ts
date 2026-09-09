@@ -43,6 +43,7 @@ import {
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
+import { reasoningRows, REASONING_MAX_LINES } from './reasoning.js';
 import { createNotifier } from './notify.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
@@ -105,9 +106,8 @@ const COMPOSER_MAX_ROWS = 8;
 /** 单次粘贴的字符上限：超过即截断（防止一次超巨粘贴把输入区撑爆）。 */
 const PASTE_MAX_CHARS = 200_000;
 
-/** Reasoning display caps: committed lines kept, and the live line's tail.
- * 思考是过程性内容：只保留最后 2 行活尾，结束后整段折成一行耗时摘要。 */
-const REASONING_MAX_LINES = 2;
+/** 活尾行的内存上限（显示裁剪在 ./reasoning.ts 按列做，这里只防爆内存）。
+ * 思考是过程性内容：只保留最后 2 行定格 + 1 行活尾，结束后整段折成一行耗时摘要。 */
 const REASONING_MAX_PARTIAL_CHARS = 240;
 /** Approval popup preview cap: diff rows are precious screen real estate. */
 const APPROVAL_PREVIEW_MAX_ROWS = 20;
@@ -617,11 +617,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     /** Incremental markdown renderer; re-created when a new answer opens. */
     let md: MarkdownRenderer | undefined;
     /**
-     * Reasoning renders line-based: committed lines are wrapped ONCE and then
-     * never move (only the front falls off past the cap); the live tail row
-     * is the only thing that repaints per delta. The old sliding-500-char
-     * single-line window shifted every row on every delta, which repainted
-     * the whole block at stream speed and scrolled the screen.
+     * Reasoning live window (pure builder in ./reasoning.ts): committed lines
+     * are trimmed, blank-free and clipped to ONE display row each; the tail
+     * row is the only thing that repaints per delta. Block height is stable
+     * once full — nothing re-wraps, nothing reflows.
      */
     const reasoningDone: string[] = [];
     let reasoningPartial = '';
@@ -723,27 +722,29 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               pushBlock([], { first: '    ', rest: '    ' });
               reasoningBlock = blocks[blocks.length - 1];
             }
-            // Split complete lines off the live buffer; only the partial row
+            // Split complete lines off the live buffer; only the tail row
             // churns, committed rows above it are stable across deltas.
             const parts = `${reasoningPartial}${text}`.split('\n');
             reasoningPartial = parts.pop() ?? '';
             for (const line of parts) {
-              reasoningDone.push(line);
+              // 模型思考里的空行（段落间隔）绝不进窗口：空行挤占两格定格位，
+              // 屏幕上就是忽隐忽现的空隙——「间距失控」的直接来源。
+              const settled = line.trim();
+              if (settled.length === 0) continue;
+              reasoningDone.push(settled);
               if (reasoningDone.length > REASONING_MAX_LINES) reasoningDone.shift();
             }
-            // A paragraph without newlines must not wrap forever: keep only
-            // the tail of the live line (one reflow when the cap trips).
+            // A paragraph without newlines must not grow forever (memory):
+            // keep only the tail of the live line. Display clipping to one
+            // row happens in reasoningRows, by real column budget.
             if (reasoningPartial.length > REASONING_MAX_PARTIAL_CHARS) {
               reasoningPartial = `…${reasoningPartial.slice(-REASONING_MAX_PARTIAL_CHARS)}`;
             }
-            // The whole block reads as "thinking": every row dim, the live
-            // tail carries the ⋯ marker. Committed rows stay dim — dimming
-            // only the tail made settled lines jump to full brightness the
-            // moment the stream moved past them.
-            const lines = [
-              ...reasoningDone.map((line) => (line.length === 0 ? '' : `${DIM}${line}${RESET}`)),
-              `${DIM}⋯ ${reasoningPartial}${RESET}`,
-            ];
+            const lines = reasoningRows(paint, {
+              done: reasoningDone,
+              partial: reasoningPartial,
+              cols: screen.cols,
+            });
             // The update goes to the block's stable ref — the last block may
             // be a tool line, and clobbering it must not erase history.
             if (reasoningBlock !== undefined) replaceBlock(reasoningBlock, lines);
@@ -1651,18 +1652,23 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         block.wrapped = block.lines.flatMap((line) => wrapLine(line, screen.cols - 1));
       } else {
         // Gutter blocks wrap at the continuation width so soft-wrapped rows
-        // align under the block's first content column.
+        // align under the block's first content column. A line's own leading
+        // spaces (markdown 列表缩进) join that hanging indent: continuation
+        // rows align under the line's text column, not the block's.
         const rest = block.gutter.rest;
-        const budget = Math.max(10, screen.cols - 1 - styledWidth(rest));
+        const restCols = styledWidth(rest);
         const rows: string[] = [];
         let firstSeen = false;
         for (const line of block.lines) {
-          for (const row of wrapLine(line, budget)) {
+          const indent = /^ +/.exec(line)?.[0] ?? '';
+          const body = indent.length > 0 ? line.slice(indent.length) : line;
+          const budget = Math.max(10, screen.cols - 1 - restCols - indent.length);
+          for (const row of wrapLine(body, budget)) {
             if (row.length === 0) {
               rows.push('');
               continue;
             }
-            rows.push((firstSeen ? rest : block.gutter.first) + row);
+            rows.push((firstSeen ? rest : block.gutter.first) + indent + row);
             firstSeen = true;
           }
         }

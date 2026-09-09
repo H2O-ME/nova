@@ -603,7 +603,10 @@ export function contextGaugeForms(
         : Math.max(8, Math.min(24, cols - 118));
     const { counts, freeCells, ratio, over } = planContextSegments(v.segments, capacity, cells);
     const bar = segmentBar(p, v.segments, counts, freeCells, over);
-    const pct = Math.round(ratio * 100).toString().padStart(2, ' ');
+    const pctNum = Math.round(ratio * 100);
+    // 微量非零用量不能读成 "0%"（配合近空轨道像仪表坏了）；'<1' 与 ' 0' 同宽，
+    // padStart 保证位数不挪分隔符。
+    const pct = (v.used > 0 && pctNum === 0 ? '<1' : String(pctNum)).padStart(2, ' ');
     const pctColor = over || ratio >= 1 ? p.red : ratio >= 0.7 ? p.yellow : p.green;
     const pctTag = ` · ${pctColor(`${pct}%`)}`;
     if (tier === 2) return `  ${bar}${pctTag}${compactTag(r !== undefined && r >= 0.7)}`;

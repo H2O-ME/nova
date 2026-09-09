@@ -354,6 +354,16 @@ describe('contextGaugeForms tiering', () => {
     }
   });
 
+  it('tiny non-zero usage reads <1%, never a misleading 0%', () => {
+    const tiny: ContextSegment[] = [{ label: '提示词', tokens: 2600, color: 'cyan' }];
+    const [t0, , t2] = contextGaugeForms(p, { segments: tiny, used: 2600, capacity: 1_050_000, compact: undefined }, 160);
+    expect(t0).toContain('<1%');
+    // '<1' 与 ' 0' 同宽：位数不挪分隔符的约定在低占比下依然成立
+    expect(t2).toContain('<1%');
+    const [zero] = contextGaugeForms(p, { segments: [], used: 0, capacity: 10000, compact: undefined }, 160);
+    expect(zero).toContain(' 0%');
+  });
+
   it('overflow turns the trailing segment red and the pct red', () => {
     const forms = contextGaugeForms(
       palette,
@@ -413,7 +423,10 @@ describe('markdown lite', () => {
 
   it('normalizes bullets and headings, hides fence markers', () => {
     const lines = renderMarkdownLite('# 标题\n\n- 第一项\n* 第二项\n```js\ncode();\n```', p);
-    expect(lines).toEqual(['标题', '', '· 第一项', '· 第二项', 'code();']);
+    // 列表项缩进 2 列挂圆点（与正文同列读不出层级）；wrapBlock 把前导空格
+    // 算进悬挂缩进，换行续行对齐条目文本列。
+    expect(lines).toEqual(['标题', '', '  · 第一项', '  · 第二项', 'code();']);
+    expect(renderMarkdownLite('  - 嵌套项', p)).toEqual(['    · 嵌套项']);
   });
 
   it('keeps plain paragraphs byte-identical', () => {
