@@ -11,6 +11,7 @@ export interface Palette {
   blue(text: string): string;
   magenta(text: string): string;
   bold(text: string): string;
+  inverse(text: string): string;
 }
 
 const ansi =
@@ -27,6 +28,7 @@ export const palette: Palette = {
   blue: ansi('34'),
   magenta: ansi('35'),
   bold: ansi('1'),
+  inverse: ansi('7'),
 };
 
 /** 非 TTY 输出的无样式配色。 */
@@ -39,6 +41,7 @@ export const plainPalette: Palette = {
   blue: (text) => text,
   magenta: (text) => text,
   bold: (text) => text,
+  inverse: (text) => text,
 };
 
 export type ApprovalModeLabel = string;

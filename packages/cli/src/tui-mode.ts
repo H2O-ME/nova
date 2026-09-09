@@ -6,7 +6,6 @@ import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   DEFAULT_MAX_TURNS,
   emptyStats,
-  estimateMessageTokens,
   estimateNextPromptTokens,
   estimateTextTokens,
   JobRegistry,
@@ -48,7 +47,6 @@ import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-m
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import {
-  approvalChip,
   approvalLabel,
   APPROVAL_ORDER,
   clipToWidth,
@@ -60,15 +58,11 @@ import {
   isFailureContent,
   isReadOnlyTool,
   layoutComposer,
-  modelTail,
-  padBetween,
   palette,
   permissionLabel,
   plainPalette,
-  sparkline,
   SPINNER_FRAMES,
   statusLine,
-  type StatusTier,
   toolArgSummary,
   toolDoneLine,
   toolGroupLine,
@@ -76,9 +70,16 @@ import {
   toolStartLine,
   type ComposerLayout,
   type ComposerRow,
-  type ContextSegment,
   type StopKind,
 } from './ui.js';
+import {
+  codeModeLabel,
+  contextBreakdown,
+  gaugeCacheKey,
+  statusBar,
+  type ContextBreakdownView,
+  type StatusView,
+} from './statusbar.js';
 
 export interface TuiOptions {
   rootDir: string;
@@ -193,7 +194,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // 重建 host 时原样带上。
   let codeMode: PtcMode = codeConfig?.mode ?? 'native';
   let modeSwitching = false;
-  const codeModeLabel = (m: PtcMode): string => (m === 'native' ? '普通' : m === 'ptc' ? 'PTC' : '混合');
   const bashPluginArgs = (): Parameters<typeof builtinPlugins>[0] => ({
     bash:
       bashConfig?.enabled === false
@@ -1122,7 +1122,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             ? `${DIM}  ${formatModelMeta(currentModelMeta)}（models.dev · ${currentModelMeta.provider}）${RESET}`
             : `${DIM}  元数据未命中（离线或目录没有该模型；可配 provider.contextWindow 兜底）${RESET}`,
           `${DIM}  执行模式 ${codeModeLabel(codeMode)}${RESET}`,
-          `${DIM}  ${contextLegend(paint, contextBreakdown().segments.filter((s) => s.tokens > 0))}${RESET}`,
+          `${DIM}  ${contextLegend(paint, contextBreakdown(contextView()).segments.filter((s) => s.tokens > 0))}${RESET}`,
         ]);
         try {
           const entries = await listRecentSessions(sessionsRoot(), SESSION_LIST_LIMIT);
@@ -1810,8 +1810,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // viewport the pad disappears and paging takes over.
     while (historyLines.length < historyRows) historyLines.push('');
 
-    // 按显示宽裁剪：绝不折行顶动布局（statusBarLine 内部已做截左保右）。
-    const status = clipToWidth(statusBarLine(), cols - 1);
+    // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
+    const status = clipToWidth(statusBar(paint, statusView()), cols - 1);
 
     // The breathing row separates history from the popup/composer zone.
     // Bottom stack: composer rows · single status line.
@@ -1883,176 +1883,67 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   }
 
   /**
-   * 执行模式芯片：当前模式反色；会话未开始时并列三枚示意 Tab 循环。
-   * `模式` 标签只在 T0 出现（三枚并列时本身就是图示，芯片里的中文也已自释）。
+   * 上下文分解的渲染快照（纯计算在 ./statusbar.ts）。/session 明细与
+   * 仪表缓存共用同一份，保证两处读数一致。
    */
-  function modeChips(tier: StatusTier): string {
-    const chip = (m: PtcMode): string =>
-      m === codeMode ? `${INVERSE} ${codeModeLabel(m)} ${RESET}` : `${DIM} ${codeModeLabel(m)} ${RESET}`;
-    const body = displayPristine() && tier < 2
-      ? (['native', 'ptc', 'both'] as PtcMode[]).map(chip).join('')
-      : `${INVERSE} ${codeModeLabel(codeMode)} ${RESET}`;
-    return tier === 0 ? `${DIM}模式${RESET} ${body}` : body;
-  }
-
-  /**
-   * 单行状态栏：三段式 `上下文仪表 │ 模型 · 模式 · 审批 [│ 瞬时提示]`，右缘钉住
-   * tps 速度表与 cache 率。层级靠分隔符表达——`│` 分大组（仪表 / 身份 / 提示），
-   * `·` 分组内（模型·模式·审批 同属"当前会话配置"一件事）。
-   * 空间不足按优先级**整字段降级**，而不是从词中间截断——旧版 `审批 自动编辑`
-   * 被切剩 `审批 自`、模型名切剩 `c` 就是纯字符裁剪的结果：
-   *   T0 全量 → T1 去 `模式/审批` 标签、模型去供应商前缀 → T2 仪表只留条+百分比、
-   *   审批降单字、模型截断 → 极窄时 dropModel 弃模型（banner 与 /model 已可见）。
-   * 模型是被优先牺牲的一段：它最占宽，却已出现在欢迎头与 /model；而上下文压力、
-   * 执行模式、审批档位是"这一轮正在发生什么"，更该留住。全部降完仍放不下才 `…` 兜底。
-   * 右缘仪表组定宽不随 tick 变化（tps 恒 10 格 + 数值 padStart(3) + cache 定宽），
-   * 截左保右的不变量不变；百分比亦 padStart，位数跳动不挪分隔符。
-   */
-  function statusBarLine(): string {
-    // 右缘仪表组（tps 速度表 + cache 命中率）：sparkline 恒 10 格、数值
-    // padStart(3)、cache 百分比定宽——组自身宽度不随 tick 变化，右缘永不
-    // 横移。旧版把动词/秒数放中段，每 90ms 改行宽，diff 重绘即闪烁。
-    // cache 用**会话累计**命中率（非单轮值）：单轮值会因随机分流的后端未报缓存
-    // 而 0↔N% 抖动，导致整段闪现。会话累计只增不减，一旦见过上报就稳定常驻。
-    const cacheHit = sessPromptTokens > 0 ? Math.round((sessCachedTokens / sessPromptTokens) * 100) : 0;
-    const bits: string[] = [];
-    // tps 表常驻且**始终绿色**（不再随空闲/工具等待转灰）：它是会话级连续滚动的
-    // 速度表，颜色不承载"是否在生成"这层语义（那由 composer 前缀 spinner 表达），
-    // 灰色只会让定格的历史窗口看起来像坏了。sparkline 恒 10 格、数值 padStart(3)、
-    // cache 百分比定宽——右缘布局恒定不横移。
-    const cur = tpsRing[tpsRing.length - 1] ?? 0;
-    const curStr = String(cur).padStart(3);
-    const gauge = `${paint.green(sparkline(tpsRing))} ${paint.bold(curStr)}`;
-    bits.push(`${DIM}tps${RESET} ${gauge}`);
-    if (cacheSeen) bits.push(`${DIM}cache ${String(cacheHit).padStart(2)}%${RESET}`);
-    const right = bits.join(' · ');
-    const budget = screen.cols - 1;
-    if (right.length === 0) return statusLeft(0);
-    const rightW = styledWidth(right);
-    const fits = (left: string): boolean => styledWidth(left) + 2 + rightW <= budget;
-    // 降级优先级：同一档位内先丢**瞬时提示**（中断/退出），再降档——提示
-    // 只是锦上添花，不该把"已用/总量"数字挤出状态栏。上滚提示已整体移除：
-    // 常驻视图不该因滚动变样式。
-    for (const tier of [0, 1, 2] as StatusTier[]) {
-      const full = statusLeft(tier, false, true);
-      if (fits(full)) return padBetween(full, right, budget);
-      const bare = statusLeft(tier, false, false);
-      if (fits(bare)) return padBetween(bare, right, budget);
-    }
-    // 连 T2 带模型都放不下：先丢模型（信息最可推断），仍不够才截断整段。
-    const noModelFull = statusLeft(2, true, true);
-    if (fits(noModelFull)) return padBetween(noModelFull, right, budget);
-    const noModel = statusLeft(2, true, false);
-    if (fits(noModel)) return padBetween(noModel, right, budget);
-    return `${clipToWidth(noModel, Math.max(1, budget - rightW - 2))}  ${right}`;
-  }
-
-  /**
-   * 左段（截左保右的那一侧）：仪表 │ 身份组 │ 瞬时提示，按档位取形态。
-   * `dropModel` 是比 T2 更窄的最后形态——身份组里只留模式与审批。
-   * `hints=false` 去掉瞬时提示段（中断/退出），供状态栏在"降档之前"先丢提示。
-   * 上滚**不**进状态栏：滚动位置从画面本身就能看出来，而状态栏是常驻视图，
-   * 一上滑就变样式（多出提示段、甚至整段降档）比不提示更扰人。
-   */
-  function statusLeft(tier: StatusTier, dropModel = false, hints = true): string {
-    const sep = ` ${DIM}│${RESET} `;
-    const identity: string[] = [];
-    if (!dropModel) {
-      const model =
-        tier === 0
-          ? client.model
-          : clipToWidth(modelTail(client.model), tier === 1 ? 22 : 12);
-      identity.push(`${BOLD}${model}${RESET}`);
-    }
-    identity.push(modeChips(tier), approvalChip(paint, permission.approvalMode, tier));
-    let line = `${contextGauge(tier)}${sep}${identity.join(` ${DIM}·${RESET} `)}`;
-    if (!hints) return line;
-    if (streaming && interruptAt > 0) line += sep + `${YELLOW}■ 等待工具退出…${RESET}`;
-    if (!streaming && input.length === 0 && Date.now() - lastCtrlC < 2000) {
-      line += sep + `${YELLOW}再按一次 Ctrl+C 退出${RESET}`;
-    }
-    return line;
-  }
-
-  /**
-   * 上下文结构分解（仪表与 /session 明细共用）：提示词/工具/注入/技能/消息
-   * 五段 token 数 + 总用量 + 窗口容量。有 usage 锚点时总量用真实 prompt
-   * tokens（锚点+增量），校准因子把估算段对齐到该总量（段总和 === used）；
-   * 无锚点时纯估算。
-   */
-  function contextBreakdown(): {
-    segments: ContextSegment[];
-    used: number;
-    capacity: number | undefined;
-  } {
-    const sys = estimateTextTokens(systemPrompt);
-    let toolSchemas = 0;
-    for (const t of host.tools) {
-      toolSchemas += estimateTextTokens(`${t.name} ${t.description ?? ''} ${JSON.stringify(t.parameters ?? {})}`);
-    }
-    let injected = 0;
-    let skillsTok = 0;
-    let history = 0;
-    const SKILL_OPEN = '<available_skills>';
-    const SKILL_CLOSE = '</available_skills>';
-    for (const m of messages) {
-      const tokens = estimateMessageTokens(m);
-      if (m.role === 'user' && m.content.trimStart().startsWith('<')) {
-        injected += tokens;
-        // 技能索引在注入片段里有独立标记，切出来单列一段——用户想知道
-        // 技能占了多少，而不是把它混进"提示词"。
-        const s = m.content.indexOf(SKILL_OPEN);
-        const e = m.content.indexOf(SKILL_CLOSE);
-        if (s >= 0 && e > s) skillsTok += estimateTextTokens(m.content.slice(s, e + SKILL_CLOSE.length));
-      } else history += tokens;
-    }
-    const estimate = sys + toolSchemas + injected + history;
-    // 有锚点时以真实 prompt tokens 为总量（含框架序列化开销）。
-    const used = usageAnchor !== undefined
-      ? estimateNextPromptTokens(usageAnchor, messages.slice(anchorMsgCount))
-      : estimate;
-    // 段的加总必须恒等于 used（条与旁边的 used/capacity · pct% 不能打架）。
-    // 校准因子 f = used/estimate 把内容段估算整体对齐到真实总量——误差按
-    // 比例摊到每一段，而不是让"提示词"段吞下全部残差（那会扭曲系统提示
-    // 词这一段的占比）。无锚点时 f = 1，段即原始估算。
-    const factor = estimate > 0 && used > 0 ? used / estimate : 1;
-    const scale = (n: number): number => Math.round(n * factor);
-    const segments: ContextSegment[] = [
-      { label: '提示词', tokens: scale(sys), color: 'cyan' },
-      { label: '工具', tokens: scale(toolSchemas), color: 'green' },
-      { label: '注入', tokens: scale(Math.max(0, injected - skillsTok)), color: 'blue' },
-      { label: '技能', tokens: scale(skillsTok), color: 'magenta' },
-      { label: '消息', tokens: scale(history), color: 'yellow' },
-    ];
-    // 逐段取整的残差（±几 tok）并入提示词段，保持总和与 used 精确相等。
-    if (factor !== 1) {
-      const drift = used - segments.reduce((sum, s) => sum + s.tokens, 0);
-      segments[0]!.tokens = Math.max(0, segments[0]!.tokens + drift);
-    }
-    return { segments, used, capacity: config.provider.contextWindow ?? currentModelMeta?.contextWindow };
-  }
+  const contextView = (): ContextBreakdownView => ({
+    systemPrompt,
+    tools: host.tools,
+    messages,
+    usageAnchor,
+    anchorMsgCount,
+    contextWindow: config.provider.contextWindow,
+    modelMetaContextWindow: currentModelMeta?.contextWindow,
+  });
 
   /**
    * 上下文仪表段（三档形态一次算全，按 key 缓存）：分段明细在 `/session`，
    * 这里按档位给出 全量/去冗/最简 三种形态供状态栏选档。容量取 models.dev
    * 元数据（config.provider.contextWindow 兜底），条严格按整窗比例分摊。
+   * 缓存留在壳层：重算要对 messages 全量估算，每 tick 一遍是性能雷区。
    */
   let contextLineCache: { key: string; lines: [string, string, string] } | undefined;
-  function contextGauge(tier: StatusTier): string {
+  function gaugeForms(): [string, string, string] {
     const capacity = config.provider.contextWindow ?? currentModelMeta?.contextWindow;
-    const key =
-      `${messages.length}|${usageAnchor?.promptTokens ?? -1}|${client.model}|` +
-      `${codeMode}|${modelMetaVersion}|${capacity ?? 0}|${host.tools.length}|` +
-      `${config.autoCompactTokenLimit ?? 0}|${screen.cols}`;
+    const key = gaugeCacheKey({
+      messagesLen: messages.length,
+      usageAnchor,
+      model: client.model,
+      codeMode,
+      modelMetaVersion,
+      capacity,
+      toolCount: host.tools.length,
+      compactLimit: config.autoCompactTokenLimit,
+      cols: screen.cols,
+    });
     if (contextLineCache === undefined || contextLineCache.key !== key) {
-      const { segments, used } = contextBreakdown();
+      const { segments, used, capacity: cap } = contextBreakdown(contextView());
       contextLineCache = {
         key,
-        lines: contextGaugeForms(paint, { segments, used, capacity, compact: config.autoCompactTokenLimit }, screen.cols),
+        lines: contextGaugeForms(paint, { segments, used, capacity: cap, compact: config.autoCompactTokenLimit }, screen.cols),
       };
     }
-    return contextLineCache.lines[tier];
+    return contextLineCache.lines;
   }
+
+  /** 状态栏的帧快照：闭包可变状态 → 纯函数入参（见 ./statusbar.ts）。 */
+  const statusView = (): StatusView => ({
+    cols: screen.cols,
+    model: client.model,
+    approvalMode: permission.approvalMode,
+    codeMode,
+    pristine: displayPristine(),
+    streaming,
+    interruptAt,
+    inputEmpty: input.length === 0,
+    lastCtrlC,
+    now: Date.now(),
+    tpsRing,
+    promptTokens: sessPromptTokens,
+    cachedTokens: sessCachedTokens,
+    cacheSeen,
+    gaugeForms: gaugeForms(),
+  });
 
   // ---- lifecycle --------------------------------------------------------
   function exitApp(): void {
