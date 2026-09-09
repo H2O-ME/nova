@@ -404,10 +404,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let readGroup: { entries: string[]; startAt: number; block: Block } | undefined;
   /** The streaming reasoning block, folded to a one-line summary once done. */
   let reasoningBlock: Block | undefined;
-  /** 思考段上方的分隔空行，与活块同生命周期：折成摘要后空行归属摘要
-   * （「已思考」贴着它引出的答案），活块被丢弃时空行一起撤掉。答案不再
-   * 从摘要下方拿空行——那会把摘要顶上去、贴到上一轮问题下面（「偏上」）。 */
-  let reasoningSeparator: Block | undefined;
 
   const closeReadGroup = (): void => {
     readGroup = undefined;
@@ -586,11 +582,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const idx = blocks.indexOf(reasoningBlock);
     if (idx >= 0) blocks.splice(idx, 1);
     reasoningBlock = undefined;
-    if (reasoningSeparator !== undefined) {
-      const si = blocks.indexOf(reasoningSeparator);
-      if (si >= 0) blocks.splice(si, 1);
-      reasoningSeparator = undefined;
-    }
     scheduleRender();
   };
 
@@ -650,9 +641,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       reasoningStartedAt = 0;
       if (had && block !== undefined) {
         replaceBlock(block, [`${DIM}已思考 ${secs}s${RESET}`]);
-        // 空行留在摘要上方：归属从「活思考块」转到「摘要行」，discardReasoning
-        // 不再有权撤它。
-        reasoningSeparator = undefined;
         scheduleRender();
         return true;
       }
@@ -703,9 +691,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               // A dedicated separator block between the question and the
               // answer — the answer gets its OWN block so the separator
               // survives every delta update. 刚折出「已思考」摘要时不推：
-              // 摘要自带上方空行，答案直接跟在摘要下面（同属本轮回答）。
+              // 摘要与答案同属本轮回答，轮内不留空行。
               if (folded) {
-                assistantSeparator = undefined; // 摘要自带上方空行，本答案不持有分隔块
+                assistantSeparator = undefined; // 答案紧跟摘要，不持有分隔块
               } else {
                 pushBlock(['']);
                 assistantSeparator = blocks[blocks.length - 1];
@@ -734,12 +722,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               reasoningStartedAt = Date.now();
               reasoningDone.length = 0;
               reasoningPartial = '';
-              // 思考段自带上方分隔空行（折成摘要后归属摘要，见 foldToSummary）。
-              pushBlock(['']);
-              reasoningSeparator = blocks[blocks.length - 1];
               // Reasoning is secondary content: every row sits at the text
               // column (no marker on the first row — an unmarked first row at
               // the marker column just reads as a stray outdented line).
+              // 轮内不推空行：问题→思考→答案是一组，空行只属于轮与轮之间。
               pushBlock([], { first: '    ', rest: '    ' });
               reasoningBlock = blocks[blocks.length - 1];
             }
