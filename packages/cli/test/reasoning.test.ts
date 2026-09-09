@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
-import { plainPalette } from '../src/ui.js';
-import { reasoningRows, REASONING_MAX_LINES } from '../src/reasoning.js';
+import { palette, plainPalette } from '../src/ui.js';
+import {
+  reasoningDetailRows,
+  reasoningRows,
+  REASONING_MAX_LINES,
+  summaryRow,
+} from '../src/reasoning.js';
 
 const rows = (done: string[], partial: string, cols = 80): string[] =>
   reasoningRows(plainPalette, { done, partial, cols });
@@ -38,5 +43,18 @@ describe('reasoningRows', () => {
 
   it('tiny cols still render (floor 10) without throwing', () => {
     expect(rows(['x'], 'y', 4)).toEqual(['x', '⋯ y']);
+  });
+});
+
+describe('summaryRow + reasoningDetailRows（点击展开）', () => {
+  it('collapsed reads ▸, expanded reads ▾ — the toggle affordance', () => {
+    expect(summaryRow(plainPalette, 12, false)).toBe('▸ 已思考 12s');
+    expect(summaryRow(plainPalette, 12, true)).toBe('▾ 已思考 12s');
+    expect(summaryRow(palette, 12, false)).toContain('\x1b[2m▸'); // dim
+  });
+
+  it('detail keeps original line breaks, blank lines pass through', () => {
+    expect(reasoningDetailRows(plainPalette, ['先想', '', '再写'])).toEqual(['先想', '', '再写']);
+    expect(reasoningDetailRows(palette, ['先想'])[0]).toContain('\x1b[2m'); // dim
   });
 });

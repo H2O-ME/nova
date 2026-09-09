@@ -33,3 +33,17 @@ export function reasoningRows(p: Palette, v: ReasoningView): string[] {
   rows.push(p.dim(`⋯ ${fitTail(v.partial, Math.max(1, width - 3))}`));
   return rows;
 }
+
+/**
+ * 折叠摘要行：▸/▾ 前缀就是可点击的 affordance（点击 toggle 在壳层做行→块
+ * 命中测试）。全文只存活于本次会话内存——reasoning 从不落盘（observability
+ * only），resume 后摘要是纯文本、不可展开。
+ */
+export function summaryRow(p: Palette, secs: number, expanded: boolean): string {
+  return p.dim(`${expanded ? '▾' : '▸'} 已思考 ${secs}s`);
+}
+
+/** 展开态的思考全文：原始换行逐行上暗色，软折交给 wrapBlock 的 gutter 预算。 */
+export function reasoningDetailRows(p: Palette, lines: readonly string[]): string[] {
+  return lines.map((line) => (line.trim().length === 0 ? '' : p.dim(line)));
+}

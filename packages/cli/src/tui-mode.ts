@@ -43,7 +43,7 @@ import {
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
-import { reasoningRows, REASONING_MAX_LINES } from './reasoning.js';
+import { reasoningDetailRows, reasoningRows, REASONING_MAX_LINES, summaryRow } from './reasoning.js';
 import { createNotifier } from './notify.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
@@ -109,6 +109,8 @@ const PASTE_MAX_CHARS = 200_000;
 /** 活尾行的内存上限（显示裁剪在 ./reasoning.ts 按列做，这里只防爆内存）。
  * 思考是过程性内容：只保留最后 2 行定格 + 1 行活尾，结束后整段折成一行耗时摘要。 */
 const REASONING_MAX_PARTIAL_CHARS = 240;
+/** 可展开全文的行数上限：reasoning 从不落盘，这份全文只为点击展开而活。 */
+const REASONING_FULL_MAX_LINES = 2000;
 /** Approval popup preview cap: diff rows are precious screen real estate. */
 const APPROVAL_PREVIEW_MAX_ROWS = 20;
 
@@ -121,6 +123,9 @@ interface Block {
    * produced by soft wrapping — aligns under it with `rest`.
    */
   gutter?: { first: string; rest: string };
+  /** 可展开的思考摘要：全文行 + 耗时（仅存内存，不落盘）；expanded 记状态。 */
+  detail?: { lines: string[]; secs: number };
+  expanded?: boolean;
 }
 
 export async function startTui(opts: TuiOptions): Promise<void> {
@@ -623,6 +628,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
      * once full — nothing re-wraps, nothing reflows.
      */
     const reasoningDone: string[] = [];
+    /** 全文累积（定格行 + 收尾活尾），折叠时挂到摘要块供点击展开。 */
+    const reasoningFull: string[] = [];
     let reasoningPartial = '';
     let reasoningOpen = false;
     let reasoningStartedAt = 0;
@@ -640,7 +647,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       reasoningBlock = undefined;
       reasoningStartedAt = 0;
       if (had && block !== undefined) {
-        replaceBlock(block, [`${DIM}已思考 ${secs}s${RESET}`]);
+        // 全文 = 定格行 + 收尾时的活尾；挂到摘要块上，点击 toggle 用。
+        const tail = reasoningPartial.trim();
+        if (tail.length > 0) reasoningFull.push(tail);
+        block.detail = { lines: reasoningFull.slice(), secs };
+        block.expanded = false;
+        reasoningFull.length = 0;
+        replaceBlock(block, [summaryRow(paint, secs, false)]);
         scheduleRender();
         return true;
       }
@@ -721,6 +734,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               reasoningOpen = true;
               reasoningStartedAt = Date.now();
               reasoningDone.length = 0;
+              reasoningFull.length = 0;
               reasoningPartial = '';
               // Reasoning is secondary content: every row sits at the text
               // column (no marker on the first row — an unmarked first row at
@@ -740,6 +754,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               if (settled.length === 0) continue;
               reasoningDone.push(settled);
               if (reasoningDone.length > REASONING_MAX_LINES) reasoningDone.shift();
+              reasoningFull.push(settled);
+              if (reasoningFull.length > REASONING_FULL_MAX_LINES) reasoningFull.shift();
             }
             // A paragraph without newlines must not grow forever (memory):
             // keep only the tail of the live line. Display clipping to one
@@ -787,6 +803,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             reasoningStartedAt = 0;
             reasoningOpen = false;
             reasoningDone.length = 0;
+            reasoningFull.length = 0;
             reasoningPartial = '';
           },
         });
@@ -1327,12 +1344,48 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * 互斥语义（弹窗打开时任何键都进弹窗，绝不漏到 composer）。
    */
   function handleKey(k: Key): void {
+    if (keyClick(k)) return;
     if (keyApprovalModal(k)) return;
     if (keyModelPicker(k)) return;
     if (keySessionPicker(k)) return;
     if (keyGlobal(k)) return;
     keyComposerAndPopup(k);
     scheduleRender();
+  }
+
+  /** 左键点击：命中可展开的「已思考」摘要块（含其展开正文）则 toggle；
+   * 其余区域静默吞掉——点击绝不能漏进 composer；弹窗/面板打开时不响应。 */
+  function keyClick(k: Key): boolean {
+    if (k.type !== 'click') return false;
+    if (approvalRequest !== undefined || modelPicker !== undefined || sessionPicker !== undefined) {
+      return true;
+    }
+    const map = frameMap;
+    if (map !== undefined) {
+      const row = k.y - 1; // SGR 行号 1 基
+      if (row >= 0 && row < map.historyRows) {
+        const flatIdx = map.sliceStart + row;
+        for (const seg of map.rows) {
+          if (flatIdx >= seg.start && flatIdx < seg.start + seg.count) {
+            toggleReasoningBlock(seg.block);
+            break;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  function toggleReasoningBlock(block: Block): void {
+    if (block.detail === undefined) return;
+    const expanded = block.expanded !== true;
+    block.expanded = expanded;
+    replaceBlock(
+      block,
+      expanded
+        ? [summaryRow(paint, block.detail.secs, true), ...reasoningDetailRows(paint, block.detail.lines)]
+        : [summaryRow(paint, block.detail.secs, false)],
+    );
   }
 
   /** 审批弹窗打开时吞掉一切键（codex 式 ↑↓ 选择 · Enter 确认；y/a/n 与 1/2/3 快捷）。 */
@@ -1686,6 +1739,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   }
 
   // ---- rendering --------------------------------------------------------
+  /** 上一帧的行→块映射（点击命中测试），renderFrame 每帧重建。 */
+  let frameMap: { rows: { block: Block; start: number; count: number }[]; sliceStart: number; historyRows: number } | undefined;
+
   function renderFrame(): void {
     if (exiting) return;
     const cols = screen.cols;
@@ -1771,7 +1827,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     );
 
     const flat: string[] = [];
-    for (const block of blocks) flat.push(...wrapBlock(block));
+    const rowMap: { block: Block; start: number; count: number }[] = [];
+    for (const block of blocks) {
+      const w = wrapBlock(block);
+      rowMap.push({ block, start: flat.length, count: w.length });
+      flat.push(...w);
+    }
     // The wheel/pageup handlers pre-cap at the transcript length, but the
     // viewport is only historyRows tall: once the offset passes
     // `flat.length - historyRows` an extra notch can't reveal earlier lines —
@@ -1782,6 +1843,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (scrollFromEnd > maxScroll) scrollFromEnd = maxScroll;
     const sliceEnd = Math.max(0, flat.length - scrollFromEnd);
     const sliceStart = Math.max(0, sliceEnd - historyRows);
+    // 屏幕行 → 块的映射快照：点击命中测试用（行 0 = 可见窗口的第一行）。
+    frameMap = { rows: rowMap, sliceStart, historyRows };
     let historyLines = flat.slice(sliceStart, sliceEnd);
     // Document-style top alignment: short transcripts read from the top of the
     // screen (banner first, content below) and the emptiness sits in the

@@ -16,6 +16,8 @@ export type Key =
   | { type: 'pagedown' }
   | { type: 'wheelup' }
   | { type: 'wheeldown' }
+  /** Left-button press at 1-based cell coords (SGR `0;col;rowM`). */
+  | { type: 'click'; x: number; y: number }
   | { type: 'tab' }
   | { type: 'shifttab' }
   | { type: 'esc' }
@@ -158,8 +160,9 @@ export class KeyDecoder {
         case 'M':
         case 'm':
           // SGR mouse mode (?1006h): `ESC [ < btn ; col ; row M/m`. Wheel
-          // notches arrive as button 64/65 presses; clicks and drags are
-          // consumed silently so they never leak into the composer.
+          // notches arrive as button 64/65 presses, left clicks as button 0;
+          // drags and other buttons are consumed silently so they never
+          // leak into the composer.
           return parseMouseButton(params, finalByte);
         case '~':
           if (params === '200') {
@@ -220,16 +223,26 @@ export class KeyDecoder {
 }
 
 /**
- * SGR mouse event → wheel keys. `params` is the raw `<btn;col;row` string and
- * `final` distinguishes press (`M`) from release (`m`). Only wheel notches
- * (64 = up, 65 = down) become keys; mouse buttons, motion and releases are
- * consumed so enabling tracking never injects phantom input.
+ * SGR mouse event → keys. `params` is the raw `<btn;col;row` string and
+ * `final` distinguishes press (`M`) from release (`m`). Wheel notches
+ * (64 = up, 65 = down) become wheel keys; a bare left-button press
+ * (button 0) becomes a coordinate `click` for transcript hit-testing.
+ * Releases, drags/motion, modified and other buttons are consumed so
+ * enabling tracking never injects phantom input.
  */
 function parseMouseButton(params: string, final: string): Key | undefined {
   if (final !== 'M') return undefined; // release / motion: ignore
   if (!params.startsWith('<')) return undefined; // legacy X10 encoding: not ours
-  const button = Number.parseInt(params.slice(1).split(';')[0] ?? '', 10);
+  const parts = params.slice(1).split(';');
+  const button = Number.parseInt(parts[0] ?? '', 10);
   if (button === 64) return { type: 'wheelup' };
   if (button === 65) return { type: 'wheeldown' };
+  if (button === 0) {
+    const x = Number.parseInt(parts[1] ?? '', 10);
+    const y = Number.parseInt(parts[2] ?? '', 10);
+    if (Number.isFinite(x) && Number.isFinite(y) && x > 0 && y > 0) {
+      return { type: 'click', x, y };
+    }
+  }
   return undefined;
 }

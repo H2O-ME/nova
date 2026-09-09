@@ -105,12 +105,17 @@ describe('KeyDecoder', () => {
     expect(decoder.push(Buffer.from('1~', 'utf8'))).toEqual([{ type: 'paste', text: 'hello' }]);
   });
 
-  it('decodes SGR mouse wheel notches and swallows clicks/releases', () => {
+  it('decodes SGR mouse wheel notches and left clicks, swallows the rest', () => {
     expect(decode('\x1b[<64;12;3M')).toEqual(['wheelup']);
     expect(decode('\x1b[<65;12;3M')).toEqual(['wheeldown']);
-    // click press + release, and a wheel release: none of these may leak
-    // into the composer as phantom keys
-    expect(decode('\x1b[<0;5;5M', '\x1b[<0;5;5m', '\x1b[<64;1;1m')).toEqual([]);
+    // bare left-press becomes a coordinate click; its release and a wheel
+    // release stay silent — nothing may leak into the composer as phantom keys
+    expect(decode('\x1b[<0;5;5M', '\x1b[<0;5;5m', '\x1b[<64;1;1m')).toEqual(['click']);
+    expect(new KeyDecoder().push(Buffer.from('\x1b[<0;12;7M', 'utf8'))).toEqual([
+      { type: 'click', x: 12, y: 7 },
+    ]);
+    // right/middle press, drag motion, modified press: still swallowed
+    expect(decode('\x1b[<2;5;5M', '\x1b[<1;5;5M', '\x1b[<32;5;5M', '\x1b[<4;5;5M')).toEqual([]);
     // sequences split across chunks still decode
     const decoder = new KeyDecoder();
     expect(decoder.push(Buffer.from('\x1b[<6', 'utf8'))).toEqual([]);
