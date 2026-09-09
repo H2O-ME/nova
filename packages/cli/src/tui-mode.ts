@@ -1312,137 +1312,161 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     void agentTurn(effective);
   }
 
+  /**
+   * 键路由按优先级责任链分派：审批弹窗 → 模型面板 → 会话面板 → 全局键 →
+   * composer/命令面板。每层吃掉自己认识的键返回 true，不认识的落下层；
+   * handleKey 只负责链的顺序与统一的 scheduleRender 落点。层顺序就是
+   * 互斥语义（弹窗打开时任何键都进弹窗，绝不漏到 composer）。
+   */
   function handleKey(k: Key): void {
-    // approval modal swallows keys while open
-    if (approvalRequest !== undefined) {
-      const resolve = (answer: 'allow' | 'deny' | 'always'): void => {
-        approvalRequest?.resolve(answer);
-        approvalRequest = undefined;
-        approvalPreview = undefined;
-      };
-      if (k.type === 'ctrl+c') {
-        resolve('deny');
-        aborters.at(-1)?.abort();
-        scheduleRender();
-        return;
-      }
-      // Codex-style selection: move with arrows, confirm with Enter. The
-      // y/a/n keys remain as shortcuts, 1/2/3 jump to an option.
-      if (k.type === 'up') approvalIndex = Math.max(0, approvalIndex - 1);
-      else if (k.type === 'down') approvalIndex = Math.min(APPROVAL_CHOICES.length - 1, approvalIndex + 1);
-      else if (k.type === 'enter') {
-        resolve(APPROVAL_CHOICES[approvalIndex] ?? 'deny');
-      } else if (k.type === 'char') {
-        if (k.ch === 'y' || k.ch === 'Y') resolve('allow');
-        else if (k.ch === 'a' || k.ch === 'A') resolve('always');
-        else if (k.ch === 'n' || k.ch === 'N') resolve('deny');
-        else if (k.ch === '1') approvalIndex = 0;
-        else if (k.ch === '2') approvalIndex = 1;
-        else if (k.ch === '3') approvalIndex = 2;
-      } else if (k.type === 'esc') {
-        resolve('deny');
-      }
-      scheduleRender();
-      return;
-    }
+    if (keyApprovalModal(k)) return;
+    if (keyModelPicker(k)) return;
+    if (keySessionPicker(k)) return;
+    if (keyGlobal(k)) return;
+    keyComposerAndPopup(k);
+    scheduleRender();
+  }
 
-    // model picker swallows keys while open (↑↓ scroll · Enter switch · Esc cancel)
-    if (modelPicker !== undefined) {
-      const picker = modelPicker;
-      const winSize = Math.min(MODEL_PICKER_WINDOW, picker.models.length);
-      if (k.type === 'ctrl+c' || k.type === 'esc') {
-        modelPicker = undefined;
-      } else if (k.type === 'up') {
-        picker.index = Math.max(0, picker.index - 1);
-      } else if (k.type === 'down') {
-        picker.index = Math.min(picker.models.length - 1, picker.index + 1);
-      } else if (k.type === 'pageup') {
-        picker.index = Math.max(0, picker.index - winSize);
-      } else if (k.type === 'pagedown') {
-        picker.index = Math.min(picker.models.length - 1, picker.index + winSize);
-      } else if (k.type === 'wheelup') {
-        picker.index = Math.max(0, picker.index - 1);
-      } else if (k.type === 'wheeldown') {
-        picker.index = Math.min(picker.models.length - 1, picker.index + 1);
-      } else if (k.type === 'enter') {
-        const model = picker.models[picker.index];
-        modelPicker = undefined;
-        if (model !== undefined && model !== client.model) {
-          client.setModel(model);
-          pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
-          void refreshModelMeta();
-        } else if (model !== undefined) {
-          pushBlock([`${DIM}  已是当前模型：${model}${RESET}`]);
-        }
-      } else {
-        return; // any other key: swallowed by the picker, never reaches the composer
-      }
+  /** 审批弹窗打开时吞掉一切键（codex 式 ↑↓ 选择 · Enter 确认；y/a/n 与 1/2/3 快捷）。 */
+  function keyApprovalModal(k: Key): boolean {
+    if (approvalRequest === undefined) return false;
+    const resolve = (answer: 'allow' | 'deny' | 'always'): void => {
+      approvalRequest?.resolve(answer);
+      approvalRequest = undefined;
+      approvalPreview = undefined;
+    };
+    if (k.type === 'ctrl+c') {
+      resolve('deny');
+      aborters.at(-1)?.abort();
       scheduleRender();
-      return;
+      return true;
     }
+    if (k.type === 'up') approvalIndex = Math.max(0, approvalIndex - 1);
+    else if (k.type === 'down') approvalIndex = Math.min(APPROVAL_CHOICES.length - 1, approvalIndex + 1);
+    else if (k.type === 'enter') {
+      resolve(APPROVAL_CHOICES[approvalIndex] ?? 'deny');
+    } else if (k.type === 'char') {
+      if (k.ch === 'y' || k.ch === 'Y') resolve('allow');
+      else if (k.ch === 'a' || k.ch === 'A') resolve('always');
+      else if (k.ch === 'n' || k.ch === 'N') resolve('deny');
+      else if (k.ch === '1') approvalIndex = 0;
+      else if (k.ch === '2') approvalIndex = 1;
+      else if (k.ch === '3') approvalIndex = 2;
+    } else if (k.type === 'esc') {
+      resolve('deny');
+    }
+    scheduleRender();
+    return true;
+  }
 
-    // session picker swallows keys while open (↑↓ scroll · Enter switch · Esc cancel)
-    if (sessionPicker !== undefined) {
-      const picker = sessionPicker;
-      const winSize = Math.min(SESSION_PICKER_WINDOW, picker.entries.length);
-      if (k.type === 'ctrl+c' || k.type === 'esc') {
-        sessionPicker = undefined;
-      } else if (k.type === 'up' || k.type === 'wheelup') {
-        picker.index = Math.max(0, picker.index - 1);
-      } else if (k.type === 'down' || k.type === 'wheeldown') {
-        picker.index = Math.min(picker.entries.length - 1, picker.index + 1);
-      } else if (k.type === 'pageup') {
-        picker.index = Math.max(0, picker.index - winSize);
-      } else if (k.type === 'pagedown') {
-        picker.index = Math.min(picker.entries.length - 1, picker.index + winSize);
-      } else if (k.type === 'enter') {
-        const entry = picker.entries[picker.index];
-        sessionPicker = undefined;
-        if (entry !== undefined && entry.file !== session.file) {
-          void switchToSession(entry);
-        } else if (entry !== undefined) {
-          pushBlock([`${DIM}  已是当前会话${RESET}`]);
-        }
-      } else {
-        return;
+  /** 模型面板吞键（↑↓/翻页滚动 · Enter 切换 · Esc 取消；其余键静默吞掉）。 */
+  function keyModelPicker(k: Key): boolean {
+    if (modelPicker === undefined) return false;
+    const picker = modelPicker;
+    const winSize = Math.min(MODEL_PICKER_WINDOW, picker.models.length);
+    if (k.type === 'ctrl+c' || k.type === 'esc') {
+      modelPicker = undefined;
+    } else if (k.type === 'up') {
+      picker.index = Math.max(0, picker.index - 1);
+    } else if (k.type === 'down') {
+      picker.index = Math.min(picker.models.length - 1, picker.index + 1);
+    } else if (k.type === 'pageup') {
+      picker.index = Math.max(0, picker.index - winSize);
+    } else if (k.type === 'pagedown') {
+      picker.index = Math.min(picker.models.length - 1, picker.index + winSize);
+    } else if (k.type === 'wheelup') {
+      picker.index = Math.max(0, picker.index - 1);
+    } else if (k.type === 'wheeldown') {
+      picker.index = Math.min(picker.models.length - 1, picker.index + 1);
+    } else if (k.type === 'enter') {
+      const model = picker.models[picker.index];
+      modelPicker = undefined;
+      if (model !== undefined && model !== client.model) {
+        client.setModel(model);
+        pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
+        void refreshModelMeta();
+      } else if (model !== undefined) {
+        pushBlock([`${DIM}  已是当前模型：${model}${RESET}`]);
       }
-      scheduleRender();
-      return;
+    } else {
+      return true; // any other key: swallowed by the picker, never reaches the composer
     }
+    scheduleRender();
+    return true;
+  }
 
+  /** 会话面板吞键（同模型面板语义；Enter 恢复会话）。 */
+  function keySessionPicker(k: Key): boolean {
+    if (sessionPicker === undefined) return false;
+    const picker = sessionPicker;
+    const winSize = Math.min(SESSION_PICKER_WINDOW, picker.entries.length);
+    if (k.type === 'ctrl+c' || k.type === 'esc') {
+      sessionPicker = undefined;
+    } else if (k.type === 'up' || k.type === 'wheelup') {
+      picker.index = Math.max(0, picker.index - 1);
+    } else if (k.type === 'down' || k.type === 'wheeldown') {
+      picker.index = Math.min(picker.entries.length - 1, picker.index + 1);
+    } else if (k.type === 'pageup') {
+      picker.index = Math.max(0, picker.index - winSize);
+    } else if (k.type === 'pagedown') {
+      picker.index = Math.min(picker.entries.length - 1, picker.index + winSize);
+    } else if (k.type === 'enter') {
+      const entry = picker.entries[picker.index];
+      sessionPicker = undefined;
+      if (entry !== undefined && entry.file !== session.file) {
+        void switchToSession(entry);
+      } else if (entry !== undefined) {
+        pushBlock([`${DIM}  已是当前会话${RESET}`]);
+      }
+    } else {
+      return true;
+    }
+    scheduleRender();
+    return true;
+  }
+
+  /**
+   * 全局键（弹窗之外任何时刻生效）：Ctrl+C 三段（中断 → 清输入 → 双按退出）、
+   * Ctrl+D 退出、流式中 Esc 中断。处理过的键吃掉，其余落下层。
+   */
+  function keyGlobal(k: Key): boolean {
     if (k.type === 'ctrl+c') {
       if (streaming) {
         interruptAt = Date.now();
         aborters.at(-1)?.abort();
         scheduleRender();
-        return;
+        return true;
       }
       if (input.length > 0) {
         input = '';
         cursorPos = 0;
         scheduleRender();
-        return;
+        return true;
       }
       const now = Date.now();
       if (now - lastCtrlC < 2000) {
         exitApp();
-        return;
+        return true;
       }
       lastCtrlC = now;
       scheduleRender();
-      return;
+      return true;
     }
     if (k.type === 'ctrl+d') {
       if (!streaming) exitApp();
-      return;
+      return true;
     }
     if (k.type === 'esc' && streaming) {
       interruptAt = Date.now();
       aborters.at(-1)?.abort();
       scheduleRender();
-      return;
+      return true;
     }
+    return false;
+  }
 
+  /** Composer 编辑与命令面板：编辑键、历史、滚动、面板导航/补全/执行。 */
+  function keyComposerAndPopup(k: Key): void {
     const popupMatches = commandPopupMatches();
 
     switch (k.type) {
@@ -1523,6 +1547,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         }
         break;
       }
+      // 滚动键自行 preemptRender/scheduleRender 后直接返回（不等链尾统一调度）。
       case 'pageup':
         scrollFromEnd = Math.min(scrollFromEnd + Math.max(3, screen.rows - 6), totalWrappedLines());
         scheduleRender();
@@ -1608,7 +1633,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         break;
       }
     }
-    scheduleRender();
   }
 
   function totalWrappedLines(): number {

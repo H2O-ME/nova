@@ -73,7 +73,7 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, plugins, ai, core}`，
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈、usage/缓存命中提取 | `client.ts`、`sse.ts` |
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`builtin/{fs,bash,jobs,todo,search}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
 | `tui` | 零依赖终端 UI：行级差分渲染、原始按键解码、CJK 宽度处理 | `screen.ts`、`keys.ts`、`width.ts` |
-| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`、`repl.ts`、`exec.ts`、`commands.ts`、`config.ts`、`compact.ts`、`model-meta.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`ui.ts` |
+| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（壳层）、`statusbar.ts`/`composer.ts`/`popup.ts`（TUI 纯计算层）、`repl.ts`、`exec.ts`、`commands.ts`、`config.ts`、`compact.ts`、`model-meta.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`ui.ts` |
 
 ## 5. 核心设计
 
@@ -137,6 +137,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 ## 6. 代码约定 / 在这里怎么工作
 
 - **内置能力皆第一方插件**：新工具/命令/钩子走 `PluginContext` 注册，与第三方同 API、同审批门，别在 core 里开特例。
+- **TUI 分层**：渲染计算 = 纯模块（`statusbar.ts`/`composer.ts`/`popup.ts` + `ui.ts`，帧快照入参、Palette 注入、`plainPalette` 可测）；`tui-mode.ts` 闭包壳只留定时器/终端 IO/状态突变，按键按责任链分层（审批 → 面板 → 全局 → composer）。新交互先问能不能写成纯函数，能则不进闭包。
 - **前缀字节稳定**：任何动态内容都注入会话首条 user 片段（append-only），绝不回改系统提示或旧消息——否则破坏缓存命中。
 - **测试不联网**：`ai` 层注入 `fetch` + SSE fixture；断言用 `plainPalette` 取无 ANSI 的确定字符串。
 - **路径/跨平台**：一律 `node:path` + 抽象层；bash 工具 Windows 优先 Git Bash、回落 PowerShell 并强制 UTF-8。
@@ -157,6 +158,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 - **M6.3** TUI 执行模式与上下文可视化：Tab 循环模式（rebuildHost 重绑）、单行三段式状态栏（按优先级整字段降级、tps 连续滚动恒绿、cache 会话累计粘住）、models.dev 模型元数据、`/model`/`/session` 能力展示。
 - **M6.4** jobs 完成通知注入（替代轮询）：`JobRegistry` 终态通知队列 `drainFinished()` + `runAgent` 每次发请求前把"bash-N 已完成"作为临时 user 消息注入（克隆数组不落日志）；bash 后台返回与 `jobs` 工具文案改为"完成自动通知、无需轮询"。
 - **M6.5** exec auto-compact 三处缺陷修复：①**熔断**——压缩后仍超阈值即停用本任务后续压缩并告警一次（修复下限超阈时"每轮一次摘要请求"的风暴：2× 成本 + 日志刷屏）；②**估算盲区**——`estimateMessageTokens` 计入 assistant tool call 的 `rawArgs`（此前 160KB 的 run_code 程序按 4 token 计，压缩触发滞后直指上下文窗 400）；③**通知送达**——请求在回复提交前失败/中断时 `drainFinished()` 批次经 `requeue()` 回队（此前 drain-once 在失败路径退化为"永不播报"）。附带：原位压缩的 messages 别名契约显式校验（防未来外部插件克隆数组导致压缩静默失效与日志投影背离）。
+- **M6.6** TUI 可测试性重构（tui-mode.ts 2147 → ~1900 行）：状态栏/composer/四弹窗从 `startTui` 闭包抽为纯计算模块（`statusbar.ts`/`composer.ts`/`popup.ts`，帧快照入参 + Palette 注入，`plainPalette` 下可精确断言），仪表三档缓存与定时器留在壳层；`popupHeight()` 双推导消除（`cursorPosition` 改收 renderFrame 已构造的 `popupLines.length`）；`handleKey` 300 行 if 链拆为责任链（审批 → 模型面板 → 会话面板 → 全局键 → composer）。TUI 表现层（历史补丁最频繁部位：降级顺序/弹窗预算/滚动）首次获得 37+ 条回归护栏。
 
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 
