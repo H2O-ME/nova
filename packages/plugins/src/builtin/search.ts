@@ -92,7 +92,7 @@ export function searchPlugin(): Plugin {
       ctx.registerTool({
         name: 'search_files',
         description:
-          'Recursively searches the workspace tree. Provide name_glob (find files whose workspace-relative path matches a glob like "**/*.test.ts" or "*.ts") OR content_regex (find files whose text matches a regex, returning matching lines as path:line: text). path: starting directory (default workspace root). Skips .git, node_modules, dist and dot-directories; symlinks are never followed. Returns at most max_results hits (default 200).',
+          'Searches the workspace tree — use this instead of shell grep/rg/find. Provide name_glob (find files whose workspace-relative path matches a glob like "**/*.test.ts" or "*.ts") OR content_regex (find files whose text matches a regex, returning matching lines as path:line: text). path: starting directory (default workspace root). Skips .git, node_modules, dist and dot-directories; symlinks are never followed. Returns at most max_results hits (default 200).',
         parameters: {
           type: 'object',
           properties: {

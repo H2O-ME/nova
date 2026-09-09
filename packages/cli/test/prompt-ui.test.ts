@@ -114,6 +114,34 @@ describe('ui helpers', () => {
     expect(empty[0]).toContain('✓');
   });
 
+  it('tool lines built at the gutter budget never wrap into orphan rows', () => {
+    // wrapBlock folds gutter blocks at cols-1-gutterRest; builders must clip
+    // into the SAME budget. A line wider than it folds, and the tail
+    // (` · 8 行 · 5.9s`) breaks onto an orphan continuation row.
+    const gutterRest = '      '; // 6 cols, matches TOOL_GUTTER in tui-mode
+    for (const cols of [60, 80, 100, 120, 160]) {
+      const budget = cols - 1 - gutterRest.length;
+      const running = toolStartLine(p, 'bash', `{"command":"${'x'.repeat(300)}"}`, '•', budget) + ' · 12s';
+      const done = toolDoneLine(
+        p,
+        'read_file',
+        '{"path":"' + 'x'.repeat(120) + '.ts"}',
+        Array.from({ length: 12 }, (_, i) => `line ${i}`).join('\n'),
+        5900,
+        budget,
+      )[0]!;
+      const group = toolGroupLine(
+        p,
+        ['x'.repeat(60) + '.ts', 'y'.repeat(60) + '.ts', 'z.ts'],
+        500,
+        budget,
+      );
+      for (const line of [running, done, group]) {
+        expect(styledWidth(line)).toBeLessThanOrEqual(cols - 1);
+      }
+    }
+  });
+
   it('expands failed tool results with the first error line', () => {
     const failed = toolDoneLine(p, 'bash', '{"command":"pnpm test"}', 'exit: 1\nboom happened', 3200);
     expect(failed).toHaveLength(2);

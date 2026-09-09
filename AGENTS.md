@@ -80,6 +80,8 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, plugins, ai, core}`，
 ### 一切皆插件
 工具、斜杠命令、生命周期钩子（`beforeLLMCall` / `beforeToolCall` / `afterToolResult`）全部经 `PluginContext` 注册；内置 fs/bash 工具与 skills 走**同一 API、同一审批门**，保证内核最小。`PluginContext` 提供 `tools()` 活视图；`ToolExecuteContext` 提供 `dispatch` 嵌套分发缝（PTC 子调用回流用）。
 
+**专用工具优先于 shell**（治"模型绕开内置工具跑 `find | wc -l`"）：系统提示与工具 description 双侧写 DSH 式排他句——`Use read_file — not shell commands like cat/head/tail`、`Use search_files — not shell grep/rg/find`（结构化行号结果 + 免审批摩擦是卖点）；bash 聚焦行为契约（git/包管理器/构建/测试），不给反向劝退句（DSH 验证过：跨调用选择放系统提示、单次调用格式放 description）。批量聚合（数文件/汇总）导向 `run_code` 程序化出口而非 bash 管道。
+
 ### 上下文与缓存命中率（核心差异化）
 目标：**稳定前缀 = 高缓存命中**。四层机制：
 1. **前缀冻结**：系统提示字节稳定（persona + 工作方式 + 工具规则）；环境信息、AGENTS.md、用户指令、技能索引注入为**会话首条 user 消息片段**，append-only 不回改。
@@ -119,7 +121,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 - **模型元数据（models.dev）**：启动后台拉 `https://models.dev/api.json`，解析为精简目录落盘缓存（`~/.nova/cache/models-dev.json`，24h TTL，断网用旧缓存），按模型 id 精确→尾段匹配解析上下文窗口/模态/推理/工具/附件能力，喂给结构进度条分母；明细在 `/model` 面板与 `/session`。
 - **执行模式**：新会话未开始时按 Tab 循环 普通 → PTC → 混合（rebuildHost 统一重绑 host+hooks；Node 不满足 22.19 时拒绝并保持原模式；区别见 `/mode`，切换不留历史行、状态栏模式标即时变化）。
 
-**工具行单行预算**：工具行（运行/完成/分组）拿终端列数渲染，参数摘要吸收剩余宽度——` · 行数 · 耗时` 尾巴恒留本行，不再折出孤儿续行。截断按**显示列数**而非字符数（CJK 计 2 列）：命令在参数边界切（`cd "…" && ls …`），路径切头保文件名（`…\manifest.json`）。只读分组行逐级收紧：折叠公共目录前缀（只出现一次）→ 收窄前缀保尾段（`…1.26.0_解压\`）→ 保留最近若干名字、省略处以 `…` 占位——计数由 `N 次` 后缀承载，不靠名字数。审批弹窗头部与 diff 预览同样按列裁剪，弹窗不折行。
+**工具行单行预算**：工具行（运行/完成/分组）拿终端列数渲染，参数摘要吸收剩余宽度——但预算必须扣掉 gutter 缩进（`toolBudget() = cols-1-6`，wrapBlock 按 gutter 预算折行，行构建器裁进同一预算才不会把 ` · 行数 · 耗时` 尾巴顶成孤儿续行）——` · 行数 · 耗时` 尾巴恒留本行，不再折出孤儿续行。截断按**显示列数**而非字符数（CJK 计 2 列）：命令在参数边界切（`cd "…" && ls …`），路径切头保文件名（`…\manifest.json`）。只读分组行逐级收紧：折叠公共目录前缀（只出现一次）→ 收窄前缀保尾段（`…1.26.0_解压\`）→ 保留最近若干名字、省略处以 `…` 占位——计数由 `N 次` 后缀承载，不靠名字数。审批弹窗头部与 diff 预览同样按列裁剪，弹窗不折行。
 
 累计 token 与分段明细在 `/session`，模态能力标在 `/model` 与 `/session`；`/session` 另报缓存浪费审计（missTokens，噪声底 1024 tok）并可作会话切换器（↑↓ 选择、Enter 恢复上下文并切回该会话创建时的工作区）。
 

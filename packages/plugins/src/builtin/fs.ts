@@ -178,7 +178,7 @@ export function fsReadPlugin(): Plugin {
       ctx.registerTool({
         name: 'read_file',
         description:
-          'Reads a text file. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (required, absolute or workspace-relative), offset (1-based start line, optional), limit (max lines, default 400).',
+          'Reads a text file — use this instead of shell cat/head/tail. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (required, absolute or workspace-relative), offset (1-based start line, optional), limit (max lines, default 400).',
         parameters: {
           type: 'object',
           properties: {
@@ -230,7 +230,7 @@ export function fsReadPlugin(): Plugin {
       ctx.registerTool({
         name: 'list_dir',
         description:
-          'Lists the entries of a directory (directories first). Paths inside the workspace are read freely; paths outside it require user approval. Args: path (optional, defaults to the workspace root).',
+          "Lists a directory's entries (directories first) — use this instead of shell ls. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (optional, defaults to the workspace root).",
         parameters: {
           type: 'object',
           properties: {

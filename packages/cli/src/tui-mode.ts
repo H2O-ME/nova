@@ -399,6 +399,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     string,
     { block: Block; startAt: number; name: string; rawArgs: string; tailBuf?: string }
   >();
+  /** 工具块 gutter：失败 └ 行与软折续行对齐到内容列。 */
+  const TOOL_GUTTER: NonNullable<Block['gutter']> = { first: '', rest: '      ' };
+  /**
+   * 工具行的统一宽度预算。wrapBlock 按 `cols-1-gutter` 折行，行构建器必须
+   * 裁进同一个预算——此前按 `cols-1` 裁，行恒比折行预算宽 6 列，
+   * ` · N 行 · T.Ts` 尾巴整段被顶成孤儿续行（截图里的 `5.9s`）。
+   */
+  const toolBudget = (): number => screen.cols - 1 - styledWidth(TOOL_GUTTER.rest);
   /** The tool call currently executing; progress text routes to its block. */
   let activeToolId: string | undefined;
   /**
@@ -468,7 +476,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}`
               : '';
           // 预算扣掉 suffix 的位（` · Ns` / ` · 正在中断…`），整行含后缀恒单行。
-          const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame, screen.cols - 15) + suffix];
+          const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame, toolBudget() - styledWidth(suffix)) + suffix];
           // Live output tail for streaming tools (bash): the last line of
           // whatever the process has printed so far. This is what keeps a
           // 2-minute pnpm install from looking like a hang.
@@ -476,7 +484,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           if (tailBuf !== undefined) {
             const last = tailBuf.slice(tailBuf.lastIndexOf('\n') + 1).trimEnd();
             if (last.length > 0) {
-              lines.push(`      ${DIM}└ ${fitTail(last, Math.max(10, screen.cols - 9))}${RESET}`);
+              lines.push(`      ${DIM}└ ${fitTail(last, Math.max(10, toolBudget() - 9))}${RESET}`);
             }
           }
           replaceBlock(entry.block, lines);
@@ -557,10 +565,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     } catch (err) {
       // A failed compaction must not kill the turn (agentTurn is invoked
       // fire-and-forget); the conversation continues uncompressed.
-      pushBlock([`${RED}  ✗ 预压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], {
-        first: '',
-        rest: '      ',
-      });
+      pushBlock([`${RED}  ✗ 预压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
     }
   };
 
@@ -573,10 +578,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       const outcome = await runCompact('auto');
       pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]);
     } catch (err) {
-      pushBlock([`${RED}  ✗ 自动压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], {
-        first: '',
-        rest: '      ',
-      });
+      pushBlock([`${RED}  ✗ 自动压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
     }
   };
 
@@ -816,7 +818,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         pushBlock([`${YELLOW}  ■ 已中断${RESET}`]);
       } else {
         // API errors can be long: hang wrapped rows under the notice column.
-        pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], { first: '', rest: '      ' });
+        pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], TOOL_GUTTER);
         // A turn that died mid-work (not a user abort) deserves a ping too —
         // but only when it ran long enough that the user may have walked away.
         if (!exiting && Date.now() - startedAt >= 5000) {
@@ -877,10 +879,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         Object.assign(stats, event.stats);
         io.resetAssistant();
         genPhase = 'thinking'; // 重新请求在途，属于"生成中"
-        pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], {
-          first: '',
-          rest: '      ',
-        });
+        pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], TOOL_GUTTER);
         break;
       }
       case 'text_delta':
@@ -909,10 +908,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // A new non-read call ends the current read-only group.
         if (!isReadOnlyTool(event.call.name)) closeReadGroup();
         const block: Block = {
-          lines: [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', screen.cols - 1)],
+          lines: [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', toolBudget())],
           wrapped: undefined,
           // Soft-wrapped continuation rows hang under the summary column.
-          gutter: { first: '', rest: '      ' },
+          gutter: TOOL_GUTTER,
         };
         blocks.push(block);
         toolBlocks.set(event.call.id, { block, startAt: Date.now(), name: event.call.name, rawArgs: event.call.rawArgs });
@@ -935,7 +934,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           const raw = toolArgSummary(event.call.name, event.call.rawArgs, 400);
           const summary = raw.length === 0 || raw === '{}' ? toolLabel(event.call.name) : raw;
           if (readGroup === undefined) {
-            const block: Block = { lines: [], wrapped: undefined, gutter: { first: '', rest: '      ' } };
+            const block: Block = { lines: [], wrapped: undefined, gutter: TOOL_GUTTER };
             blocks.push(block);
             readGroup = {
               entries: [summary],
@@ -946,7 +945,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             readGroup.entries.push(summary);
           }
           replaceBlock(readGroup.block, [
-            toolGroupLine(paint, readGroup.entries, Date.now() - readGroup.startAt, screen.cols - 1),
+            toolGroupLine(paint, readGroup.entries, Date.now() - readGroup.startAt, toolBudget()),
           ]);
         } else {
           closeReadGroup();
@@ -956,7 +955,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             event.call.rawArgs,
             event.result.content,
             duration,
-            screen.cols - 1,
+            toolBudget(),
           );
           if (entry !== undefined) replaceBlock(entry.block, lines);
           else pushBlock(lines);
@@ -1177,10 +1176,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             `${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`,
           ]);
         } catch (err) {
-          pushBlock([`${RED}  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], {
-            first: '',
-            rest: '      ',
-          });
+          pushBlock([`${RED}  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
         }
         return true;
       }
