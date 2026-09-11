@@ -1,11 +1,8 @@
 {
-  "name": "@nova-agent/cli",
+  "name": "@nova-agent/tui-view",
   "version": "0.1.0",
   "type": "module",
-  "description": "nova CLI: readline REPL over the core agent loop. Data lives in ~/.nova/ outside the working directory.",
-  "bin": {
-    "nova": "./dist/index.mjs"
-  },
+  "description": "Pure view layer for the nova TUI: tokens, labels, clipping, tool lines, status, popups, composer, reasoning, spacing, splash, frame assembly. Zero terminal IO.",
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -17,20 +14,15 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nova-agent/ai": "workspace:*",
     "@nova-agent/core": "workspace:*",
     "@nova-agent/plugins": "workspace:*",
-    "@nova-agent/tui": "workspace:*",
-    "@nova-agent/tui-view": "workspace:*",
-    "zod": "^4.1.13"
+    "@nova-agent/tui": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "tsx": "^4.20.6"
+    "@types/node": "^26.4.0"
   },
   "engines": {
     "node": ">=20"

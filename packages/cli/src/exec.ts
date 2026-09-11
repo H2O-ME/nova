@@ -31,6 +31,7 @@ import { createNotifier } from './notify.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
+import { LONG_TASK, ToolTiming } from './runner-shared.js';
 
 export interface ExecOptions {
   rootDir: string;
@@ -127,6 +128,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   await session.append(userMsg);
 
   // Non-interactive: nobody can answer an approval prompt, so requests are denied.
+  // (No audit trail: exec never asks, so no ask-path decisions exist to log.)
   const permission = new PermissionService(approvalMode, async () => 'deny');
   // Headless runs cannot ask: 'never' denies every gated call deterministically,
   // inside the service, without dispatching any asker.
@@ -157,10 +159,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const systemPrompt = buildSystemPrompt();
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
-  // Parallel tool-call segments start several calls before any result lands —
-  // a shared scalar would be overwritten by the second start, crediting the
-  // first call with the wrong duration. Key starts by call id instead.
-  const toolStartAt = new Map<string, number>();
+  const toolTiming = new ToolTiming();
   // Headless runs are exactly the ones the user walks away from; completion
   // and failure notifications matter most here (30s threshold: short runs
   // finish before the user can even switch windows). Disabled for injected
@@ -199,13 +198,13 @@ export async function runExec(opts: ExecOptions): Promise<void> {
       }
     }
     const elapsed = Date.now() - execStartedAt;
-    if (elapsed >= 30_000) {
+    if (elapsed >= LONG_TASK.execDoneMs) {
       notify('任务已完成', `exec 运行约 ${Math.max(1, Math.round(elapsed / 60000))} 分钟，回到终端查看结果`);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`出错：${message}`);
-    if (Date.now() - execStartedAt >= 30_000) notify('任务出错', message.slice(0, 120));
+    if (Date.now() - execStartedAt >= LONG_TASK.execDoneMs) notify('任务出错', message.slice(0, 120));
     process.exitCode = 1;
   } finally {
     // Kill background jobs before the process exits, or the spawned shells
@@ -229,13 +228,11 @@ export async function runExec(opts: ExecOptions): Promise<void> {
         if (event.message.content.length > 0) sink('\n');
         break;
       case 'tool_call_start':
-        toolStartAt.set(event.call.id, Date.now());
+        toolTiming.start(event.call.id);
         sink(`${toolStartLine(p, event.call.name, event.call.rawArgs)}\n`);
         break;
       case 'tool_call_result': {
-        const started = toolStartAt.get(event.call.id) ?? 0;
-        toolStartAt.delete(event.call.id);
-        const duration = Math.max(0, started === 0 ? 0 : Date.now() - started);
+        const duration = toolTiming.finish(event.call.id);
         sink(`${toolDoneLine(p, event.call.name, event.call.rawArgs, event.result.content, duration).join('\n')}\n`);
         break;
       }

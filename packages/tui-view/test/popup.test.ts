@@ -5,7 +5,7 @@
 
 import { styledWidth } from '@nova-agent/tui';
 import { describe, expect, it } from 'vitest';
-import { palette, plainPalette } from '../src/ui.js';
+import { palette, plainPalette } from '../src/index.js';
 import {
   APPROVAL_OPTIONS,
   buildApprovalPopup,
@@ -13,7 +13,7 @@ import {
   buildModelPopup,
   buildSessionPopup,
   MODEL_PICKER_WINDOW,
-} from '../src/popup.js';
+} from '../src/index.js';
 
 describe('buildApprovalPopup', () => {
   const view = {

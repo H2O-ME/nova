@@ -4,7 +4,6 @@ import { createInterface } from 'node:readline/promises';
 import { styledWidth } from '@nova-agent/tui';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
-  DEFAULT_MAX_TURNS,
   emptyStats,
   estimateNextPromptTokens,
   JobRegistry,
@@ -20,7 +19,6 @@ import {
 import {
   builtinPlugins,
   loadSkills,
-  PermissionService,
   PluginHost,
   skillsPlugin,
   type ApprovalMode,
@@ -42,12 +40,19 @@ import {
   palette,
   permissionLabel,
   plainPalette,
-  Spinner,
   statusLine,
   toolDoneLine,
   toolLabel,
   toolStartLine,
 } from './ui.js';
+import {
+  approvalPrompt,
+  createApprovalService,
+  LONG_TASK,
+  maxTurnsHint,
+  ToolTiming,
+} from './runner-shared.js';
+import { Spinner } from './spinner.js';
 
 export interface ReplOptions {
   rootDir: string;
@@ -241,38 +246,31 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       }
     }
     const argsPreview = call.rawArgs.length > 160 ? `${call.rawArgs.slice(0, 160)}…` : call.rawArgs;
-    // For execute-class calls the always-grant is remembered per command
-    // PROGRAM PREFIX (git status approves later git …, not rm) — say so next
-    // to the prompt so the user knows the scope they are granting.
-    const alwaysHint = kind === 'execute' ? paint.dim('（always 按命令程序前缀记忆，如 git status → 放行后续 git …）') : '';
+    const { prompt, alwaysScopeNote } = approvalPrompt(
+      permissionLabel(kind),
+      toolLabel(call.name),
+      argsPreview,
+      kind,
+    );
     notify('需要审批', `${toolLabel(call.name)} · ${argsPreview.slice(0, 80)}`);
     approvalPending = true;
     let raw: string | null;
     try {
-      raw = await lines.next(
-        paint.yellow(`允许${permissionLabel(kind)} · ${toolLabel(call.name)} ${argsPreview} [y] 本次允许 / [a] 总是允许 / [n] 拒绝：`),
-      );
+      raw = await lines.next(paint.yellow(prompt));
     } finally {
       approvalPending = false;
     }
-    if (alwaysHint.length > 0 && raw !== null) console.log(alwaysHint);
+    if (alwaysScopeNote.length > 0 && raw !== null) console.log(paint.dim(alwaysScopeNote));
     if (raw === null) return 'deny';
     const answer = raw.trim().toLowerCase();
     if (answer.startsWith('a')) return 'always';
     if (answer.startsWith('y')) return 'allow';
     return 'deny';
   };
-  const permission = new PermissionService(approvalMode, askApproval, (entry) => {
-    // Log-only approval audit trail; survives resume via the session log.
-    void session
-      .appendEvent({ type: 'approval', toolName: entry.toolName, kind: entry.kind, outcome: entry.outcome, at: Date.now() })
-      .catch(() => {});
-  });
+  const permission = createApprovalService(approvalMode, askApproval, session);
   const hooks = host.agentHooks(permission);
   const systemPrompt = buildSystemPrompt();
-  // Keyed by call id: parallel tool-call segments start several calls before
-  // any result lands, and a shared scalar would credit the wrong durations.
-  const toolStartAt = new Map<string, number>();
+  const toolTiming = new ToolTiming();
   let lastUsage: Usage | undefined;
   let lastPromptTokens = 0;
   // Usage anchor for pre-flight token estimates (see maybePreCompact).
@@ -386,15 +384,13 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       case 'tool_call_start': {
         endReasoningLine();
         spinner.stop();
-        toolStartAt.set(event.call.id, Date.now());
+        toolTiming.start(event.call.id);
         progressTail = '';
         console.log(toolStartLine(paint, event.call.name, event.call.rawArgs));
         break;
       }
       case 'tool_call_result': {
-        const started = toolStartAt.get(event.call.id) ?? 0;
-        toolStartAt.delete(event.call.id);
-        const duration = Math.max(0, started === 0 ? 0 : Date.now() - started);
+        const duration = toolTiming.finish(event.call.id);
         clearProgressLine();
         await session.append(event.result);
         for (const line of toolDoneLine(paint, event.call.name, event.call.rawArgs, event.result.content, duration)) {
@@ -422,9 +418,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         const kind = event.stopReason;
         console.log(statusLine(paint, kind === 'complete' ? 'complete' : kind, stats, Date.now() - requestStartedAt));
         if (kind === 'max_turns') {
-          console.log(
-            paint.dim(`  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 ~/.nova/config.json 调大后 /resume 继续）`),
-          );
+          console.log(paint.dim(maxTurnsHint(config)));
         }
         break;
       }
@@ -619,12 +613,12 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         console.log(paint.yellow('  已中断'));
       } else {
         console.error(paint.red(`  出错：${message}`));
-        if (Date.now() - requestStartedAt >= 5000) notify('任务出错', message.slice(0, 120));
+        if (Date.now() - requestStartedAt >= LONG_TASK.errorMs) notify('任务出错', message.slice(0, 120));
       }
     } finally {
       streaming = false;
       // Long turns end while the user is elsewhere — same cue as the TUI.
-      if (Date.now() - requestStartedAt >= 15_000) {
+      if (Date.now() - requestStartedAt >= LONG_TASK.doneMs) {
         notify('任务已完成', `本轮耗时约 ${Math.max(1, Math.round((Date.now() - requestStartedAt) / 60000))} 分钟，回到终端查看结果`);
       }
       console.log();

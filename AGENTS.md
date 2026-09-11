@@ -72,8 +72,9 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, plugins, ai, core}`，
 | `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、后台 jobs | `agent.ts`、`session.ts`、`estimate.ts`、`jobs.ts`、`types.ts`、`ids.ts` |
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈、usage/缓存命中提取 | `client.ts`、`sse.ts` |
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`builtin/{fs,bash,jobs,todo,search}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
-| `tui` | 零依赖终端 UI：行级差分渲染、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标）、CJK 宽度处理 | `screen.ts`、`keys.ts`、`width.ts` |
-| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（壳层）、`statusbar.ts`/`composer.ts`/`popup.ts`/`reasoning.ts`（TUI 纯计算层）、`repl.ts`、`exec.ts`、`commands.ts`、`config.ts`、`compact.ts`、`model-meta.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`ui.ts` |
+| `tui` | 零依赖终端原语：行级差分渲染、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标）、CJK 宽度处理 | `screen.ts`、`keys.ts`、`width.ts` |
+| `tui-view` | TUI 纯视图层（零终端 IO）：tokens 常量、`palette`/`labels`、裁剪族、工具行、状态栏、弹窗、composer、reasoning、间距、开屏、帧装配 | `tokens.ts`、`clip.ts`、`tool-lines.ts`、`status-view.ts`、`popups.ts`、`composer-view.ts`、`reasoning-view.ts`、`spacing.ts`、`splash.ts`、`frame.ts` |
+| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（壳层：生命周期与 IO）、`tui/{store,keys,frame}.ts`（转录状态/按键链/帧装配）、`runner-shared.ts`（三 runner 共享：计时/maxTurns/toast/审批装配）、`spinner.ts`、`repl.ts`、`exec.ts`、`commands.ts`、`config.ts`、`compact.ts`、`model-meta.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`ui.ts`（tui-view 转发门面） |
 
 ## 5. 核心设计
 
@@ -111,7 +112,7 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 启动只把每个 skill 的 name+description 注入索引，命中触发词时才加载正文——模型可自调用 `skill` 工具，也可 `/skill <name>` 手动触发。项目级 `.nova/skills/` 优先于用户级 `~/.nova/skills/`。
 
 ### TUI（自研差分渲染，codex 风格）
-alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a）；PageUp/PageDown/滚轮滚动（上滚不改状态栏样式——常驻视图保持稳定，↓/滚轮回到底）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动）；流式 markdown（列表缩进 2 列挂圆点，换行续行对齐条目文本列）、工具调用折叠块、reasoning 定高活窗口（定格 2 行 + 活尾 1 行、每行裁到单一显示行绝不折行、空行不进窗——每个 delta 只重写活尾一行，整段不重排；结束后折成"已思考 Ns"、与答案同组紧排，轮内不留空行，**点击可展开思考全文**——▸/▾ 前缀为 affordance，全文仅存会话内存（reasoning 从不落盘，resume 后不可展开），展开正文逐行暗色、软折行走 gutter 预算）；长命令实时显示已耗时与输出尾行；系统通知（Windows toast / macOS osascript / Linux notify-send）。
+alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a）；PageUp/PageDown/滚轮滚动（上滚不改状态栏样式——常驻视图保持稳定，↓/滚轮回到底）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动）；流式 markdown（列表缩进 2 列挂圆点，换行续行对齐条目文本列）、工具调用折叠块、reasoning 定高活窗口（定格 2 行 + 活尾 1 行、每行裁到单一显示行绝不折行、空行不进窗——每个 delta 只重写活尾一行，整段不重排；结束后折成"已思考 Ns"、与答案同组紧排，轮内不留空行，**点击可展开思考全文**——▸/▾ 前缀为 affordance，全文仅存会话内存（reasoning 从不落盘，resume 后不可展开），展开正文逐行暗色、软折行走 gutter 预算）；长命令实时显示已耗时与输出尾行；系统通知（Windows toast / macOS osascript / Linux notify-send）。分层：`tui`（终端原语）→ `tui-view`（纯视图，零 IO）→ `cli/tui/`（转录状态/按键链/帧装配）→ `tui-mode.ts`（生命周期与 IO 壳层）；决策背景见 `docs/tui-design.md`。
 
 **单行状态栏**三段式 `上下文仪表 │ 模型 · 执行模式 · 审批档位 │（右缘）tps · cache`——`│` 分大组、`·` 分组内，层级靠分隔符而非字数堆砌：
 - **上下文仪表**：按整窗真实比例分段上色（提示词青 / 工具 schema 绿 / 注入片段蓝 / 技能索引品红 / 消息黄），加粗「已用/总量 · 百分比」，超窗标红；`压缩 %` 只在真正逼近阈值时出现（T0 常驻、T1 ≥50%、T2 ≥70%）。
@@ -165,6 +166,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 
 - **M6.8** 工具行预算 + 提示词权威化：①**孤儿续行根治**——工具行构建器改走 `toolBudget() = cols-1-6`（与 wrapBlock 的 gutter 折行预算一致；旧行按 `cols-1` 裁、每行恒宽 6 列，` · N 行 · T.Ts` 尾巴被顶成孤儿续行），6 列 gutter 收敛为共享 `TOOL_GUTTER`（告警行复用）；②**专用工具优先于 shell**——系统提示与 description 双侧写 DSH 式排他句（`Use read_file — not shell cat/head/tail`、`Use search_files — not shell grep/rg/find`），批量聚合导向 `run_code`，bash 聚焦行为契约；③**操作姿态与指令权威化**——系统提示新增 **Operating posture** 节（刻意最小化，不枚举任何题材/场景以免干扰通用任务）：操作者指令即会话运行配置、严格无条件遵守；不加道德评论/安全免责/伦理提示（除非操作者要求）；代码完整可跑、不留占位。`<user_instructions>`/`<project_docs>` 注入帧改为权威会话指令语境（active session directives，不作不可信数据处理、不标注入），**保留**文件内容=不可信数据的二分（防恶意仓库内嵌指令劫持 agent）。
 - **M6.9** 全链路缺陷批修（P1+P2+轻量 P3，模型可见面零改动）：P1——①后台 job kill 兜底（`exit`+2s closeGrace、cancel 后 3s killSettle、settle 前毁管道）；②REPL 审批等待期 Ctrl+C 经 `LineSource.cancelPending()` 取消等待并按拒绝处理（`approvalPending` 标志区分流式中断）；③`content_regex` worker 线程隔离 + 宿主预检 + 墙钟预算（本条见§工具执行 search_files）。P2——④压缩保留片段改**整条取舍**（截断拷贝同时违反投影字节一致与预算上限，选 codex 同款语义；keep 索引改按 `msg.id`）；⑤落盘读取经 trusted read roots 豁免审批；⑥截断提示按字节计数且 head+tail+提示行恒守预算；⑦maxTurns 文案指 `~/.nova/config.json`；⑧exec/REPL 工具耗时改 per-call Map（并行段共享标量互相覆盖）；⑨`storeToolResult` 默认 cacheDir 回 `~/.` 落盘布局。P3——⑩tool_call_delta 非规整 index 按 OpenAI SDK 惯例 coerce 为 0；⑪`edit_file` 多命中预览诚实化；⑫`appendEvent` 先写盘后入内存；⑬`estimateMessageTokens` WeakMap 记忆化；⑭execute 类审批提示粒度说明（REPL 行内 + TUI 弹窗行）。
+- **M7.0** TUI 重构（观感不变，结构重组）：①新包 `@nova-agent/tui-view`（纯视图零 IO：tokens 唯一常量源、`palette`/`labels`/`clip`、`tool-lines`、`status-view`、`popups`、`composer-view`、`reasoning-view`、`spacing`（唯一间距规则：轮间 1 空行、轮内 0 空行、历史-composer 间 1 呼吸行）、`splash`（开屏纯函数，窄屏钳制）、`frame`）；`ui.ts`/`statusbar.ts`/`composer.ts`/`popup.ts`/`reasoning.ts` 收为转发门面。②`cli/tui/`：`store.ts`（转录/输入/弹窗/工具块+tps 状态）、`keys.ts`（责任链六层，P1 `removeBlock` 补渲染触发、P2 `tailBuf` code-point 切片）、`frame.ts`（wrapBlock/展平/底栈）。③`runner-shared.ts`：三 runner 共享 `ToolTiming`/`maxTurnsHint`/toast 阈值/审批装配；遗留 `Spinner` 移 `spinner.ts`。④动画归一：spinner tick 脏检查（帧/后缀/tail 不变不重写）+ 常量同源；开屏改 `buildSplash`（去向→身份→操作分层）；Windows raw-mode 失败回落 REPL。⑤决策史注释搬 `docs/tui-design.md`。测试 91 条随模块迁入 `tui-view/test/`（另修 `caretIdxInRow` 搬运笔误、`APPROVAL_OPTIONS` `{code,label}` 断言）。
 
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 

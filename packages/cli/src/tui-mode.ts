@@ -1,10 +1,29 @@
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { KeyDecoder, LineScreen, styledWidth, wrapLine, type Key } from '@nova-agent/tui';
+import { KeyDecoder, LineScreen, styledWidth, type Key } from '@nova-agent/tui';
+import {
+  APPROVAL_PREVIEW_MAX_ROWS,
+  BREATHE_ROWS,
+  COMPOSER_MAX_ROWS,
+  DOUBLE_CTRLC_MS,
+  PASTE_MAX_CHARS,
+  REASONING_FULL_MAX_LINES,
+  REASONING_MAX_PARTIAL_CHARS,
+  RENDER_BUDGET_MS,
+  MODEL_PICKER_WINDOW,
+  SESSION_PICKER_WINDOW,
+  SESSION_LIST_LIMIT,
+  STATUS_ROWS,
+  SPINNER_TICK_MS,
+  TOOL_ELAPSED_AFTER_MS,
+  TOOL_TAIL_KEEP_CHARS,
+  TOOL_TAIL_SHOW_CHARS,
+  TPS_INTERVAL_MS,
+  TPS_SAMPLES,
+} from '@nova-agent/tui-view';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
-  DEFAULT_MAX_TURNS,
   emptyStats,
   estimateNextPromptTokens,
   estimateTextTokens,
@@ -23,7 +42,6 @@ import {
   builtinPlugins,
   codeRuntimeAvailable,
   loadSkills,
-  PermissionService,
   PluginHost,
   skillsPlugin,
   type ApprovalMode,
@@ -51,6 +69,8 @@ import { buildSystemPrompt } from './system-prompt.js';
 import {
   approvalLabel,
   APPROVAL_ORDER,
+  bottomStack,
+  buildSplash,
   clipToWidth,
   contextGaugeForms,
   contextLegend,
@@ -74,6 +94,8 @@ import {
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
+import { createApprovalService, LONG_TASK, maxTurnsHint } from './runner-shared.js';
+import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import {
   codeModeLabel,
   contextBreakdown,
@@ -100,19 +122,6 @@ const RESET = '\x1b[0m';
 
 /** Composer prompt prefix; the cursor column math depends on its width. */
 // （COMPOSER_PREFIX / 宽度基准已移至 ./composer.ts——换行预算与光标列数都在那边。）
-
-/** Composer 最多占用的屏幕行数；超出后窗口随光标滑动并显示上下提示。 */
-const COMPOSER_MAX_ROWS = 8;
-/** 单次粘贴的字符上限：超过即截断（防止一次超巨粘贴把输入区撑爆）。 */
-const PASTE_MAX_CHARS = 200_000;
-
-/** 活尾行的内存上限（显示裁剪在 ./reasoning.ts 按列做，这里只防爆内存）。
- * 思考是过程性内容：只保留最后 2 行定格 + 1 行活尾，结束后整段折成一行耗时摘要。 */
-const REASONING_MAX_PARTIAL_CHARS = 240;
-/** 可展开全文的行数上限：reasoning 从不落盘，这份全文只为点击展开而活。 */
-const REASONING_FULL_MAX_LINES = 2000;
-/** Approval popup preview cap: diff rows are precious screen real estate. */
-const APPROVAL_PREVIEW_MAX_ROWS = 20;
 
 interface Block {
   lines: string[];
@@ -302,12 +311,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       notify('需要审批', `${toolLabel(call.name)} · ${toolArgSummary(call.name, call.rawArgs, 80)}`);
       scheduleRender();
     });
-  const permission = new PermissionService(approvalMode, askApproval, (entry) => {
-    // Log-only approval audit trail; survives resume via the session log.
-    void session
-      .appendEvent({ type: 'approval', toolName: entry.toolName, kind: entry.kind, outcome: entry.outcome, at: Date.now() })
-      .catch(() => {});
-  });
+  const permission = createApprovalService(approvalMode, askApproval, session);
   // Reassigned by rebuildHost(): the agent loop must read hooks from the
   // SAME host instance it reads tools from (one rebuild = tools + projection).
   let hooks = host.agentHooks(permission);
@@ -332,11 +336,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * Interactive model picker (opened by bare /model): a floating overlay like
    * the approval dialog, NOT a history dump — long catalogs scroll inside the
    * panel with a sliding window instead of flooding the transcript.
+   * (Window sizes + session list limit come from tui-view tokens.)
    */
-  const MODEL_PICKER_WINDOW = 10;
-  /** 会话切换器：弹窗可视行数与列举条数上限。 */
-  const SESSION_PICKER_WINDOW = 8;
-  const SESSION_LIST_LIMIT = 30;
   let modelPicker: { models: string[]; index: number } | undefined;
   let sessionPicker: { entries: SessionEntry[]; index: number } | undefined;
   let historyIdx = -1;
@@ -353,6 +354,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let approvalIndex = 0;
   /** Best-effort effect preview lines for the pending approval (async-filled). */
   let approvalPreview: string[] | undefined;
+  /** Approval options as result codes; labels live in tui-view APPROVAL_OPTIONS. */
   const APPROVAL_CHOICES = ['allow', 'always', 'deny'] as const;
   let spinnerFrame = 0;
   let exitNow: (() => void) | undefined;
@@ -426,13 +428,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const removeBlock = (block: Block): void => {
     const idx = blocks.indexOf(block);
     if (idx >= 0) blocks.splice(idx, 1);
+    scheduleRender();
   };
 
-  // TPS 采样（借鉴"可观察的 Agent 状态"）：delta 里累计估算 token，spinner
-  // tick 每 500ms 折算一次速率进 10 格环形窗口（≈5 秒趋势）。sparkline 长度
-  // 恒定，数字右对齐到 3 位宽——速度表自身不引发横移。
-  const TPS_SAMPLES = 10;
-  const TPS_INTERVAL_MS = 500;
+  // tps 环形窗口来自 tui-view tokens（TPS_SAMPLES × TPS_INTERVAL_MS ≈ 5 秒趋势）。
   const tpsRing: number[] = Array<number>(TPS_SAMPLES).fill(0);
   let tpsTokens = 0;
   let tpsLastTokens = 0;
@@ -473,25 +472,26 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           const elapsed = now - entry.startAt;
           const suffix = interruptAt > 0
             ? `${YELLOW} · 正在中断…${RESET}`
-            : elapsed >= 2000
+            : elapsed >= TOOL_ELAPSED_AFTER_MS
               ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}`
               : '';
           // 预算扣掉 suffix 的位（` · Ns` / ` · 正在中断…`），整行含后缀恒单行。
           const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame, toolBudget() - styledWidth(suffix)) + suffix];
           // Live output tail for streaming tools (bash): the last line of
-          // whatever the process has printed so far. This is what keeps a
-          // 2-minute pnpm install from looking like a hang.
+          // whatever the process has printed so far. Code-point slice keeps
+          // surrogate pairs intact.
           const tailBuf = entry.tailBuf;
           if (tailBuf !== undefined) {
-            const last = tailBuf.slice(tailBuf.lastIndexOf('\n') + 1).trimEnd();
+            const last = [...tailBuf].slice(-TOOL_TAIL_SHOW_CHARS).join('').split('\n').pop()?.trimEnd() ?? '';
             if (last.length > 0) {
               lines.push(`      ${DIM}└ ${fitTail(last, Math.max(10, toolBudget() - 9))}${RESET}`);
             }
           }
-          replaceBlock(entry.block, lines);
+          // Dirty-check: identical rows skip the replace (no wrap-cache churn).
+          if (entry.block.lines.join('\n') !== lines.join('\n')) replaceBlock(entry.block, lines);
         }
         scheduleRender();
-      }, 90);
+      }, SPINNER_TICK_MS);
     },
     stop() {
       if (spinnerTimer !== undefined) {
@@ -508,7 +508,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     renderTimer = setTimeout(() => {
       renderTimer = undefined;
       renderFrame();
-    }, 16);
+    }, RENDER_BUDGET_MS);
   };
   // Key input bypasses the frame budget (pi-style preemption): a pending
   // scheduled frame is cancelled and the frame paints synchronously, so the
@@ -597,7 +597,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: userInput };
     messages.push(userMsg);
     await session.append(userMsg);
-    pushBlock(['', userInput], {
+    // Spacing rule (tui-view/spacing.ts): no leading blank inside the turn —
+    // the answer separator owns the question→answer gap.
+    pushBlock([userInput], {
       first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`,
       rest: `    ${BOLD}`,
     });
@@ -681,8 +683,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         onToolProgress: (text) => {
           const entry = activeToolId !== undefined ? toolBlocks.get(activeToolId) : undefined;
           if (entry === undefined) return;
-          const merged = (entry.tailBuf ?? '') + text;
-          entry.tailBuf = merged.length > 8000 ? merged.slice(-4000) : merged;
+          // Code-point slice: a UTF-16 slice can split a surrogate pair.
+          entry.tailBuf = [...((entry.tailBuf ?? '') + text)].slice(-TOOL_TAIL_KEEP_CHARS).join('');
         },
         signal: aborter.signal,
       })) {
@@ -822,7 +824,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], TOOL_GUTTER);
         // A turn that died mid-work (not a user abort) deserves a ping too —
         // but only when it ran long enough that the user may have walked away.
-        if (!exiting && Date.now() - startedAt >= 5000) {
+        if (!exiting && Date.now() - startedAt >= LONG_TASK.errorMs) {
           notify('任务出错', message.slice(0, 120));
         }
       }
@@ -849,7 +851,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // Long turns end while the user is elsewhere: the toast is the "come
       // back, it's done" cue (short turns stay silent — that's just spam).
       const elapsed = Date.now() - startedAt;
-      if (!exiting && elapsed >= 15_000) {
+      if (!exiting && elapsed >= LONG_TASK.doneMs) {
         notify('任务已完成', `本轮耗时约 ${Math.max(1, Math.round(elapsed / 1000 / 60))} 分钟，回到终端查看结果`);
       }
       scheduleRender();
@@ -992,7 +994,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           pushBlock([statusLine(paint, kind, stats, Date.now() - startedAt)]);
           if (kind === 'max_turns') {
             pushBlock([
-              `${DIM}  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 ~/.nova/config.json 调大后 /resume 继续）${RESET}`,
+              `${DIM}${maxTurnsHint(config)}${RESET}`,
             ]);
           }
         }
@@ -1254,7 +1256,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     for (const m of restored) {
       if (m.role === 'user') {
         if (m.content.trimStart().startsWith('<')) continue;
-        pushBlock(['', m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` });
+        pushBlock([m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` });
       } else if (m.role === 'assistant' && m.content.trim().length > 0) {
         pushBlock([m.content], { first: `  ${DIM}•${RESET} `, rest: '    ' });
       }
@@ -1502,7 +1504,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return true;
       }
       const now = Date.now();
-      if (now - lastCtrlC < 2000) {
+      if (now - lastCtrlC < DOUBLE_CTRLC_MS) {
         exitApp();
         return true;
       }
@@ -1696,43 +1698,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   function totalWrappedLines(): number {
     let total = 0;
     for (const block of blocks) {
-      total += wrapBlock(block).length;
+      total += wrapBlock(block, screen.cols).length;
     }
     return total;
-  }
-
-  function wrapBlock(block: Block): string[] {
-    if (block.wrapped === undefined) {
-      if (block.gutter === undefined) {
-        // Wrap one column short of the terminal width: the renderer keeps the
-        // last column as a no-write safety margin.
-        block.wrapped = block.lines.flatMap((line) => wrapLine(line, screen.cols - 1));
-      } else {
-        // Gutter blocks wrap at the continuation width so soft-wrapped rows
-        // align under the block's first content column. A line's own leading
-        // spaces (markdown 列表缩进) join that hanging indent: continuation
-        // rows align under the line's text column, not the block's.
-        const rest = block.gutter.rest;
-        const restCols = styledWidth(rest);
-        const rows: string[] = [];
-        let firstSeen = false;
-        for (const line of block.lines) {
-          const indent = /^ +/.exec(line)?.[0] ?? '';
-          const body = indent.length > 0 ? line.slice(indent.length) : line;
-          const budget = Math.max(10, screen.cols - 1 - restCols - indent.length);
-          for (const row of wrapLine(body, budget)) {
-            if (row.length === 0) {
-              rows.push('');
-              continue;
-            }
-            rows.push((firstSeen ? rest : block.gutter.first) + indent + row);
-            firstSeen = true;
-          }
-        }
-        block.wrapped = rows;
-      }
-    }
-    return block.wrapped;
   }
 
   // ---- rendering --------------------------------------------------------
@@ -1814,50 +1782,21 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     }
 
     // One breathing row between the newest content and the composer.
-    const breatheRows = 1;
     const layout = layoutComposer(input, cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
     const composerZoneRows = composerZone(paint, layout, { spinnerFrame, streaming, genPhase });
     // 单行状态区：上下文仪表+模型+模式芯片+审批 ｜ tps+cache 钉右缘。
-    const statusRows = 1;
-    const historyRows = Math.max(
-      3,
-      rows - popupLines.length - composerZoneRows.length - statusRows - breatheRows,
-    );
-
-    const flat: string[] = [];
-    const rowMap: { block: Block; start: number; count: number }[] = [];
-    for (const block of blocks) {
-      const w = wrapBlock(block);
-      rowMap.push({ block, start: flat.length, count: w.length });
-      flat.push(...w);
-    }
-    // The wheel/pageup handlers pre-cap at the transcript length, but the
-    // viewport is only historyRows tall: once the offset passes
-    // `flat.length - historyRows` an extra notch can't reveal earlier lines —
-    // it just hides newest ones off a fixed top, erasing the transcript
-    // bottom-up to a blank screen. Clamp here, where historyRows is known
-    // (it shrinks while a popup is open, so the handlers can't know it).
-    const maxScroll = Math.max(0, flat.length - historyRows);
+    const { flat, rowMap } = flattenBlocks(blocks, cols);
+    const historyBudget = rows - popupLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
+    const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, scrollFromEnd);
     if (scrollFromEnd > maxScroll) scrollFromEnd = maxScroll;
-    const sliceEnd = Math.max(0, flat.length - scrollFromEnd);
-    const sliceStart = Math.max(0, sliceEnd - historyRows);
-    // 屏幕行 → 块的映射快照：点击命中测试用（行 0 = 可见窗口的第一行）。
-    frameMap = { rows: rowMap, sliceStart, historyRows };
-    let historyLines = flat.slice(sliceStart, sliceEnd);
-    // Document-style top alignment: short transcripts read from the top of the
-    // screen (banner first, content below) and the emptiness sits in the
-    // middle — padding at the bottom. Once the transcript outgrows the
-    // viewport the pad disappears and paging takes over.
-    while (historyLines.length < historyRows) historyLines.push('');
+    frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length };
 
     // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
     const status = clipToWidth(statusBar(paint, statusView()), cols - 1);
 
-    // The breathing row separates history from the popup/composer zone.
-    // Bottom stack: composer rows · single status line.
     screen.render(
-      [...historyLines, '', ...popupLines, ...composerZoneRows, status],
-      cursorPosition({ historyRows, popupRows: popupLines.length, layout }),
+      bottomStack(historyLines, popupLines, composerZoneRows, status),
+      cursorPosition({ historyRows: historyLines.length, popupRows: popupLines.length, layout }),
     );
   }
 
@@ -1960,8 +1899,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     preemptRender();
   });
   process.stdout.on('resize', () => {
-    // Wrapped caches were computed at the old width; rewrap everything.
-    for (const block of blocks) block.wrapped = undefined;
+    invalidateWraps(blocks);
     screen.invalidate();
     scheduleRender();
   });
@@ -1974,41 +1912,39 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   });
 
   // run
-  screen.enter();
-  process.stdin.setRawMode(true);
+  try {
+    screen.enter();
+  } catch {
+    screen.exit();
+    const { startRepl } = await import('./repl.js');
+    await startRepl({ rootDir, config, resumeFile: opts.resumeFile, approvalOverride: opts.approvalOverride });
+    return;
+  }
+  try {
+    process.stdin.setRawMode(true);
+  } catch {
+    screen.exit();
+    const { startRepl } = await import('./repl.js');
+    await startRepl({ rootDir, config, resumeFile: opts.resumeFile, approvalOverride: opts.approvalOverride });
+    return;
+  }
   process.stdin.resume();
   // models.dev 目录后台加载（磁盘缓存在即秒回）；到达后结构行自动换容量。
   void refreshModelMeta();
 
-  // First screen: a content-sized bordered panel — the brand sits in the top
-  // border (same title-in-border pattern as the popups), context rows first,
-  // key hints last. Box glyphs measure 1 col (see width.ts), so the right
-  // border lines up exactly. Skills and session warnings stay outside as
-  // plain lines: they can be long and would blow the panel's width.
-  const brand = `${CYAN}${BOLD}Nova${RESET} ${DIM}v0.1.0${RESET}`;
-  // 工作区 is 3 CJK chars (6 cols), the others 2 (4) — pad to 8 so the value
-  // column lines up across rows.
-  const bannerRow = (label: string, value: string): string => ` ${padDisplay(label, 8)}${value}`;
-  const bannerRows = [
-    bannerRow('工作区', rootDir),
-    bannerRow('会话', sessionsRoot()),
-    bannerRow('提示', '/ 命令面板 · 新会话按 Tab 切模式 · Esc 中断 · Ctrl+C×2 退出'),
-  ];
-  const panelInner = Math.max(...bannerRows.map((r) => styledWidth(r) + 2), 14);
-  const bannerLines: string[] = [
-    `${DIM}╭─ ${RESET}${brand}${DIM} ${'─'.repeat(Math.max(0, panelInner - styledWidth(brand) - 3))}╮${RESET}`,
-    ...bannerRows.map(
-      (r) => `${DIM}│ ${r}${' '.repeat(Math.max(0, panelInner - styledWidth(r) - 2))} │${RESET}`,
-    ),
-    `${DIM}╰${'─'.repeat(panelInner)}╯${RESET}`,
-  ];
-  if (skills.length > 0) {
-    bannerLines.push(`${DIM}  技能 ${skills.map((s) => s.name).join('、')}${RESET}`);
-  }
-  for (const warning of session.warnings) {
-    bannerLines.push(`${YELLOW}  ${warning}${RESET}`);
-  }
-  pushBlock(bannerLines);
+  // Splash: layered destination → identity → action (tui-view/splash.ts).
+  pushBlock(
+    buildSplash(paint, {
+      rootDir,
+      sessionsRoot: sessionsRoot(),
+      model: client.model,
+      approval: approvalMode,
+      codeMode,
+      skills: skills.map((s) => s.name),
+      warnings: session.warnings,
+      cols: screen.cols,
+    }),
+  );
 
   await new Promise<void>((resolve) => {
     exitNow = resolve;
