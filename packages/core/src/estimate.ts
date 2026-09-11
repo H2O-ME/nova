@@ -23,7 +23,16 @@ export function estimateTextTokens(text: string): number {
   return cjk + Math.ceil(other / 4);
 }
 
+/**
+ * Per-message memo: messages are append-only and never mutated after logging,
+ * so a price computed once stays valid for the session. This matters most for
+ * exec's per-request full re-estimate over a long transcript.
+ */
+const messageTokenCache = new WeakMap<AgentMessage, number>();
+
 export function estimateMessageTokens(msg: AgentMessage): number {
+  const cached = messageTokenCache.get(msg);
+  if (cached !== undefined) return cached;
   let total = FRAMING_TOKENS + estimateTextTokens(msg.content);
   // Assistant tool-call arguments join the next request verbatim (replayed in
   // the assistant turn), but live in `toolCalls`, not `content`. A run_code
@@ -36,6 +45,7 @@ export function estimateMessageTokens(msg: AgentMessage): number {
       total += estimateTextTokens(`${call.name}${call.rawArgs}`);
     }
   }
+  messageTokenCache.set(msg, total);
   return total;
 }
 

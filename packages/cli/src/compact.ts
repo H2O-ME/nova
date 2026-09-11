@@ -129,7 +129,11 @@ export function isCompactSummary(msg: AgentMessage): boolean {
 
 /**
  * Recent verbatim user messages kept after compaction (codex-style): newest
- * first within the char budget; the oldest overflow message is truncated.
+ * first within the char budget. The budget takes WHOLE messages — the first
+ * one that does not fit stops the walk (nothing skipped, nothing partially
+ * kept): a truncated copy could not rejoin the log projection verbatim
+ * ("model-visible means logged" requires the kept message to BE a logged
+ * message), so cut-or-keep is the only shape that preserves the invariant.
  * Context fragments, prior summaries and abort markers never carry over.
  */
 export function selectRecentUserMessages(messages: AgentMessage[], budgetChars: number): UserMessage[] {
@@ -139,11 +143,7 @@ export function selectRecentUserMessages(messages: AgentMessage[], budgetChars: 
     const msg = messages[i];
     if (msg === undefined || msg.role !== 'user') continue;
     if (isContextFragment(msg) || isCompactSummary(msg) || msg.content === TURN_ABORTED_GUIDANCE) continue;
-    if (msg.content.length > budget) {
-      picked.push({ ...msg, content: `${msg.content.slice(0, budget)}…[截断]` });
-      budget = 0;
-      break;
-    }
+    if (msg.content.length > budget) break;
     picked.push(msg);
     budget -= msg.content.length;
   }
@@ -189,16 +189,16 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
 
     // keep references logged messages by index in the FULL message stream.
     const all = session.allMessages();
-    const index = new Map(all.map((msg, i) => [msg, i] as const));
+    const index = new Map(all.map((msg, i) => [msg.id, i] as const));
     const keep: number[] = [];
     const fragment = all.find((msg) => isContextFragment(msg));
     if (fragment !== undefined) {
-      const at = index.get(fragment);
+      const at = index.get(fragment.id);
       if (at !== undefined) keep.push(at);
     }
     const recent = selectRecentUserMessages(messages, opts.recentBudgetChars ?? COMPACT_RECENT_BUDGET_CHARS);
     for (const msg of recent) {
-      const at = index.get(msg);
+      const at = index.get(msg.id);
       if (at !== undefined) keep.push(at);
     }
     const shadowedTokenCount = messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);

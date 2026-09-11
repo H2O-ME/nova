@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { newId } from './ids.js';
 import { formatJobNotices, type JobRegistry } from './jobs.js';
@@ -650,21 +651,27 @@ async function storeToolResult(
   opts: AgentOptions,
 ): Promise<{ content: string; truncatedRef?: string }> {
   if (Buffer.byteLength(raw, 'utf8') <= maxBytes) return { content: raw };
-  const cacheDir = opts.cacheDir ?? path.join(opts.rootDir, '.nova', 'cache', 'tool-outputs');
+  // The spill never lands in the workspace (zero-write rule): callers pass a
+  // cacheDir under ~/.nova, and the fallback keeps that contract too.
+  const cacheDir = opts.cacheDir ?? path.join(os.homedir(), '.nova', 'cache', 'tool-outputs');
   await mkdir(cacheDir, { recursive: true });
   const ref = path.join(cacheDir, `${newId('out')}.txt`);
   // 'wx' refuses to overwrite (or follow a planted symlink at) an existing path.
   await writeFile(ref, raw, { encoding: 'utf8', flag: 'wx' });
-  const dropped = Buffer.byteLength(raw, 'utf8') - maxBytes;
-  const headLen = Math.floor(maxBytes * HEAD_TAIL_RATIO);
-  const head = truncateBytes(raw, headLen);
-  const tail = truncateTailBytes(raw, maxBytes - headLen);
-  const content = `${head}\n[truncated ${dropped} chars; full output at ${ref} — use the read tool on this path to view it]\n${tail}`;
+  // Keep the message body (head + hint line + tail) inside the byte budget:
+  // reserve room for the hint line, then split the rest 60/40 head/tail.
+  const bodyBudget = Math.max(1024, maxBytes - HINT_LINE_RESERVE_BYTES);
+  const head = truncateBytes(raw, Math.floor(bodyBudget * HEAD_TAIL_RATIO));
+  const tail = truncateTailBytes(raw, bodyBudget - Math.floor(bodyBudget * HEAD_TAIL_RATIO));
+  const dropped = Buffer.byteLength(raw, 'utf8') - Buffer.byteLength(head, 'utf8') - Buffer.byteLength(tail, 'utf8');
+  const content = `${head}\n[truncated ${dropped} bytes; full output at ${ref} — use the read tool on this path to view it]\n${tail}`;
   return { content, truncatedRef: ref };
 }
 
 /** Share of the byte budget kept as the head; the rest keeps the tail. */
 const HEAD_TAIL_RATIO = 0.6;
+/** Room reserved for the truncation hint line so the body stays in budget. */
+const HINT_LINE_RESERVE_BYTES = 200;
 
 function truncateBytes(text: string, maxBytes: number): string {
   const bytes = new TextEncoder().encode(text);

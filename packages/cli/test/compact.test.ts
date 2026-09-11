@@ -50,14 +50,18 @@ describe('selectRecentUserMessages', () => {
     expect(picked.map((m) => m.content)).toEqual(['帮我看看这个报错', '继续修下一个']);
   });
 
-  it('truncates the oldest overflow message within the char budget', () => {
+  it('takes whole messages within the budget and stops at the first overflow', () => {
     const long = 'x'.repeat(30);
     const messages: AgentMessage[] = [userMsg(long), userMsg('short one')];
-    // budget 12: 'short one' (9 chars) is kept first, leaving 3 chars for the older message
+    // budget 12: 'short one' (9 chars) is kept; the older 30-char message
+    // does not fit whole, so the walk stops — no truncated copies exist that
+    // could rejoin the log projection verbatim.
     const picked = selectRecentUserMessages(messages, 12);
-    expect(picked).toHaveLength(2);
-    expect(picked[1]?.content).toBe('short one');
-    expect(picked[0]?.content).toBe('xxx…[截断]');
+    expect(picked).toHaveLength(1);
+    expect(picked[0]?.content).toBe('short one');
+    // A budget large enough for both keeps them in original order.
+    const both = selectRecentUserMessages(messages, 100);
+    expect(both.map((m) => m.content)).toEqual([long, 'short one']);
   });
 });
 
@@ -99,6 +103,33 @@ describe('compactSession (in place)', () => {
     const reopened = await Session.open(session.file);
     expect(reopened.deriveMessages()).toEqual(outcome.surface);
     expect(surfaceDivergence(reopened, outcome.surface)).toBeUndefined();
+  });
+
+  it('every retained message is itself on the surface (no identity-stranded picks)', async () => {
+    // Regression for the truncated-copy bug: a spread-copied overflow message
+    // failed the object-identity Map lookup and vanished from `keep` while
+    // `retained` still counted it. Whole-message takes must always land.
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-compact-'));
+    const session = await Session.create(dir);
+    const fragment = userMsg(fragmentText);
+    const recent = userMsg('recent request');
+    const overflow = userMsg('y'.repeat(50)); // older than the budget admits
+    for (const msg of [fragment, overflow, recent]) await session.append(msg);
+
+    const outcome = await compactSession({
+      client: textProvider('summary'),
+      session,
+      messages: session.deriveMessages(),
+      recentBudgetChars: recent.content.length, // only `recent` fits whole
+    });
+    expect(outcome.retained).toBe(1);
+    const surfaceIds = new Set(outcome.surface.map((m) => m.id));
+    const surfaceContents = outcome.surface.map((m) => m.content);
+    expect(surfaceContents).toContain('recent request');
+    expect(surfaceContents).not.toContain(overflow.content);
+    // The picked message IS on the surface (id match), not a copy that was
+    // dropped from `keep` after being counted.
+    expect(surfaceIds.has(recent.id)).toBe(true);
   });
 
   it('keeps a placeholder line when the model returns an empty summary', async () => {

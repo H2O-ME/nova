@@ -187,6 +187,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let codeMode: PtcMode = codeConfig?.mode ?? 'native';
   let modeSwitching = false;
   const bashPluginArgs = (): Parameters<typeof builtinPlugins>[0] => ({
+    spillReadRoot: path.join(novaHome(), 'cache', 'tool-outputs'),
     bash:
       bashConfig?.enabled === false
         ? false
@@ -991,7 +992,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           pushBlock([statusLine(paint, kind, stats, Date.now() - startedAt)]);
           if (kind === 'max_turns') {
             pushBlock([
-              `${DIM}  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 .nova/config.json 调大后 /resume 继续）${RESET}`,
+              `${DIM}  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 ~/.nova/config.json 调大后 /resume 继续）${RESET}`,
             ]);
           }
         }
@@ -1767,6 +1768,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             argSummary: toolArgSummary(approvalRequest.call.name, approvalRequest.call.rawArgs, 100),
             previewLines: approvalPreview,
             index: approvalIndex,
+            isExecuteKind: approvalRequest.kind === 'execute',
           },
           cols,
         ),

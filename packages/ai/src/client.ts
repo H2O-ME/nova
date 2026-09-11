@@ -372,9 +372,14 @@ function* translateChunk(chunk: ProviderChunk): Generator<StreamEvent> {
             ? tc.function.arguments
             : undefined;
         if (id === undefined && name === undefined && argsDelta === undefined) continue;
+        // Gateways disagree on `index` (missing, string, even NaN-shaped);
+        // the accumulator keys deltas by it, so coerce anything non-integral
+        // to 0 (OpenAI SDK convention) instead of letting Map keys diverge.
+        const index =
+          typeof tc.index === 'number' && Number.isInteger(tc.index) && tc.index >= 0 ? tc.index : 0;
         yield {
           type: 'tool_call_delta',
-          index: tc.index,
+          index,
           ...(id !== undefined ? { id } : {}),
           ...(name !== undefined ? { name } : {}),
           ...(argsDelta !== undefined ? { argsDelta } : {}),

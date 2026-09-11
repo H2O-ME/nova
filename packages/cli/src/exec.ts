@@ -85,7 +85,9 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const host = new PluginHost(rootDir);
   const bashConfig = config.tools?.bash;
   const codeConfig = config.tools?.code;
+  const spillReadRoot = path.join(novaHome(), 'cache', 'tool-outputs');
   for (const plugin of builtinPlugins({
+    spillReadRoot,
     bash:
       bashConfig?.enabled === false
         ? false
@@ -155,7 +157,10 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const systemPrompt = buildSystemPrompt();
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
-  let toolStartAt = 0;
+  // Parallel tool-call segments start several calls before any result lands —
+  // a shared scalar would be overwritten by the second start, crediting the
+  // first call with the wrong duration. Key starts by call id instead.
+  const toolStartAt = new Map<string, number>();
   // Headless runs are exactly the ones the user walks away from; completion
   // and failure notifications matter most here (30s threshold: short runs
   // finish before the user can even switch windows). Disabled for injected
@@ -224,12 +229,13 @@ export async function runExec(opts: ExecOptions): Promise<void> {
         if (event.message.content.length > 0) sink('\n');
         break;
       case 'tool_call_start':
-        toolStartAt = Date.now();
+        toolStartAt.set(event.call.id, Date.now());
         sink(`${toolStartLine(p, event.call.name, event.call.rawArgs)}\n`);
         break;
       case 'tool_call_result': {
-        const duration = Math.max(0, toolStartAt === 0 ? 0 : Date.now() - toolStartAt);
-        toolStartAt = 0;
+        const started = toolStartAt.get(event.call.id) ?? 0;
+        toolStartAt.delete(event.call.id);
+        const duration = Math.max(0, started === 0 ? 0 : Date.now() - started);
         sink(`${toolDoneLine(p, event.call.name, event.call.rawArgs, event.result.content, duration).join('\n')}\n`);
         break;
       }

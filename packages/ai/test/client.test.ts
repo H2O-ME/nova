@@ -102,6 +102,29 @@ describe('OpenAICompatClient', () => {
     expect(nameDeltas[0]?.id).toBe('call_abc');
   });
 
+  it('coerces missing/non-integer tool-call indexes to 0 so the accumulator keys stay stable', async () => {
+    const gatewayBody = [
+      // No index at all: coerced to 0, id still picked up.
+      'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_x","function":{"name":"a","arguments":"{}"}}]},"index":0}]}',
+      '',
+      // String-typed index from a non-conformant gateway: coerced to 0.
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":"1","id":"","function":{"arguments":"{}"}}]},"index":0}]}',
+      '',
+      'data: {"choices":[{"delta":{},"finish_reason":"tool_calls","index":0}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n');
+    const client = clientWith(() => Promise.resolve(sseResponse(gatewayBody)));
+    const events = await drain(client.stream({ messages: [] }));
+
+    const deltas = events.filter(
+      (e): e is Extract<StreamEvent, { type: 'tool_call_delta' }> => e.type === 'tool_call_delta',
+    );
+    expect(deltas.length).toBeGreaterThan(0);
+    for (const d of deltas) expect(d.index).toBe(0);
+  });
+
   it('translates reasoning_content deltas and passes max_tokens through', async () => {
     const reasoningBody = [
       'data: {"choices":[{"delta":{"reasoning_content":"step 1"}}]}',

@@ -244,23 +244,50 @@ function startBackground(
   child.stdout?.on('data', collect);
   child.stderr?.on('data', collect);
 
+  let resolvedDone = false;
+  let exitCode: number | null = null;
+  let killSettle: NodeJS.Timeout | undefined;
+  /**
+   * The single settle point, mirroring runOnce's Windows defense: a tree kill
+   * can leave the stdio pipes held by MSYS grandchildren that escaped the
+   * taskkill snapshot, and the `close` event then never fires — waiting on it
+   * alone hangs `done` forever, which hangs `jobs.dispose()` at session
+   * teardown. Settle on `exit` after a short flush grace, or right after the
+   * kill; destroy the pipes ourselves.
+   */
+  const settle = (outcome: { status: 'completed' | 'killed' | 'failed'; detail?: string }): void => {
+    if (resolvedDone) return;
+    resolvedDone = true;
+    if (killSettle !== undefined) clearTimeout(killSettle);
+    child.stdout?.destroy();
+    child.stderr?.destroy();
+    resolveDone(outcome);
+  };
+  const describeExit = (): { status: 'completed' | 'killed' | 'failed'; detail?: string } =>
+    killed
+      ? { status: 'killed', detail: `exit code: ${exitCode ?? 'null'}` }
+      : exitCode === 0
+        ? { status: 'completed', detail: 'exit code: 0' }
+        : exitCode === null
+          ? { status: 'failed', detail: 'command did not exit cleanly' }
+          : { status: 'failed', detail: `exit code: ${exitCode}` };
+
   let resolveDone: (outcome: { status: 'completed' | 'killed' | 'failed'; detail?: string }) => void = () => {};
   const done = new Promise<{ status: 'completed' | 'killed' | 'failed'; detail?: string }>((resolve) => {
     resolveDone = resolve;
   });
   child.on('error', (err: NodeJS.ErrnoException) => {
-    resolveDone({ status: 'failed', detail: `${err.code ?? 'ERROR'}: ${err.message}` });
+    settle({ status: 'failed', detail: `${err.code ?? 'ERROR'}: ${err.message}` });
+  });
+  child.on('exit', (code) => {
+    // Process is dead — the outcome is decided; `close` gets a short grace to
+    // flush the last buffered output, then we settle regardless.
+    exitCode = killed ? null : code;
+    killSettle ??= setTimeout(() => settle(describeExit()), 2_000);
   });
   child.on('close', (code) => {
-    resolveDone(
-      killed
-        ? { status: 'killed', detail: `exit code: ${code ?? 'null'}` }
-        : code === 0
-          ? { status: 'completed', detail: 'exit code: 0' }
-          : code === null
-            ? { status: 'failed', detail: 'command did not exit cleanly' }
-            : { status: 'failed', detail: `exit code: ${code}` },
-    );
+    exitCode = killed ? null : (code ?? exitCode);
+    settle(describeExit());
   });
 
   return {
@@ -269,6 +296,9 @@ function startBackground(
       if (killed) return;
       killed = true;
       killShell(child);
+      // If the tree kill leaves the pipes open, even `exit` may not arrive
+      // in time — settle deterministically right after.
+      killSettle ??= setTimeout(() => settle(describeExit()), 3_000);
     },
     readOutput: () => Buffer.concat(chunks.splice(0)).toString('utf8'),
   };

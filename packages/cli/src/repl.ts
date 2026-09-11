@@ -62,7 +62,7 @@ export interface ReplOptions {
  * question() would reject with "readline was closed". The queue keeps lines
  * delivered early and hands them out one at a time.
  */
-class LineSource {
+export class LineSource {
   private queue: string[] = [];
   private notify: (() => void) | undefined;
   private closed = false;
@@ -98,6 +98,18 @@ class LineSource {
         else resolve(null); // closed
       };
     });
+  }
+
+  /**
+   * Resolve a pending next() with null WITHOUT closing the stream: an
+   * interrupt (Ctrl+C during an approval prompt) cancels only that wait, so
+   * the caller's null-handling path (approval → deny) runs while the REPL
+   * keeps reading lines afterwards.
+   */
+  cancelPending(): void {
+    const wake = this.notify;
+    this.notify = undefined;
+    wake?.();
   }
 }
 
@@ -139,6 +151,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const bashConfig = config.tools?.bash;
   const codeConfig = config.tools?.code;
   for (const plugin of builtinPlugins({
+    spillReadRoot: path.join(novaHome(), 'cache', 'tool-outputs'),
     bash:
       bashConfig?.enabled === false
         ? false
@@ -189,8 +202,20 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const spinner = new Spinner(useColor);
   let aborter: AbortController | undefined;
   let streaming = false;
+  /** True while the REPL is blocked on an approval prompt (lines.next). */
+  let approvalPending = false;
 
   rl.on('SIGINT', () => {
+    if (approvalPending) {
+      // An interrupt during the approval prompt cancels the wait (the null
+      // answer reads as deny) AND unwinds the run — otherwise the prompt
+      // stays up until a y/n/a is typed and the abort signal never lands.
+      approvalPending = false;
+      lines.cancelPending();
+      aborter?.abort();
+      console.log(paint.yellow('  已中断（审批按拒绝处理）'));
+      return;
+    }
     if (streaming) {
       aborter?.abort();
       return;
@@ -216,10 +241,21 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       }
     }
     const argsPreview = call.rawArgs.length > 160 ? `${call.rawArgs.slice(0, 160)}…` : call.rawArgs;
+    // For execute-class calls the always-grant is remembered per command
+    // PROGRAM PREFIX (git status approves later git …, not rm) — say so next
+    // to the prompt so the user knows the scope they are granting.
+    const alwaysHint = kind === 'execute' ? paint.dim('（always 按命令程序前缀记忆，如 git status → 放行后续 git …）') : '';
     notify('需要审批', `${toolLabel(call.name)} · ${argsPreview.slice(0, 80)}`);
-    const raw = await lines.next(
-      paint.yellow(`允许${permissionLabel(kind)} · ${toolLabel(call.name)} ${argsPreview} [y] 本次允许 / [a] 总是允许 / [n] 拒绝：`),
-    );
+    approvalPending = true;
+    let raw: string | null;
+    try {
+      raw = await lines.next(
+        paint.yellow(`允许${permissionLabel(kind)} · ${toolLabel(call.name)} ${argsPreview} [y] 本次允许 / [a] 总是允许 / [n] 拒绝：`),
+      );
+    } finally {
+      approvalPending = false;
+    }
+    if (alwaysHint.length > 0 && raw !== null) console.log(alwaysHint);
     if (raw === null) return 'deny';
     const answer = raw.trim().toLowerCase();
     if (answer.startsWith('a')) return 'always';
@@ -234,7 +270,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   });
   const hooks = host.agentHooks(permission);
   const systemPrompt = buildSystemPrompt();
-  let toolStartAt = 0;
+  // Keyed by call id: parallel tool-call segments start several calls before
+  // any result lands, and a shared scalar would credit the wrong durations.
+  const toolStartAt = new Map<string, number>();
   let lastUsage: Usage | undefined;
   let lastPromptTokens = 0;
   // Usage anchor for pre-flight token estimates (see maybePreCompact).
@@ -348,14 +386,15 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       case 'tool_call_start': {
         endReasoningLine();
         spinner.stop();
-        toolStartAt = Date.now();
+        toolStartAt.set(event.call.id, Date.now());
         progressTail = '';
         console.log(toolStartLine(paint, event.call.name, event.call.rawArgs));
         break;
       }
       case 'tool_call_result': {
-        const duration = Math.max(0, toolStartAt === 0 ? 0 : Date.now() - toolStartAt);
-        toolStartAt = 0;
+        const started = toolStartAt.get(event.call.id) ?? 0;
+        toolStartAt.delete(event.call.id);
+        const duration = Math.max(0, started === 0 ? 0 : Date.now() - started);
         clearProgressLine();
         await session.append(event.result);
         for (const line of toolDoneLine(paint, event.call.name, event.call.rawArgs, event.result.content, duration)) {
@@ -384,7 +423,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         console.log(statusLine(paint, kind === 'complete' ? 'complete' : kind, stats, Date.now() - requestStartedAt));
         if (kind === 'max_turns') {
           console.log(
-            paint.dim(`  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 .nova/config.json 调大后 /resume 继续）`),
+            paint.dim(`  已达 maxTurns 上限（当前 ${config.maxTurns ?? DEFAULT_MAX_TURNS}，可在 ~/.nova/config.json 调大后 /resume 继续）`),
           );
         }
         break;

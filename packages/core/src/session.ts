@@ -151,8 +151,11 @@ export class Session {
 
   /** Append one raw event; returns its seq (index in the event stream). */
   async appendEvent(evt: SessionEvent): Promise<number> {
-    this.events.push(evt);
+    // Disk first, memory second: if the write throws (full disk, killed
+    // mid-flush), in-memory state still matches what a resume will replay
+    // instead of diverging with a phantom event that never hit the log.
     await appendFile(this.file, `${JSON.stringify(evt)}\n`, 'utf8');
+    this.events.push(evt);
     return this.events.length - 1;
   }
 

@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { JobRegistry, type TodoItem } from '@nova-agent/core';
 import { PluginHost, builtinPlugins, READ_MAX_BYTES } from '../src/index.js';
 import { bashOnPath } from '../src/builtin/bash.js';
+import { screenContentRegex } from '../src/builtin/search.js';
+import { codeRuntimeAvailable } from '../src/ptc/code-runtime.js';
 
 async function activatedHost(): Promise<{ host: PluginHost; jobs: JobRegistry; emitted: unknown[] }> {
   const host = new PluginHost('.');
@@ -109,6 +111,29 @@ describe('bash plugin', () => {
     expect(elapsed).toBeLessThan(10_000);
     expect(result).toContain('did not exit');
   }, 20_000);
+
+  it.runIf(bashOnPath())('settles a background job kill within bounds instead of hanging dispose', async () => {
+    // The background path mirrors the foreground one: a Windows tree kill can
+    // leave the stdio pipes held by grandchildren, and a done promise waiting
+    // on `close` alone would hang `jobs.dispose()` at teardown forever.
+    const host = new PluginHost('.');
+    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 } })) host.use(plugin);
+    await host.activate();
+    const tool = host.tools.find((t) => t.name === 'bash')!;
+    const jobs = new JobRegistry();
+
+    const started = await tool.execute(
+      { command: 'sleep 30', run_in_background: true },
+      { rootDir: '.', jobs },
+    );
+    expect(started).toMatch(/^Started background job bash-1/);
+    jobs.stop('bash-1', 'test kill');
+
+    const t0 = Date.now();
+    await jobs.dispose();
+    expect(Date.now() - t0).toBeLessThan(10_000);
+    expect(jobs.get('bash-1')?.status).toBe('killed');
+  }, 20_000);
 });
 
 describe('fs sandbox', () => {
@@ -146,6 +171,26 @@ describe('fs sandbox', () => {
     const host = await fsHostAt(root);
     const read = host.tools.find((t) => t.name === 'read_file')!;
     expect(await read.permissionFor?.({ path: 'sneak/secret.txt' })).toBe('read-external');
+  });
+
+  it('read_file treats the spill cache root as trusted (auto-read, no approval gate)', async () => {
+    // Truncated tool results spill to ~/.nova/cache/tool-outputs/; the hint in
+    // the message log tells the model to read them back, so that path must
+    // classify as 'read' rather than send every turn through the approval gate.
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-fs-'));
+    const spill = await mkdtemp(path.join(tmpdir(), 'nova-spill-'));
+    await writeFile(path.join(spill, 'full.txt'), 'the full spill', 'utf8');
+    const host = new PluginHost(root);
+    for (const plugin of builtinPlugins({ spillReadRoot: spill })) host.use(plugin);
+    await host.activate();
+    const read = host.tools.find((t) => t.name === 'read_file')!;
+    expect(await read.permissionFor?.({ path: path.join(spill, 'full.txt') })).toBe('read');
+    expect(await read.execute({ path: path.join(spill, 'full.txt') }, { rootDir: root })).toBe('the full spill');
+    // Unrelated out-of-workspace paths still need approval …
+    expect(await read.permissionFor?.({ path: path.join(tmpdir(), 'something-else.txt') })).toBe('read-external');
+    // … and the search tool shares the exemption for its own classification.
+    const search = host.tools.find((t) => t.name === 'search_files')!;
+    expect(await search.permissionFor?.({ path: spill })).toBe('read');
   });
 
   it('edit_file rejects edits of a stale snapshot (file changed since last read)', async () => {
@@ -226,6 +271,65 @@ describe('search_files', () => {
     expect(await search.execute({ content_regex: '(' }, { rootDir: root })).toContain('Error: invalid content_regex');
     expect(await search.execute({ name_glob: '*.ts' }, { rootDir: root })).toBe('(no matches)');
   });
+
+  it('refuses catastrophic-backtracking regex shapes up front (both paths)', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-search-'));
+    await writeFile(path.join(root, 'a.txt'), `${'a'.repeat(40)}b\n`, 'utf8');
+    const host = new PluginHost(root);
+    for (const plugin of builtinPlugins()) host.use(plugin);
+    await host.activate();
+    const search = host.tools.find((t) => t.name === 'search_files')!;
+    // (a+)+b — quantifier inside a quantified group: the textbook shape.
+    const screened = await search.execute({ content_regex: '(a+)+b' }, { rootDir: root });
+    expect(screened).toContain('Error: content_regex looks prone to catastrophic backtracking');
+
+    // The screen itself is exported and directly testable.
+    expect(screenContentRegex('a'.repeat(600))).toContain('over the 512 cap');
+    expect(screenContentRegex('a'.repeat(40) + '+'.repeat(40))).toContain('quantifiers');
+    expect(screenContentRegex('answer = 42')).toBeUndefined();
+    expect(screenContentRegex('^\\w+@\\w+\\.\\w+$')).toBeUndefined();
+    // (a|a)*b slips past the static screen — the worker wall clock is the
+    // backstop for exactly this class (no quantifier inside the group).
+    expect(screenContentRegex('(a|a)*b')).toBeUndefined();
+  });
+
+  it.runIf(codeRuntimeAvailable())('terminates a runaway content_regex worker at the wall clock', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-search-redos-'));
+    // A single line long enough that (a+)+b backtracks for far past the cap:
+    // no match, so every split path is explored.
+    await writeFile(path.join(root, 'bomb.txt'), `${'a'.repeat(28)}x\n`, 'utf8');
+    const host = new PluginHost(root);
+    for (const plugin of builtinPlugins({ search: { wallMs: 800 } })) host.use(plugin);
+    await host.activate();
+    const search = host.tools.find((t) => t.name === 'search_files')!;
+
+    const started = Date.now();
+    const result = await search.execute({ content_regex: '(a|a)*b' }, { rootDir: root });
+    const elapsed = Date.now() - started;
+    // The pattern slipped past the static screen but the worker wall clock
+    // still cut it — the host event loop stayed responsive throughout.
+    expect(result).toContain('wall-clock budget');
+    expect(elapsed).toBeLessThan(10_000);
+  }, 20_000);
+
+  it.runIf(codeRuntimeAvailable())('aborts an in-flight worker search when the signal fires', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-search-abort-'));
+    await writeFile(path.join(root, 'slow.txt'), `${'a'.repeat(28)}x\n`, 'utf8');
+    const host = new PluginHost(root);
+    for (const plugin of builtinPlugins({ search: { wallMs: 30_000 } })) host.use(plugin);
+    await host.activate();
+    const search = host.tools.find((t) => t.name === 'search_files')!;
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 150);
+    const started = Date.now();
+    const result = await search.execute(
+      { content_regex: '(a|a)*b' },
+      { rootDir: root, signal: controller.signal },
+    );
+    expect(result).toContain('aborted');
+    expect(Date.now() - started).toBeLessThan(10_000);
+  }, 20_000);
 });
 
 describe('approval previews', () => {
@@ -246,5 +350,18 @@ describe('approval previews', () => {
     expect(editPreview).toContain('+ BBB');
     // Preview is read-only: the file on disk is untouched.
     expect(await readFile(path.join(root, 'a.txt'), 'utf8')).toBe('aaa\nbbb\nccc');
+
+    // Multi-hit WITHOUT replace_all is rejected by execute() — the preview
+    // must not promise "N 处替换".
+    await write.execute({ path: 'b.txt', content: 'xx\nxx\nxx' }, { rootDir: root });
+    const multiPreview = await edit.preview?.({ path: 'b.txt', old_string: 'xx', new_string: 'YY' }, { rootDir: root });
+    expect(multiPreview).toContain('命中 3 处，执行将报错');
+    expect(multiPreview).not.toContain('3 处替换');
+    // ...but WITH replace_all the same hit count is honestly a replacement.
+    const multiAllPreview = await edit.preview?.(
+      { path: 'b.txt', old_string: 'xx', new_string: 'YY', replace_all: true },
+      { rootDir: root },
+    );
+    expect(multiAllPreview).toContain('编辑 b.txt（3 处替换）');
   });
 });

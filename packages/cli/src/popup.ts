@@ -28,6 +28,12 @@ export interface ApprovalPopupView {
   previewLines: string[] | undefined;
   /** 高亮选项下标（0..2）。 */
   index: number;
+  /**
+   * True when the pending approval is execute-class: the popup names the
+   * always-grant scope (per command program prefix) so the user knows what
+   * "总是允许" actually remembers.
+   */
+  isExecuteKind?: boolean;
 }
 
 /** 审批弹窗：头部与 diff 预览都按剩余列数裁剪；y/n/a 与 1/2/3 是快捷键。 */
@@ -43,6 +49,9 @@ export function buildApprovalPopup(p: Palette, v: ApprovalPopupView, cols: numbe
   for (let i = 0; i < APPROVAL_OPTIONS.length; i++) {
     const label = APPROVAL_OPTIONS[i] ?? '';
     lines.push(i === v.index ? `  ${p.cyan(p.bold(`❯ ${label}`))}` : `    ${p.dim(label)}`);
+  }
+  if (v.isExecuteKind === true) {
+    lines.push(`  ${p.dim('总是允许按命令程序前缀记忆（如放行 git status 后续只放行 git …）')}`);
   }
   lines.push(`  ${p.dim('↑↓ 选择 · Enter 确认 · Esc 拒绝')}`);
   return lines;

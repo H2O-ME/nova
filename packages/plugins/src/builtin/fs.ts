@@ -74,12 +74,27 @@ function isCanonicalInside(canonicalRoot: string, canonicalTarget: string): bool
  * Permission classification against the CANONICAL path (in-root reads are
  * free, out-of-root reads are approval-gated). Any resolution failure fails
  * closed to `read-external` — the approval gate is the conservative default.
+ *
+ * `trustedReadRoots` are additional auto-readable roots OUTSIDE the
+ * workspace — the tool-output spill directory under ~/.nova: its files are
+ * truncated tool results the model already saw, so reading them back (the
+ * truncation hint tells it to) must not trip the approval gate every turn.
  */
-export async function rootPermissionKind(rootDir: string, raw: unknown): Promise<ToolPermissionKind> {
+export async function rootPermissionKind(
+  rootDir: string,
+  raw: unknown,
+  trustedReadRoots: string[] = [],
+): Promise<ToolPermissionKind> {
   try {
     const realRoot = await canonicalize(path.resolve(rootDir));
     const file = await resolveReal(rootDir, raw);
-    return isCanonicalInside(realRoot, file) ? 'read' : 'read-external';
+    if (isCanonicalInside(realRoot, file)) return 'read';
+    for (const trusted of trustedReadRoots) {
+      if (trusted.length === 0) continue;
+      const realTrusted = await canonicalize(path.resolve(trusted));
+      if (isCanonicalInside(realTrusted, file)) return 'read';
+    }
+    return 'read-external';
   } catch {
     return 'read-external';
   }
@@ -169,7 +184,8 @@ function intArg(args: Record<string, unknown>, key: string): number | undefined 
   return undefined;
 }
 
-export function fsReadPlugin(): Plugin {
+export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin {
+  const trustedReadRoots = options?.trustedReadRoots ?? [];
   return {
     name: 'fs-read',
     description: 'Read files and list directories inside the workspace.',
@@ -191,7 +207,7 @@ export function fsReadPlugin(): Plugin {
         },
         /** In-root reads are free; out-of-root reads cross the sandbox boundary. */
         permissionFor(args) {
-          return rootPermissionKind(rootDir, args['path']);
+          return rootPermissionKind(rootDir, args['path'], trustedReadRoots);
         },
         async execute(args, c: ToolExecuteContext) {
           const file = resolveAnywhere(c.rootDir, args['path']);
@@ -239,7 +255,7 @@ export function fsReadPlugin(): Plugin {
           additionalProperties: false,
         },
         permissionFor(args) {
-          return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.');
+          return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.', trustedReadRoots);
         },
         async execute(args, c: ToolExecuteContext) {
           const dir = resolveAnywhere(c.rootDir, strArg(args, 'path') ?? '.');
@@ -391,7 +407,14 @@ export function fsWritePlugin(): Plugin {
           const played = applyEdit(text, oldString, newString, args['replace_all'] === true);
           const rel = path.relative(rootDir, file) || file;
           if (played === undefined) return `编辑 ${rel}：old_string 未命中（预览不可用）`;
-          const out: string[] = [`编辑 ${rel}（${played.count} 处替换）：`];
+          // execute() rejects count>1 WITHOUT replace_all (it only replaces
+          // the first), so the honest preview names the error up front instead
+          // of promising "N 处替换".
+          const head =
+            played.count > 1 && args['replace_all'] !== true
+              ? `编辑 ${rel}（命中 ${played.count} 处，执行将报错——需 replace_all 或更长唯一片段）：`
+              : `编辑 ${rel}（${played.count} 处替换）：`;
+          const out: string[] = [head];
           const add = (prefix: string, side: string): void => {
             for (const line of side.split('\n')) {
               if (out.length >= PREVIEW_MAX_LINES) {

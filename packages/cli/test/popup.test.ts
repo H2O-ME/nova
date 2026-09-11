@@ -41,6 +41,14 @@ describe('buildApprovalPopup', () => {
     expect(lines[4]).toBe('  ↑↓ 选择 · Enter 确认 · Esc 拒绝');
   });
 
+  it('names the always-grant scope for execute-class approvals only', () => {
+    const exec = buildApprovalPopup(plainPalette, { ...view, previewLines: undefined, isExecuteKind: true }, 80);
+    expect(exec).toHaveLength(6);
+    expect(exec[4]).toContain('总是允许按命令程序前缀记忆');
+    const other = buildApprovalPopup(plainPalette, { ...view, previewLines: undefined, isExecuteKind: false }, 80);
+    expect(other).toHaveLength(5);
+  });
+
   it('approval options stay y/a/n-ordered', () => {
     expect(APPROVAL_OPTIONS).toEqual(['允许一次', '总是允许', '拒绝']);
   });
