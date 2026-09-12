@@ -64,6 +64,8 @@ export function approvalPrompt(
   return {
     prompt: `允许${permission} · ${tool} ${argsPreview} [y] 本次允许 / [a] 总是允许 / [n] 拒绝：`,
     alwaysScopeNote:
-      kind === 'execute' ? '（always 按命令程序前缀记忆，如 git status → 放行后续 git …）' : '',
+      kind === 'execute'
+        ? '（always 按命令程序前缀记忆，如 git status → 放行后续 git …；含 &&/;/| 的复合命令只按整条放行）'
+        : '',
   };
 }

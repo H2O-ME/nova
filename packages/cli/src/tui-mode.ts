@@ -21,7 +21,6 @@ import {
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   emptyStats,
-  estimateNextPromptTokens,
   estimateTextTokens,
   JobRegistry,
   newId,
@@ -46,6 +45,7 @@ import {
   type PtcMode,
 } from '@nova-agent/plugins';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
+import { shouldCompactBefore } from './auto-compact.js';
 import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
 import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
 import {
@@ -550,10 +550,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    */
   const maybePreCompact = async (): Promise<void> => {
     const limit = config.autoCompactTokenLimit;
-    if (limit === undefined || compactRunning || usageAnchor === undefined) return;
-    const estimate = estimateNextPromptTokens(usageAnchor, messages.slice(anchorMsgCount));
-    if (estimate <= limit) return;
-    pushBlock([`${YELLOW}  ⋯ 预估下轮 ${humanTokens(estimate)} tok 超阈值 ${humanTokens(limit)}，提前压缩…${RESET}`]);
+    if (limit === undefined || compactRunning) return;
+    if (
+      !shouldCompactBefore({
+        limit,
+        usageAnchor,
+        anchorMsgCount,
+        messages,
+        request: { messages, systemPrompt, tools: host.tools },
+      })
+    )
+      return;
+    pushBlock([`${YELLOW}  ⋯ 预估下轮上下文超阈值 ${humanTokens(limit)}，提前压缩…${RESET}`]);
     try {
       const outcome = await runCompact('auto');
       pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]);
@@ -801,8 +809,31 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       closeReadGroup();
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof Error && (err.name === 'AbortError' || /abort/i.test(message))) {
+        // An abort may leave a partial assistant block that was never closed
+        // (no 'message' event → never logged): drop it so the screen matches
+        // the log. Committed text (assistantOpen === false) is kept.
+        if (assistantOpen) {
+          if (assistantBlock !== undefined) removeBlock(assistantBlock);
+          if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+          assistantBlock = undefined;
+          assistantSeparator = undefined;
+          assistantOpen = false;
+          assistantText = '';
+        }
         pushBlock([`${YELLOW}  ■ 已中断${RESET}`]);
       } else {
+        // A non-abort error mid-stream leaves a partial assistant block on
+        // screen with no matching 'done' in the log — discard it to keep
+        // screen and log in sync, then surface a dim hint.
+        if (assistantOpen) {
+          if (assistantBlock !== undefined) removeBlock(assistantBlock);
+          if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+          assistantBlock = undefined;
+          assistantSeparator = undefined;
+          assistantOpen = false;
+          assistantText = '';
+          pushBlock([`${DIM}  ⟳ 未完成的回答已丢弃（未写入会话日志）${RESET}`], TOOL_GUTTER);
+        }
         // API errors can be long: hang wrapped rows under the notice column.
         pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], TOOL_GUTTER);
         // A turn that died mid-work (not a user abort) deserves a ping too —
@@ -1314,7 +1345,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       return;
     }
     scrollFromEnd = 0;
-    void agentTurn(effective);
+    void agentTurn(effective).catch((err: unknown) => {
+      // agentTurn has its own try/catch around the event loop, but an error
+      // OUTSIDE that loop (building the fragment, the approval plumbing, …)
+      // would escape as an unhandled rejection. Surface it as a block instead.
+      spinner.stop();
+      pushBlock([`${RED}  ✗ 本轮失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
+      streaming = false;
+      scheduleRender();
+    });
   }
 
   function totalWrappedLines(): number {

@@ -130,6 +130,44 @@ describe('PermissionService', () => {
     expect(asked).toBe(3);
   });
 
+  it('remembers "always" for a compound command as the whole chain, not one program', async () => {
+    let asked = 0;
+    const permission = new PermissionService('read-only', async () => {
+      asked += 1;
+      return 'always';
+    });
+    const chain = { id: 'c1', name: 'bash', args: { command: 'cd x && rm -rf .' }, rawArgs: '{"command":"cd x && rm -rf ."}' };
+    expect(await permission.decide('bash', 'execute', chain)).toBe('allow');
+    expect(asked).toBe(1);
+    // The exact same chain (whitespace-normalized) is re-granted free…
+    const reRun = { id: 'c2', name: 'bash', args: { command: 'cd  x &&  rm -rf .' }, rawArgs: '{}' };
+    expect(await permission.decide('bash', 'execute', reRun)).toBe('allow');
+    expect(asked).toBe(1);
+    // …but the leading program `cd` does NOT inherit a broad grant.
+    const bareCd = { id: 'c3', name: 'bash', args: { command: 'cd /tmp' }, rawArgs: '{}' };
+    expect(await permission.decide('bash', 'execute', bareCd)).toBe('allow');
+    expect(asked).toBe(2);
+    // A different chain asks again.
+    const otherChain = { id: 'c4', name: 'bash', args: { command: 'cd x && ls' }, rawArgs: '{}' };
+    expect(await permission.decide('bash', 'execute', otherChain)).toBe('allow');
+    expect(asked).toBe(3);
+  });
+
+  it('treats a pipe chain as compound (whole-command memory)', async () => {
+    let asked = 0;
+    const permission = new PermissionService('read-only', async () => {
+      asked += 1;
+      return 'always';
+    });
+    const pipe = { id: 'p1', name: 'bash', args: { command: 'find . | xargs rm' }, rawArgs: '{}' };
+    expect(await permission.decide('bash', 'execute', pipe)).toBe('allow');
+    expect(asked).toBe(1);
+    // A later bare `find` must not ride on the pipe grant.
+    const bareFind = { id: 'p2', name: 'bash', args: { command: 'find .' }, rawArgs: '{}' };
+    expect(await permission.decide('bash', 'execute', bareFind)).toBe('allow');
+    expect(asked).toBe(2);
+  });
+
   it('fails closed when the asker throws, and never-policy denies without asking', async () => {
     const throwing = new PermissionService('read-only', async () => {
       throw new Error('UI blew up');

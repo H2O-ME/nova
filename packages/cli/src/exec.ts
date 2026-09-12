@@ -1,17 +1,15 @@
+import os from 'node:os';
 import path from 'node:path';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   emptyStats,
-  estimateMessageTokens,
   JobRegistry,
   newId,
   runAgent,
   Session,
   type AgentEvent,
-  type AgentHooks,
   type AgentMessage,
   type ChatProvider,
-  type ChatRequest,
   type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
@@ -24,6 +22,7 @@ import {
   type ApprovalMode,
 } from '@nova-agent/plugins';
 import { collectProjectDocs } from './agents-md.js';
+import { wrapAutoCompact } from './auto-compact.js';
 import { compactSession } from './compact.js';
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
@@ -103,7 +102,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
 
   const skills = await loadSkills([
     { dir: path.join(rootDir, NOVA_DIR, 'skills'), level: 'project' },
-    { dir: path.join(process.env['USERPROFILE'] ?? process.env['HOME'] ?? '', '.nova', 'skills'), level: 'user' },
+    { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
   ]);
   if (skills.length > 0) host.use(skillsPlugin(skills));
   await host.activate();
@@ -247,81 +246,3 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   }
 }
 
-interface AutoCompactOptions {
-  enabled: boolean;
-  limit: number;
-  /** Compact the live surface; the callback splices `messages` in place. */
-  compact: (messages: AgentMessage[]) => Promise<void>;
-  onError: (err: unknown) => void;
-  /** One-shot user-facing line: the fuse tripping or the splice contract breaking. */
-  onWarn: (text: string) => void;
-}
-
-/** Full outgoing-request image: system prompt + tool schemas + every message. */
-function requestImageTokens(next: ChatRequest): number {
-  let image = estimateMessageTokens({ role: 'system', id: '', ts: 0, content: next.systemPrompt ?? '' });
-  for (const tool of next.tools ?? []) {
-    image += estimateMessageTokens({
-      role: 'system',
-      id: '',
-      ts: 0,
-      content: `${tool.name} ${tool.description} ${JSON.stringify(tool.parameters)}`,
-    });
-  }
-  for (const msg of next.messages) image += estimateMessageTokens(msg);
-  return image;
-}
-
-/**
- * Token-gate every outgoing LLM request inside runAgent. The interactive
- * runners compact at user-message boundaries (before/after a run); exec has
- * exactly one run for the whole task, so the per-request hook is the only
- * interception point. The estimate prices the full request image (system +
- * tool schemas + messages, assistant tool-call args included) against the
- * configured limit. Compaction happens in place (the log gets its three
- * compaction events, `messages` becomes the projected surface) — and is
- * FUSED after a compaction that still leaves the image over the limit: the
- * retained floor (system + tool schemas + context fragment + kept recents +
- * fresh summary) is then above the threshold, so repeating the summarizer
- * request every turn would buy nothing while doubling per-turn cost and
- * flooding the session log with compaction triples.
- */
-function wrapAutoCompact(hooks: AgentHooks, opts: AutoCompactOptions): void {
-  if (!opts.enabled) return;
-  const inner = hooks.beforeLLMCall;
-  let compacting = false;
-  let fused = false;
-  hooks.beforeLLMCall = async (req) => {
-    const next = inner === undefined ? req : await inner(req);
-    if (compacting || fused) return next;
-    // In-place compaction contract: the hook chain must hand back the SAME
-    // messages array object runAgent passed in, so the splice below reaches
-    // the live log. A plugin hook that clones `req.messages` would compact a
-    // throwaway copy: the log never shrinks, every turn re-compacts, and the
-    // model surface diverges from the projection ("model-visible means
-    // logged" broken). Such plugins are a planned extension point, so check
-    // explicitly and disarm rather than corrupt.
-    if (next.messages !== req.messages) {
-      fused = true;
-      opts.onWarn('插件钩子替换了消息数组：本次任务的自动压缩已停用（原位压缩会失效）');
-      return next;
-    }
-    if (requestImageTokens(next) <= opts.limit) return next;
-    compacting = true;
-    try {
-      await opts.compact(next.messages);
-      const after = requestImageTokens(next);
-      if (after > opts.limit) {
-        fused = true;
-        opts.onWarn(
-          `压缩后仍约 ${after} tok 超阈值 ${opts.limit} tok（保留片段+工具 schema 构成下限）：本次任务停用自动压缩，后续请求可能超窗，可考虑调大 autoCompactTokenLimit`,
-        );
-      }
-    } catch (err) {
-      opts.onError(err);
-    } finally {
-      compacting = false;
-    }
-    return next;
-  };
-}

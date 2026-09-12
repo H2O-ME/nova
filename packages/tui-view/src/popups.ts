@@ -43,7 +43,7 @@ export function buildApprovalPopup(p: Palette, v: ApprovalPopupView, cols: numbe
     lines.push(i === v.index ? `  ${p.cyan(p.bold(`❯ ${label}`))}` : `    ${p.dim(label)}`);
   }
   if (v.isExecuteKind === true) {
-    lines.push(`  ${p.dim('总是允许按命令程序前缀记忆（如放行 git status 后续只放行 git …）')}`);
+    lines.push(`  ${p.dim('总是允许按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）')}`);
   }
   lines.push(`  ${p.dim('↑↓ 选择 · Enter 确认 · Esc 拒绝')}`);
   return lines;

@@ -80,13 +80,18 @@ export class PermissionService {
   }
 
   /**
-   * The scope an "always" grant covers for this call: execute tools are
-   * remembered per command program prefix, everything else per tool+kind.
+   * The scope an "always" grant covers for this call: a bare command is
+   * remembered per program prefix; a COMPOUND command — one chaining commands
+   * with `&&`/`;`/`|` (or `&`) — is remembered as the whole normalized
+   * command. Granting `exec:cd` from `cd x && rm -rf .` would let any `cd`
+   * skip the gate, so compound chains stay single-shot: only that exact chain
+   * (modulo whitespace) is re-granted.
    */
   private rememberKey(toolName: string, kind: PermissionKind, call: ToolCall): string {
     if (kind === 'execute') {
       const command = typeof call.args['command'] === 'string' ? call.args['command'].trim() : '';
       if (command.length > 0) {
+        if (/[&;|]/.test(command)) return `exec:${command.replace(/\s+/g, ' ')}`;
         const program = (command.split(/\s+/)[0] ?? '').toLowerCase();
         if (program.length > 0) return `exec:${program}`;
       }

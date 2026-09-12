@@ -102,6 +102,7 @@ export async function compactConversation(
   client: ChatProvider,
   messages: AgentMessage[],
   previousSummary?: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const ask =
     previousSummary !== undefined
@@ -115,7 +116,7 @@ export async function compactConversation(
     content: `${ask}\n\n<conversation>\n${history}\n</conversation>`,
   };
   let summary = '';
-  const req: ChatRequest = { messages: [askMsg] };
+  const req: ChatRequest = { messages: [askMsg], signal };
   for await (const ev of client.stream(req)) {
     if (ev.type === 'text_delta') summary += ev.text;
     else if (ev.type === 'reset') summary = ''; // retry replays from scratch
@@ -159,6 +160,8 @@ export interface CompactSessionOptions {
   recentBudgetChars?: number;
   /** Who asked for this compaction; recorded on compaction/start. */
   trigger?: 'auto' | 'manual';
+  /** Optional abort signal forwarded to the summarizer request. */
+  signal?: AbortSignal;
 }
 
 export interface CompactedSession {
@@ -184,7 +187,7 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
     // serialized transcript and embedded in the ask instead).
     const previous = messages.find(isCompactSummary)?.content;
     const previousSummary = previous !== undefined ? previous.slice(COMPACT_SUMMARY_PREFIX.length).trimStart() : undefined;
-    const summary = await compactConversation(client, messages, previousSummary);
+    const summary = await compactConversation(client, messages, previousSummary, opts.signal);
     const body = summary.length > 0 ? summary : '(无摘要可用)';
 
     // keep references logged messages by index in the FULL message stream.

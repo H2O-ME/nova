@@ -5,7 +5,6 @@ import { styledWidth } from '@nova-agent/tui';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   emptyStats,
-  estimateNextPromptTokens,
   JobRegistry,
   newId,
   runAgent,
@@ -24,6 +23,7 @@ import {
   type ApprovalMode,
   type AskFn,
 } from '@nova-agent/plugins';
+import { shouldCompactBefore } from './auto-compact.js';
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
@@ -314,13 +314,27 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     }
   };
 
-  /** Pre-flight check: compact BEFORE the next request when the anchor-based projection exceeds the limit. */
+  /**
+   * Pre-flight check: compact BEFORE the next request. With a usage anchor we
+   * price the delta since it (the interactive steady-state); without one — a
+   * resumed large session before its first turn, or a fresh /session switch —
+   * we price the whole request image so resume cannot blow the context window
+   * on its first request.
+   */
   const maybePreCompact = async (): Promise<void> => {
     const limit = config.autoCompactTokenLimit;
-    if (limit === undefined || compactRunning || usageAnchor === undefined) return;
-    const estimate = estimateNextPromptTokens(usageAnchor, messages.slice(anchorMsgCount));
-    if (estimate <= limit) return;
-    console.log(paint.yellow(`预估下轮 ${estimate} tok 超过阈值 ${limit}，提前压缩…`));
+    if (limit === undefined || compactRunning) return;
+    if (
+      !shouldCompactBefore({
+        limit,
+        usageAnchor,
+        anchorMsgCount,
+        messages,
+        request: { messages, systemPrompt, tools: host.tools },
+      })
+    )
+      return;
+    console.log(paint.yellow(`预估下轮上下文超过阈值 ${limit}，提前压缩…`));
     try {
       const outcome = await runCompact('auto');
       console.log(`已自动压缩 — 会话原位压缩（日志保留完整历史），保留 ${outcome.retained} 条最近用户消息`);
@@ -615,6 +629,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         console.log(paint.yellow('  已中断'));
       } else {
         console.error(paint.red(`  出错：${message}`));
+        console.log(paint.dim('  ⟳ 未完成的回答未写入会话日志（resume 后不可见）'));
         if (Date.now() - requestStartedAt >= LONG_TASK.errorMs) notify('任务出错', message.slice(0, 120));
       }
     } finally {
