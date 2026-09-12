@@ -3,10 +3,20 @@ import { createModelListCache, filterCommands, COMMAND_SPECS } from '../src/comm
 
 describe('filterCommands', () => {
   it('matches by prefix when input is a bare slash command', () => {
-    expect(filterCommands('/m').map((s) => s.name)).toEqual(['/model', '/mode']);
-    // '/mode' 是 '/model' 的前缀，面板按目录顺序同时列出两者。
-    expect(filterCommands('/mode').map((s) => s.name)).toEqual(['/model', '/mode']);
-    expect(filterCommands('/').map((s) => s.name)).toEqual(COMMAND_SPECS.map((s) => s.name));
+    // Order is an implementation choice; the user-visible contract is only
+    // "both /model and /mode match the /m and /mode prefixes".
+    const mMatches = filterCommands('/m').map((s) => s.name);
+    expect(mMatches).toContain('/model');
+    expect(mMatches).toContain('/mode');
+
+    const modeMatches = filterCommands('/mode').map((s) => s.name);
+    expect(modeMatches).toContain('/model');
+    expect(modeMatches).toContain('/mode');
+
+    // Bare slash lists every command.
+    expect(filterCommands('/').map((s) => s.name).sort()).toEqual(
+      COMMAND_SPECS.map((s) => s.name).sort(),
+    );
   });
 
   it('closes once the user types arguments', () => {

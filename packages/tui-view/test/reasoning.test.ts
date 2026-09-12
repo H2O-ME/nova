@@ -11,6 +11,7 @@ import {
 describe('reasoningLiveRow (auto-expanded while streaming)', () => {
   it('empty buffer renders a bare shimmer placeholder', () => {
     expect(reasoningLiveRow(plainPalette, { partial: '', cols: 80 })).toEqual(['⋯']);
+    expect(reasoningLiveRow(plainPalette, { partial: '   ', cols: 80 })).toEqual(['⋯']);
   });
 
   it('shows newest settled lines plus one live tail row', () => {
@@ -18,6 +19,13 @@ describe('reasoningLiveRow (auto-expanded while streaming)', () => {
       '│ a',
       '│ b',
       '│ ⋯ par',
+    ]);
+  });
+
+  it('blank settled lines never take a row', () => {
+    expect(reasoningLiveRow(plainPalette, { done: ['', 'x', '  '], partial: 'p', cols: 80 })).toEqual([
+      '│ x',
+      '│ ⋯ p',
     ]);
   });
 
@@ -32,6 +40,12 @@ describe('reasoningLiveRow (auto-expanded while streaming)', () => {
     const rows = reasoningLiveRow(plainPalette, { done: ['x'.repeat(500)], partial: 'y'.repeat(500), cols: 40 });
     const budget = 40 - 1 - 4;
     for (const line of rows) expect(styledWidth(line)).toBeLessThanOrEqual(budget);
+  });
+
+  it('tail keeps the NEWEST text', () => {
+    const r = reasoningLiveRow(plainPalette, { done: [], partial: 'a'.repeat(300) + 'END', cols: 40 });
+    expect(r).toHaveLength(1);
+    expect(r[0]?.endsWith('END')).toBe(true);
   });
 });
 
