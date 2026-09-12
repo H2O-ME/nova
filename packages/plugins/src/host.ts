@@ -95,7 +95,10 @@ export class PluginHost {
       try {
         return await entry.tool.permissionFor(args);
       } catch {
-        return entry.permission;
+        // Fail closed: a broken classifier must not fall back to the static
+        // kind (often `read`), which would auto-allow under read-only. The
+        // conservative `execute` always gates.
+        return 'execute';
       }
     }
     return entry.permission;
@@ -123,6 +126,10 @@ export class PluginHost {
         }
         let effective: ToolCallVerdict = { action: 'allow' };
         for (const fn of this.hooks.get('beforeToolCall') ?? []) {
+          // Trust seam: a `rewrite` verdict replaces the call args AFTER the
+          // permission gate — the rewritten call does not pass approval again.
+          // Acceptable today because no built-in plugin rewrites; external
+          // hooks that do own the consequence (they run as the operator).
           const verdict = await (fn as HookMap['beforeToolCall'])(call);
           if (verdict.action === 'deny') return verdict;
           if (verdict.action === 'rewrite') effective = verdict;

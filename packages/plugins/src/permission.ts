@@ -42,6 +42,14 @@ export class PermissionService {
   private readonly remembered = new Set<string>();
   private mode: ApprovalMode;
   private policy: ApprovalPolicy = 'ask';
+  /**
+   * Serialization point for the ask path: concurrent decide() calls dispatch
+   * their asker ONE AT A TIME. Without this, PTC run_code's parallel sub-calls
+   * race for the TUI approval modal — each ask overwrites `store.approval`,
+   * the displaced promise never resolves, and the run hangs forever. Verdict
+   * short-circuits (remembered / auto-allow / 'never') bypass the chain.
+   */
+  private askChain: Promise<unknown> = Promise.resolve();
 
   constructor(
     mode: ApprovalMode,
@@ -81,17 +89,21 @@ export class PermissionService {
 
   /**
    * The scope an "always" grant covers for this call: a bare command is
-   * remembered per program prefix; a COMPOUND command — one chaining commands
-   * with `&&`/`;`/`|` (or `&`) — is remembered as the whole normalized
-   * command. Granting `exec:cd` from `cd x && rm -rf .` would let any `cd`
-   * skip the gate, so compound chains stay single-shot: only that exact chain
-   * (modulo whitespace) is re-granted.
+   * remembered per program prefix; a COMPOUND command is remembered as the
+   * whole normalized command. Compound means explicit chaining (`&&`/`;`/`|`
+   * /`&`), newline chains (bash executes lines sequentially — a multi-line
+   * `echo\nrm -rf` would otherwise be remembered as plain `exec:echo`) AND
+   * command substitution (`$(...)`/backtick: the user approved a program, not
+   * an arbitrary payload it happens to interpolate). Granting `exec:cd` from
+   * `cd x && rm -rf .` would let any `cd` skip the gate, so these stay
+   * single-shot: only that exact command (modulo whitespace) is re-granted.
    */
   private rememberKey(toolName: string, kind: PermissionKind, call: ToolCall): string {
     if (kind === 'execute') {
       const command = typeof call.args['command'] === 'string' ? call.args['command'].trim() : '';
       if (command.length > 0) {
-        if (/[&;|]/.test(command)) return `exec:${command.replace(/\s+/g, ' ')}`;
+        const compound = /[&;|\n\r]/.test(command) || command.includes('$(') || command.includes('`');
+        if (compound) return `exec:${command.replace(/\s+/g, ' ')}`;
         const program = (command.split(/\s+/)[0] ?? '').toLowerCase();
         if (program.length > 0) return `exec:${program}`;
       }
@@ -109,21 +121,30 @@ export class PermissionService {
     const verdict = await this.check(toolName, kind, call);
     if (verdict !== 'ask') return verdict === 'allow' ? 'allow' : 'deny';
 
-    // 'never' never dispatches an asker — even one registered later.
-    let answer: AskAnswer;
-    if (this.policy === 'never') {
-      answer = 'deny';
-    } else {
-      try {
-        const raw = await this.ask(call, kind);
-        answer = raw === 'allow' || raw === 'deny' || raw === 'always' ? raw : 'deny';
-      } catch {
-        answer = 'deny';
-      }
-    }
+    const answer = await this.enqueueAsk(call, kind);
 
     if (answer === 'always') this.remembered.add(this.rememberKey(toolName, kind, call));
     this.audit?.({ toolName, kind, outcome: answer });
     return answer === 'deny' ? 'deny' : 'allow';
+  }
+
+  /**
+   * One serialized ask: queued behind every prior ask (each with its own
+   * captured call/kind), immune to a previous asker's failure. 'never'
+   * short-circuits; a throwing asker or an invalid answer denies.
+   */
+  private enqueueAsk(call: ToolCall, kind: PermissionKind): Promise<AskAnswer> {
+    const dispatch = (): AskAnswer | Promise<AskAnswer> => {
+      if (this.policy === 'never') return 'deny';
+      return this.ask(call, kind)
+        .then((raw) => (raw === 'allow' || raw === 'deny' || raw === 'always' ? raw : 'deny'))
+        .catch(() => 'deny' as AskAnswer);
+    };
+    const run = this.askChain.then(dispatch, dispatch);
+    this.askChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 }

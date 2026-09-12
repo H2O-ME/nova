@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ToolExecuteContext, ToolPermissionKind } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
@@ -334,6 +334,10 @@ async function atomicWrite(file: string, content: string): Promise<void> {
   const tmp = path.join(dir, `.nova-tmp-${process.pid}-${(Math.random() * 2 ** 32).toString(36)}`);
   await writeFile(tmp, content, { encoding: 'utf8', flag: 'wx' });
   try {
+    // Carry the replaced file's mode over (exec bit survives edits; a fresh
+    // file keeps the umask default). No-op semantics on Windows — harmless.
+    const prior = await stat(file).catch(() => undefined);
+    if (prior !== undefined) await chmod(tmp, prior.mode);
     await rename(tmp, file);
   } catch (err) {
     await rm(tmp, { force: true }).catch(() => undefined);

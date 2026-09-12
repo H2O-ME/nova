@@ -38,7 +38,15 @@ function snapshot(value: unknown, depth: number, seen: WeakSet<object>): JsonVal
   for (const [key, item] of Object.entries(obj)) {
     const snapped = snapshot(item, depth - 1, seen);
     if (snapped === undefined) return undefined;
-    out[key] = snapped;
+    // A plain `out[key] =` assignment for `__proto__` silently mutates the
+    // prototype instead of creating an own key — the key would vanish from
+    // the snapshot. defineProperty keeps it a real own enumerable property,
+    // so JSON.stringify round-trips it.
+    if (key === '__proto__') {
+      Object.defineProperty(out, key, { enumerable: true, writable: true, configurable: true, value: snapped });
+    } else {
+      out[key] = snapped;
+    }
   }
   return out;
 }

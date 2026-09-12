@@ -140,6 +140,32 @@ describe('PermissionService always-memory scopes', () => {
     expect(asked).toHaveLength(1); // it asked — the prefix grant did not leak
   });
 
+  it('newline chains and command substitution are remembered whole, not by head program', async () => {
+    // Multi-line: bash runs lines sequentially — remembering the head `echo`
+    // would let `echo hi\nrm -rf …` grant a bare `echo` forever.
+    const { ask } = scriptedAsk(['always']);
+    const svc = new PermissionService('read-only', ask);
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'echo hi\nrm -rf /tmp/x' }))).resolves.toBe(
+      'allow',
+    );
+    // Same command modulo whitespace: re-granted from the whole-command key.
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'echo  hi\nrm -rf /tmp/x' }))).resolves.toBe(
+      'allow',
+    );
+    // But the head program alone was NOT granted.
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'echo plain' }))).resolves.toBe('deny');
+
+    // Command substitution: the user approved a program, not an arbitrary
+    // interpolated payload — `$(...)`/backtick force whole-command memory too.
+    const { ask: fresh, asked } = scriptedAsk(['always', 'deny']);
+    const svc2 = new PermissionService('read-only', fresh);
+    await expect(svc2.decide('bash', EXECUTE, call('bash', { command: 'echo $(rm -rf /tmp/x)' }))).resolves.toBe(
+      'allow',
+    );
+    await expect(svc2.decide('bash', EXECUTE, call('bash', { command: 'echo plain' }))).resolves.toBe('deny');
+    expect(asked).toHaveLength(2); // both went through the asker — no prefix leak
+  });
+
   it("non-execute 'always' is remembered per tool name + kind only", async () => {
     const { ask } = scriptedAsk(['always', 'deny', 'deny']);
     const svc = new PermissionService('read-only', ask);
@@ -158,6 +184,51 @@ describe('PermissionService always-memory scopes', () => {
     await expect(svc.check('bash', EXECUTE, call('bash', { command: 'git diff' }))).resolves.toBe('allow');
     await expect(svc.check('bash', EXECUTE, call('bash', { command: 'curl evil' }))).resolves.toBe('ask');
     expect(asked).toHaveLength(1);
+  });
+});
+
+describe('PermissionService ask serialization', () => {
+  it('concurrent ask-path decides dispatch the asker one at a time (TUI modal contract)', async () => {
+    // PTC run_code fires parallel sub-calls through the same PermissionService.
+    // Without serialization both asks race for the single approval modal —
+    // the displaced one never resolves and the run hangs.
+    let releaseFirst: (() => void) | undefined;
+    let secondStarted = false;
+    const ask: AskFn = async (c) => {
+      if (c.id === 'call_a') {
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        return 'always';
+      }
+      secondStarted = true;
+      return 'deny';
+    };
+    const svc = new PermissionService('read-only', ask);
+    const first = svc.decide('bash', EXECUTE, { id: 'call_a', name: 'bash', args: { command: 'git status' }, rawArgs: '{"command":"git status"}' });
+    const second = svc.decide('bash', EXECUTE, { id: 'call_b', name: 'bash', args: { command: 'rm -rf x' }, rawArgs: '{"command":"rm -rf x"}' });
+
+    // While the first ask is pending, the second must not have been dispatched.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(secondStarted).toBe(false);
+
+    releaseFirst?.();
+    await expect(first).resolves.toBe('allow');
+    await expect(second).resolves.toBe('deny');
+    expect(secondStarted).toBe(true);
+  });
+
+  it('a failing ask does not poison the queue — the next ask still runs', async () => {
+    let throwing = true;
+    const ask: AskFn = async () => {
+      if (throwing) throw new Error('modal torn down');
+      return 'allow';
+    };
+    const svc = new PermissionService('read-only', ask);
+    await expect(svc.decide('bash', EXECUTE, call('bash'))).resolves.toBe('deny'); // fail-closed
+    throwing = false;
+    // The chain swallowed the failure: the next ask-path decide dispatches.
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'ls' }))).resolves.toBe('allow');
   });
 });
 

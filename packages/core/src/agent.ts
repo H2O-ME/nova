@@ -436,6 +436,10 @@ async function preflightToolCall(call: ToolCall, opts: AgentOptions): Promise<Pr
       const reason = verdict.reason !== undefined && verdict.reason.length > 0 ? `: ${verdict.reason}` : '';
       return { kind: 'deny', content: `Permission denied${reason}` };
     }
+    // Trust seam: the rewrite lands AFTER the permission gate inside
+    // beforeToolCall has already judged the ORIGINAL args — the rewritten
+    // call is not re-gated (host.ts composes gate then hooks; no built-in
+    // plugin rewrites today).
     if (verdict.action === 'rewrite' && verdict.args) {
       effective = { ...call, args: verdict.args, rawArgs: JSON.stringify(verdict.args) };
     }

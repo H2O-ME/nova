@@ -66,7 +66,13 @@ function snapshotJson(value: unknown, depth: number, seen: WeakSet<object>): unk
   for (const [key, item] of Object.entries(obj)) {
     const snapped = snapshotJson(item, depth - 1, seen);
     if (snapped === undefined) return undefined;
-    out[key] = snapped;
+    // Same `__proto__` contract as ptc/json.ts: keep it an own enumerable
+    // property instead of silently re-pointing the prototype.
+    if (key === '__proto__') {
+      Object.defineProperty(out, key, { enumerable: true, writable: true, configurable: true, value: snapped });
+    } else {
+      out[key] = snapped;
+    }
   }
   return out;
 }
