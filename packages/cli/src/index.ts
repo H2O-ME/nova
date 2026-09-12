@@ -79,11 +79,14 @@ function readStdin(): Promise<string> {
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  if (args.includes('--version') || args.includes('-v')) {
+  // Version/help only match as LEADING flags so a task string like
+  // nova exec "--version" is not mistaken for the flag.
+  const first = args[0];
+  if (first === '--version' || first === '-v') {
     console.log(`nova ${cliVersion()}`);
     return;
   }
-  if (args.includes('--help') || args.includes('-h')) {
+  if (first === '--help' || first === '-h') {
     console.log(HELP);
     return;
   }
@@ -120,6 +123,11 @@ async function main(): Promise<void> {
       console.error('--json 仅在 exec 模式有效');
       process.exitCode = 1;
       return;
+    }
+    // Interactive mode ignores stray positionals (exec handles its own), but
+    // flag them so a typo like `nova epwn` does not silently drop the intent.
+    if (parsed.positional.length > 0) {
+      console.error(`warning: 交互模式忽略多余位置参数：${parsed.positional.join(' ')}（exec 模式请用 nova exec "<task>"）`);
     }
     const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
     if (interactive && !parsed.repl) {

@@ -114,18 +114,21 @@ interface WalkHalt {
  * Recursive directory walk. Skips dot-directories and the heavy standard
  * roots (node_modules / dist / .git), and never follows symlinks — both as a
  * speed measure and so a symlink loop or a link out of the workspace
- * cannot make the search scan foreign paths.
+ * cannot make the search scan foreign paths. The halt flag is checked at
+ * every entry and re-checked before each file callback so an abort signal
+ * stops the in-process walk promptly.
  */
 async function walk(dir: string, onFile: (file: string, dirent: { size: number }) => Promise<void>, halt: WalkHalt): Promise<void> {
   if (halt.halted) return;
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => undefined);
-  if (entries === undefined) return;
+  if (entries === undefined || halt.halted) return;
   for (const entry of entries) {
     if (halt.halted) return;
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
       await walk(path.join(dir, entry.name), onFile, halt);
     } else if (entry.isFile()) {
+      if (halt.halted) return;
       const info = await stat(path.join(dir, entry.name)).catch(() => undefined);
       if (info !== undefined && info.isFile()) await onFile(path.join(dir, entry.name), info);
     }
@@ -264,6 +267,12 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
 
           const results: string[] = [];
           const halt: WalkHalt = { halted: false };
+          // The in-process walk checks halt at every entry; wire the abort
+          // signal so Ctrl+C stops it promptly (the worker path gets the
+          // signal directly via terminate()).
+          const onAbort = (): void => { halt.halted = true; };
+          if (c.signal?.aborted) halt.halted = true;
+          else c.signal?.addEventListener('abort', onAbort, { once: true });
           const relOf = (file: string): string => path.relative(root, file).split(path.sep).join('/');
           const truncatedNote = (): string =>
             halt.halted ? `\n（已达结果上限 ${maxResults}，缩小范围或改用 bash 检索其余部分）` : '';
@@ -294,6 +303,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
               },
               halt,
             );
+            c.signal?.removeEventListener('abort', onAbort);
             if (results.length === 0) return '(no matches)';
             return results.join('\n') + truncatedNote();
           }
@@ -311,6 +321,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
             },
             halt,
           );
+          c.signal?.removeEventListener('abort', onAbort);
           if (results.length === 0) return '(no matches)';
           return results.join('\n') + truncatedNote();
         },

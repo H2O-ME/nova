@@ -327,7 +327,10 @@ export function ptcPlugin(options?: PtcPluginOptions): Plugin {
         // tools): nothing to project onto — pass through untouched.
         if (!all.some((tool) => tool.name === RUN_CODE_NAME)) return req;
         if (sdkSection === undefined) {
-          const sdk = renderToolsSdk(all);
+          // `both` mode: native schemas already carry full parameter types,
+          // so the SDK binding only lists names + one-line summaries (slim).
+          // `ptc` mode: the SDK is the only tool surface, so full types.
+          const sdk = renderToolsSdk(all, { slim: mode === 'both' });
           sdkSection = mode === 'ptc' ? `${PTC_ONLY_NOTE}\n\n${sdk}` : sdk;
         }
         const tools = mode === 'ptc' ? all.filter((tool) => tool.name === RUN_CODE_NAME) : all;

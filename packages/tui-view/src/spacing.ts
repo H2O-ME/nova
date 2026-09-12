@@ -1,24 +1,18 @@
 /**
  * The single spacing rule (Codex cell contract): margins belong to each
  * cell, not to separators. Push sites never insert manual blank blocks —
- * `cli/tui/frame.ts flattenBlocks` appends exactly one blank row after every
+ * `cli/tui/frame.ts flattenBlocks` appends one blank row after every
  * non-empty block (whitespace-only blocks are skipped outright, so empties
  * can never stack a double gap); the trailing margin of the last block is
  * trimmed, and the render layer owns the single breathing row between
  * history and the composer zone.
+ *
+ * `flattenBlocks` tightens this on intra-turn pairs (user→reasoning,
+ * reasoning→assistant get 0 blank rows so the turn reads as one cohesive
+ * unit); the base contract still holds for all other adjacencies.
  */
 
 import { BREATHE_ROWS, HISTORY_MIN_ROWS } from './tokens.js';
-
-/** Question block lines: no leading blank — separation owns the gap. */
-export function questionLines(text: string): string[] {
-  return [text];
-}
-
-/** True when an answer carries no visible content (whitespace only). */
-export function isBlankAnswer(text: string): boolean {
-  return text.trim().length === 0;
-}
 
 /**
  * Viewport slice: clamp the scroll offset to the known history height, then

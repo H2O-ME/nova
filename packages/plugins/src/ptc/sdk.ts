@@ -108,18 +108,31 @@ Inside the program:
 Program-only SDK bindings:`;
 
 /**
- * Render the full SDK prompt section for the current tool set: the usage
- * contract plus a `declare const tools` covering every tool except
- * `run_code` itself. Deterministic (lexicographic order) for cache stability.
+ * Render the SDK prompt section for the current tool set: the usage contract
+ * plus a `declare const tools` covering every tool except `run_code` itself.
+ * Deterministic (lexicographic order) for cache stability.
+ *
+ * In `both` mode (native schemas also sent), `slim` = true skips the full
+ * parameter type declarations — the model already has the native schemas, so
+ * the SDK binding only lists tool names + first description line. This keeps
+ * the section byte-stable (same tool list → same bytes) while saving context.
  */
-export function renderToolsSdk(tools: ToolDefinition[]): string {
+export function renderToolsSdk(tools: ToolDefinition[], opts?: { slim?: boolean }): string {
+  const slim = opts?.slim === true;
   const sorted = [...tools]
     .filter((tool) => tool.name !== RUN_CODE_NAME)
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const members: string[] = [];
   for (const tool of sorted) {
-    members.push(...docLines(tool.description, 1));
-    members.push(`${pad(1)}${renderKey(tool.name)}: ${jsonSchemaToTs(tool.parameters, 1)};`);
+    if (slim) {
+      // First line of description only — the full parameter types live in the
+      // native schema the model already sees.
+      members.push(...docLines(tool.description.split('\n')[0] ?? '', 1));
+      members.push(`${pad(1)}${renderKey(tool.name)}: Record<string, unknown>;`);
+    } else {
+      members.push(...docLines(tool.description, 1));
+      members.push(`${pad(1)}${renderKey(tool.name)}: ${jsonSchemaToTs(tool.parameters, 1)};`);
+    }
   }
   const argsMap = `interface ToolArgsMap {${members.length > 0 ? `\n${members.join('\n')}\n}` : ''}}`;
   const declaration = [

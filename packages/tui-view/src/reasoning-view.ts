@@ -7,7 +7,7 @@
  */
 
 import { wrapLine } from '@nova-agent/tui';
-import { clipToWidth, fitTail } from './clip.js';
+import { fitTail } from './clip.js';
 import type { Palette } from './palette.js';
 import {
   REASONING_INDENT_COLS,
@@ -17,20 +17,6 @@ import {
 
 export { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES };
 
-/**
- * First bold (**…**) span in the buffer — the Codex "reasoning header" that
- * becomes the live status/title line while thinking. Returns undefined until
- * a full **pair** has streamed in (an unclosed `**` just means "wait").
- */
-export function extractReasoningHeader(buffer: string): string | undefined {
-  const open = buffer.indexOf('**');
-  if (open < 0) return undefined;
-  const close = buffer.indexOf('**', open + 2);
-  if (close < 0) return undefined;
-  const inner = buffer.slice(open + 2, close).trim();
-  return inner.length > 0 ? inner : undefined;
-}
-
 export interface ReasoningView {
   /**
    * Live tail text (buffer tail when no header yet, else the header).
@@ -39,7 +25,7 @@ export interface ReasoningView {
    */
   partial: string;
   cols: number;
-  /** @deprecated Unused since the Codex-style single-row rewrite. */
+  /** Settled rows shown above the live tail while auto-expanded. */
   done?: readonly string[];
 }
 
@@ -67,26 +53,6 @@ export function reasoningLiveRow(p: Palette, v: ReasoningView & { done?: readonl
   const rows = visible.map((row) => p.dim(`│ ${row}`));
   if (settled.length === 0 && tailText.length === 0) return [p.dim('⋯')];
   rows.push(p.dim(`│ ${tail}`));
-  return rows;
-}
-
-/**
- * Legacy multi-row window (kept for the test suite only): committed rows are
- * head-preserving single display rows plus one live tail row.
- */
-export function reasoningRows(
-  p: Palette,
-  v: { done: readonly string[]; partial: string; cols: number },
-): string[] {
-  const width = Math.max(10, v.cols - 1 - REASONING_INDENT_COLS);
-  const rows = v.done
-    .filter((line) => line.trim().length > 0)
-    .map((line) => p.dim(clipToWidth(line, width)));
-  // '⋯' is 2 cols + 1 space = 3-col prefix.
-  const tail = v.partial.trim().length > 0
-    ? `⋯ ${fitTail(v.partial, Math.max(1, width - 3))}`
-    : '⋯';
-  rows.push(p.dim(tail));
   return rows;
 }
 

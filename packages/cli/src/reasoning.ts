@@ -3,10 +3,8 @@
  * New code should import tui-view directly.
  */
 export {
-  extractReasoningHeader,
   reasoningDetailRows,
   reasoningLiveRow,
-  reasoningRows,
   REASONING_INDENT_COLS,
   REASONING_LIVE_MAX_ROWS,
   REASONING_MAX_LINES,

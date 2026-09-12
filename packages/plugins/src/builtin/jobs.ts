@@ -7,10 +7,10 @@ function formatStatus(status: string): string {
 
 /**
  * Model-facing control surface for background jobs started via
- * `bash { run_in_background: true }`. Poll-based by design: v1 has no
- * completion-injection channel into the loop, so the model checks
- * `action: 'output'` to observe progress (the inbox-injection extension
- * point is noted in AGENTS.md §7).
+ * `bash { run_in_background: true }`. Jobs that finish naturally
+ * (completed/failed) are announced automatically on the next LLM request
+ * via JobRegistry.drainFinished() — the model does NOT need to poll.
+ * This tool is for reading incremental output or stopping a job early.
  */
 export function jobsPlugin(): Plugin {
   return {

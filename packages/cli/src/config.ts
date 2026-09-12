@@ -92,10 +92,20 @@ export function sessionDateBucket(now: Date = new Date()): string {
   return `${yyyy}/${mm}/${dd}`;
 }
 
-/** Expands `{env:NAME}` references; unset variables expand to an empty string. */
+/**
+ * Expands `{env:NAME}` references. Throws when a referenced variable is
+ * unset — the empty-string fallback was a silent footgun (an empty apiKey
+ * hit the provider as a 401 with no clue why).
+ */
 export function expandRefs(value: string): string {
   return value.replace(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
-    return process.env[name] ?? '';
+    const v = process.env[name];
+    if (v === undefined || v.length === 0) {
+      throw new Error(
+        `config references environment variable {env:${name}} but it is not set (or empty); set it in your shell or use a literal value`,
+      );
+    }
+    return v;
   });
 }
 

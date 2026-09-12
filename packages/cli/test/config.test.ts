@@ -9,8 +9,14 @@ describe('expandRefs', () => {
     process.env['NOVA_TEST_KEY'] = 'secret';
     expect(expandRefs('{env:NOVA_TEST_KEY}')).toBe('secret');
     expect(expandRefs('Bearer {env:NOVA_TEST_KEY}')).toBe('Bearer secret');
-    expect(expandRefs('{env:NOVA_TEST_UNSET_XYZ}')).toBe('');
     delete process.env['NOVA_TEST_KEY'];
+  });
+
+  it('throws naming the missing variable when {env:NAME} is unset', () => {
+    delete process.env['NOVA_TEST_UNSET_XYZ'];
+    expect(() => expandRefs('{env:NOVA_TEST_UNSET_XYZ}')).toThrowError(
+      /NOVA_TEST_UNSET_XYZ/,
+    );
   });
 });
 

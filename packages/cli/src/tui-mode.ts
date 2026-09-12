@@ -531,7 +531,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         trigger,
       });
       messages = outcome.surface;
-      Object.assign(stats, emptyStats());
+      // Cumulative session stats (turns, tokens, cache) are NOT reset on
+      // compaction — they describe the whole session, not the visible window.
+      // Only the per-turn usage anchors reset (the next request starts fresh).
       lastUsage = undefined;
       lastPromptTokens = 0;
       usageAnchor = undefined;

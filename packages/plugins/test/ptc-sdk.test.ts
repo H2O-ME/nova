@@ -82,4 +82,19 @@ describe('renderToolsSdk', () => {
     // deterministic: the same tool set renders byte-identical
     expect(renderToolsSdk([...tools].reverse())).toBe(sdk);
   });
+
+  it('slim mode replaces parameter types with Record<string, unknown> for `both` mode', () => {
+    const tools = [
+      tool('aaa', { type: 'object', properties: { q: { type: 'string' }, r: { type: 'number' }, s: { type: 'array', items: { type: 'string' } } }, required: ['q'], additionalProperties: false }, 'first tool with a long description that wraps into the binding'),
+    ];
+    const full = renderToolsSdk(tools);
+    const slim = renderToolsSdk(tools, { slim: true });
+    // Full mode emits the parameter type ({ q: string; r: number; s: string[] }).
+    expect(full).toContain('q: string');
+    // Slim mode replaces types with Record<string, unknown>.
+    expect(slim).toContain('Record<string, unknown>');
+    expect(slim).not.toContain('q: string');
+    // Determinism preserved.
+    expect(renderToolsSdk([...tools].reverse(), { slim: true })).toBe(slim);
+  });
 });
