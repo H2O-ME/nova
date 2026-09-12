@@ -189,3 +189,33 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 1. **OpenAI 兼容接口缓存语义不一致**：DeepSeek 自动前缀缓存、部分网关需显式参数。已落地 usage/命中率统计与浪费审计；按 provider 的显式参数能力探测表留待后续。
 2. **外部插件加载**：当前仅第一方内置插件；v1 计划支持本地路径 + git URL 安装到 `.nova/plugins/`，尚无 registry。
 3. **容器化建议**：v1 不做进程沙箱，重隔离建议容器化运行（bash/PTC 的信任姿态等同"执行任意命令"）。
+
+## 10. 版本与发布（SemVer 2.0.0）
+
+本项目版本号遵循 **Semantic Versioning 2.0.0**（<https://semver.org/lang/zh-CN/>）。规范第 1 条要求版本升位必须有公共 API 判据——本节即**本项目的公共 API 定义**（文档侧；规范结语建议 README 同样声明，见 README 门面页）。
+
+### 公共 API 面
+
+凡改变以下任一面的可观察行为或签名，即为公共 API 变更；未列入清单的内部实现（模块私有函数、错误文案、事件内部字段等）不构成版本约束。
+
+1. **CLI 用法与参数**：`nova` / `nova exec` 的全部 flags 与形态（`--approval` / `--repl` / `--resume` / `--json` / `-v` / `-h` 等）、`--json` 事件流 schema、进程退出码。
+2. **配置 schema**：`~/.nova/config.json` 的字段名、类型与语义（§3 清单，含 `{env:NAME}` 引用形式）。
+3. **JSONL 会话日志 v2 格式与投影语义**：事件类型（`message` / `compaction/*` / `todo/write` / `approval` / `code-dispatch`）、字段结构、`Session.deriveMessages()` 投影规则、压缩语义。
+4. **插件 API**：`PluginContext`（`registerTool` / `registerCommand` / `registerHook`）、`ToolDefinition`、`ToolExecuteContext`、钩子签名（`beforeLLMCall` / `beforeToolCall` / `afterToolResult`）、审批档位与 `permission` 声明。
+5. **各 `@nova-agent/*` 包公开导出**：`core`（agent 循环 / 消息模型 / 会话）、`ai`（客户端）、`plugins`（容器 / 审批 / 内置工具）、`tui`（终端原语）、`tui-view`（纯视图层）、`cli`（config / 上下文装配 / runner）的公开导出类型与函数。
+
+### 升位映射
+
+| 变更类别 | 判定 | 升位 |
+| --- | --- | --- |
+| 不兼容 | 破坏以上任一 API 面的行为或签名（如日志 v2→v3、插件钩子签名变更） | 记入 RELEASE-NOTES 后升**次版本**（0.y.z 期）/ 主版本（1.0.0 后） |
+| 向后兼容新增 | 新增 flag / 字段 / 工具 / 导出，既有行为不变 | 升**次版本** |
+| 仅修正 | 只修复错误结果，公共 API 面不变 | 升**修订号**（x>0 时） |
+
+### 发布流程（changesets）
+
+- monorepo **fixed 锁步组**：根包与全部 `@nova-agent/*` 共享单一版本号（`privatePackages: { version: true, tag: true }`），7 个 `package.json` 恒一致。
+- 每项面向用户改动提交一份 changeset（`.changeset/*.md`，标注 minor / patch）；仓库根 `package.json` 只放 `"private": true`。
+- 发行：`pnpm changeset`（写变更集）→ `pnpm changeset version`（统一升版 + 生成 CHANGELOG）→ 提交 → `changeset tag`（本地打附注 tag）→ `pnpm release` 一条龙。
+- **已发行版本内容不可变**（规范第 3 条）：绝不 amend / 移动既有 tag；一切修改以新版本向前发行。
+- tag 形式：附注标签 `vX.Y.Z`——v 前缀是 tag 名，版本号本体为无前缀的 `X.Y.Z`（规范 FAQ）。
