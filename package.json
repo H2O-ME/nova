@@ -1,6 +1,6 @@
 {
   "name": "nova-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -15,7 +15,7 @@
     "nova": "node packages/cli/dist/index.mjs",
     "verify": "pnpm build && pnpm typecheck && pnpm test",
     "changeset": "changeset",
-    "release": "changeset version && git add -A && git commit -m \"chore(release): bump versions via changesets\" && changeset tag",
+    "release": "changeset version && node scripts/sync-root-version.mjs && git add -A && git commit -m \"chore(release): bump versions via changesets\" && changeset tag",
     "release:status": "changeset status"
   },
   "pnpm": {

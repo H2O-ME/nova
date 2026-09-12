@@ -1,6 +1,6 @@
 {
   "name": "@nova-agent/tui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Dependency-free terminal UI: line-diff renderer, raw key decoding, width-aware wrapping.",
   "exports": {

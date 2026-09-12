@@ -1,6 +1,6 @@
 {
   "name": "@nova-agent/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "nova CLI: readline REPL over the core agent loop. Data lives in ~/.nova/ outside the working directory.",
   "bin": {

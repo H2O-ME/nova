@@ -1,6 +1,6 @@
 {
   "name": "@nova-agent/tui-view",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Pure view layer for the nova TUI: tokens, labels, clipping, tool lines, status, popups, composer, reasoning, spacing, splash, frame assembly. Zero terminal IO.",
   "exports": {
