@@ -95,7 +95,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const execStartedAt = Date.now();
   const agentRun = agentRunBase({
     client: provider,
-    session,
+    session: () => session,
     rootDir: () => rootDir,
     messages: () => messages,
     tools: () => host.tools,

@@ -1,4 +1,3 @@
-import os from 'node:os';
 import path from 'node:path';
 import { OpenAICompatClient } from '@nova-agent/ai';
 import {
@@ -51,7 +50,14 @@ export interface SessionRuntime {
   spillReadRoot: string;
   /** Re-seed the context fragment for a fresh session (/new). */
   buildFragment: () => string;
-  seedContextFragment: () => Promise<void>;
+  /**
+   * Seed the context fragment into the GIVEN session/message surface.
+   * Interactive runners rebind `session`/`messages` on /new and session
+   * switch — after a rebind they MUST pass the current bindings here and
+   * MUST NOT read `rt.session`/`rt.messages` (those still point at the old
+   * session; the runtime has no visibility into runner-side rebinding).
+   */
+  seedContextFragment: (session: Session, messages: AgentMessage[]) => Promise<void>;
   /** Reload project docs + skills for a workspace switch. Returns updated skills. */
   reloadWorkspaceContext: (dir: string) => Promise<SkillMetadata[]>;
   /** Stable-byte system prompt string. */
@@ -112,9 +118,10 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     host.use(plugin);
   }
 
+  const userSkillsDir = path.join(novaHome(), 'skills');
   const skills = await loadSkills([
     { dir: path.join(rootDir, NOVA_DIR, 'skills'), level: 'project' },
-    { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
+    { dir: userSkillsDir, level: 'user' },
   ]);
   if (skills.length > 0) host.use(skillsPlugin(skills));
   await host.activate();
@@ -129,12 +136,12 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
   const skillsHolder: { value: SkillMetadata[] } = { value: skills };
   const buildFragment = (): string =>
     buildContextFragment(sessionEnv, config.systemPrompt, skillsHolder.value, projectDocsHolder.value);
-  const seedContextFragment = async (): Promise<void> => {
+  const seedContextFragment = async (target: Session, surface: AgentMessage[]): Promise<void> => {
     const seed: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: buildFragment() };
-    messages.push(seed);
-    await session.append(seed);
+    surface.push(seed);
+    await target.append(seed);
   };
-  if (!opts.resumeFile) await seedContextFragment();
+  if (!opts.resumeFile) await seedContextFragment(session, messages);
 
   /**
    * Reload project docs + skills for a workspace switch (/new after workspace
@@ -146,7 +153,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     projectDocsHolder.value = await collectProjectDocs(dir, process.cwd());
     skillsHolder.value = await loadSkills([
       { dir: path.join(dir, NOVA_DIR, 'skills'), level: 'project' },
-      { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
+      { dir: userSkillsDir, level: 'user' },
     ]);
     return skillsHolder.value;
   };

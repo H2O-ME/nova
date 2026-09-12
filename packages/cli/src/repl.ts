@@ -136,7 +136,8 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     for (const warning of session.warnings) console.log(paint.yellow(`  ${warning}`));
   }
   const approvalMode = rt.approvalMode;
-  // seedContextFragment comes from the runtime; /new reuses it.
+  // seedContextFragment comes from the runtime; /new reuses it with the
+  // CURRENT session/messages bindings (never rt.session — see its docstring).
   const seedContextFragment = rt.seedContextFragment;
   // /new creates a fresh session in the current date bucket (cross-day runs).
   const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
@@ -216,7 +217,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     if (answer.startsWith('y')) return 'allow';
     return 'deny';
   };
-  const permission = createApprovalService(approvalMode, askApproval, session);
+  const permission = createApprovalService(approvalMode, askApproval, () => session);
   const hooks = host.agentHooks(permission);
   const systemPrompt = rt.systemPrompt;
   const toolTiming = new ToolTiming();
@@ -281,7 +282,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   /** Shared runAgent kwargs (runner-shared); per-call: signal + tool progress. */
   const agentRun = agentRunBase({
     client,
-    session,
+    session: () => session,
     rootDir: () => rootDir,
     messages: () => messages,
     tools: () => host.tools,
@@ -416,7 +417,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           lastPromptTokens = 0;
           usageAnchor = undefined;
           anchorMsgCount = 0;
-          await seedContextFragment();
+          await seedContextFragment(session, messages);
           console.log(`新会话：${session.file}`);
           break;
         }

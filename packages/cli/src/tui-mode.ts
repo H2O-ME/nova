@@ -231,7 +231,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     skills = await reloadWorkspaceContext(dir);
     await rebuildHost();
   };
-  if (!opts.resumeFile) await seedContextFragment();
+  if (!opts.resumeFile) await seedContextFragment(session, messages);
 
   /**
    * Approval popup + long-turn completion/error surface as OS notifications
@@ -262,7 +262,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       notify('需要审批', `${toolLabel(call.name)} · ${toolArgSummary(call.name, call.rawArgs, 80)}`);
       scheduleRender();
     });
-  const permission = createApprovalService(approvalMode, askApproval, session);
+  const permission = createApprovalService(approvalMode, askApproval, () => session);
   // Reassigned by rebuildHost(): the agent loop must read hooks from the
   // SAME host instance it reads tools from (one rebuild = tools + projection).
   let hooks = host.agentHooks(permission);
@@ -407,7 +407,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   /** Shared runAgent kwargs (runner-shared); per-call: signal + tool progress. */
   const agentRun = agentRunBase({
     client,
-    session,
+    session: () => session,
     rootDir: () => rootDir,
     messages: () => messages,
     tools: () => host.tools,
@@ -996,7 +996,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         usageAnchor = undefined;
         anchorMsgCount = 0;
         resetSessionCache();
-        await seedContextFragment();
+        await seedContextFragment(session, messages);
         store.pushBlock([`${DIM}  新会话：${session.file}${RESET}`]);
         return true;
       }

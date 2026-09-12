@@ -55,11 +55,20 @@ export const LONG_TASK = {
 export function createApprovalService(
   approvalMode: ApprovalMode,
   askApproval: AskFn,
-  session: Session,
+  getSession: () => Session,
 ): PermissionService {
   return new PermissionService(approvalMode, askApproval, (entry) => {
-    void session
-      .appendEvent({ type: 'approval', toolName: entry.toolName, kind: entry.kind, outcome: entry.outcome, at: Date.now() })
+    // Accessor, not a captured Session: repl/tui rebind their `session`
+    // binding on /new and session switch, and the audit entry must land in
+    // the CURRENT session's log.
+    void getSession()
+      .appendEvent({
+        type: 'approval',
+        toolName: entry.toolName,
+        kind: entry.kind,
+        outcome: entry.outcome,
+        at: Date.now(),
+      })
       .catch(() => {});
   });
 }
@@ -182,7 +191,9 @@ export function createAutoCompact(deps: AutoCompactDeps): {
  */
 export function agentRunBase(deps: {
   client: ChatProvider;
-  session: Session;
+  /** Accessor, not a value: repl/tui rebind `session` on /new and session
+   * switch — cacheDir grouping and event emit must follow the CURRENT log. */
+  session: () => Session;
   rootDir: () => string;
   messages: () => AgentMessage[];
   tools: () => ToolDefinition[];
@@ -199,10 +210,10 @@ export function agentRunBase(deps: {
     messages: deps.messages(),
     rootDir: deps.rootDir(),
     // Spilled tool outputs are grouped per session (id is globally unique).
-    cacheDir: path.join(novaHome(), 'cache', 'tool-outputs', deps.session.id),
+    cacheDir: path.join(novaHome(), 'cache', 'tool-outputs', deps.session().id),
     jobs: deps.jobs,
     emit: async (evt) => {
-      await deps.session.appendEvent(evt);
+      await deps.session().appendEvent(evt);
     },
     tools: deps.tools(),
     hooks: deps.hooks(),
