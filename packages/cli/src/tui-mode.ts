@@ -6,13 +6,9 @@ import {
   APPROVAL_PREVIEW_MAX_ROWS,
   BREATHE_ROWS,
   COMPOSER_MAX_ROWS,
-  DOUBLE_CTRLC_MS,
-  PASTE_MAX_CHARS,
-  REASONING_FULL_MAX_LINES,
+  REASONING_FULL_MAX_CHARS,
   REASONING_MAX_PARTIAL_CHARS,
   RENDER_BUDGET_MS,
-  MODEL_PICKER_WINDOW,
-  SESSION_PICKER_WINDOW,
   SESSION_LIST_LIMIT,
   STATUS_ROWS,
   SPINNER_TICK_MS,
@@ -61,7 +57,7 @@ import {
 import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
-import { reasoningDetailRows, reasoningRows, REASONING_MAX_LINES, summaryRow } from './reasoning.js';
+import { reasoningLiveRow, summaryRow } from './reasoning.js';
 import { createNotifier } from './notify.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
@@ -74,7 +70,6 @@ import {
   clipToWidth,
   contextGaugeForms,
   contextLegend,
-  cursorAfterVerticalMove,
   fitTail,
   humanTokens,
   isFailureContent,
@@ -96,6 +91,8 @@ import {
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
 import { createApprovalService, LONG_TASK, maxTurnsHint } from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
+import { TuiStore, type Block } from './tui/store.js';
+import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import {
   codeModeLabel,
   contextBreakdown,
@@ -122,20 +119,6 @@ const RESET = '\x1b[0m';
 
 /** Composer prompt prefix; the cursor column math depends on its width. */
 // （COMPOSER_PREFIX / 宽度基准已移至 ./composer.ts——换行预算与光标列数都在那边。）
-
-interface Block {
-  lines: string[];
-  wrapped: string[] | undefined;
-  /**
-   * Hanging-indent gutter applied at wrap time: the block's first non-empty
-   * row gets `first` (marker + lane), every other row — including rows
-   * produced by soft wrapping — aligns under it with `rest`.
-   */
-  gutter?: { first: string; rest: string };
-  /** 可展开的思考摘要：全文行 + 耗时（仅存内存，不落盘）；expanded 记状态。 */
-  detail?: { lines: string[]; secs: number };
-  expanded?: boolean;
-}
 
 export async function startTui(opts: TuiOptions): Promise<void> {
   const { config } = opts;
@@ -354,20 +337,27 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let approvalIndex = 0;
   /** Best-effort effect preview lines for the pending approval (async-filled). */
   let approvalPreview: string[] | undefined;
-  /** Approval options as result codes; labels live in tui-view APPROVAL_OPTIONS. */
-  const APPROVAL_CHOICES = ['allow', 'always', 'deny'] as const;
   let spinnerFrame = 0;
   let exitNow: (() => void) | undefined;
   let lastCtrlC = 0;
   /** Timestamp of the last Esc/Ctrl+C interrupt request; 0 when idle. Drives the "正在中断…" feedback. */
   let interruptAt = 0;
 
+  let blocksVersion = 0;
   // Blocks never touch scrollFromEnd: when the user has scrolled up, the
   // viewport stays anchored to their position instead of snapping to bottom
   // on every streamed token.
-  const pushBlock = (lines: string[], gutter?: Block['gutter']): void => {
-    blocks.push({ lines, wrapped: undefined, ...(gutter !== undefined ? { gutter } : {}) });
+  const pushBlock = (lines: string[], gutter?: Block['gutter'], kind?: Block['kind']): Block => {
+    const b: Block = {
+      lines,
+      wrapped: undefined,
+      ...(gutter !== undefined ? { gutter } : {}),
+      ...(kind !== undefined ? { kind } : {}),
+    };
+    blocks.push(b);
+    blocksVersion += 1;
     scheduleRender();
+    return b;
   };
   const updateLastBlock = (lines: string[]): void => {
     if (blocks.length === 0) {
@@ -378,6 +368,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (last === undefined) return;
     last.lines = lines;
     last.wrapped = undefined;
+    blocksVersion += 1;
     scheduleRender();
   };
   const replaceBlock = (block: Block, lines: string[]): void => {
@@ -389,6 +380,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       block.lines = lines;
       block.wrapped = undefined;
     }
+    blocksVersion += 1;
     scheduleRender();
   };
   /**
@@ -428,6 +420,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const removeBlock = (block: Block): void => {
     const idx = blocks.indexOf(block);
     if (idx >= 0) blocks.splice(idx, 1);
+    blocksVersion += 1;
     scheduleRender();
   };
 
@@ -597,12 +590,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: userInput };
     messages.push(userMsg);
     await session.append(userMsg);
-    // Spacing rule (tui-view/spacing.ts): no leading blank inside the turn —
-    // the answer separator owns the question→answer gap.
-    pushBlock([userInput], {
-      first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`,
-      rest: `    ${BOLD}`,
-    });
+    // Spacing (Codex cell contract): blocks carry no manual separators —
+    // flattenBlocks inserts the single blank row between non-empty blocks.
+    pushBlock(
+      [userInput],
+      {
+        first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`,
+        rest: `    ${BOLD}`,
+      },
+      'user',
+    );
 
     await maybePreCompact();
 
@@ -627,15 +624,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     /** Incremental markdown renderer; re-created when a new answer opens. */
     let md: MarkdownRenderer | undefined;
     /**
-     * Reasoning live window (pure builder in ./reasoning.ts): committed lines
-     * are trimmed, blank-free and clipped to ONE display row each; the tail
-     * row is the only thing that repaints per delta. Block height is stable
-     * once full — nothing re-wraps, nothing reflows.
+     * Reasoning, Codex-style: deltas accumulate in a memory buffer; the
+     * transcript keeps ONE transient row (buffer tail, or the first **bold**
+     * header once streamed in). Fold replaces it with a single "thought"
+     * summary — nothing grows mid-turn, nothing reflows.
      */
-    const reasoningDone: string[] = [];
-    /** 全文累积（定格行 + 收尾活尾），折叠时挂到摘要块供点击展开。 */
+    /** Raw reasoning buffer: memory-only, never rendered line-by-line. */
+    let reasoningBuffer = '';
+    /** Paragraph-split mirror of the buffer: the click-expand detail. */
     const reasoningFull: string[] = [];
-    let reasoningPartial = '';
     let reasoningOpen = false;
     let reasoningStartedAt = 0;
     /**
@@ -645,18 +642,19 @@ export async function startTui(opts: TuiOptions): Promise<void> {
      */
     const foldToSummary = (): boolean => {
       const block = reasoningBlock;
-      const had = block !== undefined && (reasoningDone.length > 0 || reasoningPartial.length > 0);
+      const had = block !== undefined && reasoningBuffer.trim().length > 0;
       const secs = reasoningStartedAt > 0
         ? Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
         : 0;
       reasoningBlock = undefined;
       reasoningStartedAt = 0;
       if (had && block !== undefined) {
-        // 全文 = 定格行 + 收尾时的活尾；挂到摘要块上，点击 toggle 用。
-        const tail = reasoningPartial.trim();
-        if (tail.length > 0) reasoningFull.push(tail);
-        block.detail = { lines: reasoningFull.slice(), secs };
+        // Detail = paragraph-split buffer (blank lines preserved — the
+        // quote-lane renderer draws them as `│`);挂到摘要块上，点击 toggle 用。
+        const lines = reasoningBuffer.split('\n').map((line) => line.trimEnd());
+        block.detail = { lines, secs };
         block.expanded = false;
+        reasoningBuffer = '';
         reasoningFull.length = 0;
         replaceBlock(block, [summaryRow(paint, secs, false)]);
         scheduleRender();
@@ -702,20 +700,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               genPhase = 'writing';
               reasoningOpen = false;
               closeReadGroup();
-              const folded = foldToSummary();
-              reasoningDone.length = 0;
-              reasoningPartial = '';
+              // Codex cell contract: margins belong to each cell. The thought
+              // summary folded below already carries its own trailing blank,
+              // so the answer opens with NO separator — flattenBlocks owns the
+              // single blank row between non-empty blocks.
+              foldToSummary();
               md = createMarkdownRenderer(paint);
-              // A dedicated separator block between the question and the
-              // answer — the answer gets its OWN block so the separator
-              // survives every delta update. 刚折出「已思考」摘要时不推：
-              // 摘要与答案同属本轮回答，轮内不留空行。
-              if (folded) {
-                assistantSeparator = undefined; // 答案紧跟摘要，不持有分隔块
-              } else {
-                pushBlock(['']);
-                assistantSeparator = blocks[blocks.length - 1];
-              }
+              assistantSeparator = undefined;
             }
             assistantText += text;
             // Claude Code / codex both anchor each reply with a dot marker.
@@ -725,7 +716,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             // trailing unfinished line re-renders per delta.
             const lines = md !== undefined ? md.push(text) : [];
             if (assistantBlock === undefined) {
-              pushBlock(lines, { first: `  ${DIM}•${RESET} `, rest: '    ' });
+              pushBlock(lines, { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
               assistantBlock = blocks[blocks.length - 1];
             } else {
               replaceBlock(assistantBlock, lines);
@@ -733,44 +724,37 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           },
           appendReasoning(text: string) {
             tpsTokens += estimateTextTokens(text);
-            if (assistantOpen) return;
+            if (assistantOpen && assistantText.trim().length > 0) return;
+            if (assistantOpen && assistantText.trim().length === 0) {
+              assistantOpen = false;
+            }
             genPhase = 'thinking';
             if (!reasoningOpen) {
               reasoningOpen = true;
               reasoningStartedAt = Date.now();
-              reasoningDone.length = 0;
+              reasoningBuffer = '';
               reasoningFull.length = 0;
-              reasoningPartial = '';
-              // Reasoning is secondary content: every row sits at the text
-              // column (no marker on the first row — an unmarked first row at
-              // the marker column just reads as a stray outdented line).
-              // 轮内不推空行：问题→思考→答案是一组，空行只属于轮与轮之间。
-              pushBlock([], { first: '    ', rest: '    ' });
+              // Auto-expanded while streaming: the newest reasoning lines are
+              // visible live (tail-capped); completion folds them away. Every
+              // row sits at the text column (no marker on the first row — an
+              // unmarked first row at the marker column just reads as a
+              // stray outdented line).
+              pushBlock(['⋯'], { first: '    ', rest: '    ' }, 'reasoning');
               reasoningBlock = blocks[blocks.length - 1];
             }
-            // Split complete lines off the live buffer; only the tail row
-            // churns, committed rows above it are stable across deltas.
-            const parts = `${reasoningPartial}${text}`.split('\n');
-            reasoningPartial = parts.pop() ?? '';
-            for (const line of parts) {
-              // 模型思考里的空行（段落间隔）绝不进窗口：空行挤占两格定格位，
-              // 屏幕上就是忽隐忽现的空隙——「间距失控」的直接来源。
-              const settled = line.trim();
-              if (settled.length === 0) continue;
-              reasoningDone.push(settled);
-              if (reasoningDone.length > REASONING_MAX_LINES) reasoningDone.shift();
-              reasoningFull.push(settled);
-              if (reasoningFull.length > REASONING_FULL_MAX_LINES) reasoningFull.shift();
+            // The buffer is the truth (memory-only detail); the block shows
+            // settled lines newest-first plus one live tail row — capped at
+            // REASONING_LIVE_MAX_ROWS so long thoughts can't flood the view.
+            reasoningBuffer += text;
+            if (reasoningBuffer.length > REASONING_FULL_MAX_CHARS) {
+              reasoningBuffer = reasoningBuffer.slice(-REASONING_FULL_MAX_CHARS);
             }
-            // A paragraph without newlines must not grow forever (memory):
-            // keep only the tail of the live line. Display clipping to one
-            // row happens in reasoningRows, by real column budget.
-            if (reasoningPartial.length > REASONING_MAX_PARTIAL_CHARS) {
-              reasoningPartial = `…${reasoningPartial.slice(-REASONING_MAX_PARTIAL_CHARS)}`;
-            }
-            const lines = reasoningRows(paint, {
-              done: reasoningDone,
-              partial: reasoningPartial,
+            const parts = reasoningBuffer.split('\n');
+            const livePartial = (parts.pop() ?? '').replace(/\s+$/u, '').slice(-REASONING_MAX_PARTIAL_CHARS);
+            const done = parts.map((line) => line.trimEnd()).filter((line) => line.trim().length > 0);
+            const lines = reasoningLiveRow(paint, {
+              done,
+              partial: livePartial,
               cols: screen.cols,
             });
             // The update goes to the block's stable ref — the last block may
@@ -790,8 +774,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           },
           foldReasoning() {
             foldToSummary();
-            reasoningDone.length = 0;
-            reasoningPartial = '';
+            reasoningBuffer = '';
             reasoningOpen = false;
           },
           resetAssistant() {
@@ -807,9 +790,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             discardReasoning();
             reasoningStartedAt = 0;
             reasoningOpen = false;
-            reasoningDone.length = 0;
+            reasoningBuffer = '';
             reasoningFull.length = 0;
-            reasoningPartial = '';
           },
         });
       }
@@ -839,8 +821,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // tail here so no transient line survives into history.
       discardReasoning();
       reasoningOpen = false;
-      reasoningDone.length = 0;
-      reasoningPartial = '';
+      reasoningBuffer = '';
       closeReadGroup();
       // Runtime invariant (NOVA_DEBUG): the live surface must stay equal to
       // the session log projection — "model-visible means logged".
@@ -1208,7 +1189,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * log, restore the model-visible surface, and replay user/assistant text
    * into a fresh transcript (tool traffic stays in the log, not re-rendered).
    */
-  async function switchToSession(entry: SessionEntry): Promise<void> {
+  async function switchToSession(entry: { file: string }): Promise<void> {
     if (streaming || compactRunning) {
       pushBlock([`${YELLOW}  当前轮未结束：先 Esc 中断，再切换会话${RESET}`]);
       scheduleRender();
@@ -1256,9 +1237,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     for (const m of restored) {
       if (m.role === 'user') {
         if (m.content.trimStart().startsWith('<')) continue;
-        pushBlock([m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` });
+        pushBlock([m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` }, 'user');
       } else if (m.role === 'assistant' && m.content.trim().length > 0) {
-        pushBlock([m.content], { first: `  ${DIM}•${RESET} `, rest: '    ' });
+        pushBlock([m.content], { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
       }
     }
     pushBlock([
@@ -1336,365 +1317,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     void agentTurn(effective);
   }
 
-  /**
-   * 键路由按优先级责任链分派：审批弹窗 → 模型面板 → 会话面板 → 全局键 →
-   * composer/命令面板。每层吃掉自己认识的键返回 true，不认识的落下层；
-   * handleKey 只负责链的顺序与统一的 scheduleRender 落点。层顺序就是
-   * 互斥语义（弹窗打开时任何键都进弹窗，绝不漏到 composer）。
-   */
-  function handleKey(k: Key): void {
-    if (keyClick(k)) return;
-    if (keyApprovalModal(k)) return;
-    if (keyModelPicker(k)) return;
-    if (keySessionPicker(k)) return;
-    if (keyGlobal(k)) return;
-    keyComposerAndPopup(k);
-    scheduleRender();
-  }
-
-  /** 左键点击：命中可展开的「已思考」摘要块（含其展开正文）则 toggle；
-   * 其余区域静默吞掉——点击绝不能漏进 composer；弹窗/面板打开时不响应。 */
-  function keyClick(k: Key): boolean {
-    if (k.type !== 'click') return false;
-    if (approvalRequest !== undefined || modelPicker !== undefined || sessionPicker !== undefined) {
-      return true;
-    }
-    const map = frameMap;
-    if (map !== undefined) {
-      const row = k.y - 1; // SGR 行号 1 基
-      if (row >= 0 && row < map.historyRows) {
-        const flatIdx = map.sliceStart + row;
-        for (const seg of map.rows) {
-          if (flatIdx >= seg.start && flatIdx < seg.start + seg.count) {
-            toggleReasoningBlock(seg.block);
-            break;
-          }
-        }
-      }
-    }
-    return true;
-  }
-
-  function toggleReasoningBlock(block: Block): void {
-    if (block.detail === undefined) return;
-    const expanded = block.expanded !== true;
-    block.expanded = expanded;
-    replaceBlock(
-      block,
-      expanded
-        ? [summaryRow(paint, block.detail.secs, true), ...reasoningDetailRows(paint, block.detail.lines)]
-        : [summaryRow(paint, block.detail.secs, false)],
-    );
-  }
-
-  /** 审批弹窗打开时吞掉一切键（codex 式 ↑↓ 选择 · Enter 确认；y/a/n 与 1/2/3 快捷）。 */
-  function keyApprovalModal(k: Key): boolean {
-    if (approvalRequest === undefined) return false;
-    const resolve = (answer: 'allow' | 'deny' | 'always'): void => {
-      approvalRequest?.resolve(answer);
-      approvalRequest = undefined;
-      approvalPreview = undefined;
-    };
-    if (k.type === 'ctrl+c') {
-      resolve('deny');
-      aborters.at(-1)?.abort();
-      scheduleRender();
-      return true;
-    }
-    if (k.type === 'up') approvalIndex = Math.max(0, approvalIndex - 1);
-    else if (k.type === 'down') approvalIndex = Math.min(APPROVAL_CHOICES.length - 1, approvalIndex + 1);
-    else if (k.type === 'enter') {
-      resolve(APPROVAL_CHOICES[approvalIndex] ?? 'deny');
-    } else if (k.type === 'char') {
-      if (k.ch === 'y' || k.ch === 'Y') resolve('allow');
-      else if (k.ch === 'a' || k.ch === 'A') resolve('always');
-      else if (k.ch === 'n' || k.ch === 'N') resolve('deny');
-      else if (k.ch === '1') approvalIndex = 0;
-      else if (k.ch === '2') approvalIndex = 1;
-      else if (k.ch === '3') approvalIndex = 2;
-    } else if (k.type === 'esc') {
-      resolve('deny');
-    }
-    scheduleRender();
-    return true;
-  }
-
-  /** 模型面板吞键（↑↓/翻页滚动 · Enter 切换 · Esc 取消；其余键静默吞掉）。 */
-  function keyModelPicker(k: Key): boolean {
-    if (modelPicker === undefined) return false;
-    const picker = modelPicker;
-    const winSize = Math.min(MODEL_PICKER_WINDOW, picker.models.length);
-    if (k.type === 'ctrl+c' || k.type === 'esc') {
-      modelPicker = undefined;
-    } else if (k.type === 'up') {
-      picker.index = Math.max(0, picker.index - 1);
-    } else if (k.type === 'down') {
-      picker.index = Math.min(picker.models.length - 1, picker.index + 1);
-    } else if (k.type === 'pageup') {
-      picker.index = Math.max(0, picker.index - winSize);
-    } else if (k.type === 'pagedown') {
-      picker.index = Math.min(picker.models.length - 1, picker.index + winSize);
-    } else if (k.type === 'wheelup') {
-      picker.index = Math.max(0, picker.index - 1);
-    } else if (k.type === 'wheeldown') {
-      picker.index = Math.min(picker.models.length - 1, picker.index + 1);
-    } else if (k.type === 'enter') {
-      const model = picker.models[picker.index];
-      modelPicker = undefined;
-      if (model !== undefined && model !== client.model) {
-        client.setModel(model);
-        pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
-        void refreshModelMeta();
-      } else if (model !== undefined) {
-        pushBlock([`${DIM}  已是当前模型：${model}${RESET}`]);
-      }
-    } else {
-      return true; // any other key: swallowed by the picker, never reaches the composer
-    }
-    scheduleRender();
-    return true;
-  }
-
-  /** 会话面板吞键（同模型面板语义；Enter 恢复会话）。 */
-  function keySessionPicker(k: Key): boolean {
-    if (sessionPicker === undefined) return false;
-    const picker = sessionPicker;
-    const winSize = Math.min(SESSION_PICKER_WINDOW, picker.entries.length);
-    if (k.type === 'ctrl+c' || k.type === 'esc') {
-      sessionPicker = undefined;
-    } else if (k.type === 'up' || k.type === 'wheelup') {
-      picker.index = Math.max(0, picker.index - 1);
-    } else if (k.type === 'down' || k.type === 'wheeldown') {
-      picker.index = Math.min(picker.entries.length - 1, picker.index + 1);
-    } else if (k.type === 'pageup') {
-      picker.index = Math.max(0, picker.index - winSize);
-    } else if (k.type === 'pagedown') {
-      picker.index = Math.min(picker.entries.length - 1, picker.index + winSize);
-    } else if (k.type === 'enter') {
-      const entry = picker.entries[picker.index];
-      sessionPicker = undefined;
-      if (entry !== undefined && entry.file !== session.file) {
-        void switchToSession(entry);
-      } else if (entry !== undefined) {
-        pushBlock([`${DIM}  已是当前会话${RESET}`]);
-      }
-    } else {
-      return true;
-    }
-    scheduleRender();
-    return true;
-  }
-
-  /**
-   * 全局键（弹窗之外任何时刻生效）：Ctrl+C 三段（中断 → 清输入 → 双按退出）、
-   * Ctrl+D 退出、流式中 Esc 中断。处理过的键吃掉，其余落下层。
-   */
-  function keyGlobal(k: Key): boolean {
-    if (k.type === 'ctrl+c') {
-      if (streaming) {
-        interruptAt = Date.now();
-        aborters.at(-1)?.abort();
-        scheduleRender();
-        return true;
-      }
-      if (input.length > 0) {
-        input = '';
-        cursorPos = 0;
-        scheduleRender();
-        return true;
-      }
-      const now = Date.now();
-      if (now - lastCtrlC < DOUBLE_CTRLC_MS) {
-        exitApp();
-        return true;
-      }
-      lastCtrlC = now;
-      scheduleRender();
-      return true;
-    }
-    if (k.type === 'ctrl+d') {
-      if (!streaming) exitApp();
-      return true;
-    }
-    if (k.type === 'esc' && streaming) {
-      interruptAt = Date.now();
-      aborters.at(-1)?.abort();
-      scheduleRender();
-      return true;
-    }
-    return false;
-  }
-
-  /** Composer 编辑与命令面板：编辑键、历史、滚动、面板导航/补全/执行。 */
-  function keyComposerAndPopup(k: Key): void {
-    const popupMatches = commandPopupMatches();
-
-    switch (k.type) {
-      case 'enter': {
-        if (popupMatches.length > 0) {
-          const selected = popupMatches[Math.min(popupIndex, popupMatches.length - 1)];
-          if (selected !== undefined) {
-            // 回车直接执行选中的命令（codex 面板语义），不再"补全加空格等
-            // 二次回车"。带参数的命令用 Tab 补全：一旦输入空格面板即关闭
-            // （filterCommands 只匹配裸命令），参数不会被丢弃。
-            input = selected.name;
-            cursorPos = input.length;
-            void handleSubmit();
-          }
-          break;
-        }
-        void handleSubmit();
-        break;
-      }
-      case 'tab': {
-        if (popupMatches.length > 0) {
-          const selected = popupMatches[Math.min(popupIndex, popupMatches.length - 1)];
-          if (selected !== undefined) {
-            input = `${selected.name} `;
-            cursorPos = input.length;
-          }
-        } else if (sessionPristine()) {
-          // 新会话未开始：Tab 循环 普通 → PTC → 混合 执行模式。
-          void toggleCodeMode();
-        }
-        break;
-      }
-      case 'esc':
-        popupDismissed = true;
-        popupIndex = 0;
-        break;
-      case 'up': {
-        if (popupMatches.length > 0) {
-          popupIndex = Math.max(0, popupIndex - 1);
-          break;
-        }
-        // Multi-line input: arrows walk the wrapped rows (visual column kept),
-        // not the prompt history — history returns once the input is one line.
-        if (input.includes('\n')) {
-          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerWrapBudget(screen.cols), -1);
-          break;
-        }
-        if (historyIdx === -1) {
-          historyDraft = input;
-          historyIdx = historyStack.length - 1;
-        } else if (historyIdx > 0) {
-          historyIdx -= 1;
-        }
-        if (historyIdx >= 0) {
-          input = historyStack[historyIdx] ?? '';
-          cursorPos = input.length;
-        }
-        break;
-      }
-      case 'down': {
-        if (popupMatches.length > 0) {
-          popupIndex = Math.min(popupMatches.length - 1, popupIndex + 1);
-          break;
-        }
-        if (input.includes('\n')) {
-          cursorPos = cursorAfterVerticalMove(input, cursorPos, composerWrapBudget(screen.cols), 1);
-          break;
-        }
-        if (historyIdx >= 0) {
-          historyIdx += 1;
-          if (historyIdx >= historyStack.length) {
-            historyIdx = -1;
-            input = historyDraft;
-          } else {
-            input = historyStack[historyIdx] ?? '';
-          }
-          cursorPos = input.length;
-        }
-        break;
-      }
-      // 滚动键自行 preemptRender/scheduleRender 后直接返回（不等链尾统一调度）。
-      case 'pageup':
-        scrollFromEnd = Math.min(scrollFromEnd + Math.max(3, screen.rows - 6), totalWrappedLines());
-        scheduleRender();
-        return;
-      case 'pagedown':
-        scrollFromEnd = Math.max(0, scrollFromEnd - Math.max(3, screen.rows - 6));
-        scheduleRender();
-        return;
-      case 'wheelup':
-        // Wheel notch ≈ 3 lines; paint synchronously so scrolling feels
-        // attached to the wheel instead of lagging a frame behind.
-        scrollFromEnd = Math.min(scrollFromEnd + 3, totalWrappedLines());
-        preemptRender();
-        return;
-      case 'wheeldown':
-        scrollFromEnd = Math.max(0, scrollFromEnd - 3);
-        preemptRender();
-        return;
-      case 'left':
-        cursorPos = Math.max(0, cursorPos - 1);
-        break;
-      case 'right':
-        cursorPos = Math.min(input.length, cursorPos + 1);
-        break;
-      case 'home':
-        cursorPos = 0;
-        break;
-      case 'end':
-        cursorPos = input.length;
-        break;
-      case 'backspace':
-        if (cursorPos > 0) {
-          input = input.slice(0, cursorPos - 1) + input.slice(cursorPos);
-          cursorPos -= 1;
-        }
-        popupDismissed = false;
-        break;
-      case 'delete':
-        input = input.slice(0, cursorPos) + input.slice(cursorPos + 1);
-        popupDismissed = false;
-        break;
-      case 'ctrl+u':
-        input = input.slice(cursorPos);
-        cursorPos = 0;
-        popupDismissed = false;
-        break;
-      case 'ctrl+w': {
-        const before = input.slice(0, cursorPos).trimEnd();
-        const cut = before.lastIndexOf(' ');
-        input = (cut >= 0 ? before.slice(0, cut + 1) : '') + input.slice(cursorPos);
-        cursorPos = cut >= 0 ? cut + 1 : 0;
-        popupDismissed = false;
-        break;
-      }
-      case 'char':
-        input = input.slice(0, cursorPos) + k.ch + input.slice(cursorPos);
-        cursorPos += k.ch.length;
-        popupDismissed = false;
-        break;
-      case 'paste': {
-        // Multi-line paste stays multi-line (the composer soft-wraps it);
-        // other control characters are dropped — a pasted escape sequence
-        // must never reach the UI. Tabs become spaces so no raw \t can
-        // corrupt a rendered row.
-        let cleaned = k.text
-          .replace(/\r\n?/g, '\n')
-          // eslint-disable-next-line no-control-regex
-          .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-          .replaceAll('\t', '  ');
-        let truncated = false;
-        if (cleaned.length > PASTE_MAX_CHARS) {
-          cleaned = cleaned.slice(0, PASTE_MAX_CHARS);
-          truncated = true;
-        }
-        if (cleaned.length > 0) {
-          input = input.slice(0, cursorPos) + cleaned + input.slice(cursorPos);
-          cursorPos += cleaned.length;
-          popupDismissed = false;
-        }
-        if (truncated) {
-          pushBlock([`${DIM}  （粘贴内容超过 ${PASTE_MAX_CHARS} 字符，已截断）${RESET}`]);
-        }
-        break;
-      }
-    }
-  }
-
   function totalWrappedLines(): number {
     let total = 0;
     for (const block of blocks) {
@@ -1703,9 +1325,120 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     return total;
   }
 
+  const keyEnv: KeyEnv = {
+    store: {
+      blocks,
+      historyStack,
+      toolBlocks,
+      tpsRing,
+      get scrollFromEnd() { return scrollFromEnd; },
+      set scrollFromEnd(v) { scrollFromEnd = v; },
+      get input() { return input; },
+      set input(v) { input = v; },
+      get cursorPos() { return cursorPos; },
+      set cursorPos(v) { cursorPos = v; },
+      get popupIndex() { return popupIndex; },
+      set popupIndex(v) { popupIndex = v; },
+      get popupDismissed() { return popupDismissed; },
+      set popupDismissed(v) { popupDismissed = v; },
+      get historyIdx() { return historyIdx; },
+      set historyIdx(v) { historyIdx = v; },
+      get historyDraft() { return historyDraft; },
+      set historyDraft(v) { historyDraft = v; },
+      get modelPicker() { return modelPicker; },
+      set modelPicker(v) { modelPicker = v; },
+      get sessionPicker() { return sessionPicker as any; },
+      set sessionPicker(v) { sessionPicker = v; },
+      get approval() { return approvalRequest as any; },
+      set approval(v) { approvalRequest = v; },
+      get approvalIndex() { return approvalIndex; },
+      set approvalIndex(v) { approvalIndex = v; },
+      get approvalPreview() { return approvalPreview; },
+      set approvalPreview(v) { approvalPreview = v; },
+      get spinnerFrame() { return spinnerFrame; },
+      set spinnerFrame(v) { spinnerFrame = v; },
+      get interruptAt() { return interruptAt; },
+      set interruptAt(v) { interruptAt = v; },
+      get lastCtrlC() { return lastCtrlC; },
+      set lastCtrlC(v) { lastCtrlC = v; },
+      get streaming() { return streaming; },
+      set streaming(v) { streaming = v; },
+      get compactRunning() { return compactRunning; },
+      set compactRunning(v) { compactRunning = v; },
+      get modeSwitching() { return modeSwitching; },
+      set modeSwitching(v) { modeSwitching = v; },
+      get activeToolId() { return activeToolId; },
+      set activeToolId(v) { activeToolId = v; },
+      get readGroup() { return readGroup; },
+      set readGroup(v) { readGroup = v; },
+      get reasoningBlock() { return reasoningBlock; },
+      set reasoningBlock(v) { reasoningBlock = v; },
+      get tpsTokens() { return tpsTokens; },
+      set tpsTokens(v) { tpsTokens = v; },
+      get tpsLastTokens() { return tpsLastTokens; },
+      set tpsLastTokens(v) { tpsLastTokens = v; },
+      get tpsLastAt() { return tpsLastAt; },
+      set tpsLastAt(v) { tpsLastAt = v; },
+      get genPhase() { return genPhase; },
+      set genPhase(v) { genPhase = v; },
+      get frameMap() { return frameMap; },
+      set frameMap(v) { frameMap = v; },
+      pushBlock,
+      updateLastBlock,
+      replaceBlock,
+      removeBlock,
+      closeReadGroup,
+      clearView: () => {
+        blocks.length = 0;
+        toolBlocks.clear();
+        closeReadGroup();
+        reasoningBlock = undefined;
+        scrollFromEnd = 0;
+      },
+      budget: toolBudget,
+      gutter: () => TOOL_GUTTER,
+      sampleTps: () => {},
+      appendTail: () => undefined,
+      blocksVersion: 0,
+    } as unknown as TuiStore,
+    paint,
+    cols: () => screen.cols,
+    rows: () => screen.rows,
+    abortLast: () => {
+      interruptAt = Date.now();
+      aborters.at(-1)?.abort();
+    },
+    exitApp,
+    scheduleRender,
+    preemptRender,
+    submit: () => void handleSubmit(),
+    toggleCodeMode: () => void toggleCodeMode(),
+    sessionPristine,
+    switchModel: (model) => {
+      client.setModel(model);
+      pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
+      void refreshModelMeta();
+    },
+    switchSessionFile: (file) => void switchToSession({ file }),
+    currentModel: () => client.model,
+    currentSessionFile: () => session.file,
+    refreshModelMeta: () => void refreshModelMeta(),
+    popupMatches: () => commandPopupMatches(),
+    totalWrappedLines,
+    notice: (lines) => pushBlock(lines.map((l) => `${DIM}${l}${RESET}`)),
+  };
+
+  function handleKey(k: Key): void {
+    tuiHandleKey(keyEnv, k);
+  }
+
+
   // ---- rendering --------------------------------------------------------
   /** 上一帧的行→块映射（点击命中测试），renderFrame 每帧重建。 */
   let frameMap: { rows: { block: Block; start: number; count: number }[]; sliceStart: number; historyRows: number } | undefined;
+  let cachedFlatten:
+    | { cols: number; version: number; result: { flat: string[]; rowMap: { block: Block; start: number; count: number }[] } }
+    | undefined;
 
   function renderFrame(): void {
     if (exiting) return;
@@ -1785,7 +1518,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const layout = layoutComposer(input, cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
     const composerZoneRows = composerZone(paint, layout, { spinnerFrame, streaming, genPhase });
     // 单行状态区：上下文仪表+模型+模式芯片+审批 ｜ tps+cache 钉右缘。
-    const { flat, rowMap } = flattenBlocks(blocks, cols);
+    if (cachedFlatten === undefined || cachedFlatten.cols !== cols || cachedFlatten.version !== blocksVersion) {
+      cachedFlatten = { cols, version: blocksVersion, result: flattenBlocks(blocks, cols) };
+    }
+    const { flat, rowMap } = cachedFlatten.result;
     const historyBudget = rows - popupLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, scrollFromEnd);
     if (scrollFromEnd > maxScroll) scrollFromEnd = maxScroll;
@@ -1900,6 +1636,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   });
   process.stdout.on('resize', () => {
     invalidateWraps(blocks);
+    blocksVersion += 1;
     screen.invalidate();
     scheduleRender();
   });

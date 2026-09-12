@@ -6,6 +6,7 @@
  */
 
 import { styledWidth } from '@nova-agent/tui';
+import { clipPath, clipToWidth } from './clip.js';
 import { approvalLabel } from './labels.js';
 import type { Palette } from './palette.js';
 import { codeModeLabel } from './status-view.js';
@@ -26,15 +27,25 @@ export interface SplashInfo {
 
 export function buildSplash(p: Palette, info: SplashInfo): string[] {
   const brand = `${p.cyan(p.bold('Nova'))} ${p.dim('v0.1.0')}`;
-  const row = (label: string, value: string): string => ` ${padDisplay(label, 8)}${value}`;
-  const rows = [
-    row('工作区', info.rootDir),
-    row('会话', info.sessionsRoot),
-    row('模型', `${info.model} · 审批 ${approvalLabel(info.approval)} · 模式 ${codeModeLabel(info.codeMode)}`),
-    row('提示', '/ 命令面板 · Tab 切模式 · Esc 中断 · Ctrl+C×2 退出'),
+  const rawRows: [string, string, boolean][] = [
+    ['工作区', info.rootDir, true],
+    ['会话', info.sessionsRoot, true],
+    ['模型', `${info.model} · 审批 ${approvalLabel(info.approval)} · 模式 ${codeModeLabel(info.codeMode)}`, false],
+    ['提示', '/ 命令面板 · Tab 切模式 · Esc 中断 · Ctrl+C×2 退出', false],
   ];
-  const contentWidth = Math.max(...rows.map((r) => styledWidth(r) + 2), SPLASH_MIN_INNER);
-  const inner = Math.min(contentWidth, Math.max(10, info.cols - 2));
+
+  const maxContent = Math.max(
+    ...rawRows.map(([label, val]) => styledWidth(` ${padDisplay(label, 8)}${val}`) + 2),
+    SPLASH_MIN_INNER,
+  );
+  const inner = Math.min(maxContent, Math.max(20, info.cols - 2));
+  const maxValWidth = Math.max(6, inner - 2 - 9); // inner - 2 margin - 9 label width
+
+  const rows = rawRows.map(([label, val, isPath]) => {
+    const fittedVal = isPath ? clipPath(val, maxValWidth) : clipToWidth(val, maxValWidth);
+    return ` ${padDisplay(label, 8)}${fittedVal}`;
+  });
+
   const pad = (r: string): string => `${p.dim('│')} ${r}${' '.repeat(Math.max(0, inner - styledWidth(r) - 2))} ${p.dim('│')}`;
   const lines: string[] = [
     `${p.dim('╭─ ')}${brand}${p.dim(` ${'─'.repeat(Math.max(0, inner - styledWidth(brand) - 3))}╮`)}`,
@@ -42,10 +53,10 @@ export function buildSplash(p: Palette, info: SplashInfo): string[] {
     `${p.dim(`╰${'─'.repeat(inner)}╯`)}`,
   ];
   if (info.skills.length > 0) {
-    lines.push(`${p.dim(`  技能 ${info.skills.join('、')}`)}`);
+    lines.push(`${p.dim(`  技能 ${clipToWidth(info.skills.join('、'), Math.max(10, info.cols - 8))}`)}`);
   }
   for (const warning of info.warnings) {
-    lines.push(`${p.yellow(`  ${warning}`)}`);
+    lines.push(`${p.yellow(`  ${clipToWidth(warning, Math.max(10, info.cols - 8))}`)}`);
   }
   return lines;
 }

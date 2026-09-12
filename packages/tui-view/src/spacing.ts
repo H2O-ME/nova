@@ -1,18 +1,14 @@
 /**
- * The single spacing rule. Previously three mechanisms coexisted (leading
- * blank row inside the question block, a standalone separator block between
- * question and answer, render-layer breathing rows) — each branch carried its
- * own comment explaining the same "no blank rows inside a turn" idea.
- *
- * Rule: exactly 1 blank row BETWEEN turns; 0 blank rows INSIDE a turn
- * (question → reasoning → summary → answer → tool rows stay adjacent);
- * 1 breathing row between history and the composer zone (render layer).
+ * The single spacing rule (Codex cell contract): margins belong to each
+ * cell, not to separators. Push sites never insert manual blank blocks —
+ * `cli/tui/frame.ts flattenBlocks` appends exactly one blank row after every
+ * non-empty block (whitespace-only blocks are skipped outright, so empties
+ * can never stack a double gap); the trailing margin of the last block is
+ * trimmed, and the render layer owns the single breathing row between
+ * history and the composer zone.
  */
 
 import { BREATHE_ROWS, HISTORY_MIN_ROWS } from './tokens.js';
-
-/** Blank separator block lines between the question and its answer. */
-export const ANSWER_SEPARATOR_LINES: string[] = [''];
 
 /** Question block lines: no leading blank — separation owns the gap. */
 export function questionLines(text: string): string[] {

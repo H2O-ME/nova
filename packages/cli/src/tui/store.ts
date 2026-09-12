@@ -24,6 +24,7 @@ export interface Block {
   gutter?: { first: string; rest: string };
   detail?: { lines: string[]; secs: number };
   expanded?: boolean;
+  kind?: 'user' | 'reasoning' | 'assistant' | 'tool' | 'system';
 }
 
 export interface ToolEntry {
@@ -56,6 +57,7 @@ export class TuiStore {
   readonly toolBlocks = new Map<string, ToolEntry>();
   readonly tpsRing: number[] = Array<number>(TPS_SAMPLES).fill(0);
 
+  blocksVersion = 0;
   scrollFromEnd = 0;
   input = '';
   cursorPos = 0;
@@ -64,7 +66,7 @@ export class TuiStore {
   historyIdx = -1;
   historyDraft = '';
   modelPicker: { models: string[]; index: number } | undefined;
-  sessionPicker: { entries: { file: string }[]; index: number } | undefined;
+  sessionPicker: { entries: Array<{ file: string; mtime?: number; title?: string }>; index: number } | undefined;
   approval: ApprovalState | undefined;
   approvalIndex = 0;
   approvalPreview: string[] | undefined;
@@ -87,9 +89,15 @@ export class TuiStore {
 
   constructor(private readonly onChange: () => void) {}
 
-  pushBlock(lines: string[], gutter?: Block['gutter']): Block {
-    const block: Block = { lines, wrapped: undefined, ...(gutter !== undefined ? { gutter } : {}) };
+  pushBlock(lines: string[], gutter?: Block['gutter'], kind?: Block['kind']): Block {
+    const block: Block = {
+      lines,
+      wrapped: undefined,
+      ...(gutter !== undefined ? { gutter } : {}),
+      ...(kind !== undefined ? { kind } : {}),
+    };
     this.blocks.push(block);
+    this.blocksVersion += 1;
     this.onChange();
     return block;
   }
@@ -103,6 +111,7 @@ export class TuiStore {
     if (last === undefined) return;
     last.lines = lines;
     last.wrapped = undefined;
+    this.blocksVersion += 1;
     this.onChange();
   }
 
@@ -113,12 +122,14 @@ export class TuiStore {
       block.lines = lines;
       block.wrapped = undefined;
     }
+    this.blocksVersion += 1;
     this.onChange();
   }
 
   removeBlock(block: Block): void {
     const idx = this.blocks.indexOf(block);
     if (idx >= 0) this.blocks.splice(idx, 1);
+    this.blocksVersion += 1;
     this.onChange();
   }
 
@@ -132,6 +143,8 @@ export class TuiStore {
     this.closeReadGroup();
     this.reasoningBlock = undefined;
     this.scrollFromEnd = 0;
+    this.blocksVersion += 1;
+    this.onChange();
   }
 
   budget(cols: number): number {

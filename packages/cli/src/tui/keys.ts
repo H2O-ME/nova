@@ -5,6 +5,8 @@
  * with the composer (an open popup swallows everything).
  */
 
+import { existsSync, statSync } from 'node:fs';
+import path from 'node:path';
 import type { Key } from '@nova-agent/tui';
 import {
   composerWrapBudget,
@@ -79,7 +81,7 @@ function toggleReasoningBlock(env: KeyEnv, block: Block): void {
   env.store.replaceBlock(
     block,
     expanded
-      ? [summaryRow(env.paint, block.detail.secs, true), ...reasoningDetailRows(env.paint, block.detail.lines)]
+      ? [summaryRow(env.paint, block.detail.secs, true), ...reasoningDetailRows(env.paint, block.detail.lines, env.cols())]
       : [summaryRow(env.paint, block.detail.secs, false)],
   );
 }
@@ -243,6 +245,12 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       env.submit();
       break;
     }
+    case 'newline': {
+      store.input = store.input.slice(0, store.cursorPos) + '\n' + store.input.slice(store.cursorPos);
+      store.cursorPos += 1;
+      store.popupDismissed = false;
+      break;
+    }
     case 'tab': {
       if (popupMatches.length > 0) {
         const selected = popupMatches[Math.min(store.popupIndex, popupMatches.length - 1)];
@@ -360,10 +368,32 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       break;
     case 'paste': {
       let cleaned = k.text
-        .replace(/\r\n?/g, '\n')
-        // eslint-disable-next-line no-control-regex
-        .replace(/[ --]/g, '')
+        .replace(/\r\n?/g, '\n');
+      // eslint-disable-next-line no-control-regex
+      cleaned = cleaned.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
         .replaceAll('\t', '  ');
+
+      // Image path detection: a paste that is exactly a local image file path
+      // (Explorer copy / drag) is wrapped as a `![image](path)` markdown-style
+      // reference. Honest scope: nova does NOT send image bytes to the model —
+      // it only sees the path string and can act on it with tools (bash
+      // reads/converts, run_code); a real vision channel stays on the roadmap
+      // (AGENTS.md §7).
+      const candidatePath = cleaned.trim().replace(/^['"]|['"]$/g, '');
+      const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.svg']);
+      const ext = path.extname(candidatePath).toLowerCase();
+      if (IMAGE_EXTS.has(ext) && existsSync(candidatePath)) {
+        try {
+          const st = statSync(candidatePath);
+          if (st.isFile()) {
+            cleaned = `![image](${candidatePath}) `;
+            env.notice([`  已插入图片路径：${path.basename(candidatePath)}（nova 暂不发送图像内容，模型仅见路径）`]);
+          }
+        } catch {
+          // Fall back to plain paste if stat fails
+        }
+      }
+
       let truncated = false;
       if (cleaned.length > PASTE_MAX_CHARS) {
         cleaned = cleaned.slice(0, PASTE_MAX_CHARS);

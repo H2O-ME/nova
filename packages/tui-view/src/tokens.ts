@@ -9,9 +9,12 @@ export const COMPOSER_MAX_ROWS = 8;
 /** Paste safety cap: longer pastes are truncated with a notice. */
 export const PASTE_MAX_CHARS = 200_000;
 
-/** Reasoning live-window budget: committed lines kept + live tail chars. */
+/** Reasoning budgets: live expanded tail cap + tail slice + buffer cap. */
 export const REASONING_MAX_LINES = 2;
+/** Auto-expanded streaming rows (settled newest-first tail + 1 live row). */
+export const REASONING_LIVE_MAX_ROWS = 8;
 export const REASONING_MAX_PARTIAL_CHARS = 240;
+export const REASONING_FULL_MAX_CHARS = 200_000;
 export const REASONING_FULL_MAX_LINES = 2000;
 /** Reasoning block indent columns; wrap budgets must agree (see wrapBlock). */
 export const REASONING_INDENT_COLS = 4;

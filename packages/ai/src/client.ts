@@ -355,8 +355,19 @@ function* translateChunk(chunk: ProviderChunk): Generator<StreamEvent> {
   const choice = chunk.choices?.[0];
   if (choice) {
     const delta = choice.delta;
+    const raw = delta as Record<string, unknown> | undefined;
+    const reasoning =
+      (typeof raw?.['reasoning_content'] === 'string' && raw['reasoning_content'].length > 0
+        ? raw['reasoning_content']
+        : undefined) ??
+      (typeof raw?.['reasoning'] === 'string' && raw['reasoning'].length > 0
+        ? raw['reasoning']
+        : undefined) ??
+      (typeof raw?.['thought'] === 'string' && raw['thought'].length > 0
+        ? raw['thought']
+        : undefined);
+    if (reasoning !== undefined) yield { type: 'reasoning_delta', text: reasoning };
     if (delta?.content) yield { type: 'text_delta', text: delta.content };
-    if (delta?.reasoning_content) yield { type: 'reasoning_delta', text: delta.reasoning_content };
     if (delta?.tool_calls) {
       for (const tc of delta.tool_calls) {
         // Some gateways repeat tool-call entries with empty strings for

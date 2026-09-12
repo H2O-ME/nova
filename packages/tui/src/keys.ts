@@ -4,6 +4,8 @@ export type Key =
   | { type: 'char'; ch: string }
   | { type: 'paste'; text: string }
   | { type: 'enter' }
+  /** Alt/Meta+Enter newline (kitty / WezTerm / Windows Terminal `pb0B`). */
+  | { type: 'newline' }
   | { type: 'backspace' }
   | { type: 'delete' }
   | { type: 'left' }
@@ -72,6 +74,12 @@ export class KeyDecoder {
       return this.readEscape();
     }
     if (b0 === 0x0d || b0 === 0x0a) {
+      // Alt/Meta+Enter newline: ESC+CR (`\x1b\r`), sent by kitty / WezTerm /
+      // Windows Terminal alongside its CSI-u `pb0B` form (decoded below).
+      if (b0 === 0x0d && this.buf[1] === 0x1b) {
+        this.take(2);
+        return { type: 'newline' };
+      }
       this.take(1);
       return { type: 'enter' };
     }
@@ -174,6 +182,16 @@ export class KeyDecoder {
           if (params === '4' || params === '8') return { type: 'end' };
           if (params === '5') return { type: 'pageup' };
           if (params === '6') return { type: 'pagedown' };
+          if (params === '13') return { type: 'enter' };
+          // CSI-u / kitty progressive-enhancement form of Alt+Enter
+          // (`ESC [ 13 ; 3 u`); also accept bare `ESC [ 13 u` encodings.
+          if (/^13(;\d+)*u$/.test(`[${params}`) || params === '13u' || params.endsWith(';13u')) {
+            return { type: 'newline' };
+          }
+          return undefined;
+        case 'u':
+          // kitty keyboard protocol Alt+Enter: `ESC [ 13 ; 3 u`.
+          if (params === '13;3' || params === '13') return { type: 'newline' };
           return undefined;
         default:
           return undefined;
