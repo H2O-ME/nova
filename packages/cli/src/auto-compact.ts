@@ -1,4 +1,4 @@
-import type { AgentHooks, AgentMessage, ChatRequest, Usage } from '@nova-agent/core';
+import type { AgentHooks, AgentMessage, ChatRequest, ToolDefinition, Usage } from '@nova-agent/core';
 import { estimateMessageTokens } from '@nova-agent/core';
 
 /**
@@ -19,16 +19,34 @@ import { estimateMessageTokens } from '@nova-agent/core';
  *   every turn.
  */
 
-/** Price the whole outgoing request image with the heuristic token meter. */
-export function requestImageTokens(req: ChatRequest): number {
-  let image = estimateMessageTokens({ role: 'system', id: '', ts: 0, content: req.systemPrompt ?? '' });
-  for (const tool of req.tools ?? []) {
-    image += estimateMessageTokens({
+/**
+ * Tool schemas are registered once and immutable thereafter, so their token
+ * price never changes. Cache per tool object (WeakMap — a rebuilt host's new
+ * tool objects reprice, old ones are collectable): without this, exec's
+ * per-request gate re-stringifies and re-tokenizes every schema on every
+ * request, twice per turn on compact checks — quadratic over a long run.
+ */
+const toolTokenCache = new WeakMap<ToolDefinition, number>();
+
+function toolImageTokens(tool: ToolDefinition): number {
+  let tokens = toolTokenCache.get(tool);
+  if (tokens === undefined) {
+    tokens = estimateMessageTokens({
       role: 'system',
       id: '',
       ts: 0,
       content: `${tool.name} ${tool.description} ${JSON.stringify(tool.parameters)}`,
     });
+    toolTokenCache.set(tool, tokens);
+  }
+  return tokens;
+}
+
+/** Price the whole outgoing request image with the heuristic token meter. */
+export function requestImageTokens(req: ChatRequest): number {
+  let image = estimateMessageTokens({ role: 'system', id: '', ts: 0, content: req.systemPrompt ?? '' });
+  for (const tool of req.tools ?? []) {
+    image += toolImageTokens(tool);
   }
   for (const msg of req.messages) image += estimateMessageTokens(msg);
   return image;

@@ -25,7 +25,8 @@ import type { CodeRunResult, CodeRuntimeConfig } from './code-runtime.js';
 import { renderToolsSdk, RUN_CODE_NAME } from './sdk.js';
 
 /** How the tool registry is presented to the model. */
-export type PtcMode = 'native' | 'ptc' | 'both';
+export type { PtcMode } from '@nova-agent/core';
+import type { PtcMode } from '@nova-agent/core';
 
 export interface PtcPluginOptions {
   /** `'both'` when the plugin is loaded without an explicit mode. */

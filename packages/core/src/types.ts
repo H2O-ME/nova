@@ -166,6 +166,14 @@ export interface ToolDefinition {
  */
 export type ToolPermissionKind = 'read' | 'read-external' | 'write' | 'execute' | 'network';
 
+/**
+ * Execution mode for the code (PTC) runtime: native tool calls only, run_code
+ * only, or both. Lives here because the config schema, the plugin host and
+ * the pure view layer (tui-view status/splash) all speak it — defining it in
+ * plugins would make tui-view depend on a package two tiers above it.
+ */
+export type PtcMode = 'native' | 'ptc' | 'both';
+
 /** Events emitted by a ChatProvider during a single completion stream. */
 export type StreamEvent =
   | { type: 'text_delta'; text: string }

@@ -6,6 +6,7 @@
 
 import type { ToolCall } from '@nova-agent/core';
 import type { PermissionKind } from '@nova-agent/plugins';
+import type { SessionEntry } from '../sessions.js';
 import {
   APPROVAL_OPTIONS,
   REASONING_FULL_MAX_LINES,
@@ -66,7 +67,7 @@ export class TuiStore {
   historyIdx = -1;
   historyDraft = '';
   modelPicker: { models: string[]; index: number } | undefined;
-  sessionPicker: { entries: Array<{ file: string; mtime?: number; title?: string }>; index: number } | undefined;
+  sessionPicker: { entries: SessionEntry[]; index: number } | undefined;
   approval: ApprovalState | undefined;
   approvalIndex = 0;
   approvalPreview: string[] | undefined;

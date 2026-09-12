@@ -306,7 +306,15 @@ export class OpenAICompatClient implements ChatProvider {
       body['prompt_cache_key'] = [...this.config.sessionId].slice(0, 64).join('');
     }
     if (req.tools && req.tools.length > 0) {
-      body['tools'] = req.tools.map(toProviderTool);
+      // Sort by tool name (stable, lexicographic) before mapping: the caller's
+      // registration order shifts when plugins are enabled/disabled or code
+      // mode changes, which would reshuffle tool slots in the prompt prefix
+      // and bust the provider's prefix cache. Sorting here keeps the wire
+      // order deterministic regardless of registration order. The input
+      // array itself is left untouched.
+      body['tools'] = [...req.tools]
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+        .map(toProviderTool);
     }
     return body;
   }

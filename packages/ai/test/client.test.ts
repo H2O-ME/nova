@@ -300,6 +300,31 @@ describe('OpenAICompatClient', () => {
       function: { name: 't', description: 'd', parameters: { type: 'object' } },
     });
   });
+
+  it('sends tools sorted by name without mutating the caller array', async () => {
+    let capturedInit: RequestInit | undefined;
+    const fetchImpl: typeof fetch = (_input, init) => {
+      capturedInit = init;
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    };
+    const client = clientWith(fetchImpl);
+    const tools = [
+      { name: 'write_file', description: 'w', parameters: { type: 'object' }, execute: () => '' },
+      { name: 'bash', description: 'b', parameters: { type: 'object' }, execute: () => '' },
+      { name: 'edit_file', description: 'e', parameters: { type: 'object' }, execute: () => '' },
+    ];
+    const before = tools.map((t) => t.name);
+    await drain(client.stream({ messages: [], tools }));
+
+    // Wire order is lexicographic regardless of registration order.
+    const body = JSON.parse(String(capturedInit?.body)) as {
+      tools: Array<{ function: { name: string } }>;
+    };
+    expect(body.tools.map((t) => t.function.name)).toEqual(['bash', 'edit_file', 'write_file']);
+    // The caller's array is untouched.
+    expect(tools.map((t) => t.name)).toEqual(before);
+    expect(tools.map((t) => t.name)).toEqual(['write_file', 'bash', 'edit_file']);
+  });
 });
 
 describe('session cache routing', () => {

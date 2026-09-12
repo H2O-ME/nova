@@ -74,7 +74,7 @@ Skills 放 `~/.nova/skills/<name>/SKILL.md`（用户级）或项目级 `.nova/sk
 
 ## 4. 架构
 
-pnpm monorepo，依赖方向强制单向：`cli → {tui, plugins, ai, core}`，`plugins → core`，`core` 不依赖任何上层包。
+pnpm monorepo，依赖方向强制单向：`cli → {tui, tui-view, plugins, ai, core}`，`tui-view → {tui, core}`，`plugins → core`，`core` 不依赖任何上层包。
 
 | 包 | 职责 | 关键文件 |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, plugins, ai, core}`，
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`types.ts`、`builtin/{fs,bash,jobs,todo,search,search-worker,index}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
 | `tui` | 零依赖终端原语：行级差分渲染、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标）、CJK 宽度处理 | `screen.ts`、`keys.ts`、`width.ts` |
 | `tui-view` | TUI 纯视图层（零终端 IO）：tokens 常量、调色板/标签、裁剪族、工具行、状态栏、弹窗、composer、reasoning、间距、开屏、帧装配 | `tokens.ts`、`palette.ts`、`labels.ts`、`text.ts`、`clip.ts`、`tool-lines.ts`、`status-view.ts`、`popups.ts`、`composer-view.ts`、`reasoning-view.ts`、`spacing.ts`、`splash.ts`、`frame.ts` |
-| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（1714 行壳层：生命周期/IO/agentTurn 事件归约）、`tui/{store,keys,frame}.ts`（TuiStore/按键责任链/帧装配）、`session-runtime.ts`（三 runner 共享启动工厂）、`auto-compact.ts`（统一 TokenGate）、`runner-shared.ts`（计时/maxTurns/toast/审批装配）、`exec.ts`、`repl.ts`、`compact.ts`、`config.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`commands.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`version.ts`、`spinner.ts`、`ui.ts`+`statusbar.ts`+`composer.ts`+`popup.ts`+`reasoning.ts`（5 个 tui-view 转发门面）；`scripts/sync-root-version.mjs`（根包版本同步） |
+| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（1467 行壳层：生命周期/IO/agentTurn 事件归约）、`tui/{store,keys,frame}.ts`（TuiStore/按键责任链/帧装配）、`session-runtime.ts`（三 runner 共享启动工厂）、`auto-compact.ts`（统一 TokenGate）、`runner-shared.ts`（计时/maxTurns/toast/审批/自动压缩编排/runAgent 公共 kwargs 装配）、`exec.ts`、`repl.ts`、`compact.ts`、`config.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`commands.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`version.ts`、`spinner.ts`、`ui.ts`+`statusbar.ts`+`composer.ts`+`popup.ts`+`reasoning.ts`（5 个 tui-view 转发门面）；`scripts/sync-root-version.mjs`（根包版本同步） |
 
 ## 5. 核心设计
 
@@ -99,7 +99,7 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, plugins, ai, core}`，
 3. **compact**：`/compact`、自动阈值（`autoCompactTokenLimit`，以最近一次 usage 为锚点发请求**前**预判）共用同一实现；压缩**原位追加** `compaction/start → summary → end` 三事件，模型可见面由 `Session.deriveMessages()` 投影重建，原始历史永不改写；crash 半路的压缩留下可检测的孤儿锁（自动丢弃并告警）。摘要请求以序列化裁剪后的 transcript 发送，已有摘要时走增量合并。**token 预估计入 assistant 的 tool call 参数**（`rawArgs`，PTC/bash 大程序曾是估算盲区），`estimateMessageTokens` 带 `WeakMap` 记忆化（消息 append-only 不可变，exec 每请求全量重估不再重复计价）。保留片段取**整条消息取舍**（最新优先、首条放不下即停，不截断——截断拷贝会同时破坏投影字节一致契约与预算上限）。exec 的轮内预检逐请求全量估算，并带**熔断**：一次压缩后仍超阈值（保留片段 + 工具 schema 构成下限）即停用本任务后续自动压缩并告警一次，避免每轮白烧摘要请求、日志被压缩三事件刷屏；同时校验原位压缩的 messages 别名契约（插件钩子若替换数组则告警停用而非静默失效）。
 4. **供应商对齐**：请求携带 `prompt_cache_key` 与 `x-session-id`/`x-session-affinity` 会话亲和头（sessionId=会话 id），让网关把同一会话固定路由到同一缓存节点。指标目标：会话第 3 轮起 prompt cache 命中率 ≥ 90%（`/session` 可查）。
 
-> **已知限制——工具数组顺序**：主工具数组按**插件注册顺序**发给 provider（`client.ts`），**不按字典序排序**——只有 PTC SDK binding 按 schema 字典序生成（`sdk.ts`，字节稳定）。若同一会话中途禁用 bash 或切换 code mode，工具槽位会重排，破坏 provider 侧的前缀缓存。同一会话的工具集应保持稳定。
+> **工具数组顺序**：主工具数组发给 provider 前按**工具名字典序稳定排序**（`client.ts`，不改动调用方传入数组）——即使同一会话中途禁用 bash 或切换 code mode 导致注册顺序重排，工具槽位顺序也保持稳定，不再破坏 provider 侧的前缀缓存。PTC SDK binding 亦按 schema 字典序生成（`sdk.ts`，字节稳定）。
 
 ### 会话日志 v2（不可变事件流 + 投影）
 JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write` / `approval` / `code-dispatch` 审计）。压缩不重开会话；v1 旧会话打开时原子升级。`appendEvent` 先写盘后入内存——写失败时内存与磁盘不再发散。**抗损坏**：进程被杀导致的末尾半行在 `Session.open` 时自动截断修复（不告警），中段真损坏行跳过并告警——单条坏行不再让整个会话无法 resume。
@@ -114,7 +114,7 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 - **search_files**：`content_regex`（逐行正则，返回 `path:line: text`）与 `name_glob`（工作区相对路径 glob）二选一；默认跳过 `.git`/`node_modules`/`dist` 与点目录、绝不跟随符号链接、单文件 1 MiB 扫描上限、结果数上限（默认 200）。**回溯隔离**：`content_regex` 先经宿主预检（长度 ≤512、量词总数 ≤32、嵌套量词组拒绝并给改写建议），再进**全新 worker 线程**执行（name_glob 的 glob 正则由我方生成、无回溯风险，保持进程内）；墙钟预算默认 30s、中止信号透传 `terminate()`，spawn 不可用（源码世界无类型剥离）时回落进程内——预检仍生效。构建经 tsdown keyed entry 产出 `dist/search-worker.mjs`（源码/构建双世界路径解析，镜像 PTC worker 模式）。
 
 ### PTC / Code Mode（对标 Cloudflare/dsh run_code 简化版）
-`tools.code.mode` 三态 `native|ptc|both`。开启后模型获得 `run_code {code, description}` 传输工具：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断，经 `ctx.dispatch` 回流）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算、端口协议逐字段防御。SDK 声明由 schema 字典序生成（字节稳定不吃缓存）。`ptc` 态只暴露 `run_code`。需 Node ≥ 22.19。
+`tools.code.mode` 三态 `native|ptc|both`（`PtcMode` 类型定义在 core——config/host/纯视图层共用，避免 tui-view 跨层依赖 plugins）。开启后模型获得 `run_code {code, description}` 传输工具：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断，经 `ctx.dispatch` 回流）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算、端口协议逐字段防御。SDK 声明由 schema 字典序生成（字节稳定不吃缓存）。`ptc` 态只暴露 `run_code`。需 Node ≥ 22.19。
 
 ### 后台 jobs / todo
 `bash { run_in_background: true }` 立即返回 `bash-N` 句柄，`jobs` 工具（list/output/stop）读写增量输出。`startBackground` 镜像 `runOnce` 的 settle 防御：`exit` 事件记退出码 + 2s `closeGrace`，`cancel()` 后 3s `killSettle` 兜底，settle 前销毁 stdio 管道——taskkill 后孙进程持有管道时 `dispose()` 不再卡死进程退出。job 自然结束（completed/failed）时，**下一次 LLM 请求会自动注入一行"bash-N 已完成"通知**（`runAgent` 每次发请求前经 `JobRegistry.drainFinished()` 取队列，以克隆消息数组追加临时 user 消息——不落会话日志、不破坏投影不变量，每个 job 只通知一次；**送达性为至少一次**：请求在回复提交前失败/中断时经 `requeue()` 回队，下个请求重播，不会静默丢失），模型无需空转轮询；显式 stop 导致的 killed 不通知（模型已知）。`JobKindMap` 预留 `subagent` 扩展位。`todo_write` 整表替换、last-write-wins，快照持久化为 log-only `todo/write` 事件，不占模型上下文。
@@ -123,7 +123,7 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 启动只把每个 skill 的 name+description 注入索引，命中触发词时才加载正文——模型可自调用 `skill` 工具，也可 `/skill <name>` 手动触发。项目级 `.nova/skills/` 优先于用户级 `~/.nova/skills/`。
 
 ### TUI（自研差分渲染，codex 风格）
-alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a）；PageUp/PageDown/滚轮滚动（上滚不改状态栏样式——常驻视图保持稳定，↓/滚轮回到底）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动）；流式 markdown（列表缩进 2 列挂圆点，换行续行对齐条目文本列）、工具调用折叠块、reasoning 定高活窗口（定格 2 行 + 活尾 1 行、每行裁到单一显示行绝不折行、空行不进窗——每个 delta 只重写活尾一行，整段不重排；结束后折成"已思考 Ns"、与答案同组紧排，轮内不留空行，**点击可展开思考全文**——▸/▾ 前缀为 affordance，全文仅存会话内存（reasoning 从不落盘，resume 后不可展开），展开正文逐行暗色、软折行走 gutter 预算）；长命令实时显示已耗时与输出尾行；系统通知（Windows toast / macOS osascript / Linux notify-send）。分层：`tui`（终端原语）→ `tui-view`（纯视图，零 IO）→ `cli/tui/`（`store.ts` TuiStore / `keys.ts` 按键责任链 / `frame.ts` 帧装配）→ `tui-mode.ts`（1714 行壳层：生命周期 + IO + `agentTurn` 事件归约）；决策背景见 `docs/tui-design.md`。
+alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a）；PageUp/PageDown/滚轮滚动（上滚不改状态栏样式——常驻视图保持稳定，↓/滚轮回到底）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动）；流式 markdown（列表缩进 2 列挂圆点，换行续行对齐条目文本列）、工具调用折叠块、reasoning 定高活窗口（定格 2 行 + 活尾 1 行、每行裁到单一显示行绝不折行、空行不进窗——每个 delta 只重写活尾一行，整段不重排；结束后折成"已思考 Ns"、与答案同组紧排，轮内不留空行，**点击可展开思考全文**——▸/▾ 前缀为 affordance，全文仅存会话内存（reasoning 从不落盘，resume 后不可展开），展开正文逐行暗色、软折行走 gutter 预算）；长命令实时显示已耗时与输出尾行；系统通知（Windows toast / macOS osascript / Linux notify-send）。分层：`tui`（终端原语）→ `tui-view`（纯视图，零 IO）→ `cli/tui/`（`store.ts` TuiStore / `keys.ts` 按键责任链 / `frame.ts` 帧装配）→ `tui-mode.ts`（1467 行壳层：生命周期 + IO + `agentTurn` 事件归约；TUI 可变状态全部收敛在 TuiStore 实例里，壳层与按键链读写同一实例）；决策背景见 `docs/tui-design.md`。
 
 **单行状态栏**三段式 `上下文仪表 │ 模型 · 执行模式 · 审批档位 │（右缘）tps · cache`——`│` 分大组、`·` 分组内，层级靠分隔符而非字数堆砌：
 - **上下文仪表**：按整窗真实比例分段上色（提示词青 / 工具 schema 绿 / 注入片段蓝 / 技能索引品红 / 消息黄），加粗「已用/总量 · 百分比」，超窗标红；`压缩 %` 只在真正逼近阈值时出现（T0 常驻、T1 ≥50%、T2 ≥70%）。
@@ -153,7 +153,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 - **内置能力皆第一方插件**：新工具/命令/钩子走 `PluginContext` 注册，与第三方同 API、同审批门，别在 core 里开特例。
 - **TUI 分层**：渲染计算 = 纯模块（`statusbar.ts`/`composer.ts`/`popup.ts`/`reasoning.ts` + `ui.ts`，帧快照入参、Palette 注入、`plainPalette` 可测）；`tui-mode.ts` 闭包壳只留定时器/终端 IO/状态突变，按键按责任链分层（审批 → 面板 → 全局 → composer）。新交互先问能不能写成纯函数，能则不进闭包。
 - **前缀字节稳定**：任何动态内容都注入会话首条 user 片段（append-only），绝不回改系统提示或旧消息——否则破坏缓存命中。
-- **测试不联网**：三层测试体系——①**单元层**（纯函数，断言用 `plainPalette` 取无 ANSI 的确定字符串）；②**ai 层注入** `fetch` + SSE fixture（`client.test.ts` 覆盖流式 tool call 分片、中途断流、静默截断、reasoning、缓存字段）；③**接缝集成测试**（M7.6 新增，守模块交接处而非实现细节）：`ai/test/pipeline.test.ts` 守 SSE→`OpenAICompatClient`→`runAgent` 全管道含 `finish_reason:"length"` 截断防御；`core/test/resume.test.ts` 守 save→`Session.open`→`deriveMessages`→新 `runAgent` 轮的投影一致性；`cli/test/frame-assembly.test.ts` 守 `flattenBlocks`+`wrapBlock` 帧组装无行超宽、rowMap 连续。当前 **38 个测试文件 / 374 个用例**。
+- **测试不联网**：三层测试体系——①**单元层**（纯函数，断言用 `plainPalette` 取无 ANSI 的确定字符串）；②**ai 层注入** `fetch` + SSE fixture（`client.test.ts` 覆盖流式 tool call 分片、中途断流、静默截断、reasoning、缓存字段）；③**接缝集成测试**（M7.6 新增，守模块交接处而非实现细节）：`ai/test/pipeline.test.ts` 守 SSE→`OpenAICompatClient`→`runAgent` 全管道含 `finish_reason:"length"` 截断防御；`core/test/resume.test.ts` 守 save→`Session.open`→`deriveMessages`→新 `runAgent` 轮的投影一致性；`cli/test/frame-assembly.test.ts` 守 `flattenBlocks`+`wrapBlock` 帧组装无行超宽、rowMap 连续。当前 **39 个测试文件 / 404 个用例**（`plugins/test/permission.test.ts` 专守 fail-closed 审批分支：非法答案/抛错询问器/`never` 短路/前缀与复合命令记忆）。
 - **路径/跨平台**：一律 `node:path` + 抽象层；bash 工具 Windows 优先 Git Bash、回落 PowerShell 并强制 UTF-8。
 - **文档即真相**：机制变了同步改本文件（README 只留门面）。里程碑改动附决策说明。
 - **提交前**：`pnpm verify`（build + typecheck + test）与 `pnpm lint` 全绿。
@@ -234,6 +234,17 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
   - 新增 3 个**接缝集成测试**：`ai/test/pipeline.test.ts`（SSE→client→runAgent 全管道含 length 截断）、`core/test/resume.test.ts`（save→open→deriveMessages→新轮投影一致性）、`cli/test/frame-assembly.test.ts`（flattenBlocks+wrapBlock 帧组装无超宽、rowMap 连续）。
   - 放宽脆性 `commands.test.ts`（精确顺序→成员断言）。净 455 → 374 用例、39 → 38 文件——减重复、增真实信号。
 
+### 结构收尾与缓存硬化（M7.7）
+
+- **M7.7 — P0–P3 缺陷批修与 TuiStore 收尾**：
+  - **TuiStore 收尾**（§9 原技术债清偿）：`tui-mode.ts`（1714 → 1467 行）删除全部闭包状态重声明与 `TuiStore` 形状适配对象（no-op `sampleTps`、逐字节重复 `appendTail`），直接持有 `TuiStore` 实例；tps 采样门控、live tail 追加收敛回 store 方法；`tool_call_start`/readGroup/`discardReasoning`/`/clear`/会话切换改走 store 方法，修复直接 `blocks.push/splice` 绕过 `blocksVersion` 脏检查的缓存失效隐患。
+  - **审批引擎测试**：`permission.test.ts` 26 条——三档×五类自动放行矩阵、fail-closed（非法答案/抛错询问器一律拒绝）、`never` 策略不派发询问器、execute 前缀记忆与复合命令整条记忆的边界。
+  - **auto-compact 编排统一**：`createAutoCompact`（runner-shared）单源 repl/tui 的 runCompact 守卫 + 锚点重置契约 + pre-flight/fallback 双拦截（呈现经 report 回调注入）；exec 保留 per-request `wrapAutoCompact`（拦截点本质不同）。
+  - **缓存硬化**：发 provider 的工具数组按名字典序稳定排序（不改动调用方数组）——禁用 bash/切 code mode 不再重排槽位破坏前缀缓存；`requestImageTokens` 的 schema 计价 WeakMap 记忆化（此前每请求对全部工具 schema 重新 stringify+估算，exec 每轮两次，长任务 O(n²)）。
+  - **runAgent 脚手架提取**：`agentRunBase()` 单源三 runner 的公共 kwargs（provider/messages/cacheDir/emit/tools/hooks），accessor 惰性求值适配 messages/host/hooks 运行时重绑。
+  - **层级修正**：`PtcMode` 类型移入 core（plugins 再导出保 API），tui-view 撤销对 plugins 的依赖——纯视图层回归 `tui + core` 两个下游。
+  - **信任姿态明示**：splash 常驻一行"bash / run_code 在本机执行任意命令（审批门 + 工作区边界 · 无沙箱）；重隔离建议容器化运行"。
+
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 
 **后续（roadmap）**：按 provider 的缓存能力探测表、subagent 能力（`JobKindMap` 已预留）、token 逐节点定价、真多模态输入通路（image content parts，按 model-meta 的 image 模态门控，会话投影与估算同步）、长会话压测与 Windows 终端细节打磨。
@@ -250,8 +261,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 
 1. **OpenAI 兼容接口缓存语义不一致**：DeepSeek 自动前缀缓存、部分网关需显式参数。已落地 usage/命中率统计与浪费审计；按 provider 的显式参数能力探测表留待后续。
 2. **外部插件加载**：当前仅第一方内置插件；v1 计划支持本地路径 + git URL 安装到 `.nova/plugins/`，尚无 registry。
-3. **容器化建议**：v1 不做进程沙箱，重隔离建议容器化运行（bash/PTC 的信任姿态等同"执行任意命令"）。
-4. **已知技术债——tui-mode.ts 未收尾重构**：该文件（1714 行）仍以闭包变量重复 `TuiStore` 的全部字段，并手工拼一个 `TuiStore` 形状的适配对象（含 no-op `sampleTps`、逐字节重复的 `appendTail`），是 M6.6→M7.0→M7.5 系列重构开了头但未收尾的遗留。`tui/store.ts` 已有完整的可测实现且有测试覆盖。完成收尾（让 `tui-mode.ts` 直接持有 `TuiStore` 实例、删除闭包重复与适配对象）是下一个结构改进项。
+3. **容器化建议**：v1 不做进程沙箱，重隔离建议容器化运行（bash/PTC 的信任姿态等同"执行任意命令"；splash 已常驻提示）。
 
 ## 10. 版本与发布（SemVer 2.0.0）
 

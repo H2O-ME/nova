@@ -5,6 +5,17 @@
  * panel so they can't blow its width). Narrow screens clamp the panel.
  */
 
+/**
+ * Trust-posture hint, always rendered (constant — no config field): bash and
+ * run_code execute arbitrary commands directly on this machine; protection
+ * comes only from the approval gate and the workspace realpath boundary, and
+ * there is no system-level sandbox. Authoritative wording: AGENTS.md §9.3
+ * ("重隔离建议容器化运行"). Kept outside the panel like skills/warnings —
+ * it is long, and `clipToWidth` clamps it on narrow screens.
+ */
+const TRUST_POSTURE_HINT =
+  'bash / run_code 在本机执行任意命令（审批门 + 工作区边界 · 无沙箱）；重隔离建议容器化运行';
+
 import { styledWidth } from '@nova-agent/tui';
 import { clipPath, clipToWidth } from './clip.js';
 import { approvalLabel } from './labels.js';
@@ -12,7 +23,7 @@ import type { Palette } from './palette.js';
 import { codeModeLabel } from './status-view.js';
 import { padDisplay } from './text.js';
 import { SPLASH_MIN_INNER } from './tokens.js';
-import type { PtcMode } from '@nova-agent/plugins';
+import type { PtcMode } from '@nova-agent/core';
 
 export interface SplashInfo {
   rootDir: string;
@@ -53,6 +64,7 @@ export function buildSplash(p: Palette, info: SplashInfo): string[] {
     ...rows.map(pad),
     `${p.dim(`╰${'─'.repeat(inner)}╯`)}`,
   ];
+  lines.push(`${p.dim(`  ${clipToWidth(TRUST_POSTURE_HINT, Math.max(10, info.cols - 8))}`)}`);
   if (info.skills.length > 0) {
     lines.push(`${p.dim(`  技能 ${clipToWidth(info.skills.join('、'), Math.max(10, info.cols - 8))}`)}`);
   }

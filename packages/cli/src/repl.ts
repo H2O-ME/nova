@@ -13,8 +13,7 @@ import {
   type UserMessage,
 } from '@nova-agent/core';
 import { type ApprovalMode, type AskFn } from '@nova-agent/plugins';
-import { shouldCompactBefore } from './auto-compact.js';
-import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache } from './commands.js';
@@ -36,8 +35,10 @@ import {
   toolStartLine,
 } from './ui.js';
 import {
+  agentRunBase,
   approvalPrompt,
   createApprovalService,
+  createAutoCompact,
   LONG_TASK,
   maxTurnsHint,
   ToolTiming,
@@ -243,66 +244,52 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     }
   };
 
-  /** Shared in-place compaction used by /compact, the auto threshold and the pre-flight check. */
-  const runCompact = async (trigger: 'auto' | 'manual') => {
-    compactRunning = true;
-    try {
-      const outcome = await compactSession({ client, session, messages, trigger });
-      messages = outcome.surface;
-      // Cumulative session stats (turns, tokens, cache) are NOT reset on
-      // compaction — they describe the whole session, not the visible window.
-      // Only the per-turn usage anchors reset (the next request starts fresh).
-      lastUsage = undefined;
-      lastPromptTokens = 0;
-      usageAnchor = undefined;
-      anchorMsgCount = 0;
-      return outcome;
-    } finally {
-      compactRunning = false;
-    }
-  };
-
   /**
-   * Pre-flight check: compact BEFORE the next request. With a usage anchor we
-   * price the delta since it (the interactive steady-state); without one — a
-   * resumed large session before its first turn, or a fresh /session switch —
-   * we price the whole request image so resume cannot blow the context window
-   * on its first request.
+   * Shared auto-compact orchestration (runner-shared): guards, anchor-reset
+   * contract and error containment live there; only the presentation is local.
    */
-  const maybePreCompact = async (): Promise<void> => {
-    const limit = config.autoCompactTokenLimit;
-    if (limit === undefined || compactRunning) return;
-    if (
-      !shouldCompactBefore({
-        limit,
-        usageAnchor,
-        anchorMsgCount,
-        messages,
-        request: { messages, systemPrompt, tools: host.tools },
-      })
-    )
-      return;
-    console.log(paint.yellow(`预估下轮上下文超过阈值 ${limit}，提前压缩…`));
-    try {
-      const outcome = await runCompact('auto');
-      console.log(`已自动压缩 — 会话原位压缩（日志保留完整历史），保留 ${outcome.retained} 条最近用户消息`);
-    } catch (err) {
-      console.error(paint.red(`自动压缩失败：${err instanceof Error ? err.message : String(err)}`));
-    }
-  };
+  const autoCompact = createAutoCompact({
+    limit: config.autoCompactTokenLimit,
+    request: () => ({ messages, systemPrompt, tools: host.tools }),
+    state: {
+      isRunning: () => compactRunning,
+      setRunning: (v) => {
+        compactRunning = v;
+      },
+      anchors: () => ({ usageAnchor, anchorMsgCount }),
+      resetAnchors: () => {
+        lastUsage = undefined;
+        lastPromptTokens = 0;
+        usageAnchor = undefined;
+        anchorMsgCount = 0;
+      },
+      lastPromptTokens: () => lastPromptTokens,
+      adoptSurface: (surface) => {
+        messages = surface;
+      },
+    },
+    compact: (trigger) => compactSession({ client, session, messages, trigger }),
+    report: {
+      preStart: (limit) => console.log(paint.yellow(`预估下轮上下文超过阈值 ${limit}，提前压缩…`)),
+      postStart: (tokens, limit) => console.log(paint.yellow(`上下文约 ${tokens} tok，超过自动压缩阈值 ${limit}，正在压缩…`)),
+      success: (outcome) => console.log(`已自动压缩 — 会话原位压缩（日志保留完整历史），保留 ${outcome.retained} 条最近用户消息`),
+      failure: (err) => console.error(paint.red(`自动压缩失败：${err instanceof Error ? err.message : String(err)}`)),
+    },
+  });
+  const { runCompact, maybePreCompact, maybeAutoCompact } = autoCompact;
 
-  /** Fallback: auto-compact AFTER a turn when its prompt tokens exceeded the threshold. */
-  const maybeAutoCompact = async (): Promise<void> => {
-    const limit = config.autoCompactTokenLimit;
-    if (limit === undefined || compactRunning || lastPromptTokens <= limit) return;
-    console.log(paint.yellow(`上下文约 ${lastPromptTokens} tok，超过自动压缩阈值 ${limit}，正在压缩…`));
-    try {
-      const outcome = await runCompact('auto');
-      console.log(`已自动压缩 — 会话原位压缩（日志保留完整历史），保留 ${outcome.retained} 条最近用户消息`);
-    } catch (err) {
-      console.error(paint.red(`自动压缩失败：${err instanceof Error ? err.message : String(err)}`));
-    }
-  };
+  /** Shared runAgent kwargs (runner-shared); per-call: signal + tool progress. */
+  const agentRun = agentRunBase({
+    client,
+    session,
+    rootDir: () => rootDir,
+    messages: () => messages,
+    tools: () => host.tools,
+    hooks: () => hooks,
+    jobs,
+    systemPrompt,
+    maxTurns: config.maxTurns,
+  });
 
   const renderEvent = async (event: AgentEvent, requestStartedAt: number): Promise<void> => {
     switch (event.type) {
@@ -542,17 +529,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     const requestStartedAt = Date.now();
     try {
       for await (const event of runAgent({
-        provider: client,
-        messages,
-        rootDir,
-        // Spilled tool outputs are grouped per session.
-        cacheDir: path.join(novaHome(), 'cache', 'tool-outputs', session.id),
-        jobs,
-        emit: async (evt) => { await session.appendEvent(evt); },
-        tools: host.tools,
-        hooks,
-        systemPrompt,
-        maxTurns: config.maxTurns,
+        ...agentRun(),
         // Live bash output tail on one in-place dim row (same contract as the
         // reasoning line: \r\x1b[2K clears exactly one physical row, so the
         // tail must be width-trimmed before writing).

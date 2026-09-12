@@ -12,7 +12,7 @@ import {
   type Usage,
 } from '@nova-agent/core';
 import { styledWidth } from '@nova-agent/tui';
-import type { PtcMode } from '@nova-agent/plugins';
+import type { PtcMode } from '@nova-agent/core';
 import { approvalLabel } from './labels.js';
 import type { Palette } from './palette.js';
 import { humanTokens } from './tool-lines.js';

@@ -18,7 +18,6 @@
   },
   "dependencies": {
     "@nova-agent/core": "workspace:*",
-    "@nova-agent/plugins": "workspace:*",
     "@nova-agent/tui": "workspace:*"
   },
   "devDependencies": {

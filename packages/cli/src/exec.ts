@@ -1,4 +1,3 @@
-import path from 'node:path';
 import {
   newId,
   runAgent,
@@ -10,11 +9,11 @@ import {
 import { PermissionService, type ApprovalMode } from '@nova-agent/plugins';
 import { wrapAutoCompact } from './auto-compact.js';
 import { compactSession } from './compact.js';
-import { novaHome, type Config } from './config.js';
+import type { Config } from './config.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
-import { LONG_TASK, ToolTiming } from './runner-shared.js';
+import { agentRunBase, LONG_TASK, ToolTiming } from './runner-shared.js';
 
 export interface ExecOptions {
   rootDir: string;
@@ -94,20 +93,19 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   // test sinks.
   const notify = createNotifier({ enabled: opts.out === undefined && config.notify !== false });
   const execStartedAt = Date.now();
+  const agentRun = agentRunBase({
+    client: provider,
+    session,
+    rootDir: () => rootDir,
+    messages: () => messages,
+    tools: () => host.tools,
+    hooks: () => hooks,
+    jobs,
+    systemPrompt,
+    maxTurns: config.maxTurns,
+  });
   try {
-    for await (const event of runAgent({
-        provider,
-        messages,
-        rootDir,
-        // Spilled tool outputs are grouped per session.
-        cacheDir: path.join(novaHome(), 'cache', 'tool-outputs', session.id),
-      jobs,
-      emit: async (evt) => { await session.appendEvent(evt); },
-      tools: host.tools,
-      hooks,
-      systemPrompt,
-      maxTurns: config.maxTurns,
-    })) {
+    for await (const event of runAgent(agentRun())) {
       if (json) write(`${JSON.stringify(event)}\n`);
       else renderHuman(event, write, paint);
       switch (event.type) {

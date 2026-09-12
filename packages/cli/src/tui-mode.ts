@@ -14,8 +14,6 @@ import {
   TOOL_ELAPSED_AFTER_MS,
   TOOL_TAIL_KEEP_CHARS,
   TOOL_TAIL_SHOW_CHARS,
-  TPS_INTERVAL_MS,
-  TPS_SAMPLES,
 } from '@nova-agent/tui-view';
 import {
   emptyStats,
@@ -25,7 +23,6 @@ import {
   Session,
   type AgentEvent,
   type AgentMessage,
-  type ToolCall,
   type Usage,
   type UsageStats,
   type UserMessage,
@@ -37,12 +34,10 @@ import {
   skillsPlugin,
   type ApprovalMode,
   type AskFn,
-  type PermissionKind,
   type PtcMode,
 } from '@nova-agent/plugins';
 import { writeAgentsMd } from './agents-md.js';
-import { shouldCompactBefore } from './auto-compact.js';
-import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
+import { compactSession, surfaceDivergence } from './compact.js';
 import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
 import {
   COMMAND_SPECS,
@@ -56,7 +51,7 @@ import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { reasoningLiveRow, summaryRow } from './reasoning.js';
 import { createNotifier } from './notify.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
-import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
+import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
 import { createSessionRuntime } from './session-runtime.js';
 import {
   approvalLabel,
@@ -77,6 +72,7 @@ import {
   plainPalette,
   SPINNER_FRAMES,
   statusLine,
+  TOOL_GUTTER,
   toolArgSummary,
   toolDoneLine,
   toolGroupLine,
@@ -85,9 +81,9 @@ import {
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
-import { createApprovalService, LONG_TASK, maxTurnsHint } from './runner-shared.js';
+import { agentRunBase, createApprovalService, createAutoCompact, LONG_TASK, maxTurnsHint } from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
-import { type Block, type ToolEntry } from './tui/store.js';
+import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import {
   codeModeLabel,
@@ -166,7 +162,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // tools.code.mode 只是初始值；其余 tools.code 调参（超时/预算）在每次
   // 重建 host 时原样带上。
   let codeMode: PtcMode = codeConfig?.mode ?? 'native';
-  let modeSwitching = false;
   const bashPluginArgs = (): Parameters<typeof builtinPlugins>[0] => ({
     spillReadRoot: path.join(novaHome(), 'cache', 'tool-outputs'),
     bash:
@@ -246,9 +241,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const notify = createNotifier({ enabled: config.notify !== false });
   const askApproval: AskFn = (call, kind) =>
     new Promise((resolve) => {
-      approvalRequest = { call, kind, resolve };
-      approvalIndex = 0;
-      approvalPreview = undefined;
+      store.approval = { call, kind, resolve };
+      store.approvalIndex = 0;
+      store.approvalPreview = undefined;
       // Best-effort effect preview (edit_file's diff etc.) inside the popup —
       // the user approves what the call WILL do, not just the arg JSON.
       // Rendered when it lands; dropped when the popup already closed.
@@ -256,14 +251,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       if (entry !== undefined && entry.tool.preview !== undefined) {
         void Promise.resolve(entry.tool.preview(call.args, { rootDir }))
           .then((text) => {
-            if (approvalRequest !== undefined && approvalRequest.call.id === call.id) {
-              approvalPreview = text.trim().split('\n').slice(0, APPROVAL_PREVIEW_MAX_ROWS);
+            if (store.approval !== undefined && store.approval.call.id === call.id) {
+              store.approvalPreview = text.trim().split('\n').slice(0, APPROVAL_PREVIEW_MAX_ROWS);
               scheduleRender();
             }
           })
           .catch(() => {});
       }
-      scrollFromEnd = 0;
+      store.scrollFromEnd = 0;
       notify('需要审批', `${toolLabel(call.name)} · ${toolArgSummary(call.name, call.rawArgs, 80)}`);
       scheduleRender();
     });
@@ -275,168 +270,48 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   await rebuildHost();
 
   // ---- ui state ---------------------------------------------------------
-  const blocks: Block[] = [];
-  const historyStack: string[] = [];
-  let scrollFromEnd = 0;
-  let input = '';
-  let cursorPos = 0; // char index into input
-  let popupIndex = 0;
+  // 转录/输入/弹窗/审批/tps 状态全部收敛进 TuiStore（./tui/store.ts）：壳层
+  // 不再闭包重声明字段，也不再手拼 TuiStore 形状的适配对象——按键责任链
+  // （keys.ts）与渲染直接读写同一实例。仅 agent 态（usage 锚点等）留闭包。
+  const store = new TuiStore(() => scheduleRender());
   /**
    * Esc closes the command palette until the input changes again — otherwise
    * the popup would instantly re-open on the next keystroke while typing a
    * non-command message that happens to start with "/".
    */
-  let popupDismissed = false;
-  const commandPopupMatches = (): CommandSpec[] => (popupDismissed ? [] : filterCommands(input));
-  /**
-   * Interactive model picker (opened by bare /model): a floating overlay like
-   * the approval dialog, NOT a history dump — long catalogs scroll inside the
-   * panel with a sliding window instead of flooding the transcript.
-   * (Window sizes + session list limit come from tui-view tokens.)
-   */
-  let modelPicker: { models: string[]; index: number } | undefined;
-  let sessionPicker: { entries: SessionEntry[]; index: number } | undefined;
-  let historyIdx = -1;
-  let historyDraft = '';
+  const commandPopupMatches = (): CommandSpec[] => (store.popupDismissed ? [] : filterCommands(store.input));
   let lastUsage: Usage | undefined;
   let lastPromptTokens = 0;
   // Last successful usage acts as the anchor for pre-flight token estimates
   // (dsh token-meter anchor + delta repricing, whole-message granularity).
   let usageAnchor: Usage | undefined;
   let anchorMsgCount = 0;
-  let compactRunning = false;
-  let approvalRequest: { call: ToolCall; kind: PermissionKind; resolve: (a: 'allow' | 'deny' | 'always') => void } | undefined;
-  /** Selected option in the approval popup (codex-style: arrows + Enter). */
-  let approvalIndex = 0;
-  /** Best-effort effect preview lines for the pending approval (async-filled). */
-  let approvalPreview: string[] | undefined;
-  let spinnerFrame = 0;
   let exitNow: (() => void) | undefined;
-  let lastCtrlC = 0;
-  /** Timestamp of the last Esc/Ctrl+C interrupt request; 0 when idle. Drives the "正在中断…" feedback. */
-  let interruptAt = 0;
-
-  let blocksVersion = 0;
-  // Blocks never touch scrollFromEnd: when the user has scrolled up, the
-  // viewport stays anchored to their position instead of snapping to bottom
-  // on every streamed token.
-  const pushBlock = (lines: string[], gutter?: Block['gutter'], kind?: Block['kind']): Block => {
-    const b: Block = {
-      lines,
-      wrapped: undefined,
-      ...(gutter !== undefined ? { gutter } : {}),
-      ...(kind !== undefined ? { kind } : {}),
-    };
-    blocks.push(b);
-    blocksVersion += 1;
-    scheduleRender();
-    return b;
-  };
-  const updateLastBlock = (lines: string[]): void => {
-    if (blocks.length === 0) {
-      pushBlock(lines);
-      return;
-    }
-    const last = blocks[blocks.length - 1];
-    if (last === undefined) return;
-    last.lines = lines;
-    last.wrapped = undefined;
-    blocksVersion += 1;
-    scheduleRender();
-  };
-  const replaceBlock = (block: Block, lines: string[]): void => {
-    if (!blocks.includes(block)) {
-      // Stale ref: /clear (or another wipe) removed the block while a stream
-      // still held it. Re-materialize instead of writing into an orphan.
-      blocks.push({ lines, wrapped: undefined, ...(block.gutter !== undefined ? { gutter: block.gutter } : {}) });
-    } else {
-      block.lines = lines;
-      block.wrapped = undefined;
-    }
-    blocksVersion += 1;
-    scheduleRender();
-  };
-  /**
-   * Live tool blocks keyed by call id. Parallel tool segments produce
-   * consecutive starts before any result, so results must update the block
-   * that belongs to THEIR call — updating the last block would clobber a
-   * sibling call's entry. `tailBuf` accumulates the tool's streamed output
-   * (bash) so the spinner tick can show a live "└ tail" progress line.
-   */
-  const toolBlocks = new Map<
-    string,
-    { block: Block; startAt: number; name: string; rawArgs: string; tailBuf?: string }
-  >();
-  /** 工具块 gutter：失败 └ 行与软折续行对齐到内容列。 */
-  const TOOL_GUTTER: NonNullable<Block['gutter']> = { first: '', rest: '      ' };
   /**
    * 工具行的统一宽度预算。wrapBlock 按 `cols-1-gutter` 折行，行构建器必须
    * 裁进同一个预算——此前按 `cols-1` 裁，行恒比折行预算宽 6 列，
    * ` · N 行 · T.Ts` 尾巴整段被顶成孤儿续行（截图里的 `5.9s`）。
    */
-  const toolBudget = (): number => screen.cols - 1 - styledWidth(TOOL_GUTTER.rest);
-  /** The tool call currently executing; progress text routes to its block. */
-  let activeToolId: string | undefined;
-  /**
-   * Consecutive completed read-only calls collapse into one "查看" line
-   * (codex "Explored" cell): each result's live block is removed and its
-   * summary joins the group instead of leaving a line of its own.
-   */
-  let readGroup: { entries: string[]; startAt: number; block: Block } | undefined;
-  /** The streaming reasoning block, folded to a one-line summary once done. */
-  let reasoningBlock: Block | undefined;
-
-  const closeReadGroup = (): void => {
-    readGroup = undefined;
-  };
-
-  const removeBlock = (block: Block): void => {
-    const idx = blocks.indexOf(block);
-    if (idx >= 0) blocks.splice(idx, 1);
-    blocksVersion += 1;
-    scheduleRender();
-  };
-
-  // tps 环形窗口来自 tui-view tokens（TPS_SAMPLES × TPS_INTERVAL_MS ≈ 5 秒趋势）。
-  const tpsRing: number[] = Array<number>(TPS_SAMPLES).fill(0);
-  let tpsTokens = 0;
-  let tpsLastTokens = 0;
-  let tpsLastAt = 0;
-
-  /**
-   * 生成阶段（驱动 tps 仪表与输入行 spinner 的颜色）。thinking/writing =
-   * 模型正在产出 token（绿，速度表"活"）；tool = 停在工具等待（无 token
-   * 流动，仪表冻结转暗）；idle = 空闲。旧版只有一个 streaming 布尔，思考/
-   * 工具/输出全算"流式"，用户在长思考段里看到的速度表却几乎不动——阶段
-   * 显式化后"绿色 = 正在生成"的含义才立得住。
-   */
-  let genPhase: 'idle' | 'thinking' | 'writing' | 'tool' = 'idle';
+  const toolBudget = (): number => store.budget(screen.cols);
 
   const spinner = {
     start() {
       spinnerTimer ??= setInterval(() => {
-        spinnerFrame += 1;
+        store.spinnerFrame += 1;
         // Animate the bullet of every running tool block (codex-style
         // activity marker) and the composer-prefix spinner. After two
         // seconds a live elapsed suffix appears so a slow command never
         // looks frozen (Claude Code's bash progress counter).
-        const frame = SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length] ?? '•';
+        const frame = SPINNER_FRAMES[store.spinnerFrame % SPINNER_FRAMES.length] ?? '•';
         const now = Date.now();
-        if (now - tpsLastAt >= TPS_INTERVAL_MS) {
-          const secs = (now - tpsLastAt) / 1000;
-          // 只在确有新增输出时推一个采样——轮内的思考停顿 / 工具等待不推 0，
-          // 否则连续几个 500ms 空窗会把 10 格窗口排空成"▁▁… 0"（用户看到的
-          // "偶尔清零"）。无新数据就只推进时钟、冻结窗口，速度表随真实产出左滚。
-          if (tpsTokens > tpsLastTokens) {
-            tpsRing.push(Math.round((tpsTokens - tpsLastTokens) / secs));
-            if (tpsRing.length > TPS_SAMPLES) tpsRing.shift();
-          }
-          tpsLastTokens = tpsTokens;
-          tpsLastAt = now;
-        }
-        for (const entry of toolBlocks.values()) {
+        // 只在确有新增输出时推一个采样（门控在 TuiStore.sampleTps）——轮内的
+        // 思考停顿 / 工具等待不推 0，否则连续几个 500ms 空窗会把 10 格窗口
+        // 排空成"▁▁… 0"（用户看到的"偶尔清零"）。无新数据就只推进时钟、
+        // 冻结窗口，速度表随真实产出左滚。
+        store.sampleTps(now);
+        for (const entry of store.toolBlocks.values()) {
           const elapsed = now - entry.startAt;
-          const suffix = interruptAt > 0
+          const suffix = store.interruptAt > 0
             ? `${YELLOW} · 正在中断…${RESET}`
             : elapsed >= TOOL_ELAPSED_AFTER_MS
               ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}`
@@ -454,7 +329,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             }
           }
           // Dirty-check: identical rows skip the replace (no wrap-cache churn).
-          if (entry.block.lines.join('\n') !== lines.join('\n')) replaceBlock(entry.block, lines);
+          if (entry.block.lines.join('\n') !== lines.join('\n')) store.replaceBlock(entry.block, lines);
         }
         scheduleRender();
       }, SPINNER_TICK_MS);
@@ -490,92 +365,73 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   // ---- agent ------------------------------------------------------------
   const aborters: AbortController[] = [];
-  let streaming = false;
-
-  /** Shared in-place compaction used by /compact, the auto threshold and the pre-flight check. */
-  const runCompact = async (trigger: 'auto' | 'manual'): Promise<CompactedSession> => {
-    compactRunning = true;
-    try {
-      const outcome = await compactSession({
-        client,
-        session,
-        messages,
-        trigger,
-      });
-      messages = outcome.surface;
-      // Cumulative session stats (turns, tokens, cache) are NOT reset on
-      // compaction — they describe the whole session, not the visible window.
-      // Only the per-turn usage anchors reset (the next request starts fresh).
-      lastUsage = undefined;
-      lastPromptTokens = 0;
-      usageAnchor = undefined;
-      anchorMsgCount = 0;
-      return outcome;
-    } finally {
-      compactRunning = false;
-    }
-  };
 
   /**
-   * Pre-flight compaction check (dsh token-meter anchor semantics): project
-   * the NEXT prompt tokens from the last successful usage anchor plus the
-   * messages appended since, so compaction can fire BEFORE a request that
-   * would overflow instead of after it.
+   * Shared auto-compact orchestration (runner-shared): guards, anchor-reset
+   * contract and error containment live there; only the presentation is local.
    */
-  const maybePreCompact = async (): Promise<void> => {
-    const limit = config.autoCompactTokenLimit;
-    if (limit === undefined || compactRunning) return;
-    if (
-      !shouldCompactBefore({
-        limit,
-        usageAnchor,
-        anchorMsgCount,
-        messages,
-        request: { messages, systemPrompt, tools: host.tools },
-      })
-    )
-      return;
-    pushBlock([`${YELLOW}  ⋯ 预估下轮上下文超阈值 ${humanTokens(limit)}，提前压缩…${RESET}`]);
-    try {
-      const outcome = await runCompact('auto');
-      pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]);
-    } catch (err) {
-      // A failed compaction must not kill the turn (agentTurn is invoked
-      // fire-and-forget); the conversation continues uncompressed.
-      pushBlock([`${RED}  ✗ 预压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
-    }
-  };
+  const { runCompact, maybePreCompact, maybeAutoCompact } = createAutoCompact({
+    limit: config.autoCompactTokenLimit,
+    request: () => ({ messages, systemPrompt, tools: host.tools }),
+    state: {
+      isRunning: () => store.compactRunning,
+      setRunning: (v) => {
+        store.compactRunning = v;
+      },
+      anchors: () => ({ usageAnchor, anchorMsgCount }),
+      resetAnchors: () => {
+        lastUsage = undefined;
+        lastPromptTokens = 0;
+        usageAnchor = undefined;
+        anchorMsgCount = 0;
+      },
+      lastPromptTokens: () => lastPromptTokens,
+      adoptSurface: (surface) => {
+        messages = surface;
+      },
+    },
+    compact: (trigger) => compactSession({ client, session, messages, trigger }),
+    report: {
+      preStart: (limit) => store.pushBlock([`${YELLOW}  ⋯ 预估下轮上下文超阈值 ${humanTokens(limit)}，提前压缩…${RESET}`]),
+      postStart: (tokens) => store.pushBlock([`${YELLOW}  ⋯ 上下文 ${humanTokens(tokens)} tok 超阈值，正在压缩…${RESET}`]),
+      success: (outcome) =>
+        store.pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]),
+      failure: (err, where) =>
+        store.pushBlock(
+          [`${RED}  ✗ ${where === 'pre' ? '预压缩' : '自动压缩'}失败：${err instanceof Error ? err.message : String(err)}${RESET}`],
+          TOOL_GUTTER,
+        ),
+    },
+  });
 
-  /** Fallback: auto-compact AFTER a turn when its prompt tokens exceeded the threshold. */
-  const maybeAutoCompact = async (): Promise<void> => {
-    const limit = config.autoCompactTokenLimit;
-    if (limit === undefined || compactRunning || lastPromptTokens <= limit) return;
-    pushBlock([`${YELLOW}  ⋯ 上下文 ${humanTokens(lastPromptTokens)} tok 超阈值，正在压缩…${RESET}`]);
-    try {
-      const outcome = await runCompact('auto');
-      pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]);
-    } catch (err) {
-      pushBlock([`${RED}  ✗ 自动压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
-    }
-  };
+  /** Shared runAgent kwargs (runner-shared); per-call: signal + tool progress. */
+  const agentRun = agentRunBase({
+    client,
+    session,
+    rootDir: () => rootDir,
+    messages: () => messages,
+    tools: () => host.tools,
+    hooks: () => hooks,
+    jobs,
+    systemPrompt,
+    maxTurns: config.maxTurns,
+  });
 
   /** Remove the live reasoning block once it ends: the answer, not the
    * thinking, is what the user came for — only the streaming tail is shown. */
   const discardReasoning = (): void => {
-    if (reasoningBlock === undefined) return;
-    const idx = blocks.indexOf(reasoningBlock);
-    if (idx >= 0) blocks.splice(idx, 1);
-    reasoningBlock = undefined;
-    scheduleRender();
+    if (store.reasoningBlock === undefined) return;
+    store.removeBlock(store.reasoningBlock);
+    store.reasoningBlock = undefined;
   };
 
   async function agentTurn(userInput: string): Promise<void> {
     const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: userInput };
     messages.push(userMsg);
     await session.append(userMsg);
-    // Spacing (Codex cell contract): blocks carry no manual separators —
-    // flattenBlocks inserts the single blank row between non-empty blocks.
-    pushBlock(
+    // Spacing (Codex cell contract): store.blocks carry no manual separators —
+    // flattenBlocks inserts the single blank row between non-empty store.blocks.
+    store.pushBlock(
       [userInput],
       {
         first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`,
@@ -588,16 +444,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
     const aborter = new AbortController();
     aborters.push(aborter);
-    streaming = true;
+    store.streaming = true;
     spinner.start();
-    genPhase = 'thinking';
-    // tps 是会话级连续滚动速度表：新一轮不清空 ring、不把 tpsTokens 归零，
+    store.genPhase = 'thinking';
+    // tps 是会话级连续滚动速度表：新一轮不清空 ring、不把 store.tpsTokens 归零，
     // 新采样直接接在旧窗口左移，避免发送时"闪回 0"的跳变。只把基线锚到本轮
-    // 起点——tpsLastTokens 取当前累计值，令本轮首个采样只计新输出的 token；
-    // tpsLastAt 重置，把空闲间隔排除在首样分母外（否则跨分钟的 secs 会压出
-    // 一个假 0）。tpsTokens 全程单调累加。
-    tpsLastTokens = tpsTokens;
-    tpsLastAt = Date.now();
+    // 起点——store.tpsLastTokens 取当前累计值，令本轮首个采样只计新输出的 token；
+    // store.tpsLastAt 重置，把空闲间隔排除在首样分母外（否则跨分钟的 secs 会压出
+    // 一个假 0）。store.tpsTokens 全程单调累加。
+    store.tpsLastTokens = store.tpsTokens;
+    store.tpsLastAt = Date.now();
     const startedAt = Date.now();
     let assistantText = '';
     let assistantOpen = false;
@@ -624,12 +480,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
      * 但满屏的自言自语不再占据对话区。
      */
     const foldToSummary = (): boolean => {
-      const block = reasoningBlock;
+      const block = store.reasoningBlock;
       const had = block !== undefined && reasoningBuffer.trim().length > 0;
       const secs = reasoningStartedAt > 0
         ? Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
         : 0;
-      reasoningBlock = undefined;
+      store.reasoningBlock = undefined;
       reasoningStartedAt = 0;
       if (had && block !== undefined) {
         // Detail = paragraph-split buffer (blank lines preserved — the
@@ -639,7 +495,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         block.expanded = false;
         reasoningBuffer = '';
         reasoningFull.length = 0;
-        replaceBlock(block, [summaryRow(paint, secs, false)]);
+        store.replaceBlock(block, [summaryRow(paint, secs, false)]);
         scheduleRender();
         return true;
       }
@@ -648,30 +504,21 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     };
     try {
       for await (const event of runAgent({
-        provider: client,
-        messages,
-        rootDir,
-        // Spilled tool outputs are grouped per session.
-        cacheDir: path.join(novaHome(), 'cache', 'tool-outputs', session.id),
-        jobs,
-        emit: async (evt) => { await session.appendEvent(evt); },
-        tools: host.tools,
-        hooks,
-        systemPrompt,
-        maxTurns: config.maxTurns,
+        ...agentRun(),
         // Live bash output lands in the running tool block's tail buffer; the
         // spinner tick renders it (never a render per chunk).
         onToolProgress: (text) => {
-          const entry = activeToolId !== undefined ? toolBlocks.get(activeToolId) : undefined;
+          const entry = store.activeToolId !== undefined ? store.toolBlocks.get(store.activeToolId) : undefined;
           if (entry === undefined) return;
-          // Code-point slice: a UTF-16 slice can split a surrogate pair.
-          entry.tailBuf = [...((entry.tailBuf ?? '') + text)].slice(-TOOL_TAIL_KEEP_CHARS).join('');
+          // Code-point slice (TuiStore.appendTail): a UTF-16 slice can split a
+          // surrogate pair.
+          store.appendTail(entry, text, TOOL_TAIL_KEEP_CHARS, TOOL_TAIL_SHOW_CHARS);
         },
         signal: aborter.signal,
       })) {
         await onAgentEvent(event, startedAt, {
           appendAssistant(text: string) {
-            tpsTokens += estimateTextTokens(text);
+            store.tpsTokens += estimateTextTokens(text);
             if (!assistantOpen) {
               // Whitespace-only leading deltas (models often emit blank lines
               // before tool calls) must not anchor a blank answer block above
@@ -680,13 +527,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               assistantOpen = true;
               assistantText = '';
               assistantBlock = undefined;
-              genPhase = 'writing';
+              store.genPhase = 'writing';
               reasoningOpen = false;
-              closeReadGroup();
+              store.closeReadGroup();
               // Codex cell contract: margins belong to each cell. The thought
               // summary folded below already carries its own trailing blank,
               // so the answer opens with NO separator — flattenBlocks owns the
-              // single blank row between non-empty blocks.
+              // single blank row between non-empty store.blocks.
               foldToSummary();
               md = createMarkdownRenderer(paint);
               assistantSeparator = undefined;
@@ -699,31 +546,31 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             // trailing unfinished line re-renders per delta.
             const lines = md !== undefined ? md.push(text) : [];
             if (assistantBlock === undefined) {
-              pushBlock(lines, { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
-              assistantBlock = blocks[blocks.length - 1];
+              store.pushBlock(lines, { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
+              assistantBlock = store.blocks[store.blocks.length - 1];
             } else {
-              replaceBlock(assistantBlock, lines);
+              store.replaceBlock(assistantBlock, lines);
             }
           },
           appendReasoning(text: string) {
-            tpsTokens += estimateTextTokens(text);
+            store.tpsTokens += estimateTextTokens(text);
             if (assistantOpen && assistantText.trim().length > 0) return;
             if (assistantOpen && assistantText.trim().length === 0) {
               assistantOpen = false;
             }
-            genPhase = 'thinking';
+            store.genPhase = 'thinking';
             if (!reasoningOpen) {
               reasoningOpen = true;
               reasoningStartedAt = Date.now();
               reasoningBuffer = '';
               reasoningFull.length = 0;
-              // Auto-expanded while streaming: the newest reasoning lines are
+              // Auto-expanded while store.streaming: the newest reasoning lines are
               // visible live (tail-capped); completion folds them away. Every
               // row sits at the text column (no marker on the first row — an
               // unmarked first row at the marker column just reads as a
               // stray outdented line).
-              pushBlock(['⋯'], { first: '    ', rest: '    ' }, 'reasoning');
-              reasoningBlock = blocks[blocks.length - 1];
+              store.pushBlock(['⋯'], { first: '    ', rest: '    ' }, 'reasoning');
+              store.reasoningBlock = store.blocks[store.blocks.length - 1];
             }
             // The buffer is the truth (memory-only detail); the block shows
             // settled lines newest-first plus one live tail row — capped at
@@ -742,16 +589,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             });
             // The update goes to the block's stable ref — the last block may
             // be a tool line, and clobbering it must not erase history.
-            if (reasoningBlock !== undefined) replaceBlock(reasoningBlock, lines);
-            else updateLastBlock(lines);
+            if (store.reasoningBlock !== undefined) store.replaceBlock(store.reasoningBlock, lines);
+            else store.updateLastBlock(lines);
           },
           closeAssistant() {
             if (assistantOpen && assistantText.trim().length === 0) {
               // A whitespace-only answer (blank lines before tool calls)
               // leaves no trace: drop the blank block and its separator by
-              // identity — tool blocks may sit after them by now.
-              if (assistantBlock !== undefined) removeBlock(assistantBlock);
-              if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+              // identity — tool store.blocks may sit after them by now.
+              if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
+              if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
             }
             assistantOpen = false;
           },
@@ -763,8 +610,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           resetAssistant() {
             // A provider retry replays the answer from scratch: the partial
             // text and its separator belong to the failed attempt — drop both.
-            if (assistantBlock !== undefined) removeBlock(assistantBlock);
-            if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+            if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
+            if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
             assistantBlock = undefined;
             assistantSeparator = undefined;
             assistantOpen = false;
@@ -780,36 +627,36 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
     } catch (err) {
       spinner.stop();
-      closeReadGroup();
+      store.closeReadGroup();
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof Error && (err.name === 'AbortError' || /abort/i.test(message))) {
         // An abort may leave a partial assistant block that was never closed
         // (no 'message' event → never logged): drop it so the screen matches
         // the log. Committed text (assistantOpen === false) is kept.
         if (assistantOpen) {
-          if (assistantBlock !== undefined) removeBlock(assistantBlock);
-          if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+          if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
+          if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
           assistantBlock = undefined;
           assistantSeparator = undefined;
           assistantOpen = false;
           assistantText = '';
         }
-        pushBlock([`${YELLOW}  ■ 已中断${RESET}`]);
+        store.pushBlock([`${YELLOW}  ■ 已中断${RESET}`]);
       } else {
         // A non-abort error mid-stream leaves a partial assistant block on
         // screen with no matching 'done' in the log — discard it to keep
         // screen and log in sync, then surface a dim hint.
         if (assistantOpen) {
-          if (assistantBlock !== undefined) removeBlock(assistantBlock);
-          if (assistantSeparator !== undefined) removeBlock(assistantSeparator);
+          if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
+          if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
           assistantBlock = undefined;
           assistantSeparator = undefined;
           assistantOpen = false;
           assistantText = '';
-          pushBlock([`${DIM}  ⟳ 未完成的回答已丢弃（未写入会话日志）${RESET}`], TOOL_GUTTER);
+          store.pushBlock([`${DIM}  ⟳ 未完成的回答已丢弃（未写入会话日志）${RESET}`], TOOL_GUTTER);
         }
         // API errors can be long: hang wrapped rows under the notice column.
-        pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], TOOL_GUTTER);
+        store.pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], TOOL_GUTTER);
         // A turn that died mid-work (not a user abort) deserves a ping too —
         // but only when it ran long enough that the user may have walked away.
         if (!exiting && Date.now() - startedAt >= LONG_TASK.errorMs) {
@@ -819,21 +666,21 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     } finally {
       const idx = aborters.indexOf(aborter);
       if (idx >= 0) aborters.splice(idx, 1);
-      streaming = false;
-      interruptAt = 0;
-      genPhase = 'idle';
+      store.streaming = false;
+      store.interruptAt = 0;
+      store.genPhase = 'idle';
       spinner.stop();
       // An abort/error never reaches the 'done' event: recycle the reasoning
       // tail here so no transient line survives into history.
       discardReasoning();
       reasoningOpen = false;
       reasoningBuffer = '';
-      closeReadGroup();
+      store.closeReadGroup();
       // Runtime invariant (NOVA_DEBUG): the live surface must stay equal to
       // the session log projection — "model-visible means logged".
       if (process.env['NOVA_DEBUG'] !== undefined) {
         const divergence = surfaceDivergence(session, messages);
-        if (divergence !== undefined) pushBlock([`${RED}  [invariant] ${divergence}${RESET}`]);
+        if (divergence !== undefined) store.pushBlock([`${RED}  [invariant] ${divergence}${RESET}`]);
       }
       // Long turns end while the user is elsewhere: the toast is the "come
       // back, it's done" cue (short turns stay silent — that's just spam).
@@ -868,8 +715,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // the retry sends the same prompt prefix.
         Object.assign(stats, event.stats);
         io.resetAssistant();
-        genPhase = 'thinking'; // 重新请求在途，属于"生成中"
-        pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], TOOL_GUTTER);
+        store.genPhase = 'thinking'; // 重新请求在途，属于"生成中"
+        store.pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], TOOL_GUTTER);
         break;
       }
       case 'text_delta':
@@ -894,51 +741,47 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // The reasoning phase ends when work begins; its transient tail is
         // removed and a later reasoning burst starts a fresh block.
         io.foldReasoning();
-        genPhase = 'tool';
+        store.genPhase = 'tool';
         // A new non-read call ends the current read-only group.
-        if (!isReadOnlyTool(event.call.name)) closeReadGroup();
-        const block: Block = {
-          lines: [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', toolBudget())],
-          wrapped: undefined,
-          // Soft-wrapped continuation rows hang under the summary column.
-          gutter: TOOL_GUTTER,
-        };
-        blocks.push(block);
-        toolBlocks.set(event.call.id, { block, startAt: Date.now(), name: event.call.name, rawArgs: event.call.rawArgs });
-        activeToolId = event.call.id;
+        if (!isReadOnlyTool(event.call.name)) store.closeReadGroup();
+        // Soft-wrapped continuation rows hang under the summary column.
+        const block = store.pushBlock(
+          [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', toolBudget())],
+          TOOL_GUTTER,
+        );
+        store.toolBlocks.set(event.call.id, { block, startAt: Date.now(), name: event.call.name, rawArgs: event.call.rawArgs });
+        store.activeToolId = event.call.id;
         scheduleRender();
         break;
       }
       case 'tool_call_result': {
         await session.append(event.result);
-        const entry = toolBlocks.get(event.call.id);
-        toolBlocks.delete(event.call.id);
-        if (activeToolId === event.call.id) activeToolId = undefined;
+        const entry = store.toolBlocks.get(event.call.id);
+        store.toolBlocks.delete(event.call.id);
+        if (store.activeToolId === event.call.id) store.activeToolId = undefined;
         const duration = entry === undefined ? 0 : Math.max(0, Date.now() - entry.startAt);
         const failed = isFailureContent(event.result.content);
         if (isReadOnlyTool(event.call.name) && !failed) {
           // codex "Explored": the read's own line disappears and its summary
           // folds into the running group line.
-          if (entry !== undefined) removeBlock(entry.block);
+          if (entry !== undefined) store.removeBlock(entry.block);
           // 宽预算存原文：公共目录折叠与最终排布都发生在 toolGroupLine 渲染时。
           const raw = toolArgSummary(event.call.name, event.call.rawArgs, 400);
           const summary = raw.length === 0 || raw === '{}' ? toolLabel(event.call.name) : raw;
-          if (readGroup === undefined) {
-            const block: Block = { lines: [], wrapped: undefined, gutter: TOOL_GUTTER };
-            blocks.push(block);
-            readGroup = {
+          if (store.readGroup === undefined) {
+            store.readGroup = {
               entries: [summary],
               startAt: entry === undefined ? Date.now() - duration : entry.startAt,
-              block,
+              block: store.pushBlock([], TOOL_GUTTER),
             };
           } else {
-            readGroup.entries.push(summary);
+            store.readGroup.entries.push(summary);
           }
-          replaceBlock(readGroup.block, [
-            toolGroupLine(paint, readGroup.entries, Date.now() - readGroup.startAt, toolBudget()),
+          store.replaceBlock(store.readGroup.block, [
+            toolGroupLine(paint, store.readGroup.entries, Date.now() - store.readGroup.startAt, toolBudget()),
           ]);
         } else {
-          closeReadGroup();
+          store.closeReadGroup();
           const lines = toolDoneLine(
             paint,
             event.call.name,
@@ -947,8 +790,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             duration,
             toolBudget(),
           );
-          if (entry !== undefined) replaceBlock(entry.block, lines);
-          else pushBlock(lines);
+          if (entry !== undefined) store.replaceBlock(entry.block, lines);
+          else store.pushBlock(lines);
         }
         break;
       }
@@ -971,16 +814,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         sessPromptTokens += stats.promptTokens;
         sessCachedTokens += stats.cachedTokens;
         if (stats.cachedTokens > 0) cacheSeen = true;
-        closeReadGroup();
+        store.closeReadGroup();
         io.foldReasoning();
         // A normal completion ends at the reply — no per-turn stats line (the
         // status bar carries tokens; /session carries details). Only abnormal
         // stops get a visible marker.
         if (event.stopReason !== 'complete') {
           const kind: StopKind = event.stopReason;
-          pushBlock([statusLine(paint, kind, stats, Date.now() - startedAt)]);
+          store.pushBlock([statusLine(paint, kind, stats, Date.now() - startedAt)]);
           if (kind === 'max_turns') {
-            pushBlock([
+            store.pushBlock([
               `${DIM}${maxTurnsHint(config)}${RESET}`,
             ]);
           }
@@ -997,16 +840,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * 跑起来再换 host 会造成已见工具与后续请求不一致。
    */
   const sessionPristine = (): boolean =>
-    !streaming && !compactRunning && !modeSwitching && messages.length <= 1 && input.length === 0;
+    !store.streaming && !store.compactRunning && !store.modeSwitching && messages.length <= 1 && store.input.length === 0;
 
   /**
-   * 芯片呈现的"未开始"判据：与 sessionPristine 的区别是不看 modeSwitching。
-   * 切换模式时 modeSwitching 会置 true 一整段 rebuild 窗口——若芯片按它
+   * 芯片呈现的"未开始"判据：与 sessionPristine 的区别是不看 store.modeSwitching。
+   * 切换模式时 store.modeSwitching 会置 true 一整段 rebuild 窗口——若芯片按它
    * 渲染，三枚会先塌成当前一枚再弹回，整行状态栏随之闪一下（Tab 每次按下
    * 都同步重绘，这正是用户看到的闪烁）。
    */
   const displayPristine = (): boolean =>
-    !streaming && !compactRunning && messages.length <= 1 && input.length === 0;
+    !store.streaming && !store.compactRunning && messages.length <= 1 && store.input.length === 0;
 
   const CODE_MODE_HINT: Record<PtcMode, string> = {
     native: '原生工具调用',
@@ -1018,12 +861,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const order: PtcMode[] = ['native', 'ptc', 'both'];
     const next = order[(order.indexOf(codeMode) + 1) % order.length] ?? 'native';
     if (next !== 'native' && !codeRuntimeAvailable()) {
-      pushBlock([
+      store.pushBlock([
         `${YELLOW}  ${codeModeLabel(next)}模式需要 Node ≥ 22.19（当前 ${process.version} 不支持类型剥离）${RESET}`,
       ]);
       return;
     }
-    modeSwitching = true;
+    store.modeSwitching = true;
     const prev = codeMode;
     codeMode = next;
     scheduleRender();
@@ -1034,12 +877,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     } catch (err) {
       // activate() 在 next host 上抛错：host/hooks 还没换，回滚模式即可。
       codeMode = prev;
-      pushBlock([
+      store.pushBlock([
         `${RED}  ✗ 模式切换失败：${err instanceof Error ? err.message : String(err)}${RESET}`,
         `${DIM}  已保持${codeModeLabel(prev)}模式${RESET}`,
       ]);
     } finally {
-      modeSwitching = false;
+      store.modeSwitching = false;
       scheduleRender();
     }
   }
@@ -1057,22 +900,22 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return true;
       case '/help': {
         const lines = COMMAND_SPECS.map((spec) => `${DIM}  ${padDisplay(spec.usage, 24)}${spec.description}${RESET}`);
-        pushBlock([`  ${BOLD}命令${RESET}`, ...lines]);
+        store.pushBlock([`  ${BOLD}命令${RESET}`, ...lines]);
         return true;
       }
       case '/model': {
         try {
           const models = await fetchModelList();
           if (models.length === 0) {
-            pushBlock([`${DIM}  站点未返回任何模型${RESET}`]);
+            store.pushBlock([`${DIM}  站点未返回任何模型${RESET}`]);
           } else {
             // Interactive picker overlay (↑↓ Enter Esc), not a history dump.
             const current = models.indexOf(client.model);
-            modelPicker = { models, index: Math.max(0, current) };
+            store.modelPicker = { models, index: Math.max(0, current) };
             scheduleRender();
           }
         } catch (err) {
-          pushBlock([`${RED}  模型列表获取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+          store.pushBlock([`${RED}  模型列表获取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
         }
         return true;
       }
@@ -1080,11 +923,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const idx = APPROVAL_ORDER.indexOf(permission.approvalMode);
         const next = APPROVAL_ORDER[(idx + 1) % APPROVAL_ORDER.length] ?? 'read-only';
         permission.setMode(next);
-        pushBlock([`${DIM}  审批档位：${approvalLabel(next)}${RESET}`]);
+        store.pushBlock([`${DIM}  审批档位：${approvalLabel(next)}${RESET}`]);
         return true;
       }
       case '/mode': {
-        pushBlock([
+        store.pushBlock([
           `  ${BOLD}执行模式${RESET} ${DIM}· 新会话未开始时按 Tab 循环切换${RESET}`,
           ...(['native', 'ptc', 'both'] as PtcMode[]).map((m) =>
             m === codeMode
@@ -1099,7 +942,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const lines = host.toolEntries.map(
           (entry) => `${DIM}  插件=${entry.plugin} · 工具=${entry.tool.name} · 权限=${permissionLabel(entry.permission)}${RESET}`,
         );
-        pushBlock([`  ${BOLD}插件与工具${RESET}`, ...lines]);
+        store.pushBlock([`  ${BOLD}插件与工具${RESET}`, ...lines]);
         return true;
       }
       case '/session': {
@@ -1111,7 +954,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const compact = config.autoCompactTokenLimit
           ? `阈值 ${humanTokens(config.autoCompactTokenLimit)} tok · 上轮 ${humanTokens(lastPromptTokens)} tok`
           : '未启用';
-        pushBlock([
+        store.pushBlock([
           `  ${BOLD}会话${RESET}${DIM} · nova v${cliVersion()} · 模式 ${codeModeLabel(codeMode)}${RESET}`,
           `${DIM}  文件 ${session.file}${RESET}`,
           `${DIM}  消息 ${messages.length} 条 · 日志事件 ${session.events.length} 条 · ${stats.turns} 轮${RESET}`,
@@ -1127,14 +970,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         try {
           const entries = await listRecentSessions(sessionsRoot(), SESSION_LIST_LIMIT);
           if (entries.length > 0) {
-            sessionPicker = {
+            store.sessionPicker = {
               entries,
               index: Math.max(0, entries.findIndex((entry) => entry.file === session.file)),
             };
             scheduleRender();
           }
         } catch (err) {
-          pushBlock([`${RED}  ✗ 会话列表读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+          store.pushBlock([`${RED}  ✗ 会话列表读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
         }
         return true;
       }
@@ -1154,37 +997,33 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         anchorMsgCount = 0;
         resetSessionCache();
         await seedContextFragment();
-        pushBlock([`${DIM}  新会话：${session.file}${RESET}`]);
+        store.pushBlock([`${DIM}  新会话：${session.file}${RESET}`]);
         return true;
       }
       case '/compact': {
-        pushBlock([`${DIM}  ⋯ 正在压缩会话…${RESET}`]);
+        store.pushBlock([`${DIM}  ⋯ 正在压缩会话…${RESET}`]);
         try {
           const outcome = await runCompact('manual');
-          pushBlock([
+          store.pushBlock([
             `${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`,
           ]);
         } catch (err) {
-          pushBlock([`${RED}  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
+          store.pushBlock([`${RED}  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
         }
         return true;
       }
       case '/clear': {
-        blocks.length = 0;
-        toolBlocks.clear();
-        closeReadGroup();
-        reasoningBlock = undefined;
-        scrollFromEnd = 0;
-        pushBlock([`${DIM}  （已清空显示，会话记录保留在磁盘）${RESET}`]);
+        store.clearView();
+        store.pushBlock([`${DIM}  （已清空显示，会话记录保留在磁盘）${RESET}`]);
         return true;
       }
       case '/init': {
         const file = await writeAgentsMd(rootDir);
-        pushBlock([`${GREEN}  已写入 ${path.basename(file)}${RESET}`]);
+        store.pushBlock([`${GREEN}  已写入 ${path.basename(file)}${RESET}`]);
         return true;
       }
       default:
-        pushBlock([`${RED}  未知命令：${cmd}${RESET} ${DIM}（输入 /help 查看命令）${RESET}`]);
+        store.pushBlock([`${RED}  未知命令：${cmd}${RESET} ${DIM}（输入 /help 查看命令）${RESET}`]);
         return true;
     }
   }
@@ -1195,8 +1034,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * into a fresh transcript (tool traffic stays in the log, not re-rendered).
    */
   async function switchToSession(entry: { file: string }): Promise<void> {
-    if (streaming || compactRunning) {
-      pushBlock([`${YELLOW}  当前轮未结束：先 Esc 中断，再切换会话${RESET}`]);
+    if (store.streaming || store.compactRunning) {
+      store.pushBlock([`${YELLOW}  当前轮未结束：先 Esc 中断，再切换会话${RESET}`]);
       scheduleRender();
       return;
     }
@@ -1204,7 +1043,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     try {
       loaded = await Session.open(entry.file);
     } catch (err) {
-      pushBlock([`${RED}  ✗ 会话读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+      store.pushBlock([`${RED}  ✗ 会话读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
       scheduleRender();
       return;
     }
@@ -1221,12 +1060,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     usageAnchor = undefined;
     anchorMsgCount = 0;
     resetSessionCache();
-    toolBlocks.clear();
-    closeReadGroup();
-    reasoningBlock = undefined;
-    activeToolId = undefined;
-    blocks.length = 0;
-    scrollFromEnd = 0;
+    store.clearView();
+    store.activeToolId = undefined;
     // Follow the session back to the workspace it was created in, so the
     // restored context fragment and the tools' root agree again.
     let workspaceLine: string | undefined;
@@ -1242,19 +1077,19 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     for (const m of restored) {
       if (m.role === 'user') {
         if (m.content.trimStart().startsWith('<')) continue;
-        pushBlock([m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` }, 'user');
+        store.pushBlock([m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` }, 'user');
       } else if (m.role === 'assistant' && m.content.trim().length > 0) {
-        pushBlock([m.content], { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
+        store.pushBlock([m.content], { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
       }
     }
-    pushBlock([
+    store.pushBlock([
       `${GREEN}  ✓ 已切换到会话${RESET} ${DIM}${path.basename(loaded.file)} · 上下文 ${restored.length} 条消息${RESET}`,
     ]);
-    if (workspaceLine !== undefined) pushBlock([workspaceLine]);
+    if (workspaceLine !== undefined) store.pushBlock([workspaceLine]);
     scheduleRender();
   }
 
-  // ---- input handling ---------------------------------------------------
+  // ---- store.input handling ---------------------------------------------------
   /**
    * Commands that are safe to run WHILE a turn is streaming: read-only
    * queries and global switches. In particular /approvals must work mid-turn
@@ -1264,43 +1099,43 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const STREAM_SAFE_COMMANDS = new Set(['/approvals', '/help', '/model', '/session', '/plugins', '/exit', '/quit']);
 
   async function handleSubmit(): Promise<void> {
-    const text = input.trim();
-    if (streaming || compactRunning) {
+    const text = store.input.trim();
+    if (store.streaming || store.compactRunning) {
       const cmd = text.split(/\s+/)[0]?.toLowerCase() ?? '';
       if (STREAM_SAFE_COMMANDS.has(cmd)) {
-        input = '';
-        cursorPos = 0;
-        popupIndex = 0;
+        store.input = '';
+        store.cursorPos = 0;
+        store.popupIndex = 0;
         void runCommand(text)
           .catch((err: unknown) => {
-            pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+            store.pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
             scheduleRender();
           })
           .then(() => scheduleRender());
         return;
       }
-      pushBlock([
+      store.pushBlock([
         `${DIM}  上一轮仍在进行：Esc 中断当前轮；/approvals /model /session /plugins 等查看类命令仍可用${RESET}`,
       ]);
       scheduleRender();
       return;
     }
-    input = '';
-    cursorPos = 0;
-    popupIndex = 0;
+    store.input = '';
+    store.cursorPos = 0;
+    store.popupIndex = 0;
     if (text.length === 0) {
       scheduleRender();
       return;
     }
-    historyIdx = -1;
-    historyStack.push(text);
-    if (historyStack.length > 200) historyStack.shift();
+    store.historyIdx = -1;
+    store.historyStack.push(text);
+    if (store.historyStack.length > 200) store.historyStack.shift();
 
     let effective = text;
     const skillInvocation = await expandSkillInvocation(effective, skills);
     if (skillInvocation !== undefined) {
       if (!skillInvocation.ok) {
-        pushBlock([`${RED}  ${skillInvocation.error}${RESET}`]);
+        store.pushBlock([`${RED}  ${skillInvocation.error}${RESET}`]);
         scheduleRender();
         return;
       }
@@ -1312,123 +1147,39 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         .catch((err: unknown) => {
           // /new, /init & co. do real IO: a failure must surface as a block,
           // not as an unhandled rejection that kills the process.
-          pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+          store.pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
           scheduleRender();
         })
         .then(() => scheduleRender());
       return;
     }
-    scrollFromEnd = 0;
+    store.scrollFromEnd = 0;
     void agentTurn(effective).catch((err: unknown) => {
       // agentTurn has its own try/catch around the event loop, but an error
       // OUTSIDE that loop (building the fragment, the approval plumbing, …)
       // would escape as an unhandled rejection. Surface it as a block instead.
       spinner.stop();
-      pushBlock([`${RED}  ✗ 本轮失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
-      streaming = false;
+      store.pushBlock([`${RED}  ✗ 本轮失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
+      store.streaming = false;
       scheduleRender();
     });
   }
 
   function totalWrappedLines(): number {
     let total = 0;
-    for (const block of blocks) {
+    for (const block of store.blocks) {
       total += wrapBlock(block, screen.cols).length;
     }
     return total;
   }
 
   const keyEnv: KeyEnv = {
-    store: {
-      blocks,
-      historyStack,
-      toolBlocks,
-      tpsRing,
-      get scrollFromEnd() { return scrollFromEnd; },
-      set scrollFromEnd(v) { scrollFromEnd = v; },
-      get input() { return input; },
-      set input(v) { input = v; },
-      get cursorPos() { return cursorPos; },
-      set cursorPos(v) { cursorPos = v; },
-      get popupIndex() { return popupIndex; },
-      set popupIndex(v) { popupIndex = v; },
-      get popupDismissed() { return popupDismissed; },
-      set popupDismissed(v) { popupDismissed = v; },
-      get historyIdx() { return historyIdx; },
-      set historyIdx(v) { historyIdx = v; },
-      get historyDraft() { return historyDraft; },
-      set historyDraft(v) { historyDraft = v; },
-      get modelPicker() { return modelPicker; },
-      set modelPicker(v) { modelPicker = v; },
-      get sessionPicker() { return sessionPicker; },
-      set sessionPicker(v) { sessionPicker = v; },
-      get approval() { return approvalRequest; },
-      set approval(v) { approvalRequest = v; },
-      get approvalIndex() { return approvalIndex; },
-      set approvalIndex(v) { approvalIndex = v; },
-      get approvalPreview() { return approvalPreview; },
-      set approvalPreview(v) { approvalPreview = v; },
-      get spinnerFrame() { return spinnerFrame; },
-      set spinnerFrame(v) { spinnerFrame = v; },
-      get interruptAt() { return interruptAt; },
-      set interruptAt(v) { interruptAt = v; },
-      get lastCtrlC() { return lastCtrlC; },
-      set lastCtrlC(v) { lastCtrlC = v; },
-      get streaming() { return streaming; },
-      set streaming(v) { streaming = v; },
-      get compactRunning() { return compactRunning; },
-      set compactRunning(v) { compactRunning = v; },
-      get modeSwitching() { return modeSwitching; },
-      set modeSwitching(v) { modeSwitching = v; },
-      get activeToolId() { return activeToolId; },
-      set activeToolId(v) { activeToolId = v; },
-      get readGroup() { return readGroup; },
-      set readGroup(v) { readGroup = v; },
-      get reasoningBlock() { return reasoningBlock; },
-      set reasoningBlock(v) { reasoningBlock = v; },
-      get tpsTokens() { return tpsTokens; },
-      set tpsTokens(v) { tpsTokens = v; },
-      get tpsLastTokens() { return tpsLastTokens; },
-      set tpsLastTokens(v) { tpsLastTokens = v; },
-      get tpsLastAt() { return tpsLastAt; },
-      set tpsLastAt(v) { tpsLastAt = v; },
-      get genPhase() { return genPhase; },
-      set genPhase(v) { genPhase = v; },
-      get frameMap() { return frameMap; },
-      set frameMap(v) { frameMap = v; },
-      pushBlock,
-      updateLastBlock,
-      replaceBlock,
-      removeBlock,
-      closeReadGroup,
-      clearView: () => {
-        blocks.length = 0;
-        toolBlocks.clear();
-        closeReadGroup();
-        reasoningBlock = undefined;
-        scrollFromEnd = 0;
-      },
-      budget: toolBudget,
-      gutter: () => TOOL_GUTTER,
-      sampleTps: () => {
-        // tui-mode samples inline in renderFrame (see tpsLastAt gate there);
-        // this method exists for TuiStore shape parity only.
-      },
-      appendTail: (entry: ToolEntry, text: string, keepChars: number, showChars: number) => {
-        const merged = (entry.tailBuf ?? '') + text;
-        entry.tailBuf = [...merged].slice(-keepChars).join('');
-        void showChars;
-        const last = entry.tailBuf.slice(entry.tailBuf.lastIndexOf('\n') + 1).trimEnd();
-        return last.length > 0 ? last : undefined;
-      },
-      get blocksVersion() { return blocksVersion; },
-      onChange: scheduleRender,
-    },
+    store,
     paint,
     cols: () => screen.cols,
     rows: () => screen.rows,
     abortLast: () => {
-      interruptAt = Date.now();
+      store.interruptAt = Date.now();
       aborters.at(-1)?.abort();
     },
     exitApp,
@@ -1439,7 +1190,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     sessionPristine,
     switchModel: (model) => {
       client.setModel(model);
-      pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
+      store.pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
       void refreshModelMeta();
     },
     switchSessionFile: (file) => void switchToSession({ file }),
@@ -1448,7 +1199,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     refreshModelMeta: () => void refreshModelMeta(),
     popupMatches: () => commandPopupMatches(),
     totalWrappedLines,
-    notice: (lines) => pushBlock(lines.map((l) => `${DIM}${l}${RESET}`)),
+    notice: (lines) => store.pushBlock(lines.map((l) => `${DIM}${l}${RESET}`)),
   };
 
   function handleKey(k: Key): void {
@@ -1457,8 +1208,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
 
   // ---- rendering --------------------------------------------------------
-  /** 上一帧的行→块映射（点击命中测试），renderFrame 每帧重建。 */
-  let frameMap: { rows: { block: Block; start: number; count: number }[]; sliceStart: number; historyRows: number } | undefined;
   let cachedFlatten:
     | { cols: number; version: number; result: { flat: string[]; rowMap: { block: Block; start: number; count: number }[] } }
     | undefined;
@@ -1470,63 +1219,63 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
     const matches = commandPopupMatches();
     const popupOpen =
-      approvalRequest === undefined &&
-      modelPicker === undefined &&
-      sessionPicker === undefined &&
+      store.approval === undefined &&
+      store.modelPicker === undefined &&
+      store.sessionPicker === undefined &&
       matches.length > 0;
     // Sliding 6-row window: the highlighted entry stays visible even when the
     // match list is longer than the popup.
-    const visibleStart = Math.max(0, Math.min(popupIndex - 5, matches.length - 6));
+    const visibleStart = Math.max(0, Math.min(store.popupIndex - 5, matches.length - 6));
     const visibleMatches = matches.slice(visibleStart, visibleStart + 6);
 
     const popupLines: string[] = [];
-    if (approvalRequest !== undefined) {
+    if (store.approval !== undefined) {
       // 弹窗行折行会把整体顶出视口：头部与 diff 预览都按剩余列数裁剪（纯
       // 构建器在 ./popup.ts，键交互留在 handleKey 的责任链层）。
       popupLines.push(
         ...buildApprovalPopup(
           paint,
           {
-            permissionLabel: permissionLabel(approvalRequest.kind),
-            toolLabel: toolLabel(approvalRequest.call.name),
-            argSummary: toolArgSummary(approvalRequest.call.name, approvalRequest.call.rawArgs, 100),
-            previewLines: approvalPreview,
-            index: approvalIndex,
-            isExecuteKind: approvalRequest.kind === 'execute',
+            permissionLabel: permissionLabel(store.approval.kind),
+            toolLabel: toolLabel(store.approval.call.name),
+            argSummary: toolArgSummary(store.approval.call.name, store.approval.call.rawArgs, 100),
+            previewLines: store.approvalPreview,
+            index: store.approvalIndex,
+            isExecuteKind: store.approval.kind === 'execute',
           },
           cols,
         ),
       );
-    } else if (modelPicker !== undefined) {
+    } else if (store.modelPicker !== undefined) {
       // Model catalog in a bordered panel with a sliding window: long lists
       // scroll inside the popup instead of flooding the transcript.
       popupLines.push(
         ...buildModelPopup(
           paint,
           {
-            items: modelPicker.models.map((name) => ({
+            items: store.modelPicker.models.map((name) => ({
               name,
               contextTokens: modelMetaStore.peek(name, config.provider.baseURL)?.contextWindow,
             })),
-            index: modelPicker.index,
+            index: store.modelPicker.index,
             current: client.model,
           },
           cols,
         ),
       );
-    } else if (sessionPicker !== undefined) {
+    } else if (store.sessionPicker !== undefined) {
       // Session switcher: bordered panel like the model picker, a sliding
       // window over the newest sessions, current one marked.
       popupLines.push(
         ...buildSessionPopup(
           paint,
           {
-            items: sessionPicker.entries.map((entry) => ({
+            items: store.sessionPicker.entries.map((entry) => ({
               mtime: entry.mtime,
               title: entry.title,
               isCurrent: entry.file === session.file,
             })),
-            index: sessionPicker.index,
+            index: store.sessionPicker.index,
           },
           cols,
         ),
@@ -1534,21 +1283,25 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     } else if (popupOpen && visibleMatches.length > 0) {
       // Bordered dropdown matching the composer box; the selected row is
       // inverse-video across the full row width, not just the label.
-      popupLines.push(...buildCommandPopup(paint, { matches: visibleMatches, index: popupIndex }, cols));
+      popupLines.push(...buildCommandPopup(paint, { matches: visibleMatches, index: store.popupIndex }, cols));
     }
 
     // One breathing row between the newest content and the composer.
-    const layout = layoutComposer(input, cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
-    const composerZoneRows = composerZone(paint, layout, { spinnerFrame, streaming, genPhase });
+    const layout = layoutComposer(store.input, store.cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
+    const composerZoneRows = composerZone(paint, layout, {
+      spinnerFrame: store.spinnerFrame,
+      streaming: store.streaming,
+      genPhase: store.genPhase,
+    });
     // 单行状态区：上下文仪表+模型+模式芯片+审批 ｜ tps+cache 钉右缘。
-    if (cachedFlatten === undefined || cachedFlatten.cols !== cols || cachedFlatten.version !== blocksVersion) {
-      cachedFlatten = { cols, version: blocksVersion, result: flattenBlocks(blocks, cols) };
+    if (cachedFlatten === undefined || cachedFlatten.cols !== cols || cachedFlatten.version !== store.blocksVersion) {
+      cachedFlatten = { cols, version: store.blocksVersion, result: flattenBlocks(store.blocks, cols) };
     }
     const { flat, rowMap } = cachedFlatten.result;
     const historyBudget = rows - popupLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
-    const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, scrollFromEnd);
-    if (scrollFromEnd > maxScroll) scrollFromEnd = maxScroll;
-    frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length };
+    const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
+    if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
+    store.frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length };
 
     // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
     const status = clipToWidth(statusBar(paint, statusView()), cols - 1);
@@ -1610,12 +1363,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     approvalMode: permission.approvalMode,
     codeMode,
     pristine: displayPristine(),
-    streaming,
-    interruptAt,
-    inputEmpty: input.length === 0,
-    lastCtrlC,
+    streaming: store.streaming,
+    interruptAt: store.interruptAt,
+    inputEmpty: store.input.length === 0,
+    lastCtrlC: store.lastCtrlC,
     now: Date.now(),
-    tpsRing,
+    tpsRing: store.tpsRing,
     promptTokens: sessPromptTokens,
     cachedTokens: sessCachedTokens,
     cacheSeen,
@@ -1658,14 +1411,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     preemptRender();
   });
   process.stdout.on('resize', () => {
-    invalidateWraps(blocks);
-    blocksVersion += 1;
+    invalidateWraps(store.blocks);
+    store.blocksVersion += 1;
     screen.invalidate();
     scheduleRender();
   });
   process.on('SIGINT', () => {
-    if (streaming) {
-      interruptAt = Date.now();
+    if (store.streaming) {
+      store.interruptAt = Date.now();
       aborters.at(-1)?.abort();
       scheduleRender();
     } else exitApp();
@@ -1693,7 +1446,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   void refreshModelMeta();
 
   // Splash: layered destination → identity → action (tui-view/splash.ts).
-  pushBlock(
+  store.pushBlock(
     buildSplash(paint, {
       rootDir,
       sessionsRoot: sessionsRoot(),
