@@ -45,6 +45,13 @@ export class BudgetedBuffer {
   private droppedBytes_ = 0;
   private readonly headBudget: number;
   private readonly tailBudget: number;
+  /**
+   * Carries an incomplete trailing UTF-8 sequence across drains: jobs reads
+   * split output at arbitrary read boundaries, and without decoder state a
+   * multi-byte char (CJK, emoji) spanning two reads would surface as two
+   * replacement glyphs instead of one char on the second read.
+   */
+  private readonly decoder = new StringDecoder('utf8');
 
   constructor(maxBytes: number) {
     this.headBudget = Math.floor(maxBytes * 0.6);
@@ -95,9 +102,12 @@ export class BudgetedBuffer {
   /**
    * Return the accumulated output AND drain it: subsequent reads see only new
    * output (the `jobs` tool contract — action=output reads since last read).
+   * Decoded through the held StringDecoder state; an eviction seam (genuinely
+   * dropped middle bytes) can still show a replacement glyph — those bytes no
+   * longer exist.
    */
   drain(): { text: string; dropped: number } {
-    const text = this.concat();
+    const text = this.decoder.write(Buffer.concat([...this.head, ...this.tail]));
     const dropped = this.droppedBytes_;
     this.head = [];
     this.tail = [];
@@ -158,8 +168,10 @@ export function powershellInvocation(command: string): ShellInvocation {
 /**
  * Kill a spawned shell AND its whole child process tree. A bare
  * `child.kill()` only terminates the shell itself — on Windows the spawned
- * grandchildren (vitest under pnpm, node under npm) keep running; POSIX
- * gets a SIGKILL for the same determinism.
+ * grandchildren (vitest under pnpm, node under npm) keep running. POSIX spawns
+ * are `detached` (the child leads its own process group), so a negative-pid
+ * SIGKILL takes down the whole group in one shot; Windows keeps the taskkill
+ * tree kill.
  */
 function killShell(child: ChildProcess): void {
   if (child.pid === undefined) return;
@@ -168,7 +180,12 @@ function killShell(child: ChildProcess): void {
     spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' });
     return;
   }
-  child.kill('SIGKILL');
+  try {
+    process.kill(-child.pid, 'SIGKILL'); // negative pid = the whole group
+  } catch {
+    // Group already gone (or the child never became a leader) — fall back.
+    child.kill('SIGKILL');
+  }
 }
 
 function runOnce(
@@ -186,6 +203,9 @@ function runOnce(
         cwd: rootDir,
         env: process.env,
         windowsHide: true,
+        // POSIX: the child leads its own process group, so killShell's negative-pid
+        // SIGKILL reaches the whole tree; Windows keeps taskkill /T /F.
+        detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (err) {
@@ -307,6 +327,9 @@ function startBackground(
       cwd: rootDir,
       env: process.env,
       windowsHide: true,
+      // POSIX: the child leads its own process group, so killShell's negative-pid
+      // SIGKILL reaches the whole tree; Windows keeps taskkill /T /F.
+      detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (err) {

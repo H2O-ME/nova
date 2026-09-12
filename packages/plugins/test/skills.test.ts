@@ -75,3 +75,25 @@ describe('skillsPlugin', () => {
     await expect(tool.execute({ name: 'nope' }, { rootDir: root })).resolves.toContain('deploy-check');
   });
 });
+
+describe('skills hardening', () => {
+  it('parses frontmatter and body from a BOM-prefixed SKILL.md', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-skills-bom-'));
+    await writeSkill(root, 'bommed', '\uFEFF---\nname: bommed\ndescription: has a BOM\n---\nBODY TEXT');
+    const skills = await loadSkills([{ dir: root, level: 'project' }]);
+    expect(skills).toHaveLength(1);
+    expect(skills[0]?.name).toBe('bommed');
+    expect(skills[0]?.description).toBe('has a BOM');
+    await expect(readSkillBody(skills[0]!)).resolves.toBe('BODY TEXT');
+  });
+
+  it('readSkillBody refuses a body over the byte cap instead of dumping it into context', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-skills-cap-'));
+    const big = 'x'.repeat(256 * 1024 + 1);
+    await writeSkill(root, 'huge', `---\nname: huge\ndescription: too big\n---\n${big}`);
+    const skills = await loadSkills([{ dir: root, level: 'project' }]);
+    const body = await readSkillBody(skills[0]!);
+    expect(body).toContain('exceeds');
+    expect(body.length).toBeLessThan(200);
+  });
+});

@@ -322,17 +322,23 @@ export function ptcPlugin(options?: PtcPluginOptions): Plugin {
       );
 
       let sdkSection: string | undefined;
+      let sdkFingerprint = '';
       ctx.registerHook('beforeLLMCall', async (req: ChatRequest): Promise<ChatRequest> => {
         const all = req.tools ?? [];
         // No run_code in the outgoing request (e.g. a summarizer call without
         // tools): nothing to project onto — pass through untouched.
         if (!all.some((tool) => tool.name === RUN_CODE_NAME)) return req;
-        if (sdkSection === undefined) {
+        // Fingerprint the toolset by name: a plugin activating AFTER the first
+        // request (skills loading, host rebuild) changes the set, and a
+        // one-shot cache would silently serve an SDK that omits the newcomers.
+        const fingerprint = `${mode}\u0000${all.map((tool) => tool.name).join('\u0001')}`;
+        if (sdkSection === undefined || fingerprint !== sdkFingerprint) {
           // `both` mode: native schemas already carry full parameter types,
           // so the SDK binding only lists names + one-line summaries (slim).
           // `ptc` mode: the SDK is the only tool surface, so full types.
           const sdk = renderToolsSdk(all, { slim: mode === 'both' });
           sdkSection = mode === 'ptc' ? `${PTC_ONLY_NOTE}\n\n${sdk}` : sdk;
+          sdkFingerprint = fingerprint;
         }
         const tools = mode === 'ptc' ? all.filter((tool) => tool.name === RUN_CODE_NAME) : all;
         return { ...req, tools, systemPrompt: `${req.systemPrompt ?? ''}\n\n${sdkSection}` };

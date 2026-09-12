@@ -108,6 +108,9 @@ function globToRegExp(glob: string): RegExp {
 
 interface WalkHalt {
   halted: boolean;
+  /** Why the walk stopped: result-cap truncation vs an abort signal. */
+  truncated: boolean;
+  aborted: boolean;
 }
 
 /**
@@ -266,16 +269,26 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
           const maxResults = Math.min(MAX_RESULTS_CAP, Math.max(1, intArg(args, 'max_results') ?? DEFAULT_MAX_RESULTS));
 
           const results: string[] = [];
-          const halt: WalkHalt = { halted: false };
+          const halt: WalkHalt = { halted: false, truncated: false, aborted: false };
           // The in-process walk checks halt at every entry; wire the abort
           // signal so Ctrl+C stops it promptly (the worker path gets the
           // signal directly via terminate()).
-          const onAbort = (): void => { halt.halted = true; };
-          if (c.signal?.aborted) halt.halted = true;
+          const onAbort = (): void => {
+            halt.halted = true;
+            halt.aborted = true;
+          };
+          if (c.signal?.aborted) onAbort();
           else c.signal?.addEventListener('abort', onAbort, { once: true });
           const relOf = (file: string): string => path.relative(root, file).split(path.sep).join('/');
-          const truncatedNote = (): string =>
-            halt.halted ? `\n（已达结果上限 ${maxResults}，缩小范围或改用 bash 检索其余部分）` : '';
+          const truncateAtLimit = (): void => {
+            halt.halted = true;
+            halt.truncated = true;
+          };
+          const haltNote = (): string => {
+            if (halt.truncated) return `\n（已达结果上限 ${maxResults}，缩小范围或改用 bash 检索其余部分）`;
+            if (halt.aborted) return '\n（搜索已中止）';
+            return '';
+          };
 
           // content_regex: the model-provided pattern runs isolated in a
           // worker bounded by the wall clock — a catastrophic-backtracking
@@ -297,7 +310,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
                 for (let i = 0; i < lines.length && !halt.halted; i++) {
                   if (re.test(lines[i]!)) {
                     results.push(`${rel}:${i + 1}: ${lines[i]!.trimEnd()}`);
-                    if (results.length >= maxResults) halt.halted = true;
+                    if (results.length >= maxResults) truncateAtLimit();
                   }
                 }
               },
@@ -305,7 +318,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
             );
             c.signal?.removeEventListener('abort', onAbort);
             if (results.length === 0) return '(no matches)';
-            return results.join('\n') + truncatedNote();
+            return results.join('\n') + haltNote();
           }
 
           // name_glob: the glob compiles to a backtrack-free RegExp; stays
@@ -316,14 +329,14 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
               const rel = relOf(file);
               if (nameRe !== undefined && nameRe.test(rel) && results.length < maxResults) {
                 results.push(rel);
-                if (results.length >= maxResults) halt.halted = true;
+                if (results.length >= maxResults) truncateAtLimit();
               }
             },
             halt,
           );
           c.signal?.removeEventListener('abort', onAbort);
           if (results.length === 0) return '(no matches)';
-          return results.join('\n') + truncatedNote();
+          return results.join('\n') + haltNote();
         },
         // Read-only: safe to dispatch concurrently with sibling reads.
         isConcurrencySafe() {

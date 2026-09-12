@@ -262,6 +262,26 @@ describe('fs sandbox', () => {
     expect(await readFile(file, 'utf8')).toBe('v2\nCHANGED\nend');
   });
 
+  it('edit_file refuses an oversized file and one that looks binary', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-fs-'));
+    const host = await fsHostAt(root);
+    const edit = host.tools.find((t) => t.name === 'edit_file')!;
+
+    // Oversize: over the 8 MiB edit cap (aligned with read_file's cap).
+    const big = path.join(root, 'big.txt');
+    await writeFile(big, 'x'.repeat(8 * 1024 * 1024 + 1), 'utf8');
+    expect(await edit.execute({ path: 'big.txt', old_string: 'x', new_string: 'y' }, { rootDir: root })).toContain(
+      'edit cap',
+    );
+
+    // Binary: control bytes (NUL) read as text trip looksBinary.
+    const bin = path.join(root, 'blob.bin');
+    await writeFile(bin, Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe]));
+    expect(await edit.execute({ path: 'blob.bin', old_string: 'x', new_string: 'y' }, { rootDir: root })).toContain(
+      'binary',
+    );
+  });
+
   it('edit_file inserts $ sequences verbatim (never as RegExp replacement tokens)', async () => {
     // Regression: a string replacer expands $&/$1/`$`/`$'`/`$$`, so editing in
     // a price like `$&10` or an escaped capture `$1` used to silently garble

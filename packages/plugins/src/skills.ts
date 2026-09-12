@@ -24,10 +24,20 @@ export interface SkillMetadata {
 }
 
 const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---(?:\n|$)/;
+/** Body cap: a skill is progressive-loading guidance, not a data dump. */
+export const SKILL_BODY_MAX_BYTES = 256 * 1024;
+
+/**
+ * Strip a UTF-8 BOM before parsing: an editor-saved BOM makes the file start
+ * with U+FEFF, which silently defeats the `^---` frontmatter match.
+ */
+function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
 
 /** Parse `name`/`description` frontmatter; the body is the rest of the file. */
 export function parseSkillFrontmatter(raw: string): { name?: string; description?: string; body: string } {
-  const normalized = raw.replace(/\r\n/g, '\n');
+  const normalized = stripBom(raw).replace(/\r\n/g, '\n');
   const match = FRONTMATTER_RE.exec(normalized);
   if (!match) return { body: normalized.trim() };
   let name: string | undefined;
@@ -83,7 +93,13 @@ export async function loadSkills(roots: SkillRoot[]): Promise<SkillMetadata[]> {
 /** Full instructions of a skill: the SKILL.md content minus frontmatter. */
 export async function readSkillBody(skill: SkillMetadata): Promise<string> {
   const raw = await readFile(skill.file, 'utf8');
-  return parseSkillFrontmatter(raw).body;
+  const body = parseSkillFrontmatter(raw).body;
+  // Hard cap on what enters the context: an oversized SKILL.md is almost
+  // certainly misplaced data, not instructions.
+  if (Buffer.byteLength(body, 'utf8') > SKILL_BODY_MAX_BYTES) {
+    return `Error: skill "${skill.name}" body exceeds ${SKILL_BODY_MAX_BYTES} bytes and was not loaded`;
+  }
+  return body;
 }
 
 /**

@@ -301,9 +301,18 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
  * corrupts. Process-scoped state is fine: one CLI process runs one session.
  */
 const fileVersions = new Map<string, { mtimeMs: number; size: number }>();
+/** LRU bound: a long session touching thousands of files must not grow this unbounded. */
+const FILE_VERSIONS_MAX = 512;
 
 function recordVersion(file: string, info: { mtimeMs: number; size: number }): void {
+  // Delete-then-set keeps the entry freshest (Map iterates insertion order),
+  // so the eviction below always drops the LEAST recently recorded version.
+  fileVersions.delete(file);
   fileVersions.set(file, { mtimeMs: info.mtimeMs, size: info.size });
+  if (fileVersions.size > FILE_VERSIONS_MAX) {
+    const oldest = fileVersions.keys().next().value;
+    if (oldest !== undefined) fileVersions.delete(oldest);
+  }
 }
 
 async function recordVersionNow(file: string): Promise<void> {
@@ -316,6 +325,9 @@ async function recordVersionNow(file: string): Promise<void> {
 async function staleError(file: string): Promise<string | undefined> {
   const known = fileVersions.get(file);
   if (known === undefined) return undefined; // never seen this session — no baseline
+  // Touch: a file under active editing must not be the one evicted.
+  fileVersions.delete(file);
+  fileVersions.set(file, known);
   const current = await stat(file).catch(() => undefined);
   if (current === undefined) return 'file was deleted or moved since it was last seen; re-read it before editing';
   if (current.mtimeMs !== known.mtimeMs || current.size !== known.size) {
@@ -453,9 +465,16 @@ export function fsWritePlugin(): Plugin {
           if (oldString === undefined || oldString.length === 0) return 'Error: old_string must be a non-empty string';
           let text: string;
           try {
+            const info = await stat(file).catch(() => undefined);
+            if (info !== undefined && info.size > READ_MAX_BYTES) {
+              return `Error: file is ${info.size} bytes (over the ${READ_MAX_BYTES}-byte edit cap); use bash (sed) or a script for bulk edits`;
+            }
             text = await readFile(file, 'utf8');
           } catch {
             return `Error: cannot read file: ${args['path'] as string}`;
+          }
+          if (looksBinary(text)) {
+            return 'Error: file looks binary — edit_file only handles text; use bash or a script';
           }
           const pendingStale = await staleError(file);
           if (pendingStale !== undefined) return `Error: ${pendingStale}`;
