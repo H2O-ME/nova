@@ -69,6 +69,13 @@ export interface SessionRuntimeOptions {
   config: Config;
   resumeFile?: string;
   approvalOverride?: ApprovalMode;
+  /**
+   * Wires the model-facing `switch_workspace` tool: the runner callback
+   * re-points its tool host / skills / env at the new directory. Omit (or the
+   * runner cannot honor a mid-run switch — headless exec) to leave the tool
+   * unregistered.
+   */
+  workspace?: { onChange: (dir: string) => void | Promise<void> };
 }
 
 export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise<SessionRuntime> {
@@ -106,6 +113,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
   const host = new PluginHost(rootDir);
   for (const plugin of builtinPlugins({
     spillReadRoot,
+    ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
     bash:
       bashConfig?.enabled === false
         ? false

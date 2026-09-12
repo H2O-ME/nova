@@ -30,7 +30,8 @@ export interface KeyEnv {
   preemptRender: () => void;
   submit: () => void;
   toggleCodeMode: () => void;
-  sessionPristine: () => boolean;
+  /** Mode switch gate: only a live turn/compaction blocks it (mid-session switch resets usage anchors). */
+  canSwitchMode: () => boolean;
   switchModel: (model: string) => void;
   switchSessionFile: (file: string) => void;
   currentModel: () => string;
@@ -258,7 +259,7 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
           store.input = `${selected.name} `;
           store.cursorPos = store.input.length;
         }
-      } else if (env.sessionPristine()) {
+      } else if (env.canSwitchMode()) {
         env.toggleCodeMode();
       }
       break;

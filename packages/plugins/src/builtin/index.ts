@@ -4,6 +4,7 @@ import { jobsPlugin } from './jobs.js';
 import { ptcPlugin, type PtcPluginOptions } from '../ptc/run-code.js';
 import { searchPlugin, type SearchPluginOptions } from './search.js';
 import { todoPlugin } from './todo.js';
+import { workspacePlugin, type WorkspacePluginOptions } from './workspace.js';
 import type { Plugin } from '../types.js';
 
 export interface BuiltinOptions {
@@ -13,6 +14,8 @@ export interface BuiltinOptions {
   jobs?: boolean;
   /** false disables the todo tool plugin. */
   todo?: boolean;
+  /** false disables the switch_workspace tool; an object wires the runner callback (tool registered only when provided). */
+  workspace?: false | WorkspacePluginOptions;
   /** Customizes the search tool (worker isolation budget etc.). */
   search?: SearchPluginOptions;
   /**
@@ -40,6 +43,12 @@ export function builtinPlugins(options?: BuiltinOptions): Plugin[] {
   }
   if (options?.jobs !== false) plugins.push(jobsPlugin());
   if (options?.todo !== false) plugins.push(todoPlugin());
+  const workspace = options?.workspace;
+  // Opt-in only: without a runner-side onChange callback the tool would
+  // validate a switch and then silently do nothing — worse than absent.
+  if (workspace !== undefined && workspace !== false) {
+    plugins.push(workspacePlugin(workspace));
+  }
   const code = options?.code;
   if (code !== undefined && (code.mode ?? 'both') !== 'native') {
     // Last: its beforeLLMCall projection must run after any earlier

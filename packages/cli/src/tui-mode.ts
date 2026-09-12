@@ -48,7 +48,7 @@ import {
 import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
-import { reasoningLiveRow, summaryRow } from './reasoning.js';
+import { reasoningLiveRow } from './reasoning.js';
 import { createNotifier } from './notify.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
@@ -171,6 +171,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
             ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
           },
+    // 模型在任务中要求换工作区时（switch_workspace 工具），走与 /session
+    // 切换相同的 applyWorkspace 通道：工具根、技能、环境片段 cwd 一致重建。
+    // applyWorkspace 在首次 rebuildHost 时还没初始化——回调只在工具执行时
+    // 触发，届时早已就绪。失败向上抛，工具结果如实回给模型。
+    workspace: {
+      onChange: async (dir: string) => {
+        await applyWorkspace(dir);
+        store.pushBlock([`${DIM}  ✓ 工作区已切换到 ${dir}${RESET}`]);
+        scheduleRender();
+      },
+    },
     code: { ...codeConfig, mode: codeMode },
   });
   let skills = rt.skills;
@@ -484,32 +495,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     let reasoningOpen = false;
     let reasoningStartedAt = 0;
     /**
-     * 思考段收尾：正文不留档，整块折成一行耗时摘要（codex "Thought for Ns"
-     * 式）。答案开始时同样走这里——摘要留在记录里，用户知道模型想过多久，
-     * 但满屏的自言自语不再占据对话区。
+     * 思考段收尾（codex 风格）：思考只在流式期间滚动可见，一旦结束——答案
+     * 开始、折叠调用、重试或中断——整块直接消失，转录里只留正式回答。
+     * 思考正文仍进内存 buffer（REASONING_FULL_MAX_CHARS 裁尾），但不落盘、
+     * 不留摘要行；此前折成的 `▸ 已思考 Ns` 摘要行按用户反馈取消。
      */
     const foldToSummary = (): boolean => {
-      const block = store.reasoningBlock;
-      const had = block !== undefined && reasoningBuffer.trim().length > 0;
-      const secs = reasoningStartedAt > 0
-        ? Math.max(1, Math.round((Date.now() - reasoningStartedAt) / 1000))
-        : 0;
-      store.reasoningBlock = undefined;
+      const had = store.reasoningBlock !== undefined && reasoningBuffer.trim().length > 0;
       reasoningStartedAt = 0;
-      if (had && block !== undefined) {
-        // Detail = paragraph-split buffer (blank lines preserved — the
-        // quote-lane renderer draws them as `│`);挂到摘要块上，点击 toggle 用。
-        const lines = reasoningBuffer.split('\n').map((line) => line.trimEnd());
-        block.detail = { lines, secs };
-        block.expanded = false;
-        reasoningBuffer = '';
-        reasoningFull.length = 0;
-        store.replaceBlock(block, [summaryRow(paint, secs, false)]);
-        scheduleRender();
-        return true;
-      }
+      reasoningBuffer = '';
+      reasoningFull.length = 0;
       discardReasoning();
-      return false;
+      return had;
     };
     try {
       for await (const event of runAgent({
@@ -849,18 +846,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   // ---- execution mode (Tab) ---------------------------------------------
   /**
-   * 新会话的"未开始"判据：只有种子片段（或干脆为空），且没有进行中的轮。
-   * Tab 只在这一刻可用——模式决定 run_code 是否注册进 host，会话一旦
-   * 跑起来再换 host 会造成已见工具与后续请求不一致。
+   * Tab 切换门控：只有进行中的轮/压缩/切换过程本身会挡住——会话中途也允许
+   * 切换（rebuildHost 会重置 usage 锚点，工具集变更的缓存代价由下一次请求
+   * 自愈；此前限定"新会话未开始"导致用户以为 Tab 失灵且无任何反馈）。
    */
-  const sessionPristine = (): boolean =>
-    !store.streaming && !store.compactRunning && !store.modeSwitching && messages.length <= 1 && store.input.length === 0;
+  const canSwitchMode = (): boolean => !store.streaming && !store.compactRunning && !store.modeSwitching;
 
   /**
-   * 芯片呈现的"未开始"判据：与 sessionPristine 的区别是不看 store.modeSwitching。
-   * 切换模式时 store.modeSwitching 会置 true 一整段 rebuild 窗口——若芯片按它
-   * 渲染，三枚会先塌成当前一枚再弹回，整行状态栏随之闪一下（Tab 每次按下
-   * 都同步重绘，这正是用户看到的闪烁）。
+   * 芯片呈现的"未开始"判据：三枚芯片并排仅在会话未开始时展示。
    */
   const displayPristine = (): boolean =>
     !store.streaming && !store.compactRunning && messages.length <= 1 && store.input.length === 0;
@@ -885,9 +878,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     codeMode = next;
     scheduleRender();
     try {
-      // 不往历史区打反馈行：状态栏的模式标会即时变化（PTC/混合高亮），
-      // 每按一次 Tab 记一行，连按几下就把同一信息刷满屏幕。
       await rebuildHost();
+      // 切换反馈：不依赖状态栏芯片也能看到（会话中途芯片塌成单枚，
+      // 且 pristine 判据会随首条消息失效——没有这行用户以为 Tab 失灵）。
+      store.pushBlock([`${DIM}  执行模式：${codeModeLabel(prev)} → ${codeModeLabel(next)}${RESET}`]);
     } catch (err) {
       // activate() 在 next host 上抛错：host/hooks 还没换，回滚模式即可。
       codeMode = prev;
@@ -942,13 +936,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       case '/mode': {
         store.pushBlock([
-          `  ${BOLD}执行模式${RESET} ${DIM}· 新会话未开始时按 Tab 循环切换${RESET}`,
+          `  ${BOLD}执行模式${RESET} ${DIM}· 按 Tab 循环切换（轮进行中除外）${RESET}`,
           ...(['native', 'ptc', 'both'] as PtcMode[]).map((m) =>
             m === codeMode
               ? `  ${CYAN}${BOLD}❯ ${padDisplay(codeModeLabel(m), 6)}${RESET} ${CODE_MODE_HINT[m]}`
               : `    ${padDisplay(codeModeLabel(m), 6)} ${DIM}${CODE_MODE_HINT[m]}${RESET}`,
           ),
-          `${DIM}  模式决定工具集呈现方式；会话一旦跑起来工具集保持稳定，切换只对新会话生效${RESET}`,
+          `${DIM}  模式决定工具集呈现方式；切换立即生效（usage 锚点自动重置）${RESET}`,
         ]);
         return true;
       }
@@ -1082,16 +1076,33 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     store.clearView();
     store.activeToolId = undefined;
     // Follow the session back to the workspace it was created in, so the
-    // restored context fragment and the tools' root agree again.
+    // restored context fragment and the tools' root agree again. Safety rail:
+    // ~/.nova (sessions/skills/cache) is NEVER a valid workspace — a session
+    // accidentally created inside the data dir must not drag the tools there.
     let workspaceLine: string | undefined;
     const target = sessionWorkspace(loaded);
-    if (target !== undefined && target !== rootDir) {
+    const novaDataDir = novaHome();
+    const inNovaData = (dir: string): boolean => {
+      const rel = path.relative(novaDataDir, dir);
+      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+    };
+    if (target !== undefined && inNovaData(target)) {
+      workspaceLine = `${YELLOW}  ⚠ 会话记录的工作区指向 nova 数据目录（${target}），已忽略${RESET} ${DIM}（工具保持 ${rootDir}）${RESET}`;
+    } else if (target !== undefined && target !== rootDir) {
       if (existsSync(target)) {
         await applyWorkspace(target);
         workspaceLine = `${GREEN}  ✓ 工作区已切换${RESET} ${DIM}${target}${RESET}`;
       } else {
         workspaceLine = `${YELLOW}  ⚠ 原工作区已不存在：${target}${RESET} ${DIM}（工具仍指向 ${rootDir}）${RESET}`;
       }
+    }
+    const userVisible = restored.filter(
+      (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0 && !m.content.trimStart().startsWith('<'),
+    );
+    if (userVisible.length === 0 && restored.length > 0) {
+      store.pushBlock([
+        `${DIM}  （该会话没有可回放的文本消息——可能被压缩投影或日志损坏截去；消息共 ${restored.length} 条）${RESET}`,
+      ]);
     }
     for (const m of restored) {
       if (m.role === 'user') {
@@ -1206,7 +1217,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     preemptRender,
     submit: () => void handleSubmit(),
     toggleCodeMode: () => void toggleCodeMode(),
-    sessionPristine,
+    canSwitchMode,
     switchModel: (model) => {
       client.setModel(model);
       store.pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
@@ -1242,10 +1253,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       store.modelPicker === undefined &&
       store.sessionPicker === undefined &&
       matches.length > 0;
-    // Sliding 6-row window: the highlighted entry stays visible even when the
-    // match list is longer than the popup.
-    const visibleStart = Math.max(0, Math.min(store.popupIndex - 5, matches.length - 6));
-    const visibleMatches = matches.slice(visibleStart, visibleStart + 6);
 
     const popupLines: string[] = [];
     if (store.approval !== undefined) {
@@ -1299,10 +1306,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           cols,
         ),
       );
-    } else if (popupOpen && visibleMatches.length > 0) {
+    } else if (popupOpen) {
       // Bordered dropdown matching the composer box; the selected row is
       // inverse-video across the full row width, not just the label.
-      popupLines.push(...buildCommandPopup(paint, { matches: visibleMatches, index: store.popupIndex }, cols));
+      // buildCommandPopup owns the sliding window + relative highlight — the
+      // caller used to pre-slice AND pass the absolute index, which threw the
+      // selection outside the visible list.
+      popupLines.push(...buildCommandPopup(paint, { matches, index: store.popupIndex }, cols));
     }
 
     // One breathing row between the newest content and the composer.

@@ -8,32 +8,30 @@ import {
   summaryRow,
 } from '../src/index.js';
 
-describe('reasoningLiveRow (auto-expanded while streaming)', () => {
+describe('reasoningLiveRow (codex-style scrolling while streaming)', () => {
   it('empty buffer renders a bare shimmer placeholder', () => {
     expect(reasoningLiveRow(plainPalette, { partial: '', cols: 80 })).toEqual(['⋯']);
     expect(reasoningLiveRow(plainPalette, { partial: '   ', cols: 80 })).toEqual(['⋯']);
   });
 
-  it('shows newest settled lines plus one live tail row', () => {
+  it('renders plain dim text rows: settled lines then the live tail (no lane/marker prefixes)', () => {
     expect(reasoningLiveRow(plainPalette, { done: ['a', 'b'], partial: 'par', cols: 80 })).toEqual([
-      '│ a',
-      '│ b',
-      '│ ⋯ par',
+      'a',
+      'b',
+      'par',
     ]);
   });
 
   it('blank settled lines never take a row', () => {
-    expect(reasoningLiveRow(plainPalette, { done: ['', 'x', '  '], partial: 'p', cols: 80 })).toEqual([
-      '│ x',
-      '│ ⋯ p',
-    ]);
+    expect(reasoningLiveRow(plainPalette, { done: ['', 'x', '  '], partial: 'p', cols: 80 })).toEqual(['x', 'p']);
   });
 
   it('caps the live window so long thoughts cannot flood the view', () => {
     const done = Array.from({ length: 50 }, (_, i) => `line-${i}`);
     const rows = reasoningLiveRow(plainPalette, { done, partial: 'tail', cols: 80 });
     expect(rows).toHaveLength(REASONING_LIVE_MAX_ROWS);
-    expect(rows.at(-1)).toBe('│ ⋯ tail');
+    expect(rows[0]).toBe(`line-${50 - REASONING_LIVE_MAX_ROWS + 1}`); // 50 lines + tail = 51 rows
+    expect(rows.at(-1)).toBe('tail');
   });
 
   it('rows fit narrow cols by display columns', () => {
@@ -44,12 +42,11 @@ describe('reasoningLiveRow (auto-expanded while streaming)', () => {
 
   it('tail keeps the NEWEST text', () => {
     const r = reasoningLiveRow(plainPalette, { done: [], partial: 'a'.repeat(300) + 'END', cols: 40 });
-    expect(r).toHaveLength(1);
-    expect(r[0]?.endsWith('END')).toBe(true);
+    expect(r.at(-1)?.endsWith('END')).toBe(true);
   });
 });
 
-describe('summaryRow + reasoningDetailRows', () => {
+describe('summaryRow + reasoningDetailRows (inert click-toggle surfaces)', () => {
   it('collapsed reads ▸, expanded reads ▾ — the toggle affordance', () => {
     expect(summaryRow(plainPalette, 12, false)).toBe('▸ 已思考 12s');
     expect(summaryRow(plainPalette, 12, true)).toBe('▾ 已思考 12s');

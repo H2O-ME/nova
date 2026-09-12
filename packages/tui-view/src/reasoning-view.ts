@@ -1,19 +1,14 @@
 /**
  * Reasoning, Codex-style: deltas accumulate in a memory buffer. While the
- * block streams it renders AUTO-EXPANDED (the newest reasoning lines,
- * tail-capped so long thoughts don't push the answer off screen); when the
- * block ends it folds into a single "thought" summary row — the buffer
- * becomes memory-only detail behind the click toggle.
+ * block streams it renders as a scrolling window of plain dim text — the
+ * newest REASONING_LIVE_MAX_ROWS wrapped rows, live tail included. When the
+ * thought ends the whole block disappears (fold lives in the shell): the
+ * transcript keeps only the answer.
  */
 
 import { wrapLine } from '@nova-agent/tui';
-import { fitTail } from './clip.js';
 import type { Palette } from './palette.js';
-import {
-  REASONING_INDENT_COLS,
-  REASONING_LIVE_MAX_ROWS,
-  REASONING_MAX_LINES,
-} from './tokens.js';
+import { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES } from './tokens.js';
 
 export { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES };
 
@@ -30,36 +25,27 @@ export interface ReasoningView {
 }
 
 /**
- * The transient transcript rows while thinking: auto-expanded newest-first
- * tail (quote lane, capped at REASONING_LIVE_MAX_ROWS) plus one live tail
- * row for the still-streaming line. Empty buffer renders a bare placeholder.
+ * The transient transcript rows while thinking: a rolling window over the
+ * wrapped reasoning text (settled lines + the still-streaming tail), rendered
+ * as plain dim rows — no quote lane, no ⋯ marker. Empty buffer renders a bare
+ * placeholder. Rows beyond the cap scroll out of the window (newest kept).
  */
 export function reasoningLiveRow(p: Palette, v: ReasoningView & { done?: readonly string[] }): string[] {
-  const width = Math.max(10, v.cols - 1 - REASONING_INDENT_COLS - 2);
-  const settled = (v.done ?? []).filter((line) => line.trim().length > 0);
-  const wrapped: string[] = [];
-  for (const line of settled) {
-    for (const row of wrapLine(line, width)) {
-      wrapped.push(row);
-    }
+  const width = Math.max(10, v.cols - 1 - REASONING_INDENT_COLS);
+  const rows: string[] = [];
+  for (const line of (v.done ?? []).filter((line) => line.trim().length > 0)) {
+    rows.push(...wrapLine(line, width));
   }
   const tailText = v.partial.trim();
-  const tail = tailText.length > 0
-    // '⋯' is 2 cols + 1 space = 3-col prefix.
-    ? `⋯ ${fitTail(tailText, Math.max(1, width - 3))}`
-    : '⋯';
-  const cap = Math.max(1, REASONING_LIVE_MAX_ROWS - 1);
-  const visible = wrapped.slice(-cap);
-  const rows = visible.map((row) => p.dim(`│ ${row}`));
-  if (settled.length === 0 && tailText.length === 0) return [p.dim('⋯')];
-  rows.push(p.dim(`│ ${tail}`));
-  return rows;
+  if (tailText.length > 0) rows.push(...wrapLine(tailText, width));
+  if (rows.length === 0) return [p.dim('⋯')];
+  return rows.slice(-REASONING_LIVE_MAX_ROWS).map((row) => p.dim(row));
 }
 
 /**
  * Folded summary row (▸/▾ is the click affordance; toggling lives in the
- * shell). Full text lives in session memory only — reasoning never hits disk,
- * so resumed summaries are plain text and not expandable.
+ * shell). The shell no longer folds reasoning into a summary by default, but
+ * the row type stays for resumed/edge surfaces.
  */
 export function summaryRow(p: Palette, secs: number, expanded: boolean): string {
   return p.dim(`${expanded ? '▾' : '▸'} 已思考 ${secs}s`);

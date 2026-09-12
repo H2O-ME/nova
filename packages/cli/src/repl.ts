@@ -12,8 +12,8 @@ import {
   type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
-import { type ApprovalMode, type AskFn } from '@nova-agent/plugins';
-import { sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { builtinPlugins, skillsPlugin, PluginHost, type ApprovalMode, type AskFn } from '@nova-agent/plugins';
+import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache } from './commands.js';
@@ -116,11 +116,20 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const useColor = process.stdout.isTTY === true;
   const paint = useColor ? palette : plainPalette;
 
+  // switch_workspace 的运行侧回调（late-bound：createSessionRuntime 先于
+  // permission/applyWorkspace 就绪，回调只在工具执行时触发）。
+  let applyWorkspaceRef: ((dir: string) => Promise<void>) | undefined;
   const rt = await createSessionRuntime({
     rootDir,
     config,
     resumeFile: opts.resumeFile,
     approvalOverride: opts.approvalOverride,
+    workspace: {
+      onChange: (dir: string) => {
+        if (applyWorkspaceRef === undefined) return Promise.resolve();
+        return applyWorkspaceRef(dir);
+      },
+    },
   });
   let messages: AgentMessage[] = rt.messages;
   let session: Session = rt.session;
@@ -129,8 +138,10 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const fetchModelList = createModelListCache(() => client.listModels());
   const stats: UsageStats = rt.stats;
   const jobs = rt.jobs;
-  const host = rt.host;
-  const skills = rt.skills;
+  // 可变：switch_workspace 工具会在任务中重指工作区（rebuildHost 重建工具根）。
+  let workspaceRoot = rootDir;
+  let host = rt.host;
+  let skills = rt.skills;
 
   if (opts.resumeFile) {
     console.log(`resumed ${messages.length} messages from ${session.file}`);
@@ -236,7 +247,36 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     return 'deny';
   };
   const permission = createApprovalService(approvalMode, askApproval, () => session);
-  const hooks = host.agentHooks(permission);
+  let hooks: import('@nova-agent/core').AgentHooks = host.agentHooks(permission);
+  /**
+   * switch_workspace 的运行侧通道：重指工具根 + 技能/环境片段，重建 host。
+   * 与 TUI 的 applyWorkspace 同一契约（新根自下一次工具分发/下一轮生效）。
+   */
+  const applyWorkspace = async (dir: string): Promise<void> => {
+    workspaceRoot = dir;
+    skills = await rt.reloadWorkspaceContext(dir);
+    const next = new PluginHost(workspaceRoot);
+    for (const plugin of builtinPlugins({
+      spillReadRoot: path.join(novaHome(), 'cache', 'tool-outputs'),
+      workspace: { onChange: (target: string) => applyWorkspace(target) },
+      ...(rt.bashConfig?.enabled === false
+        ? { bash: false as const }
+        : {
+            bash: {
+              ...(rt.bashConfig?.timeoutMs !== undefined ? { timeoutMs: rt.bashConfig.timeoutMs } : {}),
+              ...(rt.bashConfig?.shellPath !== undefined ? { shellPath: rt.bashConfig.shellPath } : {}),
+            },
+          }),
+    })) {
+      next.use(plugin);
+    }
+    if (skills.length > 0) next.use(skillsPlugin(skills));
+    await next.activate();
+    host = next;
+    hooks = next.agentHooks(permission);
+    console.log(paint.dim(`  ✓ 工作区已切换到 ${dir}`));
+  };
+  applyWorkspaceRef = applyWorkspace;
   const systemPrompt = rt.systemPrompt;
   const toolTiming = new ToolTiming();
   let lastUsage: Usage | undefined;
@@ -310,7 +350,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const agentRun = agentRunBase({
     client,
     session: () => session,
-    rootDir: () => rootDir,
+    rootDir: () => workspaceRoot,
     messages: () => messages,
     tools: () => host.tools,
     hooks: () => hooks,

@@ -25,7 +25,7 @@ function createMockEnv(initialInput = ''): { env: KeyEnv; state: { submitted: bo
       state.submitted = true;
     },
     toggleCodeMode: vi.fn(),
-    sessionPristine: () => true,
+    canSwitchMode: () => true,
     switchModel: vi.fn(),
     switchSessionFile: vi.fn(),
     currentModel: () => 'test-model',
