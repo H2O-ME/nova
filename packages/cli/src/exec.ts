@@ -1,34 +1,18 @@
-import os from 'node:os';
 import path from 'node:path';
-import { OpenAICompatClient } from '@nova-agent/ai';
 import {
-  emptyStats,
-  JobRegistry,
   newId,
   runAgent,
-  Session,
   type AgentEvent,
   type AgentMessage,
   type ChatProvider,
-  type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
-import {
-  builtinPlugins,
-  loadSkills,
-  PermissionService,
-  PluginHost,
-  skillsPlugin,
-  type ApprovalMode,
-} from '@nova-agent/plugins';
-import { collectProjectDocs } from './agents-md.js';
+import { PermissionService, type ApprovalMode } from '@nova-agent/plugins';
 import { wrapAutoCompact } from './auto-compact.js';
 import { compactSession } from './compact.js';
-import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
-import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
+import { novaHome, type Config } from './config.js';
 import { createNotifier } from './notify.js';
-import { recordSessionWorkspace } from './sessions.js';
-import { buildSystemPrompt } from './system-prompt.js';
+import { createSessionRuntime } from './session-runtime.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
 import { LONG_TASK, ToolTiming } from './runner-shared.js';
 
@@ -58,69 +42,15 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   const write = opts.out ?? ((text: string) => process.stdout.write(text));
   const paint = opts.out === undefined && process.stdout.isTTY === true ? palette : plainPalette;
 
-  // 会话按日期归档（codex 式）：~/.nova/sessions/YYYY/MM/DD/，工作区零写入。
-  const sessionsDir = path.join(sessionsRoot(), sessionDateBucket());
-  let messages: AgentMessage[] = [];
-  let session: Session;
-  if (opts.resumeFile) {
-    session = await Session.open(opts.resumeFile);
-    messages = session.deriveMessages();
-  } else {
-    session = await Session.create(sessionsDir);
-    await recordSessionWorkspace(session, rootDir);
-  }
-
-  const provider = opts.provider ?? new OpenAICompatClient({
-    baseURL: config.provider.baseURL,
-    apiKey: config.provider.apiKey,
-    model: config.provider.model,
-    sessionId: session.id,
-    ...(config.provider.temperature !== undefined ? { temperature: config.provider.temperature } : {}),
-    ...(config.provider.maxTokens !== undefined ? { maxTokens: config.provider.maxTokens } : {}),
+  const rt = await createSessionRuntime({
+    rootDir,
+    config,
+    resumeFile: opts.resumeFile,
+    approvalOverride: opts.approvalOverride,
   });
-  const stats: UsageStats = emptyStats();
-  const jobs = new JobRegistry();
-
-  const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
-  const host = new PluginHost(rootDir);
-  const bashConfig = config.tools?.bash;
-  const codeConfig = config.tools?.code;
-  const spillReadRoot = path.join(novaHome(), 'cache', 'tool-outputs');
-  for (const plugin of builtinPlugins({
-    spillReadRoot,
-    bash:
-      bashConfig?.enabled === false
-        ? false
-        : {
-            ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
-            ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
-          },
-    ...(codeConfig !== undefined ? { code: codeConfig } : {}),
-  })) {
-    host.use(plugin);
-  }
-
-  const skills = await loadSkills([
-    { dir: path.join(rootDir, NOVA_DIR, 'skills'), level: 'project' },
-    { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
-  ]);
-  if (skills.length > 0) host.use(skillsPlugin(skills));
-  await host.activate();
-
-  const sessionEnv: SessionEnvInfo = {
-    platform: process.platform,
-    cwd: rootDir,
-    // Must match the shell the bash tool really runs (invocation() resolution).
-    shell: declaredShell(bashConfig?.shellPath),
-    today: new Date().toISOString().slice(0, 10),
-  };
-  const projectDocs = await collectProjectDocs(rootDir, process.cwd());
-  const fragment = buildContextFragment(sessionEnv, config.systemPrompt, skills, projectDocs);
-  if (!opts.resumeFile) {
-    const seed: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: fragment };
-    messages.push(seed);
-    await session.append(seed);
-  }
+  const { session, messages, host, jobs, stats, systemPrompt } = rt;
+  // Test-injected provider takes precedence over the config-built client.
+  const provider: ChatProvider = opts.provider ?? rt.client;
 
   const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: prompt };
   messages.push(userMsg);
@@ -128,7 +58,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
 
   // Non-interactive: nobody can answer an approval prompt, so requests are denied.
   // (No audit trail: exec never asks, so no ask-path decisions exist to log.)
-  const permission = new PermissionService(approvalMode, async () => 'deny');
+  const permission = new PermissionService(rt.approvalMode, async () => 'deny');
   // Headless runs cannot ask: 'never' denies every gated call deterministically,
   // inside the service, without dispatching any asker.
   permission.setPolicy('never');
@@ -140,12 +70,12 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   wrapAutoCompact(hooks, {
     enabled: config.autoCompactTokenLimit !== undefined,
     limit: config.autoCompactTokenLimit ?? 0,
-    compact: async (messages) => {
-      const outcome = await compactSession({ client: provider, session, messages, trigger: 'auto' });
+    compact: async (msgs: AgentMessage[]) => {
+      const outcome = await compactSession({ client: provider, session, messages: msgs, trigger: 'auto' });
       // Apply the new surface IN PLACE: runAgent and the outer `messages`
       // reference the same array object, so a splice keeps every consumer
       // in sync without plumbed return values.
-      messages.splice(0, messages.length, ...outcome.surface);
+      msgs.splice(0, msgs.length, ...outcome.surface);
       if (!json) write(`${paint.dim('⟳ 已自动压缩上下文（超过阈值；会话日志保留完整历史）')}\n`);
     },
     onError: (err: unknown) => {
@@ -155,7 +85,6 @@ export async function runExec(opts: ExecOptions): Promise<void> {
       if (!json) write(`${paint.dim(`⟳ ${text}`)}\n`);
     },
   });
-  const systemPrompt = buildSystemPrompt();
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
   const toolTiming = new ToolTiming();

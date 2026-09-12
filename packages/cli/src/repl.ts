@@ -1,11 +1,8 @@
-import os from 'node:os';
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { styledWidth } from '@nova-agent/tui';
-import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   emptyStats,
-  JobRegistry,
   newId,
   runAgent,
   Session,
@@ -15,23 +12,16 @@ import {
   type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
-import {
-  builtinPlugins,
-  loadSkills,
-  PluginHost,
-  skillsPlugin,
-  type ApprovalMode,
-  type AskFn,
-} from '@nova-agent/plugins';
+import { type ApprovalMode, type AskFn } from '@nova-agent/plugins';
 import { shouldCompactBefore } from './auto-compact.js';
-import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
-import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
+import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache } from './commands.js';
-import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
+import { expandSkillInvocation } from './context.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { createNotifier } from './notify.js';
-import { buildSystemPrompt } from './system-prompt.js';
+import { createSessionRuntime } from './session-runtime.js';
 import {
   approvalLabel,
   APPROVAL_ORDER,
@@ -124,76 +114,32 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const useColor = process.stdout.isTTY === true;
   const paint = useColor ? palette : plainPalette;
 
-  // 会话按日期归档（codex 式）：~/.nova/sessions/YYYY/MM/DD/，工作区零写入。
-  const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
-  let sessionsDir = newSessionDir();
-  let messages: AgentMessage[] = [];
-  let session: Session;
-  if (opts.resumeFile) {
-    session = await Session.open(opts.resumeFile);
-    messages = session.deriveMessages();
-    console.log(`resumed ${messages.length} messages from ${session.file}`);
-    for (const warning of session.warnings) console.log(paint.yellow(`  ${warning}`));
-  } else {
-    session = await Session.create(sessionsDir);
-    await recordSessionWorkspace(session, rootDir);
-  }
-
-  const client = new OpenAICompatClient({
-    baseURL: config.provider.baseURL,
-    apiKey: config.provider.apiKey,
-    model: config.provider.model,
-    sessionId: session.id,
-    ...(config.provider.temperature !== undefined ? { temperature: config.provider.temperature } : {}),
-    ...(config.provider.maxTokens !== undefined ? { maxTokens: config.provider.maxTokens } : {}),
+  const rt = await createSessionRuntime({
+    rootDir,
+    config,
+    resumeFile: opts.resumeFile,
+    approvalOverride: opts.approvalOverride,
   });
+  let messages: AgentMessage[] = rt.messages;
+  let session: Session = rt.session;
+  const client = rt.client;
   /** 站点模型目录（GET /models），/model 用；60s 缓存避免连续操作反复请求。 */
   const fetchModelList = createModelListCache(() => client.listModels());
-  const stats: UsageStats = emptyStats();
-  const jobs = new JobRegistry();
+  const stats: UsageStats = rt.stats;
+  const jobs = rt.jobs;
+  const host = rt.host;
+  const skills = rt.skills;
 
-  const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
-  const host = new PluginHost(rootDir);
-  const bashConfig = config.tools?.bash;
-  const codeConfig = config.tools?.code;
-  for (const plugin of builtinPlugins({
-    spillReadRoot: path.join(novaHome(), 'cache', 'tool-outputs'),
-    bash:
-      bashConfig?.enabled === false
-        ? false
-        : {
-            ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
-            ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
-          },
-    ...(codeConfig !== undefined ? { code: codeConfig } : {}),
-  })) {
-    host.use(plugin);
+  if (opts.resumeFile) {
+    console.log(`resumed ${messages.length} messages from ${session.file}`);
+    for (const warning of session.warnings) console.log(paint.yellow(`  ${warning}`));
   }
-
-  const skills = await loadSkills([
-    { dir: path.join(rootDir, NOVA_DIR, 'skills'), level: 'project' },
-    { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
-  ]);
-  if (skills.length > 0) host.use(skillsPlugin(skills));
-  await host.activate();
-
-  const sessionEnv: SessionEnvInfo = {
-    platform: process.platform,
-    cwd: rootDir,
-    // Must match the shell the bash tool really runs (invocation() resolution).
-    shell: declaredShell(bashConfig?.shellPath),
-    today: new Date().toISOString().slice(0, 10),
-  };
-  // AGENTS.md chain is session-stable by design; /init results land in the next session.
-  const projectDocs = await collectProjectDocs(rootDir, process.cwd());
-  const buildFragment = (): string => buildContextFragment(sessionEnv, config.systemPrompt, skills, projectDocs);
-  /** Re-seed the context fragment when a fresh session starts (/new). */
-  const seedContextFragment = async (): Promise<void> => {
-    const seed: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: buildFragment() };
-    messages.push(seed);
-    await session.append(seed);
-  };
-  if (!opts.resumeFile) await seedContextFragment();
+  const approvalMode = rt.approvalMode;
+  // seedContextFragment comes from the runtime; /new reuses it.
+  const seedContextFragment = rt.seedContextFragment;
+  // /new creates a fresh session in the current date bucket (cross-day runs).
+  const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
+  let sessionsDir = newSessionDir();
 
   const pluginNames = [...new Set(host.toolEntries.map((e) => e.plugin))].join(',') || 'none';
   banner(paint, {
@@ -271,7 +217,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   };
   const permission = createApprovalService(approvalMode, askApproval, session);
   const hooks = host.agentHooks(permission);
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = rt.systemPrompt;
   const toolTiming = new ToolTiming();
   let lastUsage: Usage | undefined;
   let lastPromptTokens = 0;

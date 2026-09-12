@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { KeyDecoder, LineScreen, styledWidth, type Key } from '@nova-agent/tui';
 import {
@@ -18,11 +17,9 @@ import {
   TPS_INTERVAL_MS,
   TPS_SAMPLES,
 } from '@nova-agent/tui-view';
-import { OpenAICompatClient } from '@nova-agent/ai';
 import {
   emptyStats,
   estimateTextTokens,
-  JobRegistry,
   newId,
   runAgent,
   Session,
@@ -36,7 +33,6 @@ import {
 import {
   builtinPlugins,
   codeRuntimeAvailable,
-  loadSkills,
   PluginHost,
   skillsPlugin,
   type ApprovalMode,
@@ -44,7 +40,7 @@ import {
   type PermissionKind,
   type PtcMode,
 } from '@nova-agent/plugins';
-import { collectProjectDocs, writeAgentsMd } from './agents-md.js';
+import { writeAgentsMd } from './agents-md.js';
 import { shouldCompactBefore } from './auto-compact.js';
 import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
 import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
@@ -54,14 +50,14 @@ import {
   filterCommands,
   type CommandSpec,
 } from './commands.js';
-import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
-import { buildContextFragment, declaredShell, expandSkillInvocation, type SessionEnvInfo } from './context.js';
+import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
 import { reasoningLiveRow, summaryRow } from './reasoning.js';
 import { createNotifier } from './notify.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace, type SessionEntry } from './sessions.js';
-import { buildSystemPrompt } from './system-prompt.js';
+import { createSessionRuntime } from './session-runtime.js';
 import {
   approvalLabel,
   APPROVAL_ORDER,
@@ -91,7 +87,7 @@ import {
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
 import { createApprovalService, LONG_TASK, maxTurnsHint } from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
-import { TuiStore, type Block } from './tui/store.js';
+import { type Block, type ToolEntry } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import {
   codeModeLabel,
@@ -135,28 +131,20 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // 工作区（运行 nova 的目录）零写入。
   const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
   let sessionsDir = newSessionDir();
-  let messages: AgentMessage[] = [];
-  let session: Session;
-  if (opts.resumeFile) {
-    session = await Session.open(opts.resumeFile);
-    messages = session.deriveMessages();
-  } else {
-    session = await Session.create(sessionsDir);
-    await recordSessionWorkspace(session, rootDir);
-  }
 
-  const client = new OpenAICompatClient({
-    baseURL: config.provider.baseURL,
-    apiKey: config.provider.apiKey,
-    model: config.provider.model,
-    sessionId: session.id,
-    ...(config.provider.temperature !== undefined ? { temperature: config.provider.temperature } : {}),
-    ...(config.provider.maxTokens !== undefined ? { maxTokens: config.provider.maxTokens } : {}),
+  const rt = await createSessionRuntime({
+    rootDir,
+    config,
+    resumeFile: opts.resumeFile,
+    approvalOverride: opts.approvalOverride,
   });
+  let messages: AgentMessage[] = rt.messages;
+  let session: Session = rt.session;
+  const client = rt.client;
   /** 站点模型目录（GET /models），/model 用；60s 缓存避免连续操作反复请求。 */
   const fetchModelList = createModelListCache(() => client.listModels());
-  const jobs = new JobRegistry();
-  const stats: UsageStats = emptyStats();
+  const jobs = rt.jobs;
+  const stats: UsageStats = rt.stats;
   // 会话级缓存命中累计：provider 可能随机分流到不报缓存的后端，单轮 `stats`
   // 每轮 runAgent 从零重算 → 某轮 cachedTokens=0 会让 cache 段"闪现"消失。
   // 状态栏因此改看**会话累计**命中率，并粘住可见性：本会话只要见过一次缓存上报
@@ -170,10 +158,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     sessCachedTokens = 0;
     cacheSeen = false;
   };
-  const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
+  const approvalMode = rt.approvalMode;
 
-  const bashConfig = config.tools?.bash;
-  const codeConfig = config.tools?.code;
+  const bashConfig = rt.bashConfig;
+  const codeConfig = rt.codeConfig;
   // 执行模式：TUI 里 Tab 在新会话开始时循环 普通 → PTC → 混合。config 的
   // tools.code.mode 只是初始值；其余 tools.code 调参（超时/预算）在每次
   // 重建 host 时原样带上。
@@ -190,14 +178,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           },
     code: { ...codeConfig, mode: codeMode },
   });
-  const loadWorkspaceSkills = (dir: string): ReturnType<typeof loadSkills> =>
-    loadSkills([
-      { dir: path.join(dir, NOVA_DIR, 'skills'), level: 'project' },
-      { dir: path.join(os.homedir(), '.nova', 'skills'), level: 'user' },
-    ]);
-  let skills = await loadWorkspaceSkills(rootDir);
-  // 占位：真正的带插件激活在 permission/hooks 就绪后由 rebuildHost() 完成。
-  let host = new PluginHost(rootDir);
+  let skills = rt.skills;
+  // The runtime's host lacks codeMode injection; rebuildHost() reactivates with
+  // the correct PTC mode config before the first agent turn.
+  let host = rt.host;
 
   /** models.dev 目录（上下文窗口/模态/推理能力）。启动后台刷新，断网用旧缓存。 */
   const modelMetaStore = createModelMetaStore();
@@ -216,23 +200,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     scheduleRender();
   }
 
-  const sessionEnv: SessionEnvInfo = {
-    platform: process.platform,
-    cwd: rootDir,
-    // Must match the shell the bash tool really runs (invocation() resolution),
-    // or the model writes commands for the wrong interpreter.
-    shell: declaredShell(bashConfig?.shellPath),
-    today: new Date().toISOString().slice(0, 10),
-  };
+  const sessionEnv: SessionEnvInfo = rt.sessionEnv;
   // AGENTS.md chain is session-stable by design; /init results land in the next session.
-  let projectDocs = await collectProjectDocs(rootDir, process.cwd());
-  const buildFragment = (): string => buildContextFragment(sessionEnv, config.systemPrompt, skills, projectDocs);
-  /** Re-seed the context fragment when a fresh session starts (/new). */
-  const seedContextFragment = async (): Promise<void> => {
-    const seed: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: buildFragment() };
-    messages.push(seed);
-    await session.append(seed);
-  };
+  // buildFragment is owned by the runtime (seedContextFragment uses it);
+  // workspace switches call reloadWorkspaceContext to refresh docs+skills.
+  const seedContextFragment = rt.seedContextFragment;
+  const reloadWorkspaceContext = rt.reloadWorkspaceContext;
   /**
    * Rebuild the plugin host for the current workspace + execution mode and
    * re-point `host`/`hooks` at it. Both the workspace switch and the Tab
@@ -260,8 +233,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const applyWorkspace = async (dir: string): Promise<void> => {
     rootDir = dir;
     sessionEnv.cwd = dir;
-    projectDocs = await collectProjectDocs(dir, process.cwd());
-    skills = await loadWorkspaceSkills(dir);
+    skills = await reloadWorkspaceContext(dir);
     await rebuildHost();
   };
   if (!opts.resumeFile) await seedContextFragment();
@@ -299,7 +271,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // Reassigned by rebuildHost(): the agent loop must read hooks from the
   // SAME host instance it reads tools from (one rebuild = tools + projection).
   let hooks = host.agentHooks(permission);
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = rt.systemPrompt;
   await rebuildHost();
 
   // ---- ui state ---------------------------------------------------------
@@ -1388,9 +1360,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       set historyDraft(v) { historyDraft = v; },
       get modelPicker() { return modelPicker; },
       set modelPicker(v) { modelPicker = v; },
-      get sessionPicker() { return sessionPicker as any; },
+      get sessionPicker() { return sessionPicker; },
       set sessionPicker(v) { sessionPicker = v; },
-      get approval() { return approvalRequest as any; },
+      get approval() { return approvalRequest; },
       set approval(v) { approvalRequest = v; },
       get approvalIndex() { return approvalIndex; },
       set approvalIndex(v) { approvalIndex = v; },
@@ -1438,10 +1410,20 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       },
       budget: toolBudget,
       gutter: () => TOOL_GUTTER,
-      sampleTps: () => {},
-      appendTail: () => undefined,
-      blocksVersion: 0,
-    } as unknown as TuiStore,
+      sampleTps: () => {
+        // tui-mode samples inline in renderFrame (see tpsLastAt gate there);
+        // this method exists for TuiStore shape parity only.
+      },
+      appendTail: (entry: ToolEntry, text: string, keepChars: number, showChars: number) => {
+        const merged = (entry.tailBuf ?? '') + text;
+        entry.tailBuf = [...merged].slice(-keepChars).join('');
+        void showChars;
+        const last = entry.tailBuf.slice(entry.tailBuf.lastIndexOf('\n') + 1).trimEnd();
+        return last.length > 0 ? last : undefined;
+      },
+      get blocksVersion() { return blocksVersion; },
+      onChange: scheduleRender,
+    },
     paint,
     cols: () => screen.cols,
     rows: () => screen.rows,

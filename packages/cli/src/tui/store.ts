@@ -87,7 +87,12 @@ export class TuiStore {
     | { rows: { block: Block; start: number; count: number }[]; sliceStart: number; historyRows: number }
     | undefined;
 
-  constructor(private readonly onChange: () => void) {}
+  /** Render trigger — invoked by every mutation method so the view refreshes. */
+  readonly onChange: () => void;
+
+  constructor(onChange: () => void) {
+    this.onChange = onChange;
+  }
 
   pushBlock(lines: string[], gutter?: Block['gutter'], kind?: Block['kind']): Block {
     const block: Block = {
