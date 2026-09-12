@@ -65,6 +65,15 @@ export const TURN_ABORTED_GUIDANCE =
 
 const SKIPPED_BY_ABORT = '[not executed: the user interrupted this turn]';
 
+/**
+ * Synthesized for tool calls whose result never landed because the consumer
+ * abandoned the run mid-turn (runner event handler threw → for-await called
+ * .return() on this generator). Keeps the one-result-per-call contract: an
+ * assistant message with unanswered tool_calls would 400 the next request on
+ * strict providers and stay unbalanced across resume/compact.
+ */
+export const NOT_EXECUTED_GUIDANCE = '[not executed: the turn ended before this call ran]';
+
 export function emptyStats(): UsageStats {
   return { turns: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, missTokens: 0, missTurns: 0 };
 }
@@ -94,208 +103,276 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxBytes = opts.maxToolResultBytes ?? DEFAULT_MAX_TOOL_RESULT_BYTES;
   const stats = emptyStats();
+  // Hoisted so the abandonment finally (consumer threw mid-event → the
+  // for-await unwound this iterator) can still honor the notice contract.
+  let unaccountedNotices: ReturnType<JobRegistry['drainFinished']> = [];
+  let noticesConsumed = true;
 
-  for (let turn = 1; turn <= maxTurns; turn++) {
-    if (opts.signal?.aborted) {
-      yield* finishAborted(opts);
-      return;
-    }
-    stats.turns = turn;
-    yield { type: 'turn_start', turn };
+  try {
+    for (let turn = 1; turn <= maxTurns; turn++) {
+      if (opts.signal?.aborted) {
+        yield* finishAborted(opts);
+        return;
+      }
+      stats.turns = turn;
+      yield { type: 'turn_start', turn };
 
-    const messageId = newId('msg');
-    let content = '';
-    let finishReason: string | undefined;
-    let usage: Usage | undefined;
-    const partialCalls = new Map<number, { id?: string; name?: string; args: string }>();
+      const messageId = newId('msg');
+      let content = '';
+      let finishReason: string | undefined;
+      let usage: Usage | undefined;
+      const partialCalls = new Map<number, { id?: string; name?: string; args: string }>();
 
-    let request: ChatRequest = {
-      messages: opts.messages,
-      systemPrompt: opts.systemPrompt,
-      tools: opts.tools,
-      signal: opts.signal,
-    };
-    // Finished-job notices are injected AFTER the hook chain on purpose. The
-    // beforeLLMCall hooks (notably exec's in-place auto-compact) assume
-    // request.messages aliases opts.messages — a shared reference they splice
-    // to shrink the outer log. Injecting a clone before them would swallow that
-    // splice (the outer array would never shrink and every following turn would
-    // re-compact). Here the hook first sees the clean append-only log; the
-    // notice then becomes an ephemeral tail on a fresh clone, so it reaches the
-    // model but never the log (resume/compact unaffected) and the drain-once
-    // registry queue still announces each job exactly once. Delivery is
-    // at-least-once though: if this request dies before its assistant reply
-    // commits (network exhausted, context-window 400…), the drained notices go
-    // back on the queue — announce-zero would silently strand the task.
-    if (opts.hooks?.beforeLLMCall) request = await opts.hooks.beforeLLMCall(request);
-    const finished = opts.jobs?.drainFinished() ?? [];
-    let noticeAccounted = finished.length === 0;
-    if (finished.length > 0) {
-      const notice: UserMessage = {
-        id: newId('msg'),
-        ts: Date.now(),
-        role: 'user',
-        content: formatJobNotices(finished),
+      let request: ChatRequest = {
+        messages: opts.messages,
+        systemPrompt: opts.systemPrompt,
+        tools: opts.tools,
+        signal: opts.signal,
       };
-      request = { ...request, messages: [...request.messages, notice] };
-    }
-    const stream = opts.provider.stream(request);
-    // Cumulative stats as of the start of the in-flight attempt: a provider
-    // reset rolls the running stats back to this snapshot, discarding usage
-    // reported by the failed attempt.
-    let attemptStats: UsageStats = { ...stats };
-
-    // An abort surfaces either as the signal firing between events or as an
-    // AbortError thrown by the provider; both end the run the same way.
-    let interrupted = false;
-    try {
-      for await (const ev of stream) {
-        if (opts.signal?.aborted) {
-          interrupted = true;
-          break;
-        }
-        switch (ev.type) {
-          case 'reset': {
-            // The provider discarded this attempt's response and is
-            // re-requesting: roll every accumulator back so the replay starts
-            // from a clean slate (partial text, tool-call deltas, usage and
-            // finish reason all belonged to the failed attempt).
-            content = '';
-            partialCalls.clear();
-            finishReason = undefined;
-            usage = undefined;
-            Object.assign(stats, attemptStats);
-            yield {
-              type: 'llm_retry',
-              attempt: ev.attempt,
-              maxRetries: ev.maxRetries,
-              error: ev.error,
-              stats: { ...stats },
-            };
-            break;
-          }
-          case 'text_delta': {
-            content += ev.text;
-            yield { type: 'text_delta', messageId, text: ev.text };
-            break;
-          }
-          case 'reasoning_delta': {
-            // Observability only: reasoning is never accumulated into the
-            // message log, so the persisted prefix stays byte-stable.
-            yield { type: 'reasoning_delta', text: ev.text };
-            break;
-          }
-          case 'tool_call_delta': {
-            let partial = partialCalls.get(ev.index);
-            if (!partial) {
-              partial = { args: '' };
-              partialCalls.set(ev.index, partial);
-            }
-            // Empty strings are treated as absent: some gateways repeat
-            // id/name as "" on argument-delta chunks.
-            if (ev.id !== undefined && ev.id.length > 0) partial.id = ev.id;
-            if (ev.name !== undefined && ev.name.length > 0) partial.name = ev.name;
-            if (ev.argsDelta !== undefined) partial.args += ev.argsDelta;
-            break;
-          }
-          case 'usage': {
-            usage = ev.usage;
-            stats.promptTokens += ev.usage.promptTokens;
-            stats.completionTokens += ev.usage.completionTokens;
-            stats.cachedTokens += ev.usage.cachedTokens;
-            // Cache-waste audit: once the provider has reported any cache
-            // activity, a turn whose prompt exceeded its cache read by more
-            // than the noise floor paid full price for the difference.
-            const miss = ev.usage.promptTokens - ev.usage.cachedTokens;
-            if (stats.cachedTokens > 0 && miss > CACHE_MISS_NOISE_FLOOR_TOKENS) {
-              stats.missTokens += miss;
-              stats.missTurns += 1;
-            }
-            yield { type: 'usage', usage: ev.usage, stats: { ...stats } };
-            break;
-          }
-          case 'finish': {
-            if (ev.finishReason !== undefined) finishReason = ev.finishReason;
-            break;
-          }
-        }
-      }
-    } catch (err) {
-      // The model never answered this request: hand the drained notices back
-      // before the error escapes (the registry outlives the run in
-      // interactive mode, so the next run re-announces them).
-      if (!noticeAccounted) {
-        opts.jobs?.requeue(finished);
-        noticeAccounted = true;
-      }
-      // Once the user asked to stop, unwind as an interruption regardless of
-      // which error the abort raced with.
-      if (!opts.signal?.aborted) throw err;
-      interrupted = true;
-    }
-    if (interrupted) {
-      // The partial response is discarded, so from the log's point of view
-      // the model never saw the notice either.
-      if (!noticeAccounted) {
-        opts.jobs?.requeue(finished);
-        noticeAccounted = true;
-      }
-      yield* finishAborted(opts);
-      return;
-    }
-
-    const toolCalls: ToolCall[] = [...partialCalls.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, partial]) => ({
-        id: partial.id ?? newId('call'),
-        name: partial.name ?? 'unknown',
-        args: parseArgs(partial.args),
-        rawArgs: partial.args,
-      }));
-
-    const assistant: AssistantMessage = {
-      id: messageId,
-      ts: Date.now(),
-      role: 'assistant',
-      content,
-      ...(toolCalls.length > 0 ? { toolCalls } : {}),
-      ...(usage ? { usage } : {}),
-      ...(finishReason !== undefined ? { finishReason } : {}),
-    };
-    opts.messages.push(assistant);
-    // The model answered — the announcement has landed and stays consumed.
-    noticeAccounted = true;
-    yield { type: 'message', message: assistant };
-
-    if (toolCalls.length === 0) {
-      yield { type: 'done', stopReason: 'complete' };
-      return;
-    }
-
-    // A "length" stop means the output was cut off by the token limit, so
-    // every tool call in the batch may carry silently-truncated arguments.
-    // Fail them all (the loop continues, so the model can re-issue them).
-    if (finishReason === 'length') {
-      for (const call of toolCalls) {
-        const result: ToolResultMessage = {
+      // Finished-job notices are injected AFTER the hook chain on purpose. The
+      // beforeLLMCall hooks (notably exec's in-place auto-compact) assume
+      // request.messages aliases opts.messages — a shared reference they splice
+      // to shrink the outer log. Injecting a clone before them would swallow that
+      // splice (the outer array would never shrink and every following turn would
+      // re-compact). Here the hook first sees the clean append-only log; the
+      // notice then becomes an ephemeral tail on a fresh clone, so it reaches the
+      // model but never the log (resume/compact unaffected) and the drain-once
+      // registry queue still announces each job exactly once. Delivery is
+      // at-least-once though: if this request dies before its assistant reply
+      // commits (network exhausted, context-window 400…), the drained notices go
+      // back on the queue — announce-zero would silently strand the task.
+      if (opts.hooks?.beforeLLMCall) request = await opts.hooks.beforeLLMCall(request);
+      unaccountedNotices = opts.jobs?.drainFinished() ?? [];
+      noticesConsumed = unaccountedNotices.length === 0;
+      if (unaccountedNotices.length > 0) {
+        const notice: UserMessage = {
           id: newId('msg'),
           ts: Date.now(),
-          role: 'tool',
-          toolCallId: call.id,
-          name: call.name,
-          content: `Tool call "${call.name}" ${LENGTH_CUTOFF_TOOL_GUIDANCE}`,
+          role: 'user',
+          content: formatJobNotices(unaccountedNotices),
         };
-        opts.messages.push(result);
-        yield { type: 'tool_call_result', turn, call, result };
+        request = { ...request, messages: [...request.messages, notice] };
       }
-      continue;
+      const stream = opts.provider.stream(request);
+      // Cumulative stats as of the start of the in-flight attempt: a provider
+      // reset rolls the running stats back to this snapshot, discarding usage
+      // reported by the failed attempt.
+      let attemptStats: UsageStats = { ...stats };
+
+      // An abort surfaces either as the signal firing between events or as an
+      // AbortError thrown by the provider; both end the run the same way.
+      let interrupted = false;
+      try {
+        for await (const ev of stream) {
+          if (opts.signal?.aborted) {
+            interrupted = true;
+            break;
+          }
+          switch (ev.type) {
+            case 'reset': {
+              // The provider discarded this attempt's response and is
+              // re-requesting: roll every accumulator back so the replay starts
+              // from a clean slate (partial text, tool-call deltas, usage and
+              // finish reason all belonged to the failed attempt).
+              content = '';
+              partialCalls.clear();
+              finishReason = undefined;
+              usage = undefined;
+              Object.assign(stats, attemptStats);
+              yield {
+                type: 'llm_retry',
+                attempt: ev.attempt,
+                maxRetries: ev.maxRetries,
+                error: ev.error,
+                stats: { ...stats },
+              };
+              break;
+            }
+            case 'text_delta': {
+              content += ev.text;
+              yield { type: 'text_delta', messageId, text: ev.text };
+              break;
+            }
+            case 'reasoning_delta': {
+              // Observability only: reasoning is never accumulated into the
+              // message log, so the persisted prefix stays byte-stable.
+              yield { type: 'reasoning_delta', text: ev.text };
+              break;
+            }
+            case 'tool_call_delta': {
+              let partial = partialCalls.get(ev.index);
+              if (!partial) {
+                partial = { args: '' };
+                partialCalls.set(ev.index, partial);
+              }
+              // Empty strings are treated as absent: some gateways repeat
+              // id/name as "" on argument-delta chunks.
+              if (ev.id !== undefined && ev.id.length > 0) partial.id = ev.id;
+              if (ev.name !== undefined && ev.name.length > 0) partial.name = ev.name;
+              if (ev.argsDelta !== undefined) partial.args += ev.argsDelta;
+              break;
+            }
+            case 'usage': {
+              usage = ev.usage;
+              stats.promptTokens += ev.usage.promptTokens;
+              stats.completionTokens += ev.usage.completionTokens;
+              stats.cachedTokens += ev.usage.cachedTokens;
+              // Cache-waste audit: once the provider has reported any cache
+              // activity, a turn whose prompt exceeded its cache read by more
+              // than the noise floor paid full price for the difference.
+              const miss = ev.usage.promptTokens - ev.usage.cachedTokens;
+              if (stats.cachedTokens > 0 && miss > CACHE_MISS_NOISE_FLOOR_TOKENS) {
+                stats.missTokens += miss;
+                stats.missTurns += 1;
+              }
+              yield { type: 'usage', usage: ev.usage, stats: { ...stats } };
+              break;
+            }
+            case 'finish': {
+              if (ev.finishReason !== undefined) finishReason = ev.finishReason;
+              break;
+            }
+          }
+        }
+      } catch (err) {
+        // The model never answered this request: hand the drained notices back
+        // before the error escapes (the registry outlives the run in
+        // interactive mode, so the next run re-announces them).
+        if (!noticesConsumed) {
+          opts.jobs?.requeue(unaccountedNotices);
+          noticesConsumed = true;
+        }
+        // Once the user asked to stop, unwind as an interruption regardless of
+        // which error the abort raced with.
+        if (!opts.signal?.aborted) throw err;
+        interrupted = true;
+      }
+      if (interrupted) {
+        // The partial response is discarded, so from the log's point of view
+        // the model never saw the notice either.
+        if (!noticesConsumed) {
+          opts.jobs?.requeue(unaccountedNotices);
+          noticesConsumed = true;
+        }
+        yield* finishAborted(opts);
+        return;
+      }
+
+      const toolCalls: Array<ToolCall & { argsOk: boolean }> = [...partialCalls.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([, partial]) => {
+          const { args, ok } = parseArgs(partial.args);
+          return {
+            id: partial.id ?? newId('call'),
+            name: partial.name ?? 'unknown',
+            args,
+            rawArgs: partial.args,
+            argsOk: ok,
+          };
+        });
+
+      const assistant: AssistantMessage = {
+        id: messageId,
+        ts: Date.now(),
+        role: 'assistant',
+        content,
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        ...(usage ? { usage } : {}),
+        ...(finishReason !== undefined ? { finishReason } : {}),
+      };
+      opts.messages.push(assistant);
+      // The model answered — the announcement has landed and stays consumed.
+      noticesConsumed = true;
+      yield { type: 'message', message: assistant };
+
+      if (toolCalls.length === 0) {
+        yield { type: 'done', stopReason: 'complete' };
+        return;
+      }
+
+      // A "length" stop means the output was cut off by the token limit, so
+      // every tool call in the batch may carry silently-truncated arguments.
+      // Fail them all (the loop continues, so the model can re-issue them).
+      if (finishReason === 'length') {
+        for (const call of toolCalls) {
+          const result: ToolResultMessage = {
+            id: newId('msg'),
+            ts: Date.now(),
+            role: 'tool',
+            toolCallId: call.id,
+            name: call.name,
+            content: `Tool call "${call.name}" ${LENGTH_CUTOFF_TOOL_GUIDANCE}`,
+          };
+          opts.messages.push(result);
+          yield { type: 'tool_call_result', turn, call, result };
+        }
+        continue;
+      }
+
+      // Malformed-argument defense: arguments that never parsed as JSON would
+      // silently execute with {} (a fabricated empty plan). Fail just those
+      // calls with an explicit result; the well-formed rest run on.
+      const malformed = toolCalls.filter((call) => !call.argsOk);
+      if (malformed.length > 0) {
+        for (const call of malformed) {
+          const result: ToolResultMessage = {
+            id: newId('msg'),
+            ts: Date.now(),
+            role: 'tool',
+            toolCallId: call.id,
+            name: call.name,
+            content: `Tool call "${call.name}" was not executed: the streamed arguments were not valid JSON. Re-issue the tool call with well-formed JSON arguments.`,
+          };
+          opts.messages.push(result);
+          yield { type: 'tool_call_result', turn, call, result };
+        }
+      }
+      const executable = toolCalls.filter((call) => call.argsOk);
+      if (executable.length === 0) continue;
+
+      const toolByName = new Map((opts.tools ?? []).map((tool) => [tool.name, tool]));
+      yield* runToolCalls(executable, toolByName, turn, opts, maxBytes, makeDispatcher(opts, toolByName));
     }
 
-    const toolByName = new Map((opts.tools ?? []).map((tool) => [tool.name, tool]));
-    yield* runToolCalls(toolCalls, toolByName, turn, opts, maxBytes, makeDispatcher(opts, toolByName));
+    yield { type: 'done', stopReason: 'max_turns' };
+  } finally {
+    // Abandonment cleanup: when the consumer throws mid-event, the for-await
+    // closes this generator via .return() and unwinds here — no in-band error
+    // handler runs. Two contracts to honor: (1) drained-but-unannounced job
+    // notices go back on the queue so a later run re-announces them;
+    // (2) an assistant message already pushed with unanswered tool_calls gets
+    // its missing results synthesized (NOT_EXECUTED_GUIDANCE), keeping the
+    // one-result-per-call surface contract even when the run died in the
+    // consumer, not the loop. On every in-band exit the surface is already
+    // balanced, so the synthesis is a no-op there.
+    if (!noticesConsumed) opts.jobs?.requeue(unaccountedNotices);
+    synthesizeMissingToolResults(opts.messages);
   }
+}
 
-  yield { type: 'done', stopReason: 'max_turns' };
+/** Fill in a NOT_EXECUTED_GUIDANCE result for every callId missing one. */
+function synthesizeMissingToolResults(messages: AgentMessage[]): void {
+  const answered = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role === 'tool') answered.add(msg.toolCallId);
+  }
+  const missing: ToolResultMessage[] = [];
+  for (const msg of messages) {
+    if (msg.role !== 'assistant' || msg.toolCalls === undefined) continue;
+    for (const call of msg.toolCalls) {
+      if (answered.has(call.id)) continue;
+      answered.add(call.id);
+      missing.push({
+        id: newId('msg'),
+        ts: Date.now(),
+        role: 'tool',
+        toolCallId: call.id,
+        name: call.name,
+        content: NOT_EXECUTED_GUIDANCE,
+      });
+    }
+  }
+  messages.push(...missing);
 }
 
 interface ToolSegment {
@@ -494,14 +571,24 @@ function abortedSkipResult(
   return { type: 'tool_call_result', turn, call, result };
 }
 
-function parseArgs(raw: string): Record<string, unknown> {
+/**
+ * Tool-call arguments arrive as a streamed raw JSON string. Returns the parsed
+ * object plus an ok flag: a failed parse must NOT silently run as {} (a
+ * fabricated empty plan) — the caller turns !ok into an explicit error result
+ * so the model re-issues the call. An empty string stays ok (some gateways
+ * emit zero-argument calls as an empty delta).
+ */
+function parseArgs(raw: string): { args: Record<string, unknown>; ok: boolean } {
   const trimmed = raw.trim();
-  if (trimmed.length === 0) return {};
+  if (trimmed.length === 0) return { args: {}, ok: true };
   try {
     const parsed: unknown = JSON.parse(trimmed);
-    return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : {};
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      return { args: parsed as Record<string, unknown>, ok: true };
+    }
+    return { args: {}, ok: false };
   } catch {
-    return {};
+    return { args: {}, ok: false };
   }
 }
 

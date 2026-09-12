@@ -41,6 +41,7 @@ import {
   createAutoCompact,
   LONG_TASK,
   maxTurnsHint,
+  persistMissingToolResults,
   ToolTiming,
 } from './runner-shared.js';
 import { Spinner } from './spinner.js';
@@ -159,6 +160,10 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   let streaming = false;
   /** True while the REPL is blocked on an approval prompt (lines.next). */
   let approvalPending = false;
+  /** True while blocked on a sub-prompt (/model pick …): Ctrl+C cancels only that wait. */
+  let subPromptPending = false;
+  /** Abort source for an in-flight /compact (SIGINT unwinds it, not the REPL). */
+  let compactAbort: AbortController | undefined;
 
   rl.on('SIGINT', () => {
     if (approvalPending) {
@@ -169,6 +174,19 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       lines.cancelPending();
       aborter?.abort();
       console.log(paint.yellow('  已中断（审批按拒绝处理）'));
+      return;
+    }
+    if (subPromptPending) {
+      // Ctrl+C during a sub-prompt (/model pick …) cancels just that wait —
+      // the REPL keeps running (same contract as the approval wait).
+      subPromptPending = false;
+      lines.cancelPending();
+      return;
+    }
+    if (compactRunning) {
+      // Interrupting a compaction aborts the summarizer request; the
+      // /compact handler reports the failure and the REPL survives.
+      compactAbort?.abort();
       return;
     }
     if (streaming) {
@@ -269,7 +287,16 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         messages = surface;
       },
     },
-    compact: (trigger) => compactSession({ client, session, messages, trigger }),
+    // The SIGINT layer hands /compact an abort source; pass its signal through
+    // so an interrupt unwinds the summarizer request instead of hanging it.
+    compact: (trigger) =>
+      compactSession({
+        client,
+        session,
+        messages,
+        trigger,
+        ...(compactAbort !== undefined ? { signal: compactAbort.signal } : {}),
+      }),
     report: {
       preStart: (limit) => console.log(paint.yellow(`预估下轮上下文超过阈值 ${limit}，提前压缩…`)),
       postStart: (tokens, limit) => console.log(paint.yellow(`上下文约 ${tokens} tok，超过自动压缩阈值 ${limit}，正在压缩…`)),
@@ -449,7 +476,13 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
             for (const [i, model] of models.entries()) {
               console.log(`  ${model === client.model ? '❯' : ' '} ${i + 1}. ${model}${model === client.model ? '（当前）' : ''}`);
             }
-            const raw = await lines.next(paint.cyan('输入序号切换模型，回车取消：'));
+            subPromptPending = true;
+            let raw: string | null;
+            try {
+              raw = await lines.next(paint.cyan('输入序号切换模型，回车取消：'));
+            } finally {
+              subPromptPending = false;
+            }
             const pick = raw?.trim();
             if (pick === undefined || pick === null || pick.length === 0) {
               console.log('已取消');
@@ -492,13 +525,17 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         }
         case '/compact': {
           console.log('正在压缩会话…');
+          compactAbort = new AbortController();
           try {
             const outcome = await runCompact('manual');
             console.log(
               `已压缩 — 会话原位压缩（日志保留完整历史），摘要 ${outcome.summary.length} 字，保留 ${outcome.retained} 条最近用户消息`,
             );
           } catch (err) {
-            console.error(`压缩失败：${err instanceof Error ? err.message : String(err)}`);
+            const aborted = err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message));
+            console.error(aborted ? '压缩已中断（会话保持未压缩）' : `压缩失败：${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            compactAbort = undefined;
           }
           break;
         }
@@ -550,6 +587,11 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     } catch (err) {
       spinner.stop();
       clearProgressLine();
+      // Repair the log before any surface work: the turn may have died with
+      // assistant tool_calls unanswered — append synthesized results (same
+      // copy core's abandonment synthesis uses) so the log keeps its
+      // one-result-per-call contract.
+      await persistMissingToolResults(session, messages).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof Error && (err.name === 'AbortError' || /abort/i.test(message))) {
         console.log(paint.yellow('  已中断'));

@@ -13,7 +13,7 @@ import type { Config } from './config.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
-import { agentRunBase, LONG_TASK, ToolTiming } from './runner-shared.js';
+import { agentRunBase, LONG_TASK, persistMissingToolResults, ToolTiming } from './runner-shared.js';
 
 export interface ExecOptions {
   rootDir: string;
@@ -75,13 +75,17 @@ export async function runExec(opts: ExecOptions): Promise<void> {
       // reference the same array object, so a splice keeps every consumer
       // in sync without plumbed return values.
       msgs.splice(0, msgs.length, ...outcome.surface);
-      if (!json) write(`${paint.dim('⟳ 已自动压缩上下文（超过阈值；会话日志保留完整历史）')}\n`);
+      if (json) write(`${JSON.stringify({ type: 'notice', text: '已自动压缩上下文（超过阈值；会话日志保留完整历史）' })}\n`);
+      else write(`${paint.dim('⟳ 已自动压缩上下文（超过阈值；会话日志保留完整历史）')}\n`);
     },
     onError: (err: unknown) => {
-      if (!json) write(`${paint.dim(`⟳ 自动压缩失败（继续运行）：${err instanceof Error ? err.message : String(err)}`)}\n`);
+      const text = `自动压缩失败（继续运行）：${err instanceof Error ? err.message : String(err)}`;
+      if (json) write(`${JSON.stringify({ type: 'notice', text })}\n`);
+      else write(`${paint.dim(`⟳ ${text}`)}\n`);
     },
     onWarn: (text: string) => {
-      if (!json) write(`${paint.dim(`⟳ ${text}`)}\n`);
+      if (json) write(`${JSON.stringify({ type: 'notice', text })}\n`);
+      else write(`${paint.dim(`⟳ ${text}`)}\n`);
     },
   });
 
@@ -93,6 +97,12 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   // test sinks.
   const notify = createNotifier({ enabled: opts.out === undefined && config.notify !== false });
   const execStartedAt = Date.now();
+  // SIGINT unwinds the run gracefully instead of hard-killing the process:
+  // the finally below still disposes background jobs (no orphaned shells)
+  // and --json consumers get a machine-readable run_error line.
+  const interrupt = new AbortController();
+  const onSigint = (): void => interrupt.abort();
+  process.on('SIGINT', onSigint);
   const agentRun = agentRunBase({
     client: provider,
     session: () => session,
@@ -105,7 +115,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     maxTurns: config.maxTurns,
   });
   try {
-    for await (const event of runAgent(agentRun())) {
+    for await (const event of runAgent({ ...agentRun(), signal: interrupt.signal })) {
       if (json) write(`${JSON.stringify(event)}\n`);
       else renderHuman(event, write, paint);
       switch (event.type) {
@@ -129,10 +139,14 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`出错：${message}`);
+    if (json) write(`${JSON.stringify({ type: 'run_error', message })}\n`);
+    else console.error(`出错：${message}`);
     if (Date.now() - execStartedAt >= LONG_TASK.execDoneMs) notify('任务出错', message.slice(0, 120));
     process.exitCode = 1;
   } finally {
+    process.off('SIGINT', onSigint);
+    // Repair the log if the run died with assistant tool_calls unanswered.
+    await persistMissingToolResults(session, messages).catch(() => undefined);
     // Kill background jobs before the process exits, or the spawned shells
     // outlive the session (dsh jobs dispose contract).
     await jobs.dispose().catch(() => undefined);
@@ -164,7 +178,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
       }
       case 'done': {
         const kind = event.stopReason === 'complete' ? 'complete' : event.stopReason;
-        sink(`\n${statusLine(p, kind, stats, 0)}\n`);
+        sink(`\n${statusLine(p, kind, stats, Date.now() - execStartedAt)}\n`);
         break;
       }
       default:

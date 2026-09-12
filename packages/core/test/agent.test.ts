@@ -467,7 +467,36 @@ describe('length cutoff defense', () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.result.content).toContain(LENGTH_CUTOFF_TOOL_GUIDANCE);
     expect(results[0]?.result.content).toContain('get_time');
-    // the failed result feeds back as a normal tool message, then the model retries
+    expect(messages.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant']);
+    expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
+  });
+});
+
+describe('malformed arguments defense', () => {
+  it('fails a call whose arguments never parsed as JSON instead of running it with {}', async () => {
+    const provider = scriptedProvider([
+      [
+        { type: 'tool_call_delta', index: 0, id: 'call_1', name: 'get_time', argsDelta: '{"timezon' },
+        { type: 'tool_call_delta', index: 0, argsDelta: 'e": UTC}' },
+        { type: 'finish', finishReason: 'tool_calls' },
+      ],
+      [
+        { type: 'text_delta', text: 'recovered' },
+        { type: 'usage', usage: { promptTokens: 30, completionTokens: 5, cachedTokens: 0 } },
+        { type: 'finish', finishReason: 'stop' },
+      ],
+    ]);
+    const messages: AgentMessage[] = [];
+    const events = await collect(runAgent({ provider, messages, rootDir: '.', tools: [getTimeTool] }));
+
+    const results = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'tool_call_result' }> => e.type === 'tool_call_result',
+    );
+    expect(results).toHaveLength(1);
+    expect(results[0]?.result.content).toContain('not valid JSON');
+    expect(results[0]?.result.content).toContain('get_time');
+    // The malformed call never executed; the error result feeds back and the
+    // model recovers on the next turn.
     expect(messages.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant']);
     expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
   });

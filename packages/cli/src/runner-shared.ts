@@ -13,9 +13,10 @@ import type {
   JobRegistry,
   Session,
   ToolDefinition,
+  ToolResultMessage,
   Usage,
 } from '@nova-agent/core';
-import { DEFAULT_MAX_TURNS } from '@nova-agent/core';
+import { DEFAULT_MAX_TURNS, newId, NOT_EXECUTED_GUIDANCE } from '@nova-agent/core';
 import path from 'node:path';
 import { PermissionService, type ApprovalMode, type AskFn } from '@nova-agent/plugins';
 import { EXEC_DONE_NOTIFY_MS, LONG_TASK_DONE_MS, LONG_TASK_ERROR_MS } from '@nova-agent/tui-view';
@@ -178,6 +179,54 @@ export function createAutoCompact(deps: AutoCompactDeps): {
   };
 
   return { runCompact, maybePreCompact, maybeAutoCompact };
+}
+
+/**
+ * Repair an abandoned turn's log after the run errored out: scan the LOG for
+ * assistant tool_calls that never got a result message, synthesize one with
+ * the same copy core uses (NOT_EXECUTED_GUIDANCE), append it to the log and
+ * fill any remaining hole in the live surface. "Model-visible means logged" —
+ * without this, a turn that died in the runner's event handling (or mid-stream
+ * error) leaves assistant tool_calls unanswered, which strict providers
+ * reject on the very next request and which stays unbalanced across
+ * resume/compact. Scanning the log (not the surface) makes it idempotent and
+ * safe to call after core's own abandonment synthesis already ran.
+ * Returns the number of results appended.
+ */
+export async function persistMissingToolResults(session: Session, messages: AgentMessage[]): Promise<number> {
+  const logged = session.allMessages();
+  const loggedResults = new Set<string>();
+  for (const msg of logged) {
+    if (msg.role === 'tool') loggedResults.add(msg.toolCallId);
+  }
+  const surfaceResults = new Set<string>();
+  for (const msg of messages) {
+    if (msg.role === 'tool') surfaceResults.add(msg.toolCallId);
+  }
+  const missing: ToolResultMessage[] = [];
+  for (const msg of logged) {
+    if (msg.role !== 'assistant' || msg.toolCalls === undefined) continue;
+    for (const call of msg.toolCalls) {
+      if (loggedResults.has(call.id)) continue;
+      loggedResults.add(call.id);
+      missing.push({
+        id: newId('msg'),
+        ts: Date.now(),
+        role: 'tool',
+        toolCallId: call.id,
+        name: call.name,
+        content: NOT_EXECUTED_GUIDANCE,
+      });
+    }
+  }
+  for (const result of missing) {
+    await session.append(result);
+    if (!surfaceResults.has(result.toolCallId)) {
+      surfaceResults.add(result.toolCallId);
+      messages.push(result);
+    }
+  }
+  return missing.length;
 }
 
 /**

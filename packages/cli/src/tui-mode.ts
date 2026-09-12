@@ -81,7 +81,7 @@ import {
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
-import { agentRunBase, createApprovalService, createAutoCompact, LONG_TASK, maxTurnsHint } from './runner-shared.js';
+import { agentRunBase, createApprovalService, createAutoCompact, LONG_TASK, maxTurnsHint, persistMissingToolResults } from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
@@ -201,6 +201,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // workspace switches call reloadWorkspaceContext to refresh docs+skills.
   const seedContextFragment = rt.seedContextFragment;
   const reloadWorkspaceContext = rt.reloadWorkspaceContext;
+  // Usage anchors for pre-flight token estimates (dsh token-meter anchor +
+  // delta repricing, whole-message granularity). Declared before rebuildHost
+  // so the rebuild can reset them.
+  let lastUsage: Usage | undefined;
+  let lastPromptTokens = 0;
+  let usageAnchor: Usage | undefined;
+  let anchorMsgCount = 0;
   /**
    * Rebuild the plugin host for the current workspace + execution mode and
    * re-point `host`/`hooks` at it. Both the workspace switch and the Tab
@@ -217,6 +224,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     await next.activate();
     host = next;
     hooks = next.agentHooks(permission);
+    // The tool set changed: the usage anchor's implicit assumption (schema
+    // bytes unchanged since the anchored request) is void. Reset so the next
+    // pre-flight estimate takes the full-estimate path instead of a delta
+    // repricing against a stale anchor (P2-7).
+    lastUsage = undefined;
+    lastPromptTokens = 0;
+    usageAnchor = undefined;
+    anchorMsgCount = 0;
   };
   /**
    * Re-point the whole workspace-bound surface at `dir`: the tool host (fs
@@ -280,12 +295,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * non-command message that happens to start with "/".
    */
   const commandPopupMatches = (): CommandSpec[] => (store.popupDismissed ? [] : filterCommands(store.input));
-  let lastUsage: Usage | undefined;
-  let lastPromptTokens = 0;
-  // Last successful usage acts as the anchor for pre-flight token estimates
-  // (dsh token-meter anchor + delta repricing, whole-message granularity).
-  let usageAnchor: Usage | undefined;
-  let anchorMsgCount = 0;
   let exitNow: (() => void) | undefined;
   /**
    * 工具行的统一宽度预算。wrapBlock 按 `cols-1-gutter` 折行，行构建器必须
@@ -628,6 +637,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     } catch (err) {
       spinner.stop();
       store.closeReadGroup();
+      // Repair the log before any surface work: the turn may have died with
+      // assistant tool_calls unanswered — append synthesized results (same
+      // copy core's abandonment synthesis uses) so the log keeps its
+      // one-result-per-call contract.
+      await persistMissingToolResults(session, messages).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof Error && (err.name === 'AbortError' || /abort/i.test(message))) {
         // An abort may leave a partial assistant block that was never closed
@@ -1050,6 +1064,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const restored = loaded.deriveMessages();
     session = loaded;
     messages = restored;
+    // Corruption tolerance reported at open: surface it like the REPL does —
+    // a skipped damaged row or a repaired tail is worth knowing about.
+    for (const warning of loaded.warnings) {
+      store.pushBlock([`${YELLOW}  ⚠ ${warning}${RESET}`]);
+    }
     // Rebind the cache-affinity identity and drop the old usage anchor (same
     // reasoning as /new): the restored history changes the prompt prefix, so
     // the next turn rebuilds the cache instead of tripping a spurious compact.
