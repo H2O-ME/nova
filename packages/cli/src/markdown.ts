@@ -32,10 +32,19 @@ function renderLine(raw: string, state: { inFence: boolean }, p: Palette, commit
 }
 
 function renderInline(text: string, p: Palette): string {
-  return text
-    // code spans first so their content keeps the code color
-    .replace(/`([^`]+)`/g, (_, code: string) => p.cyan(code))
-    .replace(/\*\*([^*]+)\*\*/g, (_, bold: string) => p.bold(bold));
+  // Code spans are extracted to placeholders first so the bold pass can never
+  // match across a code span's ANSI-wrapped content — `` `a**b` **c** ``
+  // previously bolded straight through the code span and shredded its color.
+  const codes: string[] = [];
+  const withPlaceholders = text.replace(/`([^`]+)`/g, (_, code: string) => {
+    codes.push(p.cyan(code));
+    // \u0000 never appears in model text; digits after it cannot collide
+    // because the closing sentinel is required too.
+    return `\u0000${codes.length - 1}\u0000`;
+  });
+  const bolded = withPlaceholders.replace(/\*\*([^*]+)\*\*/g, (_, bold: string) => p.bold(bold));
+  // oxlint-disable-next-line no-control-regex -- \u0000 is the placeholder sentinel we just inserted
+  return bolded.replace(/\u0000(\d+)\u0000/g, (_, idx: string) => codes[Number(idx)] ?? '');
 }
 
 export function renderMarkdownLite(text: string, p: Palette): string[] {

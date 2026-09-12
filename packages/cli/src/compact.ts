@@ -211,6 +211,9 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
       type: 'compaction/summary',
       summary: body,
       keep,
+      // Ids alongside positions: the projection prefers ids (corruption-tolerant),
+      // old readers still understand the positional form.
+      keepIds: keep.map((i) => all[i]?.id).filter((id): id is string => id !== undefined),
       shadowedTokenCount,
       at,
     });

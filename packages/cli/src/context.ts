@@ -81,9 +81,18 @@ export function buildContextFragment(
   return parts.join('\n');
 }
 
+/**
+ * The seeded context fragment carries this id prefix, so compaction can
+ * exclude it by ID — a user who literally types a message starting with
+ * `<environment>` must not be mistaken for the runner-seeded fragment
+ * (old logs whose fragments got plain `msg_…` ids still fall back to the
+ * content check).
+ */
+export const CONTEXT_FRAGMENT_ID_PREFIX = 'msg_ctx_';
+
 /** True for the session-start context fragment produced by buildContextFragment. */
 export function isContextFragment(msg: AgentMessage): boolean {
-  return msg.role === 'user' && msg.content.startsWith('<environment>');
+  return msg.role === 'user' && (msg.id.startsWith(CONTEXT_FRAGMENT_ID_PREFIX) || msg.content.startsWith('<environment>'));
 }
 
 export type SkillInvocation = { ok: true; content: string } | { ok: false; error: string };

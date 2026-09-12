@@ -34,6 +34,13 @@ export type SessionEvent =
       summary: string;
       /** Indices into the full message-event stream kept verbatim on the surface (fragment first, then recents). */
       keep: number[];
+      /**
+       * Message ids of the kept entries (same set as `keep`, written alongside
+       * since M7.8). When present, the projection resolves by ID — a corrupt
+       * middle line shifts positional indices, and id resolution keeps the
+       * restored surface aligned with what was actually kept.
+       */
+      keepIds?: string[];
       /** Estimated token count of the replaced surface. */
       shadowedTokenCount: number;
       at: number;
@@ -82,6 +89,24 @@ export function compactionSummaryMessage(summary: string, seq: number, at: numbe
 
 function parseEventLine(line: string): SessionEvent {
   return JSON.parse(line) as SessionEvent;
+}
+
+/**
+ * Resolve a compaction/summary event's kept entries against the full message
+ * stream. `keepIds` (written since M7.8) is authoritative: a corrupt middle
+ * line shifts positional indices, but ids pin the kept messages exactly —
+ * a kept message lost to damage is simply omitted. Old logs without keepIds
+ * fall back to the positional `keep` indices.
+ */
+function resolveKeptMessages(
+  evt: Extract<SessionEvent, { type: 'compaction/summary' }>,
+  all: AgentMessage[],
+): AgentMessage[] {
+  if (evt.keepIds !== undefined) {
+    const byId = new Map(all.map((msg) => [msg.id, msg] as const));
+    return evt.keepIds.map((id) => byId.get(id)).filter((msg): msg is AgentMessage => msg !== undefined);
+  }
+  return evt.keep.map((index) => all[index]).filter((msg): msg is AgentMessage => msg !== undefined);
 }
 
 /**
@@ -192,7 +217,7 @@ export class Session {
       if (evt.type === 'compaction/summary') {
         // Replace the whole surface: kept originals (context fragment, recent
         // user messages) plus the synthesized summary message.
-        const kept = evt.keep.map((index) => all[index]).filter((msg): msg is AgentMessage => msg !== undefined);
+        const kept = resolveKeptMessages(evt, all);
         surface = [...kept, compactionSummaryMessage(evt.summary, this.events.indexOf(evt), evt.at)];
       }
     }
@@ -208,6 +233,11 @@ export class Session {
     return undefined;
   }
 
+  /**
+   * One-shot read helper (tests / audit tooling): open a log file and return
+   * its header plus the raw message stream — NOT the projected surface (use
+   * `open()` + `deriveMessages()` for that).
+   */
   static async replay(file: string): Promise<{ header: SessionHeader; messages: AgentMessage[] }> {
     const { header, events } = await readEvents(file);
     const messages: AgentMessage[] = [];

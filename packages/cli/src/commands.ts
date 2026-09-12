@@ -32,19 +32,27 @@ export function filterCommands(input: string): CommandSpec[] {
 
 export function findCommand(input: string): CommandSpec | undefined {
   const base = input.trim().split(/\s+/)[0] ?? '';
-  return COMMAND_SPECS.find((spec) => spec.name === base || `/${spec.name}` === base);
+  // specs are stored with the leading '/' already; a `${spec.name}`-without-
+  // slash match can never hit and only muddied the lookup.
+  return COMMAND_SPECS.find((spec) => spec.name === base);
 }
 
 /**
  * /model 的模型列表缓存：站点目录短时间内不会变，60s 内复用上次结果，
- * 避免连续打开选择面板时反复打 /models 接口。
+ * 避免连续打开选择面板时反复打 /models 接口。失败同样负缓存 60s：站点
+ * 故障时连续打开面板不应每次都等一个完整的请求超时。
  */
 export function createModelListCache(fetchList: () => Promise<string[]>, ttlMs = 60_000): () => Promise<string[]> {
   let cache: { at: number; models: string[] } | undefined;
   return async (): Promise<string[]> => {
     if (cache !== undefined && Date.now() - cache.at < ttlMs) return cache.models;
-    const models = await fetchList();
-    cache = { at: Date.now(), models };
-    return models;
+    try {
+      const models = await fetchList();
+      cache = { at: Date.now(), models };
+      return models;
+    } catch (err) {
+      cache = { at: Date.now(), models: [] };
+      throw err;
+    }
   };
 }

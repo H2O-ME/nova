@@ -50,10 +50,17 @@ describe('collectProjectDocs', () => {
     expect(await collectProjectDocs(root, other)).toEqual(['ROOT DOC']);
   });
 
-  it('stops collecting once the shared byte budget is spent', async () => {
+  it('truncates a doc that exceeds the remaining budget, then stops (per-doc cap)', async () => {
     const { root, sub } = await makeTree();
     await writeFile(path.join(root, 'AGENTS.md'), 'A'.repeat(60), 'utf8');
-    expect(await collectProjectDocs(root, sub, 50)).toEqual(['A'.repeat(60)]);
+    // The oversize doc is cut into the remaining budget (with a truncation
+    // marker) instead of being taken whole — the total stays a hard bound.
+    const docs = await collectProjectDocs(root, sub, 50);
+    expect(docs).toEqual([`${'A'.repeat(50)}…[truncated]`]);
+
+    // With room for both docs, each is taken whole.
+    await writeFile(path.join(root, 'AGENTS.md'), 'ROOT DOC', 'utf8');
+    expect(await collectProjectDocs(root, sub, 16)).toEqual(['ROOT DOC', 'SUB DOC']);
   });
 
   it('returns an empty list without any AGENTS.md', async () => {

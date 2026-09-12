@@ -62,7 +62,10 @@ const configSchema = z.object({
         .optional(),
     })
     .optional(),
-});
+})
+// Strict: a typo'd key ("apporval") is a silent no-op on a lenient schema
+// and a confusing wrong-way run. Fail at load with the offending key named.
+.strict();
 
 export type Config = z.infer<typeof configSchema>;
 
@@ -86,10 +89,15 @@ export function sessionsRoot(homedir: string = os.homedir()): string {
 
 /** 新会话落盘的日期桶（创建时取当天，跨天启动自动换目录）。 */
 export function sessionDateBucket(now: Date = new Date()): string {
-  const yyyy = now.getFullYear();
+  return localDateKey(now).join('/');
+}
+
+/** 本地时区的 YYYY/MM/DD 分量（context 片段的 today 与日期桶共用同源）。 */
+export function localDateKey(now: Date = new Date()): [string, string, string] {
+  const yyyy = String(now.getFullYear());
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
-  return `${yyyy}/${mm}/${dd}`;
+  return [yyyy, mm, dd];
 }
 
 /**

@@ -1,10 +1,6 @@
 import type { ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
-function formatStatus(status: string): string {
-  return status;
-}
-
 /**
  * Model-facing control surface for background jobs started via
  * `bash { run_in_background: true }`. Jobs that finish naturally
@@ -42,7 +38,7 @@ export function jobsPlugin(): Plugin {
             const jobs = c.jobs.list();
             if (jobs.length === 0) return 'No background jobs.';
             return jobs
-              .map((job) => `- ${job.id} [${formatStatus(job.status)}] ${job.label}${job.detail !== undefined ? ` (${job.detail})` : ''}`)
+              .map((job) => `- ${job.id} [${job.status}] ${job.label}${job.detail !== undefined ? ` (${job.detail})` : ''}`)
               .join('\n');
           }
 

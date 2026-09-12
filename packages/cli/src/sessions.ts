@@ -18,6 +18,8 @@ const TITLE_MAX_CHARS = 120;
 /** Titles live in the first lines of the log; a capped read keeps listing
  * O(64KB) per file instead of loading whole (possibly multi-MB) sessions. */
 const PEEK_BYTES = 64 * 1024;
+/** Enumeration bound: a runaway sessions dir must not freeze the switcher. */
+const MAX_SESSION_FILES = 2000;
 
 /**
  * Sessions under the date-bucketed root (`YYYY/MM/DD/<id>.jsonl`), the most
@@ -25,11 +27,17 @@ const PEEK_BYTES = 64 * 1024;
  */
 export async function listRecentSessions(root: string, limit: number): Promise<SessionEntry[]> {
   const files = await walkSessionFiles(root);
-  const statted = await Promise.all(files.map(async (file) => ({ file, mtime: (await stat(file)).mtimeMs })));
+  const statted: { file: string; mtime: number }[] = [];
+  for (const file of files) {
+    const info = await stat(file).catch(() => undefined);
+    if (info !== undefined) statted.push({ file, mtime: info.mtimeMs });
+  }
   statted.sort((a, b) => b.mtime - a.mtime);
   return Promise.all(
     statted.slice(0, Math.max(0, limit)).map(async ({ file, mtime }) => {
-      const peek = await peekSession(file);
+      // One unreadable file (locked, deleted mid-listing, permissions) must
+      // not blow up the whole panel — it just renders without id/title.
+      const peek = await peekSession(file).catch(() => ({ id: path.basename(file).replace(/\.jsonl$/, ''), createdAt: undefined, title: '' }));
       return { file, mtime, ...peek };
     }),
   );
@@ -46,6 +54,7 @@ async function walkSessionFiles(root: string): Promise<string[]> {
           const dayDir = path.join(monthDir, day);
           for (const name of await readdir(dayDir).catch(() => [] as string[])) {
             if (name.endsWith('.jsonl')) files.push(path.join(dayDir, name));
+            if (files.length >= MAX_SESSION_FILES) return files;
           }
         }
       }
@@ -64,7 +73,11 @@ async function peekSession(file: string): Promise<{ id: string; createdAt: numbe
   try {
     const buf = Buffer.alloc(PEEK_BYTES);
     const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
-    for (const line of buf.toString('utf8', 0, bytesRead).split('\n')) {
+    // The capped read can slice a multi-byte UTF-8 char at the boundary; the
+    // decoder replaces it with U+FFFD in the tail line, whose JSON.parse then
+    // fails and is skipped like any other read-capped partial line.
+    const text = buf.subarray(0, bytesRead).toString('utf8');
+    for (const line of text.split('\n')) {
       if (line.length === 0) continue;
       let evt: unknown;
       try {

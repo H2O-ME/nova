@@ -8,7 +8,7 @@ import type { AgentMessage, Usage } from './types.js';
  * gaps between them (compaction pre-checks before the next request).
  */
 
-const CJK_RANGE = /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+const CJK_RANGE = /[\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/;
 
 const FRAMING_TOKENS = 4;
 

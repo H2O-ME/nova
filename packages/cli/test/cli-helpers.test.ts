@@ -74,3 +74,16 @@ describe('windows toast script', () => {
     expect(script).toContain('ShowBalloonTip'); // balloon fallback present
   });
 });
+
+describe('markdown inline: code span / bold isolation', () => {
+  it('bold never matches across a code span (placeholder extraction)', () => {
+    // Marker palette makes the wrapping observable in plain text.
+    const p = {
+      ...plainPalette,
+      cyan: (text: string) => `<c>${text}</c>`,
+      bold: (text: string) => `<b>${text}</b>`,
+    };
+    const lines = renderMarkdownLite('use `a**b` and **c** now', p as typeof plainPalette);
+    expect(lines).toEqual(['use <c>a**b</c> and <b>c</b> now']);
+  });
+});

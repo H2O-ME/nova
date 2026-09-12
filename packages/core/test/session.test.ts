@@ -105,3 +105,46 @@ describe('Session', () => {
     }
   });
 });
+
+describe('compaction keepIds projection', () => {
+  it('prefers keepIds over positional keep when both are present', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-keep-'));
+    const session = await Session.create(dir, 'sess_keep');
+    const fragment = user('msg_ctx_frag', '<environment>\ncwd=/w\n</environment>');
+    const recent = user('msg_recent', 'do the thing');
+    await session.append(fragment);
+    await session.append(recent);
+    await session.append(assistant('msg_a1', 'ok'));
+
+    // keep positions intentionally wrong (as corruption would shift them);
+    // keepIds pin the actually-kept messages.
+    await session.appendEvent({
+      type: 'compaction/summary',
+      summary: 'handoff',
+      keep: [2],
+      keepIds: ['msg_ctx_frag', 'msg_recent'],
+      shadowedTokenCount: 10,
+      at: 3,
+    });
+
+    const surface = session.deriveMessages();
+    expect(surface.map((m) => m.id)).toEqual(['msg_ctx_frag', 'msg_recent', expect.stringMatching(/^msg_compact_/)]);
+    expect(surface.at(-1)?.content).toContain('[已压缩的上一会话摘要]\nhandoff');
+  });
+
+  it('still resolves legacy logs by positional keep (no keepIds)', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-legacy-'));
+    const session = await Session.create(dir, 'sess_legacy');
+    await session.append(user('msg_u1', 'early'));
+    await session.append(user('msg_u2', 'later'));
+    await session.appendEvent({
+      type: 'compaction/summary',
+      summary: 'legacy handoff',
+      keep: [0],
+      shadowedTokenCount: 5,
+      at: 3,
+    });
+    const surface = session.deriveMessages();
+    expect(surface.map((m) => m.id)).toEqual(['msg_u1', expect.stringMatching(/^msg_compact_/)]);
+  });
+});

@@ -98,4 +98,14 @@ describe('loadConfig', () => {
     );
     await expect(loadConfig(bad)).rejects.toThrow(/contextWindow/);
   });
+
+  it('rejects unknown keys, naming the offender (strict schema)', async () => {
+    const home = await withConfig(
+      JSON.stringify({
+        provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-1', model: 'm' },
+        apporval: 'full',
+      }),
+    );
+    await expect(loadConfig(home)).rejects.toThrow(/apporval/);
+  });
 });

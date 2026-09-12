@@ -18,8 +18,8 @@ import {
   type SkillMetadata,
 } from '@nova-agent/plugins';
 import { collectProjectDocs } from './agents-md.js';
-import { NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
-import { buildContextFragment, declaredShell, type SessionEnvInfo } from './context.js';
+import { localDateKey, NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { buildContextFragment, CONTEXT_FRAGMENT_ID_PREFIX, declaredShell, type SessionEnvInfo } from './context.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 
@@ -130,14 +130,23 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     platform: process.platform,
     cwd: rootDir,
     shell: declaredShell(bashConfig?.shellPath),
-    today: new Date().toISOString().slice(0, 10),
+    // Local timezone (matches the session date bucket); the old UTC slice
+    // reported "yesterday" for every evening run west of the meridian.
+    today: localDateKey().join('-'),
   };
   const projectDocsHolder: { value: string[] } = { value: await collectProjectDocs(rootDir, process.cwd()) };
   const skillsHolder: { value: SkillMetadata[] } = { value: skills };
   const buildFragment = (): string =>
     buildContextFragment(sessionEnv, config.systemPrompt, skillsHolder.value, projectDocsHolder.value);
   const seedContextFragment = async (target: Session, surface: AgentMessage[]): Promise<void> => {
-    const seed: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: buildFragment() };
+    // The dedicated id prefix (not a plain msg_ id) lets compaction exclude
+    // the fragment by id — see CONTEXT_FRAGMENT_ID_PREFIX.
+    const seed: UserMessage = {
+      id: newId(CONTEXT_FRAGMENT_ID_PREFIX.slice(0, -1)),
+      ts: Date.now(),
+      role: 'user',
+      content: buildFragment(),
+    };
     surface.push(seed);
     await target.append(seed);
   };

@@ -33,9 +33,16 @@ interface ParsedArgs {
 
 function parseArgs(args: string[]): ParsedArgs | undefined {
   const parsed: ParsedArgs = { json: false, repl: false, positional: [] };
+  // Everything after a bare `--` is positional verbatim, so a task starting
+  // with '-' (nova exec -- "-check the config") is passed through untouched.
+  let positionalOnly = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
-    if (arg === '--resume') {
+    if (!positionalOnly && arg === '--') {
+      positionalOnly = true;
+      continue;
+    }
+    if (!positionalOnly && arg === '--resume') {
       const value = args[++i];
       if (!value) {
         console.error('--resume requires a session file path');
@@ -55,7 +62,7 @@ function parseArgs(args: string[]): ParsedArgs | undefined {
       parsed.json = true;
     } else if (arg === '--repl') {
       parsed.repl = true;
-    } else if (arg.startsWith('-')) {
+    } else if (!positionalOnly && arg.startsWith('-')) {
       console.error(`unknown option: ${arg}（--help 查看用法）`);
       process.exitCode = 1;
       return undefined;

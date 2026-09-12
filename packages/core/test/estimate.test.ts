@@ -62,3 +62,12 @@ describe('estimateNextPromptTokens', () => {
     expect(estimateNextPromptTokens(anchor, [])).toBe(500);
   });
 });
+
+describe('estimateMessageTokens Hangul', () => {
+  it('prices Hangul syllables as CJK (one token each), not as 4-chars-per-token', () => {
+    const text = '안녕하세요'; // 5 Hangul syllables
+    const estimate = estimateMessageTokens(userMsg(text));
+    expect(estimate).toBeGreaterThanOrEqual(5);
+    expect(estimate).toBeLessThan(10);
+  });
+});

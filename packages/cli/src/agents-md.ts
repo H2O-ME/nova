@@ -8,6 +8,22 @@ import path from 'node:path';
 export const PROJECT_DOC_MAX_BYTES = 32_000;
 
 /**
+ * Cut `text` at a UTF-8 byte budget on a whole-character boundary (a raw
+ * subarray would split a multi-byte char and leave a replacement glyph).
+ */
+function cutToByteBudget(text: string, budget: number): string {
+  let bytes = 0;
+  let out = '';
+  for (const ch of text) {
+    const size = Buffer.byteLength(ch, 'utf8');
+    if (bytes + size > budget) break;
+    bytes += size;
+    out += ch;
+  }
+  return out;
+}
+
+/**
  * Project-doc discovery chain (codex agents_md.rs, simplified): collect the
  * AGENTS.md of every directory from the workspace root down to the current
  * working directory (inclusive), root first. Nothing outside the workspace
@@ -37,8 +53,19 @@ export async function collectProjectDocs(
     if (remaining <= 0) break;
     const text = await readFile(path.join(dir, 'AGENTS.md'), 'utf8').catch(() => undefined);
     if (text === undefined || text.trim().length === 0) continue;
-    docs.push(text.trim());
-    remaining -= Buffer.byteLength(text, 'utf8');
+    // Per-doc cap (codex project_doc_max_bytes semantics): a single huge
+    // doc is truncated into the remaining budget instead of being taken
+    // whole — one bloated AGENTS.md must not starve the deeper directories'
+    // docs that follow it, and the total budget stays a hard bound.
+    const trimmed = text.trim();
+    const bytes = Buffer.byteLength(trimmed, 'utf8');
+    if (bytes > remaining) {
+      docs.push(`${cutToByteBudget(trimmed, remaining)}…[truncated]`);
+      remaining = 0;
+    } else {
+      docs.push(trimmed);
+      remaining -= bytes;
+    }
   }
   return docs;
 }
