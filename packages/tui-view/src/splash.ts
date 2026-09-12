@@ -20,13 +20,14 @@ export interface SplashInfo {
   model: string;
   approval: string;
   codeMode: PtcMode;
+  version: string;
   skills: string[];
   warnings: string[];
   cols: number;
 }
 
 export function buildSplash(p: Palette, info: SplashInfo): string[] {
-  const brand = `${p.cyan(p.bold('Nova'))} ${p.dim('v0.1.0')}`;
+  const brand = `${p.cyan(p.bold('Nova'))} ${p.dim(`v${info.version}`)}`;
   const rawRows: [string, string, boolean][] = [
     ['工作区', info.rootDir, true],
     ['会话', info.sessionsRoot, true],

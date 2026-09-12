@@ -3,8 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { loadConfig } from './config.js';
 import { startRepl } from './repl.js';
-
-const VERSION = '0.1.0';
+import { cliVersion } from './version.js';
 
 const HELP = `nova — 自研本地编码智能体
 
@@ -81,7 +80,7 @@ function readStdin(): Promise<string> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes('--version') || args.includes('-v')) {
-    console.log(`nova ${VERSION}`);
+    console.log(`nova ${cliVersion()}`);
     return;
   }
   if (args.includes('--help') || args.includes('-h')) {

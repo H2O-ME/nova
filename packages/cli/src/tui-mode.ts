@@ -101,6 +101,7 @@ import {
   type ContextBreakdownView,
   type StatusView,
 } from './statusbar.js';
+import { cliVersion } from './version.js';
 
 export interface TuiOptions {
   rootDir: string;
@@ -1106,7 +1107,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           ? `阈值 ${humanTokens(config.autoCompactTokenLimit)} tok · 上轮 ${humanTokens(lastPromptTokens)} tok`
           : '未启用';
         pushBlock([
-          `  ${BOLD}会话${RESET}`,
+          `  ${BOLD}会话${RESET}${DIM} · nova v${cliVersion()} · 模式 ${codeModeLabel(codeMode)}${RESET}`,
           `${DIM}  文件 ${session.file}${RESET}`,
           `${DIM}  消息 ${messages.length} 条 · 日志事件 ${session.events.length} 条 · ${stats.turns} 轮${RESET}`,
           `${DIM}  输入 ${stats.promptTokens} tok（缓存 ${hit}%${lastHit !== null ? ` · 上轮 ${lastHit}%` : ''}）· 输出 ${stats.completionTokens} tok${RESET}`,
@@ -1116,7 +1117,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           currentModelMeta !== undefined
             ? `${DIM}  ${formatModelMeta(currentModelMeta)}（models.dev · ${currentModelMeta.provider}）${RESET}`
             : `${DIM}  元数据未命中（离线或目录没有该模型；可配 provider.contextWindow 兜底）${RESET}`,
-          `${DIM}  执行模式 ${codeModeLabel(codeMode)}${RESET}`,
           `${DIM}  ${contextLegend(paint, contextBreakdown(contextView()).segments.filter((s) => s.tokens > 0))}${RESET}`,
         ]);
         try {
@@ -1677,6 +1677,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       model: client.model,
       approval: approvalMode,
       codeMode,
+      version: cliVersion(),
       skills: skills.map((s) => s.name),
       warnings: session.warnings,
       cols: screen.cols,

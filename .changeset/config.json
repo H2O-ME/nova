@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "nova-agent",
+      "@nova-agent/core",
+      "@nova-agent/ai",
+      "@nova-agent/plugins",
+      "@nova-agent/tui",
+      "@nova-agent/tui-view",
+      "@nova-agent/cli"
+    ]
+  ],
+  "linked": [],
+  "access": "restricted",
+  "baseBranch": "master",
+  "updateInternalDependencies": "patch",
+  "ignore": [],
+  "privatePackages": {
+    "version": true,
+    "tag": true
+  }
+}

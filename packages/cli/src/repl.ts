@@ -53,6 +53,7 @@ import {
   ToolTiming,
 } from './runner-shared.js';
 import { Spinner } from './spinner.js';
+import { cliVersion } from './version.js';
 
 export interface ReplOptions {
   rootDir: string;
@@ -201,6 +202,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     plugins: pluginNames,
     sessionFile: session.file,
     rootDir,
+    version: cliVersion(),
   });
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const lines = new LineSource(rl, process.stdin.isTTY === true);

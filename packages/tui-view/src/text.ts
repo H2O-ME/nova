@@ -23,11 +23,11 @@ export function formatStamp(ms: number): string {
 /** Minimal brand header (REPL + fallback paths; the TUI uses splash.ts). */
 export function banner(
   p: Palette,
-  info: { model: string; approval: string; plugins: string; sessionFile: string; rootDir: string },
+  info: { model: string; approval: string; plugins: string; sessionFile: string; rootDir: string; version: string },
 ): void {
   const relSession = sessionRelPath(info.rootDir, info.sessionFile);
   console.log();
-  console.log(`  ${p.cyan(p.bold('Nova'))} ${p.dim('v0.1.0 — 本地编码助手')}`);
+  console.log(`  ${p.cyan(p.bold('Nova'))} ${p.dim(`v${info.version} — 本地编码助手`)}`);
   console.log(p.dim(`  模型 ${info.model} · 审批 ${approvalLabel(info.approval)} · 插件 ${info.plugins}`));
   console.log(p.dim(`  工作区 ${info.rootDir} · 会话 ${relSession}`));
   console.log(p.dim(`  输入 / 唤起命令面板 · Ctrl+C 中断当前轮（空闲时退出）`));
