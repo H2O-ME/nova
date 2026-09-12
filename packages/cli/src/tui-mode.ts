@@ -493,7 +493,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     /** Paragraph-split mirror of the buffer: the click-expand detail. */
     const reasoningFull: string[] = [];
     let reasoningOpen = false;
-    let reasoningStartedAt = 0;
     /**
      * 思考段收尾（codex 风格）：思考只在流式期间滚动可见，一旦结束——答案
      * 开始、折叠调用、重试或中断——整块直接消失，转录里只留正式回答。
@@ -502,7 +501,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
      */
     const foldToSummary = (): boolean => {
       const had = store.reasoningBlock !== undefined && reasoningBuffer.trim().length > 0;
-      reasoningStartedAt = 0;
       reasoningBuffer = '';
       reasoningFull.length = 0;
       discardReasoning();
@@ -567,7 +565,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             store.genPhase = 'thinking';
             if (!reasoningOpen) {
               reasoningOpen = true;
-              reasoningStartedAt = Date.now();
               reasoningBuffer = '';
               reasoningFull.length = 0;
               // Auto-expanded while store.streaming: the newest reasoning lines are
@@ -624,8 +621,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             assistantText = '';
             // 重试的失败尝试不留任何痕迹（包括思考摘要行）。
             discardReasoning();
-            reasoningStartedAt = 0;
-            reasoningOpen = false;
+                  reasoningOpen = false;
             reasoningBuffer = '';
             reasoningFull.length = 0;
           },
