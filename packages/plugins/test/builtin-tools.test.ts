@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { JobRegistry, type TodoItem } from '@nova-agent/core';
 import { PluginHost, builtinPlugins, READ_MAX_BYTES } from '../src/index.js';
-import { bashOnPath } from '../src/builtin/bash.js';
+import { bashOnPath, BudgetedBuffer } from '../src/builtin/bash.js';
 import { screenContentRegex } from '../src/builtin/search.js';
 import { codeRuntimeAvailable } from '../src/ptc/code-runtime.js';
 
@@ -94,7 +94,52 @@ describe('jobs plugin', () => {
   });
 });
 
+describe('BudgetedBuffer (bash output head+tail capture)', () => {
+  it('keeps the last line when output overflows the budget', () => {
+    const buf = new BudgetedBuffer(100);
+    // 40-byte lines; 100-byte budget → head 60 + tail 40. 10 lines overflow.
+    for (let i = 1; i <= 10; i++) buf.push(Buffer.from(`line-${String(i).padStart(2, '0')}-abcdefghij\n`));
+    const { text, dropped } = buf.drain();
+    // Head: first line(s). Tail: the LAST full line must survive intact.
+    expect(text).toContain('line-10-abcdefghij\n');
+    expect(text).toContain('line-01-abcdefghij\n');
+    expect(dropped).toBeGreaterThan(0);
+    // No mid-output garbage: consecutive full lines only.
+    expect(text.split('\n').filter((l) => l.length > 0)).not.toContain('');
+  });
+
+  it('drains: a second read only sees new output', () => {
+    const buf = new BudgetedBuffer(1024);
+    buf.push(Buffer.from('first-batch\n'));
+    const first = buf.drain();
+    expect(first.text).toBe('first-batch\n');
+    expect(first.dropped).toBe(0);
+    buf.push(Buffer.from('second-batch\n'));
+    expect(buf.drain().text).toBe('second-batch\n');
+  });
+
+  it('keeps output verbatim while under the budget', () => {
+    const buf = new BudgetedBuffer(1024);
+    buf.push(Buffer.from('small\n'));
+    const { text, dropped } = buf.drain();
+    expect(text).toBe('small\n');
+    expect(dropped).toBe(0);
+  });
+} );
+
 describe('bash plugin', () => {
+  it.runIf(bashOnPath())('foreground runOnce keeps the most recent output past the cap', async () => {
+    const host = new PluginHost('.');
+    // Tiny cap so a 500-line seq overflows: head 60% + tail 40% ring.
+    for (const plugin of builtinPlugins({ bash: { maxOutputBytes: 200 } })) host.use(plugin);
+    await host.activate();
+    const tool = host.tools.find((t) => t.name === 'bash')!;
+
+    const result = await tool.execute({ command: 'seq 1 500' }, { rootDir: '.' });
+    expect(result).toContain('500'); // the LAST emitted line must survive
+    expect(result).toContain('1'); // and the head
+    expect(result).toContain('truncated'); // the middle drop is reported, not silent
+  }, 20_000);
   // Requires a POSIX shell (Git Bash on Windows); PowerShell has no `sleep`.
   it.runIf(bashOnPath())('kills a command past the timeout and settles deterministically', async () => {
     const host = new PluginHost('.');
@@ -215,6 +260,45 @@ describe('fs sandbox', () => {
       '1 occurrence',
     );
     expect(await readFile(file, 'utf8')).toBe('v2\nCHANGED\nend');
+  });
+
+  it('edit_file inserts $ sequences verbatim (never as RegExp replacement tokens)', async () => {
+    // Regression: a string replacer expands $&/$1/`$`/`$'`/`$$`, so editing in
+    // a price like `$&10` or an escaped capture `$1` used to silently garble
+    // the file. Function replacers must write the characters literally.
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-fs-'));
+    const host = await fsHostAt(root);
+    const write = host.tools.find((t) => t.name === 'write_file')!;
+    const read = host.tools.find((t) => t.name === 'read_file')!;
+    const edit = host.tools.find((t) => t.name === 'edit_file')!;
+
+    const file = path.join(root, 'money.txt');
+    await write.execute({ path: 'money.txt', content: 'item: base cost' }, { rootDir: root });
+    await read.execute({ path: 'money.txt' }, { rootDir: root });
+    // newString carries $& — a string replacer would copy the whole match in.
+    await edit.execute({ path: 'money.txt', old_string: 'base cost', new_string: '$&10 (plus $1 and $$20)' }, { rootDir: root });
+    expect(await readFile(file, 'utf8')).toBe('item: $&10 (plus $1 and $$20)');
+
+    // replace_all with backtick/quote tokens likewise stays literal.
+    await write.execute({ path: 'money.txt', content: 'raw\nraw' }, { rootDir: root });
+    await read.execute({ path: 'money.txt' }, { rootDir: root });
+    await edit.execute({ path: 'money.txt', old_string: 'raw', new_string: "`$'` edge", replace_all: true }, { rootDir: root });
+    expect(await readFile(file, 'utf8')).toBe("`$'` edge\n`$'` edge");
+  });
+
+  it('edit_file keeps $ sequences literal through the multi-line CRLF fallback', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-fs-'));
+    const host = await fsHostAt(root);
+    const write = host.tools.find((t) => t.name === 'write_file')!;
+    const read = host.tools.find((t) => t.name === 'read_file')!;
+    const edit = host.tools.find((t) => t.name === 'edit_file')!;
+
+    const file = path.join(root, 'crlf.txt');
+    // CRLF content; exact multi-line match misses, so tolerantReplace runs.
+    await write.execute({ path: 'crlf.txt', content: 'total\r\ncost' }, { rootDir: root });
+    await read.execute({ path: 'crlf.txt' }, { rootDir: root });
+    await edit.execute({ path: 'crlf.txt', old_string: 'total\ncost', new_string: 'sum $&' }, { rootDir: root });
+    expect(await readFile(file, 'utf8')).toBe('sum $&');
   });
 
   it('write_file requires string content instead of silently writing empty', async () => {

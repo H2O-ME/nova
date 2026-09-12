@@ -130,6 +130,11 @@ export function looksBinary(text: string, sampleChars = 8192): boolean {
  * (used after an exact match failed on a CRLF file). The replacement keeps
  * the file's CRLF habit when both sides are multi-line. Returns undefined
  * when the tolerant pattern does not match either.
+ *
+ * The replacement is handed to RegExp#replace as a **function**, never as a
+ * string: a string replacer would expand `$&`/`$1`/`` $` ``/`$'`/`$$` inside
+ * newString, silently garbling the file (e.g. editing in a price like
+ * `$&10`). A function replacer returns the literal characters verbatim.
  */
 function tolerantReplace(
   text: string,
@@ -149,7 +154,8 @@ function tolerantReplace(
   const first = found[0]!;
   const replacement =
     first.includes('\r\n') && newString.includes('\n') ? newString.replaceAll('\n', '\r\n') : newString;
-  const next = replaceAll ? text.replace(global, replacement) : text.replace(new RegExp(pattern), replacement);
+  const replacer = (): string => replacement;
+  const next = replaceAll ? text.replace(global, replacer) : text.replace(new RegExp(pattern), replacer);
   return { next, count };
 }
 
@@ -157,6 +163,10 @@ function tolerantReplace(
  * The shared edit core: exact-match first, newline-tolerant CRLF fallback
  * second. Used by both edit_file's execution and its approval preview, so
  * the preview always reflects what the edit really does.
+ *
+ * Exact replacements use **function replacers** (see tolerantReplace) so
+ * `$`-sequences in newString are insertable verbatim instead of being
+ * interpreted as RegExp replacement tokens.
  */
 function applyEdit(
   text: string,
@@ -166,8 +176,12 @@ function applyEdit(
 ): { next: string; count: number } | undefined {
   const occurrences = text.split(oldString).length - 1;
   if (occurrences > 0) {
+    // Function replacer (never a string) keeps `$&` etc. literal.
+    const replaced = replaceAll
+      ? text.replaceAll(oldString, () => newString)
+      : text.replace(oldString, () => newString);
     return {
-      next: replaceAll ? text.replaceAll(oldString, newString) : text.replace(oldString, newString),
+      next: replaced,
       count: occurrences,
     };
   }

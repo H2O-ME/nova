@@ -24,6 +24,88 @@ interface ShellOutcome {
   stdout: string;
   stderr: string;
   spawnError?: string;
+  /** Bytes dropped from the middle of output (head + tail retained). */
+  droppedBytes?: number;
+}
+
+/**
+ * Byte-budgeted stream capture keeping BOTH ends of the output, mirroring the
+ * core's tool-result contract (`HEAD_TAIL_RATIO` in core/agent.ts): the head
+ * 60% gives the summary, a ring-buffered tail 40% keeps the most recent
+ * output — which is where test failures and stack traces live. The old
+ * head-only capture silently threw away exactly the part that matters.
+ * `dropped` counts the middle bytes that fit neither segment, so callers can
+ * report them instead of pretending the output was intact.
+ */
+export class BudgetedBuffer {
+  private head: Buffer[] = [];
+  private tail: Buffer[] = [];
+  private headBytes = 0;
+  private tailBytes = 0;
+  private droppedBytes_ = 0;
+  private readonly headBudget: number;
+  private readonly tailBudget: number;
+
+  constructor(maxBytes: number) {
+    this.headBudget = Math.floor(maxBytes * 0.6);
+    this.tailBudget = maxBytes - this.headBudget;
+  }
+
+  get dropped(): number {
+    return this.droppedBytes_;
+  }
+
+  push(chunk: Buffer): void {
+    if (chunk.length === 0) return;
+    let remaining = chunk;
+    if (this.headBytes < this.headBudget) {
+      const take = remaining.subarray(0, this.headBudget - this.headBytes);
+      this.headBytes += take.length;
+      this.head.push(take);
+      if (take.length >= remaining.length) return;
+      remaining = remaining.subarray(take.length);
+    }
+    // Ring-buffer the tail: evict the oldest tail bytes until the new chunk
+    // fits (an eviction IS a middle byte: the head is full, the tail front
+    // is no longer "most recent").
+    while (remaining.length > this.tailBudget - this.tailBytes && this.tail.length > 0) {
+      const front = this.tail.shift()!;
+      this.tailBytes -= front.length;
+      this.droppedBytes_ += front.length;
+    }
+    const space = this.tailBudget - this.tailBytes;
+    if (remaining.length > space) {
+      // A single chunk larger than the whole tail budget (a big pipe burst):
+      // keep the chunk's END — the newest bytes are the ones that matter.
+      const keep = Math.min(remaining.length, space);
+      const start = remaining.length - keep;
+      this.tail.push(remaining.subarray(start));
+      this.tailBytes += keep;
+      this.droppedBytes_ += remaining.length - keep;
+    } else {
+      this.tail.push(remaining);
+      this.tailBytes += remaining.length;
+    }
+  }
+
+  concat(): string {
+    return Buffer.concat([...this.head, ...this.tail]).toString('utf8');
+  }
+
+  /**
+   * Return the accumulated output AND drain it: subsequent reads see only new
+   * output (the `jobs` tool contract — action=output reads since last read).
+   */
+  drain(): { text: string; dropped: number } {
+    const text = this.concat();
+    const dropped = this.droppedBytes_;
+    this.head = [];
+    this.tail = [];
+    this.headBytes = 0;
+    this.tailBytes = 0;
+    this.droppedBytes_ = 0;
+    return { text, dropped };
+  }
 }
 
 /** Prefer a POSIX shell (Git Bash) on Windows; fall back to PowerShell. */
@@ -111,10 +193,8 @@ function runOnce(
       return;
     }
 
-    let collected = 0;
-    let errCollected = 0;
-    const chunks: Buffer[] = [];
-    const errChunks: Buffer[] = [];
+    const stdoutBuf = new BudgetedBuffer(maxOutputBytes);
+    const stderrBuf = new BudgetedBuffer(maxOutputBytes);
     // Streaming decoders: a UTF-8 char split across pipe chunks must not
     // reach the progress feed as replacement glyphs.
     const outDecoder = new StringDecoder('utf8');
@@ -147,10 +227,12 @@ function runOnce(
       signal?.removeEventListener('abort', onAbort);
       child.stdout?.destroy();
       child.stderr?.destroy();
+      const droppedBytes = stdoutBuf.dropped + stderrBuf.dropped;
       resolve({
         code: exitCode,
-        stdout: Buffer.concat(chunks).toString('utf8'),
-        stderr: Buffer.concat(errChunks).toString('utf8'),
+        stdout: stdoutBuf.concat(),
+        stderr: stderrBuf.concat(),
+        ...(droppedBytes > 0 ? { droppedBytes } : {}),
         ...(spawnError !== undefined ? { spawnError } : {}),
       });
     };
@@ -171,17 +253,11 @@ function runOnce(
       // Decode BEFORE the storage cap: progress display stays live even for
       // commands whose output already exceeded maxOutputBytes.
       feed(outDecoder.write(chunk));
-      if (collected >= maxOutputBytes) return;
-      const take = chunk.subarray(0, maxOutputBytes - collected);
-      collected += take.length;
-      chunks.push(take);
+      stdoutBuf.push(chunk);
     });
     child.stderr?.on('data', (chunk: Buffer) => {
       feed(errDecoder.write(chunk));
-      if (errCollected >= maxOutputBytes) return;
-      const take = chunk.subarray(0, maxOutputBytes - errCollected);
-      errCollected += take.length;
-      errChunks.push(take);
+      stderrBuf.push(chunk);
     });
     child.on('error', (err: NodeJS.ErrnoException) => {
       finish(`${err.code ?? 'ERROR'}: ${err.message}`);
@@ -209,6 +285,12 @@ interface BackgroundHandle {
 }
 
 /**
+ * Prefix for the "middle bytes hidden" notice bash reports on truncation.
+ * Kept short so it never hides the head it annotates.
+ */
+const TRUNCATE_HINT = '[nova: output truncated] ';
+
+/**
  * Spawn a detached background job: stdout/stderr stream into a byte-capped
  * buffer, cancel is a synchronous idempotent kill, and `done` settles only
  * after the process exits and its resources are released (dsh jobs contract).
@@ -231,15 +313,11 @@ function startBackground(
     return err instanceof Error ? err.message : String(err);
   }
 
-  const chunks: Buffer[] = [];
-  let collected = 0;
+  const buf = new BudgetedBuffer(outputLimitBytes);
   let killed = false;
 
   const collect = (chunk: Buffer): void => {
-    if (collected >= outputLimitBytes) return;
-    const take = chunk.subarray(0, outputLimitBytes - collected);
-    collected += take.length;
-    chunks.push(take);
+    buf.push(chunk);
   };
   child.stdout?.on('data', collect);
   child.stderr?.on('data', collect);
@@ -300,7 +378,12 @@ function startBackground(
       // in time — settle deterministically right after.
       killSettle ??= setTimeout(() => settle(describeExit()), 3_000);
     },
-    readOutput: () => Buffer.concat(chunks.splice(0)).toString('utf8'),
+    readOutput: () => {
+      const { text, dropped } = buf.drain();
+      // A truncated tail is the norm for chatty builds; say so once instead of
+      // silently returning the head+tail splice as if it were complete.
+      return dropped > 0 ? `${TRUNCATE_HINT}${dropped} bytes kept out of view.\n${text}` : text;
+    },
   };
 }
 
@@ -375,6 +458,9 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
           const parts: string[] = [];
           if (outcome.code === null) parts.push('[command did not exit: killed after timeout or aborted]');
           parts.push(`exit: ${outcome.code ?? 'null'}`);
+          if (outcome.droppedBytes !== undefined) {
+            parts.push(`[stdout/stderr truncated: ${outcome.droppedBytes} bytes in the middle kept out of view]`);
+          }
           parts.push(`stdout:\n${outcome.stdout.length > 0 ? outcome.stdout : '(empty)'}`);
           if (outcome.stderr.length > 0) parts.push(`stderr:\n${outcome.stderr}`);
           return parts.join('\n');
