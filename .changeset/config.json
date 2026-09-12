@@ -4,7 +4,6 @@
   "commit": false,
   "fixed": [
     [
-      "nova-agent",
       "@nova-agent/core",
       "@nova-agent/ai",
       "@nova-agent/plugins",

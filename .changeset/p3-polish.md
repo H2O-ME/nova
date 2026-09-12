@@ -1,5 +1,4 @@
 ---
-'nova-agent': patch
 '@nova-agent/core': patch
 '@nova-agent/ai': patch
 '@nova-agent/plugins': patch
