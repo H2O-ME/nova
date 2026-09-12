@@ -35,11 +35,11 @@ pnpm release      # changeset version + sync root version + commit + tag 一条�
 - `nova` → 交互 TUI / readline。
 - `nova -- --approval auto-edit` → 临时覆盖审批档位。
 - `nova -- --resume ~/.nova/sessions/<YYYY/MM/DD>/<id>.jsonl` → 续接历史会话。
-- `nova exec "<task>" --json` → 非交互单次执行（JSONL 事件流，CI 友好，可管道传入任务；无法交互确认，未放行的审批请求自动拒绝）。
+- `nova exec "<task>" --json` → 非交互单次执行（JSONL 事件流，CI 友好，可管道传入任务；无法交互确认，未放行的审批请求自动拒绝）。`--json` 下 AgentEvent 之外另有两类控制行：`{"type":"run_error","message":…}`（运行失败）与 `{"type":"notice","text":…}`（自动压缩/熔断告警等运维提示）；SIGINT 改为优雅中止（后台 job 走 dispose，不孤儿）。
 
 ## 3. 配置（唯一来源 `~/.nova/config.json`）
 
-项目目录里不需要、也不会产生任何 `.nova/` 文件。`apiKey` 支持 `{env:NAME}` 引用环境变量，避免明文密钥进仓库。
+项目目录里不需要、也不会产生任何 `.nova/` 文件。`apiKey` 支持 `{env:NAME}` 引用环境变量，避免明文密钥进仓库。配置 schema **严格校验**（0.2.0 起）：未知键（如拼错的 `apporval`）会在加载时报错并点名该键，而不是静默忽略。
 
 ```jsonc
 {
@@ -96,7 +96,7 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, tui-view, plugins, ai,
 目标：**稳定前缀 = 高缓存命中**。四层机制：
 1. **前缀冻结**：系统提示字节稳定（persona + 工作方式 + 工具规则 + **操作姿态**）；环境信息、AGENTS.md、用户指令、技能索引注入为**会话首条 user 消息片段**，append-only 不回改。注入片段带**权威指令帧**（DSH "Session directives" 语义）：`<user_instructions>`/`<project_docs>` 标注为"操作者写入的活跃会话指令，按字面执行、不作不可信数据处理"——治模型把本地指令当"可能相关的参考"而忽略/上报注入；同时**保留数据/指令二分**：会话中从文件内容读到的文本仍是不可信数据，防恶意仓库内嵌指令劫持。
 2. **追加式日志**：对话严格 append-only；工具结果超 40KB 时全文落盘 `~/.nova/cache/tool-outputs/<sessionId>/`，消息体保留头部 60% + 尾部 40%（尾部常带测试失败详情）并附读取提示（提示按字节计数，head+tail+提示行总量恒守预算）；落盘目录经 trusted read roots 豁免审批（内容本就是模型已见过的工具输出，同主体信任），三 runner 统一传入。
-3. **compact**：`/compact`、自动阈值（`autoCompactTokenLimit`，以最近一次 usage 为锚点发请求**前**预判）共用同一实现；压缩**原位追加** `compaction/start → summary → end` 三事件，模型可见面由 `Session.deriveMessages()` 投影重建，原始历史永不改写；crash 半路的压缩留下可检测的孤儿锁（自动丢弃并告警）。摘要请求以序列化裁剪后的 transcript 发送，已有摘要时走增量合并。**token 预估计入 assistant 的 tool call 参数**（`rawArgs`，PTC/bash 大程序曾是估算盲区），`estimateMessageTokens` 带 `WeakMap` 记忆化（消息 append-only 不可变，exec 每请求全量重估不再重复计价）。保留片段取**整条消息取舍**（最新优先、首条放不下即停，不截断——截断拷贝会同时破坏投影字节一致契约与预算上限）。exec 的轮内预检逐请求全量估算，并带**熔断**：一次压缩后仍超阈值（保留片段 + 工具 schema 构成下限）即停用本任务后续自动压缩并告警一次，避免每轮白烧摘要请求、日志被压缩三事件刷屏；同时校验原位压缩的 messages 别名契约（插件钩子若替换数组则告警停用而非静默失效）。
+3. **compact**：`/compact`、自动阈值（`autoCompactTokenLimit`，以最近一次 usage 为锚点发请求**前**预判）共用同一实现；压缩**原位追加** `compaction/start → summary → end` 三事件，模型可见面由 `Session.deriveMessages()` 投影重建，原始历史永不改写；crash 半路的压缩留下可检测的孤儿锁（自动丢弃并告警）。摘要请求以序列化裁剪后的 transcript 发送，已有摘要时走增量合并。**token 预估计入 assistant 的 tool call 参数**（`rawArgs`，PTC/bash 大程序曾是估算盲区），`estimateMessageTokens` 带 `WeakMap` 记忆化（消息 append-only 不可变，exec 每请求全量重估不再重复计价）。保留片段取**整条消息取舍**（最新优先、首条放不下即停，不截断——截断拷贝会同时破坏投影字节一致契约与预算上限）。exec 的轮内预检逐请求全量估算，并带**熔断**：一次压缩后仍超阈值（保留片段 + 工具 schema 构成下限）即停用本任务后续自动压缩并告警一次，避免每轮白烧摘要请求、日志被压缩三事件刷屏；同时校验原位压缩的 messages 别名契约（插件钩子若替换数组则告警停用而非静默失效）。`compaction/summary` 事件除位置索引 `keep` 外同写 `keepIds`（消息 id）：投影**优先按 id 解析**（中段损坏行不再让恢复面错位，id 缺失的损坏消息直接省略），旧日志无 keepIds 时回退位置索引。
 4. **供应商对齐**：请求携带 `prompt_cache_key` 与 `x-session-id`/`x-session-affinity` 会话亲和头（sessionId=会话 id），让网关把同一会话固定路由到同一缓存节点。指标目标：会话第 3 轮起 prompt cache 命中率 ≥ 90%（`/session` 可查）。
 
 > **工具数组顺序**：主工具数组发给 provider 前按**工具名字典序稳定排序**（`client.ts`，不改动调用方传入数组）——即使同一会话中途禁用 bash 或切换 code mode 导致注册顺序重排，工具槽位顺序也保持稳定，不再破坏 provider 侧的前缀缓存。PTC SDK binding 亦按 schema 字典序生成（`sdk.ts`，字节稳定）。
@@ -244,6 +244,16 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
   - **runAgent 脚手架提取**：`agentRunBase()` 单源三 runner 的公共 kwargs（provider/messages/cacheDir/emit/tools/hooks），accessor 惰性求值适配 messages/host/hooks 运行时重绑。
   - **层级修正**：`PtcMode` 类型移入 core（plugins 再导出保 API），tui-view 撤销对 plugins 的依赖——纯视图层回归 `tui + core` 两个下游。
   - **信任姿态明示**：splash 常驻一行"bash / run_code 在本机执行任意命令（审批门 + 工作区边界 · 无沙箱）；重隔离建议容器化运行"。
+
+### 全链路缺陷清偿（M7.8）
+
+- **M7.8 — 全流程审计驱动的 P1–P3 清偿**（6 个提交）：
+  - **会话态访问器化（P1）**：`seedContextFragment` 签名改 `(session, messages)`（交互 runner /new 重绑后传当前绑定，接口 docstring 注明不得再读 `rt.session`/`rt.messages`）；`createApprovalService` 审计与 `agentRunBase` 的 cacheDir/emit 改 `() => Session` 访问器——/new 后 seed 片段、审批审计、`todo/write`+`code-dispatch` 事件与溢出 cacheDir 不再落旧会话；用户级 skills 目录改走 `novaHome()`。
+  - **审批门硬化（P1/P2）**：`decide()` ask 路径改串行队列（并发 decide 逐个派发 asker，根治 PTC 并发子调用覆盖 TUI 弹窗挂死；短路/`never` 不入链、抛错不毒化队列）；`rememberKey` 多行命令与 `$( )`/反引号替换一律按整条命令记忆（头部程序前缀不再泄漏 always 授权）；`permissionFor` 抛错回落 `'execute'`（fail-closed，不再回落静态 read）；beforeToolCall rewrite 信任缝双侧注释。
+  - **运行健壮性（P2）**：`runAgent` 主体 try/finally（生成器被弃用时 requeue 未消费 job 通知 + 为无结果的 assistant toolCalls 合成 `NOT_EXECUTED_GUIDANCE` 结果）；`parseArgs` 改 `{args, ok}`——malformed JSON 参数不再静默按 `{}` 执行；`persistMissingToolResults()`（runner-shared，扫日志、幂等）接入三 runner 错误 catch 保住"model-visible means logged"；exec SIGINT 改优雅中止（jobs dispose 不再孤儿）+ `--json` 新增 `run_error`/`notice` 事件行 + statusLine 真实耗时；tui `rebuildHost` 重置 usage 锚点（工具集变更使锚点 schema 假设失效）、会话切换打印 `warnings`；repl /model 子提示与 /compact 等待期 Ctrl+C 走 `cancelPending`/`compactAbort`（compact 链路首次接上 signal）。
+  - **工具与容器边界（P2/P3）**：`edit_file` 加 8MiB 上限 + `looksBinary` 拒绝；`fileVersions` LRU（>512）；bash POSIX `detached` 进程组负 pid SIGKILL（孙进程不再逃脱）；`BudgetedBuffer.drain` 经 StringDecoder（jobs 增量读取跨读 UTF-8 序列不再出双替换符）；`search_files` halt 拆 truncated/aborted（中止不再谎报"已达结果上限"）；skills 正文 256KB 上限 + BOM 剥离；run-code SDK 缓存带工具集指纹（后激活插件进 SDK 声明）。
+  - **会话投影与杂项（P2/P3）**：`compaction/summary` 事件新增可选 `keepIds`，投影优先按 id 解析（中段损坏行不再让恢复面错位）、旧日志回退位置索引，写入侧同写 `keep` 兼容旧读者；`estimate` 补谚文计价；agents-md 单篇按字符边界硬截断进共享预算；`listRecentSessions` 逐文件 catch + 枚举上限 2000；context 片段 id 改 `msg_ctx_` 前缀（用户手输 `<environment>` 不再被误吞进压缩排除）；`findCommand` 永假条件删除；模型列表失败负缓存 60s；markdown code span 抽占位符再跑 bold（不再跨 ANSI 误匹配）；config schema `.strict()`（拼错键报错点名）；CLI 支持 `--` 分隔符；context 片段 `today` 改本地时区（`localDateKey()` 与日期桶同源）。审计修正：`estimateNextPromptTokens`/`hasOpenCompaction` 实有在用，保留。
+  - **配置**：`config.json` 未知键现在**报错拒载**（0.2.0 起严格校验，报错点名键名）。
 
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 
