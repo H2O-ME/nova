@@ -4,6 +4,8 @@
 
 > 📖 **完整文档见 [AGENTS.md](./AGENTS.md)**（架构、设计、命令、约定、里程碑的唯一权威来源）。本 README 仅作门面。
 
+> **版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)**（当前 0.y.z 初始开发阶段；公共 API 定义与升位规则见 AGENTS.md §10）。
+
 ## 快速开始
 
 ```bash
