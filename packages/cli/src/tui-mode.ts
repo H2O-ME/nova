@@ -1062,8 +1062,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         Object.assign(stats, event.stats);
         lastUsage = event.usage;
         lastPromptTokens = event.usage.promptTokens;
-        usageAnchor = event.usage;
-        anchorMsgCount = messages.length;
+        // Some gateways emit a usage chunk without prompt_tokens (client
+        // coerces to 0): adopting it would collapse the gauge anchor to
+        // "0 used" mid-turn until the next real report. Keep the previous
+        // anchor instead — the delta path just keeps repricing against it.
+        if (event.usage.promptTokens > 0) {
+          usageAnchor = event.usage;
+          anchorMsgCount = messages.length;
+        }
         scheduleRender();
         break;
       case 'turn_aborted':

@@ -362,6 +362,16 @@ describe('contextGaugeForms tiering', () => {
     }
   });
 
+  it('pct follows used, never the segment sum (the "0/1.05M · 5%" regression)', () => {
+    // A zeroed usage anchor (gateway usage chunk without prompt_tokens) once
+    // printed nums from used=0 while pct read the unscaled segment sum.
+    const fat: ContextSegment[] = [{ label: '消息', tokens: 52000, color: 'yellow' }];
+    const [t0] = contextGaugeForms(p, { segments: fat, used: 0, capacity: 1050000, compact: undefined }, 120);
+    expect(t0).toContain('0/1.05M');
+    expect(t0).toContain(' 0%');
+    expect(t0).not.toContain(' 5%');
+  });
+
   it('tiny non-zero usage reads <1%, never a misleading 0%', () => {
     const tiny: ContextSegment[] = [{ label: '提示词', tokens: 2600, color: 'cyan' }];
     const [t0, , t2] = contextGaugeForms(p, { segments: tiny, used: 2600, capacity: 1_050_000, compact: undefined }, 160);

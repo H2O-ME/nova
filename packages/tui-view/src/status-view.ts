@@ -241,8 +241,12 @@ export function contextGaugeForms(
       tier === 2
         ? Math.max(6, Math.min(16, cols - 70))
         : Math.max(8, Math.min(24, cols - 118));
-    const { counts, freeCells, ratio, over } = planContextSegments(v.segments, capacity, cells);
+    const { counts, freeCells, over } = planContextSegments(v.segments, capacity, cells);
     const bar = segmentBar(p, v.segments, counts, freeCells, over);
+    // pct derives from the SAME used the numbers show — planContextSegments'
+    // segment sum is a scaled estimate and can diverge (drift clamping, a
+    // zeroed anchor keeping factor=1), which once printed "0/1.05M · 5%".
+    const ratio = v.used / capacity;
     const pctNum = Math.round(ratio * 100);
     // A nonzero trickle must not read "0%" next to a near-empty track.
     const pct = (v.used > 0 && pctNum === 0 ? '<1' : String(pctNum)).padStart(2, ' ');

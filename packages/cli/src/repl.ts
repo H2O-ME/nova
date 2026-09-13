@@ -454,8 +454,12 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         Object.assign(stats, event.stats);
         lastUsage = event.usage;
         lastPromptTokens = event.usage.promptTokens;
-        usageAnchor = event.usage;
-        anchorMsgCount = messages.length;
+        // 与 TUI 同一护栏：prompt_tokens 缺失（coerce 成 0）的 usage 块
+        // 不收为锚点，否则仪表中途塌成 0 直到下一次真实上报。
+        if (event.usage.promptTokens > 0) {
+          usageAnchor = event.usage;
+          anchorMsgCount = messages.length;
+        }
         break;
       }
       case 'turn_aborted': {
