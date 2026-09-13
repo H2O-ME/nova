@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { AgentMessage, ChatProvider, ChatRequest, UserMessage } from '@nova-agent/core';
 import {
   compactionSummaryMessage,
@@ -8,6 +10,7 @@ import {
   COMPACT_SUMMARY_PREFIX,
 } from '@nova-agent/core';
 import { isContextFragment } from './context.js';
+import { novaHome } from './config.js';
 
 /**
  * Compaction as a durable in-place operation (dsh-style): instead of
@@ -22,23 +25,30 @@ import { isContextFragment } from './context.js';
 /**
  * Structured like codex's compaction prompt (context checkpoint for a
  * successor LLM): progress + decisions, constraints/preferences, next steps,
- * critical data. Word cap kept from the original Nova prompt.
+ * critical data. NO hard word cap (codex has none): a starved summary forces
+ * the next session into expensive re-discovery, which costs far more than the
+ * extra summary tokens — the full pre-compaction transcript is archived for
+ * on-demand lookups, but the summary itself must stand alone for the common
+ * case.
  */
 export const COMPACT_ASK = [
   'You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume this task in a fresh session.',
-  'Include:',
-  '- Current progress and key decisions made',
-  '- Important context, constraints, or user preferences',
-  '- What remains to be done (clear next steps)',
-  '- Any critical data, file paths, or references needed to continue',
-  'Be concise, structured, and under 300 words. Output only the summary.',
+  'Structure the summary with these sections:',
+  '- Task: what the user asked for, including verbatim key requirements and constraints',
+  '- Progress: what has been done, each item with its outcome (commands run, files changed, results obtained)',
+  '- Decisions: choices made AND the reasons; rejected alternatives worth remembering',
+  '- Current state: exact workspace state (branch, modified files, passing/failing checks)',
+  '- Issues: errors hit and how they were fixed — exact error messages and root causes',
+  '- Next steps: precise, ordered actions to continue',
+  '- References: file paths, function names, and any critical data verbatim',
+  'Preserve exact paths, identifiers, and error messages. Detail beats brevity: a lost detail forces expensive re-discovery. There is no hard length limit — be as long as the task demands, but do not pad. Output only the summary.',
 ].join('\n');
 
 /**
- * Char budget for verbatim recent user messages retained after compaction
+ * Char budget for verbatim recent messages retained after compaction
  * (codex keeps a 20k-token budget; NovaAgent approximates with chars).
  */
-export const COMPACT_RECENT_BUDGET_CHARS = 20_000;
+export const COMPACT_RECENT_BUDGET_CHARS = 32_000;
 
 /**
  * Structured prompt for an INCREMENTAL update: when the session surface
@@ -53,23 +63,26 @@ export const COMPACT_UPDATE_ASK = [
   '- UPDATE next steps based on what was accomplished',
   '- Preserve exact file paths, function names, and error messages',
   '- Drop items that are no longer relevant',
-  'Keep the same structure and stay under 300 words. Output only the updated summary.',
+  'Keep the same structure and grow it as the new work demands — detail beats brevity, no hard length limit. Output only the updated summary.',
 ].join('\n');
 
 /**
  * Per-tool-result char cap in the serialized summary input (pi-style): the
  * summarizer does not need full 40KB tool outputs — findings matter more than
- * raw dumps, and the serialized input itself must stay small.
+ * raw dumps, and the serialized input itself must stay small. The UNTRUNCATED
+ * transcript goes to the on-disk archive (serializeFullConversation), so this
+ * cap only shapes what the summarizer model sees, not what is retrievable.
  */
-export const SUMMARY_TOOL_RESULT_MAX_CHARS = 2000;
+export const SUMMARY_TOOL_RESULT_MAX_CHARS = 4000;
 
 /**
- * Serialize the conversation into a compact human-readable transcript for the
- * summarizer (pi compaction-utils style). Static context fragments, prior
- * summaries and 40KB tool dumps are stripped or capped: the summary model
- * needs decisions and findings, not the full payload.
+ * Serialize the conversation into a compact human-readable transcript.
+ * `toolResultMaxChars` caps each tool result (the summarizer needs findings,
+ * not 40KB dumps); pass a huge cap (serializeFullConversation) to keep
+ * everything. Static context fragments and prior summaries are always
+ * stripped: they are session furniture, not conversation content.
  */
-export function serializeConversationForSummary(messages: AgentMessage[]): string {
+export function serializeConversation(messages: AgentMessage[], toolResultMaxChars: number): string {
   const parts: string[] = [];
   for (const msg of messages) {
     if (isContextFragment(msg) || isCompactSummary(msg)) continue;
@@ -83,13 +96,28 @@ export function serializeConversationForSummary(messages: AgentMessage[]): strin
       }
     } else if (msg.role === 'tool' && msg.content.length > 0) {
       const content =
-        msg.content.length > SUMMARY_TOOL_RESULT_MAX_CHARS
-          ? `${msg.content.slice(0, SUMMARY_TOOL_RESULT_MAX_CHARS)}…[截断]`
+        msg.content.length > toolResultMaxChars
+          ? `${msg.content.slice(0, toolResultMaxChars)}…[截断]`
           : msg.content;
       parts.push(`[Tool ${msg.name}]: ${content}`);
     }
   }
   return parts.join('\n\n');
+}
+
+/** Summary-input transcript: tool results capped at SUMMARY_TOOL_RESULT_MAX_CHARS. */
+export function serializeConversationForSummary(messages: AgentMessage[]): string {
+  return serializeConversation(messages, SUMMARY_TOOL_RESULT_MAX_CHARS);
+}
+
+/**
+ * Archive transcript: NOTHING is truncated. Written to disk before the
+ * summary event lands and referenced from the summary, so the post-compact
+ * model can consult exact pre-compaction details (full error text, exact
+ * command output) with read_file instead of guessing.
+ */
+export function serializeFullConversation(messages: AgentMessage[]): string {
+  return serializeConversation(messages, Number.MAX_SAFE_INTEGER);
 }
 
 /**
@@ -103,6 +131,7 @@ export async function compactConversation(
   messages: AgentMessage[],
   previousSummary?: string,
   signal?: AbortSignal,
+  onDelta?: (text: string) => void,
 ): Promise<string> {
   const ask =
     previousSummary !== undefined
@@ -118,8 +147,10 @@ export async function compactConversation(
   let summary = '';
   const req: ChatRequest = { messages: [askMsg], signal };
   for await (const ev of client.stream(req)) {
-    if (ev.type === 'text_delta') summary += ev.text;
-    else if (ev.type === 'reset') summary = ''; // retry replays from scratch
+    if (ev.type === 'text_delta') {
+      summary += ev.text;
+      onDelta?.(ev.text);
+    } else if (ev.type === 'reset') summary = ''; // retry replays from scratch
   }
   return summary.trim();
 }
@@ -129,21 +160,33 @@ export function isCompactSummary(msg: AgentMessage): boolean {
 }
 
 /**
- * Recent verbatim user messages kept after compaction (codex-style): newest
- * first within the char budget. The budget takes WHOLE messages — the first
- * one that does not fit stops the walk (nothing skipped, nothing partially
- * kept): a truncated copy could not rejoin the log projection verbatim
- * ("model-visible means logged" requires the kept message to BE a logged
- * message), so cut-or-keep is the only shape that preserves the invariant.
- * Context fragments, prior summaries and abort markers never carry over.
+ * Recent verbatim messages kept after compaction (codex-style): newest first
+ * within the char budget. BOTH sides of the recent exchange are kept — user
+ * requests AND pure-text assistant replies (an assistant message carrying
+ * tool_calls is never kept alone: its result messages would be stranded and
+ * strict providers reject the unbalanced surface). The budget takes WHOLE
+ * messages — the first one that does not fit stops the walk (nothing skipped,
+ * nothing partially kept): a truncated copy could not rejoin the log
+ * projection verbatim ("model-visible means logged" requires the kept message
+ * to BE a logged message), so cut-or-keep is the only shape that preserves
+ * the invariant. Context fragments, prior summaries and abort markers never
+ * carry over.
  */
-export function selectRecentUserMessages(messages: AgentMessage[], budgetChars: number): UserMessage[] {
-  const picked: UserMessage[] = [];
+export function selectRecentMessages(messages: AgentMessage[], budgetChars: number): AgentMessage[] {
+  const picked: AgentMessage[] = [];
   let budget = budgetChars;
   for (let i = messages.length - 1; i >= 0 && budget > 0; i--) {
     const msg = messages[i];
-    if (msg === undefined || msg.role !== 'user') continue;
-    if (isContextFragment(msg) || isCompactSummary(msg) || msg.content === TURN_ABORTED_GUIDANCE) continue;
+    if (msg === undefined) continue;
+    if (msg.role === 'user') {
+      if (isContextFragment(msg) || isCompactSummary(msg) || msg.content === TURN_ABORTED_GUIDANCE) continue;
+    } else if (msg.role === 'assistant') {
+      // Pure text only: tool-call messages must keep their result messages,
+      // and pulling the whole subtree through the char budget is not worth it.
+      if (msg.content.length === 0 || (msg.toolCalls !== undefined && msg.toolCalls.length > 0)) continue;
+    } else {
+      continue;
+    }
     if (msg.content.length > budget) break;
     picked.push(msg);
     budget -= msg.content.length;
@@ -162,14 +205,25 @@ export interface CompactSessionOptions {
   trigger?: 'auto' | 'manual';
   /** Optional abort signal forwarded to the summarizer request. */
   signal?: AbortSignal;
+  /**
+   * Where the full-transcript archive is written. Defaults to the shared
+   * tool-output spill dir (`~/.nova/cache/tool-outputs/<sessionId>`), which
+   * the runners already exempt from read approval — so the post-compact model
+   * can read_file the archive without an approval prompt.
+   */
+  cacheDir?: string;
+  /** Stream tap on the summarizer's output (TUI tps sampling). */
+  onDelta?: (text: string) => void;
 }
 
 export interface CompactedSession {
   /** New projected surface to use as the live message array. */
   surface: AgentMessage[];
   summary: string;
-  /** How many recent user messages were carried over verbatim. */
+  /** How many recent messages were carried over verbatim. */
   retained: number;
+  /** On-disk full-transcript archive referenced from the summary, if written. */
+  archivePath?: string;
 }
 
 /**
@@ -184,11 +238,23 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
   try {
     // Incremental mode: a prior summary on the surface turns this compaction
     // into a preserve-and-update merge (the old summary is excluded from the
-    // serialized transcript and embedded in the ask instead).
+    // serialized transcript and embedded in the ask instead). The furniture we
+    // appended to the persisted body (archive pointer) is stripped — the ask
+    // carries the summary CORE only; the raw body still feeds the archive
+    // chain harvest below.
     const previous = messages.find(isCompactSummary)?.content;
-    const previousSummary = previous !== undefined ? previous.slice(COMPACT_SUMMARY_PREFIX.length).trimStart() : undefined;
-    const summary = await compactConversation(client, messages, previousSummary, opts.signal);
-    const body = summary.length > 0 ? summary : '(无摘要可用)';
+    const previousBody = previous !== undefined ? previous.slice(COMPACT_SUMMARY_PREFIX.length).trimStart() : undefined;
+    const ARCHIVE_MARK = '\n\n[对话存档]';
+    const previousSummary = previousBody?.split(ARCHIVE_MARK)[0]?.trim();
+    const summary = await compactConversation(client, messages, previousSummary, opts.signal, opts.onDelta);
+    // Full-transcript archive BEFORE the summary event: the summary points at
+    // it, so the post-compact model can re-consult exact pre-compact details
+    // (full errors, raw outputs) on demand instead of working from a lossy
+    // summary alone. Best-effort: an archive write failure must not fail the
+    // compaction — the summary just carries no pointer.
+    const archivePath = await writeTranscriptArchive(opts);
+    const body =
+      (summary.length > 0 ? summary : '(无摘要可用)') + archivePointer(archivePath, previousBody);
 
     // keep references logged messages by index in the FULL message stream.
     const all = session.allMessages();
@@ -199,7 +265,7 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
       const at = index.get(fragment.id);
       if (at !== undefined) keep.push(at);
     }
-    const recent = selectRecentUserMessages(messages, opts.recentBudgetChars ?? COMPACT_RECENT_BUDGET_CHARS);
+    const recent = selectRecentMessages(messages, opts.recentBudgetChars ?? COMPACT_RECENT_BUDGET_CHARS);
     for (const msg of recent) {
       const at = index.get(msg.id);
       if (at !== undefined) keep.push(at);
@@ -222,7 +288,7 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
       compactionSummaryMessage(body, seq, at),
     ];
     await session.appendEvent({ type: 'compaction/end', at: Date.now() });
-    return { surface, summary: body, retained: recent.length };
+    return { surface, summary: body, retained: recent.length, ...(archivePath !== undefined ? { archivePath } : {}) };
   } catch (err) {
     // Release the lock with an error marker so the failed attempt is recorded
     // but does not block future compactions.
@@ -231,6 +297,50 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
       .catch(() => {});
     throw err;
   }
+}
+
+/** Archive file name prefix inside the spill dir. */
+const ARCHIVE_PREFIX = 'pre-compact-';
+
+/**
+ * Write the UNTRUNCATED pre-compaction transcript next to the tool-output
+ * spill (same trusted read root, so read_file on it needs no approval).
+ */
+async function writeTranscriptArchive(opts: CompactSessionOptions): Promise<string | undefined> {
+  const full = serializeFullConversation(opts.messages);
+  if (full.length === 0) return undefined;
+  const dir = opts.cacheDir ?? path.join(novaHome(), 'cache', 'tool-outputs', opts.session.id);
+  try {
+    await mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${ARCHIVE_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
+    // 'wx' mirrors the tool-result spill: never overwrite an existing archive.
+    await writeFile(file, full, { encoding: 'utf8', flag: 'wx' });
+    return file;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Machine-readable archive reference appended to the persisted summary
+ * (`<archive>` tags survive across incremental compactions: the chain link
+ * below harvests them from the previous summary so older archives stay
+ * reachable from the newest summary).
+ */
+function archivePointer(archivePath: string | undefined, previousBody: string | undefined): string {
+  if (archivePath === undefined) return '';
+  const older = [...(previousBody ?? '').matchAll(/<archive>(.+?)<\/archive>/g)]
+    .map((match) => match[1])
+    .filter((p): p is string => p !== undefined && p !== archivePath)
+    .slice(0, 3);
+  const lines = [
+    '',
+    '',
+    '[对话存档] 压缩前的完整对话记录（未截断）已存档于 <archive>' + archivePath + '</archive>。',
+    '当本摘要缺少某个细节（完整报错、精确输出、早先的决定与原因）时，先用 read_file 分段查阅该存档再继续，不要凭空猜测。',
+  ];
+  if (older.length > 0) lines.push(`更早的压缩存档（按需查阅）：${older.join('、')}`);
+  return lines.join('\n');
 }
 
 /**

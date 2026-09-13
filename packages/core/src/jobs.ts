@@ -17,6 +17,10 @@ export interface JobSnapshot {
   status: JobStatus;
   /** Producer-specific detail rendered into status lines ('exit code: 3'). */
   detail?: string;
+  /** Wall-clock start (ms epoch); UIs derive elapsed time from it. */
+  startedAt?: number;
+  /** Latest activity line sampled from the producer (UI live rows). */
+  progress?: string;
 }
 
 export interface JobOutcome {
@@ -53,12 +57,20 @@ export interface JobStart {
   done: Promise<JobOutcome>;
   /** Consume output produced since the previous call; absence marks a final-output-only job. */
   readOutput?(): string;
+  /**
+   * One-line latest-activity sample for UI live rows, read FRESH on every
+   * snapshot (list/get). Unlike readOutput this is a peek: it never drains
+   * the model-facing output cursor.
+   */
+  progress?(): string | undefined;
 }
 
-interface JobEntry extends JobSnapshot {
+interface JobEntry extends Omit<JobSnapshot, 'progress'> {
   outputLimitBytes?: number;
   cancel: (reason?: string) => void;
   readOutput?(): string;
+  /** Accessor form on the entry; snapshots carry the sampled string. */
+  progress?(): string | undefined;
   done: Promise<JobOutcome>;
 }
 
@@ -79,9 +91,11 @@ export class JobRegistry {
       kind: start.kind,
       label: start.label,
       status: 'running',
+      startedAt: Date.now(),
       ...(start.outputLimitBytes !== undefined ? { outputLimitBytes: start.outputLimitBytes } : {}),
       cancel: start.cancel,
       ...(start.readOutput !== undefined ? { readOutput: start.readOutput } : {}),
+      ...(start.progress !== undefined ? { progress: start.progress } : {}),
       done: start.done,
     };
     this.jobs.set(id, entry);
@@ -198,7 +212,9 @@ function snapshotOf(entry: JobEntry): JobSnapshot {
     kind: entry.kind,
     label: entry.label,
     status: entry.status,
+    startedAt: entry.startedAt,
     ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
+    ...(entry.progress !== undefined ? { progress: entry.progress() } : {}),
   };
 }
 

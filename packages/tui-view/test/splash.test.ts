@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
-import { buildSplash, type SplashInfo } from '../src/index.js';
+import { buildSplash, modeSelectRows, modeSelectedRow, nextModeIndex, type SplashInfo } from '../src/index.js';
 import { plainPalette } from '../src/palette.js';
 
 function base(): SplashInfo {
@@ -20,16 +20,25 @@ function base(): SplashInfo {
 describe('buildSplash', () => {
   it('renders the version in the brand line', () => {
     const lines = buildSplash(plainPalette, base());
-    expect(lines[0]).toContain('Nova');
-    expect(lines[0]).toContain('v0.2.0');
+    const brand = lines.find((l) => l.includes('Nova'));
+    expect(brand).toContain('v0.2.0');
   });
 
   it('renders an empty version as bare v prefix only', () => {
     const lines = buildSplash(plainPalette, { ...base(), version: '' });
-    expect(lines[0]).toContain('Nova');
+    const brand = lines.find((l) => l.includes('Nova'));
     // No "undefined"/"null" leakage when the caller forgets the field.
-    expect(lines[0]).not.toContain('undefined');
-    expect(lines[0]).not.toContain('null');
+    expect(brand).toBeDefined();
+    expect(brand).not.toContain('undefined');
+    expect(brand).not.toContain('null');
+  });
+
+  it('prepends the ASCII logotype on wide screens and skips it on narrow ones', () => {
+    const wide = buildSplash(plainPalette, base());
+    expect(wide[1]).toContain('| |/ /'); // figlet "Nova" (row 2)
+    const narrow = buildSplash(plainPalette, { ...base(), cols: 24 });
+    expect(narrow[0]).toContain('Nova'); // brand line is first again
+    expect(narrow.some((l) => l.includes('| |/ /'))).toBe(false);
   });
 
   it('clips long paths but keeps the version intact', () => {
@@ -66,5 +75,51 @@ describe('buildSplash', () => {
       // terminal width, so it can never blow the layout.
       expect(styledWidth(hint as string)).toBeLessThanOrEqual(cols);
     }
+  });
+});
+describe('startup mode selector (modeSelectRows)', () => {
+  it('marks the highlighted row with ‣ and bold, others dim', () => {
+    const rows = modeSelectRows(plainPalette, { index: 1, ptcAvailable: true, cols: 100 });
+    expect(rows).toHaveLength(5); // header + 3 options + hint
+    expect(rows[1]).not.toContain('‣');
+    expect(rows[2]).toContain('‣ PTC');
+    expect(rows[3]).not.toContain('‣');
+    expect(rows.at(-1)).toContain('Enter 确认');
+  });
+
+  it('dims and annotates PTC rows when the runtime cannot support them', () => {
+    const rows = modeSelectRows(plainPalette, { index: 0, ptcAvailable: false, cols: 100 });
+    expect(rows[2]).toContain('需要 Node ≥ 22.19');
+    expect(rows[3]).toContain('需要 Node ≥ 22.19');
+  });
+
+  it('rows stay within the terminal budget on narrow screens', () => {
+    for (const cols of [40, 60, 80]) {
+      for (const row of modeSelectRows(plainPalette, { index: 0, ptcAvailable: true, cols })) {
+        expect(styledWidth(row)).toBeLessThanOrEqual(cols);
+      }
+    }
+  });
+});
+
+describe('nextModeIndex (skip unavailable rows, wrap at ends)', () => {
+  it('moves plainly when everything is selectable', () => {
+    expect(nextModeIndex(0, 1, true)).toBe(1);
+    expect(nextModeIndex(2, 1, true)).toBe(0); // wrap
+    expect(nextModeIndex(0, -1, true)).toBe(2); // wrap backwards
+  });
+
+  it('skips PTC and 混合 when the runtime lacks type stripping', () => {
+    expect(nextModeIndex(0, 1, false)).toBe(0); // only 普通 selectable: no move
+    expect(nextModeIndex(0, -1, false)).toBe(0);
+  });
+});
+
+describe('modeSelectedRow (collapsed confirmation)', () => {
+  it('names the kept mode with the switch hint', () => {
+    const row = modeSelectedRow(plainPalette, 'ptc', 100);
+    expect(row).toContain('执行模式');
+    expect(row).toContain('PTC');
+    expect(row).toContain('Tab 可随时切换');
   });
 });

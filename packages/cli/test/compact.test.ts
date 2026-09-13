@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -14,8 +14,9 @@ import {
 import {
   compactSession,
   isCompactSummary,
-  selectRecentUserMessages,
+  selectRecentMessages,
   serializeConversationForSummary,
+  serializeFullConversation,
   surfaceDivergence,
 } from '../src/compact.js';
 import { buildContextFragment, type SessionEnvInfo } from '../src/context.js';
@@ -27,6 +28,11 @@ function userMsg(content: string): UserMessage {
   return { id: `msg_${content.slice(0, 6)}_${Math.random().toString(36).slice(2, 8)}`, ts: 0, role: 'user', content };
 }
 
+/** Hermetic compactSession call: the transcript archive lands in the temp dir. */
+async function compact(dir: string, opts: Omit<Parameters<typeof compactSession>[0], 'cacheDir'>) {
+  return compactSession({ ...opts, cacheDir: path.join(dir, 'cache') });
+}
+
 function textProvider(text: string): ChatProvider {
   return {
     async *stream() {
@@ -36,18 +42,38 @@ function textProvider(text: string): ChatProvider {
   };
 }
 
-describe('selectRecentUserMessages', () => {
-  it('keeps recent user messages but drops fragments, summaries and abort markers', () => {
+describe('selectRecentMessages', () => {
+  it('keeps recent user messages AND pure-text assistant replies, drops fragments/summaries/abort markers', () => {
     const messages: AgentMessage[] = [
       userMsg(fragmentText),
       userMsg(TURN_ABORTED_GUIDANCE),
       userMsg(`${COMPACT_SUMMARY_PREFIX}\nold summary`),
       userMsg('帮我看看这个报错'),
-      { id: 'a1', ts: 0, role: 'assistant', content: '好的' },
+      { id: 'a1', ts: 0, role: 'assistant', content: '好的，在查' },
       userMsg('继续修下一个'),
+      { id: 'a2', ts: 0, role: 'assistant', content: '修完了' },
     ];
-    const picked = selectRecentUserMessages(messages, 20_000);
-    expect(picked.map((m) => m.content)).toEqual(['帮我看看这个报错', '继续修下一个']);
+    const picked = selectRecentMessages(messages, 20_000);
+    expect(picked.map((m) => m.content)).toEqual(['帮我看看这个报错', '好的，在查', '继续修下一个', '修完了']);
+  });
+
+  it('never keeps a tool-call assistant message alone (its results would be stranded)', () => {
+    const messages: AgentMessage[] = [
+      userMsg('do it'),
+      {
+        id: 'a1',
+        ts: 0,
+        role: 'assistant',
+        content: 'working',
+        toolCalls: [{ id: 'c1', name: 'bash', args: { cmd: 'ls' }, rawArgs: '{"cmd":"ls"}' }],
+      },
+      { id: 'a2', ts: 0, role: 'assistant', content: 'done, all green' },
+    ];
+    const picked = selectRecentMessages(messages, 20_000);
+    // the tool-call message is skipped but does not stop the walk: the older
+    // user request still fits and is kept
+    expect(picked.map((m) => m.content)).toEqual(['do it', 'done, all green']);
+    expect(picked.map((m) => m.id)).not.toContain('a1');
   });
 
   it('takes whole messages within the budget and stops at the first overflow', () => {
@@ -56,11 +82,11 @@ describe('selectRecentUserMessages', () => {
     // budget 12: 'short one' (9 chars) is kept; the older 30-char message
     // does not fit whole, so the walk stops — no truncated copies exist that
     // could rejoin the log projection verbatim.
-    const picked = selectRecentUserMessages(messages, 12);
+    const picked = selectRecentMessages(messages, 12);
     expect(picked).toHaveLength(1);
     expect(picked[0]?.content).toBe('short one');
     // A budget large enough for both keeps them in original order.
-    const both = selectRecentUserMessages(messages, 100);
+    const both = selectRecentMessages(messages, 100);
     expect(both.map((m) => m.content)).toEqual([long, 'short one']);
   });
 });
@@ -75,7 +101,7 @@ describe('compactSession (in place)', () => {
     for (const msg of [fragment, first, second]) await session.append(msg);
     const messages = session.deriveMessages();
 
-    const outcome = await compactSession({
+    const outcome = await compact(dir, {
       client: textProvider('Goal: fix tests.'),
       session,
       messages,
@@ -87,10 +113,9 @@ describe('compactSession (in place)', () => {
     expect(outcome.surface[0]).toMatchObject({ role: 'user', content: fragmentText });
     expect(outcome.surface[1]).toMatchObject({ role: 'user', content: 'first request' });
     expect(outcome.surface[2]).toMatchObject({ role: 'user', content: 'second request' });
-    expect(outcome.surface[3]).toMatchObject({
-      role: 'user',
-      content: `${COMPACT_SUMMARY_PREFIX}\nGoal: fix tests.`,
-    });
+    // Summary body = model output + the archive pointer appended after it.
+    expect(outcome.surface[3]).toMatchObject({ role: 'user' });
+    expect((outcome.surface[3]!.content).startsWith(`${COMPACT_SUMMARY_PREFIX}\nGoal: fix tests.`)).toBe(true);
     expect(isCompactSummary(outcome.surface[3]!)).toBe(true);
 
     // compaction happened IN PLACE: same file, same id, three events appended
@@ -105,6 +130,37 @@ describe('compactSession (in place)', () => {
     expect(surfaceDivergence(reopened, outcome.surface)).toBeUndefined();
   });
 
+  it('archives the UNTRUNCATED transcript and references it from the summary', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-compact-'));
+    const session = await Session.create(dir);
+    const long = 'e'.repeat(9000); // beyond SUMMARY_TOOL_RESULT_MAX_CHARS
+    await session.append(userMsg('run it'));
+    await session.append({
+      id: 'a1',
+      ts: 0,
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 'c1', name: 'bash', args: { cmd: 'make test' }, rawArgs: '{"cmd":"make test"}' }],
+    });
+    await session.append({ id: 't1', ts: 0, role: 'tool', toolCallId: 'c1', name: 'bash', content: long });
+
+    const outcome = await compact(dir, { client: textProvider('summary'), session, messages: session.deriveMessages() });
+
+    // the summary carries a machine-readable pointer to the archive
+    const match = /<archive>(.+?)<\/archive>/.exec(outcome.summary);
+    expect(match).not.toBeNull();
+    const archivePath = match![1]!;
+    expect(archivePath.startsWith(path.join(dir, 'cache'))).toBe(true);
+    expect(outcome.archivePath).toBe(archivePath);
+    // the archived transcript keeps the FULL tool output the summary input caps
+    const archived = await readFile(archivePath, 'utf8');
+    expect(archived).toContain(long);
+    expect(archived).not.toContain('…[截断]');
+    // summary-input serialization stays capped (the two serializers differ)
+    expect(serializeConversationForSummary(session.allMessages())).not.toContain(long);
+    expect(serializeFullConversation(session.allMessages())).toContain(long);
+  });
+
   it('every retained message is itself on the surface (no identity-stranded picks)', async () => {
     // Regression for the truncated-copy bug: a spread-copied overflow message
     // failed the object-identity Map lookup and vanished from `keep` while
@@ -116,7 +172,7 @@ describe('compactSession (in place)', () => {
     const overflow = userMsg('y'.repeat(50)); // older than the budget admits
     for (const msg of [fragment, overflow, recent]) await session.append(msg);
 
-    const outcome = await compactSession({
+    const outcome = await compact(dir, {
       client: textProvider('summary'),
       session,
       messages: session.deriveMessages(),
@@ -137,8 +193,8 @@ describe('compactSession (in place)', () => {
     const session = await Session.create(dir);
     const msg = userMsg('hi');
     await session.append(msg);
-    const outcome = await compactSession({ client: textProvider('   '), session, messages: [msg] });
-    expect(outcome.summary).toBe('(无摘要可用)');
+    const outcome = await compact(dir, { client: textProvider('   '), session, messages: [msg] });
+    expect(outcome.summary.startsWith('(无摘要可用)')).toBe(true);
     expect(outcome.retained).toBe(1);
   });
 
@@ -148,11 +204,11 @@ describe('compactSession (in place)', () => {
     const fragment = userMsg(fragmentText);
     await session.append(fragment);
     await session.append(userMsg('round one'));
-    let surface = await compactSession({ client: textProvider('summary 1'), session, messages: session.deriveMessages() });
+    let surface = await compact(dir, { client: textProvider('summary 1'), session, messages: session.deriveMessages() });
     // continue working after compaction
     const followUp = userMsg('round two');
     await session.append(followUp);
-    surface = await compactSession({
+    surface = await compact(dir, {
       client: textProvider('summary 2'),
       session,
       messages: [...surface.surface, followUp],
@@ -160,12 +216,35 @@ describe('compactSession (in place)', () => {
     });
 
     expect(surface.surface[0]).toMatchObject({ content: fragmentText });
-    expect(surface.surface[3]).toMatchObject({ content: `${COMPACT_SUMMARY_PREFIX}\nsummary 2` });
+    expect(surface.surface[3]!.content.startsWith(`${COMPACT_SUMMARY_PREFIX}\nsummary 2`)).toBe(true);
 
     const reopened = await Session.open(session.file);
     expect(reopened.deriveMessages()).toEqual(surface.surface);
     // raw history is never rewritten: all messages remain in the log
     expect(reopened.allMessages()).toHaveLength(3);
+  });
+
+  it('chains the previous archive into the new summary on incremental compaction', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-compact-'));
+    const session = await Session.create(dir);
+    await session.append(userMsg('round one'));
+    const first = await compact(dir, { client: textProvider('summary 1'), session, messages: session.deriveMessages() });
+    const firstArchive = /<archive>(.+?)<\/archive>/.exec(first.summary)?.[1];
+    expect(firstArchive).toBeDefined();
+
+    const followUp = userMsg('round two');
+    await session.append(followUp);
+    const second = await compact(dir, {
+      client: textProvider('summary 2'),
+      session,
+      messages: [...first.surface, followUp],
+      trigger: 'auto',
+    });
+    // the newest summary links BOTH the fresh archive and the older one
+    expect(second.summary).toContain('<archive>');
+    expect(second.summary).toContain(firstArchive!);
+    const archives = readdir(path.join(dir, 'cache'));
+    expect((await archives).length).toBe(2);
   });
 });
 
@@ -204,7 +283,7 @@ function capturingProvider(text: string): { provider: ChatProvider; requests: Ch
 
 describe('serializeConversationForSummary', () => {
   it('caps tool results, keeps tool calls, and drops fragments and old summaries', () => {
-    const long = 'x'.repeat(3000);
+    const long = 'x'.repeat(5000);
     const messages: AgentMessage[] = [
       userMsg(fragmentText),
       userMsg(`${COMPACT_SUMMARY_PREFIX}\nold summary`),
@@ -234,15 +313,11 @@ describe('incremental compaction', () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'nova-compact-'));
     const session = await Session.create(dir);
     await session.append(userMsg('round one'));
-    const first = await compactSession({
-      client: textProvider('summary 1'),
-      session,
-      messages: session.deriveMessages(),
-    });
+    const first = await compact(dir, { client: textProvider('summary 1'), session, messages: session.deriveMessages() });
     const followUp = userMsg('round two');
     await session.append(followUp);
     const { provider, requests } = capturingProvider('summary 2');
-    const second = await compactSession({
+    const second = await compact(dir, {
       client: provider,
       session,
       messages: [...first.surface, followUp],
@@ -256,6 +331,20 @@ describe('incremental compaction', () => {
     expect(content).toContain('[User]: round two');
     // the old summary message is embedded in the ask, not duplicated as history
     expect(content).not.toContain(COMPACT_SUMMARY_PREFIX);
-    expect(second.summary).toBe('summary 2');
+    expect(second.summary.startsWith('summary 2')).toBe(true);
+  });
+
+  it('streams summarizer deltas to the onDelta tap (tps metering)', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-compact-'));
+    const session = await Session.create(dir);
+    await session.append(userMsg('hi'));
+    const chunks: string[] = [];
+    await compact(dir, {
+      client: textProvider('summary text'),
+      session,
+      messages: session.deriveMessages(),
+      onDelta: (text) => chunks.push(text),
+    });
+    expect(chunks).toEqual(['summary text']);
   });
 });

@@ -120,7 +120,15 @@ async function runOnce(
   };
   fire({ type: 'start', label });
 
-  let report: string | undefined;
+  /**
+   * ONLY the FINAL assistant message is the report. Capturing "the last
+   * NON-EMPTY content seen anywhere in the run" (the old behavior) returns
+   * mid-run narration when the closing message is empty — a reasoning model
+   * that spends its final turn in reasoning_content and answers with empty
+   * content made every delegation "report" a stale turn-3 sentence, marked
+   * completed. An empty final message is a NO-REPORT outcome instead.
+   */
+  let lastAssistant = '';
   let toolCalls = 0;
   let lastStats: UsageStats | undefined;
   let finalStats: UsageStats | undefined;
@@ -135,8 +143,8 @@ async function runOnce(
     signal,
     maxTurns: opts.maxTurns,
   })) {
-    if (event.type === 'message' && event.message.role === 'assistant' && event.message.content.trim().length > 0) {
-      report = event.message.content.trim();
+    if (event.type === 'message' && event.message.role === 'assistant') {
+      lastAssistant = event.message.content.trim();
     } else if (event.type === 'tool_call_start') {
       toolCalls += 1;
       fire({ type: 'tool_call', label, call: event.call });
@@ -151,6 +159,7 @@ async function runOnce(
       finalStats = lastStats;
     }
   }
+  const report = lastAssistant.length > 0 ? lastAssistant : undefined;
   const usage: SubagentUsage = {
     elapsedMs: Date.now() - startedAt,
     turns: finalStats?.turns ?? 0,
@@ -161,9 +170,14 @@ async function runOnce(
   const completed = report !== undefined && stopReason !== 'aborted';
   fire({ type: 'done', label, usage, status: stopReason === 'aborted' ? 'aborted' : completed ? 'completed' : 'ended' });
   if (report !== undefined) return { report, usage, completed };
-  const reason = stopReason ?? (signal?.aborted ? 'aborted' : 'no output');
+  const reason =
+    stopReason === 'max_turns'
+      ? 'hit the turn limit before writing a final report'
+      : stopReason === 'aborted'
+        ? 'aborted'
+        : 'the FINAL assistant message was empty — all output likely went to reasoning_content; re-run and instruct the report to be written as plain content';
   return {
-    report: `[subagent: ${label}] ended without a report (stop: ${reason}). Partial work is not visible to the parent — re-run with a narrower prompt.`,
+    report: `[subagent: ${label}] ended without a report (${reason}). Partial work is not visible to the parent — re-run with a narrower prompt.`,
     usage,
     completed: false,
   };
@@ -214,12 +228,18 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
           tail.push(line);
           while (tail.join('\n').length > TAIL_BYTES) tail.shift();
         };
+        // Peek sample for UI live rows (job.progress): separate from the
+        // readOutput ring, which only the model's `jobs output` may drain.
+        let nestedToolCalls = 0;
+        let lastCall = '';
         const outcome = runOnce(
           {
             ...opts,
             onProgress: (progress) => {
               if (progress.type === 'tool_call') {
-                pushTail(`› ${progress.call.name} ${summarizeCallArgs(progress.call)}`);
+                nestedToolCalls += 1;
+                lastCall = `${progress.call.name} ${summarizeCallArgs(progress.call)}`;
+                pushTail(`› ${lastCall}`);
               }
             },
           },
@@ -246,6 +266,8 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
           label: `[subagent: ${label}] ${prompt.slice(0, 80)}`,
           cancel: (reason) => controller.abort(reason),
           done,
+          progress: () =>
+            nestedToolCalls === 0 ? undefined : `${nestedToolCalls} tools · ${lastCall}`,
           readOutput: () => {
             // Live progress tail (capped) before settlement; the full
             // report+usage trailer once settled. The ring prevents an

@@ -345,6 +345,19 @@ describe('fs sandbox', () => {
   });
 });
 
+describe('list_dir', () => {
+  it('carries file sizes in bytes so it beats shell ls informationally', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-fs-'));
+    await mkdir(path.join(root, 'sub'));
+    await writeFile(path.join(root, 'a.txt'), '12345', 'utf8');
+    const host = await fsHostAt(root);
+    const list = host.tools.find((t) => t.name === 'list_dir')!;
+    const out = await list.execute({ path: '.' }, { rootDir: root });
+    expect(out).toContain(`f 5 a.txt`);
+    expect(out).toContain('d sub');
+  });
+});
+
 describe('search_files', () => {
   it('finds content matches and name globs, skipping node_modules and dot-dirs', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-search-'));

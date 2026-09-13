@@ -71,6 +71,8 @@ export class TuiStore {
   historyDraft = '';
   modelPicker: { models: string[]; index: number } | undefined;
   sessionPicker: { entries: SessionEntry[]; index: number } | undefined;
+  /** Startup mode selector: active at launch, collapsed on confirm/Esc/first submit. */
+  modeSelect: { index: number } | undefined;
   approval: ApprovalState | undefined;
   approvalIndex = 0;
   approvalPreview: string[] | undefined;

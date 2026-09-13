@@ -18,6 +18,10 @@ function createMockEnv(initialInput = ''): { env: KeyEnv; state: { submitted: bo
     cols: () => 80,
     rows: () => 24,
     abortLast: vi.fn(),
+    abortCompact: vi.fn(),
+    modeSelectMove: vi.fn(),
+    modeSelectConfirm: vi.fn(),
+    modeSelectDismiss: vi.fn(),
     exitApp: vi.fn(),
     scheduleRender: vi.fn(),
     preemptRender: vi.fn(),
@@ -121,6 +125,82 @@ describe('TUI Key Handling: execution mode Tab gate', () => {
 
     expect(vi.mocked(envBlocked.toggleCodeMode)).not.toHaveBeenCalled();
     expect(blocked).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('TUI Key Handling: compaction abort', () => {
+  it('Ctrl+C during a running compaction cancels it instead of clearing input / exiting', () => {
+    const { env } = createMockEnv('草稿');
+    env.store.compactRunning = true;
+
+    handleKey(env, { type: 'ctrl+c' });
+
+    expect(env.abortCompact).toHaveBeenCalledTimes(1);
+    expect(env.store.input).toBe('草稿');
+    expect(env.exitApp).not.toHaveBeenCalled();
+  });
+
+  it('Esc during a running compaction cancels it', () => {
+    const { env } = createMockEnv();
+    env.store.compactRunning = true;
+
+    handleKey(env, { type: 'esc' });
+
+    expect(env.abortCompact).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves compaction keys inert when nothing is compacting', () => {
+    const { env } = createMockEnv();
+
+    handleKey(env, { type: 'esc' });
+
+    expect(env.abortCompact).not.toHaveBeenCalled();
+  });
+});
+
+describe('TUI Key Handling: startup mode selector', () => {
+  it('up/down/wheel move, Enter confirms, Esc dismisses while the selector is active', () => {
+    const { env } = createMockEnv();
+    env.store.modeSelect = { index: 0 };
+
+    handleKey(env, { type: 'down' });
+    expect(env.modeSelectMove).toHaveBeenLastCalledWith(1);
+    handleKey(env, { type: 'wheelup' });
+    expect(env.modeSelectMove).toHaveBeenLastCalledWith(-1);
+    handleKey(env, { type: 'enter' });
+    expect(env.modeSelectConfirm).toHaveBeenCalledTimes(1);
+    env.store.modeSelect = { index: 2 };
+    handleKey(env, { type: 'esc' });
+    expect(env.modeSelectDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('Enter with a typed message collapses the selector and SUBMITS instead of confirming', () => {
+    const { env, state } = createMockEnv('帮我写个脚本');
+    env.store.modeSelect = { index: 0 };
+
+    handleKey(env, { type: 'enter' });
+
+    expect(env.modeSelectDismiss).toHaveBeenCalledTimes(1);
+    expect(env.modeSelectConfirm).not.toHaveBeenCalled();
+    expect(state.submitted).toBe(true);
+  });
+
+  it('typing falls straight through to the composer (selector never eats letters)', () => {
+    const { env, state } = createMockEnv();
+    env.store.modeSelect = { index: 0 };
+
+    handleKey(env, { type: 'char', ch: '1' });
+    handleKey(env, { type: 'char', ch: 'a' });
+
+    expect(env.store.input).toBe('1a');
+    expect(env.modeSelectConfirm).not.toHaveBeenCalled();
+    expect(state.submitted).toBe(false);
+  });
+
+  it('selector inactive: keys behave as before', () => {
+    const { env } = createMockEnv();
+    handleKey(env, { type: 'up' });
+    expect(env.modeSelectMove).not.toHaveBeenCalled();
   });
 });
 

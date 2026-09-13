@@ -64,6 +64,38 @@ describe('runAgent', () => {
     expect(done?.type).toBe('done');
   });
 
+  it('retries an EMPTY completion instead of ending the run in silence', async () => {
+    // Provider pathology: everything streamed into reasoning_content, content
+    // empty, finish present. Old behavior: phantom empty assistant message +
+    // silent "complete" — the caller saw thinking stop and then nothing.
+    const provider = scriptedProvider([
+      [{ type: 'finish', finishReason: 'stop' }],
+      [
+        { type: 'text_delta', text: 'real answer' },
+        { type: 'usage', usage: { promptTokens: 10, completionTokens: 3, cachedTokens: 0 } },
+        { type: 'finish', finishReason: 'stop' },
+      ],
+    ]);
+    const messages: AgentMessage[] = [];
+    const events = await collect(runAgent({ provider, messages, rootDir: '.' }));
+
+    expect(events).toContainEqual({ type: 'empty_completion', attempt: 1, maxRetries: 2, finishReason: 'stop' });
+    expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
+    // no phantom empty assistant in the log — only the real answer
+    const assistants = messages.filter((m): m is Extract<AgentMessage, { role: 'assistant' }> => m.role === 'assistant');
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0]!.content).toBe('real answer');
+  });
+
+  it('throws after empty completions exhaust the retry budget instead of completing silently', async () => {
+    const empty: StreamEvent[] = [{ type: 'finish', finishReason: 'stop' }];
+    const provider = scriptedProvider([empty, empty, empty, empty]);
+    const messages: AgentMessage[] = [];
+    await expect(collect(runAgent({ provider, messages, rootDir: '.' }))).rejects.toThrow(/empty completion 3 times/);
+    // nothing phantom was logged and the run did NOT report completion
+    expect(messages).toHaveLength(0);
+  });
+
   it('executes a tool call and feeds the result back in the next turn', async () => {
     const provider = scriptedProvider([
       [

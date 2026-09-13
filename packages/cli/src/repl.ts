@@ -419,6 +419,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         console.log(paint.dim(`  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…`));
         break;
       }
+      case 'empty_completion': {
+        endReasoningLine();
+        spinner.stop();
+        console.log(
+          paint.dim(`  ⟳ 空回复（finish=${event.finishReason}，输出疑似全部进入思考流），自动重试 ${event.attempt}/${event.maxRetries}…`),
+        );
+        break;
+      }
       case 'message': {
         endReasoningLine();
         spinner.stop();

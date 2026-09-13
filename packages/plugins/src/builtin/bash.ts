@@ -188,6 +188,17 @@ function killShell(child: ChildProcess): void {
   }
 }
 
+/**
+ * Child env: force Python's UTF-8 mode so heredoc scripts emit UTF-8 on the
+ * GBK-default Windows console — without this every python one-liner needs
+ * the `sys.stdout = io.TextIOWrapper(sys.stdout.buffer, …)` boilerplate to
+ * avoid UnicodeEncodeError (observed 40+ times in one session). Inherited
+ * otherwise; harmless on POSIX.
+ */
+function childEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' };
+}
+
 function runOnce(
   inv: ShellInvocation,
   rootDir: string,
@@ -201,7 +212,7 @@ function runOnce(
     try {
       child = spawn(inv.cmd, inv.args, {
         cwd: rootDir,
-        env: process.env,
+        env: childEnv(),
         windowsHide: true,
         // POSIX: the child leads its own process group, so killShell's negative-pid
         // SIGKILL reaches the whole tree; Windows keeps taskkill /T /F.
@@ -325,7 +336,7 @@ function startBackground(
   try {
     child = spawn(inv.cmd, inv.args, {
       cwd: rootDir,
-      env: process.env,
+      env: childEnv(),
       windowsHide: true,
       // POSIX: the child leads its own process group, so killShell's negative-pid
       // SIGKILL reaches the whole tree; Windows keeps taskkill /T /F.

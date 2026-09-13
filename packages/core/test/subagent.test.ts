@@ -153,4 +153,49 @@ describe('subagent tool', () => {
     expect(out).toContain('the report');
     expect(out).toContain('[subagent: bg · ');
   });
+
+  it('background job snapshot exposes nested progress (tool count + last call) for UI live rows', async () => {
+    const provider: ChatProvider = {
+      async *stream() {
+        yield { type: 'tool_call_delta', index: 0, id: 'c1', name: 'read_file', argsDelta: '{"path":"a.ts"}' };
+        yield { type: 'finish', finishReason: 'tool_calls' };
+        for (const ev of ANSWER) yield ev;
+      },
+    };
+    const { JobRegistry } = await import('../src/jobs.js');
+    const jobs = new JobRegistry();
+    const tool = createSubagentTool({ provider, tools: () => [noopTool('read_file')], rootDir: () => '.' });
+    await tool.execute({ prompt: 'brief', label: 'vis', run_in_background: true }, { rootDir: '.', jobs });
+    // let the nested loop reach its first tool call
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const snapshot = jobs.get('subagent-1');
+    // the provider answers every turn with a tool call, so the count runs to
+    // maxTurns — assert the SHAPE (count + last call), not an exact number
+    expect(snapshot?.progress).toMatch(/^\d+ tools · read_file /);
+  });
+
+  it('an EMPTY final assistant message never returns mid-run narration as the report', async () => {
+    // Reasoning-style providers can spend the closing turn in reasoning_content
+    // and answer with empty content. The nested runAgent now treats an empty
+    // completion as a pathology: it retries, then THROWS — so the stale
+    // mid-run narration can no longer surface as a "completed" report (old
+    // capture returned "Now let me examine…" as the whole delegation report).
+    const provider: ChatProvider = {
+      async *stream() {
+        // turn 1: narration + tool call; every later turn: EMPTY final message
+        if (!this.called) {
+          this.called = true;
+          yield { type: 'text_delta', text: 'Now let me examine the target file structure:' } as StreamEvent;
+          yield { type: 'tool_call_delta', index: 0, id: 'c1', name: 'read_file', argsDelta: '{"path":"a"}' } as StreamEvent;
+          yield { type: 'finish', finishReason: 'tool_calls' } as StreamEvent;
+        } else {
+          yield { type: 'finish', finishReason: 'stop' } as StreamEvent;
+        }
+      },
+    } as ChatProvider & { called?: boolean };
+    const tool = createSubagentTool({ provider, tools: () => [noopTool('read_file')], rootDir: () => '.' });
+    await expect(tool.execute({ prompt: 'x', label: 'empty-final' }, { rootDir: '.' })).rejects.toThrow(
+      /empty completion 3 times.*reasoning_content/s,
+    );
+  });
 });

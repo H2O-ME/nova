@@ -25,6 +25,12 @@ export interface KeyEnv {
   cols: () => number;
   rows: () => number;
   abortLast: () => void;
+  /** Cancel a running compaction (the summarizer request has no other abort path). */
+  abortCompact: () => void;
+  /** Startup mode selector: move highlight / confirm highlighted (or a specific 0-based row). */
+  modeSelectMove: (delta: number) => void;
+  modeSelectConfirm: (index?: number) => void;
+  modeSelectDismiss: () => void;
   exitApp: () => void;
   scheduleRender: () => void;
   preemptRender: () => void;
@@ -47,11 +53,50 @@ export interface KeyEnv {
 export function handleKey(env: KeyEnv, k: Key): void {
   if (keyClick(env, k)) return;
   if (keyApprovalModal(env, k)) return;
+  if (keyModeSelect(env, k)) return;
   if (keyModelPicker(env, k)) return;
   if (keySessionPicker(env, k)) return;
   if (keyGlobal(env, k)) return;
   keyComposerAndPopup(env, k);
   env.scheduleRender();
+}
+
+/**
+ * Startup mode selector (transcript block above the composer): ↑↓/wheel move,
+ * Enter confirms the highlighted row, Esc keeps the current mode. Everything
+ * else falls through to the composer — and Enter with a non-empty composer
+ * falls through too (sending the message matters more than picking a mode;
+ * the selector collapses on submit either way).
+ */
+function keyModeSelect(env: KeyEnv, k: Key): boolean {
+  const { store } = env;
+  if (store.modeSelect === undefined) return false;
+  switch (k.type) {
+    case 'up':
+    case 'wheelup':
+      env.modeSelectMove(-1);
+      env.scheduleRender();
+      return true;
+    case 'down':
+    case 'wheeldown':
+      env.modeSelectMove(1);
+      env.scheduleRender();
+      return true;
+    case 'enter':
+      if (store.input.length > 0) {
+        env.modeSelectDismiss();
+        return false; // the typed message wins: collapse and submit it
+      }
+      env.modeSelectConfirm();
+      env.scheduleRender();
+      return true;
+    case 'esc':
+      env.modeSelectDismiss();
+      env.scheduleRender();
+      return true;
+    default:
+      return false; // typing starts the session immediately
+  }
 }
 
 /** Left click: toggle an expandable reasoning summary, else swallow. */
@@ -190,10 +235,15 @@ function keySessionPicker(env: KeyEnv, k: Key): boolean {
   return true;
 }
 
-/** Global keys: Ctrl+C triple-duty, Ctrl+D exit, streaming Esc abort. */
+/** Global keys: Ctrl+C triple-duty (compact abort first), Ctrl+D exit, Esc aborts streaming/compaction. */
 function keyGlobal(env: KeyEnv, k: Key): boolean {
   const { store } = env;
   if (k.type === 'ctrl+c') {
+    if (store.compactRunning) {
+      env.abortCompact();
+      env.scheduleRender();
+      return true;
+    }
     if (store.streaming) {
       store.interruptAt = Date.now();
       env.abortLast();
@@ -217,6 +267,11 @@ function keyGlobal(env: KeyEnv, k: Key): boolean {
   }
   if (k.type === 'ctrl+d') {
     if (!store.streaming) env.exitApp();
+    return true;
+  }
+  if (k.type === 'esc' && store.compactRunning) {
+    env.abortCompact();
+    env.scheduleRender();
     return true;
   }
   if (k.type === 'esc' && store.streaming) {

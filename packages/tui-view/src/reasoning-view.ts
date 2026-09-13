@@ -7,10 +7,10 @@
  * only the answer.
  */
 
-import { styledWidth, wrapLine } from '@nova-agent/tui';
+import { wrapLine } from '@nova-agent/tui';
 import { clipToWidth, fitTail } from './clip.js';
 import type { Palette } from './palette.js';
-import { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES, SPINNER_FRAMES } from './tokens.js';
+import { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES } from './tokens.js';
 
 export { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES };
 
@@ -24,12 +24,6 @@ export interface ReasoningView {
   cols: number;
   /** Settled rows shown above the live tail while auto-expanded. */
   done?: readonly string[];
-  /**
-   * Braille spinner frame index: the live tail leads with a cycling glyph so
-   * a thinking pause between tokens still reads as alive. Omit for a static
-   * view (tests, folded surfaces).
-   */
-  spinnerFrame?: number;
 }
 
 /**
@@ -40,7 +34,10 @@ export interface ReasoningView {
  * breaks, orphan continuation rows, the whole block jumping each tick. The
  * clip budget matches wrapBlock's gutter budget (cols-1-REASONING_INDENT_COLS)
  * so no row can be re-wrapped downstream; the window slides one calm row per
- * settled line. Empty buffer renders a bare placeholder.
+ * settled line. Empty buffer renders a bare static placeholder — the tail row
+ * deliberately carries NO animation glyph (the composer spinner already says
+ * "generating"; a cycling prefix on the newest thought re-rendered the row
+ * every spinner tick for zero information).
  */
 export function reasoningLiveRow(p: Palette, v: ReasoningView & { done?: readonly string[] }): string[] {
   const width = Math.max(10, v.cols - 1 - REASONING_INDENT_COLS);
@@ -49,17 +46,12 @@ export function reasoningLiveRow(p: Palette, v: ReasoningView & { done?: readonl
     rows.push(clipToWidth(line, width));
   }
   const tailText = v.partial.trim();
-  const glyph =
-    v.spinnerFrame === undefined ? undefined : SPINNER_FRAMES[v.spinnerFrame % SPINNER_FRAMES.length] ?? '⋯';
   if (tailText.length > 0) {
     // The eye reads the tail's NEWEST words, so the streaming line keeps its
-    // END (fitTail); the glyph leads the row inside the same budget (braille
-    // frames are wide chars — measure, don't assume 1 col).
-    const lead = glyph !== undefined ? styledWidth(glyph) + 1 : 0;
-    const body = fitTail(tailText, width - lead);
-    rows.push(glyph !== undefined ? `${glyph} ${body}` : body);
+    // END (fitTail) inside the full gutter budget.
+    rows.push(fitTail(tailText, width));
   }
-  if (rows.length === 0) return [p.dim(glyph ?? '⋯')];
+  if (rows.length === 0) return [p.dim('⋯')];
   return rows.slice(-REASONING_LIVE_MAX_ROWS).map((row) => p.dim(row));
 }
 

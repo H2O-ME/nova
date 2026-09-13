@@ -229,3 +229,40 @@ export function subagentLiveLine(p: Palette, v: SubagentLiveView, frame: string)
 export function subagentDetailRows(p: Palette, entries: readonly string[], budget: number): string[] {
   return entries.map((entry) => clipToWidth(`  ${p.dim(entry)}`, Math.max(8, budget)));
 }
+
+export interface BgSubagentView {
+  /** Short delegation label (without the [subagent: …] wrapper). */
+  label: string;
+  elapsedSecs: number;
+  /** Latest nested activity ("N tools · last call"), if any. */
+  progress?: string;
+}
+
+/**
+ * Background-subagent live row: a detached delegation has no pending tool
+ * line to take over, so it pins its own row and re-renders per tick —
+ * elapsed seconds plus the latest nested activity, so "看不到子代理状态"
+ * never happens for run_in_background dispatches.
+ */
+export function bgSubagentLine(p: Palette, v: BgSubagentView): string {
+  const parts = [`${v.elapsedSecs}s`];
+  if (v.progress !== undefined && v.progress.length > 0) parts.push(v.progress);
+  return `    ${p.dim('…')} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
+}
+
+const BG_SUBAGENT_STATUS_TEXT: Record<string, string> = {
+  completed: '完成',
+  failed: '失败',
+  killed: '已停止',
+};
+
+/** Terminal row for a background subagent: status + the usage trailer. */
+export function bgSubagentDoneLine(
+  p: Palette,
+  v: { label: string; status: string; detail?: string },
+): string {
+  const mark = v.status === 'completed' ? '✓' : '✗';
+  const status = BG_SUBAGENT_STATUS_TEXT[v.status] ?? v.status;
+  const parts = [status, ...(v.detail !== undefined && v.detail.length > 0 ? [v.detail] : [])];
+  return `    ${p.dim(mark)} ${p.dim('⧉ 子代理')} ${p.dim(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
+}

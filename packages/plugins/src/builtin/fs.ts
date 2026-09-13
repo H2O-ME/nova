@@ -260,7 +260,7 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
       ctx.registerTool({
         name: 'list_dir',
         description:
-          "Lists a directory's entries (directories first) — use this instead of shell ls. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (optional, defaults to the workspace root).",
+          "Lists a directory's entries (directories first, files with their size in bytes) — use this instead of shell ls. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (optional, defaults to the workspace root).",
         parameters: {
           type: 'object',
           properties: {
@@ -280,7 +280,25 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
             return dirDelta !== 0 ? dirDelta : a.name.localeCompare(b.name);
           });
           if (sorted.length === 0) return '(empty directory)';
-          const lines = sorted.slice(0, 500).map((entry) => `${entry.isDirectory() ? 'd' : 'f'} ${entry.name}`);
+          // File sizes ride along (best-effort): `ls -la` otherwise beats this
+          // tool informationally and the model rationally falls back to shell
+          // ls whenever size matters (binary triage, build artifacts).
+          const visible = sorted.slice(0, 500);
+          const sizes = await Promise.all(
+            visible.map(async (entry) => {
+              if (!entry.isFile()) return undefined;
+              try {
+                return (await stat(path.join(dir, entry.name))).size;
+              } catch {
+                return undefined;
+              }
+            }),
+          );
+          const lines = visible.map((entry, i) =>
+            entry.isDirectory() || sizes[i] === undefined
+              ? `${entry.isDirectory() ? 'd' : 'f'} ${entry.name}`
+              : `f ${sizes[i]} ${entry.name}`,
+          );
           const suffix = sorted.length > 500 ? `\n(... ${sorted.length - 500} more)` : '';
           return lines.join('\n') + suffix;
         },

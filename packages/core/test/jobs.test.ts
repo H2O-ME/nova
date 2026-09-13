@@ -29,6 +29,26 @@ describe('JobRegistry', () => {
     expect(registry.get('bash-1')?.detail).toBe('exit code: 0');
   });
 
+  it('snapshots carry startedAt and a FRESH progress peek on every list/get', () => {
+    const registry = new JobRegistry();
+    let progress = '1 tools · bash ls';
+    const d = deferred();
+    registry.start({
+      kind: 'subagent',
+      label: '[subagent: scout] brief',
+      cancel: () => {},
+      done: d.promise,
+      progress: () => progress,
+    });
+    const first = registry.get('subagent-1');
+    expect(first?.startedAt).toBeGreaterThan(0);
+    expect(first?.progress).toBe('1 tools · bash ls');
+    // the accessor is re-read per snapshot (UI live rows sample it per tick)
+    progress = '2 tools · read_file a.ts';
+    expect(registry.get('subagent-1')?.progress).toBe('2 tools · read_file a.ts');
+    expect(registry.list()[0]?.progress).toBe('2 tools · read_file a.ts');
+  });
+
   it('stop() marks stopping, is idempotent, and settles as killed', async () => {
     const registry = new JobRegistry();
     let cancelCalls = 0;

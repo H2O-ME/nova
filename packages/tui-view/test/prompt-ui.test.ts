@@ -19,6 +19,8 @@ import {
   segmentBar,
   sparkline,
   statusLine,
+  bgSubagentDoneLine,
+  bgSubagentLine,
   subagentDetailRows,
   subagentLiveLine,
   toolArgSummary,
@@ -520,5 +522,29 @@ describe('subagent live line & detail rows', () => {
 
   it('empty detail renders no rows', () => {
     expect(subagentDetailRows(p, [], 40)).toEqual([]);
+  });
+});
+
+describe('background subagent rows (run_in_background visibility)', () => {
+  it('live row shows elapsed + latest nested activity', () => {
+    const line = bgSubagentLine(p, { label: 'decode-sha', elapsedSecs: 45, progress: '12 tools · read_file a.ts {"path":"x"}' });
+    expect(line).toContain('⧉ 子代理');
+    expect(line).toContain('decode-sha');
+    expect(line).toContain('45s');
+    expect(line).toContain('12 tools');
+  });
+
+  it('live row without progress still shows the elapsed clock', () => {
+    const line = bgSubagentLine(p, { label: 'scout', elapsedSecs: 3 });
+    expect(line).toContain('· 3s');
+    expect(line).not.toContain('tools');
+  });
+
+  it('done row maps status to Chinese and carries the usage trailer', () => {
+    expect(bgSubagentDoneLine(p, { label: 'scout', status: 'completed', detail: '[subagent: scout · 3 turns · 9 tools · 100+20 tok]' })).toContain(
+      '完成',
+    );
+    expect(bgSubagentDoneLine(p, { label: 'scout', status: 'failed' })).toContain('失败');
+    expect(bgSubagentDoneLine(p, { label: 'scout', status: 'killed' })).toContain('已停止');
   });
 });

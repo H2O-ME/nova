@@ -59,6 +59,9 @@ import {
   APPROVAL_ORDER,
   bottomStack,
   buildSplash,
+  modeSelectRows,
+  modeSelectedRow,
+  nextModeIndex,
   clipToWidth,
   contextGaugeForms,
   contextLegend,
@@ -81,6 +84,8 @@ import {
   StreamSmoother,
   subagentDetailRows,
   subagentLiveLine,
+  bgSubagentDoneLine,
+  bgSubagentLine,
   TOOL_GUTTER,
   toolArgSummary,
   toolDoneLine,
@@ -383,9 +388,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // Live subagent rows cycle their glyph with the same tick — a child
         // thinking between bursts never looks stalled (render is dirty-checked).
         for (const liveKey of subagentLive.keys()) renderSubagentLive(liveKey, frame);
-        // The thinking glyph cycles even between token bursts: the spinner
-        // tick re-renders the live reasoning rows (dirty-checked inside).
-        if (store.reasoningBlock !== undefined) renderReasoningLive();
+        // Background delegations pick up their rows here while the parent
+        // streams; after the turn ends the self-managed interval takes over.
+        syncBgSubagentRows();
         scheduleRender();
       }, SPINNER_TICK_MS);
     },
@@ -397,6 +402,70 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     },
   };
   let spinnerTimer: NodeJS.Timeout | undefined;
+
+  // ---- background subagent live rows --------------------------------------
+  // run_in_background delegations have no pending tool line to take over and
+  // no foreground progress feed: without their own rows they are invisible —
+  // the start line reads "✓ 调用 subagent … · 0.0s" and nothing moves until
+  // the model happens to poll `jobs`. Each running job pins one row
+  // (elapsed + latest nested activity); settlement rewrites it in place.
+  const bgSubagentRows = new Map<string, { block: Block; short: string }>();
+  let bgSubagentTimer: NodeJS.Timeout | undefined;
+  const bgShortLabel = (label: string): string => {
+    const base = /^\[subagent: ([^\]]+)\]/.exec(label)?.[1] ?? label;
+    return base.length > 40 ? `${base.slice(0, 39)}…` : base;
+  };
+  const stopBgSubagentTimer = (): void => {
+    if (bgSubagentTimer !== undefined) {
+      clearInterval(bgSubagentTimer);
+      bgSubagentTimer = undefined;
+    }
+  };
+  /** View reset (/clear, session switch): the blocks are gone, drop the map. */
+  const clearBgSubagentRows = (): void => {
+    bgSubagentRows.clear();
+    stopBgSubagentTimer();
+  };
+  const syncBgSubagentRows = (): void => {
+    const active = jobs
+      .list()
+      .filter((job) => job.kind === 'subagent' && (job.status === 'running' || job.status === 'stopping'));
+    for (const [id, entry] of bgSubagentRows) {
+      const job = jobs.get(id);
+      if (job === undefined) {
+        bgSubagentRows.delete(id);
+        continue;
+      }
+      if (job.status !== 'running' && job.status !== 'stopping') {
+        // In-place rewrite (never a second line): start row becomes the
+        // terminal row with status + usage trailer.
+        const line = bgSubagentDoneLine(paint, { label: entry.short, status: job.status, detail: job.detail });
+        if (store.blocks.includes(entry.block)) store.replaceBlock(entry.block, [line]);
+        bgSubagentRows.delete(id);
+      }
+    }
+    for (const job of active) {
+      const short = bgShortLabel(job.label);
+      const elapsed = Math.max(0, Math.round((Date.now() - (job.startedAt ?? Date.now())) / 1000));
+      const line = bgSubagentLine(paint, { label: short, elapsedSecs: elapsed, progress: job.progress });
+      const existing = bgSubagentRows.get(job.id);
+      if (existing === undefined) {
+        bgSubagentRows.set(job.id, { block: store.pushBlock([line]), short });
+      } else if (existing.block.lines[0] !== line) {
+        store.replaceBlock(existing.block, [line]);
+      }
+    }
+    // A detached subagent outlives the parent turn (spinner stopped), so the
+    // refresh cadence is self-managed: tick while any row runs, stop after.
+    if (active.length > 0 && bgSubagentTimer === undefined) {
+      bgSubagentTimer = setInterval(() => {
+        syncBgSubagentRows();
+        scheduleRender();
+      }, 1000);
+    } else if (active.length === 0 && bgSubagentTimer !== undefined) {
+      stopBgSubagentTimer();
+    }
+  };
 
   let renderTimer: NodeJS.Timeout | undefined;
   const scheduleRender = (): void => {
@@ -422,6 +491,43 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const aborters: AbortController[] = [];
 
   /**
+   * Compact cancellation + progress (REPL parity): the summarizer request is
+   * the slowest single request in the session (serialized whole transcript),
+   * so it carries an AbortController the key chain can fire, and its wait line
+   * ticks elapsed seconds — a silent dim line for minutes read as a freeze.
+   */
+  let compactAbort: AbortController | undefined;
+  let compactCancelled = false;
+  let compactBlock: Block | undefined;
+  let compactStartedAt = 0;
+  let compactTimer: NodeJS.Timeout | undefined;
+  const endCompactWait = (): void => {
+    if (compactTimer !== undefined) {
+      clearInterval(compactTimer);
+      compactTimer = undefined;
+    }
+    compactBlock = undefined;
+  };
+  const compactElapsedSecs = (): number => Math.max(1, Math.round((Date.now() - compactStartedAt) / 1000));
+  const compactWaitLine = (mid: string): string =>
+    `${YELLOW}  ⋯ ${mid}…${RESET} ${DIM}· ${compactElapsedSecs()}s${RESET}`;
+  const startCompactWait = (mid: string): void => {
+    compactStartedAt = Date.now();
+    compactBlock = store.pushBlock([compactWaitLine(mid)]);
+    if (compactTimer !== undefined) clearInterval(compactTimer);
+    compactTimer = setInterval(() => {
+      // The summarizer streams like any LLM reply: sample the tps ring on the
+      // same tick so a compacting session shows live speed, not a frozen meter.
+      store.sampleTps(Date.now());
+      const line = compactWaitLine(mid);
+      if (compactBlock !== undefined && compactBlock.lines[0] !== line) {
+        store.replaceBlock(compactBlock, [line]);
+      }
+      scheduleRender();
+    }, 500);
+  };
+
+  /**
    * Shared auto-compact orchestration (runner-shared): guards, anchor-reset
    * contract and error containment live there; only the presentation is local.
    */
@@ -445,17 +551,45 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         messages = surface;
       },
     },
-    compact: (trigger) => compactSession({ client, session, messages, trigger }),
+    compact: async (trigger) => {
+      compactAbort = new AbortController();
+      compactCancelled = false;
+      try {
+        return await compactSession({
+          client,
+          session,
+          messages,
+          trigger,
+          signal: compactAbort.signal,
+          // Summarizer output feeds the tps meter exactly like a streaming turn.
+          onDelta: (text) => {
+            store.tpsTokens += estimateTextTokens(text);
+          },
+        });
+      } finally {
+        compactAbort = undefined;
+      }
+    },
     report: {
-      preStart: (limit) => store.pushBlock([`${YELLOW}  ⋯ 预估下轮上下文超阈值 ${humanTokens(limit)}，提前压缩…${RESET}`]),
-      postStart: (tokens) => store.pushBlock([`${YELLOW}  ⋯ 上下文 ${humanTokens(tokens)} tok 超阈值，正在压缩…${RESET}`]),
-      success: (outcome) =>
-        store.pushBlock([`${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`]),
-      failure: (err, where) =>
+      preStart: (limit) => startCompactWait(`预估下轮上下文超阈值 ${humanTokens(limit)}`),
+      postStart: (tokens) => startCompactWait(`上下文 ${humanTokens(tokens)} tok 超阈值，正在压缩`),
+      success: (outcome) => {
+        endCompactWait();
+        store.pushBlock([
+          `${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s${RESET}`,
+        ]);
+      },
+      failure: (err, where) => {
+        endCompactWait();
+        if (compactCancelled) {
+          store.pushBlock([`${YELLOW}  ■ 已取消压缩${RESET}`], TOOL_GUTTER);
+          return;
+        }
         store.pushBlock(
           [`${RED}  ✗ ${where === 'pre' ? '预压缩' : '自动压缩'}失败：${err instanceof Error ? err.message : String(err)}${RESET}`],
           TOOL_GUTTER,
-        ),
+        );
+      },
     },
   });
 
@@ -636,7 +770,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       done,
       partial: livePartial,
       cols: screen.cols,
-      spinnerFrame: store.spinnerFrame,
     });
     if (block.lines.join('\n') !== lines.join('\n')) store.replaceBlock(block, lines);
   };
@@ -967,6 +1100,19 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         store.pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], TOOL_GUTTER);
         break;
       }
+      case 'empty_completion': {
+        // The model "finished" with no text and no tool calls — everything
+        // went into the thinking stream. Previously this ended the run in
+        // silence; now the loop re-issues, and this line explains why the
+        // thinking appears to restart.
+        io.resetAssistant();
+        store.genPhase = 'thinking';
+        store.pushBlock(
+          [`${DIM}  ⟳ 空回复（finish=${event.finishReason}，输出疑似全部进入思考流），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`],
+          TOOL_GUTTER,
+        );
+        break;
+      }
       case 'text_delta':
         // Empty deltas do nothing: the assistant opens lazily on the first
         // non-blank delta, so reasoning phase is never reset by padding.
@@ -1008,6 +1154,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       case 'tool_call_result': {
         await session.append(event.result);
+        // A "Started background subagent …" result lands here: pin its live
+        // row immediately instead of waiting for the next spinner tick.
+        syncBgSubagentRows();
         const entry = store.toolBlocks.get(event.call.id);
         store.toolBlocks.delete(event.call.id);
         if (store.activeToolId === event.call.id) store.activeToolId = undefined;
@@ -1133,14 +1282,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     both: 'run_code 与原生调用并存',
   };
 
-  async function toggleCodeMode(): Promise<void> {
-    const order: PtcMode[] = ['native', 'ptc', 'both'];
-    const next = order[(order.indexOf(codeMode) + 1) % order.length] ?? 'native';
+  /** Switch to a concrete mode; false = refused (Node too old) or failed (host rebuild). */
+  async function setCodeMode(next: PtcMode): Promise<boolean> {
     if (next !== 'native' && !codeRuntimeAvailable()) {
       store.pushBlock([
         `${YELLOW}  ${codeModeLabel(next)}模式需要 Node ≥ 22.19（当前 ${process.version} 不支持类型剥离）${RESET}`,
       ]);
-      return;
+      return false;
     }
     store.modeSwitching = true;
     const prev = codeMode;
@@ -1150,7 +1298,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       await rebuildHost();
       // 切换反馈：不依赖状态栏芯片也能看到（会话中途芯片塌成单枚，
       // 且 pristine 判据会随首条消息失效——没有这行用户以为 Tab 失灵）。
-      store.pushBlock([`${DIM}  执行模式：${codeModeLabel(prev)} → ${codeModeLabel(next)}${RESET}`]);
+      // 开屏选择器的确认不推这行——选择块原位塌缩成确认行，不重复。
+      if (store.modeSelect === undefined) {
+        store.pushBlock([`${DIM}  执行模式：${codeModeLabel(prev)} → ${codeModeLabel(next)}${RESET}`]);
+      }
+      return true;
     } catch (err) {
       // activate() 在 next host 上抛错：host/hooks 还没换，回滚模式即可。
       codeMode = prev;
@@ -1158,11 +1310,64 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         `${RED}  ✗ 模式切换失败：${err instanceof Error ? err.message : String(err)}${RESET}`,
         `${DIM}  已保持${codeModeLabel(prev)}模式${RESET}`,
       ]);
+      return false;
     } finally {
       store.modeSwitching = false;
       scheduleRender();
     }
   }
+
+  async function toggleCodeMode(): Promise<void> {
+    const order: PtcMode[] = ['native', 'ptc', 'both'];
+    const next = order[(order.indexOf(codeMode) + 1) % order.length] ?? 'native';
+    await setCodeMode(next);
+  }
+
+  // ---- startup mode selector ----------------------------------------------
+  // The splash renders an interactive execution-mode block; keys.ts consumes
+  // ↑↓/Enter/Esc while store.modeSelect is set. Collapse = in-place rewrite
+  // of the selector block (never a leftover interactive frame in the log).
+  let modeSelectBlock: Block | undefined;
+  const CODE_MODE_ORDER: PtcMode[] = ['native', 'ptc', 'both'];
+  const selectorAlive = (): boolean => modeSelectBlock !== undefined && store.blocks.includes(modeSelectBlock);
+  const rerenderModeSelect = (): void => {
+    if (!selectorAlive() || store.modeSelect === undefined) return;
+    store.replaceBlock(
+      modeSelectBlock!,
+      modeSelectRows(paint, { index: store.modeSelect.index, ptcAvailable: codeRuntimeAvailable(), cols: screen.cols }),
+    );
+  };
+  const collapseModeSelect = (): void => {
+    if (store.modeSelect === undefined) return;
+    store.modeSelect = undefined;
+    if (selectorAlive()) {
+      store.replaceBlock(modeSelectBlock!, [modeSelectedRow(paint, codeMode, screen.cols)]);
+    }
+    modeSelectBlock = undefined;
+  };
+  const modeSelectMove = (delta: number): void => {
+    if (store.modeSelect === undefined) return;
+    store.modeSelect.index = nextModeIndex(store.modeSelect.index, delta, codeRuntimeAvailable());
+    rerenderModeSelect();
+  };
+  const modeSelectConfirm = async (index?: number): Promise<void> => {
+    if (store.modeSelect === undefined) return;
+    const next = CODE_MODE_ORDER[index ?? store.modeSelect.index] ?? codeMode;
+    if (next !== codeMode) {
+      const ok = await setCodeMode(next);
+      if (!ok) {
+        // warning line already pushed; selector stays for another pick
+        rerenderModeSelect();
+        return;
+      }
+    }
+    collapseModeSelect();
+    scheduleRender();
+  };
+  const modeSelectDismiss = (): void => {
+    collapseModeSelect();
+    scheduleRender();
+  };
 
   // ---- commands ---------------------------------------------------------
   async function runCommand(raw: string): Promise<boolean> {
@@ -1278,18 +1483,27 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return true;
       }
       case '/compact': {
-        store.pushBlock([`${DIM}  ⋯ 正在压缩会话…${RESET}`]);
+        startCompactWait('正在压缩会话');
         try {
           const outcome = await runCompact('manual');
+          endCompactWait();
           store.pushBlock([
-            `${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息${RESET}`,
+            `${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s${RESET}`,
           ]);
         } catch (err) {
-          store.pushBlock([`${RED}  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
+          endCompactWait();
+          if (compactCancelled) {
+            store.pushBlock([`${YELLOW}  ■ 已取消压缩${RESET}`], TOOL_GUTTER);
+          } else {
+            store.pushBlock([`${RED}  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
+          }
         }
         return true;
       }
       case '/clear': {
+        clearBgSubagentRows();
+        modeSelectBlock = undefined;
+        store.modeSelect = undefined;
         store.clearView();
         store.pushBlock([`${DIM}  （已清空显示，会话记录保留在磁盘）${RESET}`]);
         return true;
@@ -1342,6 +1556,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     usageAnchor = undefined;
     anchorMsgCount = 0;
     resetSessionCache();
+    clearBgSubagentRows();
+    modeSelectBlock = undefined;
+    store.modeSelect = undefined;
     store.clearView();
     store.activeToolId = undefined;
     // Follow the session back to the workspace it was created in, so the
@@ -1399,6 +1616,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   async function handleSubmit(): Promise<void> {
     const text = store.input.trim();
+    // First submit ends the startup selector: the picked (or current) mode is
+    // what this first message runs under — collapse to the confirmation row.
+    collapseModeSelect();
     if (store.streaming || store.compactRunning) {
       const cmd = text.split(/\s+/)[0]?.toLowerCase() ?? '';
       if (STREAM_SAFE_COMMANDS.has(cmd)) {
@@ -1510,6 +1730,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       store.interruptAt = Date.now();
       aborters.at(-1)?.abort();
     },
+    abortCompact: () => {
+      compactCancelled = true;
+      compactAbort?.abort();
+    },
+    modeSelectMove,
+    modeSelectConfirm: (index) => void modeSelectConfirm(index),
+    modeSelectDismiss,
     exitApp,
     scheduleRender,
     preemptRender,
@@ -1711,6 +1938,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (exiting) return;
     exiting = true;
     spinner.stop();
+    stopBgSubagentTimer();
+    endCompactWait();
+    compactAbort?.abort();
     if (escTimer !== undefined) {
       clearTimeout(escTimer);
       escTimer = undefined;
@@ -1798,6 +2028,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       cols: screen.cols,
     }),
   );
+  // Startup mode selector: an interactive block the key chain owns until the
+  // user confirms, keeps the current mode, or simply starts typing.
+  modeSelectBlock = store.pushBlock(
+    modeSelectRows(paint, {
+      index: Math.max(0, CODE_MODE_ORDER.indexOf(codeMode)),
+      ptcAvailable: codeRuntimeAvailable(),
+      cols: screen.cols,
+    }),
+  );
+  store.modeSelect = { index: Math.max(0, CODE_MODE_ORDER.indexOf(codeMode)) };
 
   await new Promise<void>((resolve) => {
     exitNow = resolve;

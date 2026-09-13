@@ -251,4 +251,12 @@ export type AgentEvent =
    * attempt.
    */
   | { type: 'llm_retry'; attempt: number; maxRetries: number; error: string; stats: UsageStats }
+  /**
+   * A completion with NO text, NO tool calls and a finish reason — a provider
+   * pathology (reasoning-only answer: everything streamed into
+   * reasoning_content, content stayed empty). The loop re-issues the
+   * IDENTICAL request (stable prefix → cache-friendly); this event announces
+   * each re-issue for UI visibility. Exhausted retries throw instead.
+   */
+  | { type: 'empty_completion'; attempt: number; maxRetries: number; finishReason: string }
   | { type: 'done'; stopReason: 'complete' | 'max_turns' | 'aborted' };

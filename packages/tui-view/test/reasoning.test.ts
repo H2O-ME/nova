@@ -55,10 +55,9 @@ describe('reasoningLiveRow (codex-style scrolling while streaming)', () => {
     for (const r of rows) expect(styledWidth(r)).toBeLessThanOrEqual(40 - 1 - 4);
   });
 
-  it('glyph + tail stay inside the row budget (no orphan continuation rows)', () => {
-    const rows = reasoningLiveRow(plainPalette, { done: [], partial: 'y'.repeat(500) + 'END', cols: 40, spinnerFrame: 0 });
+  it('tail stays inside the row budget with no animation glyph (no orphan continuation rows)', () => {
+    const rows = reasoningLiveRow(plainPalette, { done: [], partial: 'y'.repeat(500) + 'END', cols: 40 });
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.startsWith('⠋ ')).toBe(true);
     expect(rows[0]!.endsWith('END')).toBe(true);
     expect(styledWidth(rows[0]!)).toBeLessThanOrEqual(40 - 1 - 4);
   });
@@ -86,15 +85,15 @@ describe('summaryRow + reasoningDetailRows (inert click-toggle surfaces)', () =>
   });
 });
 
-describe('reasoningLiveRow spinner glyph (thinking animation)', () => {
-  it('leads the live tail with the cycling braille frame', () => {
-    const rows = reasoningLiveRow(plainPalette, { done: ['已想完的行'], partial: '还在想', cols: 40, spinnerFrame: 0 });
+describe('reasoningLiveRow streaming tail (no animation)', () => {
+  it('the live tail is plain text — no cycling glyph prefix', () => {
+    const rows = reasoningLiveRow(plainPalette, { done: ['已想完的行'], partial: '还在想', cols: 40 });
     expect(rows[0]).toBe('已想完的行');
-    expect(rows.at(-1)).toMatch(/^⠋ 还在想/);
+    expect(rows.at(-1)).toBe('还在想');
   });
 
-  it('renders the bare glyph when nothing has streamed yet', () => {
-    expect(reasoningLiveRow(plainPalette, { done: [], partial: '', cols: 40, spinnerFrame: 3 })).toEqual(['⠸']);
+  it('renders a static placeholder when nothing has streamed yet', () => {
+    expect(reasoningLiveRow(plainPalette, { done: [], partial: '', cols: 40 })).toEqual(['⋯']);
   });
 
   it('stays static (⋯) without a frame — folded/test surfaces', () => {
