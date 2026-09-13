@@ -2,7 +2,6 @@ import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { styledWidth } from '@nova-agent/tui';
 import {
-  emptyStats,
   newId,
   runAgent,
   Session,
@@ -17,6 +16,16 @@ import { sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache, modeOverviewRows } from './commands.js';
+import {
+  cacheHitPct,
+  lastCacheHitPct,
+  MODEL_LIST_EMPTY,
+  modelListError,
+  nextApprovalMode,
+  openFreshSession,
+  pluginCommandLine,
+  pluginToolLine,
+} from './command-core.js';
 import { expandSkillInvocation } from './context.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { createNotifier } from './notify.js';
@@ -30,7 +39,6 @@ import {
 } from './runner-loop.js';
 import {
   approvalLabel,
-  APPROVAL_ORDER,
   banner,
   fitTail,
   palette,
@@ -501,28 +509,21 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           break;
         case '/new': {
           sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
-          session = await Session.create(sessionsDir);
-          await recordSessionWorkspace(session, rootDir);
-          // Rebind the cache-affinity identity and drop the old usage anchor:
-          // keeping either would send the old session's cache key (or trigger
-          // a spurious compaction) in the fresh session.
-          client.setSessionId(session.id);
-          messages = [];
-          Object.assign(stats, emptyStats());
-          resetUsageAnchors(anchors);
-          await seedContextFragment(session, messages);
+          ({ session, messages } = await openFreshSession({
+            sessionsDir,
+            rootDir,
+            setClientSessionId: (id) => client.setSessionId(id),
+            stats,
+            anchors,
+            recordWorkspace: recordSessionWorkspace,
+            seedContext: seedContextFragment,
+          }));
           console.log(`新会话：${session.file}`);
           break;
         }
         case '/session': {
-          const hit =
-            stats.promptTokens > 0
-              ? ((stats.cachedTokens / stats.promptTokens) * 100).toFixed(1)
-              : '0.0';
-          const lastHit =
-            anchors.lastUsage !== undefined && anchors.lastUsage.promptTokens > 0
-              ? Math.round((anchors.lastUsage.cachedTokens / anchors.lastUsage.promptTokens) * 100)
-              : null;
+          const hit = cacheHitPct(stats.promptTokens, stats.cachedTokens);
+          const lastHit = lastCacheHitPct(anchors.lastUsage);
           const compact = config.autoCompactTokenLimit
             ? `阈值 ${config.autoCompactTokenLimit} tok · 上轮 ${anchors.lastPromptTokens} tok`
             : '未启用';
@@ -535,7 +536,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           try {
             const models = await fetchModelList();
             if (models.length === 0) {
-              console.log('站点未返回任何模型');
+              console.log(MODEL_LIST_EMPTY);
               break;
             }
             console.log(`当前模型：${client.model}`);
@@ -567,7 +568,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
             client.setModel(model);
             console.log(`模型已切换为 ${model}`);
           } catch (err) {
-            console.log(`模型列表获取失败：${err instanceof Error ? err.message : String(err)}`);
+            console.log(modelListError(err));
           }
           break;
         }
@@ -575,17 +576,16 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           console.log(`审批档位：${approvalLabel(permission.approvalMode)}${opts.approvalOverride !== undefined ? '（来自 --approval）' : ''}`);
           if (host.toolEntries.length === 0) console.log('（没有已注册的工具）');
           for (const entry of host.toolEntries) {
-            console.log(`  插件=${entry.plugin} · 工具=${entry.tool.name} · 权限=${permissionLabel(entry.permission)}`);
+            console.log(`  ${pluginToolLine(entry.plugin, entry.tool.name, permissionLabel(entry.permission))}`);
           }
           for (const entry of host.commandEntries) {
-            console.log(`  插件=${entry.plugin} · /${entry.command.name} — ${entry.command.description}`);
+            console.log(`  ${pluginCommandLine(entry.plugin, entry.command.name, entry.command.description)}`);
           }
           break;
         }
         case '/approvals': {
-          const idx = APPROVAL_ORDER.indexOf(permission.approvalMode);
-          const next = APPROVAL_ORDER[(idx + 1) % APPROVAL_ORDER.length] ?? 'read-only';
-          permission.setMode(next);
+          const next = nextApprovalMode(permission.approvalMode);
+          permission.setMode(next as ApprovalMode);
           console.log(`审批档位：${approvalLabel(next)}`);
           break;
         }

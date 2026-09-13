@@ -50,7 +50,7 @@ async function take(gen: AsyncGenerator<AgentEvent>, n: number): Promise<AgentEv
 
 describe('runAgent abandonment (consumer breaks early)', () => {
   it('synthesizes NOT_EXECUTED_GUIDANCE results for unanswered tool_calls on .return()', async () => {
-    const { jobs, requeued } = fakeJobs();
+    const { jobs } = fakeJobs();
     const messages: AgentMessage[] = [];
     const gen = runAgent({
       provider: scriptedProvider([TOOL_CALL_SCRIPT]),

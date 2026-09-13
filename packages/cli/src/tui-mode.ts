@@ -37,6 +37,16 @@ import {
   filterCommands,
   type CommandSpec,
 } from './commands.js';
+import {
+  cacheHitPct,
+  lastCacheHitPct,
+  MODEL_LIST_EMPTY,
+  modelListError,
+  nextApprovalMode,
+  openFreshSession,
+  pluginCommandLine,
+  pluginToolLine,
+} from './command-core.js';
 import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
@@ -53,7 +63,6 @@ import {
 } from './runner-loop.js';
 import {
   approvalLabel,
-  APPROVAL_ORDER,
   bottomStack,
   buildSplash,
   modeSelectRows,
@@ -827,7 +836,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         try {
           const models = await fetchModelList();
           if (models.length === 0) {
-            store.pushBlock([paint.dim('  站点未返回任何模型')]);
+            store.pushBlock([paint.dim(`  ${MODEL_LIST_EMPTY}`)]);
           } else {
             // Interactive picker overlay (↑↓ Enter Esc), not a history dump.
             const current = models.indexOf(client.model);
@@ -835,14 +844,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             scheduleRender();
           }
         } catch (err) {
-          store.pushBlock([paint.red(`  模型列表获取失败：${err instanceof Error ? err.message : String(err)}`)]);
+          store.pushBlock([paint.red(`  ${modelListError(err)}`)]);
         }
         return true;
       }
       case '/approvals': {
-        const idx = APPROVAL_ORDER.indexOf(permission.approvalMode);
-        const next = APPROVAL_ORDER[(idx + 1) % APPROVAL_ORDER.length] ?? 'read-only';
-        permission.setMode(next);
+        const next = nextApprovalMode(permission.approvalMode);
+        permission.setMode(next as ApprovalMode);
         store.pushBlock([paint.dim(`  审批档位：${approvalLabel(next)}`)]);
         return true;
       }
@@ -859,18 +867,25 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return true;
       }
       case '/plugins': {
-        const lines = host.toolEntries.map(
-          (entry) => paint.dim(`  插件=${entry.plugin} · 工具=${entry.tool.name} · 权限=${permissionLabel(entry.permission)}`),
-        );
-        store.pushBlock([`  ${paint.bold('插件与工具')}`, ...lines]);
+        // 与 repl 同一信息量（审批档位 + 命令注册项此前只在 repl 有）。
+        store.pushBlock([
+          `  ${paint.bold('插件与工具')}${paint.dim(
+            ` · 审批档位 ${approvalLabel(permission.approvalMode)}${opts.approvalOverride !== undefined ? '（来自 --approval）' : ''}`,
+          )}`,
+          ...(host.toolEntries.length === 0
+            ? [paint.dim('  （没有已注册的工具）')]
+            : host.toolEntries.map((entry) =>
+                paint.dim(`  ${pluginToolLine(entry.plugin, entry.tool.name, permissionLabel(entry.permission))}`),
+              )),
+          ...host.commandEntries.map((entry) =>
+            paint.dim(`  ${pluginCommandLine(entry.plugin, entry.command.name, entry.command.description)}`),
+          ),
+        ]);
         return true;
       }
       case '/session': {
-        const hit = stats.promptTokens > 0 ? Math.round((stats.cachedTokens / stats.promptTokens) * 100) : 0;
-        const lastHit =
-          anchors.lastUsage !== undefined && anchors.lastUsage.promptTokens > 0
-            ? Math.round((anchors.lastUsage.cachedTokens / anchors.lastUsage.promptTokens) * 100)
-            : null;
+        const hit = cacheHitPct(stats.promptTokens, stats.cachedTokens);
+        const lastHit = lastCacheHitPct(anchors.lastUsage);
         const compact = config.autoCompactTokenLimit
           ? `阈值 ${humanTokens(config.autoCompactTokenLimit)} tok · 上轮 ${humanTokens(anchors.lastPromptTokens)} tok`
           : '未启用';
@@ -903,17 +918,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       case '/new': {
         sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
-        session = await Session.create(sessionsDir);
-        await recordSessionWorkspace(session, rootDir);
-        // Rebind the cache-affinity identity and drop the old usage anchor:
-        // keeping either would send the old session's cache key (or trigger
-        // a spurious compaction) in the fresh session.
-        client.setSessionId(session.id);
-        messages = [];
-        Object.assign(stats, emptyStats());
-        resetUsageAnchors(anchors);
-        resetSessionCache();
-        await seedContextFragment(session, messages);
+        ({ session, messages } = await openFreshSession({
+          sessionsDir,
+          rootDir,
+          setClientSessionId: (id) => client.setSessionId(id),
+          stats,
+          anchors,
+          resetSessionCache,
+          recordWorkspace: recordSessionWorkspace,
+          seedContext: seedContextFragment,
+        }));
         store.pushBlock([paint.dim(`  新会话：${session.file}`)]);
         return true;
       }
