@@ -44,13 +44,12 @@ describe('buildSplash', () => {
     const borderIdx = lines.findIndex((l) => l.startsWith('╰'));
     expect(borderIdx).toBeGreaterThan(0);
     const hint = lines[borderIdx + 1];
-    expect(hint).toContain('bash / run_code 在本机执行任意命令');
-    expect(hint).toContain('审批门 + 工作区边界');
-    expect(hint).toContain('无沙箱');
-    expect(hint).toContain('容器化');
+    expect(hint).toContain('bash / run_code');
     // Doc-aligned honesty: no claim of sandboxing or system-level isolation.
-    expect(hint).not.toContain('沙箱级');
     expect(hint).toContain('无沙箱');
+    expect(hint).not.toContain('沙箱级');
+    // 精简后的揭示仍在一行内，不再占整段"说教"。
+    expect(styledWidth(hint)).toBeLessThan(60);
   });
 
   it('shows the hint even when skills/warnings are absent', () => {

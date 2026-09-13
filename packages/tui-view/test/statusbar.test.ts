@@ -96,6 +96,7 @@ const baseView: StatusView = {
   lastCtrlC: 0,
   now: 1_000_000,
   tpsRing: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  tpsSamples: 10,
   promptTokens: 200,
   cachedTokens: 150,
   cacheSeen: true,
@@ -120,6 +121,13 @@ describe('statusBar composition (wide)', () => {
   it('cache segment is sticky-visible only after first report', () => {
     expect(bar({ cacheSeen: false })).not.toContain('cache ');
     expect(bar({ cacheSeen: true })).toContain('cache 75%');
+  });
+
+  it('tps gauge is hidden until the first real sample (no flat zero bar)', () => {
+    const b = bar({ tpsSamples: 0 });
+    expect(b).not.toContain('tps');
+    expect(b).toContain('cache 75%'); // cache 独立粘性，不受 tps 隐藏影响
+    expect(bar({ tpsSamples: 1 })).toContain('tps');
   });
 });
 

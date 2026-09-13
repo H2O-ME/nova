@@ -83,6 +83,8 @@ export class TuiStore {
   tpsTokens = 0;
   tpsLastTokens = 0;
   tpsLastAt = 0;
+  /** Real samples pushed into tpsRing; 0 = nothing streamed yet this session. */
+  tpsSamples = 0;
   genPhase: GenPhase = 'idle';
   frameMap:
     | { rows: { block: Block; start: number; count: number }[]; sliceStart: number; historyRows: number }
@@ -155,6 +157,7 @@ export class TuiStore {
       if (this.tpsTokens > this.tpsLastTokens) {
         this.tpsRing.push(Math.round((this.tpsTokens - this.tpsLastTokens) / secs));
         if (this.tpsRing.length > TPS_SAMPLES) this.tpsRing.shift();
+        this.tpsSamples += 1;
       }
       this.tpsLastTokens = this.tpsTokens;
       this.tpsLastAt = now;

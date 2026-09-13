@@ -294,3 +294,29 @@ describe('LineScreen', () => {
     expect(all.indexOf('\x1b[?1000l')).toBeGreaterThan(all.indexOf('\x1b[?1006h'));
   });
 });
+
+describe('wrapLine: CJK break opportunities', () => {
+  const widthOf = (row: string): number => [...row].reduce((a, c) => a + (c.charCodeAt(0) > 0xff ? 2 : 1), 0);
+
+  it('fills the line through unbroken CJK runs instead of wrapping early at the last space', () => {
+    // Old word-based wrap treated the whole CJK clause as one "word": line 1
+    // stopped at "跑 " and half the row stayed empty.
+    const line = '我主要做本地编码和文件操作：读写和分析代码、跑 git/构建/测试命令，也能帮你查资料';
+    const rows = wrapLine(line, 40);
+    expect(widthOf(rows[0]!)).toBe(40);
+    expect(rows[0]!.endsWith('跑')).toBe(false);
+  });
+
+  it('keeps latin words atomic while breaking between CJK chars', () => {
+    const rows = wrapLine('中文文文文文 git-command 文文文文文文', 12);
+    expect(rows.some((r) => r.includes('git-command'))).toBe(true);
+    for (const row of rows) expect(widthOf(row)).toBeLessThanOrEqual(12);
+  });
+
+  it('never starts a line with closing punctuation', () => {
+    const rows = wrapLine('一句话到这里结束。下一句接着说，再来一点内容把行挤满。', 10);
+    for (const row of rows.slice(1)) {
+      expect('，。、；：！？…').not.toContain(row[0]);
+    }
+  });
+});

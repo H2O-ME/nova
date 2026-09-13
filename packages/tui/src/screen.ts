@@ -147,6 +147,10 @@ function openStyleAtEnd(text: string, initial: string): string {
   return open;
 }
 
+/** Closing CJK punctuation: glues to the preceding char (no break before it). */
+// eslint-disable-next-line no-control-regex -- plain unicode class, no controls
+const CLOSING_PUNCT = /[，。、；：！？…—」』）］｝》〉】]/;
+
 function wrapSegment(segment: string, width: number, prefixStyle: string): string[] {
   const out: string[] = [];
   let current = prefixStyle;
@@ -162,7 +166,10 @@ function wrapSegment(segment: string, width: number, prefixStyle: string): strin
       openStyles = token === '\x1b[0m' ? '' : openStyles + token;
       continue;
     }
-    // Break preferentially at spaces; hard-break long words as fallback.
+    // Break preferentially at spaces and between CJK chars; hard-break long
+    // latin words as fallback. Without the CJK rule a whole unbroken Chinese
+    // clause became one "word" and wrapped early at the previous space,
+    // leaving half the line empty.
     let wordBuffer = '';
     let wordWidth = 0;
     const flushWord = (force: boolean): void => {
@@ -190,6 +197,7 @@ function wrapSegment(segment: string, width: number, prefixStyle: string): strin
         currentWidth += 1;
         continue;
       }
+      if (w >= 2 && !CLOSING_PUNCT.test(ch)) flushWord(false);
       if (wordWidth + w > width) {
         // single char wider than the line: hard emit
         flushWord(false);

@@ -1481,6 +1481,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     lastCtrlC: store.lastCtrlC,
     now: Date.now(),
     tpsRing: store.tpsRing,
+    tpsSamples: store.tpsSamples,
     promptTokens: sessPromptTokens,
     cachedTokens: sessCachedTokens,
     cacheSeen,

@@ -7,14 +7,12 @@
 
 /**
  * Trust-posture hint, always rendered (constant — no config field): bash and
- * run_code execute arbitrary commands directly on this machine; protection
- * comes only from the approval gate and the workspace realpath boundary, and
- * there is no system-level sandbox. Authoritative wording: AGENTS.md §9.3
- * ("重隔离建议容器化运行"). Kept outside the panel like skills/warnings —
- * it is long, and `clipToWidth` clamps it on narrow screens.
+ * run_code execute arbitrary commands directly on this machine with no
+ * system-level sandbox; protection comes only from the approval gate and the
+ * workspace realpath boundary (details: AGENTS.md §9.3). Kept to one short
+ * dim line — the splash is a signpost, not a lecture.
  */
-const TRUST_POSTURE_HINT =
-  'bash / run_code 在本机执行任意命令（审批门 + 工作区边界 · 无沙箱）；重隔离建议容器化运行';
+const TRUST_POSTURE_HINT = 'bash / run_code 可执行任意命令 · 无沙箱';
 
 import { styledWidth } from '@nova-agent/tui';
 import { clipPath, clipToWidth } from './clip.js';

@@ -296,6 +296,9 @@ export interface StatusView {
   lastCtrlC: number;
   now: number;
   tpsRing: readonly number[];
+  /** Real samples in the ring; 0 = nothing streamed yet → hide the gauge
+   * (a flat zero bar reads as "broken", exactly what it replaced). */
+  tpsSamples: number;
   promptTokens: number;
   cachedTokens: number;
   cacheSeen: boolean;
@@ -323,10 +326,12 @@ export function statusBar(p: Palette, v: StatusView): string {
   // Session-cumulative hit rate: per-turn values jitter with backend routing.
   const cacheHit = v.promptTokens > 0 ? Math.round((v.cachedTokens / v.promptTokens) * 100) : 0;
   const bits: string[] = [];
-  const cur = v.tpsRing[v.tpsRing.length - 1] ?? 0;
-  const curStr = String(cur).padStart(3);
-  const gauge = `${p.green(sparkline([...v.tpsRing]))} ${p.bold(curStr)}`;
-  bits.push(`${p.dim('tps')} ${gauge}`);
+  if (v.tpsSamples > 0) {
+    const cur = v.tpsRing[v.tpsRing.length - 1] ?? 0;
+    const curStr = String(cur).padStart(3);
+    const gauge = `${p.green(sparkline([...v.tpsRing]))} ${p.bold(curStr)}`;
+    bits.push(`${p.dim('tps')} ${gauge}`);
+  }
   if (v.cacheSeen) bits.push(p.dim(`cache ${String(cacheHit).padStart(2)}%`));
   const right = bits.join(' · ');
   const budget = v.cols - 1;
