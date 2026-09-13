@@ -268,8 +268,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     skills = await reloadWorkspaceContext(dir);
     await rebuildHost();
   };
-  if (!opts.resumeFile) await seedContextFragment(session, messages);
-
   /**
    * Approval popup + long-turn completion/error surface as OS notifications
    * too: the user regularly switches away while the agent works, and a
