@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="480" viewBox="0 0 1280 480" role="img">
+  <title>NovaAgent —— 自研、插件化、轻量化的跨平台本地智能体框架</title>
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f2b13f" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#f2b13f" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1280" height="480" fill="#ffffff"/>
+
+  <!-- 星芒徽标 + 柔光 -->
+  <circle cx="100" cy="108" r="96" fill="url(#glow)"/>
+  <path d="M100 54 L108 98 L152 108 L108 118 L100 162 L92 118 L48 108 L92 98 Z" fill="#e8a13c"/>
+  <path d="M156 60 L159 75 L174 78 L159 81 L156 96 L153 81 L138 78 L153 75 Z" fill="#e8a13c" opacity="0.55"/>
+
+  <!-- 左侧文字 -->
+  <text x="72" y="236" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="54" font-weight="700" fill="#1b1d21">NovaAgent</text>
+  <text x="72" y="274" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="17" fill="#5f6772">自研、插件化、轻量化的跨平台本地智能体框架</text>
+  <text x="72" y="301" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="14" fill="#8a919c">在当前工作目录运行的 agent CLI / TUI · 一切皆插件 · 工作区零写入</text>
+
+  <!-- 技术 chips -->
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" fill="#3f4650">
+    <rect x="72"  y="330" width="104" height="34" rx="17" fill="#f4f6f8" stroke="#e3e7eb"/>
+    <text x="124" y="352" text-anchor="middle">Node ≥ 20</text>
+    <rect x="188" y="330" width="150" height="34" rx="17" fill="#f4f6f8" stroke="#e3e7eb"/>
+    <text x="263" y="352" text-anchor="middle">TypeScript strict</text>
+    <rect x="350" y="330" width="94"  height="34" rx="17" fill="#f4f6f8" stroke="#e3e7eb"/>
+    <text x="397" y="352" text-anchor="middle">ESM-only</text>
+    <rect x="72"  y="376" width="140" height="34" rx="17" fill="#f4f6f8" stroke="#e3e7eb"/>
+    <text x="142" y="398" text-anchor="middle">Linux · Windows</text>
+    <rect x="224" y="376" width="84"  height="34" rx="17" fill="#f4f6f8" stroke="#e3e7eb"/>
+    <text x="266" y="398" text-anchor="middle">v0.2.0</text>
+  </g>
+
+  <!-- 终端窗口示意 -->
+  <rect x="600" y="64" width="612" height="340" rx="14" fill="#16181d"/>
+  <rect x="601" y="65" width="610" height="40" rx="13" fill="#1f2229"/>
+  <circle cx="624" cy="85" r="5.5" fill="#ff5f56"/>
+  <circle cx="643" cy="85" r="5.5" fill="#ffbd2e"/>
+  <circle cx="662" cy="85" r="5.5" fill="#27c93f"/>
+  <text x="684" y="90" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5" fill="#8b93a1">nova — TUI</text>
+  <line x1="601" y1="105" x2="1211" y2="105" stroke="#2a2e36"/>
+
+  <g font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="15">
+    <text x="628" y="140" fill="#8b93a1">$ <tspan fill="#d7dbe0">nova · ~/code/app</tspan></text>
+    <text x="628" y="176" fill="#e8c07a">› 数一下 packages 里有多少个测试文件</text>
+    <text x="628" y="216" fill="#b6bec9">  ▸ search_files  name_glob:**/*.test.ts · 46 hits</text>
+    <text x="628" y="240" fill="#b6bec9">  ▸ run_code      按包分组计数 · ✓ 1.4s</text>
+    <text x="628" y="280" fill="#58c98b">✔ 48 个测试文件 · 分布在 7 个包</text>
+  </g>
+
+  <!-- 单行状态栏示意 -->
+  <rect x="601" y="356" width="610" height="47" rx="12" fill="#1a1d23"/>
+  <line x1="601" y1="356" x2="1211" y2="356" stroke="#2a2e36"/>
+  <g font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5">
+    <text x="624" y="384" fill="#5fb3a1">ctx 18k/200k · 9%</text>
+    <text x="784" y="384" fill="#3a3f48">│</text>
+    <text x="806" y="384" fill="#9aa4b2">model · read-only</text>
+    <text x="950" y="384" fill="#3a3f48">│</text>
+    <text x="1030" y="384" fill="#58c98b">tps 41 · cache 97%</text>
+  </g>
+</svg>

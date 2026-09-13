@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="620" viewBox="0 0 1240 620" role="img">
+  <title>NovaAgent 单轮运行数据流：TUI 视图层、runAgent 循环、工具执行管线三层交汇，会话日志全程落盘</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#99a1ab"/>
+    </marker>
+    <marker id="arT" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#0e6f5c"/>
+    </marker>
+  </defs>
+  <rect width="1240" height="620" fill="#ffffff"/>
+
+  <!-- ═ Lane 1 · 视图渲染 ═ -->
+  <rect x="24" y="20" width="1192" height="152" rx="12" fill="#f5f8fb" stroke="#d8e3ee"/>
+  <text x="44" y="46" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" font-weight="700" fill="#33608c">视图渲染（tui + tui-view · 行级差分，无 React）</text>
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+    <rect x="44"   y="78" width="100" height="64" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="94"   y="104" text-anchor="middle" font-size="12.5" fill="#1b1d21">键盘/鼠标</text>
+    <text x="94"   y="122" text-anchor="middle" font-size="10.5" fill="#8a919c">SGR 点击</text>
+    <line x1="144" y1="110" x2="164" y2="110" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="166"  y="78" width="126" height="64" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="229"  y="104" text-anchor="middle" font-size="12.5" fill="#1b1d21">KeyDecoder</text>
+    <text x="229"  y="122" text-anchor="middle" font-size="10.5" fill="#8a919c">孤 ESC 200ms 防幻影</text>
+    <line x1="292" y1="110" x2="312" y2="110" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="314"  y="78" width="168" height="64" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="398"  y="104" text-anchor="middle" font-size="12.5" fill="#1b1d21">keys 责任链</text>
+    <text x="398"  y="122" text-anchor="middle" font-size="10.5" fill="#8a919c">审批→面板→全局→composer</text>
+    <line x1="482" y1="110" x2="502" y2="110" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="504"  y="78" width="126" height="64" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="567"  y="104" text-anchor="middle" font-size="12.5" fill="#1b1d21">TuiStore</text>
+    <text x="567"  y="122" text-anchor="middle" font-size="10.5" fill="#8a919c">blocks · 运行中队列</text>
+    <line x1="630" y1="110" x2="650" y2="110" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="652"  y="78" width="168" height="64" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="736"  y="104" text-anchor="middle" font-size="12.5" fill="#1b1d21">tui-view 纯函数</text>
+    <text x="736"  y="122" text-anchor="middle" font-size="10.5" fill="#8a919c">状态栏/工具行/弹窗/思考窗</text>
+    <line x1="820" y1="110" x2="840" y2="110" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="842"  y="78" width="140" height="64" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="912"  y="104" text-anchor="middle" font-size="12.5" fill="#1b1d21">screen 差分重绘</text>
+    <text x="912"  y="122" text-anchor="middle" font-size="10.5" fill="#8a919c">只改脏行</text>
+    <line x1="982" y1="110" x2="1002" y2="110" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="1004" y="78" width="92"  height="64" rx="8" fill="#33608c"/>
+    <text x="1050" y="114" text-anchor="middle" font-size="12.5" fill="#ffffff">终端</text>
+  </g>
+
+  <!-- ═ Lane 2 · agent 循环 ═ -->
+  <rect x="24" y="200" width="1192" height="156" rx="12" fill="#eef6f3" stroke="#bfdcd2"/>
+  <text x="44" y="226" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" font-weight="700" fill="#0e6f5c">agent 循环（core/agent.ts · runAgent 事件流）</text>
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+    <rect x="44"   y="258" width="110" height="64" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
+    <text x="99"   y="284" text-anchor="middle" font-size="12.5" fill="#1b1d21">提交 / 队首</text>
+    <text x="99"   y="302" text-anchor="middle" font-size="10.5" fill="#8a919c">回车触发</text>
+    <line x1="154" y1="290" x2="174" y2="290" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="176"  y="258" width="220" height="64" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
+    <text x="286"  y="280" text-anchor="middle" font-size="12.5" fill="#1b1d21">发请求前预检</text>
+    <text x="286"  y="298" text-anchor="middle" font-size="10.5" fill="#5f6772">job 完成通知注入 · TokenGate 压缩</text>
+    <text x="286" y="312" text-anchor="middle" font-size="10.5" fill="#5f6772">预判 · 空补全自动重试 ×2</text>
+    <line x1="396" y1="290" x2="416" y2="290" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="418"  y="258" width="128" height="64" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
+    <text x="482"  y="284" text-anchor="middle" font-size="12.5" fill="#1b1d21">beforeLLMCall</text>
+    <text x="482"  y="302" text-anchor="middle" font-size="10.5" fill="#8a919c">生命周期钩子</text>
+    <line x1="546" y1="290" x2="566" y2="290" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="568"  y="258" width="210" height="64" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
+    <text x="673"  y="280" text-anchor="middle" font-size="12.5" fill="#1b1d21">ai · OpenAICompatClient</text>
+    <text x="673"  y="298" text-anchor="middle" font-size="10.5" fill="#5f6772">SSE 流式 · 断流自愈 · 字典序 tools</text>
+    <text x="673" y="312" text-anchor="middle" font-size="10.5" fill="#5f6772">prompt_cache_key · 会话亲和头</text>
+    <line x1="778" y1="290" x2="798" y2="290" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="800"  y="258" width="110" height="64" rx="8" fill="#0e6f5c"/>
+    <text x="855"  y="294" text-anchor="middle" font-size="12.5" fill="#ffffff">provider</text>
+    <line x1="910" y1="290" x2="930" y2="290" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="932"  y="258" width="160" height="64" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
+    <text x="1012" y="280" text-anchor="middle" font-size="12.5" fill="#1b1d21">assistant 消息</text>
+    <text x="1012" y="298" text-anchor="middle" font-size="10.5" fill="#5f6772">文本 → 本轮收尾</text>
+    <text x="1012" y="312" text-anchor="middle" font-size="10.5" fill="#5f6772">tool_calls → 工具管线 ↓</text>
+  </g>
+
+  <!-- 事件回流：runAgent → TuiStore -->
+  <polyline points="286,258 286,188 567,188 567,142" fill="none" stroke="#0e6f5c" stroke-dasharray="5 4" marker-end="url(#arT)"/>
+  <text x="426" y="182" text-anchor="middle" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="11" fill="#0e6f5c">AgentEvent 流归约（流式 md / reasoning / 工具活行 / 子代理活行）</text>
+
+  <!-- ═ Lane 3 · 工具执行 ═ -->
+  <rect x="24" y="386" width="1192" height="182" rx="12" fill="#fbf7ef" stroke="#e5d5b5"/>
+  <text x="44" y="412" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" font-weight="700" fill="#a35a06">工具执行（plugins · 与第三方插件同一条管线）</text>
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+    <line x1="1012" y1="322" x2="1012" y2="352" stroke="#99a1ab"/>
+    <line x1="1012" y1="352" x2="112" y2="352" stroke="#99a1ab"/>
+    <line x1="112"  y1="352" x2="112" y2="440" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="44"   y="440" width="136" height="64" rx="8" fill="#ffffff" stroke="#e5d5b5"/>
+    <text x="112"  y="466" text-anchor="middle" font-size="12.5" fill="#1b1d21">beforeToolCall</text>
+    <text x="112"  y="484" text-anchor="middle" font-size="10.5" fill="#8a919c">可拦截 / 改写参数</text>
+    <line x1="180" y1="472" x2="200" y2="472" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="202"  y="440" width="186" height="64" rx="8" fill="#ffffff" stroke="#e5d5b5"/>
+    <text x="295"  y="462" text-anchor="middle" font-size="12.5" fill="#1b1d21">permission 审批门</text>
+    <text x="295"  y="480" text-anchor="middle" font-size="10.5" fill="#5f6772">三档 · y/n/a · bash 前缀记忆</text>
+    <text x="295" y="494" text-anchor="middle" font-size="10.5" fill="#5f6772">fail-closed · ask 决策写审计</text>
+    <line x1="388" y1="472" x2="408" y2="472" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="410"  y="440" width="150" height="64" rx="8" fill="#ffffff" stroke="#e5d5b5"/>
+    <text x="485"  y="462" text-anchor="middle" font-size="12.5" fill="#1b1d21">host 分发</text>
+    <text x="485"  y="480" text-anchor="middle" font-size="10.5" fill="#5f6772">并发安全整段并行</text>
+    <text x="485" y="494" text-anchor="middle" font-size="10.5" fill="#5f6772">结果按序写回</text>
+    <line x1="560" y1="472" x2="580" y2="472" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="582"  y="428" width="252" height="118" rx="8" fill="#ffffff" stroke="#e5d5b5"/>
+    <g font-size="11.5" fill="#4a525d">
+      <text x="598" y="452">内置 fs · bash · search · todo · jobs</text>
+      <text x="598" y="474">search_files → worker 线程（防回溯）</text>
+      <text x="598" y="496">PTC run_code → worker（四类预算）</text>
+      <text x="598" y="518">subagent → 隔离嵌套 run（可后台化）</text>
+    </g>
+    <line x1="834" y1="472" x2="854" y2="472" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="856"  y="440" width="120" height="64" rx="8" fill="#ffffff" stroke="#e5d5b5"/>
+    <text x="916"  y="466" text-anchor="middle" font-size="12.5" fill="#1b1d21">afterToolResult</text>
+    <text x="916"  y="484" text-anchor="middle" font-size="10.5" fill="#8a919c">钩子</text>
+    <line x1="976" y1="472" x2="996" y2="472" stroke="#99a1ab" marker-end="url(#ar)"/>
+    <rect x="998"  y="440" width="198" height="64" rx="8" fill="#ffffff" stroke="#e5d5b5"/>
+    <text x="1097" y="462" text-anchor="middle" font-size="12.5" fill="#1b1d21">结果 &gt; 40KB 溢出落盘</text>
+    <text x="1097" y="480" text-anchor="middle" font-size="10.5" fill="#5f6772">消息体留头 60% + 尾 40%</text>
+    <text x="1097" y="494" text-anchor="middle" font-size="10.5" fill="#5f6772">全文 → cache/tool-outputs</text>
+  </g>
+
+  <!-- 下一轮循环箭头 -->
+  <line x1="1097" y1="504" x2="1097" y2="586" stroke="#99a1ab" stroke-dasharray="5 4"/>
+  <line x1="1097" y1="586" x2="286" y2="586" stroke="#99a1ab" stroke-dasharray="5 4"/>
+  <line x1="286" y1="586" x2="286" y2="322" stroke="#99a1ab" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+  <text x="660" y="578" text-anchor="middle" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="11" fill="#8a919c">工具结果入消息面 → 下一轮请求（全程 message 事件 appendEvent 先写盘）</text>
+</svg>

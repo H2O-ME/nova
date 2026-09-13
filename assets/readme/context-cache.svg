@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="600" viewBox="0 0 1240 600" role="img">
+  <title>NovaAgent 上下文组装与缓存策略：稳定前缀四层机制与 ~/.nova 持久化布局</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#99a1ab"/>
+    </marker>
+  </defs>
+  <rect width="1240" height="600" fill="#ffffff"/>
+
+  <!-- ═ 左：prompt 面四层 ═ -->
+  <text x="24" y="36" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="14" font-weight="700" fill="#1b1d21">发给 provider 的 prompt 面 — 顶部稳定前缀 → 底部动态尾部</text>
+
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+    <rect x="24" y="56" width="580" height="90" rx="10" fill="#f2f6fb" stroke="#c9d8ea"/>
+    <text x="44" y="84" font-size="14" font-weight="700" fill="#33608c">① 系统提示</text>
+    <text x="44" y="106" font-size="11.5" fill="#4a525d">persona · 工作方式 · 工具规则 · 操作姿态 · Subagents 编排</text>
+    <text x="44" y="126" font-size="11.5" fill="#8a919c">字节级恒定，任何动态内容绝不写入此层</text>
+    <rect x="480" y="66" width="110" height="26" rx="13" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="535" y="83" text-anchor="middle" font-size="11.5" fill="#33608c">前缀冻结</text>
+
+    <rect x="24" y="160" width="580" height="90" rx="10" fill="#f2f6fb" stroke="#c9d8ea"/>
+    <text x="44" y="188" font-size="14" font-weight="700" fill="#33608c">② 会话首条 user 片段</text>
+    <text x="44" y="210" font-size="11.5" fill="#4a525d">environment · AGENTS.md · &lt;user_instructions&gt; / &lt;project_docs&gt; · 技能索引</text>
+    <text x="44" y="230" font-size="11.5" fill="#8a919c">带权威指令帧注入一次，append-only 永不回改</text>
+    <rect x="480" y="170" width="110" height="26" rx="13" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="535" y="187" text-anchor="middle" font-size="11.5" fill="#33608c">append-only</text>
+
+    <rect x="24" y="264" width="580" height="90" rx="10" fill="#eef6f3" stroke="#bfdcd2"/>
+    <text x="44" y="292" font-size="14" font-weight="700" fill="#0e6f5c">③ 对话面 = deriveMessages() 投影</text>
+    <text x="44" y="314" font-size="11.5" fill="#4a525d">压缩原位追加 compaction/start → summary → end 三事件</text>
+    <text x="44" y="334" font-size="11.5" fill="#8a919c">keepIds 优先按 id 解析 · 原始历史永不改写 · 溢出全文落盘留头尾</text>
+    <rect x="480" y="274" width="110" height="26" rx="13" fill="#ffffff" stroke="#bfdcd2"/>
+    <text x="535" y="291" text-anchor="middle" font-size="11.5" fill="#0e6f5c">投影重建</text>
+
+    <rect x="24" y="368" width="580" height="90" rx="10" fill="#eef6f3" stroke="#bfdcd2"/>
+    <text x="44" y="396" font-size="14" font-weight="700" fill="#0e6f5c">④ 工具 schema</text>
+    <text x="44" y="418" font-size="11.5" fill="#4a525d">发往 provider 前按名字典序稳定排序，注册顺序重排不换槽位</text>
+    <text x="44" y="438" font-size="11.5" fill="#8a919c">PTC SDK 声明同规则生成（字节稳定）</text>
+    <rect x="480" y="378" width="110" height="26" rx="13" fill="#ffffff" stroke="#bfdcd2"/>
+    <text x="535" y="395" text-anchor="middle" font-size="11.5" fill="#0e6f5c">槽位稳定</text>
+  </g>
+
+  <text x="314" y="492" text-anchor="middle" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="12" fill="#5f6772">第四层供应商对齐：请求携带 prompt_cache_key 与会话亲和头，网关固定路由同一缓存节点</text>
+
+  <!-- 指标卡 -->
+  <rect x="24" y="516" width="580" height="60" rx="10" fill="#fbf7ef" stroke="#e5d5b5"/>
+  <text x="44" y="542" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" font-weight="700" fill="#a35a06">指标目标：会话第 3 轮起 prompt cache 命中率 ≥ 90%</text>
+  <text x="44" y="562" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="11.5" fill="#5f6772">/session 可查累计命中率 · 含 missTokens 缓存浪费审计（噪声底 1024 tok）</text>
+
+  <!-- ═ 右：持久化布局 ═ -->
+  <text x="644" y="36" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="14" font-weight="700" fill="#1b1d21">~/.nova 持久化（工作区零写入）</text>
+  <rect x="644" y="56" width="572" height="264" rx="10" fill="#fafbfc" stroke="#dfe3e8"/>
+  <g font-family="Consolas,'SFMono-Regular',Menlo,monospace" font-size="12">
+    <text x="664" y="88"  fill="#1b1d21" font-weight="700">~/.nova/</text>
+    <text x="688" y="112" fill="#4a525d">├─ config.json</text>
+    <text x="688" y="136" fill="#4a525d">├─ skills/&lt;name&gt;/SKILL.md</text>
+    <text x="688" y="160" fill="#4a525d">├─ sessions/YYYY/MM/DD/&lt;id&gt;.jsonl</text>
+    <text x="688" y="184" fill="#4a525d">└─ cache/</text>
+    <text x="712" y="208" fill="#4a525d">├─ tool-outputs/&lt;sessionId&gt;/</text>
+    <text x="736" y="232" fill="#4a525d">│  ├─ 工具溢出全文</text>
+    <text x="736" y="256" fill="#4a525d">│  └─ pre-compact-*.txt 压缩存档</text>
+    <text x="712" y="280" fill="#4a525d">└─ models-dev.json</text>
+  </g>
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="11" fill="#8a919c">
+    <text x="986" y="112">唯一配置 · strict schema</text>
+    <text x="986" y="136">用户级 · 项目级 .nova/ 优先</text>
+    <text x="986" y="160">append-only 事件流 · 可回放</text>
+    <text x="986" y="208">trusted read · 回查免审批</text>
+    <text x="986" y="256">细节缺失时按需分段回查</text>
+    <text x="986" y="280">模型目录 · 24h TTL</text>
+  </g>
+
+  <!-- 日志事件类型 -->
+  <rect x="644" y="344" width="572" height="116" rx="10" fill="#fafbfc" stroke="#dfe3e8"/>
+  <text x="664" y="372" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" font-weight="700" fill="#1b1d21">会话日志 v2 的事件类型</text>
+  <g font-family="Consolas,'SFMono-Regular',Menlo,monospace" font-size="11.5" fill="#4a525d">
+    <text x="664" y="398">message · compaction/start|summary|end</text>
+    <text x="664" y="418">todo/write · approval（审计） · code-dispatch</text>
+    <text x="664" y="442" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" fill="#8a919c">先写盘后入内存 · 末尾半行自动修复 · 中段坏行跳过告警</text>
+  </g>
+
+  <!-- 溢出预算 -->
+  <rect x="644" y="484" width="572" height="92" rx="10" fill="#fafbfc" stroke="#dfe3e8"/>
+  <text x="664" y="512" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" font-weight="700" fill="#1b1d21">压缩保真与溢出预算</text>
+  <text x="664" y="536" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="11.5" fill="#4a525d">摘要为 codex 式七节结构 · 无字数上限 · 保留预算 32k 字符 · 整条消息取舍</text>
+  <text x="664" y="556" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="11.5" fill="#4a525d">工具结果 40KB 截断：头部 60% + 尾部 40% + 读取提示恒守预算（尾部常带失败详情）</text>
+</svg>
