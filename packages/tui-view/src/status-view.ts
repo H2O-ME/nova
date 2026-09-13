@@ -23,6 +23,13 @@ export function codeModeLabel(m: PtcMode): string {
   return m === 'native' ? '普通' : m === 'ptc' ? 'PTC' : '混合';
 }
 
+/** One-line semantics of each execution mode; /mode and the splash selector share it. */
+export const CODE_MODE_HINT: Record<PtcMode, string> = {
+  native: '原生工具调用',
+  ptc: '模型只见 run_code，其余工具以 TS 程序编排',
+  both: 'run_code 与原生调用并存',
+};
+
 export interface ContextBreakdownView {
   systemPrompt: string;
   tools: readonly Pick<ToolDefinition, 'name' | 'description' | 'parameters'>[];

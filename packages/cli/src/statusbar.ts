@@ -4,6 +4,7 @@
  */
 export {
   approvalChip,
+  CODE_MODE_HINT,
   codeModeLabel,
   contextBreakdown,
   contextGaugeForms,

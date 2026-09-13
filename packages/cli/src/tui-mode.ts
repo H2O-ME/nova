@@ -81,6 +81,7 @@ import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import { BgSubagentRows } from './tui/subagent-lives.js';
 import { TurnProjector } from './tui/turn-projector.js';
 import {
+  CODE_MODE_HINT,
   codeModeLabel,
   contextBreakdown,
   gaugeCacheKey,
@@ -755,12 +756,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    */
   const displayPristine = (): boolean =>
     !store.streaming && !store.compactRunning && messages.length <= 1 && store.input.length === 0;
-
-  const CODE_MODE_HINT: Record<PtcMode, string> = {
-    native: '原生工具调用',
-    ptc: '模型只见 run_code，其余工具以 TS 程序编排',
-    both: 'run_code 与原生调用并存',
-  };
 
   /** Switch to a concrete mode; false = refused (Node too old) or failed (host rebuild). */
   async function setCodeMode(next: PtcMode): Promise<boolean> {

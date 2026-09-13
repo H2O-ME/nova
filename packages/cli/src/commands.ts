@@ -1,5 +1,8 @@
 /** 斜杠命令目录：TUI 命令面板、/help 与 readline 模式共用。 */
 
+import type { PtcMode } from '@nova-agent/core';
+import { CODE_MODE_HINT, codeModeLabel, padDisplay } from '@nova-agent/tui-view';
+
 export interface CommandSpec {
   /** 命令名（含开头的 /），例如 '/model'。 */
   name: string;
@@ -35,6 +38,20 @@ export function findCommand(input: string): CommandSpec | undefined {
   // specs are stored with the leading '/' already; a `${spec.name}`-without-
   // slash match can never hit and only muddied the lookup.
   return COMMAND_SPECS.find((spec) => spec.name === base);
+}
+
+/** /mode 的单行：current 标记决定调用方（repl/TUI）如何上色。 */
+export interface ModeOverviewRow {
+  current: boolean;
+  text: string;
+}
+
+/** /mode 的三态行（无色）：❯ 标当前模式，后跟一行语义提示。 */
+export function modeOverviewRows(current: PtcMode): ModeOverviewRow[] {
+  return (['native', 'ptc', 'both'] as PtcMode[]).map((m) => ({
+    current: m === current,
+    text: `${m === current ? '❯' : ' '} ${padDisplay(codeModeLabel(m), 6)} ${CODE_MODE_HINT[m]}`,
+  }));
 }
 
 /**

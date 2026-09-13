@@ -17,7 +17,7 @@ import { builtinPlugins, skillsPlugin, PluginHost, type ApprovalMode, type AskFn
 import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
-import { COMMAND_SPECS, createModelListCache } from './commands.js';
+import { COMMAND_SPECS, createModelListCache, modeOverviewRows } from './commands.js';
 import { expandSkillInvocation } from './context.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { createNotifier } from './notify.js';
@@ -605,6 +605,16 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           const next = APPROVAL_ORDER[(idx + 1) % APPROVAL_ORDER.length] ?? 'read-only';
           permission.setMode(next);
           console.log(`审批档位：${approvalLabel(next)}`);
+          break;
+        }
+        case '/mode': {
+          // repl 没有 Tab 切换缝（host 由 runtime 一次性装配），模式来自
+          // config 的 tools.code.mode——行语义与 TUI /mode 一致，来源不同。
+          const current = rt.codeConfig?.mode ?? 'native';
+          console.log(`执行模式 ${paint.dim('· repl 遵循 config.json 的 tools.code.mode（TUI 内可按 Tab 循环切换）')}`);
+          for (const row of modeOverviewRows(current)) {
+            console.log(`  ${row.current ? paint.cyan(row.text) : paint.dim(row.text)}`);
+          }
           break;
         }
         case '/compact': {
