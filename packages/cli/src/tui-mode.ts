@@ -1,19 +1,14 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { KeyDecoder, LineScreen, styledWidth, type Key } from '@nova-agent/tui';
+import { KeyDecoder, LineScreen, type Key } from '@nova-agent/tui';
 import {
   APPROVAL_PREVIEW_MAX_ROWS,
   BREATHE_ROWS,
   COMPOSER_MAX_ROWS,
-  REASONING_FULL_MAX_CHARS,
-  REASONING_MAX_PARTIAL_CHARS,
   RENDER_BUDGET_MS,
   SESSION_LIST_LIMIT,
   STATUS_ROWS,
   SPINNER_TICK_MS,
-  TOOL_ELAPSED_AFTER_MS,
-  TOOL_TAIL_KEEP_CHARS,
-  TOOL_TAIL_SHOW_CHARS,
 } from '@nova-agent/tui-view';
 import {
   emptyStats,
@@ -48,8 +43,6 @@ import {
 } from './commands.js';
 import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
-import { createMarkdownRenderer, type MarkdownRenderer } from './markdown.js';
-import { reasoningLiveRow } from './reasoning.js';
 import { createNotifier } from './notify.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
@@ -65,29 +58,19 @@ import {
   clipToWidth,
   contextGaugeForms,
   contextLegend,
-  fitTail,
   humanTokens,
-  isFailureContent,
-  isReadOnlyTool,
   layoutComposer,
   messageQueueRows,
   padDisplay,
   palette,
   permissionLabel,
   plainPalette,
-  REASONING_LIVE_KEEP_CHARS,
-  REVEAL_CATCH_UP_TICKS,
-  REVEAL_MIN_CHARS,
   REVEAL_TICK_MS,
   SPINNER_FRAMES,
   statusLine,
-  StreamSmoother,
   TOOL_GUTTER,
   toolArgSummary,
-  toolDoneLine,
-  toolGroupLine,
   toolLabel,
-  toolStartLine,
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
@@ -95,7 +78,8 @@ import { agentRunBase, createApprovalService, createAutoCompact, LONG_TASK, maxT
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
-import { BgSubagentRows, SubagentLives } from './tui/subagent-lives.js';
+import { BgSubagentRows } from './tui/subagent-lives.js';
+import { TurnProjector } from './tui/turn-projector.js';
 import {
   codeModeLabel,
   contextBreakdown,
@@ -121,6 +105,12 @@ const RED = '\x1b[31m';
 const BOLD = '\x1b[1m';
 const RESET = '\x1b[0m';
 
+// 用户/答案行的 gutter 前缀：尾部保持开态样式（BOLD 未闭合、DIM 已复位）是
+// wrapBlock 挂行契约的一部分，Palette 无"开而不闭"原语，故原始码留在壳层，
+// 由 agentTurn（经 TurnProjector）与 switchToSession 回放共用同一份。
+const USER_GUTTER = { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` };
+const ASSISTANT_GUTTER = { first: `  ${DIM}•${RESET} `, rest: '    ' };
+
 /** Composer prompt prefix; the cursor column math depends on its width. */
 // （COMPOSER_PREFIX / 宽度基准已移至 ./composer.ts——换行预算与光标列数都在那边。）
 
@@ -140,9 +130,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let sessionsDir = newSessionDir();
 
   // Visibility for nested subagent runs: the runner owns the live row. The
-  // callback closes over onSubagentProgressRef (declared below with the live
-  // row state); it is a plain ref so late calls always reach the current turn
-  // even though the runtime wiring was fixed at session start.
+  // callback closes over onSubagentProgressRef (routed into the turn
+  // projector once it exists); it is a plain ref so late calls always reach
+  // the current projector even though the wiring was fixed at session start.
   const rt = await createSessionRuntime({
     rootDir,
     config,
@@ -335,56 +325,22 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    */
   const commandPopupMatches = (): CommandSpec[] => (store.popupDismissed ? [] : filterCommands(store.input));
   let exitNow: (() => void) | undefined;
-  /**
-   * 工具行的统一宽度预算。wrapBlock 按 `cols-1-gutter` 折行，行构建器必须
-   * 裁进同一个预算——此前按 `cols-1` 裁，行恒比折行预算宽 6 列，
-   * ` · N 行 · T.Ts` 尾巴整段被顶成孤儿续行（截图里的 `5.9s`）。
-   */
-  const toolBudget = (): number => store.budget(screen.cols);
 
   const spinner = {
     start() {
       spinnerTimer ??= setInterval(() => {
         store.spinnerFrame += 1;
         // Animate the bullet of every running tool block (codex-style
-        // activity marker) and the composer-prefix spinner. After two
-        // seconds a live elapsed suffix appears so a slow command never
-        // looks frozen (Claude Code's bash progress counter).
+        // activity marker): the elapsed/interrupt suffixes, live output tail
+        // and the subagent live-row cycle are all projection — they live in
+        // projector.animateRunningTools (./tui/turn-projector.ts).
         const frame = SPINNER_FRAMES[store.spinnerFrame % SPINNER_FRAMES.length] ?? '•';
-        const now = Date.now();
         // 只在确有新增输出时推一个采样（门控在 TuiStore.sampleTps）——轮内的
         // 思考停顿 / 工具等待不推 0，否则连续几个 500ms 空窗会把 10 格窗口
         // 排空成"▁▁… 0"（用户看到的"偶尔清零"）。无新数据就只推进时钟、
         // 冻结窗口，速度表随真实产出左滚。
-        store.sampleTps(now);
-        // 被子代理活行接管的条目跳过重画——活行就是该 block 的当前真身，
-        // 再画待定行会把同一行打回「调用 subagent …」（去重契约）。
-        for (const [callId, entry] of store.toolBlocks) {
-          if (subagentLives.has(callId)) continue;
-          const elapsed = now - entry.startAt;
-          const suffix = store.interruptAt > 0
-            ? `${YELLOW} · 正在中断…${RESET}`
-            : elapsed >= TOOL_ELAPSED_AFTER_MS
-              ? `${DIM} · ${Math.floor(elapsed / 1000)}s${RESET}`
-              : '';
-          // 预算扣掉 suffix 的位（` · Ns` / ` · 正在中断…`），整行含后缀恒单行。
-          const lines = [toolStartLine(paint, entry.name, entry.rawArgs, frame, toolBudget() - styledWidth(suffix)) + suffix];
-          // Live output tail for streaming tools (bash): the last line of
-          // whatever the process has printed so far. Code-point slice keeps
-          // surrogate pairs intact.
-          const tailBuf = entry.tailBuf;
-          if (tailBuf !== undefined) {
-            const last = [...tailBuf].slice(-TOOL_TAIL_SHOW_CHARS).join('').split('\n').pop()?.trimEnd() ?? '';
-            if (last.length > 0) {
-              lines.push(`      ${DIM}└ ${fitTail(last, Math.max(10, toolBudget() - 9))}${RESET}`);
-            }
-          }
-          // Dirty-check: identical rows skip the replace (no wrap-cache churn).
-          if (entry.block.lines.join('\n') !== lines.join('\n')) store.replaceBlock(entry.block, lines);
-        }
-        // Live subagent rows cycle their glyph with the same tick — a child
-        // thinking between bursts never looks stalled (render is dirty-checked).
-        subagentLives.renderAll(frame);
+        store.sampleTps(Date.now());
+        projector.animateRunningTools(frame);
         // Background delegations pick up their rows here while the parent
         // streams; after the turn ends the self-managed interval takes over.
         bgSubagentRows.sync();
@@ -550,60 +506,28 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     maxTurns: config.maxTurns,
   });
 
-  // ---- subagent live view ------------------------------------------------
-  // A foreground subagent run is fully synchronous for the parent turn — the
-  // parent has no runAgent events of its own until the child settles, so
-  // without this the user stares at a frozen tool line for minutes. Core
-  // forwards nested lifecycle moments via SubagentToolOptions.onProgress; the
-  // takeover morph (pending line → ⧉ live → done line), the nested click-
-  // expand log and the abort fallback all live in SubagentLives
-  // (./tui/subagent-lives.ts), keyed by the parent tool CALL (labels are not
-  // unique).
-  const subagentLives = new SubagentLives({
+  // ---- turn projector ----------------------------------------------------
+  // The per-turn transcript state machine (stream smoothing, assistant/
+  // reasoning block lifecycle, tool-line morphs, subagent live rows, abort/
+  // error teardown) lives in ./tui/turn-projector.ts; the shell keeps only
+  // timers, terminal IO and the agent-loop plumbing. Reveal pacing is armed
+  // through a turn-local slot — the projector never owns setInterval.
+  let revealEnsurer: () => void = () => undefined;
+  const projector = new TurnProjector({
     store,
     paint,
-    budget: () => toolBudget(),
+    cols: () => screen.cols,
     now: () => Date.now(),
+    onNeedsReveal: () => revealEnsurer(),
+    gutters: { user: USER_GUTTER, assistant: ASSISTANT_GUTTER },
   });
-  // Latest foreground subagent call this turn; its nested progress rows map
-  // here (the runtime wiring predates any turn, so it goes through this ref).
-  // Reset on every tool result (a new subagent call re-pins it).
+  // The runtime wiring (createSessionRuntime / bashPluginArgs) predates any
+  // turn, so the nested progress feed goes through this ref — now a constant
+  // route into the projector, which pins the foreground subagent call itself.
   const onSubagentProgressRef: { current: (progress: SubagentProgress) => void } = {
     current: () => undefined,
   };
-
-  /** Remove the live reasoning block once it ends: the answer, not the
-   * thinking, is what the user came for — only the streaming tail is shown. */
-  const discardReasoning = (): void => {
-    if (store.reasoningBlock === undefined) return;
-    store.removeBlock(store.reasoningBlock);
-    store.reasoningBlock = undefined;
-  };
-
-  // ---- stream smoothing (codex-style typewriter) ------------------------
-  // SSE deltas arrive in network bursts; both streams queue into smoothers
-  // and a steady tick meters them into the visible blocks, so text flows
-  // instead of lurching. Buffers hold the ARRIVAL truth for semantics
-  // (assistantText/reasoningBuffer); only the DISPLAY is paced.
-  const assistantStream = new StreamSmoother();
-  const reasoningStream = new StreamSmoother();
-  /** Revealed reasoning text — the display mirror the live rows render. */
-  let reasoningShown = '';
-
-  /** Recompute the live reasoning rows from the revealed buffer (dirty-checked). */
-  const renderReasoningLive = (): void => {
-    const block = store.reasoningBlock;
-    if (block === undefined) return;
-    const parts = reasoningShown.split('\n');
-    const livePartial = (parts.pop() ?? '').replace(/\s+$/u, '').slice(-REASONING_MAX_PARTIAL_CHARS);
-    const done = parts.map((line) => line.trimEnd()).filter((line) => line.trim().length > 0);
-    const lines = reasoningLiveRow(paint, {
-      done,
-      partial: livePartial,
-      cols: screen.cols,
-    });
-    if (block.lines.join('\n') !== lines.join('\n')) store.replaceBlock(block, lines);
-  };
+  onSubagentProgressRef.current = (progress) => projector.subagentProgress(progress);
 
   async function agentTurn(userInput: string): Promise<void> {
     const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: userInput };
@@ -611,14 +535,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     await session.append(userMsg);
     // Spacing (Codex cell contract): store.blocks carry no manual separators —
     // flattenBlocks inserts the single blank row between non-empty store.blocks.
-    store.pushBlock(
-      [userInput],
-      {
-        first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`,
-        rest: `    ${BOLD}`,
-      },
-      'user',
-    );
+    projector.beginTurn(userInput);
 
     await maybePreCompact();
 
@@ -635,17 +552,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     store.tpsLastTokens = store.tpsTokens;
     store.tpsLastAt = Date.now();
     const startedAt = Date.now();
-    let assistantText = '';
-    let assistantOpen = false;
-    let assistantBlock: Block | undefined;
-    /** The blank separator block openAssistant pushes before each answer. */
-    let assistantSeparator: Block | undefined;
-    /** Incremental markdown renderer; re-created when a new answer opens. */
-    let md: MarkdownRenderer | undefined;
 
     // ---- steady-tick reveal (typewriter) --------------------------------
-    // Both streams drain here on a 30ms cadence; the timer parks itself when
-    // nothing is pending and re-arms on the next delta.
+    // The projector queues both streams; this turn-owned ticker drains them on
+    // a steady cadence and parks itself once nothing is pending (the next
+    // delta re-arms it through onNeedsReveal). Turn end always parks it.
     let revealTimer: NodeJS.Timeout | undefined;
     const stopReveal = (): void => {
       if (revealTimer !== undefined) {
@@ -653,174 +564,25 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         revealTimer = undefined;
       }
     };
-    const revealTick = (): void => {
-      const answer = assistantStream.take(REVEAL_MIN_CHARS, REVEAL_CATCH_UP_TICKS);
-      if (answer.length > 0 && assistantBlock !== undefined && md !== undefined) {
-        store.replaceBlock(assistantBlock, md.push(answer));
-      }
-      const thought = reasoningStream.take(REVEAL_MIN_CHARS, REVEAL_CATCH_UP_TICKS);
-      if (thought.length > 0) {
-        reasoningShown = (reasoningShown + thought).slice(-REASONING_LIVE_KEEP_CHARS);
-        renderReasoningLive();
-      }
-      if (assistantStream.length === 0 && reasoningStream.length === 0) stopReveal();
-      scheduleRender();
-    };
-    const ensureReveal = (): void => {
-      revealTimer ??= setInterval(revealTick, REVEAL_TICK_MS);
-    };
-    /** Reveal whatever answer text is still pending (turn/closure end). */
-    const flushAssistant = (): void => {
-      const chunk = assistantStream.flush();
-      if (chunk.length > 0 && assistantBlock !== undefined && md !== undefined) {
-        store.replaceBlock(assistantBlock, md.push(chunk));
-      }
-    };
-    /** Drop unrevealed text wholesale (abort / retry / turn teardown). */
-    const clearStreams = (): void => {
-      assistantStream.clear();
-      reasoningStream.clear();
-      reasoningShown = '';
-      stopReveal();
-    };
-
-    /**
-     * Reasoning, Codex-style: deltas accumulate in a memory buffer; the
-     * transcript keeps ONE transient row (buffer tail, or the first **bold**
-     * header once streamed in). Fold replaces it with a single "thought"
-     * summary — nothing grows mid-turn, nothing reflows.
-     */
-    /** Raw reasoning buffer: memory-only, never rendered line-by-line. */
-    let reasoningBuffer = '';
-    /** Paragraph-split mirror of the buffer: the click-expand detail. */
-    const reasoningFull: string[] = [];
-    let reasoningOpen = false;
-    /**
-     * 思考段收尾（codex 风格）：思考只在流式期间滚动可见，一旦结束——答案
-     * 开始、折叠调用、重试或中断——整块直接消失，转录里只留正式回答。
-     * 思考正文仍进内存 buffer（REASONING_FULL_MAX_CHARS 裁尾），但不落盘、
-     * 不留摘要行；此前折成的 `▸ 已思考 Ns` 摘要行按用户反馈取消。
-     */
-    const foldToSummary = (): boolean => {
-      const had = store.reasoningBlock !== undefined && reasoningBuffer.trim().length > 0;
-      reasoningBuffer = '';
-      reasoningFull.length = 0;
-      reasoningStream.clear();
-      reasoningShown = '';
-      discardReasoning();
-      return had;
+    revealEnsurer = (): void => {
+      revealTimer ??= setInterval(() => {
+        projector.tick();
+        if (!projector.hasPendingReveal()) stopReveal();
+        scheduleRender();
+      }, REVEAL_TICK_MS);
     };
     try {
       for await (const event of runAgent({
         ...agentRun(),
         // Live bash output lands in the running tool block's tail buffer; the
         // spinner tick renders it (never a render per chunk).
-        onToolProgress: (text) => {
-          const entry = store.activeToolId !== undefined ? store.toolBlocks.get(store.activeToolId) : undefined;
-          if (entry === undefined) return;
-          // Code-point slice (TuiStore.appendTail): a UTF-16 slice can split a
-          // surrogate pair.
-          store.appendTail(entry, text, TOOL_TAIL_KEEP_CHARS, TOOL_TAIL_SHOW_CHARS);
-        },
+        onToolProgress: (text) => projector.toolTail(text),
         signal: aborter.signal,
       })) {
-        await onAgentEvent(event, startedAt, {
-          appendAssistant(text: string) {
-            store.tpsTokens += estimateTextTokens(text);
-            if (!assistantOpen) {
-              // Whitespace-only leading deltas (models often emit blank lines
-              // before tool calls) must not anchor a blank answer block above
-              // the tool lines — skip them until real content arrives.
-              if (text.trim().length === 0) return;
-              assistantOpen = true;
-              assistantText = '';
-              assistantBlock = undefined;
-              store.genPhase = 'writing';
-              reasoningOpen = false;
-              store.closeReadGroup();
-              // Codex cell contract: margins belong to each cell. The thought
-              // summary folded below already carries its own trailing blank,
-              // so the answer opens with NO separator — flattenBlocks owns the
-              // single blank row between non-empty store.blocks.
-              foldToSummary();
-              md = createMarkdownRenderer(paint);
-              assistantSeparator = undefined;
-              // The block opens empty; the reveal tick fills it (smoothing).
-              assistantBlock = store.pushBlock([], { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
-            }
-            assistantText += text;
-            // Queue for the typewriter — arrival truth stays in assistantText.
-            assistantStream.push(text);
-            ensureReveal();
-          },
-          appendReasoning(text: string) {
-            store.tpsTokens += estimateTextTokens(text);
-            if (assistantOpen && assistantText.trim().length > 0) return;
-            if (assistantOpen && assistantText.trim().length === 0) {
-              assistantOpen = false;
-            }
-            store.genPhase = 'thinking';
-            if (!reasoningOpen) {
-              reasoningOpen = true;
-              reasoningBuffer = '';
-              reasoningFull.length = 0;
-              reasoningShown = '';
-              // Auto-expanded while store.streaming: the newest reasoning lines are
-              // visible live (tail-capped); completion folds them away. Every
-              // row sits at the text column (no marker on the first row — an
-              // unmarked first row at the marker column just reads as a
-              // stray outdented line).
-              store.pushBlock(['⋯'], { first: '    ', rest: '    ' }, 'reasoning');
-              store.reasoningBlock = store.blocks[store.blocks.length - 1];
-            }
-            // The buffer is the truth (memory-only detail); the DISPLAY is
-            // fed through the smoother — the live tail types out steadily
-            // instead of lurching with each network burst.
-            reasoningBuffer += text;
-            if (reasoningBuffer.length > REASONING_FULL_MAX_CHARS) {
-              reasoningBuffer = reasoningBuffer.slice(-REASONING_FULL_MAX_CHARS);
-            }
-            reasoningStream.push(text);
-            ensureReveal();
-          },
-          closeAssistant() {
-            // Nothing may stay unrevealed when the answer block closes.
-            flushAssistant();
-            if (assistantOpen && assistantText.trim().length === 0) {
-              // A whitespace-only answer (blank lines before tool calls)
-              // leaves no trace: drop the blank block and its separator by
-              // identity — tool store.blocks may sit after them by now.
-              if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
-              if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
-            }
-            assistantOpen = false;
-          },
-          foldReasoning() {
-            foldToSummary();
-            reasoningBuffer = '';
-            reasoningOpen = false;
-          },
-          resetAssistant() {
-            // A provider retry replays the answer from scratch: the partial
-            // text and its separator belong to the failed attempt — drop both.
-            if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
-            if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
-            assistantBlock = undefined;
-            assistantSeparator = undefined;
-            assistantOpen = false;
-            assistantText = '';
-            // 重试的失败尝试不留任何痕迹（包括思考摘要行）。
-            discardReasoning();
-            reasoningOpen = false;
-            reasoningBuffer = '';
-            reasoningFull.length = 0;
-            clearStreams();
-          },
-        });
+        await onAgentEvent(event, startedAt);
       }
     } catch (err) {
       spinner.stop();
-      store.closeReadGroup();
       // Repair the log before any surface work: the turn may have died with
       // assistant tool_calls unanswered — append synthesized results (same
       // copy core's abandonment synthesis uses) so the log keeps its
@@ -832,38 +594,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // network stalls — labeling those 已中断 hid the real error (and the
       // retry hint) behind a silent interrupt.
       if (aborter.signal.aborted) {
-        // An abort may leave a partial assistant block that was never closed
-        // (no 'message' event → never logged): drop it so the screen matches
-        // the log. Committed text (assistantOpen === false) is kept.
-        if (assistantOpen) {
-          if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
-          if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
-          assistantBlock = undefined;
-          assistantSeparator = undefined;
-          assistantOpen = false;
-          assistantText = '';
-        }
-        // An aborted turn reveals nothing more: pending text is dropped.
-        clearStreams();
-        store.pushBlock([`${YELLOW}  ■ 已中断${RESET}`]);
+        // 半截未提交的回答块、未揭示文本与「■ 已中断」行收在投影器里。
+        projector.handleFailure('abort');
       } else {
-        // A non-abort error mid-stream leaves a partial assistant block on
-        // screen with no matching 'done' in the log — discard it to keep
-        // screen and log in sync, then surface a dim hint.
-        if (assistantOpen) {
-          if (assistantBlock !== undefined) store.removeBlock(assistantBlock);
-          if (assistantSeparator !== undefined) store.removeBlock(assistantSeparator);
-          assistantBlock = undefined;
-          assistantSeparator = undefined;
-          assistantOpen = false;
-          assistantText = '';
-          store.pushBlock([`${DIM}  ⟳ 未完成的回答已丢弃（未写入会话日志）${RESET}`], TOOL_GUTTER);
-        }
-        clearStreams();
-        // API errors can be long: hang wrapped rows under the notice column.
-        store.pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], TOOL_GUTTER);
-        // A turn that died mid-work (not a user abort) deserves a ping too —
-        // but only when it ran long enough that the user may have walked away.
+        // 同上，另落「已丢弃」提示行与错误行；长任务出错补一个 toast。
+        projector.handleFailure('error', message);
         if (!exiting && Date.now() - startedAt >= LONG_TASK.errorMs) {
           notify('任务出错', message.slice(0, 120));
         }
@@ -871,22 +606,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     } finally {
       const idx = aborters.indexOf(aborter);
       if (idx >= 0) aborters.splice(idx, 1);
-      store.streaming = false;
-      store.interruptAt = 0;
-      store.genPhase = 'idle';
       spinner.stop();
-      // 中断/出错时活行等不到 tool_call_result 的改写：回退为静态行并清场，
-      // 否则「⧉ 子代理 … tok」的假活行会永远停在转录里。
-      subagentLives.abortAll();
-      onSubagentProgressRef.current = () => undefined;
-      // An abort/error never reaches the 'done' event: recycle the reasoning
-      // tail here so no transient line survives into history.
-      discardReasoning();
-      reasoningOpen = false;
-      reasoningBuffer = '';
-      reasoningShown = '';
-      clearStreams();
-      store.closeReadGroup();
+      // Park the ticker and detach the arm slot: an aborted turn reveals
+      // nothing more, and a late delta from a discarded run must not re-arm.
+      stopReveal();
+      revealEnsurer = () => undefined;
+      // 清场收进投影器：flags、假活行回退、思考尾行、未揭示文本、读组——
+      // 原先手撒在 catch 与 finally 两处的序列现在只有一个入口。
+      projector.endTurn();
       // Runtime invariant (NOVA_DEBUG): the live surface must stay equal to
       // the session log projection — "model-visible means logged".
       if (process.env['NOVA_DEBUG'] !== undefined) {
@@ -907,17 +634,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     scheduleRender();
   }
 
-  async function onAgentEvent(
-    event: AgentEvent,
-    startedAt: number,
-    io: {
-      appendAssistant(text: string): void;
-      appendReasoning(text: string): void;
-      closeAssistant(): void;
-      foldReasoning(): void;
-      resetAssistant(): void;
-    },
-  ): Promise<void> {
+  async function onAgentEvent(event: AgentEvent, startedAt: number): Promise<void> {
     switch (event.type) {
       case 'turn_start':
         break;
@@ -927,7 +644,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // dim audit line. The failed attempt's usage stays a valid anchor —
         // the retry sends the same prompt prefix.
         Object.assign(stats, event.stats);
-        io.resetAssistant();
+        projector.resetAssistant();
         store.genPhase = 'thinking'; // 重新请求在途，属于"生成中"
         store.pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], TOOL_GUTTER);
         break;
@@ -937,7 +654,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // went into the thinking stream. Previously this ended the run in
         // silence; now the loop re-issues, and this line explains why the
         // thinking appears to restart.
-        io.resetAssistant();
+        projector.resetAssistant();
         store.genPhase = 'thinking';
         store.pushBlock(
           [`${DIM}  ⟳ 空回复（finish=${event.finishReason}，输出疑似全部进入思考流），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`],
@@ -949,13 +666,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // Empty deltas do nothing: the assistant opens lazily on the first
         // non-blank delta, so reasoning phase is never reset by padding.
         if (event.text.length === 0) break;
-        io.appendAssistant(event.text);
+        projector.appendAssistant(event.text);
         break;
       case 'reasoning_delta':
-        io.appendReasoning(event.text);
+        projector.appendReasoning(event.text);
         break;
       case 'message': {
-        io.closeAssistant();
+        projector.closeAssistant();
         // Append EVERY assistant message, including content-less pure
         // tool-call turns: the log must mirror the model surface ("model
         // visible means logged"), or resume/compact projects orphan tool
@@ -964,26 +681,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         break;
       }
       case 'tool_call_start': {
-        // The reasoning phase ends when work begins; its transient tail is
-        // removed and a later reasoning burst starts a fresh block.
-        io.foldReasoning();
-        store.genPhase = 'tool';
-        // A new non-read call ends the current read-only group.
-        if (!isReadOnlyTool(event.call.name)) store.closeReadGroup();
-        // A foreground subagent pins `onSubagentProgressRef` at the current
-        // parent call so its live row maps back here when it renders.
-        onSubagentProgressRef.current =
-          event.call.name === 'subagent'
-            ? (progress) => subagentLives.progress(event.call.id, progress)
-            : () => undefined;
-        // Soft-wrapped continuation rows hang under the summary column.
-        const block = store.pushBlock(
-          [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', toolBudget())],
-          TOOL_GUTTER,
-        );
-        store.toolBlocks.set(event.call.id, { block, startAt: Date.now(), name: event.call.name, rawArgs: event.call.rawArgs });
-        store.activeToolId = event.call.id;
-        scheduleRender();
+        // 折叠思考尾行、genPhase、只读分组收尾、前台子代理的进度路由、待定行
+        // 块与 toolBlocks 登记——投影全部在 projector.toolStart 里。
+        projector.toolStart(event.call);
         break;
       }
       case 'tool_call_result': {
@@ -991,51 +691,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // A "Started background subagent …" result lands here: pin its live
         // row immediately instead of waiting for the next spinner tick.
         bgSubagentRows.sync();
-        const entry = store.toolBlocks.get(event.call.id);
-        if (store.activeToolId === event.call.id) store.activeToolId = undefined;
-        const duration = entry === undefined ? 0 : Math.max(0, Date.now() - entry.startAt);
-        const failed = isFailureContent(event.result.content);
-        onSubagentProgressRef.current = () => undefined;
-        if (isReadOnlyTool(event.call.name) && !failed) {
-          // codex "Explored": the read's own line disappears and its summary
-          // folds into the running group line.
-          subagentLives.settle(event.call.id, [], duration);
-          store.toolBlocks.delete(event.call.id);
-          if (entry !== undefined) store.removeBlock(entry.block);
-          // 宽预算存原文：公共目录折叠与最终排布都发生在 toolGroupLine 渲染时。
-          const raw = toolArgSummary(event.call.name, event.call.rawArgs, 400);
-          const summary = raw.length === 0 || raw === '{}' ? toolLabel(event.call.name) : raw;
-          if (store.readGroup === undefined) {
-            store.readGroup = {
-              entries: [summary],
-              startAt: entry === undefined ? Date.now() - duration : entry.startAt,
-              block: store.pushBlock([], TOOL_GUTTER),
-            };
-          } else {
-            store.readGroup.entries.push(summary);
-          }
-          store.replaceBlock(store.readGroup.block, [
-            toolGroupLine(paint, store.readGroup.entries, Date.now() - store.readGroup.startAt, toolBudget()),
-          ]);
-        } else {
-          store.closeReadGroup();
-          const lines = toolDoneLine(
-            paint,
-            event.call.name,
-            event.call.rawArgs,
-            event.result.content,
-            duration,
-            toolBudget(),
-          );
-          // Dissolve any live state BEFORE the toolBlocks entry drops: on the
-          // takeover path the block stays in place and carries the nested log
-          // as collapsed click-expand (done rows keep it — memory-only, same
-          // contract as reasoning); a fallback standalone block is removed.
-          subagentLives.settle(event.call.id, lines, duration);
-          store.toolBlocks.delete(event.call.id);
-          if (entry !== undefined) store.replaceBlock(entry.block, lines);
-          else store.pushBlock(lines);
-        }
+        // 完成行/只读分组归并/子代理活行收编——投影在 projector.toolResult。
+        projector.toolResult(event.call, event.result.content);
         break;
       }
       case 'usage':
@@ -1064,7 +721,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         sessCachedTokens += stats.cachedTokens;
         if (stats.cachedTokens > 0) cacheSeen = true;
         store.closeReadGroup();
-        io.foldReasoning();
+        projector.foldReasoning();
         // A normal completion ends at the reply — no per-turn stats line (the
         // status bar carries tokens; /session carries details). Only abnormal
         // stops get a visible marker.
@@ -1420,9 +1077,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     for (const m of restored) {
       if (m.role === 'user') {
         if (m.content.trimStart().startsWith('<')) continue;
-        store.pushBlock([m.content], { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` }, 'user');
+        store.pushBlock([m.content], USER_GUTTER, 'user');
       } else if (m.role === 'assistant' && m.content.trim().length > 0) {
-        store.pushBlock([m.content], { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
+        store.pushBlock([m.content], ASSISTANT_GUTTER, 'assistant');
       }
     }
     store.pushBlock([
