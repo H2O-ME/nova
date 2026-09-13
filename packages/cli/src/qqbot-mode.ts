@@ -1,14 +1,13 @@
 import path from 'node:path';
 import { newId, runAgent, Session, type AgentMessage, type UserMessage } from '@nova-agent/core';
-import { PermissionService } from '@nova-agent/plugins';
 import { createQqBotChannel, type Peer, type QqBotChannel } from '@nova-agent/qqbot';
-import { wrapAutoCompact } from './auto-compact.js';
+import { wrapHeadlessAutoCompact } from './auto-compact.js';
 import { compactSession } from './compact.js';
 import type { Config } from './config.js';
 import { createSessionRuntime } from './session-runtime.js';
 import { sessionsRoot } from './config.js';
 import { recordSessionWorkspace } from './sessions.js';
-import { agentRunBase, persistMissingToolResults } from './runner-shared.js';
+import { agentRunBase, createHeadlessPermission, persistMissingToolResults } from './runner-shared.js';
 import { createRunnerBookkeeping } from './runner-loop.js';
 import { palette, plainPalette } from './ui.js';
 
@@ -50,23 +49,22 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
     config,
     extraPlugins: [channel.plugin],
   });
-  // 无人值守：ask 一律拒绝 + never 策略确定性拒绝（exec 同款）。
-  const permission = new PermissionService(rt.approvalMode, async () => 'deny');
-  permission.setPolicy('never');
+  // 无人值守：ask 一律拒绝 + never 策略确定性拒绝（exec 同款，装配单源）。
+  const permission = createHeadlessPermission(rt.approvalMode);
   const hooks = rt.host.agentHooks(permission);
   hooksRef = hooks;
   rt.hooksRef.current = hooks;
-  wrapAutoCompact(hooks, {
-    enabled: config.autoCompactTokenLimit !== undefined,
-    limit: config.autoCompactTokenLimit ?? 0,
-    compact: async (msgs: AgentMessage[]) => {
+  // 接线单源在 wrapHeadlessAutoCompact（splice 原位契约 + 文案）；qqbot
+  // 压缩成功不播提示。
+  wrapHeadlessAutoCompact(hooks, {
+    limit: config.autoCompactTokenLimit,
+    compact: (msgs: AgentMessage[]) => {
       const target = current;
-      if (target === undefined) return;
-      const outcome = await compactSession({ client: rt.client, session: target.session, messages: msgs, trigger: 'auto' });
-      msgs.splice(0, msgs.length, ...outcome.surface);
+      if (target === undefined) return Promise.resolve({ surface: msgs.slice() });
+      return compactSession({ client: rt.client, session: target.session, messages: msgs, trigger: 'auto' });
     },
-    onError: (err) =>
-      console.log(paint.dim(`[qqbot] 自动压缩失败（继续运行）：${err instanceof Error ? err.message : String(err)}`)),
+    onError: (text) =>
+      console.log(paint.dim(`[qqbot] ${text}`)),
     onWarn: (text) => console.log(paint.dim(`[qqbot] ${text}`)),
   });
 

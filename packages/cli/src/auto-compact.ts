@@ -141,3 +141,36 @@ export function wrapAutoCompact(hooks: AgentHooks, opts: WrapAutoCompactOptions)
     return next;
   };
 }
+
+/**
+ * 无头 runner（exec / qqbot）的 wrapAutoCompact 接线单源：两条 run 分享
+ * enabled/limit 推导、msgs.splice 原位契约与「压缩失败（继续运行）」文案，
+ * 只有呈现 sink（--json 控制行 / console）由调用方注入。
+ */
+export function wrapHeadlessAutoCompact(
+  hooks: AgentHooks,
+  opts: {
+    limit: number | undefined;
+    compact: (messages: AgentMessage[]) => Promise<{ surface: AgentMessage[] }>;
+    /** 压缩成功的一行提示；省略则不播（qqbot 静默）。 */
+    onCompacted?: (text: string) => void;
+    onError: (text: string) => void;
+    onWarn: (text: string) => void;
+  },
+): void {
+  wrapAutoCompact(hooks, {
+    enabled: opts.limit !== undefined,
+    limit: opts.limit ?? 0,
+    compact: async (msgs: AgentMessage[]) => {
+      const outcome = await opts.compact(msgs);
+      // Apply the new surface IN PLACE: runAgent and the runner's `messages`
+      // reference the same array object, so a splice keeps every consumer in
+      // sync without plumbed return values.
+      msgs.splice(0, msgs.length, ...outcome.surface);
+      opts.onCompacted?.('已自动压缩上下文（超过阈值；会话日志保留完整历史）');
+    },
+    onError: (err: unknown) =>
+      opts.onError(`自动压缩失败（继续运行）：${err instanceof Error ? err.message : String(err)}`),
+    onWarn: opts.onWarn,
+  });
+}

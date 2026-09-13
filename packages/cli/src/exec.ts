@@ -6,15 +6,24 @@ import {
   type ChatProvider,
   type UserMessage,
 } from '@nova-agent/core';
-import { PermissionService, type ApprovalMode } from '@nova-agent/plugins';
-import { wrapAutoCompact } from './auto-compact.js';
+import type { ApprovalMode } from '@nova-agent/plugins';
+import { wrapHeadlessAutoCompact } from './auto-compact.js';
 import { compactSession } from './compact.js';
 import type { Config } from './config.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
+import { createHeadlessPermission } from './runner-shared.js';
 import { createRunnerBookkeeping, createTurnNotifier, isUserInterrupt } from './runner-loop.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
 import { agentRunBase, LONG_TASK, persistMissingToolResults, ToolTiming } from './runner-shared.js';
+
+/**
+ * `--json` 模式下 AgentEvent 之外的两类控制行（AGENTS.md §2 记载的 schema）。
+ * additive 演进：只新增成员/字段，不改变既有成员的形状。
+ */
+export type ExecControlEvent =
+  | { type: 'run_error'; message: string }
+  | { type: 'notice'; text: string };
 
 export interface ExecOptions {
   rootDir: string;
@@ -58,36 +67,24 @@ export async function runExec(opts: ExecOptions): Promise<void> {
 
   // Non-interactive: nobody can answer an approval prompt, so requests are denied.
   // (No audit trail: exec never asks, so no ask-path decisions exist to log.)
-  const permission = new PermissionService(rt.approvalMode, async () => 'deny');
-  // Headless runs cannot ask: 'never' denies every gated call deterministically,
-  // inside the service, without dispatching any asker.
-  permission.setPolicy('never');
+  const permission = createHeadlessPermission(rt.approvalMode);
   const hooks = host.agentHooks(permission);
   // Auto-compact BEYOND user-message boundaries: exec runs ONE runAgent over
   // the whole task, so the interactive runners' boundary checks can never
   // fire here. The beforeLLMCall hook is the per-turn interception point —
   // the only place a multi-turn headless task can shed context mid-run.
-  wrapAutoCompact(hooks, {
-    enabled: config.autoCompactTokenLimit !== undefined,
-    limit: config.autoCompactTokenLimit ?? 0,
-    compact: async (msgs: AgentMessage[]) => {
-      const outcome = await compactSession({ client: provider, session, messages: msgs, trigger: 'auto' });
-      // Apply the new surface IN PLACE: runAgent and the outer `messages`
-      // reference the same array object, so a splice keeps every consumer
-      // in sync without plumbed return values.
-      msgs.splice(0, msgs.length, ...outcome.surface);
-      if (json) write(`${JSON.stringify({ type: 'notice', text: '已自动压缩上下文（超过阈值；会话日志保留完整历史）' })}\n`);
-      else write(`${paint.dim('⟳ 已自动压缩上下文（超过阈值；会话日志保留完整历史）')}\n`);
-    },
-    onError: (err: unknown) => {
-      const text = `自动压缩失败（继续运行）：${err instanceof Error ? err.message : String(err)}`;
-      if (json) write(`${JSON.stringify({ type: 'notice', text })}\n`);
-      else write(`${paint.dim(`⟳ ${text}`)}\n`);
-    },
-    onWarn: (text: string) => {
-      if (json) write(`${JSON.stringify({ type: 'notice', text })}\n`);
-      else write(`${paint.dim(`⟳ ${text}`)}\n`);
-    },
+  // 接线单源在 wrapHeadlessAutoCompact（splice 原位契约 + 文案）。
+  const emitControl = (event: ExecControlEvent): void => {
+    if (json) write(`${JSON.stringify(event)}\n`);
+    else if (event.type === 'notice') write(`${paint.dim(`⟳ ${event.text}`)}\n`);
+  };
+  wrapHeadlessAutoCompact(hooks, {
+    limit: config.autoCompactTokenLimit,
+    compact: (msgs: AgentMessage[]) =>
+      compactSession({ client: provider, session, messages: msgs, trigger: 'auto' }),
+    onCompacted: (text) => emitControl({ type: 'notice', text }),
+    onError: (text) => emitControl({ type: 'notice', text }),
+    onWarn: (text) => emitControl({ type: 'notice', text }),
   });
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
@@ -133,12 +130,12 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     // 真的触发为准——错误文案含 "aborted" 的网络超时不算用户中断，照常走
     // run_error；只有 SIGINT 真正解绕才归类为「已中断」（退出码 130，非失败）。
     if (isUserInterrupt(interrupt.signal)) {
-      if (json) write(`${JSON.stringify({ type: 'notice', text: '任务已中断（SIGINT）；会话日志保留到中断前' })}\n`);
+      if (json) emitControl({ type: 'notice', text: '任务已中断（SIGINT）；会话日志保留到中断前' });
       else write(`${paint.yellow('已中断')}\n`);
       process.exitCode = 130;
       return;
     }
-    if (json) write(`${JSON.stringify({ type: 'run_error', message })}\n`);
+    if (json) emitControl({ type: 'run_error', message });
     else console.error(`出错：${message}`);
     turnNotifier.error(execStartedAt, message);
     process.exitCode = 1;

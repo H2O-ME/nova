@@ -52,6 +52,17 @@ export const LONG_TASK = {
   execDoneMs: EXEC_DONE_NOTIFY_MS,
 } as const;
 
+/**
+ * 无头 runner（exec / qqbot）的 never 审批装配单源：无人值守下没人能回答
+ * 审批提示——asker 一律 deny，'never' 策略在服务内确定性拒绝（连询问器都
+ * 不派发）。此前 exec 与 qqbot 各写一份逐行等价的装配。
+ */
+export function createHeadlessPermission(approvalMode: ApprovalMode): PermissionService {
+  const permission = new PermissionService(approvalMode, async () => 'deny');
+  permission.setPolicy('never');
+  return permission;
+}
+
 /** Approval service + log-only audit trail (survives resume via the log). */
 export function createApprovalService(
   approvalMode: ApprovalMode,
