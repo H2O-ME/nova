@@ -87,6 +87,22 @@ export function compactionSummaryMessage(summary: string, seq: number, at: numbe
   };
 }
 
+/**
+ * The ONE implementation of "surface after this compaction" = kept originals
+ * + the synthesized summary message. The live compaction path (cli/compact)
+ * and the replay projection (deriveMessages) both go through here, so the
+ * two never drift — previously the live path resolved `keep` positionally
+ * while the projection preferred `keepIds`, and the "model-visible means
+ * logged" invariant leaned on a dev-only divergence check.
+ */
+export function compactionSurface(
+  evt: Extract<SessionEvent, { type: 'compaction/summary' }>,
+  all: AgentMessage[],
+  seq: number,
+): AgentMessage[] {
+  return [...resolveKeptMessages(evt, all), compactionSummaryMessage(evt.summary, seq, evt.at)];
+}
+
 function parseEventLine(line: string): SessionEvent {
   return JSON.parse(line) as SessionEvent;
 }
@@ -216,9 +232,9 @@ export class Session {
       }
       if (evt.type === 'compaction/summary') {
         // Replace the whole surface: kept originals (context fragment, recent
-        // user messages) plus the synthesized summary message.
-        const kept = resolveKeptMessages(evt, all);
-        surface = [...kept, compactionSummaryMessage(evt.summary, this.events.indexOf(evt), evt.at)];
+        // user messages) plus the synthesized summary message — the SAME
+        // construction the live compaction path uses (compactionSurface).
+        surface = compactionSurface(evt, all, this.events.indexOf(evt));
       }
     }
     return surface;

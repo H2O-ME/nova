@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { AgentMessage, ChatProvider, ChatRequest, UserMessage } from '@nova-agent/core';
+import type { AgentMessage, ChatProvider, ChatRequest, SessionEvent, UserMessage } from '@nova-agent/core';
 import {
-  compactionSummaryMessage,
+  compactionSurface,
   estimateMessageTokens,
   newId,
   Session,
@@ -273,7 +273,7 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
     const shadowedTokenCount = messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
 
     const at = Date.now();
-    const seq = await session.appendEvent({
+    const evt: Extract<SessionEvent, { type: 'compaction/summary' }> = {
       type: 'compaction/summary',
       summary: body,
       keep,
@@ -282,11 +282,11 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
       keepIds: keep.map((i) => all[i]?.id).filter((id): id is string => id !== undefined),
       shadowedTokenCount,
       at,
-    });
-    const surface = [
-      ...keep.map((i) => all[i]).filter((msg): msg is AgentMessage => msg !== undefined),
-      compactionSummaryMessage(body, seq, at),
-    ];
+    };
+    const seq = await session.appendEvent(evt);
+    // Surface 构造与投影同源（core 的 compactionSurface，keepIds 优先）——
+    // 活路径与 resume 投影不再各写一份公式。
+    const surface = compactionSurface(evt, all, seq);
     await session.appendEvent({ type: 'compaction/end', at: Date.now() });
     return { surface, summary: body, retained: recent.length, ...(archivePath !== undefined ? { archivePath } : {}) };
   } catch (err) {
