@@ -1,5 +1,19 @@
 # @nova-agent/tui-view
 
+## 0.2.1
+
+### Patch Changes
+
+- f364394: 后台子代理可见性 + 内置工具对 shell 的信息量反超：`JobRegistry` 快照新增 `startedAt`/`progress`（peek，不占模型输出游标），后台 subagent 的嵌套活动（N tools · 最近调用）喂入 TUI——每个运行中的后台委派钉一行 `⧉ 子代理 label · Ns · …`（自带刷新 interval，活过父轮仍更新），结束原位改写为状态+用量行。`list_dir` 输出携带文件字节数（不再输给 `ls -la`）；bash 子进程注入 `PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8`（Windows 下 python heredoc 免手写编码样板）；系统提示的 `run_code` 引用改为模式中性表述。
+- f364394: 思考流式尾行去掉轮换动画字符：最后一行显示纯暗色正文，不再前缀 braille 码字（"生成中"由 composer 前缀 spinner 表达）；spinner tick 对 reasoning 活窗口的周期性重绘随之移除。
+- c851e03: REPL 补齐 `/mode`：命令目录（COMMAND_SPECS）一直声明该命令，readline 实现却没有对应 case，输入 `/mode` 落「未知命令」。现在 repl 输出与 TUI 同语义的三态说明（普通 / PTC / 混合，❯ 标当前模式，取自 config 的 `tools.code.mode`）；`CODE_MODE_HINT` 从 TUI 壳层闭包常量提升为 tui-view 导出（TUI `/mode` 行为不变）。
+- f364394: 开屏页重设计：splash 顶部加 ASCII figlet 版字 logo（窄终端自动省略），信息盒下新增交互式执行模式选择块——↑↓/滚轮移动、Enter 确认、Esc 保持当前、直接打字立即开始（首条提交自动塌缩为确认行）；Node < 22.19 时 PTC/混合行置灰并在移动中跳过；选择器为纯视图函数 + 按键责任链新层，块原位塌缩不留交互残骸；`toggleCodeMode` 抽出 `setCodeMode` 供 Tab 循环与开屏选择共用。
+- Updated dependencies [f364394]
+- Updated dependencies [f364394]
+- Updated dependencies [f364394]
+  - @nova-agent/core@0.2.1
+  - @nova-agent/tui@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes

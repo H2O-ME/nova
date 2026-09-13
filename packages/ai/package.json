@@ -1,6 +1,6 @@
 {
   "name": "@nova-agent/ai",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "OpenAI-compatible streaming client: hand-rolled fetch + SSE, retry, usage extraction.",
   "exports": {

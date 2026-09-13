@@ -1,5 +1,32 @@
 # @nova-agent/cli
 
+## 0.2.1
+
+### Patch Changes
+
+- f364394: 后台子代理可见性 + 内置工具对 shell 的信息量反超：`JobRegistry` 快照新增 `startedAt`/`progress`（peek，不占模型输出游标），后台 subagent 的嵌套活动（N tools · 最近调用）喂入 TUI——每个运行中的后台委派钉一行 `⧉ 子代理 label · Ns · …`（自带刷新 interval，活过父轮仍更新），结束原位改写为状态+用量行。`list_dir` 输出携带文件字节数（不再输给 `ls -la`）；bash 子进程注入 `PYTHONUTF8=1`/`PYTHONIOENCODING=utf-8`（Windows 下 python heredoc 免手写编码样板）；系统提示的 `run_code` 引用改为模式中性表述。
+- f364394: 压缩保真与全文存档：摘要提示词去掉 300 字上限改 codex 七节结构（任务/进展/决策与原因/现状/问题/下一步/引用），摘要输入工具结果截断 2000→4000 字符，保留预算 20k→32k 字符并纳入纯文本 assistant 回复（`selectRecentMessages`）；压缩前完整 transcript 未截断存档至 `~/.nova/cache/tool-outputs/<sessionId>/pre-compact-*.txt`（trusted read root 免审批），摘要尾部附 `<archive>` 指针供模型按需 read_file 回查，增量压缩链式引用更早存档。TUI 压缩期间摘要输出经 `onDelta` 喂入 tps 速度表，仪表不再冻结。
+- f364394: 空补全重试，根除主循环静默停摆：content 为空、无工具调用、带 finish_reason 的补全（推理型 provider 把全部输出流进 reasoning_content 的病理）旧版会推进一条空 assistant 消息并以 complete 静默收场——用户看到思考停止后 agent 无声终止、无任何报错。现在 runAgent 视其为 provider 病理，自动重试同一请求 2 次（请求每轮构建一次、前缀稳定缓存友好；耗尽抛错并回队 job 通知），新增 `empty_completion` 事件（--json 事件流 additive），TUI/REPL 落「⟳ 空回复…自动重试 a/N」提示行。
+- aef3b56: `nova exec` 回补中断归类（ffdc595 契约漏了第三个 runner）：SIGINT 真正解绕运行时不再误发 `run_error`（退出码 1）——现在 `--json` 下发 `{"type":"notice","text":"任务已中断（SIGINT）…"}`、人类输出亮「已中断」、进程退出码 130（惯例 SIGINT 语义）；错误文案含 "aborted" 的网络超时仍照常走 `run_error` + 退出码 1，与 repl/TUI 的「归类以本轮 signal 是否触发为准」对齐。
+- c851e03: REPL 补齐 `/mode`：命令目录（COMMAND_SPECS）一直声明该命令，readline 实现却没有对应 case，输入 `/mode` 落「未知命令」。现在 repl 输出与 TUI 同语义的三态说明（普通 / PTC / 混合，❯ 标当前模式，取自 config 的 `tools.code.mode`）；`CODE_MODE_HINT` 从 TUI 壳层闭包常量提升为 tui-view 导出（TUI `/mode` 行为不变）。
+- 178f7b6: 四 runner（TUI/REPL/exec/qqbot）的事件消费簿记收敛为单源 `runner-loop.ts`：会话日志追加（message/tool_call_result/turn_aborted）、usage/锚点簿记（含 prompt_tokens=0 护栏）、中断归类（`isUserInterrupt`，ffdc595 契约）与完成/出错 toast（`createTurnNotifier`）此前各 runner 一份（持久化 switch ×4、锚点归零 ×6、toast ×3），每次修复需同步改四处。附带修复：qqbot 模式的最终 assistant 回复此前漏写会话日志（违反 "model-visible means logged"，resume 后不可见），现在随簿记统一落盘。
+- f364394: 开屏页重设计：splash 顶部加 ASCII figlet 版字 logo（窄终端自动省略），信息盒下新增交互式执行模式选择块——↑↓/滚轮移动、Enter 确认、Esc 保持当前、直接打字立即开始（首条提交自动塌缩为确认行）；Node < 22.19 时 PTC/混合行置灰并在移动中跳过；选择器为纯视图函数 + 按键责任链新层，块原位塌缩不留交互残骸；`toggleCodeMode` 抽出 `setCodeMode` 供 Tab 循环与开屏选择共用。
+- 91f0832: 子代理完成行恢复点击展开：M7.10 的接管式活行去重引入回归——`tool_call_result` 先把待定条目从 toolBlocks 清空、再判"活行是否即工具行本体"恒不成立，接管行被移除后由完成行重推，`detail`（嵌套执行日志）随之丢失，子代理完成行点开无物。投影器化（M7.12）时 `SubagentLives.settle()` 改为在条目尚存时判定接管并保持块原位，完成行重新随详情收起可展开（内存态，resume 后不可展开——与 reasoning 详情同一契约）。
+- f364394: TUI 压缩可取消 + 进度可见：`/compact` 与自动压缩期间按 Esc/Ctrl+C 现在会中止摘要请求（与 REPL 的 compactAbort 对齐，此前 TUI 是唯一无法取消压缩的入口，卡住的压缩只能杀进程）；「正在压缩…」等待行实时显示已耗时，成功/取消行附带耗时。压缩请求的 AbortController 会在退出时一并清理，不再吊住进程。
+- 298bd36: TUI 会话切换（`/session` 选择器）的回放面过同一 markdown 渲染：此前实时流式回答经 markdown 渲染（粗体/标题/列表/围栏），切回历史会话却推裸文本——同一回答两套观感。现在回放的 assistant 消息走 `renderMarkdownLite`，实时与 resume 长得一样。
+- Updated dependencies [f364394]
+- Updated dependencies [f364394]
+- Updated dependencies [f364394]
+- Updated dependencies [c851e03]
+- Updated dependencies [f364394]
+- Updated dependencies [f364394]
+  - @nova-agent/core@0.2.1
+  - @nova-agent/plugins@0.2.1
+  - @nova-agent/tui-view@0.2.1
+  - @nova-agent/ai@0.2.1
+  - @nova-agent/qqbot@0.2.1
+  - @nova-agent/tui@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes

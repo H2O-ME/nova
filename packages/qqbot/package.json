@@ -1,6 +1,6 @@
 {
   "name": "@nova-agent/qqbot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "QQ 机器人接入插件（腾讯机器人开放平台 WebSocket 通道）：入站消息 → agent 回复 → REST 被动回复。作为第三方插件编写示范，只依赖 core/plugins 公共 API。",
   "exports": {

@@ -1,5 +1,14 @@
 # @nova-agent/ai
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [f364394]
+- Updated dependencies [f364394]
+- Updated dependencies [f364394]
+  - @nova-agent/core@0.2.1
+
 ## 0.2.0
 
 ### Patch Changes
