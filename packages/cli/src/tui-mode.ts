@@ -97,11 +97,9 @@ export interface TuiOptions {
   approvalOverride?: ApprovalMode;
 }
 
+// 仅剩 gutter 前缀的原始 ANSI（尾部开态样式是 wrapBlock 挂行契约，见下）。
 const DIM = '\x1b[2m';
 const CYAN = '\x1b[36m';
-const GREEN = '\x1b[32m';
-const YELLOW = '\x1b[33m';
-const RED = '\x1b[31m';
 const BOLD = '\x1b[1m';
 const RESET = '\x1b[0m';
 
@@ -184,7 +182,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     workspace: {
       onChange: async (dir: string) => {
         await applyWorkspace(dir);
-        store.pushBlock([`${DIM}  ✓ 工作区已切换到 ${dir}${RESET}`]);
+        store.pushBlock([paint.dim(`  ✓ 工作区已切换到 ${dir}`)]);
         scheduleRender();
       },
     },
@@ -410,7 +408,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   };
   const compactElapsedSecs = (): number => Math.max(1, Math.round((Date.now() - compactStartedAt) / 1000));
   const compactWaitLine = (mid: string): string =>
-    `${YELLOW}  ⋯ ${mid}…${RESET} ${DIM}· ${compactElapsedSecs()}s${RESET}`;
+    `${paint.yellow(`  ⋯ ${mid}…`)} ${paint.dim(`· ${compactElapsedSecs()}s`)}`;
   const startCompactWait = (mid: string): void => {
     compactStartedAt = Date.now();
     compactBlock = store.pushBlock([compactWaitLine(mid)]);
@@ -476,17 +474,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       success: (outcome) => {
         endCompactWait();
         store.pushBlock([
-          `${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s${RESET}`,
+          `${paint.green('  ✓ 已压缩')} ${paint.dim(`· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s`)}`,
         ]);
       },
       failure: (err, where) => {
         endCompactWait();
         if (compactCancelled) {
-          store.pushBlock([`${YELLOW}  ■ 已取消压缩${RESET}`], TOOL_GUTTER);
+          store.pushBlock([paint.yellow('  ■ 已取消压缩')], TOOL_GUTTER);
           return;
         }
         store.pushBlock(
-          [`${RED}  ✗ ${where === 'pre' ? '预压缩' : '自动压缩'}失败：${err instanceof Error ? err.message : String(err)}${RESET}`],
+          [paint.red(`  ✗ ${where === 'pre' ? '预压缩' : '自动压缩'}失败：${err instanceof Error ? err.message : String(err)}`)],
           TOOL_GUTTER,
         );
       },
@@ -618,7 +616,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // the session log projection — "model-visible means logged".
       if (process.env['NOVA_DEBUG'] !== undefined) {
         const divergence = surfaceDivergence(session, messages);
-        if (divergence !== undefined) store.pushBlock([`${RED}  [invariant] ${divergence}${RESET}`]);
+        if (divergence !== undefined) store.pushBlock([paint.red(`  [invariant] ${divergence}`)]);
       }
       // Long turns end while the user is elsewhere: the toast is the "come
       // back, it's done" cue (short turns stay silent — that's just spam).
@@ -646,7 +644,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         Object.assign(stats, event.stats);
         projector.resetAssistant();
         store.genPhase = 'thinking'; // 重新请求在途，属于"生成中"
-        store.pushBlock([`${DIM}  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`], TOOL_GUTTER);
+        store.pushBlock([paint.dim(`  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…`)], TOOL_GUTTER);
         break;
       }
       case 'empty_completion': {
@@ -657,7 +655,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         projector.resetAssistant();
         store.genPhase = 'thinking';
         store.pushBlock(
-          [`${DIM}  ⟳ 空回复（finish=${event.finishReason}，输出疑似全部进入思考流），自动重试 ${event.attempt}/${event.maxRetries}…${RESET}`],
+          [paint.dim(`  ⟳ 空回复（finish=${event.finishReason}，输出疑似全部进入思考流），自动重试 ${event.attempt}/${event.maxRetries}…`)],
           TOOL_GUTTER,
         );
         break;
@@ -729,9 +727,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           const kind: StopKind = event.stopReason;
           store.pushBlock([statusLine(paint, kind, stats, Date.now() - startedAt)]);
           if (kind === 'max_turns') {
-            store.pushBlock([
-              `${DIM}${maxTurnsHint(config)}${RESET}`,
-            ]);
+            store.pushBlock([paint.dim(maxTurnsHint(config))]);
           }
         }
         break;
@@ -750,7 +746,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   const noteModeSwitchBlocked = (): void => {
     store.pushBlock([
-      `${DIM}  执行模式只能在对话开始前切换（当前 ${codeModeLabel(codeMode)}，/mode 查看说明）${RESET}`,
+      paint.dim(`  执行模式只能在对话开始前切换（当前 ${codeModeLabel(codeMode)}，/mode 查看说明）`),
     ]);
   };
 
@@ -770,7 +766,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   async function setCodeMode(next: PtcMode): Promise<boolean> {
     if (next !== 'native' && !codeRuntimeAvailable()) {
       store.pushBlock([
-        `${YELLOW}  ${codeModeLabel(next)}模式需要 Node ≥ 22.19（当前 ${process.version} 不支持类型剥离）${RESET}`,
+        paint.yellow(`  ${codeModeLabel(next)}模式需要 Node ≥ 22.19（当前 ${process.version} 不支持类型剥离）`),
       ]);
       return false;
     }
@@ -784,15 +780,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // 且 pristine 判据会随首条消息失效——没有这行用户以为 Tab 失灵）。
       // 开屏选择器的确认不推这行——选择块原位塌缩成确认行，不重复。
       if (store.modeSelect === undefined) {
-        store.pushBlock([`${DIM}  执行模式：${codeModeLabel(prev)} → ${codeModeLabel(next)}${RESET}`]);
+        store.pushBlock([paint.dim(`  执行模式：${codeModeLabel(prev)} → ${codeModeLabel(next)}`)]);
       }
       return true;
     } catch (err) {
       // activate() 在 next host 上抛错：host/hooks 还没换，回滚模式即可。
       codeMode = prev;
       store.pushBlock([
-        `${RED}  ✗ 模式切换失败：${err instanceof Error ? err.message : String(err)}${RESET}`,
-        `${DIM}  已保持${codeModeLabel(prev)}模式${RESET}`,
+        paint.red(`  ✗ 模式切换失败：${err instanceof Error ? err.message : String(err)}`),
+        paint.dim(`  已保持${codeModeLabel(prev)}模式`),
       ]);
       return false;
     } finally {
@@ -865,15 +861,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         exitApp();
         return true;
       case '/help': {
-        const lines = COMMAND_SPECS.map((spec) => `${DIM}  ${padDisplay(spec.usage, 24)}${spec.description}${RESET}`);
-        store.pushBlock([`  ${BOLD}命令${RESET}`, ...lines]);
+        const lines = COMMAND_SPECS.map((spec) => paint.dim(`  ${padDisplay(spec.usage, 24)}${spec.description}`));
+        store.pushBlock([`  ${paint.bold('命令')}`, ...lines]);
         return true;
       }
       case '/model': {
         try {
           const models = await fetchModelList();
           if (models.length === 0) {
-            store.pushBlock([`${DIM}  站点未返回任何模型${RESET}`]);
+            store.pushBlock([paint.dim('  站点未返回任何模型')]);
           } else {
             // Interactive picker overlay (↑↓ Enter Esc), not a history dump.
             const current = models.indexOf(client.model);
@@ -881,7 +877,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             scheduleRender();
           }
         } catch (err) {
-          store.pushBlock([`${RED}  模型列表获取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+          store.pushBlock([paint.red(`  模型列表获取失败：${err instanceof Error ? err.message : String(err)}`)]);
         }
         return true;
       }
@@ -889,26 +885,26 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const idx = APPROVAL_ORDER.indexOf(permission.approvalMode);
         const next = APPROVAL_ORDER[(idx + 1) % APPROVAL_ORDER.length] ?? 'read-only';
         permission.setMode(next);
-        store.pushBlock([`${DIM}  审批档位：${approvalLabel(next)}${RESET}`]);
+        store.pushBlock([paint.dim(`  审批档位：${approvalLabel(next)}`)]);
         return true;
       }
       case '/mode': {
         store.pushBlock([
-          `  ${BOLD}执行模式${RESET} ${DIM}· 仅对话开始前可按 Tab 循环切换${RESET}`,
+          `  ${paint.bold('执行模式')} ${paint.dim('· 仅对话开始前可按 Tab 循环切换')}`,
           ...(['native', 'ptc', 'both'] as PtcMode[]).map((m) =>
             m === codeMode
-              ? `  ${CYAN}${BOLD}❯ ${padDisplay(codeModeLabel(m), 6)}${RESET} ${CODE_MODE_HINT[m]}`
-              : `    ${padDisplay(codeModeLabel(m), 6)} ${DIM}${CODE_MODE_HINT[m]}${RESET}`,
+              ? `  ${paint.cyan(paint.bold(`❯ ${padDisplay(codeModeLabel(m), 6)}`))} ${CODE_MODE_HINT[m]}`
+              : `    ${padDisplay(codeModeLabel(m), 6)} ${paint.dim(CODE_MODE_HINT[m])}`,
           ),
-          `${DIM}  模式决定工具集呈现方式；切换立即生效（usage 锚点自动重置）${RESET}`,
+          paint.dim('  模式决定工具集呈现方式；切换立即生效（usage 锚点自动重置）'),
         ]);
         return true;
       }
       case '/plugins': {
         const lines = host.toolEntries.map(
-          (entry) => `${DIM}  插件=${entry.plugin} · 工具=${entry.tool.name} · 权限=${permissionLabel(entry.permission)}${RESET}`,
+          (entry) => paint.dim(`  插件=${entry.plugin} · 工具=${entry.tool.name} · 权限=${permissionLabel(entry.permission)}`),
         );
-        store.pushBlock([`  ${BOLD}插件与工具${RESET}`, ...lines]);
+        store.pushBlock([`  ${paint.bold('插件与工具')}`, ...lines]);
         return true;
       }
       case '/session': {
@@ -921,17 +917,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           ? `阈值 ${humanTokens(config.autoCompactTokenLimit)} tok · 上轮 ${humanTokens(lastPromptTokens)} tok`
           : '未启用';
         store.pushBlock([
-          `  ${BOLD}会话${RESET}${DIM} · nova v${cliVersion()} · 模式 ${codeModeLabel(codeMode)}${RESET}`,
-          `${DIM}  文件 ${session.file}${RESET}`,
-          `${DIM}  消息 ${messages.length} 条 · 日志事件 ${session.events.length} 条 · ${stats.turns} 轮${RESET}`,
-          `${DIM}  输入 ${stats.promptTokens} tok（缓存 ${hit}%${lastHit !== null ? ` · 上轮 ${lastHit}%` : ''}）· 输出 ${stats.completionTokens} tok${RESET}`,
-          `${DIM}  缓存浪费 ${stats.missTokens} tok · 超噪声底轮次 ${stats.missTurns}${RESET}`,
-          `${DIM}  自动压缩 ${compact}${RESET}`,
-          `  ${BOLD}模型${RESET} ${client.model}`,
+          `  ${paint.bold('会话')}${paint.dim(` · nova v${cliVersion()} · 模式 ${codeModeLabel(codeMode)}`)}`,
+          paint.dim(`  文件 ${session.file}`),
+          paint.dim(`  消息 ${messages.length} 条 · 日志事件 ${session.events.length} 条 · ${stats.turns} 轮`),
+          paint.dim(`  输入 ${stats.promptTokens} tok（缓存 ${hit}%${lastHit !== null ? ` · 上轮 ${lastHit}%` : ''}）· 输出 ${stats.completionTokens} tok`),
+          paint.dim(`  缓存浪费 ${stats.missTokens} tok · 超噪声底轮次 ${stats.missTurns}`),
+          paint.dim(`  自动压缩 ${compact}`),
+          `  ${paint.bold('模型')} ${client.model}`,
           currentModelMeta !== undefined
-            ? `${DIM}  ${formatModelMeta(currentModelMeta)}（models.dev · ${currentModelMeta.provider}）${RESET}`
-            : `${DIM}  元数据未命中（离线或目录没有该模型；可配 provider.contextWindow 兜底）${RESET}`,
-          `${DIM}  ${contextLegend(paint, contextBreakdown(contextView()).segments.filter((s) => s.tokens > 0))}${RESET}`,
+            ? paint.dim(`  ${formatModelMeta(currentModelMeta)}（models.dev · ${currentModelMeta.provider}）`)
+            : paint.dim('  元数据未命中（离线或目录没有该模型；可配 provider.contextWindow 兜底）'),
+          paint.dim(`  ${contextLegend(paint, contextBreakdown(contextView()).segments.filter((s) => s.tokens > 0))}`),
         ]);
         try {
           const entries = await listRecentSessions(sessionsRoot(), SESSION_LIST_LIMIT);
@@ -943,7 +939,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             scheduleRender();
           }
         } catch (err) {
-          store.pushBlock([`${RED}  ✗ 会话列表读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+          store.pushBlock([paint.red(`  ✗ 会话列表读取失败：${err instanceof Error ? err.message : String(err)}`)]);
         }
         return true;
       }
@@ -963,7 +959,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         anchorMsgCount = 0;
         resetSessionCache();
         await seedContextFragment(session, messages);
-        store.pushBlock([`${DIM}  新会话：${session.file}${RESET}`]);
+        store.pushBlock([paint.dim(`  新会话：${session.file}`)]);
         return true;
       }
       case '/compact': {
@@ -972,14 +968,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           const outcome = await runCompact('manual');
           endCompactWait();
           store.pushBlock([
-            `${GREEN}  ✓ 已压缩${RESET} ${DIM}· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s${RESET}`,
+            `${paint.green('  ✓ 已压缩')} ${paint.dim(`· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s`)}`,
           ]);
         } catch (err) {
           endCompactWait();
           if (compactCancelled) {
-            store.pushBlock([`${YELLOW}  ■ 已取消压缩${RESET}`], TOOL_GUTTER);
+            store.pushBlock([paint.yellow('  ■ 已取消压缩')], TOOL_GUTTER);
           } else {
-            store.pushBlock([`${RED}  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
+            store.pushBlock([paint.red(`  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}`)], TOOL_GUTTER);
           }
         }
         return true;
@@ -989,16 +985,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         modeSelectBlock = undefined;
         store.modeSelect = undefined;
         store.clearView();
-        store.pushBlock([`${DIM}  （已清空显示，会话记录保留在磁盘）${RESET}`]);
+        store.pushBlock([paint.dim('  （已清空显示，会话记录保留在磁盘）')]);
         return true;
       }
       case '/init': {
         const file = await writeAgentsMd(rootDir);
-        store.pushBlock([`${GREEN}  已写入 ${path.basename(file)}${RESET}`]);
+        store.pushBlock([paint.green(`  已写入 ${path.basename(file)}`)]);
         return true;
       }
       default:
-        store.pushBlock([`${RED}  未知命令：${cmd}${RESET} ${DIM}（输入 /help 查看命令）${RESET}`]);
+        store.pushBlock([`${paint.red(`  未知命令：${cmd}`)} ${paint.dim('（输入 /help 查看命令）')}`]);
         return true;
     }
   }
@@ -1010,7 +1006,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    */
   async function switchToSession(entry: { file: string }): Promise<void> {
     if (store.streaming || store.compactRunning) {
-      store.pushBlock([`${YELLOW}  当前轮未结束：先 Esc 中断，再切换会话${RESET}`]);
+      store.pushBlock([paint.yellow('  当前轮未结束：先 Esc 中断，再切换会话')]);
       scheduleRender();
       return;
     }
@@ -1018,7 +1014,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     try {
       loaded = await Session.open(entry.file);
     } catch (err) {
-      store.pushBlock([`${RED}  ✗ 会话读取失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+      store.pushBlock([paint.red(`  ✗ 会话读取失败：${err instanceof Error ? err.message : String(err)}`)]);
       scheduleRender();
       return;
     }
@@ -1028,7 +1024,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // Corruption tolerance reported at open: surface it like the REPL does —
     // a skipped damaged row or a repaired tail is worth knowing about.
     for (const warning of loaded.warnings) {
-      store.pushBlock([`${YELLOW}  ⚠ ${warning}${RESET}`]);
+      store.pushBlock([paint.yellow(`  ⚠ ${warning}`)]);
     }
     // Rebind the cache-affinity identity and drop the old usage anchor (same
     // reasoning as /new): the restored history changes the prompt prefix, so
@@ -1057,13 +1053,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
     };
     if (target !== undefined && inNovaData(target)) {
-      workspaceLine = `${YELLOW}  ⚠ 会话记录的工作区指向 nova 数据目录（${target}），已忽略${RESET} ${DIM}（工具保持 ${rootDir}）${RESET}`;
+      workspaceLine = `${paint.yellow(`  ⚠ 会话记录的工作区指向 nova 数据目录（${target}），已忽略`)} ${paint.dim(`（工具保持 ${rootDir}）`)}`;
     } else if (target !== undefined && target !== rootDir) {
       if (existsSync(target)) {
         await applyWorkspace(target);
-        workspaceLine = `${GREEN}  ✓ 工作区已切换${RESET} ${DIM}${target}${RESET}`;
+        workspaceLine = `${paint.green('  ✓ 工作区已切换')} ${paint.dim(target)}`;
       } else {
-        workspaceLine = `${YELLOW}  ⚠ 原工作区已不存在：${target}${RESET} ${DIM}（工具仍指向 ${rootDir}）${RESET}`;
+        workspaceLine = `${paint.yellow(`  ⚠ 原工作区已不存在：${target}`)} ${paint.dim(`（工具仍指向 ${rootDir}）`)}`;
       }
     }
     const userVisible = restored.filter(
@@ -1071,7 +1067,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     );
     if (userVisible.length === 0 && restored.length > 0) {
       store.pushBlock([
-        `${DIM}  （该会话没有可回放的文本消息——可能被压缩投影或日志损坏截去；消息共 ${restored.length} 条）${RESET}`,
+        paint.dim(`  （该会话没有可回放的文本消息——可能被压缩投影或日志损坏截去；消息共 ${restored.length} 条）`),
       ]);
     }
     for (const m of restored) {
@@ -1083,7 +1079,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
     }
     store.pushBlock([
-      `${GREEN}  ✓ 已切换到会话${RESET} ${DIM}${path.basename(loaded.file)} · 上下文 ${restored.length} 条消息${RESET}`,
+      `${paint.green('  ✓ 已切换到会话')} ${paint.dim(`${path.basename(loaded.file)} · 上下文 ${restored.length} 条消息`)}`,
     ]);
     if (workspaceLine !== undefined) store.pushBlock([workspaceLine]);
     scheduleRender();
@@ -1111,7 +1107,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         store.popupIndex = 0;
         void runCommand(text)
           .catch((err: unknown) => {
-            store.pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+            store.pushBlock([paint.red(`  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}`)]);
             scheduleRender();
           })
           .then(() => scheduleRender());
@@ -1127,12 +1123,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         store.historyStack.push(text);
         if (store.historyStack.length > 200) store.historyStack.shift();
         store.enqueueMessage(text);
-        store.pushBlock([`${DIM}  ┃ 已排队 · 本轮结束后自动发送（Esc 可中断当前轮）${RESET}`]);
+        store.pushBlock([paint.dim('  ┃ 已排队 · 本轮结束后自动发送（Esc 可中断当前轮）')]);
         scheduleRender();
         return;
       }
       store.pushBlock([
-        `${DIM}  上一轮仍在进行：正文将排队在本轮结束后发送；/approvals /model /session /plugins 等查看类命令仍可用${RESET}`,
+        paint.dim('  上一轮仍在进行：正文将排队在本轮结束后发送；/approvals /model /session /plugins 等查看类命令仍可用'),
       ]);
       scheduleRender();
       return;
@@ -1156,7 +1152,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const skillInvocation = await expandSkillInvocation(effective, skills);
     if (skillInvocation !== undefined) {
       if (!skillInvocation.ok) {
-        store.pushBlock([`${RED}  ${skillInvocation.error}${RESET}`]);
+        store.pushBlock([paint.red(`  ${skillInvocation.error}`)]);
         scheduleRender();
         return;
       }
@@ -1168,7 +1164,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         .catch((err: unknown) => {
           // /new, /init & co. do real IO: a failure must surface as a block,
           // not as an unhandled rejection that kills the process.
-          store.pushBlock([`${RED}  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}${RESET}`]);
+          store.pushBlock([paint.red(`  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}`)]);
           scheduleRender();
         })
         .then(() => scheduleRender());
@@ -1180,7 +1176,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // OUTSIDE that loop (building the fragment, the approval plumbing, …)
       // would escape as an unhandled rejection. Surface it as a block instead.
       spinner.stop();
-      store.pushBlock([`${RED}  ✗ 本轮失败：${err instanceof Error ? err.message : String(err)}${RESET}`], TOOL_GUTTER);
+      store.pushBlock([paint.red(`  ✗ 本轮失败：${err instanceof Error ? err.message : String(err)}`)], TOOL_GUTTER);
       store.streaming = false;
       scheduleRender();
     });
@@ -1230,7 +1226,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     noteModeSwitchBlocked,
     switchModel: (model) => {
       client.setModel(model);
-      store.pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);
+      store.pushBlock([paint.dim(`  模型已切换为 ${model}`)]);
       void refreshModelMeta();
     },
     switchSessionFile: (file) => void switchToSession({ file }),
@@ -1239,7 +1235,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     refreshModelMeta: () => void refreshModelMeta(),
     popupMatches: () => commandPopupMatches(),
     totalWrappedLines,
-    notice: (lines) => store.pushBlock(lines.map((l) => `${DIM}${l}${RESET}`)),
+    notice: (lines) => store.pushBlock(lines.map((l) => paint.dim(l))),
   };
 
   function handleKey(k: Key): void {
