@@ -82,10 +82,6 @@ import {
   SPINNER_FRAMES,
   statusLine,
   StreamSmoother,
-  subagentDetailRows,
-  subagentLiveLine,
-  bgSubagentDoneLine,
-  bgSubagentLine,
   TOOL_GUTTER,
   toolArgSummary,
   toolDoneLine,
@@ -99,6 +95,7 @@ import { agentRunBase, createApprovalService, createAutoCompact, LONG_TASK, maxT
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
+import { BgSubagentRows, SubagentLives } from './tui/subagent-lives.js';
 import {
   codeModeLabel,
   contextBreakdown,
@@ -363,7 +360,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // 被子代理活行接管的条目跳过重画——活行就是该 block 的当前真身，
         // 再画待定行会把同一行打回「调用 subagent …」（去重契约）。
         for (const [callId, entry] of store.toolBlocks) {
-          if (subagentLive.has(callId)) continue;
+          if (subagentLives.has(callId)) continue;
           const elapsed = now - entry.startAt;
           const suffix = store.interruptAt > 0
             ? `${YELLOW} · 正在中断…${RESET}`
@@ -387,10 +384,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         }
         // Live subagent rows cycle their glyph with the same tick — a child
         // thinking between bursts never looks stalled (render is dirty-checked).
-        for (const liveKey of subagentLive.keys()) renderSubagentLive(liveKey, frame);
+        subagentLives.renderAll(frame);
         // Background delegations pick up their rows here while the parent
         // streams; after the turn ends the self-managed interval takes over.
-        syncBgSubagentRows();
+        bgSubagentRows.sync();
         scheduleRender();
       }, SPINNER_TICK_MS);
     },
@@ -405,67 +402,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   // ---- background subagent live rows --------------------------------------
   // run_in_background delegations have no pending tool line to take over and
-  // no foreground progress feed: without their own rows they are invisible —
-  // the start line reads "✓ 调用 subagent … · 0.0s" and nothing moves until
-  // the model happens to poll `jobs`. Each running job pins one row
-  // (elapsed + latest nested activity); settlement rewrites it in place.
-  const bgSubagentRows = new Map<string, { block: Block; short: string }>();
-  let bgSubagentTimer: NodeJS.Timeout | undefined;
-  const bgShortLabel = (label: string): string => {
-    const base = /^\[subagent: ([^\]]+)\]/.exec(label)?.[1] ?? label;
-    return base.length > 40 ? `${base.slice(0, 39)}…` : base;
-  };
-  const stopBgSubagentTimer = (): void => {
-    if (bgSubagentTimer !== undefined) {
-      clearInterval(bgSubagentTimer);
-      bgSubagentTimer = undefined;
-    }
-  };
-  /** View reset (/clear, session switch): the blocks are gone, drop the map. */
-  const clearBgSubagentRows = (): void => {
-    bgSubagentRows.clear();
-    stopBgSubagentTimer();
-  };
-  const syncBgSubagentRows = (): void => {
-    const active = jobs
-      .list()
-      .filter((job) => job.kind === 'subagent' && (job.status === 'running' || job.status === 'stopping'));
-    for (const [id, entry] of bgSubagentRows) {
-      const job = jobs.get(id);
-      if (job === undefined) {
-        bgSubagentRows.delete(id);
-        continue;
-      }
-      if (job.status !== 'running' && job.status !== 'stopping') {
-        // In-place rewrite (never a second line): start row becomes the
-        // terminal row with status + usage trailer.
-        const line = bgSubagentDoneLine(paint, { label: entry.short, status: job.status, detail: job.detail });
-        if (store.blocks.includes(entry.block)) store.replaceBlock(entry.block, [line]);
-        bgSubagentRows.delete(id);
-      }
-    }
-    for (const job of active) {
-      const short = bgShortLabel(job.label);
-      const elapsed = Math.max(0, Math.round((Date.now() - (job.startedAt ?? Date.now())) / 1000));
-      const line = bgSubagentLine(paint, { label: short, elapsedSecs: elapsed, progress: job.progress });
-      const existing = bgSubagentRows.get(job.id);
-      if (existing === undefined) {
-        bgSubagentRows.set(job.id, { block: store.pushBlock([line]), short });
-      } else if (existing.block.lines[0] !== line) {
-        store.replaceBlock(existing.block, [line]);
-      }
-    }
-    // A detached subagent outlives the parent turn (spinner stopped), so the
-    // refresh cadence is self-managed: tick while any row runs, stop after.
-    if (active.length > 0 && bgSubagentTimer === undefined) {
-      bgSubagentTimer = setInterval(() => {
-        syncBgSubagentRows();
-        scheduleRender();
-      }, 1000);
-    } else if (active.length === 0 && bgSubagentTimer !== undefined) {
-      stopBgSubagentTimer();
-    }
-  };
+  // no foreground progress feed: without their own rows they are invisible.
+  // Poll/rewrite/self-tick cadence lives in BgSubagentRows (./tui/subagent-lives.ts).
+  const bgSubagentRows = new BgSubagentRows({
+    store,
+    paint,
+    jobs,
+    now: () => Date.now(),
+  });
 
   let renderTimer: NodeJS.Timeout | undefined;
   const scheduleRender = (): void => {
@@ -609,136 +553,23 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // ---- subagent live view ------------------------------------------------
   // A foreground subagent run is fully synchronous for the parent turn — the
   // parent has no runAgent events of its own until the child settles, so
-  // without this the user stares at a frozen tool line for minutes (codex
-  // shows only start/completed, dsh only start/end + result; neither shows
-  // liveness — this is nova's deliberate deviation). Core forwards nested
-  // lifecycle moments via SubagentPluginOptions.onProgress; the shell pins
-  // one live row per running child (keyed by the parent tool CALL — labels
-  // are not unique) until the nested `done` remaps into the parent tool's
-  // own result/done row.
-  interface SubagentLiveState {
-    label: string;
-    lastTool?: string;
-    toolCounts: Map<string, number>;
-    turns: number;
-    promptTokens: number;
-    completionTokens: number;
-    /** Nested execution log (tool lines + milestones), click-expand body. */
-    detail: string[];
-    startAt: number;
-    block: Block;
-  }
-  const subagentLive = new Map<string, SubagentLiveState>();
+  // without this the user stares at a frozen tool line for minutes. Core
+  // forwards nested lifecycle moments via SubagentToolOptions.onProgress; the
+  // takeover morph (pending line → ⧉ live → done line), the nested click-
+  // expand log and the abort fallback all live in SubagentLives
+  // (./tui/subagent-lives.ts), keyed by the parent tool CALL (labels are not
+  // unique).
+  const subagentLives = new SubagentLives({
+    store,
+    paint,
+    budget: () => toolBudget(),
+    now: () => Date.now(),
+  });
   // Latest foreground subagent call this turn; its nested progress rows map
-  // here. Reset on every tool result (a new subagent call re-pins it).
+  // here (the runtime wiring predates any turn, so it goes through this ref).
+  // Reset on every tool result (a new subagent call re-pins it).
   const onSubagentProgressRef: { current: (progress: SubagentProgress) => void } = {
     current: () => undefined,
-  };
-  const renderSubagentLive = (callId: string, frame = '•'): void => {
-    const st = subagentLive.get(callId);
-    if (st === undefined) return;
-    const head = subagentLiveLine(paint, {
-      label: st.label,
-      ...(st.lastTool !== undefined ? { lastTool: st.lastTool } : {}),
-      toolCounts: st.toolCounts,
-      turns: st.turns,
-      promptTokens: st.promptTokens,
-      completionTokens: st.completionTokens,
-      expandable: st.detail.length > 0,
-      expanded: st.block.expanded === true,
-    }, frame);
-    // Click-expand body rides on the block: the click chain (keys.ts) reads
-    // block.detail/expanded, live re-renders must keep them in sync.
-    const rows = subagentDetailRows(paint, st.detail, toolBudget());
-    st.block.detail = { lines: rows, secs: Math.floor((Date.now() - st.startAt) / 1000), base: [head] };
-    store.replaceBlock(st.block, st.block.expanded === true ? [head, ...rows] : [head]);
-  };
-  const removeSubagentLive = (callId: string): void => {
-    const st = subagentLive.get(callId);
-    if (st === undefined) return;
-    subagentLive.delete(callId);
-    // 接管模式：活行就是该调用的待定工具行本体，tool_call_result 紧随其后
-    // 把同一 block 改写成完成行；只有兜底独立块（tool_call_start 行缺失时）
-    // 才需要在这里移除。
-    const entry = store.toolBlocks.get(callId);
-    if ((entry === undefined || entry.block !== st.block) && store.blocks.includes(st.block)) {
-      store.removeBlock(st.block);
-    }
-  };
-  /** 中断/错误路径：活行等不到 result 改写，回退为静态停顿行后清场。 */
-  const clearSubagentLive = (): void => {
-    for (const [callId, st] of subagentLive) {
-      const entry = store.toolBlocks.get(callId);
-      if (entry !== undefined && entry.block === st.block) {
-        const base = [toolStartLine(paint, entry.name, entry.rawArgs, '■', toolBudget())];
-        // 已积累的嵌套日志保留可展开（中止了也看得到它做到了哪一步）。
-        st.block.detail = { lines: subagentDetailRows(paint, st.detail, toolBudget()), secs: Math.floor((Date.now() - st.startAt) / 1000), base };
-        st.block.expanded = false;
-        store.replaceBlock(st.block, base);
-      } else if (store.blocks.includes(st.block)) {
-        store.removeBlock(st.block);
-      }
-    }
-    subagentLive.clear();
-    onSubagentProgressRef.current = () => undefined;
-  };
-  /** Nested-log cap: oldest entries fall off (memory-only detail). */
-  const SUBAGENT_DETAIL_MAX = 200;
-  const pushSubagentDetail = (st: SubagentLiveState, line: string): void => {
-    st.detail.push(line);
-    while (st.detail.length > SUBAGENT_DETAIL_MAX) st.detail.shift();
-  };
-  const onSubagentProgress = (callId: string, progress: SubagentProgress): void => {
-    const key = callId;
-    if (progress.type === 'start') {
-      // 接管该调用的待定工具行：同一行从「调用 subagent …」变形为活行再到
-      // 完成行，不再并排画两行同一件事（spinner 刻度跳过被接管的条目）。
-      const entry = store.toolBlocks.get(key);
-      const block = entry !== undefined ? entry.block : store.pushBlock([], TOOL_GUTTER);
-      subagentLive.set(key, {
-        label: progress.label,
-        toolCounts: new Map(),
-        turns: 0,
-        promptTokens: 0,
-        completionTokens: 0,
-        detail: [`▸ ${progress.label}`],
-        startAt: Date.now(),
-        block,
-      });
-      renderSubagentLive(key);
-    } else if (progress.type === 'tool_call') {
-      const st = subagentLive.get(key);
-      if (st === undefined) return;
-      st.lastTool = progress.call.name;
-      st.toolCounts.set(progress.call.name, (st.toolCounts.get(progress.call.name) ?? 0) + 1);
-      pushSubagentDetail(st, `› ${progress.call.name} ${toolArgSummary(progress.call.name, progress.call.rawArgs, 80)}`);
-      renderSubagentLive(key);
-    } else if (progress.type === 'usage') {
-      const st = subagentLive.get(key);
-      if (st === undefined) return;
-      st.turns = progress.stats.turns;
-      st.promptTokens = progress.stats.promptTokens;
-      st.completionTokens = progress.stats.completionTokens;
-      renderSubagentLive(key);
-    } else {
-      // `done`: keep the live row until tool_call_result remaps it into the
-      // parent tool's own done row (same frame the result is appended).
-      const st = subagentLive.get(key);
-      if (st === undefined) return;
-      st.turns = progress.usage.turns;
-      st.promptTokens = progress.usage.promptTokens;
-      st.completionTokens = progress.usage.completionTokens;
-      pushSubagentDetail(
-        st,
-        progress.status === 'completed'
-          ? `✓ 完成 · ${progress.usage.turns} 轮 · ${progress.usage.toolCalls} 次工具 · ${(progress.usage.elapsedMs / 1000).toFixed(1)}s`
-          : progress.status === 'aborted'
-            ? '■ 已中止'
-            : '■ 结束（无最终报告）',
-      );
-      renderSubagentLive(key);
-    }
-    scheduleRender();
   };
 
   /** Remove the live reasoning block once it ends: the answer, not the
@@ -1046,7 +877,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       spinner.stop();
       // 中断/出错时活行等不到 tool_call_result 的改写：回退为静态行并清场，
       // 否则「⧉ 子代理 … tok」的假活行会永远停在转录里。
-      clearSubagentLive();
+      subagentLives.abortAll();
+      onSubagentProgressRef.current = () => undefined;
       // An abort/error never reaches the 'done' event: recycle the reasoning
       // tail here so no transient line survives into history.
       discardReasoning();
@@ -1141,7 +973,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // A foreground subagent pins `onSubagentProgressRef` at the current
         // parent call so its live row maps back here when it renders.
         onSubagentProgressRef.current =
-          event.call.name === 'subagent' ? (progress) => onSubagentProgress(event.call.id, progress) : () => undefined;
+          event.call.name === 'subagent'
+            ? (progress) => subagentLives.progress(event.call.id, progress)
+            : () => undefined;
         // Soft-wrapped continuation rows hang under the summary column.
         const block = store.pushBlock(
           [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', toolBudget())],
@@ -1156,20 +990,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         await session.append(event.result);
         // A "Started background subagent …" result lands here: pin its live
         // row immediately instead of waiting for the next spinner tick.
-        syncBgSubagentRows();
+        bgSubagentRows.sync();
         const entry = store.toolBlocks.get(event.call.id);
-        store.toolBlocks.delete(event.call.id);
         if (store.activeToolId === event.call.id) store.activeToolId = undefined;
-        // Capture before removal: the nested log stays click-expandable on
-        // the DONE row (collapsed by default).
-        const liveDetail = subagentLive.get(event.call.id);
-        onSubagentProgressRef.current = () => undefined;
-        removeSubagentLive(event.call.id);
         const duration = entry === undefined ? 0 : Math.max(0, Date.now() - entry.startAt);
         const failed = isFailureContent(event.result.content);
+        onSubagentProgressRef.current = () => undefined;
         if (isReadOnlyTool(event.call.name) && !failed) {
           // codex "Explored": the read's own line disappears and its summary
           // folds into the running group line.
+          subagentLives.settle(event.call.id, [], duration);
+          store.toolBlocks.delete(event.call.id);
           if (entry !== undefined) store.removeBlock(entry.block);
           // 宽预算存原文：公共目录折叠与最终排布都发生在 toolGroupLine 渲染时。
           const raw = toolArgSummary(event.call.name, event.call.rawArgs, 400);
@@ -1196,16 +1027,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             duration,
             toolBudget(),
           );
-          // 完成行默认收起，但嵌套日志仍随 block 可点击展开（内存态，
-          // resume 后不可展开——与 reasoning 详情同一契约）。
-          if (liveDetail !== undefined && entry !== undefined && liveDetail.block === entry.block) {
-            entry.block.detail = {
-              lines: subagentDetailRows(paint, liveDetail.detail, toolBudget()),
-              secs: Math.floor(duration / 1000),
-              base: lines,
-            };
-            entry.block.expanded = false;
-          }
+          // Dissolve any live state BEFORE the toolBlocks entry drops: on the
+          // takeover path the block stays in place and carries the nested log
+          // as collapsed click-expand (done rows keep it — memory-only, same
+          // contract as reasoning); a fallback standalone block is removed.
+          subagentLives.settle(event.call.id, lines, duration);
+          store.toolBlocks.delete(event.call.id);
           if (entry !== undefined) store.replaceBlock(entry.block, lines);
           else store.pushBlock(lines);
         }
@@ -1501,7 +1328,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         return true;
       }
       case '/clear': {
-        clearBgSubagentRows();
+        bgSubagentRows.clear();
         modeSelectBlock = undefined;
         store.modeSelect = undefined;
         store.clearView();
@@ -1556,7 +1383,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     usageAnchor = undefined;
     anchorMsgCount = 0;
     resetSessionCache();
-    clearBgSubagentRows();
+    bgSubagentRows.clear();
     modeSelectBlock = undefined;
     store.modeSelect = undefined;
     store.clearView();
@@ -1938,7 +1765,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (exiting) return;
     exiting = true;
     spinner.stop();
-    stopBgSubagentTimer();
+    bgSubagentRows.stop();
     endCompactWait();
     compactAbort?.abort();
     if (escTimer !== undefined) {
