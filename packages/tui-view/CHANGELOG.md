@@ -1,5 +1,19 @@
 # @nova-agent/tui-view
 
+## 0.3.0
+
+### Minor Changes
+
+- 23b36f6: TUI 主题基建：新语义主题层（tui-view `resolvePalette`，dark=原配色原样平移、默认观感逐字节不变）+ 终端能力探测（tui `detectCaps`：NO_COLOR / TERM=dumb 恒定无色、COLORTERM=truecolor 升 24-bit）+ `LineScreen` 可选 synchronized output（`?2026`，探测启用，消除撕裂）。配置新增 `ui.theme`（dark/light/plain，strict schema 兼容新增）、新 `--theme` flag 与 `/theme` 命令（REPL/TUI 均可运行中即时切换）；light 主题为亮背景高对比方案（truecolor 优先、16 色回落）。
+
+### Patch Changes
+
+- 47fa203: TUI 滚动锚定与位置指示：用户上滚后（PageUp/滚轮）新输出不再把视口往直播拽——流式追加的行数等量补偿 scroll offset，视口钉在用户当时看的绝对位置，回到底部后恢复跟随；上滚时呼吸行显示「⋯ 上方还有 N 行 · Home 跳顶 / End 回到底部」（不占内容行、不进状态栏，守 tui-design 红线）；光标已在行首/行尾时再按 Home/End 升级为历史区跳顶/回底。
+- Updated dependencies [cfad259]
+- Updated dependencies [23b36f6]
+  - @nova-agent/tui@0.3.0
+  - @nova-agent/core@0.3.0
+
 ## 0.2.1
 
 ### Patch Changes
