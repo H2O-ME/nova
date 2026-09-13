@@ -35,6 +35,16 @@ const configSchema = z.object({
    * (codex-style model_auto_compact_token_limit). Unset disables it.
    */
   autoCompactTokenLimit: z.number().int().positive().max(2_000_000).optional(),
+  /**
+   * 界面外观（TUI/REPL 呈现层）。theme：dark（默认，配色与引入主题层前
+   * 逐字节一致）/ light（亮背景高对比）/ plain（无色）。NO_COLOR 与
+   * 非 TTY 恒定无色，主题不生效。
+   */
+  ui: z
+    .object({
+      theme: z.enum(['dark', 'light', 'plain']).optional(),
+    })
+    .optional(),
   tools: z
     .object({
       bash: z

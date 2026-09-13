@@ -8,7 +8,7 @@ import { cliVersion } from './version.js';
 const HELP = `nova — 自研本地编码智能体
 
 usage:
-  nova [--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full]
+  nova [--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
   nova exec "<task>" [--json] [--approval ...] [--resume <session.jsonl>]
 
 options:
@@ -17,6 +17,7 @@ options:
   --repl          强制使用 readline REPL（默认 TTY 下进全屏 TUI）
   --resume        续接历史会话文件
   --approval      临时覆盖审批档位；exec 模式下无法交互确认，未放行的请求会被拒绝
+  --theme         临时覆盖界面主题（config 的 ui.theme 是持久设置；NO_COLOR 恒定无色）
   --version/-v    显示版本
   --help/-h       显示本帮助
 
@@ -27,6 +28,7 @@ options:
 interface ParsedArgs {
   resumeFile?: string;
   approvalOverride?: 'read-only' | 'auto-edit' | 'full';
+  themeOverride?: 'dark' | 'light' | 'plain';
   json: boolean;
   repl: boolean;
   positional: string[];
@@ -59,6 +61,14 @@ function parseArgs(args: string[]): ParsedArgs | undefined {
         return undefined;
       }
       parsed.approvalOverride = value;
+    } else if (arg === '--theme') {
+      const value = args[++i];
+      if (value !== 'dark' && value !== 'light' && value !== 'plain') {
+        console.error('--theme must be one of: dark, light, plain');
+        process.exitCode = 1;
+        return undefined;
+      }
+      parsed.themeOverride = value;
     } else if (arg === '--json') {
       parsed.json = true;
     } else if (arg === '--repl') {
@@ -151,6 +161,7 @@ async function main(): Promise<void> {
         config,
         ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
         ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
+        ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
       });
     } else {
       await startRepl({
@@ -158,6 +169,7 @@ async function main(): Promise<void> {
         config,
         ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
         ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
+        ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
       });
     }
   } catch (err) {

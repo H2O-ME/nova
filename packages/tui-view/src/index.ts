@@ -1,5 +1,6 @@
 export * from './tokens.js';
 export * from './palette.js';
+export * from './theme.js';
 export * from './labels.js';
 export * from './clip.js';
 export * from './tool-lines.js';

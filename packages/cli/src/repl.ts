@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { styledWidth } from '@nova-agent/tui';
+import { detectCaps, styledWidth } from '@nova-agent/tui';
 import {
   newId,
   runAgent,
@@ -16,6 +16,7 @@ import { sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache, modeOverviewRows } from './commands.js';
+import { resolvePalette } from '@nova-agent/tui-view';
 import {
   cacheHitPct,
   lastCacheHitPct,
@@ -41,9 +42,7 @@ import {
   approvalLabel,
   banner,
   fitTail,
-  palette,
   permissionLabel,
-  plainPalette,
   statusLine,
   toolDoneLine,
   toolLabel,
@@ -66,6 +65,8 @@ export interface ReplOptions {
   config: Config;
   resumeFile?: string;
   approvalOverride?: ApprovalMode;
+  /** --theme 覆盖 config 的 ui.theme。 */
+  theme?: 'dark' | 'light' | 'plain';
 }
 
 /**
@@ -127,8 +128,11 @@ export class LineSource {
 
 export async function startRepl(opts: ReplOptions): Promise<void> {
   const { rootDir, config } = opts;
-  const useColor = process.stdout.isTTY === true;
-  const paint = useColor ? palette : plainPalette;
+  // 主题解析单源（tui-view.resolvePalette）；/theme 运行中可切换。
+  const caps = detectCaps();
+  const useColor = caps.color;
+  let themeName: 'dark' | 'light' | 'plain' = opts.theme ?? config.ui?.theme ?? 'dark';
+  let paint = resolvePalette(themeName, caps);
 
   // switch_workspace 的运行侧回调（late-bound：createSessionRuntime 先于
   // permission/applyWorkspace 就绪，回调只在工具执行时触发）。
@@ -569,6 +573,21 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           } catch (err) {
             console.log(modelListError(err));
           }
+          break;
+        }
+        case '/theme': {
+          const arg = input.trim().split(/\s+/)[1];
+          if (arg === undefined) {
+            console.log(`当前主题：${themeName}（/theme dark|light|plain 切换；NO_COLOR 恒定无色）`);
+            break;
+          }
+          if (arg !== 'dark' && arg !== 'light' && arg !== 'plain') {
+            console.log(`未知主题：${arg}（可选 dark / light / plain）`);
+            break;
+          }
+          themeName = arg;
+          paint = resolvePalette(arg, caps);
+          console.log(`主题已切换为 ${arg}`);
           break;
         }
         case '/plugins': {

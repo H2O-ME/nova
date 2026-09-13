@@ -7,8 +7,17 @@ import { styledWidth } from './width.js';
  */
 export class LineScreen {
   private prev: string[] | undefined;
+  private readonly synchronizedOutput: boolean;
 
-  constructor(private readonly out: NodeJS.WriteStream & { write(s: string): unknown }) {}
+  constructor(
+    private readonly out: NodeJS.WriteStream & { write(s: string): unknown },
+    opts?: { synchronizedOutput?: boolean },
+  ) {
+    // ?2026（synchronized output）把一帧的全部写入包成一个原子更新：不支持
+    // 该私有模式的终端会忽略开关，按普通逐行更新处理。默认关闭——库层行为
+    // 不变；cli 经 detectCaps().synchronizedOutput 显式启用。
+    this.synchronizedOutput = opts?.synchronizedOutput ?? false;
+  }
 
   get rows(): number {
     return Math.max(1, this.out.rows ?? 24);
@@ -66,6 +75,7 @@ export class LineScreen {
       }
     }
 
+    if (this.synchronizedOutput) this.out.write('\x1b[?2026h');
     for (let row = 0; row < rows; row++) {
       const next = frame[row] ?? '';
       if (this.prev?.[row] === next) continue;
@@ -78,6 +88,7 @@ export class LineScreen {
     if (cursor !== undefined) {
       this.out.write(`\x1b[${Math.min(rows, cursor.row + 1)};${Math.max(1, cursor.col + 1)}H`);
     }
+    if (this.synchronizedOutput) this.out.write('\x1b[?2026l');
   }
 }
 

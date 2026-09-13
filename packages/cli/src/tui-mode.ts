@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { KeyDecoder, LineScreen, type Key } from '@nova-agent/tui';
+import { KeyDecoder, LineScreen, detectCaps, type Key } from '@nova-agent/tui';
 import {
   APPROVAL_PREVIEW_MAX_ROWS,
   BREATHE_ROWS,
@@ -9,6 +9,7 @@ import {
   SESSION_LIST_LIMIT,
   STATUS_ROWS,
   SPINNER_TICK_MS,
+  resolvePalette,
 } from '@nova-agent/tui-view';
 import {
   emptyStats,
@@ -75,9 +76,7 @@ import {
   layoutComposer,
   messageQueueRows,
   padDisplay,
-  palette,
   permissionLabel,
-  plainPalette,
   REVEAL_TICK_MS,
   SPINNER_FRAMES,
   statusLine,
@@ -109,6 +108,8 @@ export interface TuiOptions {
   config: Config;
   resumeFile?: string;
   approvalOverride?: ApprovalMode;
+  /** --theme 覆盖 config 的 ui.theme。 */
+  theme?: 'dark' | 'light' | 'plain';
 }
 
 // 仅剩 gutter 前缀的原始 ANSI（尾部开态样式是 wrapBlock 挂行契约，见下）。
@@ -130,8 +131,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const { config } = opts;
   // The live workspace: follows the session across /session switches.
   let rootDir = opts.rootDir;
-  const paint = process.stdout.isTTY === true ? palette : plainPalette;
-  const screen = new LineScreen(process.stdout);
+  // 主题解析单源（tui-view.resolvePalette）：caps 表达 NO_COLOR/非 TTY/
+  // COLORTERM；--theme 覆盖 config 的 ui.theme。dark=原配色平移，默认观感
+  // 字节不变；/theme 可在运行中切换（NO_COLOR 下恒 plain）。
+  const caps = detectCaps();
+  let themeName: 'dark' | 'light' | 'plain' = opts.theme ?? config.ui?.theme ?? 'dark';
+  let paint = resolvePalette(themeName, caps);
+  const screen = new LineScreen(process.stdout, { synchronizedOutput: caps.synchronizedOutput });
   const decoder = new KeyDecoder();
 
   // ---- persistent state -------------------------------------------------
@@ -864,6 +870,31 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           ),
           paint.dim('  模式决定工具集呈现方式；切换立即生效（usage 锚点自动重置）'),
         ]);
+        return true;
+      }
+      case '/theme': {
+        // 无参数：列出三主题并标当前。带参数：即时切换（screen.invalidate
+        // 全屏重绘，配置只作下次启动的持久值，不回写 config.json）。
+        const arg = raw.trim().split(/\s+/)[1];
+        if (arg === undefined) {
+          store.pushBlock([
+            `  ${paint.bold('主题')} ${paint.dim('· /theme dark|light|plain 切换（NO_COLOR 恒定无色）')}`,
+            ...(['dark', 'light', 'plain'] as const).map((name) =>
+              name === themeName
+                ? `  ${paint.cyan(paint.bold(`❯ ${name}`))}`
+                : `    ${paint.dim(name)}`,
+            ),
+          ]);
+          return true;
+        }
+        if (arg !== 'dark' && arg !== 'light' && arg !== 'plain') {
+          store.pushBlock([paint.red(`  ✗ 未知主题：${arg}（可选 dark / light / plain）`)]);
+          return true;
+        }
+        themeName = arg;
+        paint = resolvePalette(arg, caps);
+        screen.invalidate();
+        store.pushBlock([paint.dim(`  主题已切换为 ${arg}`)]);
         return true;
       }
       case '/plugins': {
