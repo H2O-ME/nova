@@ -44,6 +44,24 @@ describe('reasoningLiveRow (codex-style scrolling while streaming)', () => {
     const r = reasoningLiveRow(plainPalette, { done: [], partial: 'a'.repeat(300) + 'END', cols: 40 });
     expect(r.at(-1)?.endsWith('END')).toBe(true);
   });
+
+  it('clips instead of wrapping: one row per source line, no mid-token fragments', () => {
+    // A 300-char line used to be wrapLine'd into ~9 rows — the window slid
+    // over fragments and reflowed every tick. Now: one clipped row each.
+    const rows = reasoningLiveRow(plainPalette, { done: ['x'.repeat(300)], partial: 'abc'.repeat(100) + 'NEWEST', cols: 40 });
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toBe(`${'x'.repeat(33)}…`);
+    expect(rows[1]!.endsWith('NEWEST')).toBe(true);
+    for (const r of rows) expect(styledWidth(r)).toBeLessThanOrEqual(40 - 1 - 4);
+  });
+
+  it('glyph + tail stay inside the row budget (no orphan continuation rows)', () => {
+    const rows = reasoningLiveRow(plainPalette, { done: [], partial: 'y'.repeat(500) + 'END', cols: 40, spinnerFrame: 0 });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.startsWith('⠋ ')).toBe(true);
+    expect(rows[0]!.endsWith('END')).toBe(true);
+    expect(styledWidth(rows[0]!)).toBeLessThanOrEqual(40 - 1 - 4);
+  });
 });
 
 describe('summaryRow + reasoningDetailRows (inert click-toggle surfaces)', () => {
