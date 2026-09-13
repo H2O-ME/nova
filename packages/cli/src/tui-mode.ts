@@ -1247,6 +1247,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     | { cols: number; version: number; result: { flat: string[]; rowMap: { block: Block; start: number; count: number }[] } }
     | undefined;
 
+  /** 上一帧展平后的总行数（滚动锚定的增量基准；-1 = 尚无帧）。 */
+  let lastFlatLen = -1;
   function renderFrame(): void {
     if (exiting) return;
     const cols = screen.cols;
@@ -1334,6 +1336,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       cachedFlatten = { cols, version: store.blocksVersion, result: flattenBlocks(store.blocks, cols) };
     }
     const { flat, rowMap } = cachedFlatten.result;
+    // 滚动锚定（stick-to-content）：用户上滚后（scrollFromEnd>0）新输出
+    // 不再把视口往直播拽——按上一帧以来的新增行数等量增大 offset，把视口
+    // 钉在用户当时看的绝对位置；回到底部（offset 归 0）后恢复跟随。
+    if (store.scrollFromEnd > 0 && lastFlatLen >= 0 && flat.length > lastFlatLen) {
+      store.scrollFromEnd += flat.length - lastFlatLen;
+    }
+    lastFlatLen = flat.length;
     const historyBudget = rows - popupLines.length - queueLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
     if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
@@ -1342,8 +1351,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
     const status = clipToWidth(statusBar(paint, statusView()), cols - 1);
 
+    // 位置指示：上滚时呼吸行改为「上方还有 N 行」（回底自动消失；不占内容行、
+    // 不进状态栏——上滚不进状态栏是 tui-design 红线）。
+    const breathText =
+      sliceStart > 0
+        ? clipToWidth(paint.dim(`  ⋯ 上方还有 ${sliceStart} 行 · Home 跳顶 / End 回到底部`), cols - 1)
+        : '';
+
     screen.render(
-      bottomStack(historyLines, popupLines, queueLines, composerZoneRows, status),
+      bottomStack(historyLines, popupLines, queueLines, composerZoneRows, status, breathText),
       cursorPosition({ historyRows: historyLines.length, popupRows: popupLines.length, queueRows: queueLines.length, layout }),
     );
   }

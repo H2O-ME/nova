@@ -391,9 +391,20 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       store.cursorPos = Math.min(store.input.length, store.cursorPos + 1);
       break;
     case 'home':
+      // 光标已在行首时再按 Home = 历史区跳顶（End 对称回底）。
+      if (store.cursorPos === 0) {
+        store.scrollFromEnd = env.totalWrappedLines();
+        env.scheduleRender();
+        break;
+      }
       store.cursorPos = 0;
       break;
     case 'end':
+      if (store.cursorPos >= store.input.length) {
+        store.scrollFromEnd = 0;
+        env.scheduleRender();
+        break;
+      }
       store.cursorPos = store.input.length;
       break;
     case 'backspace':

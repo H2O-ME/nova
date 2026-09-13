@@ -41,6 +41,9 @@ export function bottomStack(
   queueLines: string[],
   composerRows: string[],
   status: string,
+  /** 滚动位置提示复用呼吸行（空串=普通空行；不占内容行、不进状态栏）。 */
+  breathText?: string,
 ): string[] {
-  return [...historyLines, ...Array<string>(BREATHE_ROWS).fill(''), ...popupLines, ...queueLines, ...composerRows, status];
+  const breath = Array<string>(BREATHE_ROWS).fill(breathText ?? '');
+  return [...historyLines, ...breath, ...popupLines, ...queueLines, ...composerRows, status];
 }
