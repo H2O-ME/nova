@@ -67,6 +67,7 @@ import {
   isFailureContent,
   isReadOnlyTool,
   layoutComposer,
+  messageQueueRows,
   padDisplay,
   palette,
   permissionLabel,
@@ -353,7 +354,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // 排空成"▁▁… 0"（用户看到的"偶尔清零"）。无新数据就只推进时钟、
         // 冻结窗口，速度表随真实产出左滚。
         store.sampleTps(now);
-        for (const entry of store.toolBlocks.values()) {
+        // 被子代理活行接管的条目跳过重画——活行就是该 block 的当前真身，
+        // 再画待定行会把同一行打回「调用 subagent …」（去重契约）。
+        for (const [callId, entry] of store.toolBlocks) {
+          if (subagentLive.has(callId)) continue;
           const elapsed = now - entry.startAt;
           const suffix = store.interruptAt > 0
             ? `${YELLOW} · 正在中断…${RESET}`
@@ -510,18 +514,36 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const st = subagentLive.get(callId);
     if (st === undefined) return;
     subagentLive.delete(callId);
-    if (store.blocks.includes(st.block)) store.removeBlock(st.block);
+    // 接管模式：活行就是该调用的待定工具行本体，tool_call_result 紧随其后
+    // 把同一 block 改写成完成行；只有兜底独立块（tool_call_start 行缺失时）
+    // 才需要在这里移除。
+    const entry = store.toolBlocks.get(callId);
+    if ((entry === undefined || entry.block !== st.block) && store.blocks.includes(st.block)) {
+      store.removeBlock(st.block);
+    }
+  };
+  /** 中断/错误路径：活行等不到 result 改写，回退为静态停顿行后清场。 */
+  const clearSubagentLive = (): void => {
+    for (const [callId, st] of subagentLive) {
+      const entry = store.toolBlocks.get(callId);
+      if (entry !== undefined && entry.block === st.block) {
+        store.replaceBlock(st.block, [toolStartLine(paint, entry.name, entry.rawArgs, '■', toolBudget())]);
+      } else if (store.blocks.includes(st.block)) {
+        store.removeBlock(st.block);
+      }
+    }
+    subagentLive.clear();
+    onSubagentProgressRef.current = () => undefined;
   };
   const onSubagentProgress = (callId: string, progress: SubagentProgress): void => {
     const key = callId;
     if (progress.type === 'start') {
-      const block = store.pushBlock(
-        [subagentLiveLine(paint, { label: progress.label, toolCounts: new Map(), turns: 0, promptTokens: 0, completionTokens: 0 }, '•')],
-        TOOL_GUTTER,
-      );
-      // Interrupt-safe ownership: the tool's own pending row stays where it
-      // is, the live row renders directly beneath it.
+      // 接管该调用的待定工具行：同一行从「调用 subagent …」变形为活行再到
+      // 完成行，不再并排画两行同一件事（spinner 刻度跳过被接管的条目）。
+      const entry = store.toolBlocks.get(key);
+      const block = entry !== undefined ? entry.block : store.pushBlock([], TOOL_GUTTER);
       subagentLive.set(key, { label: progress.label, toolCounts: new Map(), turns: 0, promptTokens: 0, completionTokens: 0, block });
+      renderSubagentLive(key);
     } else if (progress.type === 'tool_call') {
       const st = subagentLive.get(key);
       if (st === undefined) return;
@@ -848,6 +870,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       store.interruptAt = 0;
       store.genPhase = 'idle';
       spinner.stop();
+      // 中断/出错时活行等不到 tool_call_result 的改写：回退为静态行并清场，
+      // 否则「⧉ 子代理 … tok」的假活行会永远停在转录里。
+      clearSubagentLive();
       // An abort/error never reaches the 'done' event: recycle the reasoning
       // tail here so no transient line survives into history.
       discardReasoning();
@@ -871,6 +896,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       scheduleRender();
     }
     await maybeAutoCompact();
+    // 运行中排队的消息在此刻接续下发（自动压缩先走，避免新轮踩在压缩途中）。
+    drainMessageQueue();
     scheduleRender();
   }
 
@@ -1326,8 +1353,22 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           .then(() => scheduleRender());
         return;
       }
+      // 运行中干预（codex 式消息队列）：轮进行中 Enter 不再拒绝——非命令
+      // 正文入队，本轮结束后自动下发；队列行常驻 composer 上方可见。
+      if (text.length > 0 && !text.startsWith('/')) {
+        store.input = '';
+        store.cursorPos = 0;
+        store.popupIndex = 0;
+        store.historyIdx = -1;
+        store.historyStack.push(text);
+        if (store.historyStack.length > 200) store.historyStack.shift();
+        store.enqueueMessage(text);
+        store.pushBlock([`${DIM}  ┃ 已排队 · 本轮结束后自动发送（Esc 可中断当前轮）${RESET}`]);
+        scheduleRender();
+        return;
+      }
       store.pushBlock([
-        `${DIM}  上一轮仍在进行：Esc 中断当前轮；/approvals /model /session /plugins 等查看类命令仍可用${RESET}`,
+        `${DIM}  上一轮仍在进行：正文将排队在本轮结束后发送；/approvals /model /session /plugins 等查看类命令仍可用${RESET}`,
       ]);
       scheduleRender();
       return;
@@ -1342,7 +1383,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     store.historyIdx = -1;
     store.historyStack.push(text);
     if (store.historyStack.length > 200) store.historyStack.shift();
+    await dispatchUserText(text);
+  }
 
+  /** 技能展开 + 命令分发 + agentTurn 启动：handleSubmit 与队列下发共用。 */
+  async function dispatchUserText(text: string): Promise<void> {
     let effective = text;
     const skillInvocation = await expandSkillInvocation(effective, skills);
     if (skillInvocation !== undefined) {
@@ -1375,6 +1420,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       store.streaming = false;
       scheduleRender();
     });
+  }
+
+  /**
+   * 队列下发：本轮结束（正常完成、出错或 Esc 中断）后取队首继续。中断后
+   * 接着发队首正是"打断 + 干预"的语义——用户打断是为了说下一句话。
+   */
+  function drainMessageQueue(): void {
+    if (exiting) return;
+    const next = store.dequeueMessage();
+    if (next === undefined) return;
+    void dispatchUserText(next);
   }
 
   function totalWrappedLines(): number {
@@ -1505,12 +1561,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       streaming: store.streaming,
       genPhase: store.genPhase,
     });
+    // 运行中排队的消息：composer 上方的暗色 lane，始终可见（图 2 队列语义）。
+    const queueLines = messageQueueRows(paint, store.messageQueue, cols);
     // 单行状态区：上下文仪表+模型+模式芯片+审批 ｜ tps+cache 钉右缘。
     if (cachedFlatten === undefined || cachedFlatten.cols !== cols || cachedFlatten.version !== store.blocksVersion) {
       cachedFlatten = { cols, version: store.blocksVersion, result: flattenBlocks(store.blocks, cols) };
     }
     const { flat, rowMap } = cachedFlatten.result;
-    const historyBudget = rows - popupLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
+    const historyBudget = rows - popupLines.length - queueLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
     if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
     store.frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length };
@@ -1519,8 +1577,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const status = clipToWidth(statusBar(paint, statusView()), cols - 1);
 
     screen.render(
-      bottomStack(historyLines, popupLines, composerZoneRows, status),
-      cursorPosition({ historyRows: historyLines.length, popupRows: popupLines.length, layout }),
+      bottomStack(historyLines, popupLines, queueLines, composerZoneRows, status),
+      cursorPosition({ historyRows: historyLines.length, popupRows: popupLines.length, queueRows: queueLines.length, layout }),
     );
   }
 

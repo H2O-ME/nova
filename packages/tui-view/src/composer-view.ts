@@ -4,6 +4,7 @@
  */
 
 import { styledWidth } from '@nova-agent/tui';
+import { clipToWidth } from './clip.js';
 import { SPINNER_FRAMES } from './tokens.js';
 import type { Palette } from './palette.js';
 
@@ -54,13 +55,35 @@ export function renderComposerRow(p: Palette, row: ComposerRow): string {
 export function cursorPosition(v: {
   historyRows: number;
   popupRows: number;
+  queueRows?: number;
   layout: ComposerLayout;
 }): { row: number; col: number } {
   const hintRows = v.layout.hiddenAbove > 0 ? 1 : 0;
   return {
-    row: v.historyRows + 1 + v.popupRows + hintRows + v.layout.cursorRow,
+    row: v.historyRows + 1 + v.popupRows + (v.queueRows ?? 0) + hintRows + v.layout.cursorRow,
     col: COMPOSER_PREFIX_WIDTH + v.layout.cursorCol,
   };
+}
+
+/** Newest messages shown from the queue before the overflow hint takes over. */
+export const MESSAGE_QUEUE_SHOW = 3;
+
+/**
+ * Queued-message rows (mid-turn enqueue): a dim lane pinned between the
+ * transcript and the composer so "what I typed while the agent was busy" is
+ * always visible, newest last. Single-line rows; multiline input collapses
+ * to one spaced line.
+ */
+export function messageQueueRows(p: Palette, queue: readonly string[], cols: number): string[] {
+  if (queue.length === 0) return [];
+  const rows: string[] = [];
+  const hidden = queue.length - MESSAGE_QUEUE_SHOW;
+  if (hidden > 0) rows.push(clipToWidth(`  ${p.dim(`┃ 排队中 · 还有 ${hidden} 条…`)}`, Math.max(8, cols - 1)));
+  for (const text of queue.slice(-MESSAGE_QUEUE_SHOW)) {
+    const oneLine = text.replace(/\s+/gu, ' ').trim();
+    rows.push(clipToWidth(`  ${p.dim('┃')} ${p.dim(oneLine)}`, Math.max(8, cols - 1)));
+  }
+  return rows;
 }
 
 export interface ComposerWrap {

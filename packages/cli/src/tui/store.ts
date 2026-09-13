@@ -55,6 +55,8 @@ export const APPROVAL_CODES = APPROVAL_OPTIONS.map((o) => o.code);
 export class TuiStore {
   readonly blocks: Block[] = [];
   readonly historyStack: string[] = [];
+  /** Mid-turn enqueued user messages; drained FIFO after the running turn ends. */
+  readonly messageQueue: string[] = [];
   readonly toolBlocks = new Map<string, ToolEntry>();
   readonly tpsRing: number[] = Array<number>(TPS_SAMPLES).fill(0);
 
@@ -130,6 +132,18 @@ export class TuiStore {
 
   closeReadGroup(): void {
     this.readGroup = undefined;
+  }
+
+  /** Queue a message typed while a turn is streaming (rendered above the composer). */
+  enqueueMessage(text: string): void {
+    this.messageQueue.push(text);
+    this.onChange();
+  }
+
+  dequeueMessage(): string | undefined {
+    const next = this.messageQueue.shift();
+    if (next !== undefined) this.onChange();
+    return next;
   }
 
   clearView(): void {

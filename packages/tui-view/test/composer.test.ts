@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { palette, plainPalette, SPINNER_FRAMES, type ComposerLayout } from '../src/index.js';
-import { COMPOSER_PREFIX, COMPOSER_PREFIX_WIDTH, composerWrapBudget, composerZone, cursorPosition, renderComposerRow } from '../src/index.js';
+import { COMPOSER_PREFIX, COMPOSER_PREFIX_WIDTH, composerWrapBudget, composerZone, cursorPosition, messageQueueRows, renderComposerRow } from '../src/index.js';
 
 const layout = (over: Partial<ComposerLayout> = {}): ComposerLayout => ({
   rows: [{ text: 'hello', caretIdx: -1 }],
@@ -73,6 +73,31 @@ describe('cursorPosition', () => {
 
   it('without popup or scroll hint the caret sits right under the breathing row', () => {
     expect(cursorPosition({ historyRows: 20, popupRows: 0, layout: layout() })).toEqual({ row: 21, col: COMPOSER_PREFIX_WIDTH });
+  });
+
+  it('queue rows shift the caret down (mid-turn message lane)', () => {
+    expect(cursorPosition({ historyRows: 10, popupRows: 0, queueRows: 2, layout: layout() }).row).toBe(13);
+  });
+});
+
+describe('messageQueueRows', () => {
+  it('empty queue renders nothing', () => {
+    expect(messageQueueRows(plainPalette, [], 100)).toEqual([]);
+  });
+
+  it('renders newest-last dim lane rows, multiline collapsed to one line', () => {
+    const rows = messageQueueRows(plainPalette, ['第一条', '第二\n条'], 100);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toBe('  ┃ 第一条');
+    expect(rows[1]).toBe('  ┃ 第二 条');
+  });
+
+  it('caps at the newest 3 with an overflow hint on top', () => {
+    const rows = messageQueueRows(plainPalette, ['a', 'b', 'c', 'd', 'e'], 100);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toContain('还有 2 条');
+    expect(rows[1]).toBe('  ┃ c');
+    expect(rows[3]).toBe('  ┃ e');
   });
 });
 

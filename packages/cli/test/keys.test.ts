@@ -123,3 +123,20 @@ describe('TUI Key Handling: execution mode Tab gate', () => {
     expect(blocked).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('TuiStore message queue (mid-turn enqueue)', () => {
+  it('drains FIFO and fires onChange on both ends', () => {
+    let changes = 0;
+    const store = new TuiStore(() => {
+      changes += 1;
+    });
+    expect(store.dequeueMessage()).toBeUndefined();
+    store.enqueueMessage('first');
+    store.enqueueMessage('second');
+    expect(changes).toBe(2);
+    expect(store.dequeueMessage()).toBe('first');
+    expect(store.dequeueMessage()).toBe('second');
+    expect(changes).toBe(4);
+    expect(store.messageQueue).toHaveLength(0);
+  });
+});

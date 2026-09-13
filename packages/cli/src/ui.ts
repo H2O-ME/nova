@@ -41,6 +41,8 @@ export {
   LONG_TASK_DONE_MS,
   LONG_TASK_ERROR_MS,
   EXEC_DONE_NOTIFY_MS,
+  MESSAGE_QUEUE_SHOW,
+  messageQueueRows,
   modelTail,
   SESSION_LIST_LIMIT,
   STATUS_ROWS,

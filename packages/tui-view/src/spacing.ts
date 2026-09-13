@@ -34,12 +34,13 @@ export function sliceHistory(
   return { lines, sliceStart, maxScroll };
 }
 
-/** Bottom stack order: history · breathing row · popups · composer · status. */
+/** Bottom stack order: history · breathing row · popups · queue · composer · status. */
 export function bottomStack(
   historyLines: string[],
   popupLines: string[],
+  queueLines: string[],
   composerRows: string[],
   status: string,
 ): string[] {
-  return [...historyLines, ...Array<string>(BREATHE_ROWS).fill(''), ...popupLines, ...composerRows, status];
+  return [...historyLines, ...Array<string>(BREATHE_ROWS).fill(''), ...popupLines, ...queueLines, ...composerRows, status];
 }
