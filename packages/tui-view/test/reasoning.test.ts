@@ -67,3 +67,19 @@ describe('summaryRow + reasoningDetailRows (inert click-toggle surfaces)', () =>
     }
   });
 });
+
+describe('reasoningLiveRow spinner glyph (thinking animation)', () => {
+  it('leads the live tail with the cycling braille frame', () => {
+    const rows = reasoningLiveRow(plainPalette, { done: ['已想完的行'], partial: '还在想', cols: 40, spinnerFrame: 0 });
+    expect(rows[0]).toBe('已想完的行');
+    expect(rows.at(-1)).toMatch(/^⠋ 还在想/);
+  });
+
+  it('renders the bare glyph when nothing has streamed yet', () => {
+    expect(reasoningLiveRow(plainPalette, { done: [], partial: '', cols: 40, spinnerFrame: 3 })).toEqual(['⠸']);
+  });
+
+  it('stays static (⋯) without a frame — folded/test surfaces', () => {
+    expect(reasoningLiveRow(plainPalette, { done: [], partial: '', cols: 40 })).toEqual(['⋯']);
+  });
+});

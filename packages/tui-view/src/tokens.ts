@@ -18,6 +18,15 @@ export const REASONING_FULL_MAX_CHARS = 200_000;
 export const REASONING_FULL_MAX_LINES = 2000;
 /** Reasoning block indent columns; wrap budgets must agree (see wrapBlock). */
 export const REASONING_INDENT_COLS = 4;
+/** Reasoning display buffer cap: the reveal window only needs the tail. */
+export const REASONING_LIVE_KEEP_CHARS = 4000;
+
+/** Stream smoothing (typewriter): tick rate + per-tick reveal pacing. */
+export const REVEAL_TICK_MS = 30;
+/** Floor chars per tick (≈66 cps) so a slow trickle still reads as typing. */
+export const REVEAL_MIN_CHARS = 2;
+/** Backlog drains in ~this many ticks — a burst never lags visibly. */
+export const REVEAL_CATCH_UP_TICKS = 8;
 
 /** Async effect-preview rows fetched into the approval popup. */
 export const APPROVAL_PREVIEW_MAX_ROWS = 20;

@@ -8,7 +8,7 @@
 
 import { wrapLine } from '@nova-agent/tui';
 import type { Palette } from './palette.js';
-import { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES } from './tokens.js';
+import { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES, SPINNER_FRAMES } from './tokens.js';
 
 export { REASONING_INDENT_COLS, REASONING_LIVE_MAX_ROWS, REASONING_MAX_LINES };
 
@@ -22,6 +22,12 @@ export interface ReasoningView {
   cols: number;
   /** Settled rows shown above the live tail while auto-expanded. */
   done?: readonly string[];
+  /**
+   * Braille spinner frame index: the live tail leads with a cycling glyph so
+   * a thinking pause between tokens still reads as alive. Omit for a static
+   * view (tests, folded surfaces).
+   */
+  spinnerFrame?: number;
 }
 
 /**
@@ -37,8 +43,17 @@ export function reasoningLiveRow(p: Palette, v: ReasoningView & { done?: readonl
     rows.push(...wrapLine(line, width));
   }
   const tailText = v.partial.trim();
-  if (tailText.length > 0) rows.push(...wrapLine(tailText, width));
-  if (rows.length === 0) return [p.dim('⋯')];
+  const glyph =
+    v.spinnerFrame === undefined ? undefined : SPINNER_FRAMES[v.spinnerFrame % SPINNER_FRAMES.length] ?? '⋯';
+  if (tailText.length > 0) {
+    const tailRows = wrapLine(tailText, width);
+    // The glyph leads the live tail's first row (the row the eye is on); the
+    // window slice below keeps tail rows last, so it stays visible in
+    // practice.
+    if (glyph !== undefined && tailRows[0] !== undefined) tailRows[0] = `${glyph} ${tailRows[0]}`;
+    rows.push(...tailRows);
+  }
+  if (rows.length === 0) return [p.dim(glyph ?? '⋯')];
   return rows.slice(-REASONING_LIVE_MAX_ROWS).map((row) => p.dim(row));
 }
 

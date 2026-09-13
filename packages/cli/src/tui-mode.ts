@@ -70,8 +70,13 @@ import {
   palette,
   permissionLabel,
   plainPalette,
+  REASONING_LIVE_KEEP_CHARS,
+  REVEAL_CATCH_UP_TICKS,
+  REVEAL_MIN_CHARS,
+  REVEAL_TICK_MS,
   SPINNER_FRAMES,
   statusLine,
+  StreamSmoother,
   TOOL_GUTTER,
   toolArgSummary,
   toolDoneLine,
@@ -360,6 +365,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           // Dirty-check: identical rows skip the replace (no wrap-cache churn).
           if (entry.block.lines.join('\n') !== lines.join('\n')) store.replaceBlock(entry.block, lines);
         }
+        // The thinking glyph cycles even between token bursts: the spinner
+        // tick re-renders the live reasoning rows (dirty-checked inside).
+        if (store.reasoningBlock !== undefined) renderReasoningLive();
         scheduleRender();
       }, SPINNER_TICK_MS);
     },
@@ -454,6 +462,32 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     store.reasoningBlock = undefined;
   };
 
+  // ---- stream smoothing (codex-style typewriter) ------------------------
+  // SSE deltas arrive in network bursts; both streams queue into smoothers
+  // and a steady tick meters them into the visible blocks, so text flows
+  // instead of lurching. Buffers hold the ARRIVAL truth for semantics
+  // (assistantText/reasoningBuffer); only the DISPLAY is paced.
+  const assistantStream = new StreamSmoother();
+  const reasoningStream = new StreamSmoother();
+  /** Revealed reasoning text — the display mirror the live rows render. */
+  let reasoningShown = '';
+
+  /** Recompute the live reasoning rows from the revealed buffer (dirty-checked). */
+  const renderReasoningLive = (): void => {
+    const block = store.reasoningBlock;
+    if (block === undefined) return;
+    const parts = reasoningShown.split('\n');
+    const livePartial = (parts.pop() ?? '').replace(/\s+$/u, '').slice(-REASONING_MAX_PARTIAL_CHARS);
+    const done = parts.map((line) => line.trimEnd()).filter((line) => line.trim().length > 0);
+    const lines = reasoningLiveRow(paint, {
+      done,
+      partial: livePartial,
+      cols: screen.cols,
+      spinnerFrame: store.spinnerFrame,
+    });
+    if (block.lines.join('\n') !== lines.join('\n')) store.replaceBlock(block, lines);
+  };
+
   async function agentTurn(userInput: string): Promise<void> {
     const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: userInput };
     messages.push(userMsg);
@@ -491,6 +525,48 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     let assistantSeparator: Block | undefined;
     /** Incremental markdown renderer; re-created when a new answer opens. */
     let md: MarkdownRenderer | undefined;
+
+    // ---- steady-tick reveal (typewriter) --------------------------------
+    // Both streams drain here on a 30ms cadence; the timer parks itself when
+    // nothing is pending and re-arms on the next delta.
+    let revealTimer: NodeJS.Timeout | undefined;
+    const stopReveal = (): void => {
+      if (revealTimer !== undefined) {
+        clearInterval(revealTimer);
+        revealTimer = undefined;
+      }
+    };
+    const revealTick = (): void => {
+      const answer = assistantStream.take(REVEAL_MIN_CHARS, REVEAL_CATCH_UP_TICKS);
+      if (answer.length > 0 && assistantBlock !== undefined && md !== undefined) {
+        store.replaceBlock(assistantBlock, md.push(answer));
+      }
+      const thought = reasoningStream.take(REVEAL_MIN_CHARS, REVEAL_CATCH_UP_TICKS);
+      if (thought.length > 0) {
+        reasoningShown = (reasoningShown + thought).slice(-REASONING_LIVE_KEEP_CHARS);
+        renderReasoningLive();
+      }
+      if (assistantStream.length === 0 && reasoningStream.length === 0) stopReveal();
+      scheduleRender();
+    };
+    const ensureReveal = (): void => {
+      revealTimer ??= setInterval(revealTick, REVEAL_TICK_MS);
+    };
+    /** Reveal whatever answer text is still pending (turn/closure end). */
+    const flushAssistant = (): void => {
+      const chunk = assistantStream.flush();
+      if (chunk.length > 0 && assistantBlock !== undefined && md !== undefined) {
+        store.replaceBlock(assistantBlock, md.push(chunk));
+      }
+    };
+    /** Drop unrevealed text wholesale (abort / retry / turn teardown). */
+    const clearStreams = (): void => {
+      assistantStream.clear();
+      reasoningStream.clear();
+      reasoningShown = '';
+      stopReveal();
+    };
+
     /**
      * Reasoning, Codex-style: deltas accumulate in a memory buffer; the
      * transcript keeps ONE transient row (buffer tail, or the first **bold**
@@ -512,6 +588,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       const had = store.reasoningBlock !== undefined && reasoningBuffer.trim().length > 0;
       reasoningBuffer = '';
       reasoningFull.length = 0;
+      reasoningStream.clear();
+      reasoningShown = '';
       discardReasoning();
       return had;
     };
@@ -550,20 +628,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               foldToSummary();
               md = createMarkdownRenderer(paint);
               assistantSeparator = undefined;
+              // The block opens empty; the reveal tick fills it (smoothing).
+              assistantBlock = store.pushBlock([], { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
             }
             assistantText += text;
-            // Claude Code / codex both anchor each reply with a dot marker.
-            // The marker lives in the block gutter (applied at wrap time), so
-            // soft-wrapped continuation lines align under the text column.
-            // Complete markdown lines render once and are cached — only the
-            // trailing unfinished line re-renders per delta.
-            const lines = md !== undefined ? md.push(text) : [];
-            if (assistantBlock === undefined) {
-              store.pushBlock(lines, { first: `  ${DIM}•${RESET} `, rest: '    ' }, 'assistant');
-              assistantBlock = store.blocks[store.blocks.length - 1];
-            } else {
-              store.replaceBlock(assistantBlock, lines);
-            }
+            // Queue for the typewriter — arrival truth stays in assistantText.
+            assistantStream.push(text);
+            ensureReveal();
           },
           appendReasoning(text: string) {
             store.tpsTokens += estimateTextTokens(text);
@@ -576,6 +647,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               reasoningOpen = true;
               reasoningBuffer = '';
               reasoningFull.length = 0;
+              reasoningShown = '';
               // Auto-expanded while store.streaming: the newest reasoning lines are
               // visible live (tail-capped); completion folds them away. Every
               // row sits at the text column (no marker on the first row — an
@@ -584,27 +656,19 @@ export async function startTui(opts: TuiOptions): Promise<void> {
               store.pushBlock(['⋯'], { first: '    ', rest: '    ' }, 'reasoning');
               store.reasoningBlock = store.blocks[store.blocks.length - 1];
             }
-            // The buffer is the truth (memory-only detail); the block shows
-            // settled lines newest-first plus one live tail row — capped at
-            // REASONING_LIVE_MAX_ROWS so long thoughts can't flood the view.
+            // The buffer is the truth (memory-only detail); the DISPLAY is
+            // fed through the smoother — the live tail types out steadily
+            // instead of lurching with each network burst.
             reasoningBuffer += text;
             if (reasoningBuffer.length > REASONING_FULL_MAX_CHARS) {
               reasoningBuffer = reasoningBuffer.slice(-REASONING_FULL_MAX_CHARS);
             }
-            const parts = reasoningBuffer.split('\n');
-            const livePartial = (parts.pop() ?? '').replace(/\s+$/u, '').slice(-REASONING_MAX_PARTIAL_CHARS);
-            const done = parts.map((line) => line.trimEnd()).filter((line) => line.trim().length > 0);
-            const lines = reasoningLiveRow(paint, {
-              done,
-              partial: livePartial,
-              cols: screen.cols,
-            });
-            // The update goes to the block's stable ref — the last block may
-            // be a tool line, and clobbering it must not erase history.
-            if (store.reasoningBlock !== undefined) store.replaceBlock(store.reasoningBlock, lines);
-            else store.updateLastBlock(lines);
+            reasoningStream.push(text);
+            ensureReveal();
           },
           closeAssistant() {
+            // Nothing may stay unrevealed when the answer block closes.
+            flushAssistant();
             if (assistantOpen && assistantText.trim().length === 0) {
               // A whitespace-only answer (blank lines before tool calls)
               // leaves no trace: drop the blank block and its separator by
@@ -630,9 +694,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             assistantText = '';
             // 重试的失败尝试不留任何痕迹（包括思考摘要行）。
             discardReasoning();
-                  reasoningOpen = false;
+            reasoningOpen = false;
             reasoningBuffer = '';
             reasoningFull.length = 0;
+            clearStreams();
           },
         });
       }
@@ -657,6 +722,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           assistantOpen = false;
           assistantText = '';
         }
+        // An aborted turn reveals nothing more: pending text is dropped.
+        clearStreams();
         store.pushBlock([`${YELLOW}  ■ 已中断${RESET}`]);
       } else {
         // A non-abort error mid-stream leaves a partial assistant block on
@@ -671,6 +738,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           assistantText = '';
           store.pushBlock([`${DIM}  ⟳ 未完成的回答已丢弃（未写入会话日志）${RESET}`], TOOL_GUTTER);
         }
+        clearStreams();
         // API errors can be long: hang wrapped rows under the notice column.
         store.pushBlock([`${RED}  ✗ 出错：${message}${RESET}`], TOOL_GUTTER);
         // A turn that died mid-work (not a user abort) deserves a ping too —
@@ -691,6 +759,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       discardReasoning();
       reasoningOpen = false;
       reasoningBuffer = '';
+      reasoningShown = '';
+      clearStreams();
       store.closeReadGroup();
       // Runtime invariant (NOVA_DEBUG): the live surface must stay equal to
       // the session log projection — "model-visible means logged".

@@ -108,19 +108,6 @@ export class TuiStore {
     return block;
   }
 
-  updateLastBlock(lines: string[]): void {
-    if (this.blocks.length === 0) {
-      this.pushBlock(lines);
-      return;
-    }
-    const last = this.blocks[this.blocks.length - 1];
-    if (last === undefined) return;
-    last.lines = lines;
-    last.wrapped = undefined;
-    this.blocksVersion += 1;
-    this.onChange();
-  }
-
   replaceBlock(block: Block, lines: string[]): void {
     if (!this.blocks.includes(block)) {
       this.blocks.push({ lines, wrapped: undefined, ...(block.gutter !== undefined ? { gutter: block.gutter } : {}) });
