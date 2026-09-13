@@ -71,6 +71,21 @@ describe('subagent tool', () => {
     expect(seenTools).toEqual(['other']);
   });
 
+  it('injects the scout posture into the nested run (read-only recon, status-first report)', async () => {
+    const prompts: (string | undefined)[] = [];
+    const provider: ChatProvider = {
+      async *stream(req) {
+        prompts.push(req.systemPrompt);
+        for (const ev of ANSWER) yield ev;
+      },
+    };
+    const tool = createSubagentTool({ provider, tools: () => [], rootDir: () => '.' });
+    await tool.execute({ prompt: 'x' }, { rootDir: '.' });
+    expect(prompts[0]).toContain('Subagent posture (scout)');
+    expect(prompts[0]).toContain('Do NOT design, refactor or implement');
+    expect(prompts[0]).toContain('"complete", "partial" or "blocked"');
+  });
+
   it('rejects an empty prompt without touching the provider', async () => {
     let called = 0;
     const provider: ChatProvider = {

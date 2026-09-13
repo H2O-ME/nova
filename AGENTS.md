@@ -123,7 +123,7 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 `tools.code.mode` 三态 `native|ptc|both`（`PtcMode` 类型定义在 core——config/host/纯视图层共用，避免 tui-view 跨层依赖 plugins）。开启后模型获得 `run_code {code, description}` 传输工具：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断，经 `ctx.dispatch` 回流）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算、端口协议逐字段防御。SDK 声明由 schema 字典序生成（字节稳定不吃缓存）。`ptc` 态只暴露 `run_code`。需 Node ≥ 22.19。
 
 ### Subagent（隔离子代理，dsh 设计简化版）
-`subagent` 工具（session-runtime 默认装配，全部 runner 可用）：嵌套 runAgent 跑**全新消息面**（上下文隔离——子代理看不到父对话，prompt 必须自包含），最终 assistant 报告作为工具结果回流父会话（父日志保持 "model-visible means logged"；子代理自身对话是瞬态、不落盘）。嵌套工具集活读取并**过滤 subagent 自身**（结构性禁止递归）；透传父 abort signal 与**同一 hooks 链**（嵌套调用走与父相同的审批门与管线）。
+`subagent` 工具（session-runtime 默认装配，全部 runner 可用）：嵌套 runAgent 跑**全新消息面**（上下文隔离——子代理看不到父对话，prompt 必须自包含），最终 assistant 报告作为工具结果回流父会话（父日志保持 "model-visible means logged"；子代理自身对话是瞬态、不落盘）。嵌套工具集活读取并**过滤 subagent 自身**（结构性禁止递归）；透传父 abort signal 与**同一 hooks 链**（嵌套调用走与父相同的审批门与管线）。**编排姿态**（系统提示 + 工具描述 + 嵌套 `SUBAGENT_POSTURE` 三层注入，codex 经验）：子代理是上下文隔离工具而非默认工作流——默认 1–2 个只读侦察、brief 不重叠、报告给 `path:line` 证据指针；设计/复杂实现留在主代理（子代理无父对话上下文、普通推理水平），简单查找不派发，多代理不重复检索；嵌套报告首行约定 `complete/partial/blocked`。
 
 ### 工作区切换（switch_workspace）
 模型可在任务中要求切换工作区根（"去另一个仓库处理"）：第一方 `workspace` 插件（opt-in）校验目标目录（realpath + isDirectory）后经 runner 回调重建工具宿主——fs/bash/search 根、技能列表、环境片段 cwd 一致重指；新根自下一次工具分发/下一轮生效。TUI 与 /session 会话切换共用 `applyWorkspace` 通道；exec 不启用。安全护栏：记录的工作区指向 `~/.nova` 数据目录时拒绝应用（会话被误建在数据目录内不会拖走工具根）。
@@ -282,6 +282,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 
 - **M7.10 — subagent 活行接管 + TUI 消息队列**（真机截图驱动）：
   - **子代理活行去重（接管式）**：前台 subagent 的活行不再独立钉一行——progress `start` 时**接管该调用的待定工具行**（同一 block 从「调用 subagent …」变形为 `⧉ 子代理 …` 活行，result 时再变形为完成行），spinner 刻度跳过被接管的条目；此前待定行与活行并排同显，同一件事画两遍。中断/出错路径 `clearSubagentLive()` 把活行回退为静态停顿行（`■`），假活行不进历史。
+  - **子代理编排姿态（codex 经验注入，提示词三层）**：系统提示新增 `## Subagents` 节 + subagent 工具描述重写 + 嵌套运行注入 `SUBAGENT_POSTURE`——子代理是**上下文隔离工具而非默认工作流**：默认 1–2 个只读侦察（scout）、brief 自包含且不重叠、报告要 `path:line` 证据指针而非文件转储；**设计/复杂实现绝不委派**（子代理看不到主对话、普通指令遵循水平，父代理拥有设计、决策与一切写操作并复核关键证据）；简单查找不派子代理；多代理不得重复检索同一问题。嵌套报告格式约定：首行 `complete/partial/blocked` + 结论 + 证据指针 + 限制。
   - **子代理执行进度可点击展开**：嵌套日志（`▸ 开始` / 每次嵌套工具调用 `› name args` / `✓ 完成` 里程碑）在内存累积（上限 200 条裁旧），挂在 block.detail 上——活行带 ▸/▾ affordance，**点击展开/收起**（keys.ts 点击链通用化：detail 块 = base + 明细行）；完成后明细随完成行保留可展开，中止后也看得到做到了哪一步。与 reasoning 详情同一契约：**纯会话内存，不落盘，resume 后不可展开**。
   - **运行中消息队列（codex 式）**：轮进行中在 composer 输入正文回车**入队而非拒绝**——`TuiStore.messageQueue` FIFO，队列以暗色 lane 常驻 composer 上方（`messageQueueRows`，最新在后、超 3 条折叠提示）；本轮结束（完成/出错/Esc 中断）后 `drainMessageQueue()` 自动下发队首，走与正常提交相同的技能展开/命令分发管线。**打断 + 干预**语义：Esc 中断当前轮后队首接续发送——用户打断是为了说下一句话。`/` 命令不排队（查看类即时执行、会话变更类仍拒绝）。
   - **子代理消耗统计与后台运行**（承接上一提交）：`run_in_background` 经 `JobRegistry`（kind=subagent）非阻塞运行，报告+用量 trailer 经 `jobs output` 读取；前台报告尾部附 `[subagent: label · N turns · N tools · N tok]` trailer（子代理用量随报告走，不并入父会话统计——对齐 dsh/codex 的 per-thread 隔离）。

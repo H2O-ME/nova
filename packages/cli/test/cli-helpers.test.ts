@@ -20,6 +20,14 @@ describe('system prompt', () => {
     expect(DEFAULT_SYSTEM_PROMPT).toMatch(/Mirror the user's language/);
   });
 
+  it('frames subagents as context isolation, never design delegation', () => {
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/CONTEXT-ISOLATION tool/);
+    // codex 编排经验：侦察默认只读、brief 不重叠、设计/实现留在主代理。
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/1–2 scout subagents/);
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/NEVER delegate design or complex implementation/);
+    expect(DEFAULT_SYSTEM_PROMPT).toMatch(/re-search the same question/);
+  });
+
   it('stays byte-stable: no environment or user instructions baked in', () => {
     const prompt = buildSystemPrompt();
     expect(prompt).toBe(DEFAULT_SYSTEM_PROMPT);

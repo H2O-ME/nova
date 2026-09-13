@@ -58,6 +58,20 @@ export interface SubagentToolOptions {
   onProgress?: (progress: SubagentProgress) => void;
 }
 
+/**
+ * Scout posture appended to the nested run's system prompt: the subagent is
+ * a read-only recon unit by default — the parent owns design and edits, and
+ * the report (not intermediate churn) is the deliverable. Mirrors the
+ * codex-style orchestration lesson: subagents do simple, well-scoped work;
+ * never design or open-ended implementation.
+ */
+export const SUBAGENT_POSTURE = `
+## Subagent posture (scout)
+You are an isolated scout subagent; your final report is the ONLY part of this conversation the parent will see, and it delegates to you to keep its own context small.
+- Default to READ-ONLY reconnaissance: locate code, trace call chains, extract facts, run read-only verification commands. Do NOT design, refactor or implement changes, and do not expand scope — the parent owns design, decisions and all writes.
+- Search narrowly and stop when the evidence is sufficient; never re-search what the brief already answers. Reading a few targeted files beats mapping the whole repository.
+- Report format: the FIRST line is exactly one of "complete", "partial" or "blocked". Then give conclusions, evidence as path:line pointers (or command + key output lines, trimmed), and limitations. No file dumps, no filler.`;
+
 const SUBAGENT_TOOL_NAME = 'subagent';
 /** Bytes kept in the background job's live-progress ring. */
 const TAIL_BYTES = 8 * 1024;
@@ -92,7 +106,7 @@ async function runOnce(
       id: newId('msg'),
       ts: Date.now(),
       role: 'user' as const,
-      content: `[subagent task: ${label}]\n\n${prompt}\n\n[You are an isolated subagent. Work the task with the tools available; when done, reply with your final report — it is the only part of this conversation the parent agent will see.]`,
+      content: `[subagent task: ${label}]\n\n${prompt}\n\n[You are an isolated scout subagent. Work the task read-only unless the brief explicitly authorizes otherwise; when done, reply with your final report (first line: complete/partial/blocked) — it is the only part of this conversation the parent agent will see.]`,
     },
   ];
 
@@ -115,7 +129,7 @@ async function runOnce(
     provider: opts.provider,
     messages,
     rootDir: opts.rootDir(),
-    ...(opts.systemPrompt !== undefined ? { systemPrompt: opts.systemPrompt } : {}),
+    systemPrompt: opts.systemPrompt !== undefined ? `${opts.systemPrompt}\n${SUBAGENT_POSTURE}` : SUBAGENT_POSTURE,
     tools: nestedTools,
     ...(opts.hooks !== undefined ? { hooks: opts.hooks() } : {}),
     signal,
@@ -159,10 +173,16 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
   return {
     name: SUBAGENT_TOOL_NAME,
     description:
-      'Run a focused sub-task in an isolated subagent: it gets a FRESH context (it cannot see this conversation — ' +
-      'write the prompt as a complete, self-contained brief: goal, relevant file paths, constraints, expected output) ' +
-      'and the same tools, then returns its final report. Use for parallelizable research, exhaustive searches or ' +
-      'self-contained subtasks whose intermediate tool output would otherwise flood this conversation. ' +
+      'Delegate a focused sub-task to an isolated scout subagent: it starts from a FRESH context (it cannot see this ' +
+      'conversation — the prompt must be a complete, self-contained brief: goal, relevant paths, constraints, expected ' +
+      'output) and returns ONE final report. The point is context isolation: broad exploration fans out there instead ' +
+      'of flooding this conversation.\n' +
+      'USE for reconnaissance: multi-area scans, call-chain traces, exhaustive searches over unknown code, parallel ' +
+      'fact extraction. Prefer 1-2 subagents with non-overlapping briefs; ask for candidate files with path:line ' +
+      'evidence, not file dumps.\n' +
+      'Do NOT use for design or complex implementation — the subagent works at plain instruction-following level ' +
+      'without this conversation; the parent owns design, decisions and all edits, verifies key evidence, then acts. ' +
+      'Simple lookups (one known file, one targeted search) also do not need a subagent.\n' +
       'Args: prompt (required, the full brief), label (optional short task name), run_in_background (optional boolean; ' +
       'returns a subagent-N job handle instead of waiting — read with the jobs tool, completion is announced automatically).',
     parameters: {
