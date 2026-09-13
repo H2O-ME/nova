@@ -57,6 +57,7 @@ pnpm release      # changeset version + sync root version + commit + tag 一条�
   "systemPrompt": "补充指令…",         // 可选：附加用户指令，注入会话首条上下文片段（不替换内核系统提示，前缀缓存不受影响）
   "maxTurns": 30,                     // 可选：单次任务最大轮数（默认 30，上限 500）
   "autoCompactTokenLimit": 60000,     // 可选：上轮 prompt tokens 超限自动压缩会话
+  "ui": { "theme": "dark" },          // 可选：界面主题 dark（默认，观感与引入主题层前一致）/ light（亮背景）/ plain（无色）；NO_COLOR 恒定无色
   "qqbot": {                           // 可选：nova qqbot 模式凭据（q.qq.com 管理端获取）
     "appId": "xxx",
     "clientSecret": "{env:QQBOT_SECRET}"
@@ -86,9 +87,9 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, tui-view, plugins, ai,
 | `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、后台 jobs | `agent.ts`、`session.ts`、`estimate.ts`、`jobs.ts`、`types.ts`、`ids.ts`、`tools/get-time.ts`（M1 demo 工具，仍在发布） |
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈、usage/缓存命中提取 | `client.ts`、`sse.ts` |
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`types.ts`、`builtin/{fs,bash,jobs,todo,search,search-worker,index}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
-| `tui` | 零依赖终端原语：行级差分渲染、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标）、CJK 宽度处理 | `screen.ts`、`keys.ts`、`width.ts` |
-| `tui-view` | TUI 纯视图层（零终端 IO）：tokens 常量、调色板/标签、裁剪族、工具行、状态栏、弹窗、composer、reasoning、间距、开屏 | `tokens.ts`、`palette.ts`、`labels.ts`、`text.ts`、`clip.ts`、`tool-lines.ts`、`status-view.ts`、`popups.ts`、`composer-view.ts`、`reasoning-view.ts`、`spacing.ts`、`splash.ts`、`smooth.ts` |
-| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（1526 行壳层：生命周期/IO/agentTurn 事件归约）、`tui/{store,keys,frame}.ts`（TuiStore/按键责任链/帧装配）、`tui/{turn-projector,subagent-lives}.ts`（轮次投影状态机 / 子代理活行与后台行状态机）、`session-runtime.ts`（三 runner 共享启动工厂）、`auto-compact.ts`（统一 TokenGate）、`runner-shared.ts`（计时/maxTurns/toast/审批/自动压缩编排/runAgent 公共 kwargs 装配）、`exec.ts`、`repl.ts`、`compact.ts`、`config.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`commands.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`version.ts`、`spinner.ts`、`ui.ts`+`statusbar.ts`+`composer.ts`+`popup.ts`+`reasoning.ts`（5 个 tui-view 转发门面）；`scripts/sync-root-version.mjs`（根包版本同步） |
+| `tui` | 零依赖终端原语：行级差分渲染（可选 ?2026 同步输出）、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标、CSI 修饰键参数）、CJK 宽度处理、终端能力探测 | `screen.ts`、`keys.ts`、`width.ts`、`caps.ts` |
+| `tui-view` | TUI 纯视图层（零终端 IO）：tokens 常量、调色板/标签、裁剪族、工具行、状态栏、弹窗、composer、reasoning、间距、开屏 | `tokens.ts`、`palette.ts`、`theme.ts`（语义主题层）、`labels.ts`、`text.ts`、`clip.ts`、`tool-lines.ts`、`status-view.ts`、`popups.ts`、`composer-view.ts`、`reasoning-view.ts`、`spacing.ts`、`splash.ts`、`smooth.ts` |
+| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（~1541 行壳层：生命周期/IO/agentTurn 事件归约）、`tui/{store,keys,frame}.ts`（TuiStore/按键责任链/帧装配）、`tui/{turn-projector,subagent-lives}.ts`（轮次投影状态机 / 子代理活行与后台行状态机）、`session-runtime.ts`（三 runner 共享启动工厂 + buildHost 宿主装配单源）、`auto-compact.ts`（统一 TokenGate + 无头 wrapHeadlessAutoCompact）、`runner-shared.ts`（计时/maxTurns/审批/自动压缩编排/runAgent 公共 kwargs 装配）、`runner-loop.ts`（四 runner 事件消费簿记单源：日志追加/usage 锚点/中断归类/toast）、`command-core.ts`（斜杠命令逻辑核：repl/TUI 共用公式与序列）、`exec.ts`、`repl.ts`、`compact.ts`、`config.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`commands.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`version.ts`、`spinner.ts`、`ui.ts`+`statusbar.ts`+`composer.ts`+`popup.ts`+`reasoning.ts`（5 个 tui-view 转发门面）；`scripts/sync-root-version.mjs`（根包版本同步） |
 | `qqbot` | QQ 机器人接入插件（第三方插件编写示范，只依赖 core/plugins 公共 API）：WebSocket 网关状态机、token 管理、REST 发消息、`qqbot_send` 工具、通道装配 | `protocol.ts`（AccessTokenManager/QqGateway/QqApi）、`runtime.ts`（createQqBotChannel）、`plugin.ts` |
 
 ## 5. 核心设计
@@ -165,7 +166,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 - **内置能力皆第一方插件**：新工具/命令/钩子走 `PluginContext` 注册，与第三方同 API、同审批门，别在 core 里开特例。
 - **TUI 分层**：渲染计算 = 纯模块（`statusbar.ts`/`composer.ts`/`popup.ts`/`reasoning.ts` + `ui.ts`，帧快照入参、Palette 注入、`plainPalette` 可测）；`tui-mode.ts` 闭包壳只留定时器/终端 IO/状态突变，按键按责任链分层（审批 → 面板 → 全局 → composer），**轮内块投影一律进 `tui/turn-projector.ts`（定时器由壳层驱动，投影器不碰 setInterval）**。新交互先问能不能写成纯函数，能则不进闭包；只能在真机截图里发现的行为，多半说明它还长在投影器之外。
 - **前缀字节稳定**：任何动态内容都注入会话首条 user 片段（append-only），绝不回改系统提示或旧消息——否则破坏缓存命中。
-- **测试不联网**：三层测试体系——①**单元层**（纯函数，断言用 `plainPalette` 取无 ANSI 的确定字符串）；②**ai 层注入** `fetch` + SSE fixture（`client.test.ts` 覆盖流式 tool call 分片、中途断流、静默截断、reasoning、缓存字段）；③**接缝集成测试**（M7.6 新增，守模块交接处而非实现细节）：`ai/test/pipeline.test.ts` 守 SSE→`OpenAICompatClient`→`runAgent` 全管道含 `finish_reason:"length"` 截断防御；`core/test/resume.test.ts` 守 save→`Session.open`→`deriveMessages`→新 `runAgent` 轮的投影一致性；`cli/test/frame-assembly.test.ts` 守 `flattenBlocks`+`wrapBlock` 帧组装无行超宽、rowMap 连续。④**投影状态机单测**（M7.12 新增）：`cli/test/turn-projector.test.ts` 与 `cli/test/subagent-lives.test.ts` 以假时钟 + `plainPalette` + 真实 `TuiStore` 驱动轮次投影——重试残留块、空白锚定、假活行、孤儿续行这些曾经的「截图病灶」从此有红测试可守。当前 **48 个测试文件 / 517 个用例**（`plugins/test/permission.test.ts` 专守 fail-closed 审批分支：非法答案/抛错询问器/`never` 短路/前缀与复合命令记忆）。
+- **测试不联网**：三层测试体系——①**单元层**（纯函数，断言用 `plainPalette` 取无 ANSI 的确定字符串）；②**ai 层注入** `fetch` + SSE fixture（`client.test.ts` 覆盖流式 tool call 分片、中途断流、静默截断、reasoning、缓存字段）；③**接缝集成测试**（M7.6 新增，守模块交接处而非实现细节）：`ai/test/pipeline.test.ts` 守 SSE→`OpenAICompatClient`→`runAgent` 全管道含 `finish_reason:"length"` 截断防御；`core/test/resume.test.ts` 守 save→`Session.open`→`deriveMessages`→新 `runAgent` 轮的投影一致性；`cli/test/frame-assembly.test.ts` 守 `flattenBlocks`+`wrapBlock` 帧组装无行超宽、rowMap 连续。④**投影状态机单测**（M7.12 新增）：`cli/test/turn-projector.test.ts` 与 `cli/test/subagent-lives.test.ts` 以假时钟 + `plainPalette` + 真实 `TuiStore` 驱动轮次投影——重试残留块、空白锚定、假活行、孤儿续行这些曾经的「截图病灶」从此有红测试可守。当前 **53 个测试文件 / 551 个用例**（`plugins/test/permission.test.ts` 专守 fail-closed 审批分支：非法答案/抛错询问器/`never` 短路/前缀与复合命令记忆）。
 - **路径/跨平台**：一律 `node:path` + 抽象层；bash 工具 Windows 优先 Git Bash、回落 PowerShell 并强制 UTF-8。
 - **文档即真相**：机制变了同步改本文件（README 只留门面）。里程碑改动附决策说明。
 - **提交前**：`pnpm verify`（build + typecheck + test）与 `pnpm lint` 全绿。
@@ -310,6 +311,37 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
   - **SubagentLives / BgSubagentRows**（`cli/tui/subagent-lives.ts`）：接管式活行的块身份判断（M7.10 起散在 4 处）收敛为类方法（start 接管 / settle 收编 / abortAll 回退 / renderAll 轮换），后台委派行的轮询钉行与自管 interval 同批入类。
   - **缺陷修复（迁移时发现的真实回归）**：`tool_call_result` 旧路径先清 `toolBlocks` 再判接管身份恒不成立 → 完成行经"移除 + 重推"丢失 `detail`，子代理完成行的点击展开（M7.10 特性）实际失效；`settle()` 在条目尚存时判断并保持块原位，完成行重新收起可展开。
   - **配套**：`turn-projector.test.ts`（13 用例：重试不留残块、空白 delta 不锚定、abort 删未提交保留已提交、error 落丢弃提示、行动画 CJK 预算单行、思考尾行 transient）+ `subagent-lives.test.ts`（7 用例：接管不加块、去重契约、完成行 detail 原位保留、中止回退 ■、嵌套日志 200 裁旧）；壳层剩余裸 ANSI 收敛到 Palette（仅 gutter 开态契约保留原始码）。纯内部重构，行为不变（除声明的 detail 保留修复）。
+
+### 架构收敛与 TUI 现代化（M8.0–M8.5）
+
+- **M8.0 — 漂移 bug 批修**（修复补丁，逐条钉证据）：
+  - REPL 补齐 `/mode`——`COMMAND_SPECS` 一直声明该命令，`readline` 实现却无 case 落「未知命令」；`CODE_MODE_HINT` 从 TUI 壳层闭包常量提升为 `tui-view` 导出，行构造收为 `commands.ts` 纯函数 `modeOverviewRows`。
+  - `exec` 回补中断归类——`ffdc595` 立的「以本轮 `signal` 是否真触发为准」契约此前漏掉 `exec`，`SIGINT` 被误报为 `run_error`（退出码 130 + `notice` 行，网络超时照常 `run_error`）。
+  - 会话回放面过 `markdown` 渲染——`/session` 切回的 `assistant` 消息此前推裸文本，与流式渲染两套观感；现在走同一 `renderMarkdownLite`。
+
+- **M8.1 — Runner 层单源收敛**（行为不变重构 + 附带修复）：
+  - **`runner-loop.ts`**：四 `runner` 共享的事件消费簿记单源——日志追加 `switch`（×4 → ×1）、`usage`/锚点簿记（`UsageAnchorState` + 四连归零 ×6 → ×1）、中断归类 `isUserInterrupt`、完成/出错 `toast` `createTurnNotifier`（阈值与文案单源，`exec` 用 `execDoneMs` 阈值）。呈现与投影专属分支留在各 `shell`。
+  - **`buildHost` 宿主装配单源**：`createSessionRuntime` 暴露异步工厂（`codeMode` 入参 + `rebuild` 缝）——`bash` 配置展开 ×3、`subagent` 接线、`extraPlugins` 挂载只有一份；TUI 启动不再「弃用 `runtime` `host` 重建」（原 `:169-264` 整套拷贝删除），`repl` 的 `applyWorkspace` 第三份同步收口。
+  - **压缩 `surface` 单源**：`core` 导出 `compactionSurface(evt, all, seq)`（`keepIds` 优先），活路径（原按位置索引）与 `deriveMessages` 投影同走一式，「`model-visible` means `logged`」不再靠 `dev-only` 校验兜底；事件仍双写 `keep+keepIds` 兼容旧读者。
+  - **无头装配共享**：`createHeadlessPermission`（`never` 审批装配 ×2 → ×1）、`wrapHeadlessAutoCompact`（`splice` 原位契约 + 文案单源）、`exec` 控制行类型化 `ExecControlEvent`（`run_error` | `notice`，`--json` `schema` 文档锚点）。
+  - 附带修复：`qqbot` 最终 `assistant` 回复此前漏写会话日志（违反 `model-visible` means `logged`），随簿记统一落盘。
+
+- **M8.2 — `runAgent` 阶段化与守门**：
+  - `runAgent` 生成器（~290 行）拆为 `assembleRequest`（`hook` 链 + `job` 通知注入，别名契约注释随迁）/ `streamCompletion`（流式累加 + 空补全重试 + `abort` 归约，返回值生成器）/ 主体提交分发段（~90 行轮次循环）；`notices` `at-least-once` 契约从散布 4 点收敛为 `NoticeState` + `requeueUnaccounted` 幂等单点。事件序列逐字节不变。
+  - **弃用路径测试**：消费者中途 `.return()` 的通知回队与 `NOT_EXECUTED_GUIDANCE` 合成此前在 `core` 测试零命中（CLI 孪生有测），`agent-abandon.test.ts` 三用例钉死。
+  - **命令核下沉 `command-core.ts`**：`nextApprovalMode`、`cacheHitPct`/`lastCacheHitPct`、`pluginToolLine`/`pluginCommandLine`、`MODEL_LIST_EMPTY`/`modelListError`、`openFreshSession`（`/new` 序列单源，`resetSessionCache` 可选钩子）；TUI `/plugins` 补齐与 `repl` 一致的信息量（审批档位 + 命令注册项）。
+  - **守门**：`tsconfig.base` 开 `noUnusedLocals`/`noUnusedParameters`（零报错一次过）；新增 `.oxlintrc.json`（`correctness`=error + `no-unused-vars`）；删除 `findCommand` 死导出与 `void replSubagentProgress` 残留。
+
+- **M8.3 — TUI 主题基建**（默认观感逐字节不变）：
+  - **语义主题层**（`tui-view/theme.ts`）：`resolvePalette` 单源解析——`dark`（默认）= 原 `palette` **同一实例**（构造性字节等值，既有 `plainPalette` 断言测试当验证网）；`plain` 无色；`light` 亮背景高对比（`truecolor` 优先、16 色回落），语义槽一一对应不重排语义（守 `tui-design` 红线：主题=同语义换色值）。
+  - **能力探测**（`tui/caps.ts`）：`NO_COLOR`/`TERM=dumb` 恒定无色、`COLORTERM=truecolor` 升 24-bit、`?2026` 同步输出能力（`DEC` 私有模式不支持即忽略，可安全启用）。
+  - **防撕裂**：`LineScreen` 可选 `synchronizedOutput`（一帧写入包 `?2026h/2026l`，`cli` 经 `caps` 启用；库层默认关闭，既有写顺序断言不变）。
+  - **配置面**：`config` 新增 `ui.theme`（`strict` `schema` 兼容新增）、`--theme` `flag`、`/theme` 命令（`REPL`/TUI 运行中即时切换，`screen.invalidate` 全屏重绘；配置只作下次启动持久值，不回写）。
+
+- **M8.4 — TUI 实用性**（红线内）：
+  - **滚动锚定**：上滚后新输出等量补偿 `scroll` `offset`——视口钉在用户当时看的绝对位置，不再被流式输出往直播拽；回底恢复跟随。上滚时呼吸行显示「上方还有 N 行」位置指示（`bottomStack` 新增可选 `breathText`，不占内容行、不进状态栏——守「上滚不进状态栏」红线）。
+  - **Home/End 跳转**：`composer` 光标已在行首/行尾时再按 `Home`/`End` 升级为历史区跳顶/回底。
+  - **`CSI` 修饰键参数保留**：`KeyDecoder` 方向分派此前丢弃参数（`ctrl+arrow` 被静默吞掉）——现在产出 `ctrl+left`/`ctrl+right`，`composer` 绑定词级移动（切词边界与 `Ctrl+W` 一致）；其余修饰组合回落普通方向，行为不变。
 
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 
