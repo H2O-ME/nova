@@ -19,6 +19,8 @@ import {
   segmentBar,
   sparkline,
   statusLine,
+  subagentDetailRows,
+  subagentLiveLine,
   toolArgSummary,
   toolDoneLine,
   toolGroupLine,
@@ -477,5 +479,36 @@ describe('composer layout', () => {
     expect(cursorAfterVerticalMove('abcdef\nxy', 2, 20, -1)).toBe(2);
     // CJK row: caretCol 1 clamps to the first char boundary past it
     expect(cursorAfterVerticalMove('中文\na', 4, 20, -1)).toBe(1);
+  });
+});
+
+describe('subagent live line & detail rows', () => {
+  const base = {
+    toolCounts: new Map([['list_dir', 3]]),
+    turns: 2,
+    promptTokens: 100,
+    completionTokens: 20,
+  };
+
+  it('live line without detail carries no affordance marker', () => {
+    expect(subagentLiveLine(p, { label: '统计', ...base }, '•')).not.toContain('▸');
+    expect(subagentLiveLine(p, { label: '统计', ...base }, '•')).toContain('list_dir×3');
+  });
+
+  it('expandable detail renders ▸/▾ affordance', () => {
+    expect(subagentLiveLine(p, { label: '统计', ...base, expandable: true }, '•')).toContain(' ▸ ');
+    expect(subagentLiveLine(p, { label: '统计', ...base, expandable: true, expanded: true }, '•')).toContain(' ▾ ');
+  });
+
+  it('detail rows dim each entry and clip to the budget', () => {
+    const rows = subagentDetailRows(p, ['› list_dir {"path":"src"}', `› bash ${'x'.repeat(200)}`], 40);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toBe('  › list_dir {"path":"src"}');
+    // eslint-disable-next-line no-control-regex -- plainPalette keeps rows ANSI-free, the strip is belt-and-braces
+    for (const row of rows) expect(styledWidth(row.replace(/\x1b\[[0-9;]*m/g, ''))).toBeLessThanOrEqual(40);
+  });
+
+  it('empty detail renders no rows', () => {
+    expect(subagentDetailRows(p, [], 40)).toEqual([]);
   });
 });

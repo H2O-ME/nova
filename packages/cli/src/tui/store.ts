@@ -23,7 +23,8 @@ export interface Block {
   lines: string[];
   wrapped: string[] | undefined;
   gutter?: { first: string; rest: string };
-  detail?: { lines: string[]; secs: number };
+  /** Click-expand body (subagent nested log): rows shown under `base`. */
+  detail?: { lines: string[]; secs: number; base?: string[] };
   expanded?: boolean;
   kind?: 'user' | 'reasoning' | 'assistant' | 'tool' | 'system';
 }

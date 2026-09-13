@@ -26,6 +26,10 @@ export interface SubagentLiveView {
   /** Nested prompt+completion tokens so far. */
   promptTokens: number;
   completionTokens: number;
+  /** Detail (nested tool lines) is available — click expands. */
+  expandable?: boolean;
+  /** Current expand state (▸ collapsed / ▾ expanded affordance). */
+  expanded?: boolean;
 }
 
 /**
@@ -212,5 +216,16 @@ export function subagentLiveLine(p: Palette, v: SubagentLiveView, frame: string)
   const parts = [tools.length > 0 ? tools : '思考中'];
   if (v.turns > 0) parts.push(`${v.turns} 轮`);
   if (toks > 0) parts.push(`${toks} tok`);
-  return `    ${p.dim(frame)} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
+  const affordance = v.expandable === true ? ` ${p.dim(v.expanded ? '▾' : '▸')}` : '';
+  return `    ${p.dim(frame)} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)}${affordance} ${p.dim(`· ${parts.join(' · ')}`)}`;
+}
+
+/**
+ * Expanded subagent detail rows (click body): one dim line per nested
+ * moment, clipped to a single display row each. Memory-only — the nested
+ * transcript is transient and never enters the session log, so expansion
+ * (like reasoning) dies with the session.
+ */
+export function subagentDetailRows(p: Palette, entries: readonly string[], budget: number): string[] {
+  return entries.map((entry) => clipToWidth(`  ${p.dim(entry)}`, Math.max(8, budget)));
 }

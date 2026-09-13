@@ -282,6 +282,7 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 
 - **M7.10 — subagent 活行接管 + TUI 消息队列**（真机截图驱动）：
   - **子代理活行去重（接管式）**：前台 subagent 的活行不再独立钉一行——progress `start` 时**接管该调用的待定工具行**（同一 block 从「调用 subagent …」变形为 `⧉ 子代理 …` 活行，result 时再变形为完成行），spinner 刻度跳过被接管的条目；此前待定行与活行并排同显，同一件事画两遍。中断/出错路径 `clearSubagentLive()` 把活行回退为静态停顿行（`■`），假活行不进历史。
+  - **子代理执行进度可点击展开**：嵌套日志（`▸ 开始` / 每次嵌套工具调用 `› name args` / `✓ 完成` 里程碑）在内存累积（上限 200 条裁旧），挂在 block.detail 上——活行带 ▸/▾ affordance，**点击展开/收起**（keys.ts 点击链通用化：detail 块 = base + 明细行）；完成后明细随完成行保留可展开，中止后也看得到做到了哪一步。与 reasoning 详情同一契约：**纯会话内存，不落盘，resume 后不可展开**。
   - **运行中消息队列（codex 式）**：轮进行中在 composer 输入正文回车**入队而非拒绝**——`TuiStore.messageQueue` FIFO，队列以暗色 lane 常驻 composer 上方（`messageQueueRows`，最新在后、超 3 条折叠提示）；本轮结束（完成/出错/Esc 中断）后 `drainMessageQueue()` 自动下发队首，走与正常提交相同的技能展开/命令分发管线。**打断 + 干预**语义：Esc 中断当前轮后队首接续发送——用户打断是为了说下一句话。`/` 命令不排队（查看类即时执行、会话变更类仍拒绝）。
   - **子代理消耗统计与后台运行**（承接上一提交）：`run_in_background` 经 `JobRegistry`（kind=subagent）非阻塞运行，报告+用量 trailer 经 `jobs output` 读取；前台报告尾部附 `[subagent: label · N turns · N tools · N tok]` trailer（子代理用量随报告走，不并入父会话统计——对齐 dsh/codex 的 per-thread 隔离）。
 

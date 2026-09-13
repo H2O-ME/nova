@@ -68,7 +68,7 @@ function keyClick(env: KeyEnv, k: Key): boolean {
       const flatIdx = map.sliceStart + row;
       for (const seg of map.rows) {
         if (flatIdx >= seg.start && flatIdx < seg.start + seg.count) {
-          toggleReasoningBlock(env, seg.block);
+          toggleDetailBlock(env, seg.block);
           break;
         }
       }
@@ -77,20 +77,19 @@ function keyClick(env: KeyEnv, k: Key): boolean {
   return true;
 }
 
-function toggleReasoningBlock(env: KeyEnv, block: Block): void {
+/** Click on a detail-bearing block: toggle collapsed base ↔ base + detail. */
+function toggleDetailBlock(env: KeyEnv, block: Block): void {
   if (block.detail === undefined) return;
   const expanded = block.expanded !== true;
   block.expanded = expanded;
-  env.store.replaceBlock(
-    block,
-    expanded
-      ? [summaryRow(env.paint, block.detail.secs, true), ...reasoningDetailRows(env.paint, block.detail.lines, env.cols())]
-      : [summaryRow(env.paint, block.detail.secs, false)],
-  );
+  // `base` is the collapsed truth (subagent live/done row); the legacy
+  // reasoning shape regenerates its summary row from secs.
+  const base = block.detail.base ?? [summaryRow(env.paint, block.detail.secs, false)];
+  env.store.replaceBlock(block, expanded ? [...base, ...block.detail.lines] : base);
 }
 
 import { APPROVAL_CODES } from './store.js';
-import { reasoningDetailRows, summaryRow } from '@nova-agent/tui-view';
+import { summaryRow } from '@nova-agent/tui-view';
 
 /** Approval modal swallows everything (arrows + Enter, y/a/n + 1/2/3). */
 function keyApprovalModal(env: KeyEnv, k: Key): boolean {

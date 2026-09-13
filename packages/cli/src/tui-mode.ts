@@ -79,6 +79,7 @@ import {
   SPINNER_FRAMES,
   statusLine,
   StreamSmoother,
+  subagentDetailRows,
   subagentLiveLine,
   TOOL_GUTTER,
   toolArgSummary,
@@ -488,6 +489,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     turns: number;
     promptTokens: number;
     completionTokens: number;
+    /** Nested execution log (tool lines + milestones), click-expand body. */
+    detail: string[];
+    startAt: number;
     block: Block;
   }
   const subagentLive = new Map<string, SubagentLiveState>();
@@ -499,16 +503,21 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const renderSubagentLive = (callId: string, frame = '•'): void => {
     const st = subagentLive.get(callId);
     if (st === undefined) return;
-    store.replaceBlock(st.block, [
-      subagentLiveLine(paint, {
-        label: st.label,
-        ...(st.lastTool !== undefined ? { lastTool: st.lastTool } : {}),
-        toolCounts: st.toolCounts,
-        turns: st.turns,
-        promptTokens: st.promptTokens,
-        completionTokens: st.completionTokens,
-      }, frame),
-    ]);
+    const head = subagentLiveLine(paint, {
+      label: st.label,
+      ...(st.lastTool !== undefined ? { lastTool: st.lastTool } : {}),
+      toolCounts: st.toolCounts,
+      turns: st.turns,
+      promptTokens: st.promptTokens,
+      completionTokens: st.completionTokens,
+      expandable: st.detail.length > 0,
+      expanded: st.block.expanded === true,
+    }, frame);
+    // Click-expand body rides on the block: the click chain (keys.ts) reads
+    // block.detail/expanded, live re-renders must keep them in sync.
+    const rows = subagentDetailRows(paint, st.detail, toolBudget());
+    st.block.detail = { lines: rows, secs: Math.floor((Date.now() - st.startAt) / 1000), base: [head] };
+    store.replaceBlock(st.block, st.block.expanded === true ? [head, ...rows] : [head]);
   };
   const removeSubagentLive = (callId: string): void => {
     const st = subagentLive.get(callId);
@@ -527,13 +536,23 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     for (const [callId, st] of subagentLive) {
       const entry = store.toolBlocks.get(callId);
       if (entry !== undefined && entry.block === st.block) {
-        store.replaceBlock(st.block, [toolStartLine(paint, entry.name, entry.rawArgs, '■', toolBudget())]);
+        const base = [toolStartLine(paint, entry.name, entry.rawArgs, '■', toolBudget())];
+        // 已积累的嵌套日志保留可展开（中止了也看得到它做到了哪一步）。
+        st.block.detail = { lines: subagentDetailRows(paint, st.detail, toolBudget()), secs: Math.floor((Date.now() - st.startAt) / 1000), base };
+        st.block.expanded = false;
+        store.replaceBlock(st.block, base);
       } else if (store.blocks.includes(st.block)) {
         store.removeBlock(st.block);
       }
     }
     subagentLive.clear();
     onSubagentProgressRef.current = () => undefined;
+  };
+  /** Nested-log cap: oldest entries fall off (memory-only detail). */
+  const SUBAGENT_DETAIL_MAX = 200;
+  const pushSubagentDetail = (st: SubagentLiveState, line: string): void => {
+    st.detail.push(line);
+    while (st.detail.length > SUBAGENT_DETAIL_MAX) st.detail.shift();
   };
   const onSubagentProgress = (callId: string, progress: SubagentProgress): void => {
     const key = callId;
@@ -542,13 +561,23 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // 完成行，不再并排画两行同一件事（spinner 刻度跳过被接管的条目）。
       const entry = store.toolBlocks.get(key);
       const block = entry !== undefined ? entry.block : store.pushBlock([], TOOL_GUTTER);
-      subagentLive.set(key, { label: progress.label, toolCounts: new Map(), turns: 0, promptTokens: 0, completionTokens: 0, block });
+      subagentLive.set(key, {
+        label: progress.label,
+        toolCounts: new Map(),
+        turns: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        detail: [`▸ ${progress.label}`],
+        startAt: Date.now(),
+        block,
+      });
       renderSubagentLive(key);
     } else if (progress.type === 'tool_call') {
       const st = subagentLive.get(key);
       if (st === undefined) return;
       st.lastTool = progress.call.name;
       st.toolCounts.set(progress.call.name, (st.toolCounts.get(progress.call.name) ?? 0) + 1);
+      pushSubagentDetail(st, `› ${progress.call.name} ${toolArgSummary(progress.call.name, progress.call.rawArgs, 80)}`);
       renderSubagentLive(key);
     } else if (progress.type === 'usage') {
       const st = subagentLive.get(key);
@@ -565,6 +594,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       st.turns = progress.usage.turns;
       st.promptTokens = progress.usage.promptTokens;
       st.completionTokens = progress.usage.completionTokens;
+      pushSubagentDetail(
+        st,
+        progress.status === 'completed'
+          ? `✓ 完成 · ${progress.usage.turns} 轮 · ${progress.usage.toolCalls} 次工具 · ${(progress.usage.elapsedMs / 1000).toFixed(1)}s`
+          : progress.status === 'aborted'
+            ? '■ 已中止'
+            : '■ 结束（无最终报告）',
+      );
       renderSubagentLive(key);
     }
     scheduleRender();
@@ -970,6 +1007,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const entry = store.toolBlocks.get(event.call.id);
         store.toolBlocks.delete(event.call.id);
         if (store.activeToolId === event.call.id) store.activeToolId = undefined;
+        // Capture before removal: the nested log stays click-expandable on
+        // the DONE row (collapsed by default).
+        const liveDetail = subagentLive.get(event.call.id);
         onSubagentProgressRef.current = () => undefined;
         removeSubagentLive(event.call.id);
         const duration = entry === undefined ? 0 : Math.max(0, Date.now() - entry.startAt);
@@ -1003,6 +1043,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             duration,
             toolBudget(),
           );
+          // 完成行默认收起，但嵌套日志仍随 block 可点击展开（内存态，
+          // resume 后不可展开——与 reasoning 详情同一契约）。
+          if (liveDetail !== undefined && entry !== undefined && liveDetail.block === entry.block) {
+            entry.block.detail = {
+              lines: subagentDetailRows(paint, liveDetail.detail, toolBudget()),
+              secs: Math.floor(duration / 1000),
+              base: lines,
+            };
+            entry.block.expanded = false;
+          }
           if (entry !== undefined) store.replaceBlock(entry.block, lines);
           else store.pushBlock(lines);
         }

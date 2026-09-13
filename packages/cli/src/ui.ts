@@ -75,6 +75,7 @@ export {
   SPLASH_MIN_INNER,
   statusBar,
   statusLine,
+  subagentDetailRows,
   subagentLiveLine,
   TOOL_ELAPSED_AFTER_MS,
   TOOL_GUTTER,
