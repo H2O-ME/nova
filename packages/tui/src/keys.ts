@@ -211,9 +211,15 @@ export class KeyDecoder {
       if (ch === 'D') return { type: 'left' };
       return undefined;
     }
-    // ESC followed by anything else: treat ESC as Esc key, retry the rest.
+    // ESC followed by anything else (Alt+char chords, fragmented garbage):
+    // drop the ESC and decode the rest. A GENUINE Esc keypress always
+    // arrives as a lone ESC and goes through the pending-flush path above —
+    // this fallback can never see one. Emitting `esc` here used to abort a
+    // running turn on any unrecognized byte after ESC. Recurse (never return
+    // undefined — that means "need more bytes" and would stall the drain
+    // loop with bytes still in the buffer); each step consumes ≥1 byte.
     this.take(1);
-    return { type: 'esc' };
+    return this.readKey();
   }
 
   /** Bracketed paste body: `\x1b[200~` was consumed; collect up to `\x1b[201~`. */

@@ -91,6 +91,15 @@ describe('KeyDecoder', () => {
     expect(decoder.flushPendingEsc()).toBeUndefined();
   });
 
+  it('ESC + trailing byte (Alt chord / garbage) never emits an esc keypress', () => {
+    // A genuine Esc press is ALWAYS a lone ESC (pending-flush path). This
+    // fallback used to return `esc` — and Esc aborts a running turn, so any
+    // unrecognized byte after ESC became a phantom interrupt.
+    expect(decode('\x1bc')).toEqual(['char']); // Alt+C decodes as plain c
+    expect(decode('\x1b\x1b[B')).toEqual(['down']); // double-ESC then arrow
+    expect(decode('\x1b9')).toEqual(['char']); // digit after ESC
+  });
+
   it('decodes bracketed paste as a single paste event', () => {
     const decoder = new KeyDecoder();
     expect(decoder.push(Buffer.from('\x1b[200~你好 world\x1b[201~', 'utf8'))).toEqual([

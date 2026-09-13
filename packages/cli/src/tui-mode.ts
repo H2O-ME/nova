@@ -863,7 +863,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // one-result-per-call contract.
       await persistMissingToolResults(session, messages).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
-      if (err instanceof Error && (err.name === 'AbortError' || /abort/i.test(message))) {
+      // Classify by OUR signal, never by the error's wording: undici and
+      // gateways throw "The operation was aborted due to timeout" on plain
+      // network stalls — labeling those 已中断 hid the real error (and the
+      // retry hint) behind a silent interrupt.
+      if (aborter.signal.aborted) {
         // An abort may leave a partial assistant block that was never closed
         // (no 'message' event → never logged): drop it so the screen matches
         // the log. Committed text (assistantOpen === false) is kept.
@@ -1720,6 +1724,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let exiting = false;
 
   let escTimer: NodeJS.Timeout | undefined;
+  /**
+   * Lone-ESC disambiguation window. ConPTY (Windows) regularly splits an
+   * escape sequence between the ESC and its body across reads; 32ms flushed
+   * the head as an Esc KEYSTROKE, and Esc aborts a running turn — the
+   * phantom interrupt. 200ms still feels instant for a real Esc press while
+   * tolerating a slow split.
+   */
+  const ESC_FLUSH_MS = 200;
   process.stdin.on('data', (chunk: Buffer) => {
     if (escTimer !== undefined) {
       clearTimeout(escTimer);
@@ -1733,7 +1745,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         escTimer = undefined;
         const key = decoder.flushPendingEsc();
         if (key !== undefined) handleKey(key);
-      }, 32);
+      }, ESC_FLUSH_MS);
     }
     preemptRender();
   });

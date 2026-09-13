@@ -608,7 +608,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
               `已压缩 — 会话原位压缩（日志保留完整历史），摘要 ${outcome.summary.length} 字，保留 ${outcome.retained} 条最近用户消息`,
             );
           } catch (err) {
-            const aborted = err instanceof Error && (err.name === 'AbortError' || /abort/i.test(err.message));
+            // 与主轮同一归类：signal 触发才算中断，文案含 "aborted" 的
+            // 网络超时必须亮原文。
+            const aborted = compactAbort?.signal.aborted === true;
             console.error(aborted ? '压缩已中断（会话保持未压缩）' : `压缩失败：${err instanceof Error ? err.message : String(err)}`);
           } finally {
             compactAbort = undefined;
@@ -669,7 +671,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       // one-result-per-call contract.
       await persistMissingToolResults(session, messages).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
-      if (err instanceof Error && (err.name === 'AbortError' || /abort/i.test(message))) {
+      // 与 TUI 同一归类：以本轮 signal 是否真的触发为准——错误文案含
+      // "aborted" 的网络超时（undici）不算用户中断，必须亮出原文。
+      if (aborter?.signal.aborted === true) {
         console.log(paint.yellow('  已中断'));
       } else {
         console.error(paint.red(`  出错：${message}`));
