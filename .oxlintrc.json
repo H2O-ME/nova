@@ -1,0 +1,9 @@
+{
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "no-unused-vars": "error"
+  },
+  "ignorePatterns": ["**/dist/**", ".reference/**"]
+}

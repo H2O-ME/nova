@@ -33,13 +33,6 @@ export function filterCommands(input: string): CommandSpec[] {
   return COMMAND_SPECS.filter((spec) => spec.name.startsWith(trimmed));
 }
 
-export function findCommand(input: string): CommandSpec | undefined {
-  const base = input.trim().split(/\s+/)[0] ?? '';
-  // specs are stored with the leading '/' already; a `${spec.name}`-without-
-  // slash match can never hit and only muddied the lookup.
-  return COMMAND_SPECS.find((spec) => spec.name === base);
-}
-
 /** /mode 的单行：current 标记决定调用方（repl/TUI）如何上色。 */
 export interface ModeOverviewRow {
   current: boolean;

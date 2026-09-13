@@ -320,7 +320,6 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       );
     }
   };
-  void replSubagentProgress;
   const endReasoningLine = (): void => {
     if (reasoningLive) {
       process.stdout.write('\x1b[0m\n');
