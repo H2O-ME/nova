@@ -35,6 +35,7 @@ pnpm release      # changeset version + sync root version + commit + tag 一条�
 - `nova` → 交互 TUI / readline。
 - `nova -- --approval auto-edit` → 临时覆盖审批档位。
 - `nova -- --resume ~/.nova/sessions/<YYYY/MM/DD>/<id>.jsonl` → 续接历史会话。
+- `nova qqbot` → QQ 机器人模式（需配置 qqbot.appId/clientSecret；对端独立会话、never 审批）
 - `nova exec "<task>" --json` → 非交互单次执行（JSONL 事件流，CI 友好，可管道传入任务；无法交互确认，未放行的审批请求自动拒绝）。`--json` 下 AgentEvent 之外另有两类控制行：`{"type":"run_error","message":…}`（运行失败）与 `{"type":"notice","text":…}`（自动压缩/熔断告警等运维提示）；SIGINT 改为优雅中止（后台 job 走 dispose，不孤儿）。
 
 ## 3. 配置（唯一来源 `~/.nova/config.json`）
@@ -56,6 +57,10 @@ pnpm release      # changeset version + sync root version + commit + tag 一条�
   "systemPrompt": "补充指令…",         // 可选：附加用户指令，注入会话首条上下文片段（不替换内核系统提示，前缀缓存不受影响）
   "maxTurns": 30,                     // 可选：单次任务最大轮数（默认 30，上限 500）
   "autoCompactTokenLimit": 60000,     // 可选：上轮 prompt tokens 超限自动压缩会话
+  "qqbot": {                           // 可选：nova qqbot 模式凭据（q.qq.com 管理端获取）
+    "appId": "xxx",
+    "clientSecret": "{env:QQBOT_SECRET}"
+  },
   "tools": {
     "bash": { "enabled": true, "timeoutMs": 60000, "shellPath": "C:/Program Files/Git/bin/bash.exe" },
     "code": {                          // 可选：PTC 模式（native|ptc|both，缺省 native）
@@ -84,6 +89,7 @@ pnpm monorepo，依赖方向强制单向：`cli → {tui, tui-view, plugins, ai,
 | `tui` | 零依赖终端原语：行级差分渲染、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标）、CJK 宽度处理 | `screen.ts`、`keys.ts`、`width.ts` |
 | `tui-view` | TUI 纯视图层（零终端 IO）：tokens 常量、调色板/标签、裁剪族、工具行、状态栏、弹窗、composer、reasoning、间距、开屏、帧装配 | `tokens.ts`、`palette.ts`、`labels.ts`、`text.ts`、`clip.ts`、`tool-lines.ts`、`status-view.ts`、`popups.ts`、`composer-view.ts`、`reasoning-view.ts`、`spacing.ts`、`splash.ts`、`frame.ts` |
 | `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（1467 行壳层：生命周期/IO/agentTurn 事件归约）、`tui/{store,keys,frame}.ts`（TuiStore/按键责任链/帧装配）、`session-runtime.ts`（三 runner 共享启动工厂）、`auto-compact.ts`（统一 TokenGate）、`runner-shared.ts`（计时/maxTurns/toast/审批/自动压缩编排/runAgent 公共 kwargs 装配）、`exec.ts`、`repl.ts`、`compact.ts`、`config.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`commands.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`version.ts`、`spinner.ts`、`ui.ts`+`statusbar.ts`+`composer.ts`+`popup.ts`+`reasoning.ts`（5 个 tui-view 转发门面）；`scripts/sync-root-version.mjs`（根包版本同步） |
+| `qqbot` | QQ 机器人接入插件（第三方插件编写示范，只依赖 core/plugins 公共 API）：WebSocket 网关状态机、token 管理、REST 发消息、`qqbot_send` 工具、通道装配 | `protocol.ts`（AccessTokenManager/QqGateway/QqApi）、`runtime.ts`（createQqBotChannel）、`plugin.ts` |
 
 ## 5. 核心设计
 
@@ -115,6 +121,12 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 
 ### PTC / Code Mode（对标 Cloudflare/dsh run_code 简化版）
 `tools.code.mode` 三态 `native|ptc|both`（`PtcMode` 类型定义在 core——config/host/纯视图层共用，避免 tui-view 跨层依赖 plugins）。开启后模型获得 `run_code {code, description}` 传输工具：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断，经 `ctx.dispatch` 回流）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算、端口协议逐字段防御。SDK 声明由 schema 字典序生成（字节稳定不吃缓存）。`ptc` 态只暴露 `run_code`。需 Node ≥ 22.19。
+
+### Subagent（隔离子代理，dsh 设计简化版）
+`subagent` 工具（opt-in，三交互 runner 默认装配）：嵌套 runAgent 跑**全新消息面**（上下文隔离——子代理看不到父对话，prompt 必须自包含），最终 assistant 报告作为工具结果回流父会话（父日志保持 "model-visible means logged"；子代理自身对话是瞬态、不落盘）。嵌套工具集活读取并**过滤 subagent 自身**（结构性禁止递归）；透传父 abort signal 与**同一 hooks 链**（嵌套调用走与父相同的审批门与管线）。
+
+### 工作区切换（switch_workspace）
+模型可在任务中要求切换工作区根（"去另一个仓库处理"）：第一方 `workspace` 插件（opt-in）校验目标目录（realpath + isDirectory）后经 runner 回调重建工具宿主——fs/bash/search 根、技能列表、环境片段 cwd 一致重指；新根自下一次工具分发/下一轮生效。TUI 与 /session 会话切换共用 `applyWorkspace` 通道；exec 不启用。安全护栏：记录的工作区指向 `~/.nova` 数据目录时拒绝应用（会话被误建在数据目录内不会拖走工具根）。
 
 ### 后台 jobs / todo
 `bash { run_in_background: true }` 立即返回 `bash-N` 句柄，`jobs` 工具（list/output/stop）读写增量输出。`startBackground` 镜像 `runOnce` 的 settle 防御：`exit` 事件记退出码 + 2s `closeGrace`，`cancel()` 后 3s `killSettle` 兜底，settle 前销毁 stdio 管道——taskkill 后孙进程持有管道时 `dispose()` 不再卡死进程退出。job 自然结束（completed/failed）时，**下一次 LLM 请求会自动注入一行"bash-N 已完成"通知**（`runAgent` 每次发请求前经 `JobRegistry.drainFinished()` 取队列，以克隆消息数组追加临时 user 消息——不落会话日志、不破坏投影不变量，每个 job 只通知一次；**送达性为至少一次**：请求在回复提交前失败/中断时经 `requeue()` 回队，下个请求重播，不会静默丢失），模型无需空转轮询；显式 stop 导致的 killed 不通知（模型已知）。`JobKindMap` 预留 `subagent` 扩展位。`todo_write` 整表替换、last-write-wins，快照持久化为 log-only `todo/write` 事件，不占模型上下文。
@@ -254,6 +266,17 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
   - **工具与容器边界（P2/P3）**：`edit_file` 加 8MiB 上限 + `looksBinary` 拒绝；`fileVersions` LRU（>512）；bash POSIX `detached` 进程组负 pid SIGKILL（孙进程不再逃脱）；`BudgetedBuffer.drain` 经 StringDecoder（jobs 增量读取跨读 UTF-8 序列不再出双替换符）；`search_files` halt 拆 truncated/aborted（中止不再谎报"已达结果上限"）；skills 正文 256KB 上限 + BOM 剥离；run-code SDK 缓存带工具集指纹（后激活插件进 SDK 声明）。
   - **会话投影与杂项（P2/P3）**：`compaction/summary` 事件新增可选 `keepIds`，投影优先按 id 解析（中段损坏行不再让恢复面错位）、旧日志回退位置索引，写入侧同写 `keep` 兼容旧读者；`estimate` 补谚文计价；agents-md 单篇按字符边界硬截断进共享预算；`listRecentSessions` 逐文件 catch + 枚举上限 2000；context 片段 id 改 `msg_ctx_` 前缀（用户手输 `<environment>` 不再被误吞进压缩排除）；`findCommand` 永假条件删除；模型列表失败负缓存 60s；markdown code span 抽占位符再跑 bold（不再跨 ANSI 误匹配）；config schema `.strict()`（拼错键报错点名）；CLI 支持 `--` 分隔符；context 片段 `today` 改本地时区（`localDateKey()` 与日期桶同源）。审计修正：`estimateNextPromptTokens`/`hasOpenCompaction` 实有在用，保留。
   - **配置**：`config.json` 未知键现在**报错拒载**（0.2.0 起严格校验，报错点名键名）。
+
+### 会话体验与能力扩展（M7.9）
+
+- **M7.9 — TUI 缺陷批修 + subagent + qqbot 插件**（真机反馈驱动）：
+  - **Tab 执行模式随时切换**：门控放宽为"仅进行中的轮/压缩挡住"（会话中途切换由 rebuildHost 的锚点重置自愈缓存代价），切换成功推一行反馈——此前中途按 Tab 静默无效且状态栏芯片塌成单枚，用户以为功能失灵。
+  - **命令面板滚动选中错位修复**：renderFrame 与 buildCommandPopup 双重滑动窗口（调用方预切 6 行却传绝对 index，选中高亮永远落在可见列表外）——收敛为 buildCommandPopup 内唯一窗口逻辑；顺带删除 tui-view 的死模块 `frame.ts`（planFrame 无消费者）。
+  - **思考过程 codex 风格**：流式期滚动窗口显示纯暗色正文（去 `│` 引用 lane 与 `⋯` 标记，REASONING_LIVE_MAX_ROWS 上限不变），思考结束**整块消失、只留正式回答**（取消 `▸ 已思考 Ns` 摘要行与点击展开——按用户反馈回归 codex 语义）。
+  - **/session 切换加固**：工作区护栏（`~/.nova` 数据目录永不作为工作区应用）、恢复面无可回放文本时明示原因、损坏告警在 TUI 落地（对齐 REPL）。
+  - **subagent 工具**：core `createSubagentTool` + plugins 包装（opt-in），嵌套 runAgent 上下文隔离、同一审批门、报告回流、结构防递归；dsh subagent 设计的单 provider 简化版。
+  - **switch_workspace 工具**：模型可切换工作区根（校验→runner 回调重建宿主）；TUI/REPL 接线，exec 不启用。
+  - **`@nova-agent/qqbot`（第一个第三方插件示范）**：独立包只依赖 core/plugins 公共 API——开放平台 WebSocket 全协议（token 单飞刷新/identify-resume 状态机/心跳自愈/指数退避）、REST 被动回复（msg_seq 自增、4500 字分片）、`qqbot_send` 工具；`nova qqbot` 运行模式（对端独立会话、never 审批、wrapAutoCompact）。session-runtime 新增 `extraPlugins` 缝（第三方插件激活前挂入宿主的官方入口）。
 
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 

@@ -10,4 +10,3 @@ export * from './composer-view.js';
 export * from './reasoning-view.js';
 export * from './spacing.js';
 export * from './splash.js';
-export * from './frame.js';
