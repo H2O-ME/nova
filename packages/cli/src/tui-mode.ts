@@ -44,6 +44,7 @@ import {
 import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
+import { renderMarkdownLite } from './markdown.js';
 import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
 import { createSessionRuntime } from './session-runtime.js';
@@ -1070,7 +1071,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         if (m.content.trimStart().startsWith('<')) continue;
         store.pushBlock([m.content], USER_GUTTER, 'user');
       } else if (m.role === 'assistant' && m.content.trim().length > 0) {
-        store.pushBlock([m.content], ASSISTANT_GUTTER, 'assistant');
+        // 与流式轮同一 markdown 渲染（bold/标题/列表/围栏），否则同一回答
+        // 实时看是渲染版、/session 切回来是裸 markdown。
+        store.pushBlock(renderMarkdownLite(m.content, paint), ASSISTANT_GUTTER, 'assistant');
       }
     }
     store.pushBlock([
