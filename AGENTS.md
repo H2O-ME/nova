@@ -123,7 +123,7 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 `tools.code.mode` 三态 `native|ptc|both`（`PtcMode` 类型定义在 core——config/host/纯视图层共用，避免 tui-view 跨层依赖 plugins）。开启后模型获得 `run_code {code, description}` 传输工具：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断，经 `ctx.dispatch` 回流）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算、端口协议逐字段防御。SDK 声明由 schema 字典序生成（字节稳定不吃缓存）。`ptc` 态只暴露 `run_code`。需 Node ≥ 22.19。
 
 ### Subagent（隔离子代理，dsh 设计简化版）
-`subagent` 工具（opt-in，三交互 runner 默认装配）：嵌套 runAgent 跑**全新消息面**（上下文隔离——子代理看不到父对话，prompt 必须自包含），最终 assistant 报告作为工具结果回流父会话（父日志保持 "model-visible means logged"；子代理自身对话是瞬态、不落盘）。嵌套工具集活读取并**过滤 subagent 自身**（结构性禁止递归）；透传父 abort signal 与**同一 hooks 链**（嵌套调用走与父相同的审批门与管线）。
+`subagent` 工具（session-runtime 默认装配，全部 runner 可用）：嵌套 runAgent 跑**全新消息面**（上下文隔离——子代理看不到父对话，prompt 必须自包含），最终 assistant 报告作为工具结果回流父会话（父日志保持 "model-visible means logged"；子代理自身对话是瞬态、不落盘）。嵌套工具集活读取并**过滤 subagent 自身**（结构性禁止递归）；透传父 abort signal 与**同一 hooks 链**（嵌套调用走与父相同的审批门与管线）。
 
 ### 工作区切换（switch_workspace）
 模型可在任务中要求切换工作区根（"去另一个仓库处理"）：第一方 `workspace` 插件（opt-in）校验目标目录（realpath + isDirectory）后经 runner 回调重建工具宿主——fs/bash/search 根、技能列表、环境片段 cwd 一致重指；新根自下一次工具分发/下一轮生效。TUI 与 /session 会话切换共用 `applyWorkspace` 通道；exec 不启用。安全护栏：记录的工作区指向 `~/.nova` 数据目录时拒绝应用（会话被误建在数据目录内不会拖走工具根）。

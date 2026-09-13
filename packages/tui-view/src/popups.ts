@@ -134,7 +134,10 @@ const SWITCH_HINT = '↑↓ 选择 · Enter 切换 · Esc 取消';
 /** Command palette: 6-row sliding window, cursor always visible. */
 export function buildCommandPopup(p: Palette, v: CommandPopupView, cols: number): string[] {
   const inner = cols - 3;
-  const visibleStart = Math.max(0, Math.min(v.index - 5, v.matches.length - COMMAND_PALETTE_ROWS));
+  // The index can drift past the list when typing shrinks the matches — clamp
+  // so the highlight (and the window math below) always lands on a real row.
+  const index = Math.min(v.index, v.matches.length - 1);
+  const visibleStart = Math.max(0, Math.min(index - 5, v.matches.length - COMMAND_PALETTE_ROWS));
   const visible = v.matches.slice(visibleStart, visibleStart + COMMAND_PALETTE_ROWS);
   const rows: string[] = [];
   for (let i = 0; i < visible.length; i++) {
@@ -142,7 +145,7 @@ export function buildCommandPopup(p: Palette, v: CommandPopupView, cols: number)
     if (spec === undefined) continue;
     const label = padDisplay(spec.usage, 22);
     const content = ` ${label} ${spec.description}`;
-    rows.push(panelRow(p, content, inner, visibleStart + i === v.index));
+    rows.push(panelRow(p, content, inner, visibleStart + i === index));
   }
   return framed(p, '命令', '↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭', rows, cols);
 }
