@@ -10,6 +10,9 @@ export type Key =
   | { type: 'delete' }
   | { type: 'left' }
   | { type: 'right' }
+  /** Ctrl+方向（CSI `1;5C/D`）：composer 词级移动。 */
+  | { type: 'ctrl+left' }
+  | { type: 'ctrl+right' }
   | { type: 'up' }
   | { type: 'down' }
   | { type: 'home' }
@@ -156,13 +159,13 @@ export class KeyDecoder {
         case 'B':
           return { type: 'down' };
         case 'C':
-          return { type: 'right' };
+          return arrowKey(params, 'right');
         case 'D':
-          return { type: 'left' };
+          return arrowKey(params, 'left');
         case 'H':
-          return { type: 'home' };
+          return arrowKey(params, 'home');
         case 'F':
-          return { type: 'end' };
+          return arrowKey(params, 'end');
         case 'Z':
           return { type: 'shifttab' };
         case 'M':
@@ -254,6 +257,19 @@ export class KeyDecoder {
  * Releases, drags/motion, modified and other buttons are consumed so
  * enabling tracking never injects phantom input.
  */
+/**
+ * CSI 方向键修饰键参数（`1;5C` 的 5 = ctrl；`1;2`=shift、`1;3`=alt）→
+ * 词级移动用的 ctrl+left/right；其余修饰组合回落普通方向（此前整个参数
+ * 被丢弃，ctrl+right 被静默解成 right，词移动无法实现）。
+ */
+function arrowKey(params: string, base: 'left' | 'right' | 'up' | 'down' | 'home' | 'end'): Key {
+  if (params === '1;5' || params === '5') {
+    if (base === 'left') return { type: 'ctrl+left' };
+    if (base === 'right') return { type: 'ctrl+right' };
+  }
+  return { type: base };
+}
+
 function parseMouseButton(params: string, final: string): Key | undefined {
   if (final !== 'M') return undefined; // release / motion: ignore
   if (!params.startsWith('<')) return undefined; // legacy X10 encoding: not ours

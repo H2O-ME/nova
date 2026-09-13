@@ -390,6 +390,19 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
     case 'right':
       store.cursorPos = Math.min(store.input.length, store.cursorPos + 1);
       break;
+    case 'ctrl+left': {
+      // 词级左移：先跳过光标前的空白，再跳过连续非空白（与 ctrl+w 切词边界一致）。
+      const before = store.input.slice(0, store.cursorPos);
+      const cut = before.replace(/\s+$/, '').search(/\S+$/);
+      store.cursorPos = cut >= 0 ? cut : 0;
+      break;
+    }
+    case 'ctrl+right': {
+      // 词级右移：越过紧邻空白与下一个词。
+      const m = store.input.slice(store.cursorPos).match(/^\s*\S+/);
+      store.cursorPos = store.cursorPos + (m?.[0].length ?? 0);
+      break;
+    }
     case 'home':
       // 光标已在行首时再按 Home = 历史区跳顶（End 对称回底）。
       if (store.cursorPos === 0) {

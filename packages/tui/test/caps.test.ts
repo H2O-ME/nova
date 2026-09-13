@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectCaps, LineScreen } from '../src/index.js';
+import { detectCaps, KeyDecoder, LineScreen } from '../src/index.js';
 
 describe('detectCaps', () => {
   it('NO_COLOR forces plain regardless of TTY', () => {
@@ -52,5 +52,20 @@ describe('LineScreen synchronized output', () => {
     screen.render(['a']);
     expect(writes.at(-1)).toBe('\x1b[?2026l');
     expect(writes).toContain('\x1b[?2026h');
+  });
+});
+
+describe('KeyDecoder ctrl+arrows (CSI modifier params)', () => {
+  it('decodes 1;5C / 1;5D as ctrl+right / ctrl+left', () => {
+    const d = new KeyDecoder();
+    expect(d.push(Buffer.from('\x1b[1;5C', 'utf8')).map((k) => k.type)).toEqual(['ctrl+right']);
+    expect(d.push(Buffer.from('\x1b[1;5D', 'utf8')).map((k) => k.type)).toEqual(['ctrl+left']);
+  });
+
+  it('plain arrows are unchanged; other modifiers fall back to base arrows', () => {
+    const d = new KeyDecoder();
+    expect(d.push(Buffer.from('\x1b[C', 'utf8')).map((k) => k.type)).toEqual(['right']);
+    expect(d.push(Buffer.from('\x1b[1;2C', 'utf8')).map((k) => k.type)).toEqual(['right']);
+    expect(d.push(Buffer.from('\x1b[1;5A', 'utf8')).map((k) => k.type)).toEqual(['up']);
   });
 });
