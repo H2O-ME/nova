@@ -139,6 +139,15 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // 与 repl/tui 同一归类（ffdc595 契约）：以本轮 signal 是否真的触发为准——
+    // 错误文案含 "aborted" 的网络超时不算用户中断，照常走 run_error；只有
+    // SIGINT 真正解绕才归类为「已中断」（进程退出码 130，非失败）。
+    if (interrupt.signal.aborted === true) {
+      if (json) write(`${JSON.stringify({ type: 'notice', text: '任务已中断（SIGINT）；会话日志保留到中断前' })}\n`);
+      else write(`${paint.yellow('已中断')}\n`);
+      process.exitCode = 130;
+      return;
+    }
     if (json) write(`${JSON.stringify({ type: 'run_error', message })}\n`);
     else console.error(`出错：${message}`);
     if (Date.now() - execStartedAt >= LONG_TASK.execDoneMs) notify('任务出错', message.slice(0, 120));
