@@ -13,6 +13,7 @@ usage:
 
 options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
+  qqbot           QQ 机器人模式（需配置 qqbot.appId / qqbot.clientSecret）
   --repl          强制使用 readline REPL（默认 TTY 下进全屏 TUI）
   --resume        续接历史会话文件
   --approval      临时覆盖审批档位；exec 模式下无法交互确认，未放行的请求会被拒绝
@@ -100,11 +101,17 @@ async function main(): Promise<void> {
   const parsed = parseArgs(args);
   if (parsed === undefined) return;
   const execMode = parsed.positional[0] === 'exec';
+  const qqbotMode = parsed.positional[0] === 'qqbot';
   const taskParts = execMode ? parsed.positional.slice(1) : parsed.positional;
 
   const rootDir = path.resolve(process.cwd());
   try {
     const config = await loadConfig();
+    if (qqbotMode) {
+      const { startQqBot } = await import('./qqbot-mode.js');
+      await startQqBot({ rootDir, config });
+      return;
+    }
     if (execMode) {
       let prompt = taskParts.join(' ').trim();
       if (prompt.length === 0 && process.stdin.isTTY !== true) {

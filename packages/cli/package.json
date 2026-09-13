@@ -26,7 +26,8 @@
     "@nova-agent/plugins": "workspace:*",
     "@nova-agent/tui": "workspace:*",
     "@nova-agent/tui-view": "workspace:*",
-    "zod": "^4.1.13"
+    "zod": "^4.1.13",
+    "@nova-agent/qqbot": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",

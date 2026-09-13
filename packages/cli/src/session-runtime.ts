@@ -79,6 +79,12 @@ export interface SessionRuntimeOptions {
    * unregistered.
    */
   workspace?: { onChange: (dir: string) => void | Promise<void> };
+  /**
+   * Third-party plugins mounted into the host BEFORE activation (the
+   * third-party authoring path: a package exporting Plugin objects — e.g.
+   * @nova-agent/qqbot — wired by the runner that owns its lifecycle).
+   */
+  extraPlugins?: import('@nova-agent/plugins').Plugin[];
 }
 
 export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise<SessionRuntime> {
@@ -121,7 +127,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
   const codeConfig = config.tools?.code;
   const spillReadRoot = path.join(novaHome(), 'cache', 'tool-outputs');
   const host = new PluginHost(rootDir);
-  for (const plugin of builtinPlugins({
+  for (const plugin of [...(opts.extraPlugins ?? []), ...builtinPlugins({
     spillReadRoot,
     ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
     subagent: {
@@ -140,7 +146,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
             ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
           },
     ...(codeConfig !== undefined ? { code: codeConfig } : {}),
-  })) {
+  })]) {
     host.use(plugin);
   }
 

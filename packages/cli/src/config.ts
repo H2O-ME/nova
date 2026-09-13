@@ -62,6 +62,16 @@ const configSchema = z.object({
         .optional(),
     })
     .optional(),
+  /**
+   * QQ 机器人模式（nova qqbot）：腾讯机器人开放平台 WebSocket 通道。凭据在
+   * q.qq.com 管理端获取；clientSecret 支持 {env:NAME} 引用避免明文入库。
+   */
+  qqbot: z
+    .object({
+      appId: z.string().min(1),
+      clientSecret: z.string().min(1),
+    })
+    .optional(),
 })
 // Strict: a typo'd key ("apporval") is a silent no-op on a lenient schema
 // and a confusing wrong-way run. Fail at load with the offending key named.
