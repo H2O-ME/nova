@@ -248,6 +248,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   };
   const permission = createApprovalService(approvalMode, askApproval, () => session);
   let hooks: import('@nova-agent/core').AgentHooks = host.agentHooks(permission);
+  rt.hooksRef.current = hooks;
   /**
    * switch_workspace 的运行侧通道：重指工具根 + 技能/环境片段，重建 host。
    * 与 TUI 的 applyWorkspace 同一契约（新根自下一次工具分发/下一轮生效）。
@@ -274,6 +275,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     await next.activate();
     host = next;
     hooks = next.agentHooks(permission);
+    rt.hooksRef.current = hooks;
     console.log(paint.dim(`  ✓ 工作区已切换到 ${dir}`));
   };
   applyWorkspaceRef = applyWorkspace;

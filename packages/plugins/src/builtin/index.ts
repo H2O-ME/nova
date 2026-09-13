@@ -3,6 +3,7 @@ import { fsReadPlugin, fsWritePlugin } from './fs.js';
 import { jobsPlugin } from './jobs.js';
 import { ptcPlugin, type PtcPluginOptions } from '../ptc/run-code.js';
 import { searchPlugin, type SearchPluginOptions } from './search.js';
+import { subagentPlugin, type SubagentPluginOptions } from './subagent.js';
 import { todoPlugin } from './todo.js';
 import { workspacePlugin, type WorkspacePluginOptions } from './workspace.js';
 import type { Plugin } from '../types.js';
@@ -27,6 +28,8 @@ export interface BuiltinOptions {
   spillReadRoot?: string;
   /** PTC mode (Code Mode) configuration; omit or mode "native" disables it. */
   code?: PtcPluginOptions;
+  /** Opt-in subagent tool; omit to leave it unregistered. */
+  subagent?: SubagentPluginOptions;
 }
 
 /** First-party tool plugins; loaded through the same API as third-party ones. */
@@ -48,6 +51,11 @@ export function builtinPlugins(options?: BuiltinOptions): Plugin[] {
   // validate a switch and then silently do nothing — worse than absent.
   if (workspace !== undefined && workspace !== false) {
     plugins.push(workspacePlugin(workspace));
+  }
+  if (options?.subagent !== undefined) {
+    // Before PTC: the subagent tool must exist so a PTC-mode SDK projection
+    // includes it for programmatic orchestration.
+    plugins.push(subagentPlugin(options.subagent));
   }
   const code = options?.code;
   if (code !== undefined && (code.mode ?? 'both') !== 'native') {

@@ -182,6 +182,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         scheduleRender();
       },
     },
+    // 隔离子代理：同 provider、同审批门（hooks 经 rt.hooksRef 活读取）、
+    // 无 subagent 自身（core 侧过滤防递归）。
+    subagent: {
+      provider: client,
+      tools: () => host.tools,
+      hooks: () => rt.hooksRef.current,
+      systemPrompt,
+      ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
+      rootDir: () => rootDir,
+    },
     code: { ...codeConfig, mode: codeMode },
   });
   let skills = rt.skills;
@@ -235,6 +245,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     await next.activate();
     host = next;
     hooks = next.agentHooks(permission);
+    rt.hooksRef.current = hooks;
     // The tool set changed: the usage anchor's implicit assumption (schema
     // bytes unchanged since the anchored request) is void. Reset so the next
     // pre-flight estimate takes the full-estimate path instead of a delta

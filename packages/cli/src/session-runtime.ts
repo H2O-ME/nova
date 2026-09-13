@@ -5,6 +5,7 @@ import {
   JobRegistry,
   newId,
   Session,
+  type AgentHooks,
   type AgentMessage,
   type UsageStats,
   type UserMessage,
@@ -44,6 +45,8 @@ export interface SessionRuntime {
   projectDocs: string[];
   jobs: JobRegistry;
   stats: UsageStats;
+  /** Runner-assigned hook chain; read live by the subagent tool. */
+  hooksRef: { current: AgentHooks | undefined };
   approvalMode: ApprovalMode;
   bashConfig: NonNullable<Config['tools']>['bash'] | undefined;
   codeConfig: NonNullable<Config['tools']>['code'] | undefined;
@@ -104,6 +107,13 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
 
   const stats = emptyStats();
   const jobs = new JobRegistry();
+  /**
+   * The runners' hook chain (approval gate + PTC projection), re-read live by
+   * the subagent tool so nested calls pass the SAME gate. Runners assign it
+   * whenever they (re)build hooks.
+   */
+  const hooksRef: { current: AgentHooks | undefined } = { current: undefined };
+  const systemPrompt = buildSystemPrompt();
 
   const approvalMode = opts.approvalOverride ?? config.approval ?? 'read-only';
 
@@ -114,6 +124,14 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
   for (const plugin of builtinPlugins({
     spillReadRoot,
     ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
+    subagent: {
+      provider: client,
+      tools: () => host.tools,
+      hooks: () => hooksRef.current,
+      systemPrompt,
+      ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
+      rootDir: () => rootDir,
+    },
     bash:
       bashConfig?.enabled === false
         ? false
@@ -175,8 +193,6 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     return skillsHolder.value;
   };
 
-  const systemPrompt = buildSystemPrompt();
-
   return {
     session,
     messages,
@@ -187,6 +203,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     projectDocs: projectDocsHolder.value,
     jobs,
     stats,
+    hooksRef,
     approvalMode,
     bashConfig,
     codeConfig,
