@@ -23,10 +23,7 @@ import {
   type UserMessage,
 } from '@nova-agent/core';
 import {
-  builtinPlugins,
   codeRuntimeAvailable,
-  PluginHost,
-  skillsPlugin,
   type ApprovalMode,
   type AskFn,
   type PtcMode,
@@ -168,50 +165,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   };
   const approvalMode = rt.approvalMode;
 
-  const bashConfig = rt.bashConfig;
-  const codeConfig = rt.codeConfig;
   // 执行模式：TUI 里 Tab 在新会话开始时循环 普通 → PTC → 混合。config 的
-  // tools.code.mode 只是初始值；其余 tools.code 调参（超时/预算）在每次
-  // 重建 host 时原样带上。
-  let codeMode: PtcMode = codeConfig?.mode ?? 'native';
-  const bashPluginArgs = (): Parameters<typeof builtinPlugins>[0] => ({
-    spillReadRoot: path.join(novaHome(), 'cache', 'tool-outputs'),
-    bash:
-      bashConfig?.enabled === false
-        ? false
-        : {
-            ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
-            ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
-          },
-    // 模型在任务中要求换工作区时（switch_workspace 工具），走与 /session
-    // 切换相同的 applyWorkspace 通道：工具根、技能、环境片段 cwd 一致重建。
-    // applyWorkspace 在首次 rebuildHost 时还没初始化——回调只在工具执行时
-    // 触发，届时早已就绪。失败向上抛，工具结果如实回给模型。
-    workspace: {
-      onChange: async (dir: string) => {
-        await applyWorkspace(dir);
-        store.pushBlock([paint.dim(`  ✓ 工作区已切换到 ${dir}`)]);
-        scheduleRender();
-      },
-    },
-    // 隔离子代理：同 provider、同审批门（hooks 经 rt.hooksRef 活读取）、
-    // 无 subagent 自身（core 侧过滤防递归）。runner 级反馈由运行时接线
-    // （opts.subagentProgress → onSubagentProgressRef）；此处的 bashPluginArgs
-    // 只在 rebuildHost/Tab 切换时重建 host，不碰进度接线。
-    subagent: {
-      provider: client,
-      tools: () => host.tools,
-      hooks: () => rt.hooksRef.current,
-      systemPrompt,
-      ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
-      rootDir: () => rootDir,
-      onProgress: (progress) => onSubagentProgressRef.current(progress),
-    },
-    code: { ...codeConfig, mode: codeMode },
-  });
+  // tools.code.mode 只是初始值（runtime 初始 host 已按它装配）；其余
+  // tools.code 调参（超时/预算）在每次重建 host 时由 buildHost 原样带上。
+  let codeMode: PtcMode = rt.codeConfig?.mode ?? 'native';
   let skills = rt.skills;
-  // The runtime's host lacks codeMode injection; rebuildHost() reactivates with
-  // the correct PTC mode config before the first agent turn.
+  // runtime 初始 host 已按 config 的 code.mode 装配（buildHost 单源），
+  // 不再启动即弃用重建。
   let host = rt.host;
 
   /** models.dev 目录（上下文窗口/模态/推理能力）。启动后台刷新，断网用旧缓存。 */
@@ -256,15 +216,26 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * re-point `host`/`hooks` at it. Both the workspace switch and the Tab
    * mode toggle go through here: `host` is read live by runAgent (tools) and
    * `hooks` carries the beforeLLMCall projection that makes PTC mode visible,
-   * so both must be re-derived from the SAME host on every rebuild.
+   * so both must be re-derived from the SAME host on every rebuild. 装配本体
+   * 在 runtime.buildHost（单源）；这里只接 runner 侧的 hooks 与呈现反馈。
    */
   const rebuildHost = async (): Promise<void> => {
-    const next = new PluginHost(rootDir);
-    for (const plugin of builtinPlugins(bashPluginArgs())) {
-      next.use(plugin);
-    }
-    if (skills.length > 0) next.use(skillsPlugin(skills));
-    await next.activate();
+    const next = await rt.buildHost({
+      rootDir,
+      codeMode,
+      skills,
+      // 模型在任务中要求换工作区时（switch_workspace 工具），走与 /session
+      // 切换相同的 applyWorkspace 通道：工具根、技能、环境片段 cwd 一致重建。
+      // applyWorkspace 在此处还未初始化——回调只在工具执行时触发，届时早已
+      // 就绪。失败向上抛，工具结果如实回给模型。
+      workspace: {
+        onChange: async (dir: string) => {
+          await applyWorkspace(dir);
+          store.pushBlock([paint.dim(`  ✓ 工作区已切换到 ${dir}`)]);
+          scheduleRender();
+        },
+      },
+    });
     host = next;
     hooks = next.agentHooks(permission);
     rt.hooksRef.current = hooks;
@@ -319,9 +290,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const permission = createApprovalService(approvalMode, askApproval, () => session);
   // Reassigned by rebuildHost(): the agent loop must read hooks from the
   // SAME host instance it reads tools from (one rebuild = tools + projection).
+  // runtime 初始 host 已按 config 的 code.mode 正确装配（buildHost 单源），
+  // 无需启动即重建。
   let hooks = host.agentHooks(permission);
   const systemPrompt = rt.systemPrompt;
-  await rebuildHost();
 
   // ---- ui state ---------------------------------------------------------
   // 转录/输入/弹窗/审批/tps 状态全部收敛进 TuiStore（./tui/store.ts）：壳层

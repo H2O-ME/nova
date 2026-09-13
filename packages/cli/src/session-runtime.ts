@@ -25,6 +25,23 @@ import { buildContextFragment, CONTEXT_FRAGMENT_ID_PREFIX, declaredShell, type S
 import { recordSessionWorkspace } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
 
+/** 一次插件宿主装配的入参：初始构建与 runner 侧 rebuild 共用同一工厂。 */
+export interface HostBuildOptions {
+  rootDir: string;
+  /**
+   * PTC 模式覆盖（TUI Tab 切换传当前值）；缺省回落 config 的
+   * tools.code.mode。其余 tools.code 调参（超时/预算）每次装配原样带上。
+   */
+  codeMode?: import('@nova-agent/core').PtcMode;
+  /** 技能列表（工作区切换后由 reloadWorkspaceContext 刷新后传入）。 */
+  skills?: SkillMetadata[];
+  /**
+   * switch_workspace 的运行侧回调覆盖（默认用 createSessionRuntime 的
+   * opts.workspace）。TUI 传带呈现反馈的版本。
+   */
+  workspace?: { onChange: (dir: string) => void | Promise<void> };
+}
+
 /**
  * Shared session startup for all three runners (exec / repl / tui). The
  * runners differ only in their permission model, auto-compact strategy, and
@@ -64,6 +81,12 @@ export interface SessionRuntime {
   seedContextFragment: (session: Session, messages: AgentMessage[]) => Promise<void>;
   /** Reload project docs + skills for a workspace switch. Returns updated skills. */
   reloadWorkspaceContext: (dir: string) => Promise<SkillMetadata[]>;
+  /**
+   * 插件宿主装配单源：初始 host 与 runner 侧 rebuild（TUI Tab 模式切换、
+   * 工作区切换）走同一工厂——bash 配置展开、subagent 接线、extraPlugins
+   * 挂载只有这一份。激活后返回；hooks 仍由 runner 侧用自有审批链派生。
+   */
+  buildHost: (build: HostBuildOptions) => Promise<PluginHost>;
   /** Stable-byte system prompt string. */
   systemPrompt: string;
 }
@@ -134,40 +157,54 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
   const bashConfig = config.tools?.bash;
   const codeConfig = config.tools?.code;
   const spillReadRoot = path.join(novaHome(), 'cache', 'tool-outputs');
-  const host = new PluginHost(rootDir);
-  for (const plugin of [...(opts.extraPlugins ?? []), ...builtinPlugins({
-    spillReadRoot,
-    ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
-    subagent: {
-      provider: client,
-      tools: () => host.tools,
-      hooks: () => hooksRef.current,
-      systemPrompt,
-      ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
-      rootDir: () => rootDir,
-      // Foreground + background nested runs share this feed (labels are not
-      // unique, but the parent tool CALL binds the row — see tui-mode).
-      ...(opts.subagentProgress !== undefined ? { onProgress: opts.subagentProgress } : {}),
-    },
-    bash:
-      bashConfig?.enabled === false
-        ? false
-        : {
-            ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
-            ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
-          },
-    ...(codeConfig !== undefined ? { code: codeConfig } : {}),
-  })]) {
-    host.use(plugin);
-  }
+
+  /**
+   * 插件宿主装配（单源）：内置插件、bash 配置展开、subagent 接线、code 模式
+   * 与技能挂载全在这里。runner 侧的 rebuild（TUI Tab/工作区切换）传当前
+   * rootDir/codeMode/skills 进来，不再各自重写装配。
+   */
+  const buildHost = async (build: HostBuildOptions): Promise<PluginHost> => {
+    const host = new PluginHost(build.rootDir);
+    const buildWorkspace = build.workspace ?? opts.workspace;
+    for (const plugin of [...(opts.extraPlugins ?? []), ...builtinPlugins({
+      spillReadRoot,
+      ...(buildWorkspace !== undefined ? { workspace: buildWorkspace } : {}),
+      subagent: {
+        provider: client,
+        tools: () => host.tools,
+        hooks: () => hooksRef.current,
+        systemPrompt,
+        ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
+        rootDir: () => build.rootDir,
+        // Foreground + background nested runs share this feed (labels are not
+        // unique, but the parent tool CALL binds the row — see tui-mode).
+        ...(opts.subagentProgress !== undefined ? { onProgress: opts.subagentProgress } : {}),
+      },
+      bash:
+        bashConfig?.enabled === false
+          ? false
+          : {
+              ...(bashConfig?.timeoutMs !== undefined ? { timeoutMs: bashConfig.timeoutMs } : {}),
+              ...(bashConfig?.shellPath !== undefined ? { shellPath: bashConfig.shellPath } : {}),
+            },
+      ...(codeConfig !== undefined
+        ? { code: { ...codeConfig, mode: build.codeMode ?? codeConfig.mode ?? 'native' } }
+        : {}),
+    })]) {
+      host.use(plugin);
+    }
+    const buildSkills = build.skills ?? skills;
+    if (buildSkills.length > 0) host.use(skillsPlugin(buildSkills));
+    await host.activate();
+    return host;
+  };
 
   const userSkillsDir = path.join(novaHome(), 'skills');
   const skills = await loadSkills([
     { dir: path.join(rootDir, NOVA_DIR, 'skills'), level: 'project' },
     { dir: userSkillsDir, level: 'user' },
   ]);
-  if (skills.length > 0) host.use(skillsPlugin(skills));
-  await host.activate();
+  const host = await buildHost({ rootDir, skills });
 
   const sessionEnv: SessionEnvInfo = {
     platform: process.platform,
@@ -228,6 +265,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     buildFragment,
     seedContextFragment,
     reloadWorkspaceContext,
+    buildHost,
     systemPrompt,
   };
 }

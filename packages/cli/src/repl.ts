@@ -12,8 +12,8 @@ import {
   type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
-import { builtinPlugins, skillsPlugin, PluginHost, type ApprovalMode, type AskFn } from '@nova-agent/plugins';
-import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { type ApprovalMode, type AskFn } from '@nova-agent/plugins';
+import { sessionDateBucket, sessionsRoot, type Config } from './config.js';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
 import { COMMAND_SPECS, createModelListCache, modeOverviewRows } from './commands.js';
@@ -263,27 +263,16 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   /**
    * switch_workspace 的运行侧通道：重指工具根 + 技能/环境片段，重建 host。
    * 与 TUI 的 applyWorkspace 同一契约（新根自下一次工具分发/下一轮生效）。
+   * 装配本体在 runtime.buildHost（单源）；这里只接 runner 侧 hooks。
    */
   const applyWorkspace = async (dir: string): Promise<void> => {
     workspaceRoot = dir;
     skills = await rt.reloadWorkspaceContext(dir);
-    const next = new PluginHost(workspaceRoot);
-    for (const plugin of builtinPlugins({
-      spillReadRoot: path.join(novaHome(), 'cache', 'tool-outputs'),
+    const next = await rt.buildHost({
+      rootDir: workspaceRoot,
+      skills,
       workspace: { onChange: (target: string) => applyWorkspace(target) },
-      ...(rt.bashConfig?.enabled === false
-        ? { bash: false as const }
-        : {
-            bash: {
-              ...(rt.bashConfig?.timeoutMs !== undefined ? { timeoutMs: rt.bashConfig.timeoutMs } : {}),
-              ...(rt.bashConfig?.shellPath !== undefined ? { shellPath: rt.bashConfig.shellPath } : {}),
-            },
-          }),
-    })) {
-      next.use(plugin);
-    }
-    if (skills.length > 0) next.use(skillsPlugin(skills));
-    await next.activate();
+    });
     host = next;
     hooks = next.agentHooks(permission);
     rt.hooksRef.current = hooks;
