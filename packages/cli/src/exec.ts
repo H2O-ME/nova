@@ -12,6 +12,7 @@ import { compactSession } from './compact.js';
 import type { Config } from './config.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
+import { createRunnerBookkeeping, createTurnNotifier, isUserInterrupt } from './runner-loop.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
 import { agentRunBase, LONG_TASK, persistMissingToolResults, ToolTiming } from './runner-shared.js';
 
@@ -114,35 +115,24 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     systemPrompt,
     maxTurns: config.maxTurns,
   });
+  // 事件消费簿记单源（runner-loop）：无头 runner 不持锚点态，usage 只累计 stats。
+  const bookkeeping = createRunnerBookkeeping({ session: () => session, stats });
+  const turnNotifier = createTurnNotifier((title, body) => notify(title, body), {
+    doneMs: LONG_TASK.execDoneMs,
+  });
   try {
     for await (const event of runAgent({ ...agentRun(), signal: interrupt.signal })) {
       if (json) write(`${JSON.stringify(event)}\n`);
       else renderHuman(event, write, paint);
-      switch (event.type) {
-        case 'message':
-          await session.append(event.message);
-          break;
-        case 'tool_call_result':
-          await session.append(event.result);
-          break;
-        case 'turn_aborted':
-          await session.append(event.message);
-          break;
-        case 'usage':
-          Object.assign(stats, event.stats);
-          break;
-      }
+      await bookkeeping.apply(event);
     }
-    const elapsed = Date.now() - execStartedAt;
-    if (elapsed >= LONG_TASK.execDoneMs) {
-      notify('任务已完成', `exec 运行约 ${Math.max(1, Math.round(elapsed / 60000))} 分钟，回到终端查看结果`);
-    }
+    turnNotifier.done(execStartedAt);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // 与 repl/tui 同一归类（ffdc595 契约）：以本轮 signal 是否真的触发为准——
-    // 错误文案含 "aborted" 的网络超时不算用户中断，照常走 run_error；只有
-    // SIGINT 真正解绕才归类为「已中断」（进程退出码 130，非失败）。
-    if (interrupt.signal.aborted === true) {
+    // 与 repl/tui 同一归类（runner-loop.isUserInterrupt）：以本轮 signal 是否
+    // 真的触发为准——错误文案含 "aborted" 的网络超时不算用户中断，照常走
+    // run_error；只有 SIGINT 真正解绕才归类为「已中断」（退出码 130，非失败）。
+    if (isUserInterrupt(interrupt.signal)) {
       if (json) write(`${JSON.stringify({ type: 'notice', text: '任务已中断（SIGINT）；会话日志保留到中断前' })}\n`);
       else write(`${paint.yellow('已中断')}\n`);
       process.exitCode = 130;
@@ -150,7 +140,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     }
     if (json) write(`${JSON.stringify({ type: 'run_error', message })}\n`);
     else console.error(`出错：${message}`);
-    if (Date.now() - execStartedAt >= LONG_TASK.execDoneMs) notify('任务出错', message.slice(0, 120));
+    turnNotifier.error(execStartedAt, message);
     process.exitCode = 1;
   } finally {
     process.off('SIGINT', onSigint);

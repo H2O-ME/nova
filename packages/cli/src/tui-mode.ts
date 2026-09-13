@@ -19,7 +19,6 @@ import {
   type AgentEvent,
   type AgentMessage,
   type SubagentProgress,
-  type Usage,
   type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
@@ -49,6 +48,13 @@ import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-m
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
 import { createSessionRuntime } from './session-runtime.js';
 import {
+  createRunnerBookkeeping,
+  createTurnNotifier,
+  createUsageAnchors,
+  isUserInterrupt,
+  resetUsageAnchors,
+} from './runner-loop.js';
+import {
   approvalLabel,
   APPROVAL_ORDER,
   bottomStack,
@@ -75,7 +81,7 @@ import {
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
-import { agentRunBase, createApprovalService, createAutoCompact, LONG_TASK, maxTurnsHint, persistMissingToolResults } from './runner-shared.js';
+import { agentRunBase, createApprovalService, createAutoCompact, maxTurnsHint, persistMissingToolResults } from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
@@ -233,11 +239,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const reloadWorkspaceContext = rt.reloadWorkspaceContext;
   // Usage anchors for pre-flight token estimates (dsh token-meter anchor +
   // delta repricing, whole-message granularity). Declared before rebuildHost
-  // so the rebuild can reset them.
-  let lastUsage: Usage | undefined;
-  let lastPromptTokens = 0;
-  let usageAnchor: Usage | undefined;
-  let anchorMsgCount = 0;
+  // so the rebuild can reset them. 事件消费簿记（日志追加 + 锚点）单源在
+  // runner-loop；tui/repl/exec/qqbot 同一契约。
+  const anchors = createUsageAnchors();
+  const bookkeeping = createRunnerBookkeeping({
+    session: () => session,
+    stats,
+    anchors,
+    messages: () => messages,
+  });
+  const turnNotifier = createTurnNotifier((title, body) => notify(title, body), {
+    enabled: () => !exiting,
+  });
   /**
    * Rebuild the plugin host for the current workspace + execution mode and
    * re-point `host`/`hooks` at it. Both the workspace switch and the Tab
@@ -259,10 +272,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // bytes unchanged since the anchored request) is void. Reset so the next
     // pre-flight estimate takes the full-estimate path instead of a delta
     // repricing against a stale anchor (P2-7).
-    lastUsage = undefined;
-    lastPromptTokens = 0;
-    usageAnchor = undefined;
-    anchorMsgCount = 0;
+    resetUsageAnchors(anchors);
   };
   /**
    * Re-point the whole workspace-bound surface at `dir`: the tool host (fs
@@ -439,14 +449,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       setRunning: (v) => {
         store.compactRunning = v;
       },
-      anchors: () => ({ usageAnchor, anchorMsgCount }),
-      resetAnchors: () => {
-        lastUsage = undefined;
-        lastPromptTokens = 0;
-        usageAnchor = undefined;
-        anchorMsgCount = 0;
-      },
-      lastPromptTokens: () => lastPromptTokens,
+      anchors: () => anchors,
+      resetAnchors: () => resetUsageAnchors(anchors),
+      lastPromptTokens: () => anchors.lastPromptTokens,
       adoptSurface: (surface) => {
         messages = surface;
       },
@@ -589,19 +594,17 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // one-result-per-call contract.
       await persistMissingToolResults(session, messages).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
-      // Classify by OUR signal, never by the error's wording: undici and
-      // gateways throw "The operation was aborted due to timeout" on plain
-      // network stalls — labeling those 已中断 hid the real error (and the
-      // retry hint) behind a silent interrupt.
-      if (aborter.signal.aborted) {
+      // Classify by OUR signal (runner-loop.isUserInterrupt), never by the
+      // error's wording: undici and gateways throw "The operation was aborted
+      // due to timeout" on plain network stalls — labeling those 已中断 hid
+      // the real error (and the retry hint) behind a silent interrupt.
+      if (isUserInterrupt(aborter.signal)) {
         // 半截未提交的回答块、未揭示文本与「■ 已中断」行收在投影器里。
         projector.handleFailure('abort');
       } else {
         // 同上，另落「已丢弃」提示行与错误行；长任务出错补一个 toast。
         projector.handleFailure('error', message);
-        if (!exiting && Date.now() - startedAt >= LONG_TASK.errorMs) {
-          notify('任务出错', message.slice(0, 120));
-        }
+        turnNotifier.error(startedAt, message);
       }
     } finally {
       const idx = aborters.indexOf(aborter);
@@ -622,10 +625,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       // Long turns end while the user is elsewhere: the toast is the "come
       // back, it's done" cue (short turns stay silent — that's just spam).
-      const elapsed = Date.now() - startedAt;
-      if (!exiting && elapsed >= LONG_TASK.doneMs) {
-        notify('任务已完成', `本轮耗时约 ${Math.max(1, Math.round(elapsed / 1000 / 60))} 分钟，回到终端查看结果`);
-      }
+      turnNotifier.done(startedAt);
       scheduleRender();
     }
     await maybeAutoCompact();
@@ -676,8 +676,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // Append EVERY assistant message, including content-less pure
         // tool-call turns: the log must mirror the model surface ("model
         // visible means logged"), or resume/compact projects orphan tool
-        // results with no matching tool_calls.
-        await session.append(event.message);
+        // results with no matching tool_calls. 簿记单源在 runner-loop。
+        await bookkeeping.apply(event);
         break;
       }
       case 'tool_call_start': {
@@ -687,7 +687,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         break;
       }
       case 'tool_call_result': {
-        await session.append(event.result);
+        await bookkeeping.apply(event);
         // A "Started background subagent …" result lands here: pin its live
         // row immediately instead of waiting for the next spinner tick.
         bgSubagentRows.sync();
@@ -696,21 +696,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         break;
       }
       case 'usage':
-        Object.assign(stats, event.stats);
-        lastUsage = event.usage;
-        lastPromptTokens = event.usage.promptTokens;
-        // Some gateways emit a usage chunk without prompt_tokens (client
-        // coerces to 0): adopting it would collapse the gauge anchor to
-        // "0 used" mid-turn until the next real report. Keep the previous
-        // anchor instead — the delta path just keeps repricing against it.
-        if (event.usage.promptTokens > 0) {
-          usageAnchor = event.usage;
-          anchorMsgCount = messages.length;
-        }
+        await bookkeeping.apply(event);
         scheduleRender();
         break;
       case 'turn_aborted':
-        await session.append(event.message);
+        await bookkeeping.apply(event);
         break;
       case 'done': {
         spinner.stop();
@@ -906,11 +896,11 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       case '/session': {
         const hit = stats.promptTokens > 0 ? Math.round((stats.cachedTokens / stats.promptTokens) * 100) : 0;
         const lastHit =
-          lastUsage !== undefined && lastUsage.promptTokens > 0
-            ? Math.round((lastUsage.cachedTokens / lastUsage.promptTokens) * 100)
+          anchors.lastUsage !== undefined && anchors.lastUsage.promptTokens > 0
+            ? Math.round((anchors.lastUsage.cachedTokens / anchors.lastUsage.promptTokens) * 100)
             : null;
         const compact = config.autoCompactTokenLimit
-          ? `阈值 ${humanTokens(config.autoCompactTokenLimit)} tok · 上轮 ${humanTokens(lastPromptTokens)} tok`
+          ? `阈值 ${humanTokens(config.autoCompactTokenLimit)} tok · 上轮 ${humanTokens(anchors.lastPromptTokens)} tok`
           : '未启用';
         store.pushBlock([
           `  ${paint.bold('会话')}${paint.dim(` · nova v${cliVersion()} · 模式 ${codeModeLabel(codeMode)}`)}`,
@@ -949,10 +939,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         client.setSessionId(session.id);
         messages = [];
         Object.assign(stats, emptyStats());
-        lastUsage = undefined;
-        lastPromptTokens = 0;
-        usageAnchor = undefined;
-        anchorMsgCount = 0;
+        resetUsageAnchors(anchors);
         resetSessionCache();
         await seedContextFragment(session, messages);
         store.pushBlock([paint.dim(`  新会话：${session.file}`)]);
@@ -1027,10 +1014,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     // the next turn rebuilds the cache instead of tripping a spurious compact.
     client.setSessionId(loaded.id);
     Object.assign(stats, emptyStats());
-    lastUsage = undefined;
-    lastPromptTokens = 0;
-    usageAnchor = undefined;
-    anchorMsgCount = 0;
+    resetUsageAnchors(anchors);
     resetSessionCache();
     bgSubagentRows.clear();
     modeSelectBlock = undefined;
@@ -1355,8 +1339,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     systemPrompt,
     tools: host.tools,
     messages,
-    usageAnchor,
-    anchorMsgCount,
+    usageAnchor: anchors.usageAnchor,
+    anchorMsgCount: anchors.anchorMsgCount,
     contextWindow: config.provider.contextWindow,
     modelMetaContextWindow: currentModelMeta?.contextWindow,
   });
@@ -1372,7 +1356,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const capacity = config.provider.contextWindow ?? currentModelMeta?.contextWindow;
     const key = gaugeCacheKey({
       messagesLen: messages.length,
-      usageAnchor,
+      usageAnchor: anchors.usageAnchor,
       model: client.model,
       codeMode,
       modelMetaVersion,

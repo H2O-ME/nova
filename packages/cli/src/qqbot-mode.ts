@@ -9,6 +9,7 @@ import { createSessionRuntime } from './session-runtime.js';
 import { sessionsRoot } from './config.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { agentRunBase, persistMissingToolResults } from './runner-shared.js';
+import { createRunnerBookkeeping } from './runner-loop.js';
 import { palette, plainPalette } from './ui.js';
 
 export interface QqBotOptions {
@@ -81,6 +82,13 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
     maxTurns: config.maxTurns,
   });
 
+  // 事件消费簿记单源（runner-loop）：对端会话重绑经访问器取当前值；
+  // usage 只累计 stats（无头 runner 不持 pre-flight 锚点态）。
+  const bookkeeping = createRunnerBookkeeping({
+    session: () => current!.session,
+    stats: rt.stats,
+  });
+
   async function peerSessionOf(peer: Peer): Promise<{ session: Session; messages: AgentMessage[] }> {
     const hit = peerSessions.get(peer.peerId);
     if (hit !== undefined) return hit;
@@ -106,17 +114,13 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
     let reply = '';
     try {
       for await (const event of runAgent(agentRun())) {
+        // 最终 assistant 回复捕获为被动回复正文；簿记（含该条消息的日志追加
+        // ——此前最终回复漏 append，违反 "model-visible means logged"）单源
+        // 在 runner-loop。
         if (event.type === 'message' && event.message.role === 'assistant' && event.message.content.trim().length > 0) {
           reply = event.message.content.trim();
-        } else if (event.type === 'message') {
-          await bound.session.append(event.message);
-        } else if (event.type === 'tool_call_result') {
-          await bound.session.append(event.result);
-        } else if (event.type === 'turn_aborted') {
-          await bound.session.append(event.message);
-        } else if (event.type === 'usage') {
-          Object.assign(rt.stats, event.stats);
         }
+        await bookkeeping.apply(event);
       }
     } catch (err) {
       await persistMissingToolResults(bound.session, bound.messages).catch(() => undefined);

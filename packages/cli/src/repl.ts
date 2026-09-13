@@ -9,7 +9,6 @@ import {
   type AgentEvent,
   type AgentMessage,
   type SubagentProgress,
-  type Usage,
   type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
@@ -22,6 +21,13 @@ import { expandSkillInvocation } from './context.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
+import {
+  createRunnerBookkeeping,
+  createTurnNotifier,
+  createUsageAnchors,
+  isUserInterrupt,
+  resetUsageAnchors,
+} from './runner-loop.js';
 import {
   approvalLabel,
   APPROVAL_ORDER,
@@ -40,7 +46,6 @@ import {
   approvalPrompt,
   createApprovalService,
   createAutoCompact,
-  LONG_TASK,
   maxTurnsHint,
   persistMissingToolResults,
   ToolTiming,
@@ -287,11 +292,15 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   applyWorkspaceRef = applyWorkspace;
   const systemPrompt = rt.systemPrompt;
   const toolTiming = new ToolTiming();
-  let lastUsage: Usage | undefined;
-  let lastPromptTokens = 0;
-  // Usage anchor for pre-flight token estimates (see maybePreCompact).
-  let usageAnchor: Usage | undefined;
-  let anchorMsgCount = 0;
+  // 事件消费簿记单源（runner-loop）：日志追加 + usage/锚点（四 runner 同一契约）。
+  const anchors = createUsageAnchors();
+  const bookkeeping = createRunnerBookkeeping({
+    session: () => session,
+    stats,
+    anchors,
+    messages: () => messages,
+  });
+  const turnNotifier = createTurnNotifier((title, body) => notify(title, body));
   let compactRunning = false;
   let reasoningTail = '';
   let reasoningLive = false;
@@ -341,14 +350,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       setRunning: (v) => {
         compactRunning = v;
       },
-      anchors: () => ({ usageAnchor, anchorMsgCount }),
-      resetAnchors: () => {
-        lastUsage = undefined;
-        lastPromptTokens = 0;
-        usageAnchor = undefined;
-        anchorMsgCount = 0;
-      },
-      lastPromptTokens: () => lastPromptTokens,
+      anchors: () => anchors,
+      resetAnchors: () => resetUsageAnchors(anchors),
+      lastPromptTokens: () => anchors.lastPromptTokens,
       adoptSurface: (surface) => {
         messages = surface;
       },
@@ -431,7 +435,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         endReasoningLine();
         spinner.stop();
         if (event.message.content.length > 0) process.stdout.write('\n');
-        await session.append(event.message);
+        await bookkeeping.apply(event);
         break;
       }
       case 'tool_call_start': {
@@ -451,7 +455,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         const duration = toolTiming.finish(event.call.id);
         clearProgressLine();
         replSubagentLatch.current = undefined;
-        await session.append(event.result);
+        await bookkeeping.apply(event);
         for (const line of toolDoneLine(paint, event.call.name, event.call.rawArgs, event.result.content, duration)) {
           console.log(line);
         }
@@ -459,19 +463,11 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         break;
       }
       case 'usage': {
-        Object.assign(stats, event.stats);
-        lastUsage = event.usage;
-        lastPromptTokens = event.usage.promptTokens;
-        // 与 TUI 同一护栏：prompt_tokens 缺失（coerce 成 0）的 usage 块
-        // 不收为锚点，否则仪表中途塌成 0 直到下一次真实上报。
-        if (event.usage.promptTokens > 0) {
-          usageAnchor = event.usage;
-          anchorMsgCount = messages.length;
-        }
+        await bookkeeping.apply(event);
         break;
       }
       case 'turn_aborted': {
-        await session.append(event.message);
+        await bookkeeping.apply(event);
         break;
       }
       case 'done': {
@@ -524,10 +520,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           client.setSessionId(session.id);
           messages = [];
           Object.assign(stats, emptyStats());
-          lastUsage = undefined;
-          lastPromptTokens = 0;
-          usageAnchor = undefined;
-          anchorMsgCount = 0;
+          resetUsageAnchors(anchors);
           await seedContextFragment(session, messages);
           console.log(`新会话：${session.file}`);
           break;
@@ -538,11 +531,11 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
               ? ((stats.cachedTokens / stats.promptTokens) * 100).toFixed(1)
               : '0.0';
           const lastHit =
-            lastUsage !== undefined && lastUsage.promptTokens > 0
-              ? Math.round((lastUsage.cachedTokens / lastUsage.promptTokens) * 100)
+            anchors.lastUsage !== undefined && anchors.lastUsage.promptTokens > 0
+              ? Math.round((anchors.lastUsage.cachedTokens / anchors.lastUsage.promptTokens) * 100)
               : null;
           const compact = config.autoCompactTokenLimit
-            ? `阈值 ${config.autoCompactTokenLimit} tok · 上轮 ${lastPromptTokens} tok`
+            ? `阈值 ${config.autoCompactTokenLimit} tok · 上轮 ${anchors.lastPromptTokens} tok`
             : '未启用';
           console.log(
             `文件：${session.file}\n消息 ${messages.length} 条 · ${stats.turns} 轮 · 输入 ${stats.promptTokens} tok · 缓存 ${hit}%${lastHit !== null ? `（上轮 ${lastHit}%）` : ''} · 输出 ${stats.completionTokens} tok\n缓存浪费 ${stats.missTokens} tok（超噪声底 ${stats.missTurns} 轮）\n自动压缩：${compact}`,
@@ -626,9 +619,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
               `已压缩 — 会话原位压缩（日志保留完整历史），摘要 ${outcome.summary.length} 字，保留 ${outcome.retained} 条最近用户消息`,
             );
           } catch (err) {
-            // 与主轮同一归类：signal 触发才算中断，文案含 "aborted" 的
-            // 网络超时必须亮原文。
-            const aborted = compactAbort?.signal.aborted === true;
+            // 与主轮同一归类（runner-loop.isUserInterrupt）：signal 触发才算
+            // 中断，文案含 "aborted" 的网络超时必须亮原文。
+            const aborted = isUserInterrupt(compactAbort?.signal);
             console.error(aborted ? '压缩已中断（会话保持未压缩）' : `压缩失败：${err instanceof Error ? err.message : String(err)}`);
           } finally {
             compactAbort = undefined;
@@ -689,21 +682,19 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       // one-result-per-call contract.
       await persistMissingToolResults(session, messages).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
-      // 与 TUI 同一归类：以本轮 signal 是否真的触发为准——错误文案含
-      // "aborted" 的网络超时（undici）不算用户中断，必须亮出原文。
-      if (aborter?.signal.aborted === true) {
+      // 中断归类单源（runner-loop.isUserInterrupt）：以本轮 signal 是否真的
+      // 触发为准——文案含 "aborted" 的网络超时必须亮出原文。
+      if (isUserInterrupt(aborter?.signal)) {
         console.log(paint.yellow('  已中断'));
       } else {
         console.error(paint.red(`  出错：${message}`));
         console.log(paint.dim('  ⟳ 未完成的回答未写入会话日志（resume 后不可见）'));
-        if (Date.now() - requestStartedAt >= LONG_TASK.errorMs) notify('任务出错', message.slice(0, 120));
+        turnNotifier.error(requestStartedAt, message);
       }
     } finally {
       streaming = false;
       // Long turns end while the user is elsewhere — same cue as the TUI.
-      if (Date.now() - requestStartedAt >= LONG_TASK.doneMs) {
-        notify('任务已完成', `本轮耗时约 ${Math.max(1, Math.round((Date.now() - requestStartedAt) / 60000))} 分钟，回到终端查看结果`);
-      }
+      turnNotifier.done(requestStartedAt);
       console.log();
     }
     await maybeAutoCompact();
