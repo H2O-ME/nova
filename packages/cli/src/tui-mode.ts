@@ -23,6 +23,7 @@ import {
   Session,
   type AgentEvent,
   type AgentMessage,
+  type SubagentProgress,
   type Usage,
   type UsageStats,
   type UserMessage,
@@ -77,6 +78,7 @@ import {
   SPINNER_FRAMES,
   statusLine,
   StreamSmoother,
+  subagentLiveLine,
   TOOL_GUTTER,
   toolArgSummary,
   toolDoneLine,
@@ -133,11 +135,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
   let sessionsDir = newSessionDir();
 
+  // Visibility for nested subagent runs: the runner owns the live row. The
+  // callback closes over onSubagentProgressRef (declared below with the live
+  // row state); it is a plain ref so late calls always reach the current turn
+  // even though the runtime wiring was fixed at session start.
   const rt = await createSessionRuntime({
     rootDir,
     config,
     resumeFile: opts.resumeFile,
     approvalOverride: opts.approvalOverride,
+    subagentProgress: (progress) => onSubagentProgressRef.current(progress),
   });
   let messages: AgentMessage[] = rt.messages;
   let session: Session = rt.session;
@@ -188,7 +195,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       },
     },
     // 隔离子代理：同 provider、同审批门（hooks 经 rt.hooksRef 活读取）、
-    // 无 subagent 自身（core 侧过滤防递归）。
+    // 无 subagent 自身（core 侧过滤防递归）。runner 级反馈由运行时接线
+    // （opts.subagentProgress → onSubagentProgressRef）；此处的 bashPluginArgs
+    // 只在 rebuildHost/Tab 切换时重建 host，不碰进度接线。
     subagent: {
       provider: client,
       tools: () => host.tools,
@@ -196,6 +205,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       systemPrompt,
       ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
       rootDir: () => rootDir,
+      onProgress: (progress) => onSubagentProgressRef.current(progress),
     },
     code: { ...codeConfig, mode: codeMode },
   });
@@ -365,6 +375,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           // Dirty-check: identical rows skip the replace (no wrap-cache churn).
           if (entry.block.lines.join('\n') !== lines.join('\n')) store.replaceBlock(entry.block, lines);
         }
+        // Live subagent rows cycle their glyph with the same tick — a child
+        // thinking between bursts never looks stalled (render is dirty-checked).
+        for (const liveKey of subagentLive.keys()) renderSubagentLive(liveKey, frame);
         // The thinking glyph cycles even between token bursts: the spinner
         // tick re-renders the live reasoning rows (dirty-checked inside).
         if (store.reasoningBlock !== undefined) renderReasoningLive();
@@ -453,6 +466,87 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     systemPrompt,
     maxTurns: config.maxTurns,
   });
+
+  // ---- subagent live view ------------------------------------------------
+  // A foreground subagent run is fully synchronous for the parent turn — the
+  // parent has no runAgent events of its own until the child settles, so
+  // without this the user stares at a frozen tool line for minutes (codex
+  // shows only start/completed, dsh only start/end + result; neither shows
+  // liveness — this is nova's deliberate deviation). Core forwards nested
+  // lifecycle moments via SubagentPluginOptions.onProgress; the shell pins
+  // one live row per running child (keyed by the parent tool CALL — labels
+  // are not unique) until the nested `done` remaps into the parent tool's
+  // own result/done row.
+  interface SubagentLiveState {
+    label: string;
+    lastTool?: string;
+    toolCounts: Map<string, number>;
+    turns: number;
+    promptTokens: number;
+    completionTokens: number;
+    block: Block;
+  }
+  const subagentLive = new Map<string, SubagentLiveState>();
+  // Latest foreground subagent call this turn; its nested progress rows map
+  // here. Reset on every tool result (a new subagent call re-pins it).
+  const onSubagentProgressRef: { current: (progress: SubagentProgress) => void } = {
+    current: () => undefined,
+  };
+  const renderSubagentLive = (callId: string, frame = '•'): void => {
+    const st = subagentLive.get(callId);
+    if (st === undefined) return;
+    store.replaceBlock(st.block, [
+      subagentLiveLine(paint, {
+        label: st.label,
+        ...(st.lastTool !== undefined ? { lastTool: st.lastTool } : {}),
+        toolCounts: st.toolCounts,
+        turns: st.turns,
+        promptTokens: st.promptTokens,
+        completionTokens: st.completionTokens,
+      }, frame),
+    ]);
+  };
+  const removeSubagentLive = (callId: string): void => {
+    const st = subagentLive.get(callId);
+    if (st === undefined) return;
+    subagentLive.delete(callId);
+    if (store.blocks.includes(st.block)) store.removeBlock(st.block);
+  };
+  const onSubagentProgress = (callId: string, progress: SubagentProgress): void => {
+    const key = callId;
+    if (progress.type === 'start') {
+      const block = store.pushBlock(
+        [subagentLiveLine(paint, { label: progress.label, toolCounts: new Map(), turns: 0, promptTokens: 0, completionTokens: 0 }, '•')],
+        TOOL_GUTTER,
+      );
+      // Interrupt-safe ownership: the tool's own pending row stays where it
+      // is, the live row renders directly beneath it.
+      subagentLive.set(key, { label: progress.label, toolCounts: new Map(), turns: 0, promptTokens: 0, completionTokens: 0, block });
+    } else if (progress.type === 'tool_call') {
+      const st = subagentLive.get(key);
+      if (st === undefined) return;
+      st.lastTool = progress.call.name;
+      st.toolCounts.set(progress.call.name, (st.toolCounts.get(progress.call.name) ?? 0) + 1);
+      renderSubagentLive(key);
+    } else if (progress.type === 'usage') {
+      const st = subagentLive.get(key);
+      if (st === undefined) return;
+      st.turns = progress.stats.turns;
+      st.promptTokens = progress.stats.promptTokens;
+      st.completionTokens = progress.stats.completionTokens;
+      renderSubagentLive(key);
+    } else {
+      // `done`: keep the live row until tool_call_result remaps it into the
+      // parent tool's own done row (same frame the result is appended).
+      const st = subagentLive.get(key);
+      if (st === undefined) return;
+      st.turns = progress.usage.turns;
+      st.promptTokens = progress.usage.promptTokens;
+      st.completionTokens = progress.usage.completionTokens;
+      renderSubagentLive(key);
+    }
+    scheduleRender();
+  };
 
   /** Remove the live reasoning block once it ends: the answer, not the
    * thinking, is what the user came for — only the streaming tail is shown. */
@@ -830,6 +924,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         store.genPhase = 'tool';
         // A new non-read call ends the current read-only group.
         if (!isReadOnlyTool(event.call.name)) store.closeReadGroup();
+        // A foreground subagent pins `onSubagentProgressRef` at the current
+        // parent call so its live row maps back here when it renders.
+        onSubagentProgressRef.current =
+          event.call.name === 'subagent' ? (progress) => onSubagentProgress(event.call.id, progress) : () => undefined;
         // Soft-wrapped continuation rows hang under the summary column.
         const block = store.pushBlock(
           [toolStartLine(paint, event.call.name, event.call.rawArgs, '•', toolBudget())],
@@ -845,6 +943,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         const entry = store.toolBlocks.get(event.call.id);
         store.toolBlocks.delete(event.call.id);
         if (store.activeToolId === event.call.id) store.activeToolId = undefined;
+        onSubagentProgressRef.current = () => undefined;
+        removeSubagentLive(event.call.id);
         const duration = entry === undefined ? 0 : Math.max(0, Date.now() - entry.startAt);
         const failed = isFailureContent(event.result.content);
         if (isReadOnlyTool(event.call.name) && !failed) {

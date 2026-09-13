@@ -14,6 +14,20 @@ export type { Palette };
 /** Tool block gutter: the failure └ row aligns under the content column. */
 export const TOOL_GUTTER: { first: string; rest: string } = { first: '', rest: '      ' };
 
+/** A nested subagent call the parent is waiting on (codex-style marker). */
+export interface SubagentLiveView {
+  label: string;
+  /** Latest nested tool name invoked (undefined = still thinking). */
+  lastTool?: string;
+  /** Nested tool name → count, in first-seen order. */
+  toolCounts: ReadonlyMap<string, number>;
+  /** Nested provider request rounds so far. */
+  turns: number;
+  /** Nested prompt+completion tokens so far. */
+  promptTokens: number;
+  completionTokens: number;
+}
+
 /**
  * Shared width budget for tool rows. wrapBlock folds at `cols-1-gutter`, so
  * row builders must clip into the same budget or the tail gets pushed onto
@@ -184,4 +198,19 @@ export function statusLine(
 export function contextBar(ratio: number, cells = 8): string {
   const filled = Math.max(0, Math.min(cells, Math.round(ratio * cells)));
   return '█'.repeat(filled) + '░'.repeat(cells - filled);
+}
+
+/**
+ * Live subagent row (single line, re-rendered per nested event): the agent
+ * glyph `⧉` + label, the latest nested tool and the running totals. No
+ * nested text is streamed — the transcript stays readable while the work
+ * is provably progressing (dsh's "result, not intermediate steps" contract).
+ */
+export function subagentLiveLine(p: Palette, v: SubagentLiveView, frame: string): string {
+  const tools = [...v.toolCounts.entries()].map(([name, n]) => (n > 1 ? `${name}×${n}` : name)).join(' ');
+  const toks = v.promptTokens + v.completionTokens;
+  const parts = [tools.length > 0 ? tools : '思考中'];
+  if (v.turns > 0) parts.push(`${v.turns} 轮`);
+  if (toks > 0) parts.push(`${toks} tok`);
+  return `    ${p.dim(frame)} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
 }

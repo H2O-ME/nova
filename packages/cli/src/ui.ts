@@ -73,6 +73,7 @@ export {
   SPLASH_MIN_INNER,
   statusBar,
   statusLine,
+  subagentLiveLine,
   TOOL_ELAPSED_AFTER_MS,
   TOOL_GUTTER,
   toolArgSummary,
@@ -110,6 +111,7 @@ export type {
   StatusTier,
   StatusView,
   StopKind,
+  SubagentLiveView,
 } from '@nova-agent/tui-view';
 export {
   buildApprovalPopup,

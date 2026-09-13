@@ -8,6 +8,7 @@ import {
   Session,
   type AgentEvent,
   type AgentMessage,
+  type SubagentProgress,
   type Usage,
   type UsageStats,
   type UserMessage,
@@ -130,6 +131,11 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         return applyWorkspaceRef(dir);
       },
     },
+    // Nested subagent visibility: the latch (declared below) binds nested
+    // rows to the current parent `subagent` call. The callback only FIRES
+    // after the latch exists — nested runs happen mid-turn, long after.
+    // replSubagentProgress itself no-ops unless the latch is pinned.
+    subagentProgress: (progress) => replSubagentProgress(progress),
   });
   let messages: AgentMessage[] = rt.messages;
   let session: Session = rt.session;
@@ -291,6 +297,24 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   let reasoningLive = false;
   let progressTail = '';
   let progressLive = false;
+  // Latest foreground `subagent` parent call: the runtime's shared
+  // subagentProgress feed maps nested rows here (labels repeat, call ids
+  // don't). Pinned at tool_call_start, cleared at tool_call_result.
+  const replSubagentLatch: { current: { callId: string } | undefined } = { current: undefined };
+  /** Nested subagent visibility (REPL): one dim row per lifecycle moment. */
+  const replSubagentProgress = (progress: SubagentProgress): void => {
+    if (!useColor || replSubagentLatch.current === undefined) return;    if (progress.type === 'start') {
+      console.log(paint.dim(`    ⧉ 子代理 ${progress.label} 启动…`));
+    } else if (progress.type === 'tool_call') {
+      console.log(paint.dim(`    ⧉ ${progress.label} › ${progress.call.name}`));
+    } else if (progress.type === 'done') {
+      const u = progress.usage;
+      console.log(
+        paint.dim(`    ⧉ ${progress.label} 完成 · ${u.turns} 轮 · ${u.toolCalls} 工具 · ${u.promptTokens + u.completionTokens} tok · ${(u.elapsedMs / 1000).toFixed(1)}s`),
+      );
+    }
+  };
+  void replSubagentProgress;
   const endReasoningLine = (): void => {
     if (reasoningLive) {
       process.stdout.write('\x1b[0m\n');
@@ -408,11 +432,17 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         toolTiming.start(event.call.id);
         progressTail = '';
         console.log(toolStartLine(paint, event.call.name, event.call.rawArgs));
+        // Reset the per-call subagent latch: only the `subagent` tool binds
+        // replSubagentProgress while it runs (nested calls of OTHER parent
+        // tools — a PTC run_code dispatching read_file — must NOT).
+        replSubagentLatch.current =
+          event.call.name === 'subagent' ? { callId: event.call.id } : undefined;
         break;
       }
       case 'tool_call_result': {
         const duration = toolTiming.finish(event.call.id);
         clearProgressLine();
+        replSubagentLatch.current = undefined;
         await session.append(event.result);
         for (const line of toolDoneLine(paint, event.call.name, event.call.rawArgs, event.result.content, duration)) {
           console.log(line);

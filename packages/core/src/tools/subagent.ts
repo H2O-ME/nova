@@ -1,10 +1,10 @@
 import { runAgent } from '../agent.js';
 import { newId } from '../ids.js';
-import type { AgentHooks, ChatProvider, ToolDefinition } from '../types.js';
+import type { AgentHooks, ChatProvider, ToolCall, ToolDefinition, UsageStats } from '../types.js';
 
 /**
  * The `subagent` tool (dsh subagent design, single-provider simplification):
- * a fresh nested agent loop with its OWN message surface. Context isolation
+ * a focused nested agent loop with its OWN message surface. Context isolation
  * is the point — the subagent cannot see this conversation, so the prompt
  * must be self-contained; its final report flows back as the tool result
  * (the parent logs it like any tool output, keeping "model-visible means
@@ -18,6 +18,27 @@ import type { AgentHooks, ChatProvider, ToolDefinition } from '../types.js';
  * parent's.
  */
 
+/** One nested-loop lifecycle moment, forwarded best-effort to `onProgress`. */
+export type SubagentProgress =
+  | { type: 'start'; label: string }
+  | { type: 'tool_call'; label: string; call: ToolCall }
+  | { type: 'usage'; label: string; stats: UsageStats }
+  | { type: 'done'; label: string; usage: SubagentUsage; status: 'completed' | 'aborted' | 'ended' };
+
+/** Child-side consumption: OWN loop only, never merged into the parent. */
+export interface SubagentUsage {
+  /** Wall time of the nested run in milliseconds. */
+  elapsedMs: number;
+  /** Nested provider request rounds (runAgent turns). */
+  turns: number;
+  /** Nested tool calls dispatched. */
+  toolCalls: number;
+  /** Prompt tokens the nested loop consumed. */
+  promptTokens: number;
+  /** Completion tokens the nested loop consumed. */
+  completionTokens: number;
+}
+
 export interface SubagentToolOptions {
   provider: ChatProvider;
   /** Live tool list of the parent (accessor — the host may rebuild). */
@@ -28,9 +49,111 @@ export interface SubagentToolOptions {
   maxTurns?: number;
   /** Root the subagent's file/bash tools resolve against. */
   rootDir: () => string;
+  /**
+   * Best-effort visibility feed: the caller (TUI/REPL runner) renders these
+   * as live subagent rows. Core owns the SCHEMA; tools must never depend on
+   * it existing. Not called for the background mode's start — the job id
+   * line covers that.
+   */
+  onProgress?: (progress: SubagentProgress) => void;
 }
 
 const SUBAGENT_TOOL_NAME = 'subagent';
+/** Bytes kept in the background job's live-progress ring. */
+const TAIL_BYTES = 8 * 1024;
+
+/** One-line arg summary for progress rows (never the full payload). */
+function summarizeCallArgs(call: ToolCall): string {
+  try {
+    const raw = call.rawArgs.length > 0 ? call.rawArgs : JSON.stringify(call.args ?? {});
+    return raw.length > 80 ? `${raw.slice(0, 80)}…` : raw;
+  } catch {
+    return '';
+  }
+}
+
+/** Machine-readable usage trailer appended to the foreground report. */
+export function subagentUsageTrailer(label: string, usage: SubagentUsage): string {
+  return `[subagent: ${label} · ${usage.turns} turns · ${usage.toolCalls} tools · ${usage.promptTokens}+${usage.completionTokens} tok · ${(usage.elapsedMs / 1000).toFixed(1)}s]`;
+}
+
+async function runOnce(
+  opts: SubagentToolOptions,
+  label: string,
+  prompt: string,
+  signal: AbortSignal | undefined,
+): Promise<{ report: string; usage: SubagentUsage; completed: boolean }> {
+  // Same tools minus the subagent itself (no recursion) — evaluated live
+  // so a host rebuild between registration and dispatch is honored.
+  const nestedTools = opts.tools().filter((tool) => tool.name !== SUBAGENT_TOOL_NAME);
+
+  const messages = [
+    {
+      id: newId('msg'),
+      ts: Date.now(),
+      role: 'user' as const,
+      content: `[subagent task: ${label}]\n\n${prompt}\n\n[You are an isolated subagent. Work the task with the tools available; when done, reply with your final report — it is the only part of this conversation the parent agent will see.]`,
+    },
+  ];
+
+  const startedAt = Date.now();
+  const fire = (progress: SubagentProgress): void => {
+    try {
+      opts.onProgress?.(progress);
+    } catch {
+      // Visibility must never break the run.
+    }
+  };
+  fire({ type: 'start', label });
+
+  let report: string | undefined;
+  let toolCalls = 0;
+  let lastStats: UsageStats | undefined;
+  let finalStats: UsageStats | undefined;
+  let stopReason: 'complete' | 'max_turns' | 'aborted' | undefined;
+  for await (const event of runAgent({
+    provider: opts.provider,
+    messages,
+    rootDir: opts.rootDir(),
+    ...(opts.systemPrompt !== undefined ? { systemPrompt: opts.systemPrompt } : {}),
+    tools: nestedTools,
+    ...(opts.hooks !== undefined ? { hooks: opts.hooks() } : {}),
+    signal,
+    maxTurns: opts.maxTurns,
+  })) {
+    if (event.type === 'message' && event.message.role === 'assistant' && event.message.content.trim().length > 0) {
+      report = event.message.content.trim();
+    } else if (event.type === 'tool_call_start') {
+      toolCalls += 1;
+      fire({ type: 'tool_call', label, call: event.call });
+    } else if (event.type === 'usage') {
+      lastStats = event.stats;
+      fire({ type: 'usage', label, stats: event.stats });
+    } else if (event.type === 'done') {
+      stopReason = event.stopReason;
+      // runAgent emits per-request `usage` but no terminal rollup: capture
+      // the last snapshot here (doneStats stays undefined on a zero-request
+      // run, e.g. immediate abort — the `??` zero-fill below covers that).
+      finalStats = lastStats;
+    }
+  }
+  const usage: SubagentUsage = {
+    elapsedMs: Date.now() - startedAt,
+    turns: finalStats?.turns ?? 0,
+    toolCalls,
+    promptTokens: finalStats?.promptTokens ?? 0,
+    completionTokens: finalStats?.completionTokens ?? 0,
+  };
+  const completed = report !== undefined && stopReason !== 'aborted';
+  fire({ type: 'done', label, usage, status: stopReason === 'aborted' ? 'aborted' : completed ? 'completed' : 'ended' });
+  if (report !== undefined) return { report, usage, completed };
+  const reason = stopReason ?? (signal?.aborted ? 'aborted' : 'no output');
+  return {
+    report: `[subagent: ${label}] ended without a report (stop: ${reason}). Partial work is not visible to the parent — re-run with a narrower prompt.`,
+    usage,
+    completed: false,
+  };
+}
 
 export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
   return {
@@ -40,12 +163,17 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
       'write the prompt as a complete, self-contained brief: goal, relevant file paths, constraints, expected output) ' +
       'and the same tools, then returns its final report. Use for parallelizable research, exhaustive searches or ' +
       'self-contained subtasks whose intermediate tool output would otherwise flood this conversation. ' +
-      'Args: prompt (required, the full brief), label (optional short task name).',
+      'Args: prompt (required, the full brief), label (optional short task name), run_in_background (optional boolean; ' +
+      'returns a subagent-N job handle instead of waiting — read with the jobs tool, completion is announced automatically).',
     parameters: {
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'The complete, self-contained brief for the subagent.' },
         label: { type: 'string', description: 'Short task name shown in progress displays.' },
+        run_in_background: {
+          type: 'boolean',
+          description: 'Start detached and return a subagent-N job id immediately; read progress with the jobs tool.',
+        },
       },
       required: ['prompt'],
       additionalProperties: false,
@@ -57,40 +185,62 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
       if (prompt.trim().length === 0) return 'Error: prompt must be a non-empty string';
       const label = typeof args['label'] === 'string' && args['label'].trim().length > 0 ? args['label'].trim() : 'subtask';
 
-      // Same tools minus the subagent itself (no recursion) — evaluated live
-      // so a host rebuild between registration and dispatch is honored.
-      const nestedTools = opts.tools().filter((tool) => tool.name !== SUBAGENT_TOOL_NAME);
-
-      const messages = [
-        {
-          id: newId('msg'),
-          ts: Date.now(),
-          role: 'user' as const,
-          content: `[subagent task: ${label}]\n\n${prompt}\n\n[You are an isolated subagent. Work the task with the tools available; when done, reply with your final report — it is the only part of this conversation the parent agent will see.]`,
-        },
-      ];
-
-      let report: string | undefined;
-      let stopReason: string | undefined;
-      for await (const event of runAgent({
-        provider: opts.provider,
-        messages,
-        rootDir: opts.rootDir(),
-        ...(opts.systemPrompt !== undefined ? { systemPrompt: opts.systemPrompt } : {}),
-        tools: nestedTools,
-        ...(opts.hooks !== undefined ? { hooks: opts.hooks() } : {}),
-        signal: ctx.signal,
-      })) {
-        if (event.type === 'message' && event.message.role === 'assistant' && event.message.content.trim().length > 0) {
-          report = event.message.content.trim();
-        } else if (event.type === 'done') {
-          stopReason = event.stopReason;
-        }
+      if (args['run_in_background'] === true) {
+        if (ctx.jobs === undefined) return 'Error: background jobs are not available in this context';
+        const controller = new AbortController();
+        // Bounded live-progress ring (read via jobs output while running).
+        const tail: string[] = [];
+        const pushTail = (line: string): void => {
+          tail.push(line);
+          while (tail.join('\n').length > TAIL_BYTES) tail.shift();
+        };
+        const outcome = runOnce(
+          {
+            ...opts,
+            onProgress: (progress) => {
+              if (progress.type === 'tool_call') {
+                pushTail(`› ${progress.call.name} ${summarizeCallArgs(progress.call)}`);
+              }
+            },
+          },
+          label,
+          prompt,
+          controller.signal,
+        ).then(({ report, usage, completed }) => ({
+          status: (completed ? 'completed' : report.includes('aborted') ? 'killed' : 'failed') as
+            | 'completed'
+            | 'killed'
+            | 'failed',
+          detail: subagentUsageTrailer(label, usage),
+          report,
+        }));
+        // The registry only keeps an outcome {status, detail}; the report
+        // itself stays readable via jobs output (read-after-notify contract).
+        let finalReport: string | undefined;
+        const done = outcome.then((o) => {
+          finalReport = `${o.report}\n${o.detail}`;
+          return { status: o.status, detail: o.detail };
+        });
+        const snapshot = ctx.jobs.start({
+          kind: 'subagent',
+          label: `[subagent: ${label}] ${prompt.slice(0, 80)}`,
+          cancel: (reason) => controller.abort(reason),
+          done,
+          readOutput: () => {
+            // Live progress tail (capped) before settlement; the full
+            // report+usage trailer once settled. The ring prevents an
+            // unbounded chatter log from pinning session memory.
+            const out = finalReport ?? tail.join('\n');
+            tail.length = 0;
+            return out;
+          },
+        });
+        void done.catch(() => undefined);
+        return `Started background subagent ${snapshot.id}: ${label}\nYou will be notified automatically when it finishes — do not poll. When notified, read its report once with the jobs tool (action=output, id=${snapshot.id}); use action=stop to terminate it early.`;
       }
 
-      if (report !== undefined) return `[subagent: ${label}] ${report}`;
-      const reason = stopReason ?? (ctx.signal?.aborted ? 'aborted' : 'no output');
-      return `[subagent: ${label}] ended without a report (stop: ${reason}). Partial work is not visible to the parent — re-run with a narrower prompt.`;
+      const { report, usage } = await runOnce(opts, label, prompt, ctx.signal);
+      return `${report}\n${subagentUsageTrailer(label, usage)}`;
     },
   };
 }

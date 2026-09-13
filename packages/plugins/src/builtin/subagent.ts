@@ -1,4 +1,4 @@
-import { createSubagentTool } from '@nova-agent/core';
+import { createSubagentTool, type SubagentProgress } from '@nova-agent/core';
 import type { AgentHooks, ChatProvider, ToolDefinition } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
@@ -19,6 +19,8 @@ export interface SubagentPluginOptions {
   systemPrompt?: string;
   maxTurns?: number;
   rootDir: () => string;
+  /** Visibility feed: forwarded to the core tool (renders live subagent rows). */
+  onProgress?: (progress: SubagentProgress) => void;
 }
 
 export function subagentPlugin(options: SubagentPluginOptions): Plugin {
@@ -33,6 +35,7 @@ export function subagentPlugin(options: SubagentPluginOptions): Plugin {
         ...(options.systemPrompt !== undefined ? { systemPrompt: options.systemPrompt } : {}),
         ...(options.maxTurns !== undefined ? { maxTurns: options.maxTurns } : {}),
         rootDir: options.rootDir,
+        ...(options.onProgress !== undefined ? { onProgress: options.onProgress } : {}),
       });
       ctx.registerTool(tool, { permission: 'execute' });
     },

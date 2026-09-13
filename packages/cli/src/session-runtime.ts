@@ -7,6 +7,7 @@ import {
   Session,
   type AgentHooks,
   type AgentMessage,
+  type SubagentProgress,
   type UsageStats,
   type UserMessage,
 } from '@nova-agent/core';
@@ -80,6 +81,13 @@ export interface SessionRuntimeOptions {
    */
   workspace?: { onChange: (dir: string) => void | Promise<void> };
   /**
+   * Visibility feed for nested subagent runs (live tool/usage rows). The
+   * subagent plugin forwards nested lifecycle moments here; runners that
+   * render the transcript (TUI/REPL) assign a live renderer. Optional and
+   * fire-and-forget — core never depends on it.
+   */
+  subagentProgress?: (progress: SubagentProgress) => void;
+  /**
    * Third-party plugins mounted into the host BEFORE activation (the
    * third-party authoring path: a package exporting Plugin objects — e.g.
    * @nova-agent/qqbot — wired by the runner that owns its lifecycle).
@@ -137,6 +145,9 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
       systemPrompt,
       ...(config.maxTurns !== undefined ? { maxTurns: config.maxTurns } : {}),
       rootDir: () => rootDir,
+      // Foreground + background nested runs share this feed (labels are not
+      // unique, but the parent tool CALL binds the row — see tui-mode).
+      ...(opts.subagentProgress !== undefined ? { onProgress: opts.subagentProgress } : {}),
     },
     bash:
       bashConfig?.enabled === false

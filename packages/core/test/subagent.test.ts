@@ -23,22 +23,30 @@ describe('subagent tool', () => {
     const provider: ChatProvider = {
       async *stream(req) {
         requests.push([...req.messages]); // snapshot: runAgent grows the array in place
-        const events = call === 0
-          ? [
-              { type: 'tool_call_delta', index: 0, id: 'c1', name: 'read_file', argsDelta: '{"path":"a"}' },
-              { type: 'finish', finishReason: 'tool_calls' },
-            ]
-          : ANSWER;
+        const events =
+          call === 0
+            ? [
+                { type: 'tool_call_delta', index: 0, id: 'c1', name: 'read_file', argsDelta: '{"path":"a"}' },
+                { type: 'usage', usage: { promptTokens: 100, completionTokens: 20, cachedTokens: 0 } },
+                { type: 'finish', finishReason: 'tool_calls' },
+              ]
+            : [
+                ...ANSWER,
+                { type: 'usage', usage: { promptTokens: 50, completionTokens: 10, cachedTokens: 0 } },
+              ];
         call += 1;
-        for (const ev of events) yield ev;
+        for (const ev of events) yield ev as StreamEvent;
       },
     };
     const readFile = noopTool('read_file');
     const tool = createSubagentTool({ provider, tools: () => [readFile], rootDir: () => '.' });
     const out = await tool.execute({ prompt: 'analyze a.txt', label: 'scan' }, { rootDir: '.' });
 
-    expect(out).toContain('[subagent: scan]');
+    expect(out).toContain('[subagent: scan ·');
     expect(out).toContain('the report');
+    // Usage trailer: own-loop consumption travels with the report, never
+    // merged into the parent stats (2 nested request rounds, 150+30 tok).
+    expect(out).toContain('[subagent: scan · 2 turns · 1 tools · 150+30 tok · ');
     // Two nested provider calls: the first turned tool_calls and the nested
     // read_file executed inside the subagent's own loop.
     expect(requests).toHaveLength(2);
@@ -74,5 +82,60 @@ describe('subagent tool', () => {
     const tool = createSubagentTool({ provider, tools: () => [], rootDir: () => '.' });
     expect(await tool.execute({ prompt: '  ' }, { rootDir: '.' })).toContain('non-empty');
     expect(called).toBe(0);
+  });
+
+  it('forwards nested progress moments to onProgress (start/tool_call/done)', async () => {
+    const provider: ChatProvider = {
+      async *stream() {
+        yield { type: 'tool_call_delta', index: 0, id: 'c1', name: 'read_file', argsDelta: '{}' };
+        yield { type: 'usage', usage: { promptTokens: 10, completionTokens: 2, cachedTokens: 0 } };
+        yield { type: 'finish', finishReason: 'tool_calls' };
+        yield { type: 'text_delta', text: 'nested report' };
+        yield { type: 'usage', usage: { promptTokens: 5, completionTokens: 1, cachedTokens: 0 } };
+        yield { type: 'finish', finishReason: 'stop' };
+      },
+    };
+    const seen: string[] = [];
+    const tool = createSubagentTool({
+      provider,
+      tools: () => [noopTool('read_file')],
+      rootDir: () => '.',
+      onProgress: (p) => {
+        if (p.type === 'tool_call') seen.push(`tool:${p.call.name}`);
+        else if (p.type === 'usage') seen.push(`usage:${p.stats.promptTokens}`);
+        else seen.push(p.type);
+      },
+    });
+    const out = await tool.execute({ prompt: 'x', label: 'vis' }, { rootDir: '.' });
+    expect(seen[0]).toBe('start');
+    expect(seen).toContain('tool:read_file');
+    expect(seen).toContain('usage:15');
+    expect(seen.at(-1)).toBe('done');
+    expect(out).toContain('nested report');
+  });
+
+  it('run_in_background returns a job handle immediately and settles with a usage detail', async () => {
+    const provider: ChatProvider = {
+      async *stream() {
+        for (const ev of ANSWER) yield ev;
+      },
+    };
+    const { JobRegistry } = await import('../src/jobs.js');
+    const jobs = new JobRegistry();
+    const tool = createSubagentTool({ provider, tools: () => [], rootDir: () => '.' });
+    const started = (await tool.execute({ prompt: 'background brief', label: 'bg', run_in_background: true }, { rootDir: '.', jobs })) as string;
+    expect(started).toContain('subagent-1');
+
+    // Settle the run: drain the notice (announcement contract) and read the report.
+    const notices = jobs.drainFinished();
+    expect(notices).toHaveLength(0); // async run hasn't settled yet at this tick
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const done2 = jobs.drainFinished();
+    expect(done2).toHaveLength(1);
+    expect(done2[0]?.kind).toBe('subagent');
+    expect(done2[0]?.detail).toContain('[subagent: bg · ');
+    const out = jobs.readOutput('subagent-1');
+    expect(out).toContain('the report');
+    expect(out).toContain('[subagent: bg · ');
   });
 });
