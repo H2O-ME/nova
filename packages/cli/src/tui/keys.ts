@@ -30,8 +30,10 @@ export interface KeyEnv {
   preemptRender: () => void;
   submit: () => void;
   toggleCodeMode: () => void;
-  /** Mode switch gate: only a live turn/compaction blocks it (mid-session switch resets usage anchors). */
+  /** Mode switch gate: only before the conversation starts (seed fragment only). */
   canSwitchMode: () => boolean;
+  /** Visible feedback when Tab is pressed after the conversation has started. */
+  noteModeSwitchBlocked: () => void;
   switchModel: (model: string) => void;
   switchSessionFile: (file: string) => void;
   currentModel: () => string;
@@ -261,6 +263,8 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
         }
       } else if (env.canSwitchMode()) {
         env.toggleCodeMode();
+      } else {
+        env.noteModeSwitchBlocked();
       }
       break;
     }

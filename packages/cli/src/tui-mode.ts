@@ -853,11 +853,18 @@ export async function startTui(opts: TuiOptions): Promise<void> {
 
   // ---- execution mode (Tab) ---------------------------------------------
   /**
-   * Tab 切换门控：只有进行中的轮/压缩/切换过程本身会挡住——会话中途也允许
-   * 切换（rebuildHost 会重置 usage 锚点，工具集变更的缓存代价由下一次请求
-   * 自愈；此前限定"新会话未开始"导致用户以为 Tab 失灵且无任何反馈）。
+   * Tab 切换门控：只允许在对话开始前（消息里只有 seed 片段）切换——执行模式
+   * 决定工具集与投影面，会话中途换模式会让已发生的轮次与新轮次工具语义不一
+   * 致。中途按 Tab 不静默：走 noteModeSwitchBlocked 给出可见反馈。
    */
-  const canSwitchMode = (): boolean => !store.streaming && !store.compactRunning && !store.modeSwitching;
+  const canSwitchMode = (): boolean =>
+    messages.length <= 1 && !store.streaming && !store.compactRunning && !store.modeSwitching;
+
+  const noteModeSwitchBlocked = (): void => {
+    store.pushBlock([
+      `${DIM}  执行模式只能在对话开始前切换（当前 ${codeModeLabel(codeMode)}，/mode 查看说明）${RESET}`,
+    ]);
+  };
 
   /**
    * 芯片呈现的"未开始"判据：三枚芯片并排仅在会话未开始时展示。
@@ -943,7 +950,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       case '/mode': {
         store.pushBlock([
-          `  ${BOLD}执行模式${RESET} ${DIM}· 按 Tab 循环切换（轮进行中除外）${RESET}`,
+          `  ${BOLD}执行模式${RESET} ${DIM}· 仅对话开始前可按 Tab 循环切换${RESET}`,
           ...(['native', 'ptc', 'both'] as PtcMode[]).map((m) =>
             m === codeMode
               ? `  ${CYAN}${BOLD}❯ ${padDisplay(codeModeLabel(m), 6)}${RESET} ${CODE_MODE_HINT[m]}`
@@ -1225,6 +1232,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     submit: () => void handleSubmit(),
     toggleCodeMode: () => void toggleCodeMode(),
     canSwitchMode,
+    noteModeSwitchBlocked,
     switchModel: (model) => {
       client.setModel(model);
       store.pushBlock([`${DIM}  模型已切换为 ${model}${RESET}`]);

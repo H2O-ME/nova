@@ -26,6 +26,7 @@ function createMockEnv(initialInput = ''): { env: KeyEnv; state: { submitted: bo
     },
     toggleCodeMode: vi.fn(),
     canSwitchMode: () => true,
+    noteModeSwitchBlocked: vi.fn(),
     switchModel: vi.fn(),
     switchSessionFile: vi.fn(),
     currentModel: () => 'test-model',
@@ -96,5 +97,29 @@ describe('TUI Key Handling: multiline paste & images', () => {
 
     expect(env.store.input.length).toBe(200_000);
     expect(notices.some((n) => n.includes('已截断'))).toBe(true);
+  });
+});
+
+describe('TUI Key Handling: execution mode Tab gate', () => {
+  it('toggles mode when the gate allows it (conversation not started)', () => {
+    const { env } = createMockEnv();
+    const toggle = vi.mocked(env.toggleCodeMode);
+    const blocked = vi.mocked(env.noteModeSwitchBlocked);
+
+    handleKey(env, { type: 'tab' });
+
+    expect(toggle).toHaveBeenCalledTimes(1);
+    expect(blocked).not.toHaveBeenCalled();
+  });
+
+  it('gives visible feedback instead of silently no-op when conversation already started', () => {
+    const { env } = createMockEnv();
+    const envBlocked: KeyEnv = { ...env, canSwitchMode: () => false };
+    const blocked = vi.mocked(envBlocked.noteModeSwitchBlocked);
+
+    handleKey(envBlocked, { type: 'tab' });
+
+    expect(vi.mocked(envBlocked.toggleCodeMode)).not.toHaveBeenCalled();
+    expect(blocked).toHaveBeenCalledTimes(1);
   });
 });
