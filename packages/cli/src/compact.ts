@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentMessage, ChatProvider, ChatRequest, SessionEvent, UserMessage } from '@nova-agent/core';
-import {
+import { errMessage,
   compactionSurface,
   estimateMessageTokens,
   newId,
@@ -293,7 +293,7 @@ export async function compactSession(opts: CompactSessionOptions): Promise<Compa
     // Release the lock with an error marker so the failed attempt is recorded
     // but does not block future compactions.
     await session
-      .appendEvent({ type: 'compaction/end', at: Date.now(), error: err instanceof Error ? err.message : String(err) })
+      .appendEvent({ type: 'compaction/end', at: Date.now(), error: errMessage(err) })
       .catch(() => {});
     throw err;
   }

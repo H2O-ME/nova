@@ -5,6 +5,9 @@
  * kind is reserved now so future delegation work reuses the same owner /
  * cancel / notification contract (dsh's JobKindMap pattern).
  */
+import { errMessage } from './errors.js';
+import { truncateUtf8Tail } from './utf8.js';
+
 export type JobKind = 'bash' | 'subagent';
 
 export type JobStatus = 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
@@ -123,7 +126,7 @@ export class JobRegistry {
         // A rejecting done promise is a producer bug (contract: never reject);
         // record failure instead of leaving the job stuck as running.
         entry.status = 'failed';
-        entry.detail = err instanceof Error ? err.message : String(err);
+        entry.detail = errMessage(err);
         this.pendingNotices.push({
           id,
           kind: entry.kind,
@@ -174,13 +177,9 @@ export class JobRegistry {
     const entry = this.jobs.get(id);
     if (entry?.readOutput === undefined) return undefined;
     const text = entry.readOutput();
-    const encoder = new TextEncoder();
-    if (encoder.encode(text).length <= maxBytes) return text;
     // Tail-keep like the loop's truncation: recent output matters most.
-    const bytes = encoder.encode(text);
-    let startIdx = bytes.length - maxBytes;
-    while (startIdx < bytes.length && (bytes[startIdx]! & 0xc0) === 0x80) startIdx += 1;
-    return `…[earlier output dropped]\n${new TextDecoder().decode(bytes.subarray(startIdx))}`;
+    if (new TextEncoder().encode(text).length <= maxBytes) return text;
+    return `…[earlier output dropped]\n${truncateUtf8Tail(text, maxBytes)}`;
   }
 
   /** Request termination and wait for the producer to release its resources. */

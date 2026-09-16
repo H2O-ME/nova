@@ -13,6 +13,7 @@
  * worker, keeping every run reconstructable from the log alone.
  */
 
+import { errMessage } from '@nova-agent/core';
 import nodeModule from 'node:module';
 import { Worker } from 'node:worker_threads';
 import { fileURLToPath } from 'node:url';
@@ -149,7 +150,7 @@ const WORKER_PATH = fileURLToPath(
 );
 
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errMessage(error);
 }
 
 // ---------------------------------------------------------------- port wire

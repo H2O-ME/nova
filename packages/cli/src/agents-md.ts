@@ -1,27 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { truncateUtf8Head } from '@nova-agent/core';
 
 /**
  * Total byte budget shared by every AGENTS.md collected for one session
  * (mirrors codex `project_doc_max_bytes`).
  */
 export const PROJECT_DOC_MAX_BYTES = 32_000;
-
-/**
- * Cut `text` at a UTF-8 byte budget on a whole-character boundary (a raw
- * subarray would split a multi-byte char and leave a replacement glyph).
- */
-function cutToByteBudget(text: string, budget: number): string {
-  let bytes = 0;
-  let out = '';
-  for (const ch of text) {
-    const size = Buffer.byteLength(ch, 'utf8');
-    if (bytes + size > budget) break;
-    bytes += size;
-    out += ch;
-  }
-  return out;
-}
 
 /**
  * Project-doc discovery chain (codex agents_md.rs, simplified): collect the
@@ -60,7 +45,7 @@ export async function collectProjectDocs(
     const trimmed = text.trim();
     const bytes = Buffer.byteLength(trimmed, 'utf8');
     if (bytes > remaining) {
-      docs.push(`${cutToByteBudget(trimmed, remaining)}…[truncated]`);
+      docs.push(`${truncateUtf8Head(trimmed, remaining)}…[truncated]`);
       remaining = 0;
     } else {
       docs.push(trimmed);

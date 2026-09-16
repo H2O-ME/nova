@@ -5,6 +5,7 @@ import {
   APPROVAL_PREVIEW_MAX_ROWS,
   BREATHE_ROWS,
   COMPOSER_MAX_ROWS,
+  HISTORY_LIMIT,
   RENDER_BUDGET_MS,
   SESSION_LIST_LIMIT,
   STATUS_ROWS,
@@ -12,6 +13,7 @@ import {
   resolvePalette,
 } from '@nova-agent/tui-view';
 import {
+  errMessage,
   emptyStats,
   estimateTextTokens,
   newId,
@@ -478,7 +480,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           return;
         }
         store.pushBlock(
-          [paint.red(`  ✗ ${where === 'pre' ? '预压缩' : '自动压缩'}失败：${err instanceof Error ? err.message : String(err)}`)],
+          [paint.red(`  ✗ ${where === 'pre' ? '预压缩' : '自动压缩'}失败：${errMessage(err)}`)],
           TOOL_GUTTER,
         );
       },
@@ -580,7 +582,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // copy core's abandonment synthesis uses) so the log keeps its
       // one-result-per-call contract.
       await persistMissingToolResults(session, messages).catch(() => undefined);
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errMessage(err);
       // Classify by OUR signal (runner-loop.isUserInterrupt), never by the
       // error's wording: undici and gateways throw "The operation was aborted
       // due to timeout" on plain network stalls — labeling those 已中断 hid
@@ -760,7 +762,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // activate() 在 next host 上抛错：host/hooks 还没换，回滚模式即可。
       codeMode = prev;
       store.pushBlock([
-        paint.red(`  ✗ 模式切换失败：${err instanceof Error ? err.message : String(err)}`),
+        paint.red(`  ✗ 模式切换失败：${errMessage(err)}`),
         paint.dim(`  已保持${codeModeLabel(prev)}模式`),
       ]);
       return false;
@@ -943,7 +945,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
             scheduleRender();
           }
         } catch (err) {
-          store.pushBlock([paint.red(`  ✗ 会话列表读取失败：${err instanceof Error ? err.message : String(err)}`)]);
+          store.pushBlock([paint.red(`  ✗ 会话列表读取失败：${errMessage(err)}`)]);
         }
         return true;
       }
@@ -975,7 +977,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           if (compactCancelled) {
             store.pushBlock([paint.yellow('  ■ 已取消压缩')], TOOL_GUTTER);
           } else {
-            store.pushBlock([paint.red(`  ✗ 压缩失败：${err instanceof Error ? err.message : String(err)}`)], TOOL_GUTTER);
+            store.pushBlock([paint.red(`  ✗ 压缩失败：${errMessage(err)}`)], TOOL_GUTTER);
           }
         }
         return true;
@@ -1014,7 +1016,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     try {
       loaded = await Session.open(entry.file);
     } catch (err) {
-      store.pushBlock([paint.red(`  ✗ 会话读取失败：${err instanceof Error ? err.message : String(err)}`)]);
+      store.pushBlock([paint.red(`  ✗ 会话读取失败：${errMessage(err)}`)]);
       scheduleRender();
       return;
     }
@@ -1106,7 +1108,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         store.popupIndex = 0;
         void runCommand(text)
           .catch((err: unknown) => {
-            store.pushBlock([paint.red(`  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}`)]);
+            store.pushBlock([paint.red(`  ✗ 命令失败：${errMessage(err)}`)]);
             scheduleRender();
           })
           .then(() => scheduleRender());
@@ -1120,7 +1122,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         store.popupIndex = 0;
         store.historyIdx = -1;
         store.historyStack.push(text);
-        if (store.historyStack.length > 200) store.historyStack.shift();
+        if (store.historyStack.length > HISTORY_LIMIT) store.historyStack.shift();
         store.enqueueMessage(text);
         store.pushBlock([paint.dim('  ┃ 已排队 · 本轮结束后自动发送（Esc 可中断当前轮）')]);
         scheduleRender();
@@ -1141,7 +1143,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     }
     store.historyIdx = -1;
     store.historyStack.push(text);
-    if (store.historyStack.length > 200) store.historyStack.shift();
+    if (store.historyStack.length > HISTORY_LIMIT) store.historyStack.shift();
     await dispatchUserText(text);
   }
 
@@ -1163,7 +1165,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         .catch((err: unknown) => {
           // /new, /init & co. do real IO: a failure must surface as a block,
           // not as an unhandled rejection that kills the process.
-          store.pushBlock([paint.red(`  ✗ 命令失败：${err instanceof Error ? err.message : String(err)}`)]);
+          store.pushBlock([paint.red(`  ✗ 命令失败：${errMessage(err)}`)]);
           scheduleRender();
         })
         .then(() => scheduleRender());
@@ -1175,7 +1177,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // OUTSIDE that loop (building the fragment, the approval plumbing, …)
       // would escape as an unhandled rejection. Surface it as a block instead.
       spinner.stop();
-      store.pushBlock([paint.red(`  ✗ 本轮失败：${err instanceof Error ? err.message : String(err)}`)], TOOL_GUTTER);
+      store.pushBlock([paint.red(`  ✗ 本轮失败：${errMessage(err)}`)], TOOL_GUTTER);
       store.streaming = false;
       scheduleRender();
     });

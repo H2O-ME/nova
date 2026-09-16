@@ -189,7 +189,7 @@ export class OpenAICompatClient implements ChatProvider {
             type: 'reset',
             attempt: attempt + 1,
             maxRetries: this.maxRetries,
-            error: err instanceof Error ? err.message : String(err),
+            error: errMessage(err),
           };
         }
         const retryAfterMs = err instanceof HttpError ? err.retryAfterMs : undefined;
@@ -272,7 +272,7 @@ export class OpenAICompatClient implements ChatProvider {
       } catch (err) {
         throw new HttpError(
           response.status,
-          `HTTP ${response.status}: ${text.slice(0, 500)} (${err instanceof Error ? err.message : String(err)})`,
+          `HTTP ${response.status}: ${text.slice(0, 500)} (${errMessage(err)})`,
         );
       }
       throw new HttpError(response.status, `HTTP ${response.status}: ${text.slice(0, 500)}`, retryAfterMs);
@@ -344,6 +344,15 @@ export class OpenAICompatClient implements ChatProvider {
       RETRY_BACKOFF_MAX_MS,
     );
   }
+}
+
+/**
+ * ai keeps `@nova-agent/core` as a types-only dependency to stay a provider-agnostic
+ * leaf runtime. Error-message narrowing is a 3-line idiom, so it lives here locally
+ * rather than forcing the first ai→core runtime edge for one helper.
+ */
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function toProviderMessage(msg: AgentMessage): Record<string, unknown> {

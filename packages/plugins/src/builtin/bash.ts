@@ -1,3 +1,4 @@
+import { errMessage } from '@nova-agent/core';
 import { existsSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
@@ -13,6 +14,23 @@ export interface BashPluginOptions {
   /** Max raw output kept in memory before truncation, bytes. Default 256 KiB. */
   maxOutputBytes?: number;
 }
+
+/** Default per-command wall clock when the workspace config sets none. */
+export const DEFAULT_BASH_TIMEOUT_MS = 60_000;
+/** Default in-memory output cap; the same figure the job registry uses per read. */
+export const DEFAULT_BASH_OUTPUT_BYTES = 256 * 1024;
+/**
+ * Grace after the process is gone before settling anyway: the exit event fires
+ * before stdio `close`, so we wait briefly for the last buffered output to
+ * flush. Shared by the foreground run and the background job (same reason).
+ */
+const SETTLE_GRACE_MS = 2_000;
+/**
+ * Backstop after a kill request: a tree kill can leave the pipes open, so
+ * neither `close` nor `exit` ever arrives. Settle deterministically after this
+ * budget instead of hanging the turn. Shared by the foreground run and jobs.
+ */
+const KILL_SETTLE_MS = 3_000;
 
 interface ShellInvocation {
   cmd: string;
@@ -220,7 +238,7 @@ function runOnce(
         stdio: ['ignore', 'pipe', 'pipe'],
       });
     } catch (err) {
-      resolve({ code: null, stdout: '', stderr: '', spawnError: err instanceof Error ? err.message : String(err) });
+      resolve({ code: null, stdout: '', stderr: '', spawnError: errMessage(err) });
       return;
     }
 
@@ -273,7 +291,7 @@ function runOnce(
       killShell(child);
       // If the tree kill leaves the pipes open, neither `close` nor even
       // `exit` may arrive in time — settle deterministically right after.
-      killSettle ??= setTimeout(() => finish(), 3_000);
+      killSettle ??= setTimeout(() => finish(), KILL_SETTLE_MS);
     };
 
     timer = setTimeout(() => kill(), timeoutMs);
@@ -299,7 +317,7 @@ function runOnce(
       // process reports exit code 1 on Windows — report null instead so the
       // result reads as "did not exit", not as a command that failed.
       exitCode = killed ? null : code;
-      closeGrace = setTimeout(() => finish(), 2_000);
+      closeGrace = setTimeout(() => finish(), SETTLE_GRACE_MS);
     });
     child.on('close', (code) => {
       exitCode = killed ? null : (code ?? exitCode);
@@ -344,7 +362,7 @@ function startBackground(
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (err) {
-    return err instanceof Error ? err.message : String(err);
+    return errMessage(err);
   }
 
   const buf = new BudgetedBuffer(outputLimitBytes);
@@ -395,7 +413,7 @@ function startBackground(
     // Process is dead — the outcome is decided; `close` gets a short grace to
     // flush the last buffered output, then we settle regardless.
     exitCode = killed ? null : code;
-    killSettle ??= setTimeout(() => settle(describeExit()), 2_000);
+    killSettle ??= setTimeout(() => settle(describeExit()), SETTLE_GRACE_MS);
   });
   child.on('close', (code) => {
     exitCode = killed ? null : (code ?? exitCode);
@@ -410,7 +428,7 @@ function startBackground(
       killShell(child);
       // If the tree kill leaves the pipes open, even `exit` may not arrive
       // in time — settle deterministically right after.
-      killSettle ??= setTimeout(() => settle(describeExit()), 3_000);
+      killSettle ??= setTimeout(() => settle(describeExit()), KILL_SETTLE_MS);
     },
     readOutput: () => {
       const { text, dropped } = buf.drain();
@@ -422,8 +440,8 @@ function startBackground(
 }
 
 export function bashPlugin(options?: BashPluginOptions): Plugin {
-  const defaultTimeoutMs = options?.timeoutMs ?? 60_000;
-  const maxOutputBytes = options?.maxOutputBytes ?? 256 * 1024;
+  const defaultTimeoutMs = options?.timeoutMs ?? DEFAULT_BASH_TIMEOUT_MS;
+  const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_BASH_OUTPUT_BYTES;
 
   return {
     name: 'bash',

@@ -1,5 +1,5 @@
 import type { AgentHooks, AgentMessage, ChatRequest, ToolDefinition, Usage } from '@nova-agent/core';
-import { estimateMessageTokens } from '@nova-agent/core';
+import { errMessage, estimateMessageTokens } from '@nova-agent/core';
 
 /**
  * Unified auto-compaction gate shared by all three runners (repl / tui / exec).
@@ -170,7 +170,7 @@ export function wrapHeadlessAutoCompact(
       opts.onCompacted?.('已自动压缩上下文（超过阈值；会话日志保留完整历史）');
     },
     onError: (err: unknown) =>
-      opts.onError(`自动压缩失败（继续运行）：${err instanceof Error ? err.message : String(err)}`),
+      opts.onError(`自动压缩失败（继续运行）：${errMessage(err)}`),
     onWarn: opts.onWarn,
   });
 }

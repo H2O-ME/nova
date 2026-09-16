@@ -2,6 +2,7 @@ import { chmod, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile 
 import path from 'node:path';
 import type { ToolExecuteContext, ToolPermissionKind } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
+import { intArg, strArg } from './args.js';
 
 /**
  * Resolve a user/model-supplied path against the workspace root and reject
@@ -100,11 +101,6 @@ export async function rootPermissionKind(
   }
 }
 
-function strArg(args: Record<string, unknown>, key: string): string | undefined {
-  const value = args[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -186,16 +182,6 @@ function applyEdit(
     };
   }
   return tolerantReplace(text, oldString, newString, replaceAll);
-}
-
-function intArg(args: Record<string, unknown>, key: string): number | undefined {
-  const value = args[key];
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
 }
 
 export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin {

@@ -1,3 +1,4 @@
+import { errMessage } from '@nova-agent/core';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -170,7 +171,7 @@ export async function loadConfig(homedir: string = os.homedir()): Promise<Config
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`invalid JSON in ${file}: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`invalid JSON in ${file}: ${errMessage(err)}`);
   }
   const expanded = expandDeep(parsed);
   const result = configSchema.safeParse(expanded);

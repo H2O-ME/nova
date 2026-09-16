@@ -1,3 +1,4 @@
+import { errMessage } from '@nova-agent/core';
 /**
  * QQ 机器人开放平台接入层 — 三个可独立测试的协议组件：
  * - AccessTokenManager：access_token 获取与缓存（官方 /app/getAppAccessToken，
@@ -269,7 +270,7 @@ export class QqGateway {
     });
     this.backoffMs = Math.min(this.backoffMs * 2, this.opts.maxBackoffMs ?? 30_000);
     await this.connect().catch((err: unknown) => {
-      this.log(`reconnect failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.log(`reconnect failed: ${errMessage(err)}`);
       void this.scheduleReconnect('reconnect attempt failed');
     });
   }

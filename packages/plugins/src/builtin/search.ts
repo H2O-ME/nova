@@ -1,3 +1,4 @@
+import { errMessage } from '@nova-agent/core';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -5,6 +6,7 @@ import type { ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 import { codeRuntimeAvailable } from '../ptc/code-runtime.js';
 import { looksBinary, resolveAnywhere, rootPermissionKind } from './fs.js';
+import { intArg, strArg } from './args.js';
 
 /**
  * Workspace search tool — the coding-agent staple codex/pi ship as
@@ -64,21 +66,6 @@ export function screenContentRegex(pattern: string): string | undefined {
   // — is the textbook exponential-backtracking shape.
   if (/\([^)]*[+*?][^)]*\)[+*?{]/.test(pattern)) {
     return 'content_regex looks prone to catastrophic backtracking (a quantified group containing another quantifier) — rewrite it without nested quantifiers, e.g. replace (a+)+ with a+';
-  }
-  return undefined;
-}
-
-function strArg(args: Record<string, unknown>, key: string): string | undefined {
-  const value = args[key];
-  return typeof value === 'string' ? value : undefined;
-}
-
-function intArg(args: Record<string, unknown>, key: string): number | undefined {
-  const value = args[key];
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
 }
@@ -172,7 +159,7 @@ function runInWorker(
         workerData: { root, contentRegex, caseInsensitive, maxResults, skipDirs: [...SKIP_DIRS], scanMaxBytes: SCAN_MAX_BYTES },
       });
     } catch (err) {
-      resolve(`Error: cannot spawn search worker: ${err instanceof Error ? err.message : String(err)}`);
+      resolve(`Error: cannot spawn search worker: ${errMessage(err)}`);
       return;
     }
     const finish = (value: string): void => {
@@ -257,7 +244,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
             try {
               re = new RegExp(contentRegex, args['case_insensitive'] === true ? 'i' : '');
             } catch (err) {
-              return `Error: invalid content_regex: ${err instanceof Error ? err.message : String(err)}`;
+              return `Error: invalid content_regex: ${errMessage(err)}`;
             }
           }
           const nameRe = nameGlob === undefined ? undefined : globToRegExp(nameGlob);

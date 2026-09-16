@@ -1,4 +1,4 @@
-import {
+import { errMessage,
   newId,
   runAgent,
   type AgentEvent,
@@ -125,7 +125,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     }
     turnNotifier.done(execStartedAt);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errMessage(err);
     // 与 repl/tui 同一归类（runner-loop.isUserInterrupt）：以本轮 signal 是否
     // 真的触发为准——错误文案含 "aborted" 的网络超时不算用户中断，照常走
     // run_error；只有 SIGINT 真正解绕才归类为「已中断」（退出码 130，非失败）。

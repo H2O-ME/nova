@@ -4,7 +4,7 @@
  * resetSessionCache 只在 TUI 有、/plugins 两壳信息量不一致、/session 命中率
  * 一个一位小数一个取整。纯函数便于 commands.test 直接断言。
  */
-import { Session, emptyStats, type AgentMessage, type Session as SessionT, type Usage, type UsageStats } from '@nova-agent/core';
+import { errMessage, Session, emptyStats, type AgentMessage, type Session as SessionT, type Usage, type UsageStats } from '@nova-agent/core';
 import { APPROVAL_ORDER } from '@nova-agent/tui-view';
 import { resetUsageAnchors, type UsageAnchorState } from './runner-loop.js';
 
@@ -39,7 +39,7 @@ export function pluginCommandLine(plugin: string, name: string, description: str
 /** /model 的空目录与失败文案（两壳同串）。 */
 export const MODEL_LIST_EMPTY = '站点未返回任何模型';
 export function modelListError(err: unknown): string {
-  return `模型列表获取失败：${err instanceof Error ? err.message : String(err)}`;
+  return `模型列表获取失败：${errMessage(err)}`;
 }
 
 export interface FreshSessionDeps {

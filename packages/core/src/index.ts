@@ -1,5 +1,7 @@
 export * from './types.js';
 export * from './ids.js';
+export * from './errors.js';
+export * from './utf8.js';
 export * from './agent.js';
 export * from './request-trim.js';
 export * from './session.js';

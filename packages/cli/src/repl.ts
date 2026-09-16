@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { detectCaps, styledWidth } from '@nova-agent/tui';
-import {
+import { errMessage,
   newId,
   runAgent,
   Session,
@@ -371,7 +371,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       preStart: (limit) => console.log(paint.yellow(`预估下轮上下文超过阈值 ${limit}，提前压缩…`)),
       postStart: (tokens, limit) => console.log(paint.yellow(`上下文约 ${tokens} tok，超过自动压缩阈值 ${limit}，正在压缩…`)),
       success: (outcome) => console.log(`已自动压缩 — 会话原位压缩（日志保留完整历史），保留 ${outcome.retained} 条最近用户消息`),
-      failure: (err) => console.error(paint.red(`自动压缩失败：${err instanceof Error ? err.message : String(err)}`)),
+      failure: (err) => console.error(paint.red(`自动压缩失败：${errMessage(err)}`)),
     },
   });
   const { runCompact, maybePreCompact, maybeAutoCompact } = autoCompact;
@@ -629,7 +629,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
             // 与主轮同一归类（runner-loop.isUserInterrupt）：signal 触发才算
             // 中断，文案含 "aborted" 的网络超时必须亮原文。
             const aborted = isUserInterrupt(compactAbort?.signal);
-            console.error(aborted ? '压缩已中断（会话保持未压缩）' : `压缩失败：${err instanceof Error ? err.message : String(err)}`);
+            console.error(aborted ? '压缩已中断（会话保持未压缩）' : `压缩失败：${errMessage(err)}`);
           } finally {
             compactAbort = undefined;
           }
@@ -688,7 +688,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       // copy core's abandonment synthesis uses) so the log keeps its
       // one-result-per-call contract.
       await persistMissingToolResults(session, messages).catch(() => undefined);
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errMessage(err);
       // 中断归类单源（runner-loop.isUserInterrupt）：以本轮 signal 是否真的
       // 触发为准——文案含 "aborted" 的网络超时必须亮出原文。
       if (isUserInterrupt(aborter?.signal)) {

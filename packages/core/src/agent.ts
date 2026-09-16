@@ -2,6 +2,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { newId } from './ids.js';
+import { errMessage } from './errors.js';
+import { truncateUtf8Head, truncateUtf8Tail } from './utf8.js';
 import { formatJobNotices, type JobRegistry } from './jobs.js';
 import type {
   AgentEvent,
@@ -674,7 +676,7 @@ async function* runToolCalls(
       if (outcome.status === 'fulfilled') {
         result = outcome.value;
       } else {
-        const reason = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        const reason = errMessage(outcome.reason);
         result = {
           id: newId('msg'),
           ts: Date.now(),
@@ -858,7 +860,7 @@ async function executeTool(
         ...(dispatch !== undefined ? { dispatch } : {}),
       });
     } catch (err) {
-      return `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return `Error: ${errMessage(err)}`;
     }
   })();
 
@@ -958,8 +960,8 @@ async function storeToolResult(
   // Keep the message body (head + hint line + tail) inside the byte budget:
   // reserve room for the hint line, then split the rest 60/40 head/tail.
   const bodyBudget = Math.max(1024, maxBytes - HINT_LINE_RESERVE_BYTES);
-  const head = truncateBytes(raw, Math.floor(bodyBudget * HEAD_TAIL_RATIO));
-  const tail = truncateTailBytes(raw, bodyBudget - Math.floor(bodyBudget * HEAD_TAIL_RATIO));
+  const head = truncateUtf8Head(raw, Math.floor(bodyBudget * HEAD_TAIL_RATIO));
+  const tail = truncateUtf8Tail(raw, bodyBudget - Math.floor(bodyBudget * HEAD_TAIL_RATIO));
   const dropped = Buffer.byteLength(raw, 'utf8') - Buffer.byteLength(head, 'utf8') - Buffer.byteLength(tail, 'utf8');
   const content = `${head}\n[truncated ${dropped} bytes; full output at ${ref} — use the read tool on this path to view it]\n${tail}`;
   return { content, truncatedRef: ref };
@@ -969,21 +971,3 @@ async function storeToolResult(
 const HEAD_TAIL_RATIO = 0.6;
 /** Room reserved for the truncation hint line so the body stays in budget. */
 const HINT_LINE_RESERVE_BYTES = 200;
-
-function truncateBytes(text: string, maxBytes: number): string {
-  const bytes = new TextEncoder().encode(text);
-  if (bytes.length <= maxBytes) return text;
-  let end = maxBytes;
-  // do not cut inside a multi-byte UTF-8 sequence: trim trailing continuations
-  while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end -= 1;
-  return new TextDecoder().decode(bytes.subarray(0, end));
-}
-
-function truncateTailBytes(text: string, maxBytes: number): string {
-  const bytes = new TextEncoder().encode(text);
-  if (bytes.length <= maxBytes) return text;
-  let start = bytes.length - maxBytes;
-  // skip the partial leading UTF-8 sequence left by the cut
-  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start += 1;
-  return new TextDecoder().decode(bytes.subarray(start));
-}

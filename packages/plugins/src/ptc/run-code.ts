@@ -15,6 +15,7 @@
  * is byte-stable and the prefix cache survives.
  */
 
+import { errMessage } from '@nova-agent/core';
 import type { ChatRequest, ToolDefinition, ToolDispatchResult, ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 import type { PluginContext } from '../types.js';
@@ -130,7 +131,7 @@ async function runCodeProgram(
       try {
         outcome = await dispatch({ name: pending.name, args: pending.args }, runController.signal);
       } catch (err) {
-        outcome = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        outcome = { ok: false, error: errMessage(err) };
       }
       pending.settle(outcome);
     })().finally(() => {

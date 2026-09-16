@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { errMessage } from '@nova-agent/core';
 import path from 'node:path';
 import process from 'node:process';
 import { loadConfig } from './config.js';
@@ -173,7 +174,7 @@ async function main(): Promise<void> {
       });
     }
   } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
+    console.error(errMessage(err));
     process.exitCode = 1;
   }
 }

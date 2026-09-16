@@ -1,3 +1,4 @@
+import { errMessage } from '@nova-agent/core';
 import { AccessTokenManager, QqApi, QqGateway, type FetchLike, type SocketFactory } from './protocol.js';
 import { parseInbound, type Peer } from './types.js';
 import { qqbotPlugin } from './plugin.js';
@@ -110,7 +111,7 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
           try {
             reply = await options.brain(text, peer);
           } catch (err) {
-            log(`brain failed for ${peer.peerId}: ${err instanceof Error ? err.message : String(err)}`);
+            log(`brain failed for ${peer.peerId}: ${errMessage(err)}`);
             reply = '（处理消息时出错，请稍后重试）';
           }
           if (reply.trim().length === 0) return;
@@ -121,7 +122,7 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
           log(`replied ${peer.peerId}: ${sent.length} message(s)`);
         })
         .catch((err: unknown) => {
-          log(`reply failed for ${peer.peerId}: ${err instanceof Error ? err.message : String(err)}`);
+          log(`reply failed for ${peer.peerId}: ${errMessage(err)}`);
         });
     },
     onLog: log,
