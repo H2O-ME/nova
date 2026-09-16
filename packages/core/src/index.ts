@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './ids.js';
 export * from './agent.js';
+export * from './request-trim.js';
 export * from './session.js';
 export * from './estimate.js';
 export * from './jobs.js';

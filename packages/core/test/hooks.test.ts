@@ -99,6 +99,34 @@ describe('runAgent hooks', () => {
     expect(resultEvent?.call.rawArgs).toBe('{"x":"good"}');
   });
 
+  it('fails closed on a malformed hook verdict instead of executing', async () => {
+    // A hand-rolled AgentHooks bypasses the host composer — the loop's own
+    // validation is the second net. `{ action: 'rewrite' }` without args
+    // would previously have fallen through as allow and executed the
+    // ORIGINAL args on a guess; now it denies with an actionable reason.
+    const { provider } = capturingProvider(() => [
+      { type: 'tool_call_delta', index: 0, id: 'c1', name: 't', argsDelta: '{"x":1}' },
+      { type: 'finish', finishReason: 'tool_calls' },
+    ]);
+    const messages: AgentMessage[] = [];
+    await collect(
+      runAgent({
+        provider: provider as never,
+        messages,
+        rootDir: '.',
+        tools: [
+          { name: 't', description: '', parameters: { type: 'object' }, execute: () => 'executed' },
+        ],
+        hooks: {
+          beforeToolCall: (async () => ({ action: 'rewrite' })) as never,
+        },
+      }),
+    );
+    const toolResult = messages.find((m) => m.role === 'tool');
+    expect(toolResult?.role === 'tool' && toolResult.content).toContain('malformed hook verdict');
+    expect(toolResult?.role === 'tool' && toolResult.content).not.toContain('executed');
+  });
+
   it('afterToolResult transforms the stored tool output', async () => {
     const { provider } = capturingProvider(() => [
       { type: 'tool_call_delta', index: 0, id: 'c1', name: 't', argsDelta: '{}' },

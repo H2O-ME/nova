@@ -19,6 +19,8 @@ import type {
   UsageStats,
   UserMessage,
 } from './types.js';
+import { validateToolCallVerdict } from './types.js';
+import { trimRequestMessages } from './request-trim.js';
 
 /** The nested-dispatch seam exposed to tools through ToolExecuteContext. */
 export type ToolDispatcher = (call: ToolDispatchCall, signal?: AbortSignal) => Promise<ToolDispatchResult>;
@@ -109,6 +111,10 @@ export const LENGTH_CUTOFF_TOOL_GUIDANCE =
 interface NoticeState {
   unaccounted: ReturnType<JobRegistry['drainFinished']>;
   consumed: boolean;
+  /** Armed by the loop when the plan went stale; consumed per request below. */
+  nag: boolean;
+  /** True while a carried nag is still unannounced (reply not committed). */
+  carriedNag: boolean;
 }
 
 /** Requeue drained-but-unannounced notices exactly once (idempotent). */
@@ -116,6 +122,13 @@ function requeueUnaccounted(opts: AgentOptions, notices: NoticeState): void {
   if (!notices.consumed) {
     opts.jobs?.requeue(notices.unaccounted);
     notices.consumed = true;
+  }
+  // At-least-once for the nag too: a request that died before its reply
+  // committed never announced the carried nudge, so re-arm it. A request that
+  // never carried one leaves the flag untouched.
+  if (notices.carriedNag) {
+    notices.nag = true;
+    notices.carriedNag = false;
   }
 }
 
@@ -132,7 +145,33 @@ function requeueUnaccounted(opts: AgentOptions, notices: NoticeState): void {
  * Delivery is at-least-once though: if this request dies before its assistant
  * reply commits (network exhausted, context-window 400…), the drained notices
  * go back on the queue — announce-zero would silently strand the task.
+ *
+ * Request-level trims (snip/micro, ch8 layers 2–3) sit BETWEEN the hook chain
+ * and the tails: hooks price and splice the true log, then the wire snapshot
+ * sheds whole middle groups (snip) and ages old tool bodies into placeholders
+ * (micro) on a FRESH array — never an in-place splice of opts.messages, so
+ * the auto-compact alias contract and the log projection stay intact. The
+ * tails ride on top of the trimmed snapshot, still ephemeral.
+ *
+ * Stale-plan nudge (ch5 stale-nag): when the model built a todo list but then
+ * works tool turn after tool turn without updating it, the plan silently
+ * rots. The loop tracks staleness below and hands the flag in here; the nudge
+ * rides the SAME request-scoped channel as the job notices (ephemeral tail
+ * message, never logged, re-armed when the request dies before the reply
+ * commits) so it cannot pollute the canonical history or the compaction
+ * projection.
  */
+export const STALE_TODO_TURNS = 3;
+
+/**
+ * Ephemeral stale-plan reminder text (see assembleRequest above for the
+ * delivery channel). Names the todo_write tool concretely so the model can
+ * act without guessing; tells it to stay silent when on track so the nudge
+ * costs one line, not a digression.
+ */
+export const STALE_TODO_NAG =
+  'Reminder: you have a todo list but have not updated it for several tool turns. If the plan changed, call todo_write with the current list; if you are still on track, keep going without mentioning this reminder.';
+
 async function assembleRequest(opts: AgentOptions, notices: NoticeState): Promise<ChatRequest> {
   let request: ChatRequest = {
     messages: opts.messages,
@@ -143,14 +182,30 @@ async function assembleRequest(opts: AgentOptions, notices: NoticeState): Promis
   if (opts.hooks?.beforeLLMCall) request = await opts.hooks.beforeLLMCall(request);
   notices.unaccounted = opts.jobs?.drainFinished() ?? [];
   notices.consumed = notices.unaccounted.length === 0;
+  // Request-level middle compression on a fresh array: the hook chain above
+  // saw (and possibly spliced) the true log; the wire snapshot trims from
+  // there. Ephemeral tails below append on top of the trimmed snapshot.
+  const trimmed = trimRequestMessages(request.messages);
+  const tails: UserMessage[] = [];
   if (notices.unaccounted.length > 0) {
-    const notice: UserMessage = {
+    tails.push({
       id: newId('msg'),
       ts: Date.now(),
       role: 'user',
       content: formatJobNotices(notices.unaccounted),
-    };
-    request = { ...request, messages: [...request.messages, notice] };
+    });
+  }
+  if (notices.nag) {
+    tails.push({ id: newId('msg'), ts: Date.now(), role: 'user', content: STALE_TODO_NAG });
+    // Carried for this request only — the loop re-arms on dead requests, and
+    // marks the announcement landed when the reply commits (see runAgent).
+    notices.nag = false;
+    notices.carriedNag = true;
+  }
+  if (tails.length > 0) {
+    request = { ...request, messages: [...trimmed, ...tails] };
+  } else if (trimmed !== request.messages) {
+    request = { ...request, messages: trimmed };
   }
   return request;
 }
@@ -323,9 +378,39 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
   const stats = emptyStats();
   // Hoisted so the abandonment finally (consumer threw mid-event → the
   // for-await unwound this iterator) can still honor the notice contract.
-  const notices: NoticeState = { unaccounted: [], consumed: true };
+  const notices: NoticeState = { unaccounted: [], consumed: true, nag: false, carriedNag: false };
 
   try {
+    // Stale-plan tracking lives on the per-run closure (NOT the messages):
+    // how many assistant tool turns have passed without a persisted todo
+    // snapshot. Pure qa turns (no tool calls) never count; a `todo/write`
+    // session event observed through emit resets to zero. The shape mirrors
+    // NoticeState — ephemeral, request-scoped, re-armed on abandonment — so
+    // a nag that never reached the model is never lost.
+    const staleTodo = { turns: 0, armed: false, pendingWrite: false };
+    // One assistant tool turn = one count, no matter how many calls the batch
+    // held. Firing arms the NEXT request's nudge and clears the counter so
+    // the reminder cannot nag every turn.
+    const countStaleTurn = (): void => {
+      staleTodo.turns += 1;
+      if (staleTodo.turns >= STALE_TODO_TURNS) {
+        staleTodo.armed = true;
+        staleTodo.turns = 0;
+      }
+    };
+    // Per-run emit wrapper: forwards every event to the runner's real emit
+    // unchanged, while watching for the durable plan snapshot. Keyed on the
+    // SESSION EVENT (todo/write), never on the tool name — core stays
+    // agnostic of which tool persists the plan, and a denied call or a
+    // parse failure that writes nothing correctly counts as stale. Created
+    // ONCE per run: executeTool reads opts.emit off the options object at
+    // call time, so one stable wrapper covers every turn, and the per-turn
+    // reset of pendingWrite below keeps each turn's observation window tight.
+    const watchTodoWrite: NonNullable<AgentOptions['emit']> = async (evt) => {
+      if (evt.type === 'todo/write') staleTodo.pendingWrite = true;
+      await opts.emit?.(evt);
+    };
+    const watchedOpts = opts.emit === undefined ? opts : { ...opts, emit: watchTodoWrite };
     for (let turn = 1; turn <= maxTurns; turn++) {
       if (opts.signal?.aborted) {
         yield* finishAborted(opts);
@@ -335,7 +420,17 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
       yield { type: 'turn_start', turn };
 
       const messageId = newId('msg');
-      const request = await assembleRequest(opts, notices);
+      // Merge (never clobber): requeueUnaccounted may have re-armed a nag
+      // whose request died mid-flight; the counter below may arm a fresh one.
+      // Either way assembleRequest consumes nag per carry (one announcement).
+      notices.nag = notices.nag || staleTodo.armed;
+      staleTodo.armed = false;
+      // Fresh observation window for this turn's tool executions: a
+      // `todo/write` event emitted by any tool lands here (not on the tool
+      // name — see the accounting below). Reset per turn so only the CURRENT
+      // turn's snapshot clears the counter.
+      staleTodo.pendingWrite = false;
+      const request = await assembleRequest(watchedOpts, notices);
       const outcome = yield* streamCompletion(opts, request, messageId, stats, notices);
       if (outcome.interrupted) return;
 
@@ -362,8 +457,9 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
         ...(outcome.finishReason !== undefined ? { finishReason: outcome.finishReason } : {}),
       };
       opts.messages.push(assistant);
-      // The model answered — the announcement has landed and stays consumed.
+      // The model answered — announcements have landed and stay consumed.
       notices.consumed = true;
+      notices.carriedNag = false;
       yield { type: 'message', message: assistant };
 
       if (toolCalls.length === 0) {
@@ -374,6 +470,8 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
       // A "length" stop means the output was cut off by the token limit, so
       // every tool call in the batch may carry silently-truncated arguments.
       // Fail them all (the loop continues, so the model can re-issue them).
+      // Nothing executed here either, so the turn counts as stale too (the
+      // batch still tried to act without landing a fresh snapshot).
       if (outcome.finishReason === 'length') {
         for (const call of toolCalls) {
           const result: ToolResultMessage = {
@@ -387,6 +485,7 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
           opts.messages.push(result);
           yield { type: 'tool_call_result', turn, call, result };
         }
+        countStaleTurn();
         continue;
       }
 
@@ -409,10 +508,29 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
         }
       }
       const executable = toolCalls.filter((call) => call.argsOk);
-      if (executable.length === 0) continue;
+      if (executable.length === 0) {
+        // NOTHING RAN — no tool executed, so no snapshot could have landed
+        // (pendingWrite is necessarily false). The batch was still a tool
+        // turn (the model is acting, not asking): an all-malformed batch
+        // with no fresh snapshot counts as stale.
+        countStaleTurn();
+        continue;
+      }
 
       const toolByName = new Map((opts.tools ?? []).map((tool) => [tool.name, tool]));
-      yield* runToolCalls(executable, toolByName, turn, opts, maxBytes, makeDispatcher(opts, toolByName));
+      yield* runToolCalls(executable, toolByName, turn, watchedOpts, maxBytes, makeDispatcher(opts, toolByName));
+
+      // Stale-plan accounting: a persisted todo snapshot anywhere in this
+      // turn resets to zero, pure-qa turns return earlier so they never
+      // count. Detection keys on the durable `todo/write` session event
+      // observed through emit — never on the tool name (layering: core stays
+      // agnostic of which tool persists the plan, and a deny/parse-failure
+      // that writes nothing counts as stale).
+      if (staleTodo.pendingWrite) {
+        staleTodo.turns = 0;
+      } else {
+        countStaleTurn();
+      }
     }
 
     yield { type: 'done', stopReason: 'max_turns' };
@@ -590,6 +708,13 @@ async function preflightToolCall(call: ToolCall, opts: AgentOptions): Promise<Pr
   let effective = call;
   if (opts.hooks?.beforeToolCall) {
     const verdict = await opts.hooks.beforeToolCall(call);
+    // Defense in depth: the composed host already validates, but AgentHooks
+    // is a public interface — a hand-rolled implementation bypasses the host.
+    // A malformed verdict fails closed (deny), never guessed into execution.
+    const malformed = validateToolCallVerdict(verdict);
+    if (malformed !== undefined) {
+      return { kind: 'deny', content: `Permission denied: malformed hook verdict (${malformed})` };
+    }
     if (verdict.action === 'deny') {
       const reason = verdict.reason !== undefined && verdict.reason.length > 0 ? `: ${verdict.reason}` : '';
       return { kind: 'deny', content: `Permission denied${reason}` };
@@ -598,7 +723,7 @@ async function preflightToolCall(call: ToolCall, opts: AgentOptions): Promise<Pr
     // beforeToolCall has already judged the ORIGINAL args — the rewritten
     // call is not re-gated (host.ts composes gate then hooks; no built-in
     // plugin rewrites today).
-    if (verdict.action === 'rewrite' && verdict.args) {
+    if (verdict.action === 'rewrite') {
       effective = { ...call, args: verdict.args, rawArgs: JSON.stringify(verdict.args) };
     }
   }

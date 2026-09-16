@@ -789,3 +789,231 @@ describe('background-job completion notices', () => {
     expect(messages.some((m) => m.role === 'user')).toBe(false);
   });
 });
+
+describe('stale-todo nag', () => {
+  const toolTurn = (id: string, name: string): StreamEvent[] => [
+    { type: 'tool_call_delta', index: 0, id, name, argsDelta: '{}' },
+    { type: 'finish', finishReason: 'tool_calls' },
+  ];
+  const stopTurn = (text: string): StreamEvent[] => [
+    { type: 'text_delta', text },
+    { type: 'finish', finishReason: 'stop' },
+  ];
+  const noopTool = (name: string): ToolDefinition => ({
+    name,
+    description: `test tool ${name}`,
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    async execute() {
+      return 'ok';
+    },
+  });
+  const planTool: ToolDefinition = {
+    name: 'plan_write',
+    description: 'persists the plan snapshot (test stand-in, not the real todo_write)',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    async execute(_args, ctx) {
+      await ctx.emit?.({ type: 'todo/write', todos: [], at: Date.now() });
+      return 'saved';
+    },
+  };
+
+  it('injects one ephemeral nudge after three tool turns without a plan snapshot', async () => {
+    const seen: ChatRequest[] = [];
+    const provider: ChatProvider = {
+      async *stream(req: ChatRequest) {
+        seen.push(req);
+        // Fourth request carries the nag → answer; earlier ones do tool turns.
+        if (seen.length <= 3) {
+          yield* (async function* () {
+            yield { type: 'tool_call_delta', index: 0, id: `c${seen.length}`, name: 'work', argsDelta: '{}' };
+            yield { type: 'finish', finishReason: 'tool_calls' };
+          })();
+        } else {
+          yield { type: 'text_delta', text: 'done' };
+          yield { type: 'finish', finishReason: 'stop' };
+        }
+      },
+    };
+    const messages: AgentMessage[] = [];
+    const emitted: unknown[] = [];
+    await collect(
+      runAgent({
+        provider,
+        messages,
+        rootDir: '.',
+        tools: [noopTool('work')],
+        emit: async (evt) => {
+          emitted.push(evt);
+        },
+      }),
+    );
+    // Three tool turns armed the nag; the fourth request carried it as an
+    // ephemeral tail — visible to the model, never in the log.
+    expect(seen).toHaveLength(4);
+    const nagged = seen[3]!;
+    expect(nagged.messages.at(-1)).toMatchObject({ role: 'user' });
+    expect((nagged.messages.at(-1) as UserMessage).content).toContain('todo');
+    expect(seen.slice(0, 3).every((req) => req.messages.every((m) => m.content !== (nagged.messages.at(-1) as UserMessage).content))).toBe(true);
+    expect(messages.some((m) => m.role === 'user' && m.content.includes('todo list'))).toBe(false);
+    expect(emitted).toEqual([]);
+  });
+
+  it('resets the counter when any tool persists a todo/write snapshot', async () => {
+    const seen: ChatRequest[] = [];
+    const provider: ChatProvider = {
+      async *stream(req: ChatRequest) {
+        seen.push(req);
+        const n = seen.length;
+        if (n === 1) {
+          yield { type: 'tool_call_delta', index: 0, id: 'c1', name: 'plan_write', argsDelta: '{}' };
+          yield { type: 'finish', finishReason: 'tool_calls' };
+        } else if (n <= 3) {
+          yield { type: 'tool_call_delta', index: 0, id: `c${n}`, name: 'work', argsDelta: '{}' };
+          yield { type: 'finish', finishReason: 'tool_calls' };
+        } else {
+          yield { type: 'text_delta', text: 'done' };
+          yield { type: 'finish', finishReason: 'stop' };
+        }
+      },
+    };
+    const messages: AgentMessage[] = [];
+    await collect(
+      runAgent({
+        provider,
+        messages,
+        rootDir: '.',
+        tools: [planTool, noopTool('work')],
+        emit: async () => {},
+      }),
+    );
+    // plan snapshot on turn 1 reset the counter: only two stale turns
+    // followed, so no request ever carried the nag.
+    expect(seen).toHaveLength(4);
+    for (const req of seen) {
+      expect(req.messages.some((m) => m.role === 'user' && m.content.includes('todo list'))).toBe(false);
+    }
+  });
+
+  it('counts one assistant turn once no matter how many calls the batch held', async () => {
+    const seen: ChatRequest[] = [];
+    const provider: ChatProvider = {
+      async *stream(req: ChatRequest) {
+        seen.push(req);
+        if (seen.length === 1) {
+          // One turn, two parallel-safe calls — still a single count.
+          yield { type: 'tool_call_delta', index: 0, id: 'c1a', name: 'work', argsDelta: '{}' };
+          yield { type: 'tool_call_delta', index: 1, id: 'c1b', name: 'work', argsDelta: '{}' };
+          yield { type: 'finish', finishReason: 'tool_calls' };
+        } else if (seen.length <= 3) {
+          yield { type: 'tool_call_delta', index: 0, id: `c${seen.length}`, name: 'work', argsDelta: '{}' };
+          yield { type: 'finish', finishReason: 'tool_calls' };
+        } else {
+          yield { type: 'text_delta', text: 'done' };
+          yield { type: 'finish', finishReason: 'stop' };
+        }
+      },
+    };
+    const messages: AgentMessage[] = [];
+    await collect(
+      runAgent({ provider, messages, rootDir: '.', tools: [noopTool('work')], emit: async () => {} }),
+    );
+    // Turns with tools: 1 (two calls) + 2 more = 3 stale → nag on request 4.
+    expect(seen).toHaveLength(4);
+    expect((seen[3]!.messages.at(-1) as UserMessage).content).toContain('todo');
+  });
+
+  it('never counts pure-qa turns and never logs the nudge', async () => {
+    const seen: ChatRequest[] = [];
+    const provider = scriptedProvider([
+      stopTurn('answer one'),
+      toolTurn('c1', 'work'),
+      stopTurn('answer two'),
+      toolTurn('c2', 'work'),
+      stopTurn('final'),
+    ]);
+    const wrapped: ChatProvider = {
+      async *stream(req: ChatRequest) {
+        seen.push(req);
+        yield* provider.stream(req);
+      },
+    };
+    const messages: AgentMessage[] = [];
+    await collect(
+      runAgent({ provider: wrapped, messages, rootDir: '.', tools: [noopTool('work')], emit: async () => {} }),
+    );
+    // Only two tool turns ever ran — below the threshold — so no request
+    // carried the nag, and the log holds no trace of it.
+    for (const req of seen) {
+      expect(req.messages.some((m) => m.role === 'user' && m.content.includes('todo list'))).toBe(false);
+    }
+    expect(messages.some((m) => m.role === 'user')).toBe(false);
+  });
+
+  it('counts a length-cut tool turn as stale (nothing could execute)', async () => {
+    const seen: ChatRequest[] = [];
+    const provider = scriptedProvider([
+      toolTurn('c1', 'work'),
+      toolTurn('c2', 'work'),
+      // The provider cut this batch off mid-stream: `length` fails every call
+      // without executing anything, so this turn must count as stale too.
+      [
+        { type: 'tool_call_delta', index: 0, id: 'c3', name: 'work', argsDelta: '{"x":' },
+        { type: 'finish', finishReason: 'length' },
+      ],
+      stopTurn('final'),
+    ]);
+    const wrapped: ChatProvider = {
+      async *stream(req: ChatRequest) {
+        seen.push(req);
+        yield* provider.stream(req);
+      },
+    };
+    const messages: AgentMessage[] = [];
+    await collect(
+      runAgent({ provider: wrapped, messages, rootDir: '.', tools: [noopTool('work')], emit: async () => {} }),
+    );
+    // Two normal tool turns + one length-cut turn = 3 stale → nag on request 4.
+    expect(seen).toHaveLength(4);
+    expect((seen[3]!.messages.at(-1) as UserMessage).content).toContain('todo');
+  });
+
+  it('keeps request-level trims out of the log (wire shrinks, history intact)', async () => {
+    const seen: ChatRequest[] = [];
+    // Four tool turns → 4 tool groups + closing answer. Micro keeps the
+    // newest 3 tool groups verbatim, so the wire must show exactly the
+    // oldest result as a placeholder while the log keeps every body.
+    const provider = scriptedProvider([
+      toolTurn('c1', 'work'),
+      toolTurn('c2', 'work'),
+      toolTurn('c3', 'work'),
+      toolTurn('c4', 'work'),
+      stopTurn('final'),
+    ]);
+    const wrapped: ChatProvider = {
+      async *stream(req: ChatRequest) {
+        seen.push(req);
+        yield* provider.stream(req);
+      },
+    };
+    const messages: AgentMessage[] = [];
+    await collect(
+      runAgent({
+        provider: wrapped,
+        messages,
+        rootDir: '.',
+        tools: [noopTool('work')],
+        emit: async () => {},
+      }),
+    );
+    expect(seen).toHaveLength(5);
+    const lastWire = seen[4]!.messages;
+    const wireResults = lastWire.filter((m) => m.role === 'tool');
+    expect(wireResults).toHaveLength(4);
+    expect(wireResults[0]?.content).toContain('compacted');
+    expect(wireResults.slice(1).every((r) => r.content === 'ok')).toBe(true);
+    // The canonical log kept every original body — trims never splice it.
+    const logged = messages.filter((m): m is ToolResultMessage => m.role === 'tool');
+    expect(logged).toHaveLength(4);
+    expect(logged.every((r) => r.content === 'ok')).toBe(true);
+  });
+});

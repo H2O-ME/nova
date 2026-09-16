@@ -1,4 +1,5 @@
 import type { AgentHooks, ToolCallVerdict, ToolDefinition } from '@nova-agent/core';
+import { validateToolCallVerdict } from '@nova-agent/core';
 import { PermissionService } from './permission.js';
 import type {
   CommandDefinition,
@@ -111,8 +112,25 @@ export class PluginHost {
   agentHooks(permission?: PermissionService): AgentHooks {
     return {
       beforeLLMCall: async (req) => {
+        const before =
+          req.tools === undefined ? undefined : new Set(req.tools.map((tool) => tool.name));
         for (const fn of this.hooks.get('beforeLLMCall') ?? []) {
           req = await (fn as HookMap['beforeLLMCall'])(req);
+        }
+        // Prefix-cache guard: the tool array's wire order is dictionary-sorted
+        // (ai/client) and part of the cached prefix — a hook that swaps the
+        // tool SET would silently invalidate the cache AND change what the
+        // model may call without any approval record. Compared by SET (not by
+        // array identity) because compact/runner plumbing legitimately clones
+        // the array while keeping the set intact. Hooks may narrow the set
+        // (PTC projection does) or leave it alone, never widen it.
+        if (before !== undefined && req.tools !== undefined) {
+          const added = req.tools.filter((tool) => !before.has(tool.name));
+          if (added.length > 0) {
+            throw new Error(
+              `beforeLLMCall hook added tools without approval: ${added.map((tool) => tool.name).join(', ')}`,
+            );
+          }
         }
         return req;
       },
@@ -130,7 +148,13 @@ export class PluginHost {
           // permission gate — the rewritten call does not pass approval again.
           // Acceptable today because no built-in plugin rewrites; external
           // hooks that do own the consequence (they run as the operator).
+          // Every verdict is structurally validated (fail-closed): a malformed
+          // verdict denies the call instead of executing on a guess.
           const verdict = await (fn as HookMap['beforeToolCall'])(call);
+          const malformed = validateToolCallVerdict(verdict);
+          if (malformed !== undefined) {
+            return { action: 'deny', reason: `malformed hook verdict (${malformed})` };
+          }
           if (verdict.action === 'deny') return verdict;
           if (verdict.action === 'rewrite') effective = verdict;
         }

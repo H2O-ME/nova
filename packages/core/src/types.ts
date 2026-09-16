@@ -202,12 +202,68 @@ export interface ChatProvider {
   stream(req: ChatRequest): AsyncIterable<StreamEvent>;
 }
 
-export interface ToolCallVerdict {
-  action: 'allow' | 'deny' | 'rewrite';
-  /** For 'rewrite': replacement arguments to execute with. */
-  args?: Record<string, unknown>;
-  /** For 'deny': human-readable reason surfaced to the model. */
-  reason?: string;
+/**
+ * Verdict a beforeToolCall hook returns for one tool call. A DISCRIMINATED
+ * union, not a flat bag of optionals: each action carries exactly the fields
+ * it needs, so a hook cannot smuggle rewrite args inside a deny (or vice
+ * versa) and the composer can validate the verdict structurally instead of
+ * trusting the hook's goodwill. Unknown extra fields are ignored; a verdict
+ * whose action is not one of the three is rejected fail-closed (see
+ * validateToolCallVerdict).
+ */
+export type ToolCallVerdict =
+  | { action: 'allow' }
+  | { action: 'deny'; reason?: string }
+  | { action: 'rewrite'; args: Record<string, unknown> };
+
+/**
+ * Structural check for a beforeToolCall verdict at the composition boundary
+ * (learn-agent ch4 `validateFor`, single-event edition). Accepts unknown so
+ * hand-rolled hooks casting through `never`/`any` get a real runtime check,
+ * not a type-level pass: returns an actionable reason when the verdict is
+ * malformed, undefined when it is well-formed. Malformed verdicts MUST be
+ * treated as deny (fail-closed):
+ * a hook that returns garbage has proven itself untrustworthy, and the
+ * alternative — guessing which action it meant — risks executing what it
+ * meant to block.
+ *
+ * Well-formed means:
+ * - action is exactly 'allow' | 'deny' | 'rewrite';
+ * - 'rewrite' carries `args` as a plain (non-array) object — the composer
+ *   re-serializes it, so anything else would execute as fabricated `{}`;
+ * - 'deny' carries no `args` (a deny-with-args is contradictory: which half
+ *   should win? reject and let the hook author disambiguate);
+ * - 'allow' carries neither `args` nor `reason` (an allow-with-args is a
+ *   rewrite in disguise and must go through the rewrite path to stay
+ *   visible in the trust-seam audit).
+ */
+export function validateToolCallVerdict(verdict: unknown): string | undefined {
+  if (verdict === null || typeof verdict !== 'object' || Array.isArray(verdict)) {
+    return 'verdict must be an object';
+  }
+  switch ((verdict as { action?: unknown }).action) {
+    case 'allow':
+      if ('args' in verdict) return 'allow verdict must not carry args (use rewrite to change arguments)';
+      if ('reason' in verdict) return 'allow verdict must not carry reason';
+      return undefined;
+    case 'deny': {
+      if ('args' in verdict) return 'deny verdict must not carry args';
+      const reason = (verdict as { reason?: unknown }).reason;
+      if (reason !== undefined && typeof reason !== 'string') {
+        return 'deny reason must be a string';
+      }
+      return undefined;
+    }
+    case 'rewrite': {
+      const args = (verdict as { args?: unknown }).args;
+      if (args === undefined || typeof args !== 'object' || args === null || Array.isArray(args)) {
+        return 'rewrite verdict must carry args as a plain object';
+      }
+      return undefined;
+    }
+    default:
+      return `unknown verdict action ${(verdict as { action?: unknown }).action ?? '(missing)'}`;
+  }
 }
 
 /**
