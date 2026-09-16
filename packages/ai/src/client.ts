@@ -44,6 +44,15 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Upper bound for the client's OWN exponential backoff between attempts. The
+ * growth is base * 2^attempt + jitter: without a cap a generous
+ * retryBaseDelayMs (or a late attempt) parks the run for minutes on a
+ * transient 429/5xx. Server hints are capped separately in
+ * parseRetryAfterMs; this caps only our own growth.
+ */
+export const RETRY_BACKOFF_MAX_MS = 32_000;
+
 interface ProviderToolCallDelta {
   index: number;
   id?: string;
@@ -252,11 +261,21 @@ export class OpenAICompatClient implements ChatProvider {
     if (!response.ok) {
       disarm();
       const text = await response.text().catch(() => '');
-      throw new HttpError(
-        response.status,
-        `HTTP ${response.status}: ${text.slice(0, 500)}`,
-        parseRetryAfterMs(response.headers),
-      );
+      // An unparseable retry-after fails the attempt loudly (fail-closed):
+      // the server asked for a wait we cannot honor, and silently guessing
+      // either hammers a throttling endpoint or parks the run. Surface it as
+      // the attempt's error (no retryAfterMs: the backoff falls back to ours)
+      // rather than swallowing it into undefined.
+      let retryAfterMs: number | undefined;
+      try {
+        retryAfterMs = parseRetryAfterMs(response.headers);
+      } catch (err) {
+        throw new HttpError(
+          response.status,
+          `HTTP ${response.status}: ${text.slice(0, 500)} (${err instanceof Error ? err.message : String(err)})`,
+        );
+      }
+      throw new HttpError(response.status, `HTTP ${response.status}: ${text.slice(0, 500)}`, retryAfterMs);
     }
     // Headers arrived: the TTFT phase is over — the timer now belongs to the
     // body loop, which re-arms it per chunk via armIdleTimeout().
@@ -320,7 +339,10 @@ export class OpenAICompatClient implements ChatProvider {
   }
 
   private backoffDelay(attempt: number): number {
-    return this.retryBaseDelayMs * 2 ** attempt + Math.random() * (this.retryBaseDelayMs / 2);
+    return Math.min(
+      this.retryBaseDelayMs * 2 ** attempt + Math.random() * (this.retryBaseDelayMs / 2),
+      RETRY_BACKOFF_MAX_MS,
+    );
   }
 }
 
@@ -435,12 +457,38 @@ function isRetryableError(err: unknown): boolean {
   return true;
 }
 
-/** Server-provided retry delay in ms (delta-seconds form of `retry-after`). */
-function parseRetryAfterMs(headers: Headers): number | undefined {
-  const value = Number.parseFloat(headers.get('retry-after') ?? '');
-  if (Number.isNaN(value) || value < 0) return undefined;
-  // Cap at the client timeout so a huge server hint cannot stall the run.
-  return Math.min(value * 1000, 60_000);
+/**
+ * Server-provided retry delay in ms from the `retry-after` response header.
+ * Two RFC forms, both authoritative over our own backoff:
+ * - delta-seconds (`120`): wait that many seconds from now — the common form;
+ * - HTTP-date (`Sun, 06 Nov 1994 08:49:37 GMT`): wait until that instant
+ *   (already past → 0, do not sleep backwards).
+ * Returns undefined when the header is absent. Anything else present-but-
+ * unparseable (a negative delta, a garbage string, a date that will not
+ * parse) throws HttpError-style: the server asked us to wait an amount we
+ * cannot honor, and silently guessing (0? 60s?) either hammers a throttled
+ * endpoint or parks the run — fail loudly instead.
+ */
+export function parseRetryAfterMs(headers: Headers, nowMs: number = Date.now()): number | undefined {
+  const raw = headers.get('retry-after');
+  if (raw === null) return undefined;
+  const value = raw.trim();
+  if (/^-?\d+$/.test(value)) {
+    const seconds = Number.parseInt(value, 10);
+    if (seconds < 0) throw new Error(`invalid retry-after header: ${JSON.stringify(raw)}`);
+    // Cap at the client timeout so a huge server hint cannot stall the run.
+    return Math.min(seconds * 1000, 60_000);
+  }
+  if (/^-?\d+(\.\d+)?$/.test(value)) {
+    const seconds = Number.parseFloat(value);
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      throw new Error(`invalid retry-after header: ${JSON.stringify(raw)}`);
+    }
+    return Math.min(seconds * 1000, 60_000);
+  }
+  const dateMs = Date.parse(value);
+  if (Number.isNaN(dateMs)) throw new Error(`invalid retry-after header: ${JSON.stringify(raw)}`);
+  return Math.max(0, Math.min(dateMs - nowMs, 60_000));
 }
 
 function isAbortError(err: unknown): boolean {

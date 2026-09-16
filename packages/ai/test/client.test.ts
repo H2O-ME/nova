@@ -1,6 +1,6 @@
 import type { StreamEvent } from '@nova-agent/core';
-import { describe, expect, it } from 'vitest';
-import { OpenAICompatClient } from '../src/client.js';
+import { describe, expect, it, vi } from 'vitest';
+import { OpenAICompatClient, RETRY_BACKOFF_MAX_MS, parseRetryAfterMs } from '../src/client.js';
 
 const SSE_BODY = [
   'data: {"choices":[{"delta":{"content":"Hi"},"index":0}]}',
@@ -412,6 +412,122 @@ describe('session cache routing', () => {
     await drain(client.stream({ messages: [] }));
     expect(calls).toBe(2);
     expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('honors an HTTP-date Retry-After (past date retries immediately)', async () => {
+    let calls = 0;
+    const fetchImpl: typeof fetch = () => {
+      calls += 1;
+      if (calls === 1) {
+        // Long past: the server's "wait until" already elapsed → 0ms wait.
+        return Promise.resolve(
+          new Response('rate limited', {
+            status: 429,
+            headers: { 'retry-after': 'Sun, 06 Nov 1994 08:49:37 GMT' },
+          }),
+        );
+      }
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    };
+    const client = new OpenAICompatClient({
+      baseURL: 'https://example.test/v1',
+      apiKey: 'sk-test',
+      model: 'test-model',
+      fetchImpl,
+      retryBaseDelayMs: 5000,
+    });
+    const started = Date.now();
+    await drain(client.stream({ messages: [] }));
+    expect(calls).toBe(2);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('fails loudly on an unparseable Retry-After instead of guessing a delay', async () => {
+    const fetchImpl: typeof fetch = () =>
+      Promise.resolve(new Response('rate limited', { status: 429, headers: { 'retry-after': 'soon' } }));
+    const client = new OpenAICompatClient({
+      baseURL: 'https://example.test/v1',
+      apiKey: 'sk-test',
+      model: 'test-model',
+      fetchImpl,
+      retryBaseDelayMs: 1,
+      maxRetries: 0,
+    });
+    await expect(drain(client.stream({ messages: [] }))).rejects.toThrow(/invalid retry-after/);
+  });
+
+  it('caps its own exponential backoff at RETRY_BACKOFF_MAX_MS', async () => {
+    // A generous base with late attempts would otherwise sleep for minutes.
+    // The spy also sees the per-attempt idle-timeout arms (timeoutMs each);
+    // filter those out — the backoff waits are the ones that must be capped.
+    const realSetTimeout = globalThis.setTimeout;
+    const waits: number[] = [];
+    const setTimeoutSpy = ((handler: (...args: unknown[]) => void, ms?: number, ...rest: unknown[]) => {
+      waits.push(ms ?? 0);
+      return realSetTimeout(handler, 0, ...(rest as []));
+    }) as typeof setTimeout;
+    vi.stubGlobal('setTimeout', setTimeoutSpy);
+    try {
+      const failures = 4;
+      let calls = 0;
+      const fetchImpl: typeof fetch = () => {
+        calls += 1;
+        if (calls <= failures) return Promise.resolve(new Response('busy', { status: 503 }));
+        return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+      };
+      const timeoutMs = 120_000;
+      const client = new OpenAICompatClient({
+        baseURL: 'https://example.test/v1',
+        apiKey: 'sk-test',
+        model: 'test-model',
+        fetchImpl,
+        retryBaseDelayMs: 60_000,
+        maxRetries: failures,
+        timeoutMs,
+      });
+      await drain(client.stream({ messages: [] }));
+      expect(calls).toBe(failures + 1);
+      const backoffs = waits.filter((ms) => ms !== timeoutMs);
+      // One backoff sleep per failed attempt; every one capped (jitter adds
+      // at most half the base — still far under the uncapped 60s*2^3).
+      expect(backoffs).toHaveLength(failures);
+      for (const ms of backoffs) expect(ms).toBeLessThanOrEqual(RETRY_BACKOFF_MAX_MS + 30_000);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('parseRetryAfterMs', () => {
+  const headers = (value: string | null): Headers => {
+    const h = new Headers();
+    if (value !== null) h.set('retry-after', value);
+    return h;
+  };
+
+  it('parses delta-seconds and caps huge hints at 60s', () => {
+    expect(parseRetryAfterMs(headers('2'))).toBe(2000);
+    expect(parseRetryAfterMs(headers('0'))).toBe(0);
+    expect(parseRetryAfterMs(headers('3600'))).toBe(60_000);
+  });
+
+  it('resolves HTTP-dates against now (past → 0, near future → delta)', () => {
+    const now = Date.parse('2026-09-14T00:00:00.000Z');
+    expect(parseRetryAfterMs(headers('Sun, 06 Nov 1994 08:49:37 GMT'), now)).toBe(0);
+    const future = new Date(now + 5000).toUTCString();
+    const delta = parseRetryAfterMs(headers(future), now)!;
+    expect(delta).toBeGreaterThan(0);
+    expect(delta).toBeLessThanOrEqual(5000);
+  });
+
+  it('returns undefined only when the header is absent', () => {
+    expect(parseRetryAfterMs(headers(null))).toBeUndefined();
+  });
+
+  it('throws on present-but-unparseable values (fail-closed, no guessing)', () => {
+    expect(() => parseRetryAfterMs(headers('soon'))).toThrow(/invalid retry-after/);
+    expect(() => parseRetryAfterMs(headers('-5'))).toThrow(/invalid retry-after/);
+    expect(() => parseRetryAfterMs(headers(''))).toThrow(/invalid retry-after/);
   });
 });
 
