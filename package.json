@@ -13,7 +13,10 @@
     "lint": "oxlint packages",
     "dev": "pnpm --filter @nova-agent/cli dev",
     "nova": "node packages/cli/dist/index.mjs",
-    "verify": "pnpm build && pnpm typecheck && pnpm test",
+    "verify": "pnpm build && pnpm typecheck && pnpm test && pnpm gates",
+    "gates": "node scripts/dep-direction.mjs && node scripts/structure-budget.mjs",
+    "gates:update": "node scripts/structure-budget.mjs --update",
+    "check": "pnpm lint && pnpm gates && vitest run --changed",
     "changeset": "changeset",
     "release": "changeset version && node scripts/sync-root-version.mjs && git add -A && git commit -m \"chore(release): bump versions via changesets\" && changeset tag",
     "release:status": "changeset status"
