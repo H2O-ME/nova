@@ -32,32 +32,13 @@ import {
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
 import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
-import { COMMAND_SPECS, filterCommands, type CommandSpec } from './commands.js';
-import {
-  agentsMdWrittenLine,
-  approvalSwitchLine,
-  cacheHitPct,
-  helpRows,
-  lastCacheHitPct,
-  MODEL_LIST_EMPTY,
-  modelListError,
-  newSessionLine,
-  nextApprovalMode,
-  openFreshSession,
-  pluginCommandLine,
-  pluginToolLine,
-  THEME_NAMES,
-  themeSwitchedMessage,
-  themeTarget,
-  themeUnknownMessage,
-  unknownCommandParts,
-  type ThemeName,
-} from './command-core.js';
+import { filterCommands, type CommandSpec } from './commands.js';
+import { openFreshSession, type ThemeName } from './command-core.js';
 import { newSessionDir, novaHome, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
 import { renderMarkdownLite } from './markdown.js';
-import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-meta.js';
+import { createModelMetaStore, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
 import { createSessionRuntime } from './session-runtime.js';
 import {
@@ -72,7 +53,6 @@ import {
   turnStopLines,
 } from './runner-loop.js';
 import {
-  approvalLabel,
   bottomStack,
   buildSplash,
   modeSelectRows,
@@ -84,7 +64,6 @@ import {
   humanTokens,
   layoutComposer,
   messageQueueRows,
-  padDisplay,
   permissionLabel,
   REVEAL_TICK_MS,
   SPINNER_FRAMES,
@@ -94,6 +73,7 @@ import {
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
+import { TuiCommands } from './tui/commands.js';
 import {
   agentRunBase,
   approvalEffectPreview,
@@ -108,7 +88,6 @@ import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import { BgSubagentRows } from './tui/subagent-lives.js';
 import { TurnProjector } from './tui/turn-projector.js';
 import {
-  CODE_MODE_HINT,
   codeModeLabel,
   contextBreakdown,
   gaugeCacheKey,
@@ -828,181 +807,68 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   };
 
   // ---- commands ---------------------------------------------------------
-  async function runCommand(raw: string): Promise<boolean> {
-    const [cmd = ''] = raw.trim().split(/\s+/);
-    switch (cmd) {
-      case '/exit':
-      case '/quit':
-        // Reachable mid-turn now (stream-safe whitelist): stop the running
-        // turn first so the in-flight request doesn't outlive the UI.
-        for (const aborter of aborters) aborter.abort();
-        exitApp();
-        return true;
-      case '/help': {
-        store.pushBlock([`  ${paint.bold('命令')}`, ...helpRows(COMMAND_SPECS).map((row) => paint.dim(row))]);
-        return true;
-      }
-      case '/model': {
-        try {
-          const models = await fetchModelList();
-          if (models.length === 0) {
-            store.pushBlock([paint.dim(`  ${MODEL_LIST_EMPTY}`)]);
-          } else {
-            // Interactive picker overlay (↑↓ Enter Esc), not a history dump.
-            const current = models.indexOf(client.model);
-            store.modelPicker = { models, index: Math.max(0, current) };
-            scheduleRender();
-          }
-        } catch (err) {
-          store.pushBlock([paint.red(`  ${modelListError(err)}`)]);
-        }
-        return true;
-      }
-      case '/approvals': {
-        const next = nextApprovalMode(permission.approvalMode);
-        permission.setMode(next);
-        store.pushBlock([paint.dim(`  ${approvalSwitchLine(next)}`)]);
-        return true;
-      }
-      case '/mode': {
-        store.pushBlock([
-          `  ${paint.bold('执行模式')} ${paint.dim('· 仅对话开始前可按 Tab 循环切换')}`,
-          ...(['native', 'ptc', 'both'] as PtcMode[]).map((m) =>
-            m === codeMode
-              ? `  ${paint.cyan(paint.bold(`❯ ${padDisplay(codeModeLabel(m), 6)}`))} ${CODE_MODE_HINT[m]}`
-              : `    ${padDisplay(codeModeLabel(m), 6)} ${paint.dim(CODE_MODE_HINT[m])}`,
-          ),
-          paint.dim('  模式决定工具集呈现方式；切换立即生效（usage 锚点自动重置）'),
-        ]);
-        return true;
-      }
-      case '/theme': {
-        // 无参数：列出三主题并标当前。带参数：即时切换（screen.invalidate
-        // 全屏重绘，配置只作下次启动的持久值，不回写 config.json）。
-        const arg = raw.trim().split(/\s+/)[1];
-        if (arg === undefined) {
-          store.pushBlock([
-            `  ${paint.bold('主题')} ${paint.dim('· /theme dark|light|plain 切换（NO_COLOR 恒定无色）')}`,
-            ...THEME_NAMES.map((name) =>
-              name === themeName
-                ? `  ${paint.cyan(paint.bold(`❯ ${name}`))}`
-                : `    ${paint.dim(name)}`,
-            ),
-          ]);
-          return true;
-        }
-        const target = themeTarget(arg);
-        if (target === undefined) {
-          store.pushBlock([paint.red(`  ✗ ${themeUnknownMessage(arg)}`)]);
-          return true;
-        }
-        themeName = target;
-        paint = resolvePalette(target, caps);
-        screen.invalidate();
-        store.pushBlock([paint.dim(`  ${themeSwitchedMessage(target)}`)]);
-        return true;
-      }
-      case '/plugins': {
-        // 与 repl 同一信息量（审批档位 + 命令注册项此前只在 repl 有）。
-        store.pushBlock([
-          `  ${paint.bold('插件与工具')}${paint.dim(
-            ` · 审批档位 ${approvalLabel(permission.approvalMode)}${opts.approvalOverride !== undefined ? '（来自 --approval）' : ''}`,
-          )}`,
-          ...(host.toolEntries.length === 0
-            ? [paint.dim('  （没有已注册的工具）')]
-            : host.toolEntries.map((entry) =>
-                paint.dim(`  ${pluginToolLine(entry.plugin, entry.tool.name, permissionLabel(entry.permission))}`),
-              )),
-          ...host.commandEntries.map((entry) =>
-            paint.dim(`  ${pluginCommandLine(entry.plugin, entry.command.name, entry.command.description)}`),
-          ),
-        ]);
-        return true;
-      }
-      case '/session': {
-        const hit = cacheHitPct(stats.promptTokens, stats.cachedTokens);
-        const lastHit = lastCacheHitPct(anchors.lastUsage);
-        const compact = config.autoCompactTokenLimit
-          ? `阈值 ${humanTokens(config.autoCompactTokenLimit)} tok · 上轮 ${humanTokens(anchors.lastPromptTokens)} tok`
-          : '未启用';
-        store.pushBlock([
-          `  ${paint.bold('会话')}${paint.dim(` · nova v${cliVersion()} · 模式 ${codeModeLabel(codeMode)}`)}`,
-          paint.dim(`  文件 ${session.file}`),
-          paint.dim(`  消息 ${messages.length} 条 · 日志事件 ${session.events.length} 条 · ${stats.turns} 轮`),
-          paint.dim(`  输入 ${stats.promptTokens} tok（缓存 ${hit}%${lastHit !== null ? ` · 上轮 ${lastHit}%` : ''}）· 输出 ${stats.completionTokens} tok`),
-          paint.dim(`  缓存浪费 ${stats.missTokens} tok · 超噪声底轮次 ${stats.missTurns}`),
-          paint.dim(`  自动压缩 ${compact}`),
-          `  ${paint.bold('模型')} ${client.model}`,
-          currentModelMeta !== undefined
-            ? paint.dim(`  ${formatModelMeta(currentModelMeta)}（models.dev · ${currentModelMeta.provider}）`)
-            : paint.dim('  元数据未命中（离线或目录没有该模型；可配 provider.contextWindow 兜底）'),
-          paint.dim(`  ${contextLegend(paint, contextBreakdown(contextView()).segments.filter((s) => s.tokens > 0))}`),
-        ]);
-        try {
-          const entries = await listRecentSessions(sessionsRoot(), SESSION_LIST_LIMIT);
-          if (entries.length > 0) {
-            store.sessionPicker = {
-              entries,
-              index: Math.max(0, entries.findIndex((entry) => entry.file === session.file)),
-            };
-            scheduleRender();
-          }
-        } catch (err) {
-          store.pushBlock([paint.red(`  ✗ 会话列表读取失败：${errMessage(err)}`)]);
-        }
-        return true;
-      }
-      case '/new': {
-        sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
-        ({ session, messages } = await openFreshSession({
-          sessionsDir,
-          rootDir,
-          setClientSessionId: (id) => client.setSessionId(id),
-          stats,
-          anchors,
-          resetSessionCache,
-          recordWorkspace: recordSessionWorkspace,
-          seedContext: seedContextFragment,
-        }));
-        store.pushBlock([paint.dim(`  ${newSessionLine(session.file)}`)]);
-        return true;
-      }
-      case '/compact': {
-        startCompactWait('正在压缩会话');
-        try {
-          const outcome = await runCompact('manual');
-          endCompactWait();
-          store.pushBlock([compactDoneLine(outcome)]);
-        } catch (err) {
-          endCompactWait();
-          if (compactCancelled) {
-            store.pushBlock([paint.yellow('  ■ 已取消压缩')], TOOL_GUTTER);
-          } else {
-            store.pushBlock([paint.red(`  ✗ 压缩失败：${errMessage(err)}`)], TOOL_GUTTER);
-          }
-        }
-        return true;
-      }
-      case '/clear': {
-        bgSubagentRows.clear();
-        modeSelectBlock = undefined;
-        store.modeSelect = undefined;
-        store.clearView();
-        store.pushBlock([paint.dim('  （已清空显示，会话记录保留在磁盘）')]);
-        return true;
-      }
-      case '/init': {
-        const file = await writeAgentsMd(rootDir);
-        store.pushBlock([paint.green(`  ${agentsMdWrittenLine(file)}`)]);
-        return true;
-      }
-      default: {
-        const unknown = unknownCommandParts(cmd);
-        store.pushBlock([`${paint.red(`  ${unknown.head}`)} ${paint.dim(unknown.hint)}`]);
-        return true;
-      }
-    }
-  }
+  /**
+   * 命令呈现层出壳到 ./tui/commands.ts（阶段 E）：行公式与正文在 command-core
+   * 单源，这里只剩壳层状态的访问器接线与编排（/new 序列、压缩等待、清场）。
+   * paint/session/messages 等可变绑一律走闭包访问器——值捕获会拿旧引用。
+   */
+  const commands = new TuiCommands({
+    store,
+    paint: () => paint,
+    render: scheduleRender,
+    permission,
+    approvalOverride: opts.approvalOverride !== undefined,
+    host: () => host,
+    codeMode: () => codeMode,
+    currentModel: () => client.model,
+    fetchModelList,
+    themeName: () => themeName,
+    applyTheme: (name) => {
+      themeName = name;
+      paint = resolvePalette(name, caps);
+      screen.invalidate();
+    },
+    session: () => session,
+    messages: () => messages,
+    stats,
+    anchors,
+    config,
+    modelMeta: () => currentModelMeta,
+    contextLegendRow: () =>
+      paint.dim(`  ${contextLegend(paint, contextBreakdown(contextView()).segments.filter((s) => s.tokens > 0))}`),
+    listSessions: () => listRecentSessions(sessionsRoot(), SESSION_LIST_LIMIT),
+    newSession: async () => {
+      sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
+      ({ session, messages } = await openFreshSession({
+        sessionsDir,
+        rootDir,
+        setClientSessionId: (id) => client.setSessionId(id),
+        stats,
+        anchors,
+        resetSessionCache,
+        recordWorkspace: recordSessionWorkspace,
+        seedContext: seedContextFragment,
+      }));
+      return session.file;
+    },
+    startCompactWait: () => startCompactWait('正在压缩会话'),
+    endCompactWait,
+    compactCancelled: () => compactCancelled,
+    compactDoneLine,
+    runManualCompact: () => runCompact('manual'),
+    abortAllTurns: () => {
+      for (const aborter of aborters) aborter.abort();
+    },
+    exit: exitApp,
+    clearView: () => {
+      bgSubagentRows.clear();
+      modeSelectBlock = undefined;
+      store.modeSelect = undefined;
+      store.clearView();
+    },
+    writeAgents: () => writeAgentsMd(rootDir),
+  });
+  const runCommand = (raw: string): Promise<void> => commands.run(raw);
 
   /**
    * Switch the live conversation to a past session: rebind the append-only
