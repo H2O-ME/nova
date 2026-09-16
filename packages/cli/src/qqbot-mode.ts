@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { newId, runAgent, Session, type AgentMessage, type UserMessage } from '@nova-agent/core';
+import { runAgent, Session, type AgentMessage } from '@nova-agent/core';
 import { createQqBotChannel, type Peer, type QqBotChannel } from '@nova-agent/qqbot';
 import { wrapHeadlessAutoCompact } from './auto-compact.js';
 import { compactSession } from './compact.js';
@@ -8,7 +8,7 @@ import { createSessionRuntime } from './session-runtime.js';
 import { sessionsRoot } from './config.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { agentRunBase, createHeadlessPermission, persistMissingToolResults } from './runner-shared.js';
-import { createRunnerBookkeeping } from './runner-loop.js';
+import { createRunnerBookkeeping, commitUserMessage } from './runner-loop.js';
 import { palette, plainPalette } from './ui.js';
 
 export interface QqBotOptions {
@@ -105,9 +105,7 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
     const bound = await peerSessionOf(peer);
     current = bound;
     rt.client.setSessionId(bound.session.id);
-    const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: text };
-    bound.messages.push(userMsg);
-    await bound.session.append(userMsg);
+    await commitUserMessage(bound.session, bound.messages, text);
 
     let reply = '';
     try {

@@ -16,14 +16,12 @@ import {
   errMessage,
   emptyStats,
   estimateTextTokens,
-  newId,
   runAgent,
   Session,
   type AgentEvent,
   type AgentMessage,
   type SubagentProgress,
   type UsageStats,
-  type UserMessage,
 } from '@nova-agent/core';
 import {
   codeRuntimeAvailable,
@@ -58,11 +56,15 @@ import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-m
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
 import { createSessionRuntime } from './session-runtime.js';
 import {
+  commitUserMessage,
   createRunnerBookkeeping,
   createTurnNotifier,
   createUsageAnchors,
+  emptyCompletionNotice,
   isUserInterrupt,
+  llmRetryNotice,
   resetUsageAnchors,
+  turnStopLines,
 } from './runner-loop.js';
 import {
   approvalLabel,
@@ -81,14 +83,13 @@ import {
   permissionLabel,
   REVEAL_TICK_MS,
   SPINNER_FRAMES,
-  statusLine,
   TOOL_GUTTER,
   toolArgSummary,
   toolLabel,
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
-import { agentRunBase, createApprovalService, createAutoCompact, maxTurnsHint, persistMissingToolResults } from './runner-shared.js';
+import { agentRunBase, createApprovalService, createAutoCompact, persistMissingToolResults } from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
@@ -524,9 +525,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   onSubagentProgressRef.current = (progress) => projector.subagentProgress(progress);
 
   async function agentTurn(userInput: string): Promise<void> {
-    const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: userInput };
-    messages.push(userMsg);
-    await session.append(userMsg);
+    await commitUserMessage(session, messages, userInput);
     // Spacing (Codex cell contract): store.blocks carry no manual separators —
     // flattenBlocks inserts the single blank row between non-empty store.blocks.
     projector.beginTurn(userInput);
@@ -635,7 +634,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         Object.assign(stats, event.stats);
         projector.resetAssistant();
         store.genPhase = 'thinking'; // 重新请求在途，属于"生成中"
-        store.pushBlock([paint.dim(`  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…`)], TOOL_GUTTER);
+        store.pushBlock([paint.dim(`  ⟳ ${llmRetryNotice(event.error, event.attempt, event.maxRetries)}`)], TOOL_GUTTER);
         break;
       }
       case 'empty_completion': {
@@ -646,7 +645,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         projector.resetAssistant();
         store.genPhase = 'thinking';
         store.pushBlock(
-          [paint.dim(`  ⟳ 空回复（finish=${event.finishReason}，输出疑似全部进入思考流），自动重试 ${event.attempt}/${event.maxRetries}…`)],
+          [paint.dim(`  ⟳ ${emptyCompletionNotice(event.finishReason, event.attempt, event.maxRetries)}`)],
           TOOL_GUTTER,
         );
         break;
@@ -706,10 +705,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // stops get a visible marker.
         if (event.stopReason !== 'complete') {
           const kind: StopKind = event.stopReason;
-          store.pushBlock([statusLine(paint, kind, stats, Date.now() - startedAt)]);
-          if (kind === 'max_turns') {
-            store.pushBlock([paint.dim(maxTurnsHint(config))]);
-          }
+          store.pushBlock(turnStopLines(paint, kind, stats, Date.now() - startedAt, config));
         }
         break;
       }

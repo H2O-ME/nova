@@ -1,5 +1,7 @@
-import type { AgentEvent, AgentMessage, Session, Usage, UsageStats } from '@nova-agent/core';
-import { LONG_TASK } from './runner-shared.js';
+import { newId, type AgentEvent, type AgentMessage, type Session, type Usage, type UsageStats, type UserMessage } from '@nova-agent/core';
+import { statusLine, type Palette, type StopKind } from '@nova-agent/tui-view';
+import { LONG_TASK, maxTurnsHint } from './runner-shared.js';
+import type { Config } from './config.js';
 
 /**
  * 四 runner（tui / repl / exec / qqbot）共享的「事件消费簿记」单源。
@@ -127,4 +129,53 @@ export function createTurnNotifier(
       }
     },
   };
+}
+
+/**
+ * Commit a user turn to both surfaces in the one order that keeps them equal:
+ * push into the live array THEN append to the log (the projection contract the
+ * runners share — "model-visible means logged"). Every runner used to spell
+ * this trio out inline.
+ */
+export async function commitUserMessage(
+  session: Session,
+  messages: AgentMessage[],
+  content: string,
+): Promise<UserMessage> {
+  const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content };
+  messages.push(userMsg);
+  await session.append(userMsg);
+  return userMsg;
+}
+
+/**
+ * Provider dropped the response mid-stream and is re-requesting. The body is
+ * shared (callers add their own leading spaces / ⟳ marker / gutter); the wording
+ * is a contract, not styling.
+ */
+export function llmRetryNotice(error: string, attempt: number, maxRetries: number): string {
+  return `上游流中断（${error}），自动重试 ${attempt}/${maxRetries}…`;
+}
+
+/** The model "finished" with no text and no tool calls (thinking-only output). */
+export function emptyCompletionNotice(finishReason: string, attempt: number, maxRetries: number): string {
+  return `空回复（finish=${finishReason}，输出疑似全部进入思考流），自动重试 ${attempt}/${maxRetries}…`;
+}
+
+/**
+ * End-of-turn lines shared by the interactive runners: the status one-liner
+ * (only for an abnormal stop — a normal reply ends at the reply) plus the
+ * max-turns escape hatch. `complete` yields no line because the answer itself
+ * is the confirmation.
+ */
+export function turnStopLines(
+  paint: Palette,
+  kind: StopKind,
+  stats: UsageStats,
+  elapsedMs: number,
+  config: Config,
+): string[] {
+  const lines = [statusLine(paint, kind, stats, elapsedMs)];
+  if (kind === 'max_turns') lines.push(paint.dim(maxTurnsHint(config)));
+  return lines;
 }

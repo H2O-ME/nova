@@ -2,14 +2,12 @@ import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { detectCaps, styledWidth } from '@nova-agent/tui';
 import { errMessage,
-  newId,
   runAgent,
   Session,
   type AgentEvent,
   type AgentMessage,
   type SubagentProgress,
   type UsageStats,
-  type UserMessage,
 } from '@nova-agent/core';
 import { type ApprovalMode, type AskFn } from '@nova-agent/plugins';
 import { sessionDateBucket, sessionsRoot, type Config } from './config.js';
@@ -32,18 +30,21 @@ import { recordSessionWorkspace } from './sessions.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
 import {
+  commitUserMessage,
   createRunnerBookkeeping,
   createTurnNotifier,
   createUsageAnchors,
+  emptyCompletionNotice,
   isUserInterrupt,
+  llmRetryNotice,
   resetUsageAnchors,
+  turnStopLines,
 } from './runner-loop.js';
 import {
   approvalLabel,
   banner,
   fitTail,
   permissionLabel,
-  statusLine,
   toolDoneLine,
   toolLabel,
   toolStartLine,
@@ -53,7 +54,6 @@ import {
   approvalPrompt,
   createApprovalService,
   createAutoCompact,
-  maxTurnsHint,
   persistMissingToolResults,
   ToolTiming,
 } from './runner-shared.js';
@@ -420,14 +420,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         Object.assign(stats, event.stats);
         endReasoningLine();
         spinner.stop();
-        console.log(paint.dim(`  ⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…`));
+        console.log(paint.dim(`  ⟳ ${llmRetryNotice(event.error, event.attempt, event.maxRetries)}`));
         break;
       }
       case 'empty_completion': {
         endReasoningLine();
         spinner.stop();
         console.log(
-          paint.dim(`  ⟳ 空回复（finish=${event.finishReason}，输出疑似全部进入思考流），自动重试 ${event.attempt}/${event.maxRetries}…`),
+          paint.dim(`  ⟳ ${emptyCompletionNotice(event.finishReason, event.attempt, event.maxRetries)}`),
         );
         break;
       }
@@ -475,9 +475,8 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         clearProgressLine();
         spinner.stop();
         const kind = event.stopReason;
-        console.log(statusLine(paint, kind === 'complete' ? 'complete' : kind, stats, Date.now() - requestStartedAt));
-        if (kind === 'max_turns') {
-          console.log(paint.dim(maxTurnsHint(config)));
+        for (const line of turnStopLines(paint, kind, stats, Date.now() - requestStartedAt, config)) {
+          console.log(line);
         }
         break;
       }
@@ -651,10 +650,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       continue;
     }
 
-    const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: input };
-    messages.push(userMsg);
-    await session.append(userMsg);
-
+    await commitUserMessage(session, messages, input);
     await maybePreCompact();
 
     aborter = new AbortController();

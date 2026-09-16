@@ -1,10 +1,9 @@
-import { errMessage,
-  newId,
+import {
+  errMessage,
   runAgent,
   type AgentEvent,
   type AgentMessage,
   type ChatProvider,
-  type UserMessage,
 } from '@nova-agent/core';
 import type { ApprovalMode } from '@nova-agent/plugins';
 import { wrapHeadlessAutoCompact } from './auto-compact.js';
@@ -13,7 +12,7 @@ import type { Config } from './config.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
 import { createHeadlessPermission } from './runner-shared.js';
-import { createRunnerBookkeeping, createTurnNotifier, isUserInterrupt } from './runner-loop.js';
+import { commitUserMessage, createRunnerBookkeeping, createTurnNotifier, isUserInterrupt, llmRetryNotice } from './runner-loop.js';
 import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
 import { agentRunBase, LONG_TASK, persistMissingToolResults, ToolTiming } from './runner-shared.js';
 
@@ -61,9 +60,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   // Test-injected provider takes precedence over the config-built client.
   const provider: ChatProvider = opts.provider ?? rt.client;
 
-  const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: prompt };
-  messages.push(userMsg);
-  await session.append(userMsg);
+  await commitUserMessage(session, messages, prompt);
 
   // Non-interactive: nobody can answer an approval prompt, so requests are denied.
   // (No audit trail: exec never asks, so no ask-path decisions exist to log.)
@@ -158,7 +155,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
         sink(event.text);
         break;
       case 'llm_retry':
-        sink(`\n${p.dim(`⟳ 上游流中断（${event.error}），自动重试 ${event.attempt}/${event.maxRetries}…`)}\n`);
+        sink(`\n${p.dim(`⟳ ${llmRetryNotice(event.error, event.attempt, event.maxRetries)}`)}\n`);
         break;
       case 'message':
         if (event.message.content.length > 0) sink('\n');
@@ -173,6 +170,8 @@ export async function runExec(opts: ExecOptions): Promise<void> {
         break;
       }
       case 'done': {
+        // exec prints only the status one-liner (headless consumers get no
+        // max-turns hint); the interactive shells use turnStopLines.
         const kind = event.stopReason === 'complete' ? 'complete' : event.stopReason;
         sink(`\n${statusLine(p, kind, stats, Date.now() - execStartedAt)}\n`);
         break;
