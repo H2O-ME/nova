@@ -1,4 +1,8 @@
 node_modules/
 dist/
 .nova/
+.zcode/
+skills-lock.json
+# 外部工具在本目录留下的临时转储，形如 .tmp-<项目>-<展平后的源路径>——不是本仓库的产物
+.tmp-*
 *.log
