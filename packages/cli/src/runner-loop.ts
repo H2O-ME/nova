@@ -1,6 +1,6 @@
-import { newId, type AgentEvent, type AgentMessage, type Session, type Usage, type UsageStats, type UserMessage } from '@nova-agent/core';
+import { errMessage, newId, type AgentEvent, type AgentMessage, type Session, type Usage, type UsageStats, type UserMessage } from '@nova-agent/core';
 import { statusLine, type Palette, type StopKind } from '@nova-agent/tui-view';
-import { LONG_TASK, maxTurnsHint } from './runner-shared.js';
+import { LONG_TASK, maxTurnsHint, persistMissingToolResults } from './runner-shared.js';
 import type { Config } from './config.js';
 
 /**
@@ -95,6 +95,31 @@ export function createRunnerBookkeeping(deps: {
  */
 export function isUserInterrupt(signal: AbortSignal | undefined): boolean {
   return signal?.aborted === true;
+}
+
+/**
+ * 轮死掉时的日志修复（best-effort，修复失败绝不阻断失败呈现；扫描日志实现
+ * 幂等，重复调用无副作用）。
+ */
+export async function repairTurnLog(session: Session, messages: AgentMessage[]): Promise<void> {
+  await persistMissingToolResults(session, messages).catch(() => undefined);
+}
+
+export type TurnFailure = { kind: 'interrupt' } | { kind: 'error'; message: string };
+
+/**
+ * 轮失败归类单源：先修日志（任何呈现之前），再按本轮 signal 是否真的触发归类。
+ * 这对「persist → classify」次序曾在 repl/tui/exec 三处手写——修一次归类 bug
+ * 要同步改三处（M8.0 就是补 exec 的漏）。新增 runner 只需调这里。
+ */
+export async function classifyTurnFailure(
+  session: Session,
+  messages: AgentMessage[],
+  err: unknown,
+  signal: AbortSignal | undefined,
+): Promise<TurnFailure> {
+  await repairTurnLog(session, messages);
+  return isUserInterrupt(signal) ? { kind: 'interrupt' } : { kind: 'error', message: errMessage(err) };
 }
 
 export interface TurnNotifier {

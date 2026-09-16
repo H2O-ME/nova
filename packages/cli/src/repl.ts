@@ -30,6 +30,7 @@ import { recordSessionWorkspace } from './sessions.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
 import {
+  classifyTurnFailure,
   commitUserMessage,
   createRunnerBookkeeping,
   createTurnNotifier,
@@ -58,7 +59,6 @@ import {
   attachHooks,
   createApprovalService,
   createAutoCompact,
-  persistMissingToolResults,
   ToolTiming,
 } from './runner-shared.js';
 import { Spinner } from './spinner.js';
@@ -674,20 +674,15 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     } catch (err) {
       spinner.stop();
       clearProgressLine();
-      // Repair the log before any surface work: the turn may have died with
-      // assistant tool_calls unanswered — append synthesized results (same
-      // copy core's abandonment synthesis uses) so the log keeps its
-      // one-result-per-call contract.
-      await persistMissingToolResults(session, messages).catch(() => undefined);
-      const message = errMessage(err);
-      // 中断归类单源（runner-loop.isUserInterrupt）：以本轮 signal 是否真的
-      // 触发为准——文案含 "aborted" 的网络超时必须亮出原文。
-      if (isUserInterrupt(aborter?.signal)) {
+      // 修日志+归类单源（runner-loop.classifyTurnFailure）：以本轮 signal
+      // 是否真的触发为准——文案含 "aborted" 的网络超时必须亮出原文。
+      const fail = await classifyTurnFailure(session, messages, err, aborter?.signal);
+      if (fail.kind === 'interrupt') {
         console.log(paint.yellow('  已中断'));
       } else {
-        console.error(paint.red(`  出错：${message}`));
+        console.error(paint.red(`  出错：${fail.message}`));
         console.log(paint.dim('  ⟳ 未完成的回答未写入会话日志（resume 后不可见）'));
-        turnNotifier.error(requestStartedAt, message);
+        turnNotifier.error(requestStartedAt, fail.message);
       }
     } finally {
       streaming = false;

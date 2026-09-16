@@ -51,12 +51,12 @@ import { createModelMetaStore, formatModelMeta, type ModelMeta } from './model-m
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
 import { createSessionRuntime } from './session-runtime.js';
 import {
+  classifyTurnFailure,
   commitUserMessage,
   createRunnerBookkeeping,
   createTurnNotifier,
   createUsageAnchors,
   emptyCompletionNotice,
-  isUserInterrupt,
   llmRetryNotice,
   resetUsageAnchors,
   turnStopLines,
@@ -91,7 +91,6 @@ import {
   attachHooks,
   createApprovalService,
   createAutoCompact,
-  persistMissingToolResults,
 } from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
@@ -576,23 +575,16 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
     } catch (err) {
       spinner.stop();
-      // Repair the log before any surface work: the turn may have died with
-      // assistant tool_calls unanswered — append synthesized results (same
-      // copy core's abandonment synthesis uses) so the log keeps its
-      // one-result-per-call contract.
-      await persistMissingToolResults(session, messages).catch(() => undefined);
-      const message = errMessage(err);
-      // Classify by OUR signal (runner-loop.isUserInterrupt), never by the
-      // error's wording: undici and gateways throw "The operation was aborted
-      // due to timeout" on plain network stalls — labeling those 已中断 hid
-      // the real error (and the retry hint) behind a silent interrupt.
-      if (isUserInterrupt(aborter.signal)) {
+      // 修日志+归类单源（runner-loop.classifyTurnFailure）：按本轮 signal
+      // 是否真的触发，绝不看错误文案——网络停摆的 "aborted" 必须亮出原文。
+      const fail = await classifyTurnFailure(session, messages, err, aborter.signal);
+      if (fail.kind === 'interrupt') {
         // 半截未提交的回答块、未揭示文本与「■ 已中断」行收在投影器里。
         projector.handleFailure('abort');
       } else {
         // 同上，另落「已丢弃」提示行与错误行；长任务出错补一个 toast。
-        projector.handleFailure('error', message);
-        turnNotifier.error(startedAt, message);
+        projector.handleFailure('error', fail.message);
+        turnNotifier.error(startedAt, fail.message);
       }
     } finally {
       const idx = aborters.indexOf(aborter);

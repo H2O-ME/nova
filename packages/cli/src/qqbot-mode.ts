@@ -7,8 +7,8 @@ import type { Config } from './config.js';
 import { createSessionRuntime } from './session-runtime.js';
 import { sessionsRoot } from './config.js';
 import { recordSessionWorkspace } from './sessions.js';
-import { agentRunBase, attachHooks, createHeadlessPermission, persistMissingToolResults } from './runner-shared.js';
-import { createRunnerBookkeeping, commitUserMessage } from './runner-loop.js';
+import { agentRunBase, attachHooks, createHeadlessPermission } from './runner-shared.js';
+import { commitUserMessage, createRunnerBookkeeping, repairTurnLog } from './runner-loop.js';
 import { detectCaps } from '@nova-agent/tui';
 import { resolvePalette } from '@nova-agent/tui-view';
 
@@ -121,7 +121,8 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
         await bookkeeping.apply(event);
       }
     } catch (err) {
-      await persistMissingToolResults(bound.session, bound.messages).catch(() => undefined);
+      // 修日志单源（runner-loop.repairTurnLog）：报错照旧上抛给通道层。
+      await repairTurnLog(bound.session, bound.messages);
       throw err;
     }
     return reply;

@@ -1,5 +1,4 @@
 import {
-  errMessage,
   runAgent,
   type AgentEvent,
   type AgentMessage,
@@ -13,8 +12,8 @@ import { compactSession } from './compact.js';
 import type { Config } from './config.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
-import { agentRunBase, attachHooks, createHeadlessPermission, LONG_TASK, persistMissingToolResults, ToolTiming } from './runner-shared.js';
-import { commitUserMessage, createRunnerBookkeeping, createTurnNotifier, isUserInterrupt, llmRetryNotice } from './runner-loop.js';
+import { agentRunBase, attachHooks, createHeadlessPermission, LONG_TASK, ToolTiming } from './runner-shared.js';
+import { classifyTurnFailure, commitUserMessage, createRunnerBookkeeping, createTurnNotifier, llmRetryNotice, repairTurnLog } from './runner-loop.js';
 
 /**
  * `--json` 模式下 AgentEvent 之外的两类控制行（AGENTS.md §2 记载的 schema）。
@@ -127,24 +126,26 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     }
     turnNotifier.done(execStartedAt);
   } catch (err) {
-    const message = errMessage(err);
-    // 与 repl/tui 同一归类（runner-loop.isUserInterrupt）：以本轮 signal 是否
-    // 真的触发为准——错误文案含 "aborted" 的网络超时不算用户中断，照常走
-    // run_error；只有 SIGINT 真正解绕才归类为「已中断」（退出码 130，非失败）。
-    if (isUserInterrupt(interrupt.signal)) {
+    // 修日志+归类单源（runner-loop.classifyTurnFailure，与 repl/tui 同一契约）：
+    // 以本轮 signal 是否真的触发为准——错误文案含 "aborted" 的网络超时不算
+    // 用户中断，照常走 run_error；只有 SIGINT 真正解绕才归类为「已中断」
+    // （退出码 130，非失败）。
+    const fail = await classifyTurnFailure(session, messages, err, interrupt.signal);
+    if (fail.kind === 'interrupt') {
       if (json) emitControl({ type: 'notice', text: '任务已中断（SIGINT）；会话日志保留到中断前' });
       else write(`${paint.yellow('已中断')}\n`);
       process.exitCode = 130;
       return;
     }
-    if (json) emitControl({ type: 'run_error', message });
-    else console.error(`出错：${message}`);
-    turnNotifier.error(execStartedAt, message);
+    if (json) emitControl({ type: 'run_error', message: fail.message });
+    else console.error(`出错：${fail.message}`);
+    turnNotifier.error(execStartedAt, fail.message);
     process.exitCode = 1;
   } finally {
     process.off('SIGINT', onSigint);
-    // Repair the log if the run died with assistant tool_calls unanswered.
-    await persistMissingToolResults(session, messages).catch(() => undefined);
+    // Repair the log if the run died with assistant tool_calls unanswered
+    // (idempotent — the catch path already repaired before classifying).
+    await repairTurnLog(session, messages);
     // Kill background jobs before the process exits, or the spawned shells
     // outlive the session (dsh jobs dispose contract).
     await jobs.dispose().catch(() => undefined);
