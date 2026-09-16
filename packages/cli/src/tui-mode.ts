@@ -55,9 +55,6 @@ import {
 import {
   bottomStack,
   buildSplash,
-  modeSelectRows,
-  modeSelectedRow,
-  nextModeIndex,
   clipToWidth,
   contextGaugeForms,
   contextLegend,
@@ -74,6 +71,7 @@ import {
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
 import { TuiCommands } from './tui/commands.js';
+import { CODE_MODE_ORDER, ModeSelector } from './tui/mode-select.js';
 import {
   agentRunBase,
   approvalEffectPreview,
@@ -755,56 +753,21 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   }
 
   async function toggleCodeMode(): Promise<void> {
-    const order: PtcMode[] = ['native', 'ptc', 'both'];
-    const next = order[(order.indexOf(codeMode) + 1) % order.length] ?? 'native';
+    const next = CODE_MODE_ORDER[(CODE_MODE_ORDER.indexOf(codeMode) + 1) % CODE_MODE_ORDER.length] ?? 'native';
     await setCodeMode(next);
   }
 
   // ---- startup mode selector ----------------------------------------------
-  // The splash renders an interactive execution-mode block; keys.ts consumes
-  // ↑↓/Enter/Esc while store.modeSelect is set. Collapse = in-place rewrite
-  // of the selector block (never a leftover interactive frame in the log).
-  let modeSelectBlock: Block | undefined;
-  const CODE_MODE_ORDER: PtcMode[] = ['native', 'ptc', 'both'];
-  const selectorAlive = (): boolean => modeSelectBlock !== undefined && store.blocks.includes(modeSelectBlock);
-  const rerenderModeSelect = (): void => {
-    if (!selectorAlive() || store.modeSelect === undefined) return;
-    store.replaceBlock(
-      modeSelectBlock!,
-      modeSelectRows(paint, { index: store.modeSelect.index, ptcAvailable: codeRuntimeAvailable(), cols: screen.cols }),
-    );
-  };
-  const collapseModeSelect = (): void => {
-    if (store.modeSelect === undefined) return;
-    store.modeSelect = undefined;
-    if (selectorAlive()) {
-      store.replaceBlock(modeSelectBlock!, [modeSelectedRow(paint, codeMode, screen.cols)]);
-    }
-    modeSelectBlock = undefined;
-  };
-  const modeSelectMove = (delta: number): void => {
-    if (store.modeSelect === undefined) return;
-    store.modeSelect.index = nextModeIndex(store.modeSelect.index, delta, codeRuntimeAvailable());
-    rerenderModeSelect();
-  };
-  const modeSelectConfirm = async (index?: number): Promise<void> => {
-    if (store.modeSelect === undefined) return;
-    const next = CODE_MODE_ORDER[index ?? store.modeSelect.index] ?? codeMode;
-    if (next !== codeMode) {
-      const ok = await setCodeMode(next);
-      if (!ok) {
-        // warning line already pushed; selector stays for another pick
-        rerenderModeSelect();
-        return;
-      }
-    }
-    collapseModeSelect();
-    scheduleRender();
-  };
-  const modeSelectDismiss = (): void => {
-    collapseModeSelect();
-    scheduleRender();
-  };
+  // 选择块状态机出壳 ./tui/mode-select.ts（阶段 E）：块引用、↑↓/Enter/Esc
+  // 语义与原位塌缩都在类里；setCodeMode 与 Tab 共用同一个门。
+  const modeSelector = new ModeSelector({
+    store,
+    paint: () => paint,
+    cols: () => screen.cols,
+    codeMode: () => codeMode,
+    setCodeMode: (next) => setCodeMode(next),
+    render: scheduleRender,
+  });
 
   // ---- commands ---------------------------------------------------------
   /**
@@ -862,8 +825,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     exit: exitApp,
     clearView: () => {
       bgSubagentRows.clear();
-      modeSelectBlock = undefined;
-      store.modeSelect = undefined;
+      modeSelector.reset();
       store.clearView();
     },
     writeAgents: () => writeAgentsMd(rootDir),
@@ -905,8 +867,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     resetUsageAnchors(anchors);
     resetSessionCache();
     bgSubagentRows.clear();
-    modeSelectBlock = undefined;
-    store.modeSelect = undefined;
+    modeSelector.reset();
     store.clearView();
     store.activeToolId = undefined;
     // Follow the session back to the workspace it was created in, so the
@@ -968,7 +929,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const text = store.input.trim();
     // First submit ends the startup selector: the picked (or current) mode is
     // what this first message runs under — collapse to the confirmation row.
-    collapseModeSelect();
+    modeSelector.collapse();
     if (store.streaming || store.compactRunning) {
       const cmd = text.split(/\s+/)[0]?.toLowerCase() ?? '';
       if (STREAM_SAFE_COMMANDS.has(cmd)) {
@@ -1084,9 +1045,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       compactCancelled = true;
       compactAbort?.abort();
     },
-    modeSelectMove,
-    modeSelectConfirm: (index) => void modeSelectConfirm(index),
-    modeSelectDismiss,
+    modeSelectMove: (delta) => modeSelector.move(delta),
+    modeSelectConfirm: (index) => void modeSelector.confirm(index),
+    modeSelectDismiss: () => modeSelector.dismiss(),
     exitApp,
     scheduleRender,
     preemptRender,
@@ -1396,14 +1357,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   );
   // Startup mode selector: an interactive block the key chain owns until the
   // user confirms, keeps the current mode, or simply starts typing.
-  modeSelectBlock = store.pushBlock(
-    modeSelectRows(paint, {
-      index: Math.max(0, CODE_MODE_ORDER.indexOf(codeMode)),
-      ptcAvailable: codeRuntimeAvailable(),
-      cols: screen.cols,
-    }),
-  );
-  store.modeSelect = { index: Math.max(0, CODE_MODE_ORDER.indexOf(codeMode)) };
+  modeSelector.show();
 
   await new Promise<void>((resolve) => {
     exitNow = resolve;
