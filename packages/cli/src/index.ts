@@ -2,6 +2,7 @@
 import { errMessage } from '@nova-agent/core';
 import path from 'node:path';
 import process from 'node:process';
+import { themeTarget, type ThemeName } from './command-core.js';
 import { loadConfig } from './config.js';
 import { startRepl } from './repl.js';
 import { cliVersion } from './version.js';
@@ -29,7 +30,7 @@ options:
 interface ParsedArgs {
   resumeFile?: string;
   approvalOverride?: 'read-only' | 'auto-edit' | 'full';
-  themeOverride?: 'dark' | 'light' | 'plain';
+  themeOverride?: ThemeName;
   json: boolean;
   repl: boolean;
   positional: string[];
@@ -64,12 +65,13 @@ function parseArgs(args: string[]): ParsedArgs | undefined {
       parsed.approvalOverride = value;
     } else if (arg === '--theme') {
       const value = args[++i];
-      if (value !== 'dark' && value !== 'light' && value !== 'plain') {
+      const target = value === undefined ? undefined : themeTarget(value);
+      if (target === undefined) {
         console.error('--theme must be one of: dark, light, plain');
         process.exitCode = 1;
         return undefined;
       }
-      parsed.themeOverride = value;
+      parsed.themeOverride = target;
     } else if (arg === '--json') {
       parsed.json = true;
     } else if (arg === '--repl') {

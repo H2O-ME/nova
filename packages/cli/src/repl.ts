@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { detectCaps, styledWidth } from '@nova-agent/tui';
 import { errMessage,
@@ -16,14 +15,23 @@ import { compactSession } from './compact.js';
 import { COMMAND_SPECS, modeOverviewRows } from './commands.js';
 import { resolvePalette } from '@nova-agent/tui-view';
 import {
+  agentsMdWrittenLine,
+  approvalSwitchLine,
   cacheHitPct,
+  helpRows,
   lastCacheHitPct,
   MODEL_LIST_EMPTY,
   modelListError,
+  newSessionLine,
   nextApprovalMode,
   openFreshSession,
   pluginCommandLine,
   pluginToolLine,
+  themeSwitchedMessage,
+  themeTarget,
+  themeUnknownMessage,
+  unknownCommandParts,
+  type ThemeName,
 } from './command-core.js';
 import { expandSkillInvocation } from './context.js';
 import { recordSessionWorkspace } from './sessions.js';
@@ -70,7 +78,7 @@ export interface ReplOptions {
   resumeFile?: string;
   approvalOverride?: ApprovalMode;
   /** --theme 覆盖 config 的 ui.theme。 */
-  theme?: 'dark' | 'light' | 'plain';
+  theme?: ThemeName;
 }
 
 /**
@@ -135,7 +143,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   // 主题解析单源（tui-view.resolvePalette）；/theme 运行中可切换。
   const caps = detectCaps();
   const useColor = caps.color;
-  let themeName: 'dark' | 'light' | 'plain' = opts.theme ?? config.ui?.theme ?? 'dark';
+  let themeName: ThemeName = opts.theme ?? config.ui?.theme ?? 'dark';
   let paint = resolvePalette(themeName, caps);
 
   // switch_workspace 的运行侧回调（late-bound：createSessionRuntime 先于
@@ -500,9 +508,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         case '/quit':
           break loop;
         case '/help':
-          console.log(
-            COMMAND_SPECS.map((spec) => `  ${spec.usage.padEnd(24)}${spec.description}`).join('\n'),
-          );
+          console.log(helpRows(COMMAND_SPECS).join('\n'));
           break;
         case '/new': {
           sessionsDir = newSessionDir(); // 跨天运行时归入当天的日期桶
@@ -515,7 +521,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
             recordWorkspace: recordSessionWorkspace,
             seedContext: seedContextFragment,
           }));
-          console.log(`新会话：${session.file}`);
+          console.log(newSessionLine(session.file));
           break;
         }
         case '/session': {
@@ -575,13 +581,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
             console.log(`当前主题：${themeName}（/theme dark|light|plain 切换；NO_COLOR 恒定无色）`);
             break;
           }
-          if (arg !== 'dark' && arg !== 'light' && arg !== 'plain') {
-            console.log(`未知主题：${arg}（可选 dark / light / plain）`);
+          const target = themeTarget(arg);
+          if (target === undefined) {
+            console.log(themeUnknownMessage(arg));
             break;
           }
-          themeName = arg;
-          paint = resolvePalette(arg, caps);
-          console.log(`主题已切换为 ${arg}`);
+          themeName = target;
+          paint = resolvePalette(target, caps);
+          console.log(themeSwitchedMessage(target));
           break;
         }
         case '/plugins': {
@@ -597,8 +604,8 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         }
         case '/approvals': {
           const next = nextApprovalMode(permission.approvalMode);
-          permission.setMode(next as ApprovalMode);
-          console.log(`审批档位：${approvalLabel(next)}`);
+          permission.setMode(next);
+          console.log(approvalSwitchLine(next));
           break;
         }
         case '/mode': {
@@ -636,11 +643,13 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         }
         case '/init': {
           const file = await writeAgentsMd(rootDir);
-          console.log(`已写入 ${path.basename(file)}`);
+          console.log(agentsMdWrittenLine(file));
           break;
         }
-        default:
-          console.log(`未知命令：${cmd}（输入 /help 查看命令）`);
+        default: {
+          const unknown = unknownCommandParts(cmd);
+          console.log(`${unknown.head}${unknown.hint}`);
+        }
       }
       continue;
     }

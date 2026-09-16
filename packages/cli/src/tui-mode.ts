@@ -30,18 +30,28 @@ import {
   type PtcMode,
 } from '@nova-agent/plugins';
 import { writeAgentsMd } from './agents-md.js';
-import { compactSession, surfaceDivergence } from './compact.js';
+import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
 import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
 import { COMMAND_SPECS, filterCommands, type CommandSpec } from './commands.js';
 import {
+  agentsMdWrittenLine,
+  approvalSwitchLine,
   cacheHitPct,
+  helpRows,
   lastCacheHitPct,
   MODEL_LIST_EMPTY,
   modelListError,
+  newSessionLine,
   nextApprovalMode,
   openFreshSession,
   pluginCommandLine,
   pluginToolLine,
+  THEME_NAMES,
+  themeSwitchedMessage,
+  themeTarget,
+  themeUnknownMessage,
+  unknownCommandParts,
+  type ThemeName,
 } from './command-core.js';
 import { newSessionDir, novaHome, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
@@ -114,7 +124,7 @@ export interface TuiOptions {
   resumeFile?: string;
   approvalOverride?: ApprovalMode;
   /** --theme 覆盖 config 的 ui.theme。 */
-  theme?: 'dark' | 'light' | 'plain';
+  theme?: ThemeName;
 }
 
 // 仅剩 gutter 前缀的原始 ANSI（尾部开态样式是 wrapBlock 挂行契约，见下）。
@@ -140,7 +150,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // COLORTERM；--theme 覆盖 config 的 ui.theme。dark=原配色平移，默认观感
   // 字节不变；/theme 可在运行中切换（NO_COLOR 下恒 plain）。
   const caps = detectCaps();
-  let themeName: 'dark' | 'light' | 'plain' = opts.theme ?? config.ui?.theme ?? 'dark';
+  let themeName: ThemeName = opts.theme ?? config.ui?.theme ?? 'dark';
   let paint = resolvePalette(themeName, caps);
   const screen = new LineScreen(process.stdout, { synchronizedOutput: caps.synchronizedOutput });
   const decoder = new KeyDecoder();
@@ -427,6 +437,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   };
 
   /**
+   * 压缩完成行：自动路径（report.success）与 /compact 手动路径曾各写一份逐字
+   * 相同的行——单源在此。
+   */
+  const compactDoneLine = (outcome: CompactedSession): string =>
+    `${paint.green('  ✓ 已压缩')} ${paint.dim(`· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s`)}`;
+
+  /**
    * Shared auto-compact orchestration (runner-shared): guards, anchor-reset
    * contract and error containment live there; only the presentation is local.
    */
@@ -469,9 +486,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       postStart: (tokens) => startCompactWait(`上下文 ${humanTokens(tokens)} tok 超阈值，正在压缩`),
       success: (outcome) => {
         endCompactWait();
-        store.pushBlock([
-          `${paint.green('  ✓ 已压缩')} ${paint.dim(`· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s`)}`,
-        ]);
+        store.pushBlock([compactDoneLine(outcome)]);
       },
       failure: (err, where) => {
         endCompactWait();
@@ -824,8 +839,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         exitApp();
         return true;
       case '/help': {
-        const lines = COMMAND_SPECS.map((spec) => paint.dim(`  ${padDisplay(spec.usage, 24)}${spec.description}`));
-        store.pushBlock([`  ${paint.bold('命令')}`, ...lines]);
+        store.pushBlock([`  ${paint.bold('命令')}`, ...helpRows(COMMAND_SPECS).map((row) => paint.dim(row))]);
         return true;
       }
       case '/model': {
@@ -846,8 +860,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       case '/approvals': {
         const next = nextApprovalMode(permission.approvalMode);
-        permission.setMode(next as ApprovalMode);
-        store.pushBlock([paint.dim(`  审批档位：${approvalLabel(next)}`)]);
+        permission.setMode(next);
+        store.pushBlock([paint.dim(`  ${approvalSwitchLine(next)}`)]);
         return true;
       }
       case '/mode': {
@@ -869,7 +883,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         if (arg === undefined) {
           store.pushBlock([
             `  ${paint.bold('主题')} ${paint.dim('· /theme dark|light|plain 切换（NO_COLOR 恒定无色）')}`,
-            ...(['dark', 'light', 'plain'] as const).map((name) =>
+            ...THEME_NAMES.map((name) =>
               name === themeName
                 ? `  ${paint.cyan(paint.bold(`❯ ${name}`))}`
                 : `    ${paint.dim(name)}`,
@@ -877,14 +891,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           ]);
           return true;
         }
-        if (arg !== 'dark' && arg !== 'light' && arg !== 'plain') {
-          store.pushBlock([paint.red(`  ✗ 未知主题：${arg}（可选 dark / light / plain）`)]);
+        const target = themeTarget(arg);
+        if (target === undefined) {
+          store.pushBlock([paint.red(`  ✗ ${themeUnknownMessage(arg)}`)]);
           return true;
         }
-        themeName = arg;
-        paint = resolvePalette(arg, caps);
+        themeName = target;
+        paint = resolvePalette(target, caps);
         screen.invalidate();
-        store.pushBlock([paint.dim(`  主题已切换为 ${arg}`)]);
+        store.pushBlock([paint.dim(`  ${themeSwitchedMessage(target)}`)]);
         return true;
       }
       case '/plugins': {
@@ -949,7 +964,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
           recordWorkspace: recordSessionWorkspace,
           seedContext: seedContextFragment,
         }));
-        store.pushBlock([paint.dim(`  新会话：${session.file}`)]);
+        store.pushBlock([paint.dim(`  ${newSessionLine(session.file)}`)]);
         return true;
       }
       case '/compact': {
@@ -957,9 +972,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         try {
           const outcome = await runCompact('manual');
           endCompactWait();
-          store.pushBlock([
-            `${paint.green('  ✓ 已压缩')} ${paint.dim(`· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s`)}`,
-          ]);
+          store.pushBlock([compactDoneLine(outcome)]);
         } catch (err) {
           endCompactWait();
           if (compactCancelled) {
@@ -980,12 +993,14 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }
       case '/init': {
         const file = await writeAgentsMd(rootDir);
-        store.pushBlock([paint.green(`  已写入 ${path.basename(file)}`)]);
+        store.pushBlock([paint.green(`  ${agentsMdWrittenLine(file)}`)]);
         return true;
       }
-      default:
-        store.pushBlock([`${paint.red(`  未知命令：${cmd}`)} ${paint.dim('（输入 /help 查看命令）')}`]);
+      default: {
+        const unknown = unknownCommandParts(cmd);
+        store.pushBlock([`${paint.red(`  ${unknown.head}`)} ${paint.dim(unknown.hint)}`]);
         return true;
+      }
     }
   }
 

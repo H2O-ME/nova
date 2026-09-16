@@ -4,14 +4,56 @@
  * resetSessionCache 只在 TUI 有、/plugins 两壳信息量不一致、/session 命中率
  * 一个一位小数一个取整。纯函数便于 commands.test 直接断言。
  */
+import path from 'node:path';
 import { errMessage, Session, emptyStats, type AgentMessage, type Session as SessionT, type Usage, type UsageStats } from '@nova-agent/core';
-import { APPROVAL_ORDER } from '@nova-agent/tui-view';
+import { APPROVAL_ORDER, approvalLabel, padDisplay } from '@nova-agent/tui-view';
+import type { ApprovalMode } from '@nova-agent/plugins';
 import { resetUsageAnchors, type UsageAnchorState } from './runner-loop.js';
 
 /** /approvals：循环切换到下一档位（只读 → 自动编辑 → 全部放行 → 只读…）。 */
-export function nextApprovalMode(current: string): string {
-  const idx = APPROVAL_ORDER.indexOf(current as (typeof APPROVAL_ORDER)[number]);
+export function nextApprovalMode(current: ApprovalMode): ApprovalMode {
+  const idx = APPROVAL_ORDER.indexOf(current);
   return APPROVAL_ORDER[(idx + 1) % APPROVAL_ORDER.length] ?? 'read-only';
+}
+
+/** /approvals 切换后的反馈行正文（两壳同串；gutter/颜色由调用方加）。 */
+export function approvalSwitchLine(mode: ApprovalMode): string {
+  return `审批档位：${approvalLabel(mode)}`;
+}
+
+/** /help：命令清单行（usage 列宽 24、CJK 安全；颜色由调用方决定）。 */
+export function helpRows(specs: { usage: string; description: string }[]): string[] {
+  return specs.map((spec) => `  ${padDisplay(spec.usage, 24)}${spec.description}`);
+}
+
+/** /theme：三候选主题（开屏 --theme 校验与命令面板共用同一清单）。 */
+export const THEME_NAMES = ['dark', 'light', 'plain'] as const;
+export type ThemeName = (typeof THEME_NAMES)[number];
+
+/** /theme 参数校验：合法返回主题名，未知返回 undefined。 */
+export function themeTarget(arg: string): ThemeName | undefined {
+  return (THEME_NAMES as readonly string[]).includes(arg) ? (arg as ThemeName) : undefined;
+}
+
+/** /theme 未知参数与切换成功的反馈正文（两壳同串）。 */
+export function themeUnknownMessage(arg: string): string {
+  return `未知主题：${arg}（可选 dark / light / plain）`;
+}
+export function themeSwitchedMessage(name: ThemeName): string {
+  return `主题已切换为 ${name}`;
+}
+
+/** /new 与 /init 的反馈行正文（两壳同串）。 */
+export function newSessionLine(file: string): string {
+  return `新会话：${file}`;
+}
+export function agentsMdWrittenLine(file: string): string {
+  return `已写入 ${path.basename(file)}`;
+}
+
+/** 未知命令：正文与提示拆两段（TUI 两段异色；repl 连排即整句）。 */
+export function unknownCommandParts(cmd: string): { head: string; hint: string } {
+  return { head: `未知命令：${cmd}`, hint: '（输入 /help 查看命令）' };
 }
 
 /** /session：缓存命中率（保留一位小数；无 promptTokens 时 0.0）。 */

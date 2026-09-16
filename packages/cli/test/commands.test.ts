@@ -4,12 +4,22 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createModelListCache, filterCommands, modeOverviewRows, COMMAND_SPECS } from '../src/commands.js';
 import {
+  agentsMdWrittenLine,
+  approvalSwitchLine,
   cacheHitPct,
+  helpRows,
   lastCacheHitPct,
   modelListError,
+  newSessionLine,
   nextApprovalMode,
   openFreshSession,
+  pluginCommandLine,
   pluginToolLine,
+  THEME_NAMES,
+  themeSwitchedMessage,
+  themeTarget,
+  themeUnknownMessage,
+  unknownCommandParts,
 } from '../src/command-core.js';
 import { createUsageAnchors } from '../src/runner-loop.js';
 
@@ -102,6 +112,40 @@ describe('command-core', () => {
     expect(pluginToolLine('builtin', 'read_file', '读取')).toBe('插件=builtin · 工具=read_file · 权限=读取');
     expect(modelListError(new Error('timeout'))).toBe('模型列表获取失败：timeout');
     expect(modelListError('boom')).toBe('模型列表获取失败：boom');
+  });
+
+  // 阶段 D 命令核下沉：以下正文单源被 repl 与 TUI 两个 switch 消费，
+  // 漂移（如 repl /plugins 曾缺命令行）从此有红测试可钉。
+  it('/approvals switch line names the tier via the shared label', () => {
+    expect(approvalSwitchLine('auto-edit')).toContain('自动编辑');
+    expect(approvalSwitchLine('read-only')).toContain('只读');
+  });
+
+  it('helpRows render every spec with a fixed-width usage column', () => {
+    const rows = helpRows(COMMAND_SPECS);
+    expect(rows).toHaveLength(COMMAND_SPECS.length);
+    expect(rows[0]).toMatch(/^ {2}\/\S+/);
+    const spec = COMMAND_SPECS.find((s) => s.usage.includes('/compact'))!;
+    expect(rows.find((r) => r.includes('/compact'))).toContain(spec.description);
+  });
+
+  it('theme accepts exactly the three declared names', () => {
+    for (const name of THEME_NAMES) {
+      expect(themeTarget(name)).toBe(name);
+    }
+    expect(themeTarget('cobalt')).toBeUndefined();
+    expect(themeTarget('DARK')).toBeUndefined();
+    expect(themeUnknownMessage('cobalt')).toContain('cobalt');
+    expect(themeSwitchedMessage('light')).toContain('light');
+  });
+
+  it('new/init/unknown lines share their copy between shells', () => {
+    expect(newSessionLine('/tmp/a.jsonl')).toBe('新会话：/tmp/a.jsonl');
+    expect(agentsMdWrittenLine('/proj/AGENTS.md')).toBe('已写入 AGENTS.md');
+    const unknown = unknownCommandParts('/nope');
+    expect(unknown.head).toBe('未知命令：/nope');
+    expect(unknown.hint).toContain('/help');
+    expect(pluginCommandLine('p', 'hi', 'desc')).toBe('插件=p · /hi — desc');
   });
 
   it('openFreshSession seeds a fragment and resets stats + anchors', async () => {
