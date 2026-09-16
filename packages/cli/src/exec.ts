@@ -6,15 +6,15 @@ import {
   type ChatProvider,
 } from '@nova-agent/core';
 import type { ApprovalMode } from '@nova-agent/plugins';
+import { detectCaps } from '@nova-agent/tui';
+import { plainPalette, resolvePalette, statusLine, toolDoneLine, toolStartLine, type Palette } from '@nova-agent/tui-view';
 import { wrapHeadlessAutoCompact } from './auto-compact.js';
 import { compactSession } from './compact.js';
 import type { Config } from './config.js';
 import { createNotifier } from './notify.js';
 import { createSessionRuntime } from './session-runtime.js';
-import { createHeadlessPermission } from './runner-shared.js';
+import { agentRunBase, attachHooks, createHeadlessPermission, LONG_TASK, persistMissingToolResults, ToolTiming } from './runner-shared.js';
 import { commitUserMessage, createRunnerBookkeeping, createTurnNotifier, isUserInterrupt, llmRetryNotice } from './runner-loop.js';
-import { palette, plainPalette, statusLine, toolDoneLine, toolStartLine } from './ui.js';
-import { agentRunBase, LONG_TASK, persistMissingToolResults, ToolTiming } from './runner-shared.js';
 
 /**
  * `--json` 模式下 AgentEvent 之外的两类控制行（AGENTS.md §2 记载的 schema）。
@@ -48,7 +48,10 @@ export interface ExecOptions {
 export async function runExec(opts: ExecOptions): Promise<void> {
   const { rootDir, config, prompt, json } = opts;
   const write = opts.out ?? ((text: string) => process.stdout.write(text));
-  const paint = opts.out === undefined && process.stdout.isTTY === true ? palette : plainPalette;
+  // 调色板装配单源 resolvePalette（与 repl/tui 同路）：开始尊重 ui.theme 与
+  // NO_COLOR/TERM=dumb；注入 sink（测试）恒无色。
+  const caps = detectCaps();
+  const paint: Palette = opts.out === undefined ? resolvePalette(config.ui?.theme ?? 'dark', caps) : plainPalette;
 
   const rt = await createSessionRuntime({
     rootDir,
@@ -65,7 +68,9 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   // Non-interactive: nobody can answer an approval prompt, so requests are denied.
   // (No audit trail: exec never asks, so no ask-path decisions exist to log.)
   const permission = createHeadlessPermission(rt.approvalMode);
-  const hooks = host.agentHooks(permission);
+  // attachHooks 同时登记 runtime.hooksRef：exec 此前漏登记，嵌套 subagent
+  // 读不到父钩子链、绕开 never 审批门执行工具（无人值守下是真缺口）。
+  const hooks = attachHooks(host, permission, rt.hooksRef);
   // Auto-compact BEYOND user-message boundaries: exec runs ONE runAgent over
   // the whole task, so the interactive runners' boundary checks can never
   // fire here. The beforeLLMCall hook is the per-turn interception point —
@@ -148,7 +153,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   function renderHuman(
     event: AgentEvent,
     sink: (text: string) => void,
-    p: typeof palette | typeof plainPalette,
+    p: Palette,
   ): void {
     switch (event.type) {
       case 'text_delta':

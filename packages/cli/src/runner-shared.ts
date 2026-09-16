@@ -12,14 +12,26 @@ import type {
   ChatRequest,
   JobRegistry,
   Session,
+  ToolCall,
   ToolDefinition,
   ToolResultMessage,
   Usage,
 } from '@nova-agent/core';
 import { DEFAULT_MAX_TURNS, newId, NOT_EXECUTED_GUIDANCE } from '@nova-agent/core';
 import path from 'node:path';
-import { PermissionService, type ApprovalMode, type AskFn } from '@nova-agent/plugins';
-import { EXEC_DONE_NOTIFY_MS, LONG_TASK_DONE_MS, LONG_TASK_ERROR_MS } from '@nova-agent/tui-view';
+import {
+  PermissionService,
+  type ApprovalMode,
+  type AskFn,
+  type PluginHost,
+} from '@nova-agent/plugins';
+import {
+  EXEC_DONE_NOTIFY_MS,
+  LONG_TASK_DONE_MS,
+  LONG_TASK_ERROR_MS,
+  toolArgSummary,
+  toolLabel,
+} from '@nova-agent/tui-view';
 import { shouldCompactBefore } from './auto-compact.js';
 import { novaHome, type Config } from './config.js';
 import type { CompactedSession } from './compact.js';
@@ -102,6 +114,49 @@ export function approvalPrompt(
         ? '（always 按命令程序前缀记忆，如 git status → 放行后续 git …；含 &&/;/| 的复合命令只按整条放行）'
         : '',
   };
+}
+
+/**
+ * 审批效果预览单源（edit_file 的 diff 等）：在宿主里查工具声明的 preview，
+ * best-effort 执行——预览是锦上添花，失败/缺席绝不阻断审批流。返回行数组，
+ * 呈现留给调用方（REPL 逐行 dim 打印；TUI 弹窗截到 APPROVAL_PREVIEW_MAX_ROWS）。
+ * 此前 repl 与 tui 各写一份同样的「find 工具 → preview → trim/split」加 try/catch。
+ */
+export async function approvalEffectPreview(
+  host: PluginHost,
+  rootDir: string,
+  call: ToolCall,
+): Promise<string[]> {
+  const entry = host.toolEntries.find((e) => e.tool.name === call.name);
+  if (entry?.tool.preview === undefined) return [];
+  try {
+    const text = (await entry.tool.preview(call.args, { rootDir })).trim();
+    return text.length > 0 ? text.split('\n') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 审批 toast 正文：工具标签 + 参数摘要（名称感知截断，宽 80）——repl/tui 共用。 */
+export function approvalNotifyBody(call: ToolCall): string {
+  return `${toolLabel(call.name)} · ${toolArgSummary(call.name, call.rawArgs, 80)}`;
+}
+
+/**
+ * hooks 重绑单源：钩子链（审批门 + PTC 投影）派生自 host + permission，且必须
+ * 同步 runtime.hooksRef——subagent 嵌套调用读它、走与父相同的审批门与管线。
+ * `agentHooks(permission)` + `hooksRef.current =` 这对操作曾被各 runner 的初始
+ * 装配与每次 rebuild 手写（且 TUI 初始路径漏了后者、exec 整个漏了——嵌套调用
+ * 曾绕开门）。
+ */
+export function attachHooks(
+  host: PluginHost,
+  permission: PermissionService,
+  hooksRef: { current: AgentHooks | undefined },
+): AgentHooks {
+  const hooks = host.agentHooks(permission);
+  hooksRef.current = hooks;
+  return hooks;
 }
 
 /**

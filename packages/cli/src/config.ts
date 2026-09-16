@@ -113,6 +113,11 @@ export function sessionDateBucket(now: Date = new Date()): string {
   return localDateKey(now).join('/');
 }
 
+/** 当天会话目录（启动装配与交互 runner 的 /new 同一来源，跨天自动换桶）。 */
+export function newSessionDir(): string {
+  return path.join(sessionsRoot(), sessionDateBucket());
+}
+
 /** 本地时区的 YYYY/MM/DD 分量（context 片段的 today 与日期桶共用同源）。 */
 export function localDateKey(now: Date = new Date()): [string, string, string] {
   const yyyy = String(now.getFullYear());

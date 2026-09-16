@@ -7,9 +7,10 @@ import type { Config } from './config.js';
 import { createSessionRuntime } from './session-runtime.js';
 import { sessionsRoot } from './config.js';
 import { recordSessionWorkspace } from './sessions.js';
-import { agentRunBase, createHeadlessPermission, persistMissingToolResults } from './runner-shared.js';
+import { agentRunBase, attachHooks, createHeadlessPermission, persistMissingToolResults } from './runner-shared.js';
 import { createRunnerBookkeeping, commitUserMessage } from './runner-loop.js';
-import { palette, plainPalette } from './ui.js';
+import { detectCaps } from '@nova-agent/tui';
+import { resolvePalette } from '@nova-agent/tui-view';
 
 export interface QqBotOptions {
   rootDir: string;
@@ -31,7 +32,9 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
   if (qq === undefined) {
     throw new Error('qqbot 模式需要在 ~/.nova/config.json 配置 qqbot.appId 与 qqbot.clientSecret（密钥可用 {env:NAME} 引用）');
   }
-  const paint = process.stdout.isTTY === true ? palette : plainPalette;
+  // 调色板装配单源 resolvePalette（与 repl/tui 同路）：开始尊重 ui.theme 与
+  // NO_COLOR/TERM=dumb。
+  const paint = resolvePalette(config.ui?.theme ?? 'dark', detectCaps());
 
   const peerSessions = new Map<string, { session: Session; messages: AgentMessage[] }>();
   let current: { session: Session; messages: AgentMessage[] } | undefined;
@@ -51,9 +54,8 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
   });
   // 无人值守：ask 一律拒绝 + never 策略确定性拒绝（exec 同款，装配单源）。
   const permission = createHeadlessPermission(rt.approvalMode);
-  const hooks = rt.host.agentHooks(permission);
+  const hooks = attachHooks(rt.host, permission, rt.hooksRef);
   hooksRef = hooks;
-  rt.hooksRef.current = hooks;
   // 接线单源在 wrapHeadlessAutoCompact（splice 原位契约 + 文案）；qqbot
   // 压缩成功不播提示。
   wrapHeadlessAutoCompact(hooks, {

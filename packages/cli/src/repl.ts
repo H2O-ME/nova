@@ -10,10 +10,10 @@ import { errMessage,
   type UsageStats,
 } from '@nova-agent/core';
 import { type ApprovalMode, type AskFn } from '@nova-agent/plugins';
-import { sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { newSessionDir, type Config } from './config.js';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession } from './compact.js';
-import { COMMAND_SPECS, createModelListCache, modeOverviewRows } from './commands.js';
+import { COMMAND_SPECS, modeOverviewRows } from './commands.js';
 import { resolvePalette } from '@nova-agent/tui-view';
 import {
   cacheHitPct,
@@ -45,13 +45,17 @@ import {
   banner,
   fitTail,
   permissionLabel,
+  toolArgSummary,
   toolDoneLine,
   toolLabel,
   toolStartLine,
 } from './ui.js';
 import {
   agentRunBase,
+  approvalEffectPreview,
+  approvalNotifyBody,
   approvalPrompt,
+  attachHooks,
   createApprovalService,
   createAutoCompact,
   persistMissingToolResults,
@@ -157,8 +161,8 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   let messages: AgentMessage[] = rt.messages;
   let session: Session = rt.session;
   const client = rt.client;
-  /** 站点模型目录（GET /models），/model 用；60s 缓存避免连续操作反复请求。 */
-  const fetchModelList = createModelListCache(() => client.listModels());
+  /** 站点模型目录缓存由 runtime 单源装配（/model 用）。 */
+  const fetchModelList = rt.fetchModelList;
   const stats: UsageStats = rt.stats;
   const jobs = rt.jobs;
   // 可变：switch_workspace 工具会在任务中重指工作区（rebuildHost 重建工具根）。
@@ -175,7 +179,6 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   // CURRENT session/messages bindings (never rt.session — see its docstring).
   const seedContextFragment = rt.seedContextFragment;
   // /new creates a fresh session in the current date bucket (cross-day runs).
-  const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
   let sessionsDir = newSessionDir();
 
   const pluginNames = [...new Set(host.toolEntries.map((e) => e.plugin))].join(',') || 'none';
@@ -236,25 +239,19 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const askApproval: AskFn = async (call, kind) => {
     // Best-effort effect preview (edit_file's diff etc.) above the prompt —
     // the user approves what the call WILL do, not just the arg JSON.
-    const entry = host.toolEntries.find((e) => e.tool.name === call.name);
-    if (entry !== undefined && entry.tool.preview !== undefined) {
-      try {
-        const preview = (await entry.tool.preview(call.args, { rootDir })).trim();
-        if (preview.length > 0) {
-          for (const line of preview.split('\n')) console.log(paint.dim(`  ${line}`));
-        }
-      } catch {
-        // Preview is a nicety; a failing one must not block the approval flow.
-      }
+    for (const line of await approvalEffectPreview(host, workspaceRoot, call)) {
+      console.log(paint.dim(`  ${line}`));
     }
-    const argsPreview = call.rawArgs.length > 160 ? `${call.rawArgs.slice(0, 160)}…` : call.rawArgs;
+    // 参数摘要单源 toolArgSummary（与 TUI 弹窗/toast 同一名称感知截断）——
+    // 此前 repl 用 raw JSON 硬切 160，同一调用两种观感。
+    const argsPreview = toolArgSummary(call.name, call.rawArgs, 160);
     const { prompt, alwaysScopeNote } = approvalPrompt(
       permissionLabel(kind),
       toolLabel(call.name),
       argsPreview,
       kind,
     );
-    notify('需要审批', `${toolLabel(call.name)} · ${argsPreview.slice(0, 80)}`);
+    notify('需要审批', approvalNotifyBody(call));
     approvalPending = true;
     let raw: string | null;
     try {
@@ -270,8 +267,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     return 'deny';
   };
   const permission = createApprovalService(approvalMode, askApproval, () => session);
-  let hooks: import('@nova-agent/core').AgentHooks = host.agentHooks(permission);
-  rt.hooksRef.current = hooks;
+  let hooks = attachHooks(host, permission, rt.hooksRef);
   /**
    * switch_workspace 的运行侧通道：重指工具根 + 技能/环境片段，重建 host。
    * 与 TUI 的 applyWorkspace 同一契约（新根自下一次工具分发/下一轮生效）。
@@ -286,8 +282,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       workspace: { onChange: (target: string) => applyWorkspace(target) },
     });
     host = next;
-    hooks = next.agentHooks(permission);
-    rt.hooksRef.current = hooks;
+    hooks = attachHooks(next, permission, rt.hooksRef);
     console.log(paint.dim(`  ✓ 工作区已切换到 ${dir}`));
   };
   applyWorkspaceRef = applyWorkspace;

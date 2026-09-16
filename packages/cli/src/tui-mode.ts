@@ -32,12 +32,7 @@ import {
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession, surfaceDivergence } from './compact.js';
 import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
-import {
-  COMMAND_SPECS,
-  createModelListCache,
-  filterCommands,
-  type CommandSpec,
-} from './commands.js';
+import { COMMAND_SPECS, filterCommands, type CommandSpec } from './commands.js';
 import {
   cacheHitPct,
   lastCacheHitPct,
@@ -48,7 +43,7 @@ import {
   pluginCommandLine,
   pluginToolLine,
 } from './command-core.js';
-import { novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { newSessionDir, novaHome, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
 import { renderMarkdownLite } from './markdown.js';
@@ -89,7 +84,15 @@ import {
   type StopKind,
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
-import { agentRunBase, createApprovalService, createAutoCompact, persistMissingToolResults } from './runner-shared.js';
+import {
+  agentRunBase,
+  approvalEffectPreview,
+  approvalNotifyBody,
+  attachHooks,
+  createApprovalService,
+  createAutoCompact,
+  persistMissingToolResults,
+} from './runner-shared.js';
 import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
@@ -147,7 +150,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // 会话按日期归档（codex 式）：~/.nova/sessions/YYYY/MM/DD/，全局不分项目；
   // 溢出缓存在 ~/.nova/cache/tool-outputs/<session-id>/（id 全局唯一）。
   // 工作区（运行 nova 的目录）零写入。
-  const newSessionDir = (): string => path.join(sessionsRoot(), sessionDateBucket());
   let sessionsDir = newSessionDir();
 
   // Visibility for nested subagent runs: the runner owns the live row. The
@@ -164,8 +166,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   let messages: AgentMessage[] = rt.messages;
   let session: Session = rt.session;
   const client = rt.client;
-  /** 站点模型目录（GET /models），/model 用；60s 缓存避免连续操作反复请求。 */
-  const fetchModelList = createModelListCache(() => client.listModels());
+  /** 站点模型目录缓存由 runtime 单源装配（/model 用）。 */
+  const fetchModelList = rt.fetchModelList;
   const jobs = rt.jobs;
   const stats: UsageStats = rt.stats;
   // 会话级缓存命中累计：provider 可能随机分流到不报缓存的后端，单轮 `stats`
@@ -255,8 +257,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       },
     });
     host = next;
-    hooks = next.agentHooks(permission);
-    rt.hooksRef.current = hooks;
+    hooks = attachHooks(next, permission, rt.hooksRef);
     // The tool set changed: the usage anchor's implicit assumption (schema
     // bytes unchanged since the anchored request) is void. Reset so the next
     // pre-flight estimate takes the full-estimate path instead of a delta
@@ -290,19 +291,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // Best-effort effect preview (edit_file's diff etc.) inside the popup —
       // the user approves what the call WILL do, not just the arg JSON.
       // Rendered when it lands; dropped when the popup already closed.
-      const entry = host.toolEntries.find((e) => e.tool.name === call.name);
-      if (entry !== undefined && entry.tool.preview !== undefined) {
-        void Promise.resolve(entry.tool.preview(call.args, { rootDir }))
-          .then((text) => {
-            if (store.approval !== undefined && store.approval.call.id === call.id) {
-              store.approvalPreview = text.trim().split('\n').slice(0, APPROVAL_PREVIEW_MAX_ROWS);
-              scheduleRender();
-            }
-          })
-          .catch(() => {});
-      }
+      void approvalEffectPreview(host, rootDir, call).then((lines) => {
+        if (lines.length === 0) return;
+        if (store.approval !== undefined && store.approval.call.id === call.id) {
+          store.approvalPreview = lines.slice(0, APPROVAL_PREVIEW_MAX_ROWS);
+          scheduleRender();
+        }
+      });
       store.scrollFromEnd = 0;
-      notify('需要审批', `${toolLabel(call.name)} · ${toolArgSummary(call.name, call.rawArgs, 80)}`);
+      notify('需要审批', approvalNotifyBody(call));
       scheduleRender();
     });
   const permission = createApprovalService(approvalMode, askApproval, () => session);
@@ -310,7 +307,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // SAME host instance it reads tools from (one rebuild = tools + projection).
   // runtime 初始 host 已按 config 的 code.mode 正确装配（buildHost 单源），
   // 无需启动即重建。
-  let hooks = host.agentHooks(permission);
+  // attachHooks 同时登记 runtime.hooksRef——此前 TUI 初始路径漏登记（只有
+  // rebuildHost 才登记），开机后第一次 rebuild 之前嵌套 subagent 读不到父
+  // 审批链、绕门执行工具。
+  let hooks = attachHooks(host, permission, rt.hooksRef);
   const systemPrompt = rt.systemPrompt;
 
   // ---- ui state ---------------------------------------------------------

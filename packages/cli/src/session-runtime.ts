@@ -20,7 +20,8 @@ import {
   type SkillMetadata,
 } from '@nova-agent/plugins';
 import { collectProjectDocs } from './agents-md.js';
-import { localDateKey, NOVA_DIR, novaHome, sessionDateBucket, sessionsRoot, type Config } from './config.js';
+import { createModelListCache } from './commands.js';
+import { localDateKey, newSessionDir, NOVA_DIR, novaHome, type Config } from './config.js';
 import { buildContextFragment, CONTEXT_FRAGMENT_ID_PREFIX, declaredShell, type SessionEnvInfo } from './context.js';
 import { recordSessionWorkspace } from './sessions.js';
 import { buildSystemPrompt } from './system-prompt.js';
@@ -57,6 +58,8 @@ export interface SessionRuntime {
   session: Session;
   messages: AgentMessage[];
   client: OpenAICompatClient;
+  /** 站点模型目录（GET /models）带 60s 缓存：交互 runner 的 /model 共用，不再各装一份。 */
+  fetchModelList: () => Promise<string[]>;
   host: PluginHost;
   skills: SkillMetadata[];
   sessionEnv: SessionEnvInfo;
@@ -122,7 +125,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
   const { rootDir, config } = opts;
 
   // Session: codex-style date-archived JSONL, workspace zero-write.
-  const sessionsDir = path.join(sessionsRoot(), sessionDateBucket());
+  const sessionsDir = newSessionDir();
   let messages: AgentMessage[] = [];
   let session: Session;
   if (opts.resumeFile) {
@@ -142,6 +145,8 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     ...(config.provider.maxTokens !== undefined ? { maxTokens: config.provider.maxTokens } : {}),
   });
 
+  /** 站点模型目录（GET /models），/model 用；60s 缓存避免连续操作反复请求。 */
+  const fetchModelList = createModelListCache(() => client.listModels());
   const stats = emptyStats();
   const jobs = new JobRegistry();
   /**
@@ -251,6 +256,7 @@ export async function createSessionRuntime(opts: SessionRuntimeOptions): Promise
     session,
     messages,
     client,
+    fetchModelList,
     host,
     skills,
     sessionEnv,
