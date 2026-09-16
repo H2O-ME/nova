@@ -96,8 +96,9 @@ pnpm dev          # tsx 直跑 cli（免构建，改完即生效）
 pnpm nova         # 交互运行（跑 packages/cli/dist，改完 src 需先 build）
 pnpm test         # vitest run（注入 fetch + SSE fixture，不发真实请求）
 pnpm typecheck    # tsc --noEmit（逐包）
-pnpm lint         # oxlint packages
-pnpm verify       # build + typecheck + test 一条龙
+pnpm lint         # oxlint packages（含 complexity/max-depth/长函数 warn）
+pnpm check        # 本地快环：lint + 结构棘轮 + 变更相关测试（秒级）
+pnpm verify       # 全环：build + typecheck + test + 结构棘轮（提交前跑）
 pnpm changeset    # 写变更集（面向用户改动记录）
 pnpm release      # 升版 + 同步根包版本 + commit + tag 一条龙
 ```
@@ -106,7 +107,7 @@ pnpm release      # 升版 + 同步根包版本 + commit + tag 一条龙
 
 - **测试不联网**：单元（纯函数 + `plainPalette` 确定断言）/ ai 层注入 `fetch` + SSE fixture / 接缝集成（全管道、resume 投影一致性、帧装配超宽检查）三层体系——当前 **54 个测试文件、578 个用例**，提交前 `pnpm verify` + `pnpm lint` 全绿。
 - **跨平台**：Linux / Windows 为测试目标（macOS 顺带兼容）；所有路径走 `node:path` + 抽象层，禁止硬编码分隔符；bash 工具 Windows 优先 Git Bash、回落 PowerShell 并强制 UTF-8。
-- **里程碑**：M1（agent 核心）→ M8.4（TUI 实用性），已发行 0.3.0；进度与决策全在 [AGENTS.md §7](./AGENTS.md)。
+- **里程碑**：M1（agent 核心）→ M8.5（TUI 现代化）已发行 0.3.0，M9（治理换血与结构棘轮）进行中；逐条机制详录归档 [docs/MILESTONES.md](./docs/MILESTONES.md)，现状与方向见 [AGENTS.md §7](./AGENTS.md)。
 - **信任姿态**：bash / `run_code` 在本机执行任意命令（审批门 + 工作区边界，无沙箱）；重隔离建议容器化运行。
 
 ---
