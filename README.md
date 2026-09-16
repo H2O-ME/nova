@@ -7,8 +7,8 @@
 ![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6)
 ![ESM-only](https://img.shields.io/badge/ESM--only-green)
-![Tests 517 passing](https://img.shields.io/badge/tests-517%20passing-2ea44f)
-![Version 0.2.0](https://img.shields.io/badge/version-0.2.0-e8a13c)
+![Tests 578 passing](https://img.shields.io/badge/tests-578%20passing-2ea44f)
+![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-e8a13c)
 
 > 完整设计、约定与里程碑见 [AGENTS.md](./AGENTS.md)（人机共读的**唯一权威文档**）；版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)，公共 API 定义见其 §10。
 
@@ -104,9 +104,9 @@ pnpm release      # 升版 + 同步根包版本 + commit + tag 一条龙
 
 ## 开发与质量
 
-- **测试不联网**：单元（纯函数 + `plainPalette` 确定断言）/ ai 层注入 `fetch` + SSE fixture / 接缝集成（全管道、resume 投影一致性、帧装配超宽检查）三层体系——当前 **48 个测试文件、517 个用例**，提交前 `pnpm verify` + `pnpm lint` 全绿。
+- **测试不联网**：单元（纯函数 + `plainPalette` 确定断言）/ ai 层注入 `fetch` + SSE fixture / 接缝集成（全管道、resume 投影一致性、帧装配超宽检查）三层体系——当前 **54 个测试文件、578 个用例**，提交前 `pnpm verify` + `pnpm lint` 全绿。
 - **跨平台**：Linux / Windows 为测试目标（macOS 顺带兼容）；所有路径走 `node:path` + 抽象层，禁止硬编码分隔符；bash 工具 Windows 优先 Git Bash、回落 PowerShell 并强制 UTF-8。
-- **里程碑**：M1（agent 核心）→ M7.11（压缩体验与保真），已发行 0.2.0；进度与决策全在 [AGENTS.md §7](./AGENTS.md)。
+- **里程碑**：M1（agent 核心）→ M8.4（TUI 实用性），已发行 0.3.0；进度与决策全在 [AGENTS.md §7](./AGENTS.md)。
 - **信任姿态**：bash / `run_code` 在本机执行任意命令（审批门 + 工作区边界，无沙箱）；重隔离建议容器化运行。
 
 ---
