@@ -17,23 +17,7 @@ import {
   type ToolResultMessage,
   type UserMessage,
 } from '../src/index.js';
-
-function scriptedProvider(scripts: StreamEvent[][]): ChatProvider {
-  let call = 0;
-  return {
-    async *stream() {
-      const events = scripts[call] ?? [];
-      call += 1;
-      for (const ev of events) yield ev;
-    },
-  };
-}
-
-async function collect(gen: AsyncGenerator<AgentEvent>): Promise<AgentEvent[]> {
-  const events: AgentEvent[] = [];
-  for await (const ev of gen) events.push(ev);
-  return events;
-}
+import { scriptedProvider, collect } from './helpers/scripted-provider.js';
 
 describe('runAgent', () => {
   it('streams a plain text answer and records usage', async () => {

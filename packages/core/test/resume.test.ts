@@ -22,22 +22,10 @@ import {
   Session,
   type AgentEvent,
   type AgentMessage,
-  type ChatProvider,
   type ChatRequest,
   type StreamEvent,
 } from '@nova-agent/core';
-
-function scriptedProvider(scripts: StreamEvent[][], capture?: ChatRequest[]): ChatProvider {
-  let call = 0;
-  return {
-    async *stream(req: ChatRequest) {
-      capture?.push(req);
-      const events = scripts[call] ?? [];
-      call += 1;
-      for (const ev of events) yield ev;
-    },
-  };
-}
+import { scriptedProvider } from './helpers/scripted-provider.js';
 
 describe('save → resume → new turn round-trip', () => {
   it('a resumed session feeds the projected history (user + assistant) into the next request', async () => {

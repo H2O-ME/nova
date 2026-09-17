@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { NOT_EXECUTED_GUIDANCE, runAgent, type AgentEvent, type AgentMessage, type ChatProvider, type JobNotice, type StreamEvent } from '../src/index.js';
+import { NOT_EXECUTED_GUIDANCE, runAgent, type AgentEvent, type AgentMessage, type JobNotice, type StreamEvent } from '../src/index.js';
+import { scriptedProvider } from './helpers/scripted-provider.js';
 
 /**
  * 弃用路径（M8.3-9 前在 core 测试中零命中）：消费者中途 break/throw 会让
@@ -7,17 +8,6 @@ import { NOT_EXECUTED_GUIDANCE, runAgent, type AgentEvent, type AgentMessage, ty
  * 未应答 tool_calls 合成 NOT_EXECUTED_GUIDANCE 结果——没有任何 in-band 错误
  * 处理路径覆盖，只能这样直接钉住。
  */
-
-function scriptedProvider(scripts: StreamEvent[][]): ChatProvider {
-  let call = 0;
-  return {
-    async *stream() {
-      const events = scripts[call] ?? [];
-      call += 1;
-      for (const ev of events) yield ev;
-    },
-  };
-}
 
 const TOOL_CALL_SCRIPT: StreamEvent[] = [
   { type: 'tool_call_delta', index: 0, id: 'c1', name: 'bash', argsDelta: '{"command":"echo hi"}' },

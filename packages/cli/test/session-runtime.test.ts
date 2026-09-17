@@ -17,27 +17,11 @@ import {
 import { agentRunBase, createApprovalService, persistMissingToolResults } from '../src/runner-shared.js';
 import { createSessionRuntime } from '../src/session-runtime.js';
 import { sessionDateBucket, type Config } from '../src/config.js';
+import { withFakeHome } from './helpers/with-fake-home.js';
 
 const config: Config = {
   provider: { baseURL: 'https://unused.example.com/v1', apiKey: 'sk-test', model: 'test-model' },
 };
-
-/** Isolate os.homedir() (session root + user skills dir) in a fake home. */
-async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(path.join(tmpdir(), 'nova-sr-home-'));
-  const prevProfile = process.env['USERPROFILE'];
-  const prevHome = process.env['HOME'];
-  process.env['USERPROFILE'] = home;
-  process.env['HOME'] = home;
-  try {
-    return await fn(home);
-  } finally {
-    if (prevProfile === undefined) delete process.env['USERPROFILE'];
-    else process.env['USERPROFILE'] = prevProfile;
-    if (prevHome === undefined) delete process.env['HOME'];
-    else process.env['HOME'] = prevHome;
-  }
-}
 
 const executeCall = (command: string): ToolCall => ({
   id: 'c1',

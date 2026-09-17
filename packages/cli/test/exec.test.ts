@@ -2,25 +2,15 @@ import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Session, type ChatProvider, type ChatRequest, type StreamEvent } from '@nova-agent/core';
+import { Session, type ChatRequest, type StreamEvent } from '@nova-agent/core';
 import { runExec } from '../src/exec.js';
 import { sessionDateBucket, type Config } from '../src/config.js';
+import { scriptedProvider } from './helpers/scripted-provider.js';
+import { withFakeHome } from './helpers/with-fake-home.js';
 
 const config: Config = {
   provider: { baseURL: 'https://unused.example.com/v1', apiKey: 'sk-test', model: 'test-model' },
 };
-
-function scriptedProvider(scripts: StreamEvent[][], capture?: ChatRequest[]): ChatProvider {
-  let call = 0;
-  return {
-    async *stream(req: ChatRequest) {
-      capture?.push(req);
-      const events = scripts[call] ?? [];
-      call += 1;
-      for (const ev of events) yield ev;
-    },
-  };
-}
 
 const TEXT_ONLY: StreamEvent[] = [
   { type: 'text_delta', text: 'Hello from Nova' },
@@ -31,14 +21,7 @@ const TEXT_ONLY: StreamEvent[] = [
 describe('runExec', () => {
   it('emits JSONL events and persists fragment + prompt + assistant reply under ~/.nova/sessions', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
-    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
-    // os.homedir() re-reads these per call on each platform, so runExec's
-    // sessions root lands in the isolated fake home, never the real ~/.nova.
-    const prevProfile = process.env['USERPROFILE'];
-    const prevHome = process.env['HOME'];
-    process.env['USERPROFILE'] = home;
-    process.env['HOME'] = home;
-    try {
+    await withFakeHome(async (home) => {
       const lines: string[] = [];
       await runExec({
         rootDir: root,
@@ -59,12 +42,7 @@ describe('runExec', () => {
       expect(replayed.messages.map((m) => m.role)).toEqual(['user', 'user', 'assistant']);
       expect(replayed.messages[0]).toMatchObject({ role: 'user', content: expect.stringContaining('<environment>') });
       expect(replayed.messages[2]).toMatchObject({ role: 'assistant', content: 'Hello from Nova' });
-    } finally {
-      if (prevProfile === undefined) delete process.env['USERPROFILE'];
-      else process.env['USERPROFILE'] = prevProfile;
-      if (prevHome === undefined) delete process.env['HOME'];
-      else process.env['HOME'] = prevHome;
-    }
+    });
   });
 
   it('auto-denies execute tools in non-interactive mode and streams human output', async () => {
@@ -98,12 +76,7 @@ describe('runExec', () => {
 
   it('auto-compacts once when over the limit, then fuses when the retained floor stays over it', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
-    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
-    const prevProfile = process.env['USERPROFILE'];
-    const prevHome = process.env['HOME'];
-    process.env['USERPROFILE'] = home;
-    process.env['HOME'] = home;
-    try {
+    await withFakeHome(async (home) => {
       // ~10k tokens by the 4-chars-per-token heuristic: over the 1000-token
       // test limit. Compaction keeps fragment + the 20k-char-capped prompt +
       // summary, so the post-compaction image stays above the limit — the
@@ -168,22 +141,12 @@ describe('runExec', () => {
       expect(types.filter((t) => t === 'compaction/end')).toHaveLength(1);
       const surface = session.deriveMessages();
       expect(surface.at(-1)).toMatchObject({ role: 'assistant', content: 'done compacted' });
-    } finally {
-      if (prevProfile === undefined) delete process.env['USERPROFILE'];
-      else process.env['USERPROFILE'] = prevProfile;
-      if (prevHome === undefined) delete process.env['HOME'];
-      else process.env['HOME'] = prevHome;
-    }
+    });
   });
 
   it('surfaces the compaction fuse warning once in human mode', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
-    const home = await mkdtemp(path.join(tmpdir(), 'nova-home-'));
-    const prevProfile = process.env['USERPROFILE'];
-    const prevHome = process.env['HOME'];
-    process.env['USERPROFILE'] = home;
-    process.env['HOME'] = home;
-    try {
+    await withFakeHome(async () => {
       const out: string[] = [];
       await runExec({
         rootDir: root,
@@ -201,11 +164,6 @@ describe('runExec', () => {
       // Fuse line: compaction stopped because the retained floor itself exceeds
       // the limit — and it must appear exactly once, not per turn.
       expect(text.match(/停用自动压缩/g)).toHaveLength(1);
-    } finally {
-      if (prevProfile === undefined) delete process.env['USERPROFILE'];
-      else process.env['USERPROFILE'] = prevProfile;
-      if (prevHome === undefined) delete process.env['HOME'];
-      else process.env['HOME'] = prevHome;
-    }
+    });
   });
 });
