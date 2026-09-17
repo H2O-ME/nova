@@ -37,7 +37,6 @@ import { openFreshSession, type ThemeName } from './command-core.js';
 import { newSessionDir, novaHome, sessionsRoot, type Config } from './config.js';
 import { expandSkillInvocation, type SessionEnvInfo } from './context.js';
 import { createNotifier } from './notify.js';
-import { renderMarkdownLite } from './markdown.js';
 import { createModelMetaStore, type ModelMeta } from './model-meta.js';
 import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from './sessions.js';
 import { createSessionRuntime } from './session-runtime.js';
@@ -71,7 +70,9 @@ import {
 } from './ui.js';
 import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
 import { TuiCommands } from './tui/commands.js';
+import { ASSISTANT_GUTTER, USER_GUTTER } from './tui/gutters.js';
 import { CODE_MODE_ORDER, ModeSelector } from './tui/mode-select.js';
+import { switchSessionTo } from './tui/session-switch.js';
 import {
   agentRunBase,
   approvalEffectPreview,
@@ -104,17 +105,7 @@ export interface TuiOptions {
   theme?: ThemeName;
 }
 
-// 仅剩 gutter 前缀的原始 ANSI（尾部开态样式是 wrapBlock 挂行契约，见下）。
-const DIM = '\x1b[2m';
-const CYAN = '\x1b[36m';
-const BOLD = '\x1b[1m';
-const RESET = '\x1b[0m';
-
-// 用户/答案行的 gutter 前缀：尾部保持开态样式（BOLD 未闭合、DIM 已复位）是
-// wrapBlock 挂行契约的一部分，Palette 无"开而不闭"原语，故原始码留在壳层，
-// 由 agentTurn（经 TurnProjector）与 switchToSession 回放共用同一份。
-const USER_GUTTER = { first: `  ${CYAN}${BOLD}❯${RESET} ${BOLD}`, rest: `    ${BOLD}` };
-const ASSISTANT_GUTTER = { first: `  ${DIM}•${RESET} `, rest: '    ' };
+// 用户/答案行的 gutter 前缀（开态原始 ANSI 的挂行契约）出壳 ./tui/gutters.ts。
 
 /** Composer prompt prefix; the cursor column math depends on its width. */
 // （COMPOSER_PREFIX / 宽度基准已移至 ./composer.ts——换行预算与光标列数都在那边。）
@@ -833,88 +824,43 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const runCommand = (raw: string): Promise<void> => commands.run(raw);
 
   /**
-   * Switch the live conversation to a past session: rebind the append-only
-   * log, restore the model-visible surface, and replay user/assistant text
-   * into a fresh transcript (tool traffic stays in the log, not re-rendered).
+   * /session 切换（状态机出壳 ./tui/session-switch.ts，阶段 E）：这里只剩
+   * 壳层回调接线。rebind 改变 session/messages 绑定；afterRebind 做缓存亲和
+   * 重绑与清场簿记（与 /new 同理：恢复的历史改变 prompt 前缀，锚点必须归零，
+   * 下一轮重建缓存而非触发伪压缩）。
    */
-  async function switchToSession(entry: { file: string }): Promise<void> {
-    if (store.streaming || store.compactRunning) {
-      store.pushBlock([paint.yellow('  当前轮未结束：先 Esc 中断，再切换会话')]);
-      scheduleRender();
-      return;
-    }
-    let loaded: Session;
-    try {
-      loaded = await Session.open(entry.file);
-    } catch (err) {
-      store.pushBlock([paint.red(`  ✗ 会话读取失败：${errMessage(err)}`)]);
-      scheduleRender();
-      return;
-    }
-    const restored = loaded.deriveMessages();
-    session = loaded;
-    messages = restored;
-    // Corruption tolerance reported at open: surface it like the REPL does —
-    // a skipped damaged row or a repaired tail is worth knowing about.
-    for (const warning of loaded.warnings) {
-      store.pushBlock([paint.yellow(`  ⚠ ${warning}`)]);
-    }
-    // Rebind the cache-affinity identity and drop the old usage anchor (same
-    // reasoning as /new): the restored history changes the prompt prefix, so
-    // the next turn rebuilds the cache instead of tripping a spurious compact.
-    client.setSessionId(loaded.id);
-    Object.assign(stats, emptyStats());
-    resetUsageAnchors(anchors);
-    resetSessionCache();
-    bgSubagentRows.clear();
-    modeSelector.reset();
-    store.clearView();
-    store.activeToolId = undefined;
-    // Follow the session back to the workspace it was created in, so the
-    // restored context fragment and the tools' root agree again. Safety rail:
-    // ~/.nova (sessions/skills/cache) is NEVER a valid workspace — a session
-    // accidentally created inside the data dir must not drag the tools there.
-    let workspaceLine: string | undefined;
-    const target = sessionWorkspace(loaded);
-    const novaDataDir = novaHome();
-    const inNovaData = (dir: string): boolean => {
-      const rel = path.relative(novaDataDir, dir);
-      return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-    };
-    if (target !== undefined && inNovaData(target)) {
-      workspaceLine = `${paint.yellow(`  ⚠ 会话记录的工作区指向 nova 数据目录（${target}），已忽略`)} ${paint.dim(`（工具保持 ${rootDir}）`)}`;
-    } else if (target !== undefined && target !== rootDir) {
-      if (existsSync(target)) {
-        await applyWorkspace(target);
-        workspaceLine = `${paint.green('  ✓ 工作区已切换')} ${paint.dim(target)}`;
-      } else {
-        workspaceLine = `${paint.yellow(`  ⚠ 原工作区已不存在：${target}`)} ${paint.dim(`（工具仍指向 ${rootDir}）`)}`;
-      }
-    }
-    const userVisible = restored.filter(
-      (m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0 && !m.content.trimStart().startsWith('<'),
+  const switchToSession = (entry: { file: string }): Promise<void> =>
+    switchSessionTo(
+      {
+        store,
+        paint: () => paint,
+        loadSession: (file) => Session.open(file),
+        workspaceOf: sessionWorkspace,
+        currentRoot: () => rootDir,
+        isInDataDir: (dir) => {
+          const rel = path.relative(novaHome(), dir);
+          return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+        },
+        dirExists: (dir) => existsSync(dir),
+        applyWorkspace,
+        rebind: (loaded, restored) => {
+          session = loaded;
+          messages = restored;
+        },
+        afterRebind: (loaded) => {
+          client.setSessionId(loaded.id);
+          Object.assign(stats, emptyStats());
+          resetUsageAnchors(anchors);
+          resetSessionCache();
+          bgSubagentRows.clear();
+          modeSelector.reset();
+          store.clearView();
+          store.activeToolId = undefined;
+        },
+        render: scheduleRender,
+      },
+      entry,
     );
-    if (userVisible.length === 0 && restored.length > 0) {
-      store.pushBlock([
-        paint.dim(`  （该会话没有可回放的文本消息——可能被压缩投影或日志损坏截去；消息共 ${restored.length} 条）`),
-      ]);
-    }
-    for (const m of restored) {
-      if (m.role === 'user') {
-        if (m.content.trimStart().startsWith('<')) continue;
-        store.pushBlock([m.content], USER_GUTTER, 'user');
-      } else if (m.role === 'assistant' && m.content.trim().length > 0) {
-        // 与流式轮同一 markdown 渲染（bold/标题/列表/围栏），否则同一回答
-        // 实时看是渲染版、/session 切回来是裸 markdown。
-        store.pushBlock(renderMarkdownLite(m.content, paint), ASSISTANT_GUTTER, 'assistant');
-      }
-    }
-    store.pushBlock([
-      `${paint.green('  ✓ 已切换到会话')} ${paint.dim(`${path.basename(loaded.file)} · 上下文 ${restored.length} 条消息`)}`,
-    ]);
-    if (workspaceLine !== undefined) store.pushBlock([workspaceLine]);
-    scheduleRender();
-  }
 
   // ---- store.input handling ---------------------------------------------------
   /**
