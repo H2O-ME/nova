@@ -5,7 +5,10 @@
  */
 
 import { styledWidth, wrapLine } from '@nova-agent/tui';
-import { bottomStack, sliceHistory } from '@nova-agent/tui-view';
+import { bottomStack, permissionLabel, sliceHistory, toolArgSummary, toolLabel, type Palette } from '@nova-agent/tui-view';
+import type { CommandSpec } from '../commands.js';
+import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from '../popup.js';
+import type { TuiStore } from './store.js';
 
 export interface FrameBlock {
   lines: string[];
@@ -90,4 +93,74 @@ export { bottomStack, sliceHistory };
 /** Invalidate cached wraps (e.g. on terminal resize). */
 export function invalidateWraps(blocks: FrameBlock[]): void {
   for (const block of blocks) block.wrapped = undefined;
+}
+
+/** 弹窗数据源（store 快照 + 少量外部读取器），使 resolveActiveView 保持纯。 */
+export interface ActiveViewDeps {
+  commandMatches: CommandSpec[];
+  /** models.dev 元数据查询（/model 面板逐条标上下文容量）。 */
+  modelContextTokens(name: string): number | undefined;
+  currentModel: string;
+  currentSessionFile: string;
+}
+
+/**
+ * 活动弹窗纯选择（阶段 E 出壳自 renderFrame）：审批 > 模型选择 > 会话选择 >
+ * 命令面板，一次至多一个；四者优先级与行构造此前长在壳层闭包里。commandMatches
+ * 传过滤后的匹配（popupDismissed 由本函数直接读 store）。
+ */
+export function resolveActiveView(store: TuiStore, paint: Palette, cols: number, deps: ActiveViewDeps): string[] {
+  if (store.approval !== undefined) {
+    return buildApprovalPopup(
+      paint,
+      {
+        permissionLabel: permissionLabel(store.approval.kind),
+        toolLabel: toolLabel(store.approval.call.name),
+        argSummary: toolArgSummary(store.approval.call.name, store.approval.call.rawArgs, 100),
+        previewLines: store.approvalPreview,
+        index: store.approvalIndex,
+        isExecuteKind: store.approval.kind === 'execute',
+      },
+      cols,
+    );
+  }
+  if (store.modelPicker !== undefined) {
+    // Model catalog in a bordered panel with a sliding window: long lists
+    // scroll inside the popup instead of flooding the transcript.
+    return buildModelPopup(
+      paint,
+      {
+        items: store.modelPicker.models.map((name) => ({
+          name,
+          contextTokens: deps.modelContextTokens(name),
+        })),
+        index: store.modelPicker.index,
+        current: deps.currentModel,
+      },
+      cols,
+    );
+  }
+  if (store.sessionPicker !== undefined) {
+    // Session switcher: bordered panel like the model picker, a sliding
+    // window over the newest sessions, current one marked.
+    return buildSessionPopup(
+      paint,
+      {
+        items: store.sessionPicker.entries.map((entry) => ({
+          mtime: entry.mtime,
+          title: entry.title,
+          isCurrent: entry.file === deps.currentSessionFile,
+        })),
+        index: store.sessionPicker.index,
+      },
+      cols,
+    );
+  }
+  if (store.popupDismissed || deps.commandMatches.length === 0) return [];
+  // Bordered dropdown matching the composer box; the selected row is
+  // inverse-video across the full row width, not just the label.
+  // buildCommandPopup owns the sliding window + relative highlight — the
+  // caller used to pre-slice AND pass the absolute index, which threw the
+  // selection outside the visible list.
+  return buildCommandPopup(paint, { matches: deps.commandMatches, index: store.popupIndex }, cols);
 }

@@ -60,15 +60,11 @@ import {
   humanTokens,
   layoutComposer,
   messageQueueRows,
-  permissionLabel,
   REVEAL_TICK_MS,
   SPINNER_FRAMES,
   TOOL_GUTTER,
-  toolArgSummary,
-  toolLabel,
   type StopKind,
 } from './ui.js';
-import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from './popup.js';
 import { TuiCommands } from './tui/commands.js';
 import { ASSISTANT_GUTTER, USER_GUTTER } from './tui/gutters.js';
 import { CODE_MODE_ORDER, ModeSelector } from './tui/mode-select.js';
@@ -81,7 +77,7 @@ import {
   createApprovalService,
   createAutoCompact,
 } from './runner-shared.js';
-import { flattenBlocks, invalidateWraps, sliceHistory, wrapBlock } from './tui/frame.js';
+import { flattenBlocks, invalidateWraps, resolveActiveView, sliceHistory, wrapBlock } from './tui/frame.js';
 import { TuiStore, type Block } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import { BgSubagentRows } from './tui/subagent-lives.js';
@@ -1032,73 +1028,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const cols = screen.cols;
     const rows = screen.rows;
 
-    const matches = commandPopupMatches();
-    const popupOpen =
-      store.approval === undefined &&
-      store.modelPicker === undefined &&
-      store.sessionPicker === undefined &&
-      matches.length > 0;
-
-    const popupLines: string[] = [];
-    if (store.approval !== undefined) {
-      // 弹窗行折行会把整体顶出视口：头部与 diff 预览都按剩余列数裁剪（纯
-      // 构建器在 ./popup.ts，键交互留在 handleKey 的责任链层）。
-      popupLines.push(
-        ...buildApprovalPopup(
-          paint,
-          {
-            permissionLabel: permissionLabel(store.approval.kind),
-            toolLabel: toolLabel(store.approval.call.name),
-            argSummary: toolArgSummary(store.approval.call.name, store.approval.call.rawArgs, 100),
-            previewLines: store.approvalPreview,
-            index: store.approvalIndex,
-            isExecuteKind: store.approval.kind === 'execute',
-          },
-          cols,
-        ),
-      );
-    } else if (store.modelPicker !== undefined) {
-      // Model catalog in a bordered panel with a sliding window: long lists
-      // scroll inside the popup instead of flooding the transcript.
-      popupLines.push(
-        ...buildModelPopup(
-          paint,
-          {
-            items: store.modelPicker.models.map((name) => ({
-              name,
-              contextTokens: modelMetaStore.peek(name, config.provider.baseURL)?.contextWindow,
-            })),
-            index: store.modelPicker.index,
-            current: client.model,
-          },
-          cols,
-        ),
-      );
-    } else if (store.sessionPicker !== undefined) {
-      // Session switcher: bordered panel like the model picker, a sliding
-      // window over the newest sessions, current one marked.
-      popupLines.push(
-        ...buildSessionPopup(
-          paint,
-          {
-            items: store.sessionPicker.entries.map((entry) => ({
-              mtime: entry.mtime,
-              title: entry.title,
-              isCurrent: entry.file === session.file,
-            })),
-            index: store.sessionPicker.index,
-          },
-          cols,
-        ),
-      );
-    } else if (popupOpen) {
-      // Bordered dropdown matching the composer box; the selected row is
-      // inverse-video across the full row width, not just the label.
-      // buildCommandPopup owns the sliding window + relative highlight — the
-      // caller used to pre-slice AND pass the absolute index, which threw the
-      // selection outside the visible list.
-      popupLines.push(...buildCommandPopup(paint, { matches, index: store.popupIndex }, cols));
-    }
+    // 活动弹窗纯选择（./frame.ts resolveActiveView）：审批 > 模型 > 会话 >
+    // 命令面板。弹窗行折行会把整体顶出视口，构建器按剩余列数裁剪；键交互
+    // 留在 handleKey 的责任链层。
+    const popupLines = resolveActiveView(store, paint, cols, {
+      commandMatches: filterCommands(store.input),
+      modelContextTokens: (name) => modelMetaStore.peek(name, config.provider.baseURL)?.contextWindow,
+      currentModel: client.model,
+      currentSessionFile: session.file,
+    });
 
     // One breathing row between the newest content and the composer.
     const layout = layoutComposer(store.input, store.cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
