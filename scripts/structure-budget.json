@@ -1,5 +1,5 @@
 {
- "packages/ai/src/client.ts": 552,
+ "packages/ai/src/client.ts": 572,
  "packages/ai/src/index.ts": 3,
  "packages/ai/src/sse.ts": 53,
  "packages/cli/src/agents-md.ts": 84,
@@ -64,7 +64,7 @@
  "packages/plugins/src/builtin/subagent.ts": 44,
  "packages/plugins/src/builtin/todo.ts": 81,
  "packages/plugins/src/builtin/workspace.ts": 66,
- "packages/plugins/src/host.ts": 172,
+ "packages/plugins/src/host.ts": 185,
  "packages/plugins/src/index.ts": 12,
  "packages/plugins/src/permission.ts": 151,
  "packages/plugins/src/ptc/code-runtime.ts": 423,

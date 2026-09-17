@@ -33,6 +33,15 @@ export class PluginHost {
   private activatedCount = 0;
   readonly toolEntries: ToolEntry[] = [];
   readonly commandEntries: CommandEntry[] = [];
+  /**
+   * Cached snapshot of {@link toolEntries} mapped to ToolDefinitions. Tools
+   * are registered at activation and rarely change afterwards, so callers
+   * (e.g. the agent loop's `host.tools()`) re-request the same list every
+   * turn — handing back a stable reference lets downstream caches (client
+   * wire-serialization) key on array identity instead of re-serializing the
+   * same content every request. Invalidated by registerTool.
+   */
+  private toolsCache: ToolDefinition[] | undefined;
 
   constructor(readonly rootDir: string) {}
 
@@ -62,6 +71,7 @@ export class PluginHost {
           throw new Error(`duplicate tool name "${def.name}" (plugin "${plugin.name}")`);
         }
         this.toolEntries.push({ plugin: plugin.name, tool: def, permission: opts?.permission ?? 'read' });
+        this.toolsCache = undefined;
       },
       registerCommand: (def: CommandDefinition) => {
         if (this.commandEntries.some((entry) => entry.command.name === def.name)) {
@@ -79,7 +89,10 @@ export class PluginHost {
   }
 
   get tools(): ToolDefinition[] {
-    return this.toolEntries.map((entry) => entry.tool);
+    if (this.toolsCache === undefined) {
+      this.toolsCache = this.toolEntries.map((entry) => entry.tool);
+    }
+    return this.toolsCache;
   }
 
   /**

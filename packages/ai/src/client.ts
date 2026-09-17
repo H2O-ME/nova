@@ -96,6 +96,15 @@ export class OpenAICompatClient implements ChatProvider {
   private readonly retryBaseDelayMs: number;
   private readonly timeoutMs: number;
   private requestSeq = 0;
+  /**
+   * Wire-format tool array cached by the input array's identity. The caller
+   * (PluginHost.tools) returns a stable reference across turns until a tool
+   * is registered/deregistered, so the sort+map work — which produces a
+   * content-identical array every turn — only runs once per toolset. The
+   * cache is per-client because the output is deterministic given the input;
+   * a different toolset arrives as a different array reference and misses.
+   */
+  private readonly toolWireCache = new WeakMap<ToolDefinition[], Record<string, unknown>[]>();
 
   constructor(config: OpenAICompatConfig) {
     this.config = config;
@@ -325,17 +334,28 @@ export class OpenAICompatClient implements ChatProvider {
       body['prompt_cache_key'] = [...this.config.sessionId].slice(0, 64).join('');
     }
     if (req.tools && req.tools.length > 0) {
-      // Sort by tool name (stable, lexicographic) before mapping: the caller's
-      // registration order shifts when plugins are enabled/disabled or code
-      // mode changes, which would reshuffle tool slots in the prompt prefix
-      // and bust the provider's prefix cache. Sorting here keeps the wire
-      // order deterministic regardless of registration order. The input
-      // array itself is left untouched.
-      body['tools'] = [...req.tools]
-        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-        .map(toProviderTool);
+      body['tools'] = this.serializeTools(req.tools);
     }
     return body;
+  }
+
+  /**
+   * Map internal tool definitions to the OpenAI wire format with a stable
+   * dictionary sort by name. Cached by the input array's identity — callers
+   * hand us the same reference turn after turn (PluginHost.tools), so the
+   * sort + map only runs the first time. A different toolset arrives as a
+   * fresh array and misses. The cached array is treated as immutable from
+   * the caller's side: it flows into {@link buildBody}'s output and then to
+   * JSON.stringify, never mutated in place.
+   */
+  private serializeTools(tools: ToolDefinition[]): Record<string, unknown>[] {
+    const cached = this.toolWireCache.get(tools);
+    if (cached !== undefined) return cached;
+    const wire = [...tools]
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      .map(toProviderTool);
+    this.toolWireCache.set(tools, wire);
+    return wire;
   }
 
   private backoffDelay(attempt: number): number {

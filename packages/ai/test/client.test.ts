@@ -325,6 +325,34 @@ describe('OpenAICompatClient', () => {
     expect(tools.map((t) => t.name)).toEqual(before);
     expect(tools.map((t) => t.name)).toEqual(['write_file', 'bash', 'edit_file']);
   });
+
+  it('caches the wire-format tool array by input identity across turns', async () => {
+    const seenBodies: RequestInit[] = [];
+    const fetchImpl: typeof fetch = (_input, init) => {
+      seenBodies.push(init!);
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    };
+    const client = clientWith(fetchImpl);
+    const tools = [
+      { name: 'bash', description: 'b', parameters: { type: 'object' }, execute: () => '' },
+      { name: 'edit_file', description: 'e', parameters: { type: 'object' }, execute: () => '' },
+    ];
+    // Two turns with the SAME tools reference — the cache must hit on turn 2.
+    await drain(client.stream({ messages: [], tools }));
+    await drain(client.stream({ messages: [], tools }));
+    expect(seenBodies).toHaveLength(2);
+    const body1 = JSON.parse(String(seenBodies[0]!.body)) as { tools: unknown[] };
+    const body2 = JSON.parse(String(seenBodies[1]!.body)) as { tools: unknown[] };
+    expect(body1.tools).toEqual(body2.tools);
+    // A DIFFERENT array reference (same content) must still serialize correctly.
+    const toolsClone = [
+      { name: 'bash', description: 'b', parameters: { type: 'object' }, execute: () => '' },
+      { name: 'edit_file', description: 'e', parameters: { type: 'object' }, execute: () => '' },
+    ];
+    await drain(client.stream({ messages: [], tools: toolsClone }));
+    const body3 = JSON.parse(String(seenBodies[2]!.body)) as { tools: unknown[] };
+    expect(body3.tools).toEqual(body1.tools);
+  });
 });
 
 describe('session cache routing', () => {
