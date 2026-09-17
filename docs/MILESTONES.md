@@ -197,3 +197,9 @@
   - **E-7 事件呈现归约**：`onAgentEvent` 12-case 的呈现分支并入投影器 `onEvent(event, ctx)`；壳层只剩 stats 合并、簿记委派与三处专属副作用（子代理行 sync / usage 排渲染 / done 停表）。
   - **配套测试**：`mode-select`(7) / `session-switch`(6) / `active-view`(5) / `compact-wait`(6) / `frame-assembler`(4) / `turn-projector` onEvent 组(+5) / `commands` command-core 组(+4)——54→59 文件、578→615 用例。
   - **未达与止损**：目标 ≤600 行未达成——剩余约 470 行是启动装配（rt 绑定/审批/autoCompact/agentRun 接线）、`agentTurn` 编排、输入处理与生命周期/stdin，属"一次性大改写"而非逐块抽离，风险收益比不划算，留待阶段 F 之后评估。棘轮已把壳层上限钉死 1092：**后续只降不升**。
+- **M9.5 — repl.ts 出壳 + tui-view 门面删除（阶段 F，709 → 650 行）**：
+  - **门面删除（F-1）**：M7.0 tui-view 拆包期的 5 个纯转发文件（`ui.ts`/`statusbar.ts`/`composer.ts`/`popup.ts`/`reasoning.ts`）整体删除——8 处 src 导入 + 3 处测试导入全部改直连 `@nova-agent/tui-view`，消除"第二套导入面"。AGENTS §4/§6 措辞同步指向 tui-view 实名模块。
+  - **ReplProgress（F-2，`repl-progress.ts`）**：四族瞬态行归单主——spinner 生命周期、推理流尾行（`⋯`）、bash 实时输出尾行（`└`）、嵌套子代理暗行（`⧉`，门闩仍按父调用 id 绑定、只有前台 subagent 期间显形）。契约：`\r\x1b[2K` 可擦的单物理行、写前 `fitTail` 裁进列预算、NO_COLOR/非 TTY 整体静默。spinner/write/writeln/cols 全注入，假 writer 直测 9 条。
+    - **声明的行为例外**：输出尾行缓冲从 repl 手滚的 `slice(-2000)` 并入 TUI 同源的 `TOOL_TAIL_KEEP_CHARS`（8000）——显示仍被 `fitTail` 裁到单行，观感不变，但消灭了"两套实现"。
+  - **报告行下沉（F-3）**：`/session` 报告体、`/model` 清单行、`/plugins` 清单行进 `command-core.ts` 纯函数（+3 直测）。**刻意不并 TUI 面**——TUI 对应的是 bold 头 + 暗色 + 面板/图例的另一观感，并面会改行为。
+  - **未达与止损**：目标 ≤400 行未达成——repl 剩余主体与壳层同性质（启动装配 / SIGINT 分层 / 审批 `askApproval` / `applyWorkspace` / `autoCompact` 接线的闭包），属一次性大改写；棘轮把上限从 711 拧到 650，只降不升。测试 59→60 文件、615→627 用例。
