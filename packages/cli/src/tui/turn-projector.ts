@@ -38,17 +38,24 @@ import {
 } from '@nova-agent/tui-view';
 import {
   estimateTextTokens,
+  type AgentEvent,
   type SubagentProgress,
   type ToolCall,
+  type UsageStats,
 } from '@nova-agent/core';
+import type { Config } from '../config.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from '../markdown.js';
 import { reasoningLiveRow } from '../reasoning.js';
+import { emptyCompletionNotice, llmRetryNotice, turnStopLines } from '../runner-loop.js';
+import type { StopKind } from '@nova-agent/tui-view';
 import type { Block, TuiStore } from './store.js';
 import { SubagentLives } from './subagent-lives.js';
 
 export interface TurnProjectorDeps {
   store: TuiStore;
   paint: Palette;
+  /** 活调色板访问器（/theme 运行中重绑 paint；缺省回落构造时的 paint）。 */
+  livePaint?: () => Palette;
   /** Terminal columns (budget math lives here so width contracts hold). */
   cols: () => number;
   now: () => number;
@@ -403,6 +410,82 @@ export class TurnProjector {
   subagentProgress(progress: SubagentProgress): void {
     if (this.liveFeedCallId === undefined) return;
     this.subagentLives.progress(this.liveFeedCallId, progress);
+  }
+
+  // ---- agent event reduction ------------------------------------------------
+
+  /**
+   * 轮事件的呈现归约（阶段 E 出壳自壳层的 agentTurn 事件 switch）：只做投影与
+   * 呈现行。壳层态（日志追加/usage 合并/锚点、spinner、会话缓存累计、重绘）
+   * 按事件类型另补几笔——见壳层 onAgentEvent。
+   */
+  onEvent(event: AgentEvent, ctx: { stats: UsageStats; elapsedMs: number; config: Config }): void {
+    const store = this.deps.store;
+    switch (event.type) {
+      case 'llm_retry': {
+        // The provider dropped the response mid-stream and is re-requesting:
+        // discard the partial answer and leave a dim audit line. The failed
+        // attempt's usage (merged in the shell) stays a valid anchor — the
+        // retry sends the same prompt prefix.
+        this.resetAssistant();
+        store.genPhase = 'thinking'; // 重新请求在途，属于"生成中"
+        store.pushBlock([this.livePaint().dim(`  ⟳ ${llmRetryNotice(event.error, event.attempt, event.maxRetries)}`)], TOOL_GUTTER);
+        return;
+      }
+      case 'empty_completion': {
+        // The model "finished" with no text and no tool calls — everything
+        // went into the thinking stream. The loop re-issues; this line
+        // explains why the thinking appears to restart.
+        this.resetAssistant();
+        store.genPhase = 'thinking';
+        store.pushBlock(
+          [this.livePaint().dim(`  ⟳ ${emptyCompletionNotice(event.finishReason, event.attempt, event.maxRetries)}`)],
+          TOOL_GUTTER,
+        );
+        return;
+      }
+      case 'text_delta':
+        // Empty deltas do nothing: the assistant opens lazily on the first
+        // non-blank delta, so reasoning phase is never reset by padding.
+        if (event.text.length === 0) return;
+        this.appendAssistant(event.text);
+        return;
+      case 'reasoning_delta':
+        this.appendReasoning(event.text);
+        return;
+      case 'message':
+        this.closeAssistant();
+        return;
+      case 'tool_call_start':
+        // 折叠思考尾行、genPhase、只读分组收尾、前台子代理的进度路由、待定行
+        // 块与 toolBlocks 登记——投影全部在 toolStart 里。
+        this.toolStart(event.call);
+        return;
+      case 'tool_call_result':
+        // 完成行/只读分组归并/子代理活行收编——投影在 toolResult。
+        this.toolResult(event.call, event.result.content);
+        return;
+      case 'done': {
+        store.closeReadGroup();
+        this.foldReasoning();
+        // A normal completion ends at the reply — no per-turn stats line (the
+        // status bar carries tokens; /session carries details). Only abnormal
+        // stops get a visible marker.
+        if (event.stopReason !== 'complete') {
+          const kind: StopKind = event.stopReason;
+          store.pushBlock(turnStopLines(this.livePaint(), kind, ctx.stats, ctx.elapsedMs, ctx.config));
+        }
+        return;
+      }
+      default:
+        // turn_start / usage / turn_aborted: 无投影动作（簿记在壳层）。
+        return;
+    }
+  }
+
+  /** 活调色板：/theme 运行中重绑 paint，呈现行必须用当前值。 */
+  private livePaint(): Palette {
+    return this.deps.livePaint?.() ?? this.deps.paint;
   }
 
   // ---- internals ------------------------------------------------------------

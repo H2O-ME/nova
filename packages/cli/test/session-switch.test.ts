@@ -1,7 +1,7 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Session, type AgentMessage } from '@nova-agent/core';
+import { Session } from '@nova-agent/core';
 import { plainPalette } from '@nova-agent/tui-view';
 import { describe, expect, it } from 'vitest';
 import { TuiStore } from '../src/tui/store.js';

@@ -235,3 +235,57 @@ describe('TurnProjector', () => {
     expect(store.streaming).toBe(false);
   });
 });
+
+describe('TurnProjector.onEvent', () => {
+  const stats = { promptTokens: 10, completionTokens: 2, cachedTokens: 0, turns: 1, missTokens: 0, missTurns: 0 };
+  const ctx = () => ({ stats, elapsedMs: 1_000, config: { maxTurns: 30 } as never });
+
+  it('llm_retry discards the partial answer and explains the restart', () => {
+    const { store, projector, advance, tickUntilIdle } = harness();
+    projector.beginTurn('问');
+    projector.appendAssistant('半截回答');
+    advance(100);
+    tickUntilIdle();
+    projector.onEvent({ type: 'llm_retry', error: 'timeout', attempt: 1, maxRetries: 2, stats }, ctx());
+    expect(store.genPhase).toBe('thinking');
+    expect(allRows(store.blocks).join('\n')).toContain('自动重试 1/2');
+    // 半截回答块已丢弃（不残留在转录里）。
+    expect(allRows(store.blocks).join('\n')).not.toContain('半截回答');
+  });
+
+  it('empty_completion leaves the same kind of audit line', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('问');
+    projector.onEvent({ type: 'empty_completion', finishReason: 'stop', attempt: 1, maxRetries: 2 }, ctx());
+    expect(allRows(store.blocks).join('\n')).toContain('空回复');
+  });
+
+  it('blank text deltas never anchor an assistant block', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('问');
+    projector.onEvent({ type: 'text_delta', text: '' }, ctx());
+    expect(store.blocks.some((b) => b.kind === 'assistant')).toBe(false);
+  });
+
+  it('done on an abnormal stop pushes the status line, complete stays silent', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('问');
+    projector.onEvent({ type: 'done', stopReason: 'max_turns' }, ctx());
+    expect(allRows(store.blocks).join('\n')).toContain('已达最大轮数');
+
+    const second = harness();
+    second.projector.beginTurn('问');
+    second.projector.onEvent({ type: 'done', stopReason: 'complete' }, ctx());
+    expect(allRows(second.store.blocks).join('\n')).not.toContain('完成');
+  });
+
+  it('turn_start/usage/turn_aborted have no projection action', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('问');
+    const before = store.blocks.length;
+    projector.onEvent({ type: 'turn_start' }, ctx());
+    projector.onEvent({ type: 'usage', usage: { promptTokens: 1, completionTokens: 1, cachedTokens: 0 }, stats }, ctx());
+    projector.onEvent({ type: 'turn_aborted', message: { id: 'm', ts: 0, role: 'user', content: 'x' } }, ctx());
+    expect(store.blocks).toHaveLength(before);
+  });
+});

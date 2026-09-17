@@ -16,7 +16,6 @@ import {
   runAgent,
   Session,
   type AgentEvent,
-  type AgentMessage,
   type SubagentProgress,
   type UsageStats,
 } from '@nova-agent/core';
@@ -42,12 +41,9 @@ import {
   createRunnerBookkeeping,
   createTurnNotifier,
   createUsageAnchors,
-  emptyCompletionNotice,
-  llmRetryNotice,
   resetUsageAnchors,
-  turnStopLines,
 } from './runner-loop.js';
-import { buildSplash, contextLegend, humanTokens, REVEAL_TICK_MS, SPINNER_FRAMES, TOOL_GUTTER, type StopKind } from './ui.js';
+import { buildSplash, contextLegend, humanTokens, REVEAL_TICK_MS, SPINNER_FRAMES, TOOL_GUTTER } from './ui.js';
 import { TuiCommands } from './tui/commands.js';
 import { CompactWait } from './tui/compact-wait.js';
 import { FrameAssembler } from './tui/frame-assembler.js';
@@ -114,7 +110,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     approvalOverride: opts.approvalOverride,
     subagentProgress: (progress) => onSubagentProgressRef.current(progress),
   });
-  let messages: AgentMessage[] = rt.messages;
+  // 类型由 rt 推断（AgentMessage[]；显式 type-only 注解会踩 oxlint 非 type-aware 规则）。
+  let messages = rt.messages;
   let session: Session = rt.session;
   const client = rt.client;
   /** 站点模型目录缓存由 runtime 单源装配（/model 用）。 */
@@ -444,6 +441,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const projector = new TurnProjector({
     store,
     paint,
+    // 活调色板：/theme 运行中重绑 paint，投影器推的呈现行必须用当前值。
+    livePaint: () => paint,
     cols: () => screen.cols,
     now: () => Date.now(),
     onNeedsReveal: () => revealEnsurer(),
@@ -548,75 +547,26 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     scheduleRender();
   }
 
+  /**
+   * 事件消费：呈现归约在投影器（projector.onEvent，阶段 E 出壳），壳层只补
+   * 簿记（日志/usage/锚点，runner-loop 单源）与 shell 态（spinner、会话缓存
+   * 累计、重绘、后台子代理钉行）。
+   */
   async function onAgentEvent(event: AgentEvent, startedAt: number): Promise<void> {
+    // 重试携带修正后的 usage：先合并，投影器的审计行与后续 done 都读它。
+    if (event.type === 'llm_retry') Object.assign(stats, event.stats);
+    projector.onEvent(event, { stats, elapsedMs: Date.now() - startedAt, config });
+    await bookkeeping.apply(event);
     switch (event.type) {
-      case 'turn_start':
-        break;
-      case 'llm_retry': {
-        // The provider dropped the response mid-stream and is re-requesting:
-        // discard the partial answer, adopt the corrected stats, and leave a
-        // dim audit line. The failed attempt's usage stays a valid anchor —
-        // the retry sends the same prompt prefix.
-        Object.assign(stats, event.stats);
-        projector.resetAssistant();
-        store.genPhase = 'thinking'; // 重新请求在途，属于"生成中"
-        store.pushBlock([paint.dim(`  ⟳ ${llmRetryNotice(event.error, event.attempt, event.maxRetries)}`)], TOOL_GUTTER);
-        break;
-      }
-      case 'empty_completion': {
-        // The model "finished" with no text and no tool calls — everything
-        // went into the thinking stream. Previously this ended the run in
-        // silence; now the loop re-issues, and this line explains why the
-        // thinking appears to restart.
-        projector.resetAssistant();
-        store.genPhase = 'thinking';
-        store.pushBlock(
-          [paint.dim(`  ⟳ ${emptyCompletionNotice(event.finishReason, event.attempt, event.maxRetries)}`)],
-          TOOL_GUTTER,
-        );
-        break;
-      }
-      case 'text_delta':
-        // Empty deltas do nothing: the assistant opens lazily on the first
-        // non-blank delta, so reasoning phase is never reset by padding.
-        if (event.text.length === 0) break;
-        projector.appendAssistant(event.text);
-        break;
-      case 'reasoning_delta':
-        projector.appendReasoning(event.text);
-        break;
-      case 'message': {
-        projector.closeAssistant();
-        // Append EVERY assistant message, including content-less pure
-        // tool-call turns: the log must mirror the model surface ("model
-        // visible means logged"), or resume/compact projects orphan tool
-        // results with no matching tool_calls. 簿记单源在 runner-loop。
-        await bookkeeping.apply(event);
-        break;
-      }
-      case 'tool_call_start': {
-        // 折叠思考尾行、genPhase、只读分组收尾、前台子代理的进度路由、待定行
-        // 块与 toolBlocks 登记——投影全部在 projector.toolStart 里。
-        projector.toolStart(event.call);
-        break;
-      }
-      case 'tool_call_result': {
-        await bookkeeping.apply(event);
+      case 'tool_call_result':
         // A "Started background subagent …" result lands here: pin its live
         // row immediately instead of waiting for the next spinner tick.
         bgSubagentRows.sync();
-        // 完成行/只读分组归并/子代理活行收编——投影在 projector.toolResult。
-        projector.toolResult(event.call, event.result.content);
-        break;
-      }
+        return;
       case 'usage':
-        await bookkeeping.apply(event);
         scheduleRender();
-        break;
-      case 'turn_aborted':
-        await bookkeeping.apply(event);
-        break;
-      case 'done': {
+        return;
+      case 'done':
         spinner.stop();
         // 累计本会话真实用量（此刻 stats = 本轮 runAgent 的累计）。done 每用户
         // 轮只触发一次，故按轮累加不会重复计同一 LLM 调用。见过缓存上报即置
@@ -624,17 +574,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         sessPromptTokens += stats.promptTokens;
         sessCachedTokens += stats.cachedTokens;
         if (stats.cachedTokens > 0) cacheSeen = true;
-        store.closeReadGroup();
-        projector.foldReasoning();
-        // A normal completion ends at the reply — no per-turn stats line (the
-        // status bar carries tokens; /session carries details). Only abnormal
-        // stops get a visible marker.
-        if (event.stopReason !== 'complete') {
-          const kind: StopKind = event.stopReason;
-          store.pushBlock(turnStopLines(paint, kind, stats, Date.now() - startedAt, config));
-        }
-        break;
-      }
+        return;
+      default:
+        return;
     }
   }
 
