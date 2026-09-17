@@ -1,11 +1,10 @@
 import { createInterface } from 'node:readline/promises';
-import { detectCaps, styledWidth } from '@nova-agent/tui';
+import { detectCaps } from '@nova-agent/tui';
 import { errMessage,
   runAgent,
   Session,
   type AgentEvent,
   type AgentMessage,
-  type SubagentProgress,
   type UsageStats,
 } from '@nova-agent/core';
 import { type ApprovalMode, type AskFn } from '@nova-agent/plugins';
@@ -17,16 +16,15 @@ import { resolvePalette } from '@nova-agent/tui-view';
 import {
   agentsMdWrittenLine,
   approvalSwitchLine,
-  cacheHitPct,
   helpRows,
-  lastCacheHitPct,
   MODEL_LIST_EMPTY,
   modelListError,
+  modelListRows,
   newSessionLine,
   nextApprovalMode,
   openFreshSession,
-  pluginCommandLine,
-  pluginToolLine,
+  pluginReportLines,
+  sessionReportLines,
   themeSwitchedMessage,
   themeTarget,
   themeUnknownMessage,
@@ -50,9 +48,7 @@ import {
   turnStopLines,
 } from './runner-loop.js';
 import {
-  approvalLabel,
   banner,
-  fitTail,
   permissionLabel,
   toolArgSummary,
   toolDoneLine,
@@ -69,6 +65,7 @@ import {
   createAutoCompact,
   ToolTiming,
 } from './runner-shared.js';
+import { ReplProgress } from './repl-progress.js';
 import { Spinner } from './spinner.js';
 import { cliVersion } from './version.js';
 
@@ -160,11 +157,11 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         return applyWorkspaceRef(dir);
       },
     },
-    // Nested subagent visibility: the latch (declared below) binds nested
-    // rows to the current parent `subagent` call. The callback only FIRES
-    // after the latch exists — nested runs happen mid-turn, long after.
-    // replSubagentProgress itself no-ops unless the latch is pinned.
-    subagentProgress: (progress) => replSubagentProgress(progress),
+    // Nested subagent visibility: ReplProgress's latch (constructed below)
+    // binds nested rows to the current parent `subagent` call. The callback
+    // only FIRES after the latch exists — nested runs happen mid-turn, long
+    // after, and no-op while the latch is unpinned.
+    subagentProgress: (p) => prog.onSubagentProgress(p),
   });
   let messages: AgentMessage[] = rt.messages;
   let session: Session = rt.session;
@@ -201,6 +198,15 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const lines = new LineSource(rl, process.stdin.isTTY === true);
   const spinner = new Spinner(useColor);
+  // 瞬态进度渲染（推理尾行 / bash 尾行 / 子代理暗行 / spinner 生命周期）出壳单主。
+  const prog = new ReplProgress({
+    paint: () => paint,
+    useColor,
+    spinner,
+    write: (chunk) => process.stdout.write(chunk),
+    writeln: (line) => console.log(line),
+    cols: () => process.stdout.columns ?? 80,
+  });
   let aborter: AbortController | undefined;
   let streaming = false;
   /** True while the REPL is blocked on an approval prompt (lines.next). */
@@ -306,40 +312,6 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   });
   const turnNotifier = createTurnNotifier((title, body) => notify(title, body));
   let compactRunning = false;
-  let reasoningTail = '';
-  let reasoningLive = false;
-  let progressTail = '';
-  let progressLive = false;
-  // Latest foreground `subagent` parent call: the runtime's shared
-  // subagentProgress feed maps nested rows here (labels repeat, call ids
-  // don't). Pinned at tool_call_start, cleared at tool_call_result.
-  const replSubagentLatch: { current: { callId: string } | undefined } = { current: undefined };
-  /** Nested subagent visibility (REPL): one dim row per lifecycle moment. */
-  const replSubagentProgress = (progress: SubagentProgress): void => {
-    if (!useColor || replSubagentLatch.current === undefined) return;    if (progress.type === 'start') {
-      console.log(paint.dim(`    ⧉ 子代理 ${progress.label} 启动…`));
-    } else if (progress.type === 'tool_call') {
-      console.log(paint.dim(`    ⧉ ${progress.label} › ${progress.call.name}`));
-    } else if (progress.type === 'done') {
-      const u = progress.usage;
-      console.log(
-        paint.dim(`    ⧉ ${progress.label} 完成 · ${u.turns} 轮 · ${u.toolCalls} 工具 · ${u.promptTokens + u.completionTokens} tok · ${(u.elapsedMs / 1000).toFixed(1)}s`),
-      );
-    }
-  };
-  const endReasoningLine = (): void => {
-    if (reasoningLive) {
-      process.stdout.write('\x1b[0m\n');
-      reasoningLive = false;
-    }
-  };
-  /** Wipe the in-place `└ tail` progress row so the next print starts clean. */
-  const clearProgressLine = (): void => {
-    if (progressLive) {
-      process.stdout.write('\r\x1b[2K');
-      progressLive = false;
-    }
-  };
 
   /**
    * Shared auto-compact orchestration (runner-shared): guards, anchor-reset
@@ -392,72 +364,52 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     maxTurns: config.maxTurns,
   });
 
+  // 事件呈现委派 ReplProgress（瞬态行）+ bookkeeping（落账），这里只剩
+  // 一次性行的 console.log 与计时接线。
   const renderEvent = async (event: AgentEvent, requestStartedAt: number): Promise<void> => {
     switch (event.type) {
       case 'turn_start': {
-        spinner.start();
+        prog.startTurn();
         break;
       }
       case 'text_delta': {
-        endReasoningLine();
-        spinner.stop();
-        process.stdout.write(event.text);
+        prog.onText(event.text);
         break;
       }
       case 'reasoning_delta': {
-        // Single dim status line showing the tail of the reasoning stream
-        // (DeepSeek reasoner style); skipped entirely without a TTY. The
-        // tail is width-trimmed to one physical row: `\r\x1b[2K` clears
-        // exactly that row, and an overwriting wrap would leave garbage.
-        if (!useColor) break;
-        spinner.stop();
-        const maxCols = Math.max(10, (process.stdout.columns ?? 80) - styledWidth('  ⋯ ') - 1);
-        reasoningTail = fitTail(`${reasoningTail}${event.text}`.replaceAll('\n', ' ⏎ '), maxCols);
-        process.stdout.write(`\r\x1b[2K\x1b[2m  ⋯ ${reasoningTail}`);
-        reasoningLive = true;
+        prog.onReasoning(event.text);
         break;
       }
       case 'llm_retry': {
         // Already-streamed text cannot be un-printed here; the notice marks
         // the boundary before the retry replays the answer from scratch.
         Object.assign(stats, event.stats);
-        endReasoningLine();
-        spinner.stop();
+        prog.beforeRow();
         console.log(paint.dim(`  ⟳ ${llmRetryNotice(event.error, event.attempt, event.maxRetries)}`));
         break;
       }
       case 'empty_completion': {
-        endReasoningLine();
-        spinner.stop();
+        prog.beforeRow();
         console.log(
           paint.dim(`  ⟳ ${emptyCompletionNotice(event.finishReason, event.attempt, event.maxRetries)}`),
         );
         break;
       }
       case 'message': {
-        endReasoningLine();
-        spinner.stop();
+        prog.beforeRow();
         if (event.message.content.length > 0) process.stdout.write('\n');
         await bookkeeping.apply(event);
         break;
       }
       case 'tool_call_start': {
-        endReasoningLine();
-        spinner.stop();
+        prog.onToolCallStart(event.call.name, event.call.id);
         toolTiming.start(event.call.id);
-        progressTail = '';
         console.log(toolStartLine(paint, event.call.name, event.call.rawArgs));
-        // Reset the per-call subagent latch: only the `subagent` tool binds
-        // replSubagentProgress while it runs (nested calls of OTHER parent
-        // tools — a PTC run_code dispatching read_file — must NOT).
-        replSubagentLatch.current =
-          event.call.name === 'subagent' ? { callId: event.call.id } : undefined;
         break;
       }
       case 'tool_call_result': {
         const duration = toolTiming.finish(event.call.id);
-        clearProgressLine();
-        replSubagentLatch.current = undefined;
+        prog.onToolCallEnd();
         await bookkeeping.apply(event);
         for (const line of toolDoneLine(paint, event.call.name, event.call.rawArgs, event.result.content, duration)) {
           console.log(line);
@@ -465,20 +417,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         spinner.start();
         break;
       }
-      case 'usage': {
-        await bookkeeping.apply(event);
-        break;
-      }
+      case 'usage':
       case 'turn_aborted': {
         await bookkeeping.apply(event);
         break;
       }
       case 'done': {
-        endReasoningLine();
-        clearProgressLine();
-        spinner.stop();
-        const kind = event.stopReason;
-        for (const line of turnStopLines(paint, kind, stats, Date.now() - requestStartedAt, config)) {
+        prog.endTurn();
+        for (const line of turnStopLines(paint, event.stopReason, stats, Date.now() - requestStartedAt, config)) {
           console.log(line);
         }
         break;
@@ -525,14 +471,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           break;
         }
         case '/session': {
-          const hit = cacheHitPct(stats.promptTokens, stats.cachedTokens);
-          const lastHit = lastCacheHitPct(anchors.lastUsage);
-          const compact = config.autoCompactTokenLimit
-            ? `阈值 ${config.autoCompactTokenLimit} tok · 上轮 ${anchors.lastPromptTokens} tok`
-            : '未启用';
-          console.log(
-            `文件：${session.file}\n消息 ${messages.length} 条 · ${stats.turns} 轮 · 输入 ${stats.promptTokens} tok · 缓存 ${hit}%${lastHit !== null ? `（上轮 ${lastHit}%）` : ''} · 输出 ${stats.completionTokens} tok\n缓存浪费 ${stats.missTokens} tok（超噪声底 ${stats.missTurns} 轮）\n自动压缩：${compact}`,
-          );
+          for (const row of sessionReportLines({
+            file: session.file,
+            messageCount: messages.length,
+            stats,
+            lastUsage: anchors.lastUsage,
+            lastPromptTokens: anchors.lastPromptTokens,
+            autoCompactTokenLimit: config.autoCompactTokenLimit,
+          })) console.log(row);
           break;
         }
         case '/model': {
@@ -543,9 +489,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
               break;
             }
             console.log(`当前模型：${client.model}`);
-            for (const [i, model] of models.entries()) {
-              console.log(`  ${model === client.model ? '❯' : ' '} ${i + 1}. ${model}${model === client.model ? '（当前）' : ''}`);
-            }
+            for (const row of modelListRows(client.model, models)) console.log(row);
             subPromptPending = true;
             let raw: string | null;
             try {
@@ -592,14 +536,21 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
           break;
         }
         case '/plugins': {
-          console.log(`审批档位：${approvalLabel(permission.approvalMode)}${opts.approvalOverride !== undefined ? '（来自 --approval）' : ''}`);
-          if (host.toolEntries.length === 0) console.log('（没有已注册的工具）');
-          for (const entry of host.toolEntries) {
-            console.log(`  ${pluginToolLine(entry.plugin, entry.tool.name, permissionLabel(entry.permission))}`);
-          }
-          for (const entry of host.commandEntries) {
-            console.log(`  ${pluginCommandLine(entry.plugin, entry.command.name, entry.command.description)}`);
-          }
+          const rows = pluginReportLines({
+            approvalMode: permission.approvalMode,
+            override: opts.approvalOverride !== undefined,
+            tools: host.toolEntries.map((entry) => ({
+              plugin: entry.plugin,
+              name: entry.tool.name,
+              permission: permissionLabel(entry.permission),
+            })),
+            commands: host.commandEntries.map((entry) => ({
+              plugin: entry.plugin,
+              name: entry.command.name,
+              description: entry.command.description,
+            })),
+          });
+          for (const row of rows) console.log(row);
           break;
         }
         case '/approvals': {
@@ -659,30 +610,20 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
 
     aborter = new AbortController();
     streaming = true;
-    reasoningTail = '';
+    prog.resetReasoning();
     const requestStartedAt = Date.now();
     try {
       for await (const event of runAgent({
         ...agentRun(),
-        // Live bash output tail on one in-place dim row (same contract as the
-        // reasoning line: \r\x1b[2K clears exactly one physical row, so the
-        // tail must be width-trimmed before writing).
-        onToolProgress: (text) => {
-          if (!useColor) return;
-          progressTail = (progressTail + text).slice(-2000);
-          const last = progressTail.slice(progressTail.lastIndexOf('\n') + 1).trimEnd();
-          if (last.length === 0) return;
-          const maxCols = Math.max(10, (process.stdout.columns ?? 80) - styledWidth('  └ ') - 1);
-          process.stdout.write(`\r\x1b[2K\x1b[2m  └ ${fitTail(last, maxCols)}\x1b[0m`);
-          progressLive = true;
-        },
+        // Live bash output tail on one in-place dim row (ReplProgress: same
+        // single-row contract as the reasoning line).
+        onToolProgress: (text) => prog.onToolProgress(text),
         signal: aborter.signal,
       })) {
         await renderEvent(event, requestStartedAt);
       }
     } catch (err) {
-      spinner.stop();
-      clearProgressLine();
+      prog.onAbort();
       // 修日志+归类单源（runner-loop.classifyTurnFailure）：以本轮 signal
       // 是否真的触发为准——文案含 "aborted" 的网络超时必须亮出原文。
       const fail = await classifyTurnFailure(session, messages, err, aborter?.signal);

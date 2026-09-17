@@ -80,6 +80,47 @@ export function pluginCommandLine(plugin: string, name: string, description: str
 
 /** /model 的空目录与失败文案（两壳同串）。 */
 export const MODEL_LIST_EMPTY = '站点未返回任何模型';
+/** /model 清单行：当前模型带 ❯ 箭头与（当前）标（repl 形态；TUI 是面板另一面）。 */
+export function modelListRows(current: string, models: string[]): string[] {
+  return models.map(
+    (model, i) => `  ${model === current ? '❯' : ' '} ${i + 1}. ${model}${model === current ? '（当前）' : ''}`,
+  );
+}
+/** /session 报告体（repl 形态的平铺行；TUI 的 /session 是切换器、不同面不并）。 */
+export function sessionReportLines(opts: {
+  file: string;
+  messageCount: number;
+  stats: UsageStats;
+  lastUsage: Usage | undefined;
+  lastPromptTokens: number;
+  autoCompactTokenLimit: number | undefined;
+}): string[] {
+  const hit = cacheHitPct(opts.stats.promptTokens, opts.stats.cachedTokens);
+  const lastHit = lastCacheHitPct(opts.lastUsage);
+  const compact = opts.autoCompactTokenLimit
+    ? `阈值 ${opts.autoCompactTokenLimit} tok · 上轮 ${opts.lastPromptTokens} tok`
+    : '未启用';
+  return [
+    `文件：${opts.file}`,
+    `消息 ${opts.messageCount} 条 · ${opts.stats.turns} 轮 · 输入 ${opts.stats.promptTokens} tok · 缓存 ${hit}%${lastHit !== null ? `（上轮 ${lastHit}%）` : ''} · 输出 ${opts.stats.completionTokens} tok`,
+    `缓存浪费 ${opts.stats.missTokens} tok（超噪声底 ${opts.stats.missTurns} 轮）`,
+    `自动压缩：${compact}`,
+  ];
+}
+/** /plugins 报告体（repl 形态；TUI 的带 bold 头与暗色包裹，不并面）。 */
+export function pluginReportLines(opts: {
+  approvalMode: ApprovalMode;
+  override: boolean;
+  tools: { plugin: string; name: string; permission: string }[];
+  commands: { plugin: string; name: string; description: string }[];
+}): string[] {
+  return [
+    `审批档位：${approvalLabel(opts.approvalMode)}${opts.override ? '（来自 --approval）' : ''}`,
+    ...(opts.tools.length === 0 ? ['（没有已注册的工具）'] : []),
+    ...opts.tools.map((t) => `  ${pluginToolLine(t.plugin, t.name, t.permission)}`),
+    ...opts.commands.map((c) => `  ${pluginCommandLine(c.plugin, c.name, c.description)}`),
+  ];
+}
 export function modelListError(err: unknown): string {
   return `模型列表获取失败：${errMessage(err)}`;
 }
