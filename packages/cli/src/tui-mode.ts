@@ -43,7 +43,7 @@ import {
   createUsageAnchors,
   resetUsageAnchors,
 } from './runner-loop.js';
-import { buildSplash, contextLegend, humanTokens, REVEAL_TICK_MS, SPINNER_FRAMES, TOOL_GUTTER } from './ui.js';
+import { buildSplash, contextLegend, humanTokens, REVEAL_TICK_MS, SPINNER_FRAMES, TOOL_GUTTER } from '@nova-agent/tui-view';
 import { TuiCommands } from './tui/commands.js';
 import { CompactWait } from './tui/compact-wait.js';
 import { FrameAssembler } from './tui/frame-assembler.js';
@@ -63,7 +63,7 @@ import { TuiStore } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import { BgSubagentRows } from './tui/subagent-lives.js';
 import { TurnProjector } from './tui/turn-projector.js';
-import { codeModeLabel, contextBreakdown, type ContextBreakdownView, type StatusView } from './statusbar.js';
+import { codeModeLabel, contextBreakdown, type ContextBreakdownView, type StatusView } from '@nova-agent/tui-view';
 import { cliVersion } from './version.js';
 
 export interface TuiOptions {

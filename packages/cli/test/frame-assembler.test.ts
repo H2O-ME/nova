@@ -1,6 +1,6 @@
 import { plainPalette } from '@nova-agent/tui-view';
 import { describe, expect, it } from 'vitest';
-import type { ContextBreakdownView, StatusView } from '../src/statusbar.js';
+import type { ContextBreakdownView, StatusView } from '@nova-agent/tui-view';
 import { FrameAssembler } from '../src/tui/frame-assembler.js';
 import { TuiStore } from '../src/tui/store.js';
 

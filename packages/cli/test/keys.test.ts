@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleKey, type KeyEnv } from '../src/tui/keys.js';
 import { TuiStore } from '../src/tui/store.js';
-import { plainPalette } from '../src/ui.js';
+import { plainPalette } from '@nova-agent/tui-view';
 import path from 'node:path';
 import fs from 'node:fs';
 

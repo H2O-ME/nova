@@ -7,7 +7,7 @@
 import { styledWidth, wrapLine } from '@nova-agent/tui';
 import { bottomStack, permissionLabel, sliceHistory, toolArgSummary, toolLabel, type Palette } from '@nova-agent/tui-view';
 import type { CommandSpec } from '../commands.js';
-import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from '../popup.js';
+import { buildApprovalPopup, buildCommandPopup, buildModelPopup, buildSessionPopup } from '@nova-agent/tui-view';
 import type { TuiStore } from './store.js';
 
 export interface FrameBlock {

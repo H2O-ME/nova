@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from '../src/system-prompt.js';
 import { createMarkdownRenderer, renderMarkdownLite } from '../src/markdown.js';
 import { buildWindowsToastScript } from '../src/notify.js';
-import { plainPalette } from '../src/ui.js';
+import { plainPalette } from '@nova-agent/tui-view';
 
 describe('system prompt', () => {
   it('forbids tool use on greetings and unsolicited work', () => {

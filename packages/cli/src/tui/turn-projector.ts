@@ -45,7 +45,7 @@ import {
 } from '@nova-agent/core';
 import type { Config } from '../config.js';
 import { createMarkdownRenderer, type MarkdownRenderer } from '../markdown.js';
-import { reasoningLiveRow } from '../reasoning.js';
+import { reasoningLiveRow } from '@nova-agent/tui-view';
 import { emptyCompletionNotice, llmRetryNotice, turnStopLines } from '../runner-loop.js';
 import type { StopKind } from '@nova-agent/tui-view';
 import type { Block, TuiStore } from './store.js';

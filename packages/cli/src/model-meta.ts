@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { novaHome } from './config.js';
-import { humanTokens } from './ui.js';
+import { humanTokens } from '@nova-agent/tui-view';
 
 /**
  * 模型元数据（上下文窗口、输入/输出模态、推理与工具调用能力），数据源

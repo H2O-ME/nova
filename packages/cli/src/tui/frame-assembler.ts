@@ -25,7 +25,7 @@ import {
   statusBar,
   type ContextBreakdownView,
   type StatusView,
-} from '../statusbar.js';
+} from '@nova-agent/tui-view';
 import { flattenBlocks, sliceHistory, type ActiveViewDeps } from './frame.js';
 import type { Block, TuiStore } from './store.js';
 

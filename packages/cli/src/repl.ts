@@ -58,7 +58,7 @@ import {
   toolDoneLine,
   toolLabel,
   toolStartLine,
-} from './ui.js';
+} from '@nova-agent/tui-view';
 import {
   agentRunBase,
   approvalEffectPreview,

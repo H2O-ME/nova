@@ -1,4 +1,4 @@
-import type { Palette } from './ui.js';
+import type { Palette } from '@nova-agent/tui-view';
 
 /**
  * Minimal markdown-to-ANSI rendering for assistant replies: bold, inline
