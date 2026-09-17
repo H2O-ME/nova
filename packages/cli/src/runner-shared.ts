@@ -143,6 +143,17 @@ export function approvalNotifyBody(call: ToolCall): string {
 }
 
 /**
+ * Narrow a `T | undefined` to `T` with an explicit thrown reason — the
+ * qqbot/tui runners hand accessors into agentRunBase that read rebindable
+ * state. `value!` silently lies if the wiring slips; this makes the failure
+ * mode a named error instead of an undefined-attribute crash.
+ */
+export function requireActive<T>(value: T | undefined, name: string): T {
+  if (value === undefined) throw new Error(`runner state "${name}" is not bound yet`);
+  return value;
+}
+
+/**
  * hooks 重绑单源：钩子链（审批门 + PTC 投影）派生自 host + permission，且必须
  * 同步 runtime.hooksRef——subagent 嵌套调用读它、走与父相同的审批门与管线。
  * `agentHooks(permission)` + `hooksRef.current =` 这对操作曾被各 runner 的初始

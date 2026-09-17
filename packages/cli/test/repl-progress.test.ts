@@ -1,19 +1,38 @@
 /**
- * ReplProgress 直测（M9.5 阶段 F）：瞬态行契约——单显示行、\r\x1b[2K 可擦、
- * 无颜色整体静默、子代理进度门闩。假 writer 收集写入，不碰真 stdout。
+ * ReplProgress 直测（M9.5 阶段 F，阶段 I 后修正）：瞬态行契约——单显示行、
+ * 可擦、无颜色整体静默、子代理进度门闩。假 writer 收集写入，不碰真 stdout。
+ * Palette 的开态控制原语经 fake palette 注入可读占位符，断契约不断字节。
  */
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
-import { plainPalette } from '@nova-agent/tui-view';
+import { palette as realPalette } from '@nova-agent/tui-view';
 import type { SubagentProgress } from '@nova-agent/core';
 import { ReplProgress } from '../src/repl-progress.js';
+
+/** Fake palette: real color codes for the styled text under test, readable
+ *  placeholders for the open-state control primitives so the assertions can
+ *  pin tail content without coupling to literal escape bytes. */
+const fakePalette = {
+  dim: realPalette.dim,
+  cyan: realPalette.cyan,
+  green: realPalette.green,
+  yellow: realPalette.yellow,
+  red: realPalette.red,
+  blue: realPalette.blue,
+  magenta: realPalette.magenta,
+  bold: realPalette.bold,
+  inverse: realPalette.inverse,
+  reset: () => '<RST>',
+  clearLine: () => '<CL>',
+  clearRight: () => '<CR>',
+};
 
 function makeFix(over: { useColor?: boolean; cols?: number } = {}) {
   const writes: string[] = [];
   const logged: string[] = [];
   const spinnerLog: string[] = [];
   const prog = new ReplProgress({
-    paint: () => plainPalette,
+    paint: () => fakePalette,
     useColor: over.useColor ?? true,
     spinner: {
       start: () => spinnerLog.push('start'),
@@ -52,18 +71,21 @@ describe('ReplProgress 无颜色门', () => {
 });
 
 describe('ReplProgress 推理尾行', () => {
-  it('换行折成 ⏎、整行恒为一条 \r\x1b[2K 可擦的单物理行', () => {
+  it('换行折成 ⏎、整行恒为一条 clearLine 可擦的单物理行', () => {
     const { prog, writes } = makeFix();
     prog.onReasoning('第一行\n第二行');
     const last = writes.at(-1) as string;
-    expect(last.startsWith('\r\x1b[2K\x1b[2m  ⋯ ')).toBe(true);
+    expect(last.startsWith('<CL>\x1b[2m  ⋯ ')).toBe(true);
     expect(last).toContain('第一行 ⏎ 第二行');
     expect(last).not.toContain('\n');
   });
   it('累计尾段裁进列预算（超宽截左保尾，不折行）', () => {
     const { prog, writes } = makeFix({ cols: 30 });
     prog.onReasoning('x'.repeat(100));
-    const tail = (writes.at(-1) as string).slice('\r\x1b[2K\x1b[2m  ⋯ '.length);
+    const last = writes.at(-1) as string;
+    // Strip the trailing dim-close code before measuring the tail width.
+    const head = '<CL>\x1b[2m  ⋯ ';
+    const tail = last.slice(head.length, last.endsWith('\x1b[0m') ? -4 : undefined);
     const budget = 30 - styledWidth('  ⋯ ') - 1;
     expect(styledWidth(tail)).toBeLessThanOrEqual(budget);
     expect(tail.endsWith('x')).toBe(true); // 保尾
@@ -74,24 +96,34 @@ describe('ReplProgress 推理尾行', () => {
     expect(writes).toEqual([]);
     prog.onReasoning('a');
     prog.endReasoning();
-    expect(writes.at(-1)).toBe('\x1b[0m\n');
+    expect(writes.at(-1)).toBe('<RST>\n');
     prog.endReasoning();
-    expect(writes.filter((w) => w === '\x1b[0m\n')).toHaveLength(1);
+    expect(writes.filter((w) => w === '<RST>\n')).toHaveLength(1);
   });
 });
 
 describe('ReplProgress bash 输出尾行', () => {
   it('只显示当前未完行；行尾换行后不写、跨多行只显最后一段', () => {
     const { prog, writes } = makeFix();
+    // dim() under the real palette wraps the row in SGR codes; strip them
+    // (plus the `<RST>` placeholder) before asserting tail content.
+    const stripAnsi = (s: string): string => {
+      const esc = String.fromCharCode(27);
+      return s
+        .split(new RegExp(`${esc}\\[[0-9;]*m`, 'g'))
+        .join('')
+        .split('<RST>')
+        .join('');
+    };
     prog.onToolProgress('alpha');
-    expect((writes.at(-1) as string).endsWith('  └ alpha\x1b[0m')).toBe(true);
+    expect(stripAnsi(writes.at(-1) as string).endsWith('  └ alpha')).toBe(true);
     prog.onToolProgress('123   ');
-    expect((writes.at(-1) as string).endsWith('alpha123\x1b[0m')).toBe(true);
+    expect(stripAnsi(writes.at(-1) as string).endsWith('alpha123')).toBe(true);
     const n = writes.length;
     prog.onToolProgress('\n'); // 行落定——尾段空 → 不写新行
     expect(writes).toHaveLength(n);
     prog.onToolProgress('beta\ngamma'); // 只显示最后一段 gamma
-    expect((writes.at(-1) as string).endsWith('  └ gamma\x1b[0m')).toBe(true);
+    expect(stripAnsi(writes.at(-1) as string).endsWith('  └ gamma')).toBe(true);
   });
   it('clearProgress 只在活行时擦；endTurn 瞬态行全落定', () => {
     const { prog, writes, spinnerLog } = makeFix();
@@ -99,7 +131,7 @@ describe('ReplProgress bash 输出尾行', () => {
     expect(writes).toEqual([]);
     prog.onToolProgress('run');
     prog.endTurn();
-    expect(writes).toContain('\r\x1b[2K');
+    expect(writes).toContain('<CL>');
     expect(spinnerLog.filter((s) => s === 'stop').length).toBeGreaterThan(0);
   });
 });
@@ -139,7 +171,7 @@ describe('ReplProgress 行落定顺序', () => {
     const { prog, writes, spinnerLog } = makeFix();
     prog.onReasoning('hmm');
     prog.beforeRow();
-    expect(writes.at(-1)).toBe('\x1b[0m\n');
+    expect(writes.at(-1)).toBe('<RST>\n');
     expect(spinnerLog.at(-1)).toBe('stop');
     prog.onText('answer');
     expect(writes.at(-1)).toBe('answer');

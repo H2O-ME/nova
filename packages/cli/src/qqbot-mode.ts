@@ -7,7 +7,7 @@ import type { Config } from './config.js';
 import { createSessionRuntime } from './session-runtime.js';
 import { sessionsRoot } from './config.js';
 import { recordSessionWorkspace } from './sessions.js';
-import { agentRunBase, attachHooks, createHeadlessPermission } from './runner-shared.js';
+import { agentRunBase, attachHooks, createHeadlessPermission, requireActive } from './runner-shared.js';
 import { commitUserMessage, createRunnerBookkeeping, repairTurnLog } from './runner-loop.js';
 import { detectCaps } from '@nova-agent/tui';
 import { resolvePalette } from '@nova-agent/tui-view';
@@ -37,7 +37,9 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
   const paint = resolvePalette(config.ui?.theme ?? 'dark', detectCaps());
 
   const peerSessions = new Map<string, { session: Session; messages: AgentMessage[] }>();
-  let current: { session: Session; messages: AgentMessage[] } | undefined;
+  // Rebindable holders accessed through requireActive — agents run only after
+  // peerSessionOf binds them, so undefined is a wiring bug, not a normal path.
+  const currentRef: { value: { session: Session; messages: AgentMessage[] } | undefined } = { value: undefined };
   let hooksRef: import('@nova-agent/core').AgentHooks | undefined;
 
   const channel: QqBotChannel = createQqBotChannel({
@@ -61,7 +63,7 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
   wrapHeadlessAutoCompact(hooks, {
     limit: config.autoCompactTokenLimit,
     compact: (msgs: AgentMessage[]) => {
-      const target = current;
+      const target = currentRef.value;
       if (target === undefined) return Promise.resolve({ surface: msgs.slice() });
       return compactSession({ client: rt.client, session: target.session, messages: msgs, trigger: 'auto' });
     },
@@ -72,11 +74,11 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
 
   const agentRun = agentRunBase({
     client: rt.client,
-    session: () => current!.session,
+    session: () => requireActive(currentRef.value, 'session').session,
     rootDir: () => rootDir,
-    messages: () => current!.messages,
+    messages: () => requireActive(currentRef.value, 'messages').messages,
     tools: () => rt.host.tools,
-    hooks: () => hooksRef!,
+    hooks: () => requireActive(hooksRef, 'hooks'),
     jobs: rt.jobs,
     systemPrompt: rt.systemPrompt,
     maxTurns: config.maxTurns,
@@ -85,7 +87,7 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
   // 事件消费簿记单源（runner-loop）：对端会话重绑经访问器取当前值；
   // usage 只累计 stats（无头 runner 不持 pre-flight 锚点态）。
   const bookkeeping = createRunnerBookkeeping({
-    session: () => current!.session,
+    session: () => requireActive(currentRef.value, 'session').session,
     stats: rt.stats,
   });
 
@@ -105,7 +107,7 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
 
   async function runPeerTurn(text: string, peer: Peer): Promise<string> {
     const bound = await peerSessionOf(peer);
-    current = bound;
+    currentRef.value = bound;
     rt.client.setSessionId(bound.session.id);
     await commitUserMessage(bound.session, bound.messages, text);
 

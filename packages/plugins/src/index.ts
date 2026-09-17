@@ -3,7 +3,7 @@ export * from './permission.js';
 export * from './host.js';
 export * from './builtin/index.js';
 export { resolveInRoot, READ_MAX_BYTES } from './builtin/fs.js';
-export { POWERSHELL_UTF8_PREFIX, powershellInvocation, bashOnPath } from './builtin/bash.js';
+export { POWERSHELL_UTF8_PREFIX, powershellInvocation, bashOnPath, resolveShellName } from './builtin/bash.js';
 export * from './skills.js';
 export * from './ptc/json.js';
 export * from './ptc/sdk.js';

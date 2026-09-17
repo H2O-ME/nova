@@ -197,7 +197,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   });
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const lines = new LineSource(rl, process.stdin.isTTY === true);
-  const spinner = new Spinner(useColor);
+  const spinner = new Spinner(useColor, paint);
   // 瞬态进度渲染（推理尾行 / bash 尾行 / 子代理暗行 / spinner 生命周期）出壳单主。
   const prog = new ReplProgress({
     paint: () => paint,

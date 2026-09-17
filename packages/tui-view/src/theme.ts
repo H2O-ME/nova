@@ -32,6 +32,9 @@ const rgb = (r: number, g: number, b: number) => (text: string): string =>
  * truecolor 可用走 24-bit；不可用回落基础 16 色近似。
  */
 function createLightPalette(truecolor: boolean): Palette {
+  // Open-state control codes are theme-independent (terminal control, not
+  // color); inherit them from the base palette.
+  const base = { reset: () => '\x1b[0m', clearLine: () => '\r\x1b[2K', clearRight: () => '\x1b[0K' };
   if (!truecolor) {
     return {
       dim: wrap('2'),
@@ -43,6 +46,7 @@ function createLightPalette(truecolor: boolean): Palette {
       magenta: wrap('35'),
       bold: wrap('1'),
       inverse: wrap('7'),
+      ...base,
     };
   }
   return {
@@ -55,6 +59,7 @@ function createLightPalette(truecolor: boolean): Palette {
     magenta: rgb(175, 0, 175),
     bold: wrap('1'),
     inverse: wrap('7'),
+    ...base,
   };
 }
 

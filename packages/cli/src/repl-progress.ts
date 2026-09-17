@@ -62,14 +62,14 @@ export class ReplProgress {
   }
 
   onReasoning(text: string): void {
-    const { useColor, spinner, write, cols } = this.deps;
+    const { useColor, spinner, write, paint, cols } = this.deps;
     if (!useColor) return;
     spinner.stop();
     // 单行暗色状态显示推理流尾（DeepSeek reasoner 式）：换行折成 ⏎，
     // 尾段裁进「一行减前缀」的列预算。
     const maxCols = Math.max(10, cols() - styledWidth('  ⋯ ') - 1);
     this.reasoningTail = fitTail(`${this.reasoningTail}${text}`.replaceAll('\n', ' ⏎ '), maxCols);
-    write(`\r\x1b[2K\x1b[2m  ⋯ ${this.reasoningTail}`);
+    write(`${paint().clearLine()}${paint().dim(`  ⋯ ${this.reasoningTail}`)}`);
     this.reasoningLive = true;
   }
 
@@ -80,9 +80,9 @@ export class ReplProgress {
     this.subagentCallId = name === 'subagent' ? callId : undefined;
   }
 
-  /** bash 实时输出尾行：与推理行同一契约（单物理行、\r\x1b[2K 可擦）。 */
+  /** bash 实时输出尾行：与推理行同一契约（单物理行、clearLine 可擦）。 */
   onToolProgress(text: string): void {
-    const { useColor, write, cols } = this.deps;
+    const { useColor, write, paint, cols } = this.deps;
     if (!useColor) return;
     // 缓冲预算与 TUI 工具尾行同源 TOOL_TAIL_KEEP_CHARS（此前 repl 手滚
     // 2000 的第二套实现；显示仍被 fitTail 裁到单行，观感不变）。
@@ -90,7 +90,7 @@ export class ReplProgress {
     const last = this.progressTail.slice(this.progressTail.lastIndexOf('\n') + 1).trimEnd();
     if (last.length === 0) return;
     const maxCols = Math.max(10, cols() - styledWidth('  └ ') - 1);
-    write(`\r\x1b[2K\x1b[2m  └ ${fitTail(last, maxCols)}\x1b[0m`);
+    write(`${paint().clearLine()}${paint().dim(`  └ ${fitTail(last, maxCols)}`)}${paint().reset()}`);
     this.progressLive = true;
   }
 
@@ -118,7 +118,7 @@ export class ReplProgress {
 
   endReasoning(): void {
     if (this.reasoningLive) {
-      this.deps.write('\x1b[0m\n');
+      this.deps.write(`${this.deps.paint().reset()}\n`);
       this.reasoningLive = false;
     }
   }
@@ -126,7 +126,7 @@ export class ReplProgress {
   /** 擦掉 `└ tail` 输出尾行，让下一次打印从干净行开始。 */
   clearProgress(): void {
     if (this.progressLive) {
-      this.deps.write('\r\x1b[2K');
+      this.deps.write(this.deps.paint().clearLine());
       this.progressLive = false;
     }
   }

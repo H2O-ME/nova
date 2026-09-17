@@ -148,6 +148,20 @@ function invocation(command: string, shellPath?: string): ShellInvocation {
 }
 
 /**
+ * The shell name the bash tool will REALLY run commands in — `'bash'` or
+ * `'powershell'`. The single source of truth for both the runtime
+ * invocation() choice above AND the cli/context.ts declaredShell() report
+ * the model sees at session start, so the two cannot drift (a "powershell"
+ * declaration while bash runs the command would make every PowerShell-ism
+ * fail with a bare non-zero exit).
+ */
+export function resolveShellName(shellPath: string | undefined): 'bash' | 'powershell' {
+  if (shellPath !== undefined && shellPath.length > 0) return 'bash';
+  if (process.platform === 'win32') return bashOnPath() ? 'bash' : 'powershell';
+  return 'bash';
+}
+
+/**
  * Whether `bash.exe` is resolvable on PATH on Windows — i.e. whether the bash
  * tool will actually run commands through a POSIX shell or fall back to
  * PowerShell. The context fragment reports this SAME resolution so the model
