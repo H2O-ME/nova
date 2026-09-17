@@ -21,6 +21,8 @@ interface BootData {
   maxResults: number;
   skipDirs: string[];
   scanMaxBytes: number;
+  /** Truncation note template injected via workerData (kept out of source). */
+  truncatedNoteTemplate: string;
 }
 
 if (!parentPort) throw new Error('nova search worker loaded outside a worker thread');
@@ -86,7 +88,7 @@ try {
     halt,
   );
 
-  const truncated = halt.halted ? `\n（已达结果上限 ${boot.maxResults}，缩小范围或改用 bash 检索其余部分）` : '';
+  const truncated = halt.halted ? boot.truncatedNoteTemplate.replace('%d', String(boot.maxResults)) : '';
   port.postMessage({ type: 'done', text: results.length === 0 ? '(no matches)' : results.join('\n') + truncated });
 } catch (err) {
   port.postMessage({ type: 'done', error: err instanceof Error ? err.message : String(err) });

@@ -125,6 +125,9 @@ async function walk(dir: string, onFile: (file: string, dirent: { size: number }
   }
 }
 
+/** Truncation note template shared with the worker via workerData. */
+const TRUNCATED_NOTE_TEMPLATE = '\n（已达结果上限 %d，缩小范围或改用 bash 检索其余部分）';
+
 /**
  * The worker entry path, mirroring ptc/code-runtime's WORKER_PATH resolution:
  * the source world (vitest/tsx) loads the .ts file through Node's native
@@ -156,7 +159,7 @@ function runInWorker(
     let worker: Worker;
     try {
       worker = new Worker(WORKER_PATH, {
-        workerData: { root, contentRegex, caseInsensitive, maxResults, skipDirs: [...SKIP_DIRS], scanMaxBytes: SCAN_MAX_BYTES },
+        workerData: { root, contentRegex, caseInsensitive, maxResults, skipDirs: [...SKIP_DIRS], scanMaxBytes: SCAN_MAX_BYTES, truncatedNoteTemplate: TRUNCATED_NOTE_TEMPLATE },
       });
     } catch (err) {
       resolve(`Error: cannot spawn search worker: ${errMessage(err)}`);
@@ -195,6 +198,117 @@ function runInWorker(
   });
 }
 
+/**
+ * One search_files call: choose name_glob vs content_regex, gate the regex,
+ * and either delegate to the worker (model-provided pattern runs off the host
+ * event loop) or scan in-process. Extracted from the plugin factory so the
+ * factory body is only schema + wiring.
+ */
+async function executeSearch(
+  args: Record<string, unknown>,
+  c: ToolExecuteContext,
+  wallMs: number,
+  wantWorker: boolean,
+): Promise<string> {
+  const nameGlob = strArg(args, 'name_glob');
+  const contentRegex = strArg(args, 'content_regex');
+  if (nameGlob === undefined && contentRegex === undefined) {
+    return 'Error: provide name_glob or content_regex';
+  }
+  if (contentRegex !== undefined) {
+    // Pre-flight screen on BOTH paths: instant refusal beats a spawn
+    // (worker) or a frozen event loop (fallback) for the classic
+    // catastrophic-backtracking shapes.
+    const screen = screenContentRegex(contentRegex);
+    if (screen !== undefined) return `Error: ${screen}`;
+  }
+  let re: RegExp | undefined;
+  if (contentRegex !== undefined) {
+    try {
+      re = new RegExp(contentRegex, args['case_insensitive'] === true ? 'i' : '');
+    } catch (err) {
+      return `Error: invalid content_regex: ${errMessage(err)}`;
+    }
+  }
+  const nameRe = nameGlob === undefined ? undefined : globToRegExp(nameGlob);
+  const root = resolveAnywhere(c.rootDir, strArg(args, 'path') ?? '.');
+  const rootInfo = await stat(root).catch(() => undefined);
+  if (rootInfo === undefined || !rootInfo.isDirectory()) {
+    return `Error: cannot search directory: ${strArg(args, 'path') ?? '.'}`;
+  }
+  const maxResults = Math.min(MAX_RESULTS_CAP, Math.max(1, intArg(args, 'max_results') ?? DEFAULT_MAX_RESULTS));
+
+  const results: string[] = [];
+  const halt: WalkHalt = { halted: false, truncated: false, aborted: false };
+  // The in-process walk checks halt at every entry; wire the abort
+  // signal so Ctrl+C stops it promptly (the worker path gets the
+  // signal directly via terminate()).
+  const onAbort = (): void => {
+    halt.halted = true;
+    halt.aborted = true;
+  };
+  if (c.signal?.aborted) onAbort();
+  else c.signal?.addEventListener('abort', onAbort, { once: true });
+  const relOf = (file: string): string => path.relative(root, file).split(path.sep).join('/');
+  const truncateAtLimit = (): void => {
+    halt.halted = true;
+    halt.truncated = true;
+  };
+  const haltNote = (): string => {
+    if (halt.truncated) return TRUNCATED_NOTE_TEMPLATE.replace('%d', String(maxResults));
+    if (halt.aborted) return '\n（搜索已中止）';
+    return '';
+  };
+
+  // content_regex: the model-provided pattern runs isolated in a
+  // worker bounded by the wall clock — a catastrophic-backtracking
+  // regex cannot freeze the host event loop (Ctrl+C included).
+  if (re !== undefined) {
+    if (wantWorker) {
+      return runInWorker(root, contentRegex!, args['case_insensitive'] === true, maxResults, wallMs, c.signal);
+    }
+    // In-process fallback (runtime without worker type stripping).
+    await walk(
+      root,
+      async (file, info) => {
+        const rel = relOf(file);
+        if (info.size > SCAN_MAX_BYTES) return;
+        const text = await readFile(file, 'utf8').catch(() => undefined);
+        if (text === undefined) return;
+        if (looksBinary(text)) return;
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length && !halt.halted; i++) {
+          if (re.test(lines[i]!)) {
+            results.push(`${rel}:${i + 1}: ${lines[i]!.trimEnd()}`);
+            if (results.length >= maxResults) truncateAtLimit();
+          }
+        }
+      },
+      halt,
+    );
+    c.signal?.removeEventListener('abort', onAbort);
+    if (results.length === 0) return '(no matches)';
+    return results.join('\n') + haltNote();
+  }
+
+  // name_glob: the glob compiles to a backtrack-free RegExp; stays
+  // in-process (no spawn latency for a directory listing).
+  await walk(
+    root,
+    async (file) => {
+      const rel = relOf(file);
+      if (nameRe !== undefined && nameRe.test(rel) && results.length < maxResults) {
+        results.push(rel);
+        if (results.length >= maxResults) truncateAtLimit();
+      }
+    },
+    halt,
+  );
+  c.signal?.removeEventListener('abort', onAbort);
+  if (results.length === 0) return '(no matches)';
+  return results.join('\n') + haltNote();
+}
+
 export function searchPlugin(options?: SearchPluginOptions): Plugin {
   const wallMs = options?.wallMs ?? 30_000;
   const trustedReadRoots = options?.trustedReadRoots ?? [];
@@ -226,105 +340,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
         permissionFor(args) {
           return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.', trustedReadRoots);
         },
-        async execute(args, c: ToolExecuteContext) {
-          const nameGlob = strArg(args, 'name_glob');
-          const contentRegex = strArg(args, 'content_regex');
-          if (nameGlob === undefined && contentRegex === undefined) {
-            return 'Error: provide name_glob or content_regex';
-          }
-          if (contentRegex !== undefined) {
-            // Pre-flight screen on BOTH paths: instant refusal beats a spawn
-            // (worker) or a frozen event loop (fallback) for the classic
-            // catastrophic-backtracking shapes.
-            const screen = screenContentRegex(contentRegex);
-            if (screen !== undefined) return `Error: ${screen}`;
-          }
-          let re: RegExp | undefined;
-          if (contentRegex !== undefined) {
-            try {
-              re = new RegExp(contentRegex, args['case_insensitive'] === true ? 'i' : '');
-            } catch (err) {
-              return `Error: invalid content_regex: ${errMessage(err)}`;
-            }
-          }
-          const nameRe = nameGlob === undefined ? undefined : globToRegExp(nameGlob);
-          const root = resolveAnywhere(c.rootDir, strArg(args, 'path') ?? '.');
-          const rootInfo = await stat(root).catch(() => undefined);
-          if (rootInfo === undefined || !rootInfo.isDirectory()) {
-            return `Error: cannot search directory: ${strArg(args, 'path') ?? '.'}`;
-          }
-          const maxResults = Math.min(MAX_RESULTS_CAP, Math.max(1, intArg(args, 'max_results') ?? DEFAULT_MAX_RESULTS));
-
-          const results: string[] = [];
-          const halt: WalkHalt = { halted: false, truncated: false, aborted: false };
-          // The in-process walk checks halt at every entry; wire the abort
-          // signal so Ctrl+C stops it promptly (the worker path gets the
-          // signal directly via terminate()).
-          const onAbort = (): void => {
-            halt.halted = true;
-            halt.aborted = true;
-          };
-          if (c.signal?.aborted) onAbort();
-          else c.signal?.addEventListener('abort', onAbort, { once: true });
-          const relOf = (file: string): string => path.relative(root, file).split(path.sep).join('/');
-          const truncateAtLimit = (): void => {
-            halt.halted = true;
-            halt.truncated = true;
-          };
-          const haltNote = (): string => {
-            if (halt.truncated) return `\n（已达结果上限 ${maxResults}，缩小范围或改用 bash 检索其余部分）`;
-            if (halt.aborted) return '\n（搜索已中止）';
-            return '';
-          };
-
-          // content_regex: the model-provided pattern runs isolated in a
-          // worker bounded by the wall clock — a catastrophic-backtracking
-          // regex cannot freeze the host event loop (Ctrl+C included).
-          if (re !== undefined) {
-            if (wantWorker) {
-              return runInWorker(root, contentRegex!, args['case_insensitive'] === true, maxResults, wallMs, c.signal);
-            }
-            // In-process fallback (runtime without worker type stripping).
-            await walk(
-              root,
-              async (file, info) => {
-                const rel = relOf(file);
-                if (info.size > SCAN_MAX_BYTES) return;
-                const text = await readFile(file, 'utf8').catch(() => undefined);
-                if (text === undefined) return;
-                if (looksBinary(text)) return;
-                const lines = text.split('\n');
-                for (let i = 0; i < lines.length && !halt.halted; i++) {
-                  if (re.test(lines[i]!)) {
-                    results.push(`${rel}:${i + 1}: ${lines[i]!.trimEnd()}`);
-                    if (results.length >= maxResults) truncateAtLimit();
-                  }
-                }
-              },
-              halt,
-            );
-            c.signal?.removeEventListener('abort', onAbort);
-            if (results.length === 0) return '(no matches)';
-            return results.join('\n') + haltNote();
-          }
-
-          // name_glob: the glob compiles to a backtrack-free RegExp; stays
-          // in-process (no spawn latency for a directory listing).
-          await walk(
-            root,
-            async (file) => {
-              const rel = relOf(file);
-              if (nameRe !== undefined && nameRe.test(rel) && results.length < maxResults) {
-                results.push(rel);
-                if (results.length >= maxResults) truncateAtLimit();
-              }
-            },
-            halt,
-          );
-          c.signal?.removeEventListener('abort', onAbort);
-          if (results.length === 0) return '(no matches)';
-          return results.join('\n') + haltNote();
-        },
+        execute: (args, c) => executeSearch(args, c, wallMs, wantWorker),
         // Read-only: safe to dispatch concurrently with sibling reads.
         isConcurrencySafe() {
           return true;

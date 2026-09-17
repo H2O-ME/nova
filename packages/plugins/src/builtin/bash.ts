@@ -439,6 +439,71 @@ function startBackground(
   };
 }
 
+/**
+ * Run a foreground bash command or start a detached job (run_in_background).
+ * Shared by every caller that drives the bash tool — extracted so the plugin
+ * factory body is only schema + wiring.
+ */
+async function executeBash(
+  args: Record<string, unknown>,
+  c: ToolExecuteContext,
+  defaultTimeoutMs: number,
+  maxOutputBytes: number,
+  shellPath: string | undefined,
+): Promise<string> {
+  const command = typeof args['command'] === 'string' ? args['command'] : '';
+  if (command.trim().length === 0) return 'Error: command is required';
+  const requested = typeof args['timeout_ms'] === 'number' ? Math.trunc(args['timeout_ms']) : undefined;
+  const timeoutMs = Math.min(Math.max(1000, requested ?? defaultTimeoutMs), Math.max(1000, defaultTimeoutMs));
+
+  if (args['run_in_background'] === true) {
+    if (c.jobs === undefined) return 'Error: background jobs are not available in this context';
+    // Pre-check with the SAME resolution declaredShell reports: a
+    // missing bash.exe surfaces as an async ENOENT event, too late
+    // for a fallback — so pick PowerShell up front.
+    let inv =
+      process.platform === 'win32' && shellPath === undefined && !bashOnPath()
+        ? powershellInvocation(command)
+        : invocation(command, shellPath);
+    const handle = startBackground(inv, c.rootDir, maxOutputBytes);
+    if (typeof handle === 'string') return `Error: cannot spawn shell (${inv.cmd}): ${handle}`;
+    const snapshot = c.jobs.start({
+      kind: 'bash',
+      label: command,
+      outputLimitBytes: maxOutputBytes,
+      cancel: handle.cancel,
+      done: handle.done,
+      readOutput: handle.readOutput,
+    });
+    return `Started background job ${snapshot.id}: ${command}\nYou will be notified automatically when it finishes — do not poll. When notified, read its output once with the jobs tool (action=output, id=${snapshot.id}); use action=stop to terminate it early.`;
+  }
+
+  // Long-running commands stream their raw output to the UI as it
+  // arrives, so the tool line can show a live tail instead of looking
+  // frozen until the process exits.
+  const onOutput = c.onProgress !== undefined ? (text: string): void => c.onProgress?.(text) : undefined;
+  let inv = invocation(command, shellPath);
+  let outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
+  if (outcome.spawnError !== undefined && process.platform === 'win32') {
+    // No Git Bash on PATH: fall back to PowerShell.
+    inv = powershellInvocation(command);
+    outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
+  }
+  if (outcome.spawnError !== undefined) {
+    return `Error: cannot spawn shell (${inv.cmd}): ${outcome.spawnError}`;
+  }
+
+  const parts: string[] = [];
+  if (outcome.code === null) parts.push('[command did not exit: killed after timeout or aborted]');
+  parts.push(`exit: ${outcome.code ?? 'null'}`);
+  if (outcome.droppedBytes !== undefined) {
+    parts.push(`[stdout/stderr truncated: ${outcome.droppedBytes} bytes in the middle kept out of view]`);
+  }
+  parts.push(`stdout:\n${outcome.stdout.length > 0 ? outcome.stdout : '(empty)'}`);
+  if (outcome.stderr.length > 0) parts.push(`stderr:\n${outcome.stderr}`);
+  return parts.join('\n');
+}
+
 export function bashPlugin(options?: BashPluginOptions): Plugin {
   const defaultTimeoutMs = options?.timeoutMs ?? DEFAULT_BASH_TIMEOUT_MS;
   const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_BASH_OUTPUT_BYTES;
@@ -464,59 +529,7 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
           required: ['command'],
           additionalProperties: false,
         },
-        async execute(args, c: ToolExecuteContext) {
-          const command = typeof args['command'] === 'string' ? args['command'] : '';
-          if (command.trim().length === 0) return 'Error: command is required';
-          const requested = typeof args['timeout_ms'] === 'number' ? Math.trunc(args['timeout_ms']) : undefined;
-          const timeoutMs = Math.min(Math.max(1000, requested ?? defaultTimeoutMs), Math.max(1000, defaultTimeoutMs));
-
-          if (args['run_in_background'] === true) {
-            if (c.jobs === undefined) return 'Error: background jobs are not available in this context';
-            // Pre-check with the SAME resolution declaredShell reports: a
-            // missing bash.exe surfaces as an async ENOENT event, too late
-            // for a fallback — so pick PowerShell up front.
-            let inv =
-              process.platform === 'win32' && options?.shellPath === undefined && !bashOnPath()
-                ? powershellInvocation(command)
-                : invocation(command, options?.shellPath);
-            const handle = startBackground(inv, c.rootDir, maxOutputBytes);
-            if (typeof handle === 'string') return `Error: cannot spawn shell (${inv.cmd}): ${handle}`;
-            const snapshot = c.jobs.start({
-              kind: 'bash',
-              label: command,
-              outputLimitBytes: maxOutputBytes,
-              cancel: handle.cancel,
-              done: handle.done,
-              readOutput: handle.readOutput,
-            });
-            return `Started background job ${snapshot.id}: ${command}\nYou will be notified automatically when it finishes — do not poll. When notified, read its output once with the jobs tool (action=output, id=${snapshot.id}); use action=stop to terminate it early.`;
-          }
-
-          // Long-running commands stream their raw output to the UI as it
-          // arrives, so the tool line can show a live tail instead of looking
-          // frozen until the process exits.
-          const onOutput = c.onProgress !== undefined ? (text: string): void => c.onProgress?.(text) : undefined;
-          let inv = invocation(command, options?.shellPath);
-          let outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
-          if (outcome.spawnError !== undefined && process.platform === 'win32') {
-            // No Git Bash on PATH: fall back to PowerShell.
-            inv = powershellInvocation(command);
-            outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
-          }
-          if (outcome.spawnError !== undefined) {
-            return `Error: cannot spawn shell (${inv.cmd}): ${outcome.spawnError}`;
-          }
-
-          const parts: string[] = [];
-          if (outcome.code === null) parts.push('[command did not exit: killed after timeout or aborted]');
-          parts.push(`exit: ${outcome.code ?? 'null'}`);
-          if (outcome.droppedBytes !== undefined) {
-            parts.push(`[stdout/stderr truncated: ${outcome.droppedBytes} bytes in the middle kept out of view]`);
-          }
-          parts.push(`stdout:\n${outcome.stdout.length > 0 ? outcome.stdout : '(empty)'}`);
-          if (outcome.stderr.length > 0) parts.push(`stderr:\n${outcome.stderr}`);
-          return parts.join('\n');
-        },
+        execute: (args, c) => executeBash(args, c, defaultTimeoutMs, maxOutputBytes, options?.shellPath),
       }, { permission: 'execute' });
     },
   };

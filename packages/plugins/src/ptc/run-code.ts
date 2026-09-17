@@ -69,44 +69,27 @@ function previewValue(value: unknown, cap: number): string {
   return text.length > cap ? `${text.slice(0, cap)}…[+${text.length - cap} chars]` : text;
 }
 
+interface PendingDispatch {
+  name: string;
+  args: Record<string, JsonValue>;
+  settle(result: ToolDispatchResult): void;
+}
+
 /**
- * One run of one program: build bindings for the currently registered tools,
- * drive them through the loop's dispatch seam under a run-scoped abort, then
- * settle only after every sub-dispatch has fully quiesced.
+ * (2) The ordered dispatch queue + driver. Strict submission-ordered starts;
+ * consecutive concurrency-safe calls overlap up to `maxParallel`, an exclusive
+ * call drains the pool, runs alone, and holds the barrier through its own
+ * completion (dsh dispatch-queue semantics minus the ordered commit stage —
+ * NovaAgent sub-call results never rejoin the log).
  */
-async function runCodeProgram(
-  liveTools: () => ToolDefinition[],
-  runtimeConfig: CodeRuntimeConfig,
+function createDispatchQueue(
+  dispatch: ToolExecuteContext['dispatch'],
+  byName: Map<string, ToolDefinition>,
   maxParallel: number,
-  args: Record<string, unknown>,
-  c: ToolExecuteContext,
-): Promise<string> {
-  const code = typeof args['code'] === 'string' ? args['code'] : '';
-  const description = typeof args['description'] === 'string' ? args['description'] : '';
-  if (code.trim().length === 0) return 'Error: code is required — the body of an async TypeScript function';
-  if (description.trim().length === 0) return 'Error: description is required — a short summary of what the program does';
-  const dispatch = c.dispatch;
-  if (dispatch === undefined) {
-    return 'Error: nested tool dispatch is unavailable here (run_code must execute through the agent loop)';
-  }
-
-  // The run-scoped abort follows the outer signal in, and fires when the run
-  // settles for ANY reason, so an in-flight sub-dispatch is aborted instead
-  // of orphaned and queued-unstarted ones are abandoned.
-  const runController = new AbortController();
-  const onOuterAbort = (): void => runController.abort(c.signal?.reason);
-  c.signal?.addEventListener('abort', onOuterAbort, { once: true });
-  const runOver = (): boolean => runController.signal.aborted;
-  const overReason = (): string => String(runController.signal.reason ?? 'aborted');
-
-  const visible = liveTools().filter((tool) => tool.name !== RUN_CODE_NAME);
-  const byName = new Map(visible.map((tool) => [tool.name, tool]));
-
-  interface PendingDispatch {
-    name: string;
-    args: Record<string, JsonValue>;
-    settle(result: ToolDispatchResult): void;
-  }
+  runController: AbortController,
+  runOver: () => boolean,
+  overReason: () => string,
+) {
   const queue: PendingDispatch[] = [];
   const inFlight = new Set<Promise<void>>();
   let exclusiveActive = false;
@@ -129,7 +112,7 @@ async function runCodeProgram(
     const flight = (async () => {
       let outcome: ToolDispatchResult;
       try {
-        outcome = await dispatch({ name: pending.name, args: pending.args }, runController.signal);
+        outcome = await dispatch!({ name: pending.name, args: pending.args }, runController.signal);
       } catch (err) {
         outcome = { ok: false, error: errMessage(err) };
       }
@@ -142,13 +125,6 @@ async function runCodeProgram(
     inFlight.add(flight);
   };
 
-  /**
-   * The single ordered lane: starts are strictly submission-ordered;
-   * consecutive concurrency-safe calls overlap up to `maxParallel`, while an
-   * exclusive call drains the pool, runs alone, and holds the barrier through
-   * its own completion (dsh dispatch-queue semantics, minus the ordered commit
-   * stage NovaAgent sub-calls do not need — their results never rejoin the log).
-   */
   const drive = (): Promise<void> => {
     if (driving) return driverRun;
     driving = true;
@@ -186,6 +162,62 @@ async function runCodeProgram(
     return driverRun;
   };
 
+  return {
+    enqueue(pending: PendingDispatch): void {
+      queue.push(pending);
+      wakeup();
+      void drive();
+    },
+    settle(runController: AbortController): Promise<void> {
+      runController.abort('run_code settled');
+      wakeup();
+      return drive();
+    },
+  };
+}
+
+/**
+ * One run of one program: build bindings for the currently registered tools,
+ * drive them through the loop's dispatch seam under a run-scoped abort, then
+ * settle only after every sub-dispatch has fully quiesced.
+ *
+ * Split into four stages — validate / dispatch-queue / bindings+audit / run —
+ * extracted so each is independently readable.
+ */
+async function runCodeProgram(
+  liveTools: () => ToolDefinition[],
+  runtimeConfig: CodeRuntimeConfig,
+  maxParallel: number,
+  args: Record<string, unknown>,
+  c: ToolExecuteContext,
+): Promise<string> {
+  // (1) Argument validation + the run-scoped abort (follows the outer signal
+  // in and fires when the run settles for ANY reason, so an in-flight
+  // sub-dispatch is aborted instead of orphaned and queued-unstarted ones are
+  // abandoned).
+  const code = typeof args['code'] === 'string' ? args['code'] : '';
+  const description = typeof args['description'] === 'string' ? args['description'] : '';
+  if (code.trim().length === 0) return 'Error: code is required — the body of an async TypeScript function';
+  if (description.trim().length === 0) return 'Error: description is required — a short summary of what the program does';
+  if (c.dispatch === undefined) {
+    return 'Error: nested tool dispatch is unavailable here (run_code must execute through the agent loop)';
+  }
+  const dispatch = c.dispatch;
+
+  const runController = new AbortController();
+  const onOuterAbort = (): void => runController.abort(c.signal?.reason);
+  c.signal?.addEventListener('abort', onOuterAbort, { once: true });
+  const runOver = (): boolean => runController.signal.aborted;
+  const overReason = (): string => String(runController.signal.reason ?? 'aborted');
+
+  const visible = liveTools().filter((tool) => tool.name !== RUN_CODE_NAME);
+  const byName = new Map(visible.map((tool) => [tool.name, tool]));
+
+  const dq = createDispatchQueue(dispatch, byName, maxParallel, runController, runOver, overReason);
+
+  // (3) Audit emission + bindings exposed to the program. The audit record
+  // exists even when the run ended while the call was in flight; the program
+  // is then stopped rather than handed a result from a run that is over.
   const emitAudit = (name: string, callArgs: Record<string, JsonValue>, outcome: ToolDispatchResult): void => {
     if (c.emit === undefined) return;
     void Promise.resolve(
@@ -208,13 +240,8 @@ async function runCodeProgram(
     }
     const callArgs = snapshot as Record<string, JsonValue>;
     const outcome = await new Promise<ToolDispatchResult>((settle) => {
-      queue.push({ name, args: callArgs, settle });
-      wakeup();
-      void drive();
+      dq.enqueue({ name, args: callArgs, settle });
     });
-    // The sub-call ran (or was refused) — the audit record exists even when
-    // the run ended while it was in flight, then the program is stopped
-    // rather than handed a result from a run that is over.
     emitAudit(name, callArgs, outcome);
     if (runOver()) throw new Error(`run_code run is over (${overReason()}); ${name} result discarded`);
     if (!outcome.ok) throw new Error(outcome.error);
@@ -229,6 +256,9 @@ async function runCodeProgram(
   }
 
   try {
+    // (4) Run the program through the worker runtime, settle the queue, then
+    // render the result. The dispatch seam must be handed the run-scoped
+    // signal — sub-calls aborted when the run settles, not the outer one.
     let result: CodeRunResult;
     try {
       result = await runCode(
@@ -249,9 +279,7 @@ async function runCodeProgram(
     } finally {
       // Settle fully: abort in-flight sub-dispatches and drain the queue
       // before run_code itself returns — nothing may append after settlement.
-      runController.abort('run_code settled');
-      wakeup();
-      await drive();
+      await dq.settle(runController);
     }
     if (result.error !== undefined) {
       const logsText = result.logs.length > 0 ? `\nCaptured output:\n${result.logs.join('\n')}` : '';

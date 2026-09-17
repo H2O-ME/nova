@@ -184,6 +184,124 @@ function applyEdit(
   return tolerantReplace(text, oldString, newString, replaceAll);
 }
 
+/** Execute read_file: in-root reads are free, out-of-root cross the boundary. */
+async function executeReadFile(
+  args: Record<string, unknown>,
+  c: ToolExecuteContext,
+): Promise<string> {
+  const file = resolveAnywhere(c.rootDir, args['path']);
+  const info = await stat(file).catch(() => undefined);
+  if (!info) return `Error: file not found: ${args['path'] as string}`;
+  if (info.isDirectory()) return `Error: path is a directory, use list_dir: ${args['path'] as string}`;
+  if (info.size > READ_MAX_BYTES) {
+    return `Error: file is ${info.size} bytes (over the ${READ_MAX_BYTES}-byte read cap); use bash (head/tail/sed) or a script to read it in chunks`;
+  }
+  const text = await readFile(file, 'utf8');
+  // Binary probe: control characters in the first 8 KiB mean reading
+  // as UTF-8 would garble the output.
+  if (looksBinary(text)) {
+    return `Error: file looks binary or non-UTF8 — reading it as text would garble the output (${args['path'] as string})`;
+  }
+  // Staleness baseline for edit_file: after this read, an edit of a
+  // file that changed on disk is an error instead of a silent clobber.
+  recordVersion(await resolveReal(c.rootDir, args['path']), info);
+  const lines = text.split('\n');
+  const total = lines.length;
+  const offset = Math.max(1, intArg(args, 'offset') ?? 1);
+  const limit = Math.max(1, intArg(args, 'limit') ?? 400);
+  const slice = lines.slice(offset - 1, offset - 1 + limit);
+  const header =
+    total > slice.length || offset > 1
+      ? `[lines ${offset}-${offset - 1 + slice.length} of ${total}]\n`
+      : '';
+  return `${header}${slice.join('\n')}`;
+}
+
+/** Execute list_dir: directories first, files with their byte size. */
+async function executeListDir(
+  args: Record<string, unknown>,
+  c: ToolExecuteContext,
+): Promise<string> {
+  const dir = resolveAnywhere(c.rootDir, strArg(args, 'path') ?? '.');
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => undefined);
+  if (!entries) return `Error: cannot read directory: ${strArg(args, 'path') ?? '.'}`;
+  const sorted = [...entries].sort((a, b) => {
+    const dirDelta = Number(b.isDirectory()) - Number(a.isDirectory());
+    return dirDelta !== 0 ? dirDelta : a.name.localeCompare(b.name);
+  });
+  if (sorted.length === 0) return '(empty directory)';
+  // File sizes ride along (best-effort): `ls -la` otherwise beats this
+  // tool informationally and the model rationally falls back to shell
+  // ls whenever size matters (binary triage, build artifacts).
+  const visible = sorted.slice(0, 500);
+  const sizes = await Promise.all(
+    visible.map(async (entry) => {
+      if (!entry.isFile()) return undefined;
+      try {
+        return (await stat(path.join(dir, entry.name))).size;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  const lines = visible.map((entry, i) =>
+    entry.isDirectory() || sizes[i] === undefined
+      ? `${entry.isDirectory() ? 'd' : 'f'} ${entry.name}`
+      : `f ${sizes[i]} ${entry.name}`,
+  );
+  const suffix = sorted.length > 500 ? `\n(... ${sorted.length - 500} more)` : '';
+  return lines.join('\n') + suffix;
+}
+
+/** Execute write_file: same-dir tmp + atomic rename, then refresh staleness. */
+async function executeWriteFile(
+  args: Record<string, unknown>,
+  c: ToolExecuteContext,
+): Promise<string> {
+  if (typeof args['content'] !== 'string') {
+    return 'Error: content must be a string (write_file takes path + content)';
+  }
+  const file = await resolveInRoot(c.rootDir, args['path']);
+  const content = args['content'];
+  await atomicWrite(file, content);
+  await recordVersionNow(file);
+  return `wrote ${content.length} chars to ${path.relative(c.rootDir, file) || file}`;
+}
+
+/** Execute edit_file: exact-match first, newline-tolerant CRLF fallback. */
+async function executeEditFile(
+  args: Record<string, unknown>,
+  c: ToolExecuteContext,
+): Promise<string> {
+  const file = await resolveInRoot(c.rootDir, args['path']);
+  const oldString = strArg(args, 'old_string');
+  const newString = strArg(args, 'new_string') ?? '';
+  if (oldString === undefined || oldString.length === 0) return 'Error: old_string must be a non-empty string';
+  let text: string;
+  try {
+    const info = await stat(file).catch(() => undefined);
+    if (info !== undefined && info.size > READ_MAX_BYTES) {
+      return `Error: file is ${info.size} bytes (over the ${READ_MAX_BYTES}-byte edit cap); use bash (sed) or a script for bulk edits`;
+    }
+    text = await readFile(file, 'utf8');
+  } catch {
+    return `Error: cannot read file: ${args['path'] as string}`;
+  }
+  if (looksBinary(text)) {
+    return 'Error: file looks binary — edit_file only handles text; use bash or a script';
+  }
+  const pendingStale = await staleError(file);
+  if (pendingStale !== undefined) return `Error: ${pendingStale}`;
+  const played = applyEdit(text, oldString, newString, args['replace_all'] === true);
+  if (played === undefined) return 'Error: old_string not found in file';
+  if (played.count > 1 && args['replace_all'] !== true) {
+    return `Error: old_string appears ${played.count} times; pass replace_all=true or provide a longer unique snippet`;
+  }
+  await atomicWrite(file, played.next);
+  await recordVersionNow(file);
+  return `edited ${played.count} occurrence(s) in ${path.relative(c.rootDir, file) || file}`;
+}
+
 export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin {
   const trustedReadRoots = options?.trustedReadRoots ?? [];
   return {
@@ -210,32 +328,7 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
           return rootPermissionKind(rootDir, args['path'], trustedReadRoots);
         },
         async execute(args, c: ToolExecuteContext) {
-          const file = resolveAnywhere(c.rootDir, args['path']);
-          const info = await stat(file).catch(() => undefined);
-          if (!info) return `Error: file not found: ${args['path'] as string}`;
-          if (info.isDirectory()) return `Error: path is a directory, use list_dir: ${args['path'] as string}`;
-          if (info.size > READ_MAX_BYTES) {
-            return `Error: file is ${info.size} bytes (over the ${READ_MAX_BYTES}-byte read cap); use bash (head/tail/sed) or a script to read it in chunks`;
-          }
-          const text = await readFile(file, 'utf8');
-          // Binary probe: control characters in the first 8 KiB mean reading
-          // as UTF-8 would garble the output.
-          if (looksBinary(text)) {
-            return `Error: file looks binary or non-UTF8 — reading it as text would garble the output (${args['path'] as string})`;
-          }
-          // Staleness baseline for edit_file: after this read, an edit of a
-          // file that changed on disk is an error instead of a silent clobber.
-          recordVersion(await resolveReal(c.rootDir, args['path']), info);
-          const lines = text.split('\n');
-          const total = lines.length;
-          const offset = Math.max(1, intArg(args, 'offset') ?? 1);
-          const limit = Math.max(1, intArg(args, 'limit') ?? 400);
-          const slice = lines.slice(offset - 1, offset - 1 + limit);
-          const header =
-            total > slice.length || offset > 1
-              ? `[lines ${offset}-${offset - 1 + slice.length} of ${total}]\n`
-              : '';
-          return `${header}${slice.join('\n')}`;
+          return executeReadFile(args, c);
         },
         // Read-only: safe to dispatch concurrently with sibling reads.
         isConcurrencySafe() {
@@ -258,35 +351,7 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
           return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.', trustedReadRoots);
         },
         async execute(args, c: ToolExecuteContext) {
-          const dir = resolveAnywhere(c.rootDir, strArg(args, 'path') ?? '.');
-          const entries = await readdir(dir, { withFileTypes: true }).catch(() => undefined);
-          if (!entries) return `Error: cannot read directory: ${strArg(args, 'path') ?? '.'}`;
-          const sorted = [...entries].sort((a, b) => {
-            const dirDelta = Number(b.isDirectory()) - Number(a.isDirectory());
-            return dirDelta !== 0 ? dirDelta : a.name.localeCompare(b.name);
-          });
-          if (sorted.length === 0) return '(empty directory)';
-          // File sizes ride along (best-effort): `ls -la` otherwise beats this
-          // tool informationally and the model rationally falls back to shell
-          // ls whenever size matters (binary triage, build artifacts).
-          const visible = sorted.slice(0, 500);
-          const sizes = await Promise.all(
-            visible.map(async (entry) => {
-              if (!entry.isFile()) return undefined;
-              try {
-                return (await stat(path.join(dir, entry.name))).size;
-              } catch {
-                return undefined;
-              }
-            }),
-          );
-          const lines = visible.map((entry, i) =>
-            entry.isDirectory() || sizes[i] === undefined
-              ? `${entry.isDirectory() ? 'd' : 'f'} ${entry.name}`
-              : `f ${sizes[i]} ${entry.name}`,
-          );
-          const suffix = sorted.length > 500 ? `\n(... ${sorted.length - 500} more)` : '';
-          return lines.join('\n') + suffix;
+          return executeListDir(args, c);
         },
         // Read-only: safe to dispatch concurrently with sibling reads.
         isConcurrencySafe() {
@@ -393,14 +458,7 @@ export function fsWritePlugin(): Plugin {
           }
         },
         async execute(args, c: ToolExecuteContext) {
-          if (typeof args['content'] !== 'string') {
-            return 'Error: content must be a string (write_file takes path + content)';
-          }
-          const file = await resolveInRoot(c.rootDir, args['path']);
-          const content = args['content'];
-          await atomicWrite(file, content);
-          await recordVersionNow(file);
-          return `wrote ${content.length} chars to ${path.relative(c.rootDir, file) || file}`;
+          return executeWriteFile(args, c);
         },
       }, { permission: 'write' });
 
@@ -463,33 +521,7 @@ export function fsWritePlugin(): Plugin {
           return out.join('\n');
         },
         async execute(args, c: ToolExecuteContext) {
-          const file = await resolveInRoot(c.rootDir, args['path']);
-          const oldString = strArg(args, 'old_string');
-          const newString = strArg(args, 'new_string') ?? '';
-          if (oldString === undefined || oldString.length === 0) return 'Error: old_string must be a non-empty string';
-          let text: string;
-          try {
-            const info = await stat(file).catch(() => undefined);
-            if (info !== undefined && info.size > READ_MAX_BYTES) {
-              return `Error: file is ${info.size} bytes (over the ${READ_MAX_BYTES}-byte edit cap); use bash (sed) or a script for bulk edits`;
-            }
-            text = await readFile(file, 'utf8');
-          } catch {
-            return `Error: cannot read file: ${args['path'] as string}`;
-          }
-          if (looksBinary(text)) {
-            return 'Error: file looks binary — edit_file only handles text; use bash or a script';
-          }
-          const pendingStale = await staleError(file);
-          if (pendingStale !== undefined) return `Error: ${pendingStale}`;
-          const played = applyEdit(text, oldString, newString, args['replace_all'] === true);
-          if (played === undefined) return 'Error: old_string not found in file';
-          if (played.count > 1 && args['replace_all'] !== true) {
-            return `Error: old_string appears ${played.count} times; pass replace_all=true or provide a longer unique snippet`;
-          }
-          await atomicWrite(file, played.next);
-          await recordVersionNow(file);
-          return `edited ${played.count} occurrence(s) in ${path.relative(c.rootDir, file) || file}`;
+          return executeEditFile(args, c);
         },
       }, { permission: 'write' });
     },
