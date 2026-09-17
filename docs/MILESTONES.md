@@ -169,3 +169,31 @@
 - **M8.4 — TUI 实用性**（红线内）：
   - **滚动锚定**：上滚后新输出等量补偿 `scroll` `offset`——视口钉在用户当时看的绝对位置，不再被流式输出往直播拽；回底恢复跟随。上滚时呼吸行显示「上方还有 N 行」位置指示（`bottomStack` 新增可选 `breathText`，不占内容行、不进状态栏——守「上滚不进状态栏」红线）。
   - **Home/End 跳转**：`composer` 光标已在行首/行尾时再按 `Home`/`End` 升级为历史区跳顶/回底。
+- **M8.5 — CSI 修饰键与词级移动**：`KeyDecoder` 保留 CSI 参数（`[1;5D` 类序列不再退化成裸方向键），composer 获得 Ctrl+←/→ 词级光标移动。
+
+### 治理换血与结构棘轮（M9，进行中）
+
+> 诊断：历轮重构都是事后清账，没有防再生的机械棘轮；文书税（决策笔记体系 + 全量 verify 仪式 + 文案级断言）拖慢迭代却不保护结构。M9 先换治理，再在棘轮之下做行为保持不变重构——每阶段独立提交、`pnpm verify`+`pnpm lint` 全绿、可中途停止。
+
+- **M9.0 — 治理换血（阶段 0 + A）**：
+  - **决策笔记体系删除**（A1）：`scripts/agent-notes/`（662 行）与其 CI 整体移除——决策理由归 commit message 与机制条目，不再有第三份笔记义务。
+  - **结构棘轮**（A2）：`scripts/dep-direction.mjs` 机检包间 import 方向（§4 白名单事实化）；`scripts/structure-budget.mjs` + `structure-budget.json` 管**逐文件行数硬上限**（超限即失败；`--update` 同步时下调静默、上调逐条打印 RAISED——增长必须显式发生过）；`.oxlintrc.json` 增补 complexity / max-depth / 长函数 / no-nested-functions（以现状校准为 warn，存量警告即重构靶单）。两者合为 `pnpm gates` 挂进 `verify`。
+  - **verify 分层**（A3）：`pnpm check`（lint + gates + 变更相关测试，秒级快环）vs `pnpm verify`（build + typecheck + 全量 test + gates，提交前全环）。
+  - **编年史拆分**（A4）：AGENTS.md §7 已交付里程碑详录迁入本文件（AGENTS.md 396 → 约 235 行，只留现状与规矩）。
+  - **断言松绑**（A5）：视图层文案级 `toBe(整串)` 改契约断言（宽度不变量、结构顺序、关键字段、降级行为）——观感微调不再触发红测试（§6「断言粒度」）。
+  - **最小 CI**（A6）：`.github/workflows/verify.yml`（push/PR 跑 verify + lint）——棘轮要有机械执行处。
+- **M9.1 — 共享助手收敛（阶段 B）**：core 新增并导出 `errMessage`（消 30 处 `err instanceof Error ? …` 样板；worker 自包含文件按设计保留内联，ai 保留局部助手守住 ai→core 纯类型边界）与 `truncateUtf8Head/Tail`（agent 落盘 / jobs 读取 / AGENTS.md 裁剪三份同构循环归一，整字符边界不劈 UTF-8 序列）；plugins `builtin/args.ts`（`strArg`/`intArg` 归一 fs/search 的字节级重复）；bash 超时/输出上限/settle 宽限等重复魔数具名化，tui 历史栈接 `HISTORY_LIMIT`。全仓净 +49 行是共享模块与注释开销，消重实收 −59。
+- **M9.2 — 四 runner 重复消除（阶段 C）**：用户消息提交、`llm_retry`/`empty_completion` 文案、done→状态行收尾、回合失败「修日志→归类」骨架（`repairTurnLog`/`classifyTurnFailure`）、审批效果预览（`approvalEffectPreview`）、审批 toast 正文（`approvalNotifyBody`）、hooks 重绑（`attachHooks`）、`newSessionDir`/模型列表缓存，全部单源进 `runner-loop.ts` / `runner-shared.ts` / `session-runtime.ts`。
+  - **声明的行为例外（漂移修复）**：repl 审批预览宽度统一走 `toolArgSummary`（此前自己一套 slice）；exec/qqbot 调色板装配统一走 `resolvePalette`（开始尊重 `ui.theme`/`NO_COLOR`——此前恒暗色）。
+  - **真实缺陷修复（消重时发现）**：TUI 首装与 exec 两条路径 `hooksRef.current` 从未赋值——嵌套 subagent 的 `runOnce` 因此绕开父审批门（exec 的 `never` 策略形同虚设）。`attachHooks` 单源后两条网都在。
+- **M9.3 — 斜杠命令核下沉（阶段 D）**：repl/TUI 两份 13-case switch 的公式与文案进 `command-core.ts`（help/model/theme/审批切换/new/init/agents 写入/未知命令等行数组纯函数），`nextApprovalMode` 返回 `ApprovalMode` 消灭两处 cast；command-core 直测。
+- **M9.4 — tui-mode.ts 出壳（阶段 E，1546 → 1092 行，−29%）**：延续 M7.12 投影器模式，每抽一块配假时钟 + 真实 `TuiStore` + `plainPalette` 直测，行数预算随收缩同步拧低。
+  - **E-1 命令呈现**：`tui/commands.ts`（`TuiCommands` 类，斜杠命令的落块/重绘/退场序列，动作经访问器注入）。
+  - **E-2 开屏模式选择**：`tui/mode-select.ts`（`ModeSelector` 类，show/move/confirm/dismiss/collapse 收拢 5 个散落闭包，原位塌缩契约不变更）。
+  - **E-3 会话切换**：`tui/session-switch.ts`（`switchSessionTo` 纯依赖注入：回放、工作区护栏、rebind、重渲染全部入参化）+ `tui/gutters.ts`（USER/ASSISTANT gutter 与裸 ANSI 开态常量出壳）。
+  - **E-4 弹窗选择链**：`frame.ts` 新增 `resolveActiveView()`（审批 > 模型面板 > 会话面板 > 命令面板的优先级纯函数）。
+  - **E-5 压缩等待态**：`tui/compact-wait.ts`（`CompactWait` 类，begin/end/cancel/计时/完成行；计时器经 `every(fn)` 注入，类不碰 setInterval）。
+  - **E-6 整帧装配**：`tui/frame-assembler.ts`（`FrameAssembler` 类，flatten 缓存 + `lastFlatLen` 滚动锚定 + 上下文仪表缓存 + 呼吸行文本 + 写屏）。
+  - **E-7 事件呈现归约**：`onAgentEvent` 12-case 的呈现分支并入投影器 `onEvent(event, ctx)`；壳层只剩 stats 合并、簿记委派与三处专属副作用（子代理行 sync / usage 排渲染 / done 停表）。
+  - **配套测试**：`mode-select`(7) / `session-switch`(6) / `active-view`(5) / `compact-wait`(6) / `frame-assembler`(4) / `turn-projector` onEvent 组(+5) / `commands` command-core 组(+4)——54→59 文件、578→615 用例。
+  - **未达与止损**：目标 ≤600 行未达成——剩余约 470 行是启动装配（rt 绑定/审批/autoCompact/agentRun 接线）、`agentTurn` 编排、输入处理与生命周期/stdin，属"一次性大改写"而非逐块抽离，风险收益比不划算，留待阶段 F 之后评估。棘轮已把壳层上限钉死 1092：**后续只降不升**。
