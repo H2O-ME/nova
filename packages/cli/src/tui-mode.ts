@@ -30,7 +30,7 @@ import {
   type PtcMode,
 } from '@nova-agent/plugins';
 import { writeAgentsMd } from './agents-md.js';
-import { compactSession, surfaceDivergence, type CompactedSession } from './compact.js';
+import { compactSession, surfaceDivergence } from './compact.js';
 import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
 import { filterCommands, type CommandSpec } from './commands.js';
 import { openFreshSession, type ThemeName } from './command-core.js';
@@ -66,6 +66,7 @@ import {
   type StopKind,
 } from './ui.js';
 import { TuiCommands } from './tui/commands.js';
+import { CompactWait } from './tui/compact-wait.js';
 import { ASSISTANT_GUTTER, USER_GUTTER } from './tui/gutters.js';
 import { CODE_MODE_ORDER, ModeSelector } from './tui/mode-select.js';
 import { switchSessionTo } from './tui/session-switch.js';
@@ -368,44 +369,22 @@ export async function startTui(opts: TuiOptions): Promise<void> {
    * the slowest single request in the session (serialized whole transcript),
    * so it carries an AbortController the key chain can fire, and its wait line
    * ticks elapsed seconds — a silent dim line for minutes read as a freeze.
+   * 状态机在 ./tui/compact-wait.ts；真表在这里注入（类不碰 setInterval）。
    */
-  let compactAbort: AbortController | undefined;
-  let compactCancelled = false;
-  let compactBlock: Block | undefined;
-  let compactStartedAt = 0;
-  let compactTimer: NodeJS.Timeout | undefined;
-  const endCompactWait = (): void => {
-    if (compactTimer !== undefined) {
-      clearInterval(compactTimer);
-      compactTimer = undefined;
-    }
-    compactBlock = undefined;
-  };
-  const compactElapsedSecs = (): number => Math.max(1, Math.round((Date.now() - compactStartedAt) / 1000));
-  const compactWaitLine = (mid: string): string =>
-    `${paint.yellow(`  ⋯ ${mid}…`)} ${paint.dim(`· ${compactElapsedSecs()}s`)}`;
-  const startCompactWait = (mid: string): void => {
-    compactStartedAt = Date.now();
-    compactBlock = store.pushBlock([compactWaitLine(mid)]);
-    if (compactTimer !== undefined) clearInterval(compactTimer);
-    compactTimer = setInterval(() => {
-      // The summarizer streams like any LLM reply: sample the tps ring on the
-      // same tick so a compacting session shows live speed, not a frozen meter.
-      store.sampleTps(Date.now());
-      const line = compactWaitLine(mid);
-      if (compactBlock !== undefined && compactBlock.lines[0] !== line) {
-        store.replaceBlock(compactBlock, [line]);
-      }
-      scheduleRender();
-    }, 500);
-  };
-
-  /**
-   * 压缩完成行：自动路径（report.success）与 /compact 手动路径曾各写一份逐字
-   * 相同的行——单源在此。
-   */
-  const compactDoneLine = (outcome: CompactedSession): string =>
-    `${paint.green('  ✓ 已压缩')} ${paint.dim(`· 摘要 ${outcome.summary.length} 字 · 保留 ${outcome.retained} 条最近消息 · ${compactElapsedSecs()}s`)}`;
+  const compactWait = new CompactWait({
+    store,
+    paint: () => paint,
+    now: () => Date.now(),
+    render: scheduleRender,
+    every: (fn) => {
+      // 摘要与普通流式轮同一口径喂 tps 速度表：tick 先采样再刷等待行。
+      const timer = setInterval(() => {
+        store.sampleTps(Date.now());
+        fn();
+      }, 500);
+      return () => clearInterval(timer);
+    },
+  });
 
   /**
    * Shared auto-compact orchestration (runner-shared): guards, anchor-reset
@@ -427,34 +406,33 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       },
     },
     compact: async (trigger) => {
-      compactAbort = new AbortController();
-      compactCancelled = false;
+      const aborter = compactWait.beginRequest();
       try {
         return await compactSession({
           client,
           session,
           messages,
           trigger,
-          signal: compactAbort.signal,
+          signal: aborter.signal,
           // Summarizer output feeds the tps meter exactly like a streaming turn.
           onDelta: (text) => {
             store.tpsTokens += estimateTextTokens(text);
           },
         });
       } finally {
-        compactAbort = undefined;
+        compactWait.endRequest();
       }
     },
     report: {
-      preStart: (limit) => startCompactWait(`预估下轮上下文超阈值 ${humanTokens(limit)}`),
-      postStart: (tokens) => startCompactWait(`上下文 ${humanTokens(tokens)} tok 超阈值，正在压缩`),
+      preStart: (limit) => compactWait.start(`预估下轮上下文超阈值 ${humanTokens(limit)}`),
+      postStart: (tokens) => compactWait.start(`上下文 ${humanTokens(tokens)} tok 超阈值，正在压缩`),
       success: (outcome) => {
-        endCompactWait();
-        store.pushBlock([compactDoneLine(outcome)]);
+        compactWait.end();
+        store.pushBlock([compactWait.doneLine(outcome)]);
       },
       failure: (err, where) => {
-        endCompactWait();
-        if (compactCancelled) {
+        compactWait.end();
+        if (compactWait.wasCancelled()) {
           store.pushBlock([paint.yellow('  ■ 已取消压缩')], TOOL_GUTTER);
           return;
         }
@@ -801,10 +779,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       }));
       return session.file;
     },
-    startCompactWait: () => startCompactWait('正在压缩会话'),
-    endCompactWait,
-    compactCancelled: () => compactCancelled,
-    compactDoneLine,
+    startCompactWait: () => compactWait.start('正在压缩会话'),
+    endCompactWait: () => compactWait.end(),
+    compactCancelled: () => compactWait.wasCancelled(),
+    compactDoneLine: (outcome) => compactWait.doneLine(outcome),
     runManualCompact: () => runCompact('manual'),
     abortAllTurns: () => {
       for (const aborter of aborters) aborter.abort();
@@ -983,10 +961,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       store.interruptAt = Date.now();
       aborters.at(-1)?.abort();
     },
-    abortCompact: () => {
-      compactCancelled = true;
-      compactAbort?.abort();
-    },
+    abortCompact: () => compactWait.cancel(),
     modeSelectMove: (delta) => modeSelector.move(delta),
     modeSelectConfirm: (index) => void modeSelector.confirm(index),
     modeSelectDismiss: () => modeSelector.dismiss(),
@@ -1150,8 +1125,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     exiting = true;
     spinner.stop();
     bgSubagentRows.stop();
-    endCompactWait();
-    compactAbort?.abort();
+    compactWait.end();
+    compactWait.abortActive();
     if (escTimer !== undefined) {
       clearTimeout(escTimer);
       escTimer = undefined;
