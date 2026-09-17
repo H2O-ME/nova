@@ -3,12 +3,9 @@ import path from 'node:path';
 import { KeyDecoder, LineScreen, detectCaps, type Key } from '@nova-agent/tui';
 import {
   APPROVAL_PREVIEW_MAX_ROWS,
-  BREATHE_ROWS,
-  COMPOSER_MAX_ROWS,
   HISTORY_LIMIT,
   RENDER_BUDGET_MS,
   SESSION_LIST_LIMIT,
-  STATUS_ROWS,
   SPINNER_TICK_MS,
   resolvePalette,
 } from '@nova-agent/tui-view';
@@ -31,7 +28,6 @@ import {
 } from '@nova-agent/plugins';
 import { writeAgentsMd } from './agents-md.js';
 import { compactSession, surfaceDivergence } from './compact.js';
-import { composerWrapBudget, cursorPosition, composerZone } from './composer.js';
 import { filterCommands, type CommandSpec } from './commands.js';
 import { openFreshSession, type ThemeName } from './command-core.js';
 import { newSessionDir, novaHome, sessionsRoot, type Config } from './config.js';
@@ -51,22 +47,10 @@ import {
   resetUsageAnchors,
   turnStopLines,
 } from './runner-loop.js';
-import {
-  bottomStack,
-  buildSplash,
-  clipToWidth,
-  contextGaugeForms,
-  contextLegend,
-  humanTokens,
-  layoutComposer,
-  messageQueueRows,
-  REVEAL_TICK_MS,
-  SPINNER_FRAMES,
-  TOOL_GUTTER,
-  type StopKind,
-} from './ui.js';
+import { buildSplash, contextLegend, humanTokens, REVEAL_TICK_MS, SPINNER_FRAMES, TOOL_GUTTER, type StopKind } from './ui.js';
 import { TuiCommands } from './tui/commands.js';
 import { CompactWait } from './tui/compact-wait.js';
+import { FrameAssembler } from './tui/frame-assembler.js';
 import { ASSISTANT_GUTTER, USER_GUTTER } from './tui/gutters.js';
 import { CODE_MODE_ORDER, ModeSelector } from './tui/mode-select.js';
 import { switchSessionTo } from './tui/session-switch.js';
@@ -78,19 +62,12 @@ import {
   createApprovalService,
   createAutoCompact,
 } from './runner-shared.js';
-import { flattenBlocks, invalidateWraps, resolveActiveView, sliceHistory, wrapBlock } from './tui/frame.js';
-import { TuiStore, type Block } from './tui/store.js';
+import { invalidateWraps, resolveActiveView, wrapBlock } from './tui/frame.js';
+import { TuiStore } from './tui/store.js';
 import { handleKey as tuiHandleKey, type KeyEnv } from './tui/keys.js';
 import { BgSubagentRows } from './tui/subagent-lives.js';
 import { TurnProjector } from './tui/turn-projector.js';
-import {
-  codeModeLabel,
-  contextBreakdown,
-  gaugeCacheKey,
-  statusBar,
-  type ContextBreakdownView,
-  type StatusView,
-} from './statusbar.js';
+import { codeModeLabel, contextBreakdown, type ContextBreakdownView, type StatusView } from './statusbar.js';
 import { cliVersion } from './version.js';
 
 export interface TuiOptions {
@@ -991,68 +968,44 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   }
 
 
-  // ---- rendering --------------------------------------------------------
-  let cachedFlatten:
-    | { cols: number; version: number; result: { flat: string[]; rowMap: { block: Block; start: number; count: number }[] } }
-    | undefined;
+// ---- rendering --------------------------------------------------------
+  /**
+   * 整帧装配出壳 ./tui/frame-assembler.ts（阶段 E）：展平缓存、上帧行数基准
+   * 与仪表三档缓存都收敛在类里；壳层只提供当前快照与写入通道。
+   */
+  const assembler = new FrameAssembler({
+    store,
+    paint: () => paint,
+    cols: () => screen.cols,
+    rows: () => screen.rows,
+    activeView: (viewDeps, cols) => resolveActiveView(store, paint, cols, viewDeps),
+    // 访问器（非值）：statusView/contextView 在壳层更下方声明，且读活状态。
+    statusView: () => statusView(),
+    contextView: () => contextView(),
+    gaugeKeyParts: () => ({
+      messagesLen: messages.length,
+      usageAnchor: anchors.usageAnchor,
+      model: client.model,
+      codeMode,
+      modelMetaVersion,
+      capacity: config.provider.contextWindow ?? currentModelMeta?.contextWindow,
+      toolCount: host.tools.length,
+      compactLimit: config.autoCompactTokenLimit,
+    }),
+    write: (lines, cursor) => screen.render(lines, cursor),
+  });
 
-  /** 上一帧展平后的总行数（滚动锚定的增量基准；-1 = 尚无帧）。 */
-  let lastFlatLen = -1;
   function renderFrame(): void {
     if (exiting) return;
-    const cols = screen.cols;
-    const rows = screen.rows;
-
     // 活动弹窗纯选择（./frame.ts resolveActiveView）：审批 > 模型 > 会话 >
     // 命令面板。弹窗行折行会把整体顶出视口，构建器按剩余列数裁剪；键交互
     // 留在 handleKey 的责任链层。
-    const popupLines = resolveActiveView(store, paint, cols, {
+    assembler.render({
       commandMatches: filterCommands(store.input),
       modelContextTokens: (name) => modelMetaStore.peek(name, config.provider.baseURL)?.contextWindow,
       currentModel: client.model,
       currentSessionFile: session.file,
     });
-
-    // One breathing row between the newest content and the composer.
-    const layout = layoutComposer(store.input, store.cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
-    const composerZoneRows = composerZone(paint, layout, {
-      spinnerFrame: store.spinnerFrame,
-      streaming: store.streaming,
-      genPhase: store.genPhase,
-    });
-    // 运行中排队的消息：composer 上方的暗色 lane，始终可见（图 2 队列语义）。
-    const queueLines = messageQueueRows(paint, store.messageQueue, cols);
-    // 单行状态区：上下文仪表+模型+模式芯片+审批 ｜ tps+cache 钉右缘。
-    if (cachedFlatten === undefined || cachedFlatten.cols !== cols || cachedFlatten.version !== store.blocksVersion) {
-      cachedFlatten = { cols, version: store.blocksVersion, result: flattenBlocks(store.blocks, cols) };
-    }
-    const { flat, rowMap } = cachedFlatten.result;
-    // 滚动锚定（stick-to-content）：用户上滚后（scrollFromEnd>0）新输出
-    // 不再把视口往直播拽——按上一帧以来的新增行数等量增大 offset，把视口
-    // 钉在用户当时看的绝对位置；回到底部（offset 归 0）后恢复跟随。
-    if (store.scrollFromEnd > 0 && lastFlatLen >= 0 && flat.length > lastFlatLen) {
-      store.scrollFromEnd += flat.length - lastFlatLen;
-    }
-    lastFlatLen = flat.length;
-    const historyBudget = rows - popupLines.length - queueLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
-    const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
-    if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
-    store.frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length };
-
-    // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
-    const status = clipToWidth(statusBar(paint, statusView()), cols - 1);
-
-    // 位置指示：上滚时呼吸行改为「上方还有 N 行」（回底自动消失；不占内容行、
-    // 不进状态栏——上滚不进状态栏是 tui-design 红线）。
-    const breathText =
-      sliceStart > 0
-        ? clipToWidth(paint.dim(`  ⋯ 上方还有 ${sliceStart} 行 · Home 跳顶 / End 回到底部`), cols - 1)
-        : '';
-
-    screen.render(
-      bottomStack(historyLines, popupLines, queueLines, composerZoneRows, status, breathText),
-      cursorPosition({ historyRows: historyLines.length, popupRows: popupLines.length, queueRows: queueLines.length, layout }),
-    );
   }
 
   /**
@@ -1069,37 +1022,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     modelMetaContextWindow: currentModelMeta?.contextWindow,
   });
 
-  /**
-   * 上下文仪表段（三档形态一次算全，按 key 缓存）：分段明细在 `/session`，
-   * 这里按档位给出 全量/去冗/最简 三种形态供状态栏选档。容量取 models.dev
-   * 元数据（config.provider.contextWindow 兜底），条严格按整窗比例分摊。
-   * 缓存留在壳层：重算要对 messages 全量估算，每 tick 一遍是性能雷区。
-   */
-  let contextLineCache: { key: string; lines: [string, string, string] } | undefined;
-  function gaugeForms(): [string, string, string] {
-    const capacity = config.provider.contextWindow ?? currentModelMeta?.contextWindow;
-    const key = gaugeCacheKey({
-      messagesLen: messages.length,
-      usageAnchor: anchors.usageAnchor,
-      model: client.model,
-      codeMode,
-      modelMetaVersion,
-      capacity,
-      toolCount: host.tools.length,
-      compactLimit: config.autoCompactTokenLimit,
-      cols: screen.cols,
-    });
-    if (contextLineCache === undefined || contextLineCache.key !== key) {
-      const { segments, used, capacity: cap } = contextBreakdown(contextView());
-      contextLineCache = {
-        key,
-        lines: contextGaugeForms(paint, { segments, used, capacity: cap, compact: config.autoCompactTokenLimit }, screen.cols),
-      };
-    }
-    return contextLineCache.lines;
-  }
-
-  /** 状态栏的帧快照：闭包可变状态 → 纯函数入参（见 ./statusbar.ts）。 */
+  /** 状态栏的帧快照：闭包可变状态 → 纯函数入参（见 ./statusbar.ts）。
+   *  上下文仪表三档形态经 assembler.gaugeForms()（缓存随帧装配器走）。 */
   const statusView = (): StatusView => ({
     cols: screen.cols,
     model: client.model,
@@ -1116,7 +1040,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     promptTokens: sessPromptTokens,
     cachedTokens: sessCachedTokens,
     cacheSeen,
-    gaugeForms: gaugeForms(),
+    gaugeForms: assembler.gaugeForms(),
   });
 
   // ---- lifecycle --------------------------------------------------------
@@ -1167,6 +1091,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   });
   process.stdout.on('resize', () => {
     invalidateWraps(store.blocks);
+    assembler.invalidate();
     store.blocksVersion += 1;
     screen.invalidate();
     scheduleRender();
