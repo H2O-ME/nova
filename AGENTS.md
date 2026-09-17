@@ -87,7 +87,7 @@ pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tu
 
 | 包 | 职责 | 关键文件 |
 | --- | --- | --- |
-| `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、请求级修剪（snip/micro）、后台 jobs | `agent.ts`、`session.ts`、`estimate.ts`、`request-trim.ts`、`jobs.ts`、`types.ts`、`ids.ts`、`tools/get-time.ts`（M1 demo 工具，仍在发布） |
+| `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、请求级修剪（snip/micro）、后台 jobs | `agent.ts`（公共面桶文件）+ `agent/{options,notices,request,stream,tools,loop}.ts`（选项常量 / at-least-once 通知簿记 / 请求装配 / 流式与空补全重试 / 工具调度与溢出落盘 / runAgent 主体）、`session.ts`、`estimate.ts`、`request-trim.ts`、`jobs.ts`、`types.ts`、`ids.ts`、`tools/get-time.ts`（M1 demo 工具，仍在发布） |
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈（Retry-After 双形式严格解析 + 自有退避 32s 封顶）、usage/缓存命中提取 | `client.ts`、`sse.ts` |
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`types.ts`、`builtin/{fs,bash,jobs,todo,search,search-worker,index}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
 | `tui` | 零依赖终端原语：行级差分渲染（可选 ?2026 同步输出）、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标、CSI 修饰键参数）、CJK 宽度处理、终端能力探测 | `screen.ts`、`keys.ts`、`width.ts`、`caps.ts` |
