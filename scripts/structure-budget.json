@@ -48,7 +48,7 @@
  "packages/core/src/ids.ts": 6,
  "packages/core/src/index.ts": 12,
  "packages/core/src/jobs.ts": 244,
- "packages/core/src/request-trim.ts": 151,
+ "packages/core/src/request-trim.ts": 189,
  "packages/core/src/session.ts": 358,
  "packages/core/src/tools/get-time.ts": 39,
  "packages/core/src/tools/subagent.ts": 294,

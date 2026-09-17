@@ -104,19 +104,11 @@ export interface MicroOptions {
 }
 
 /**
- * Layer 3: replace the BODIES of older tool results with a placeholder,
- * keeping every call (assistant tool_calls, ids, pairing) and the message
- * count intact. Only groups whose assistant carries tool_calls count toward
- * the "recent N" budget; a result shorter than the placeholder still gets
- * replaced — the rule stays one sentence ("older than N tool groups") and
- * deterministic, which the cache check downstream depends on.
+ * Layer 3 core: placeholder the bodies of older tool results. `fallback` is
+ * returned unchanged when fewer than `keep` tool groups are present (the
+ * no-op short-circuit callers rely on for cache-stable identity).
  */
-export function microMessages(messages: AgentMessage[], opts: MicroOptions = {}): AgentMessage[] {
-  const keep = opts.keepRecentToolGroups ?? MICRO_KEEP_RECENT_TOOL_GROUPS;
-  if (!Number.isInteger(keep) || keep < 0) {
-    throw new RangeError(`micro keepRecentToolGroups must be an integer >= 0 (got ${String(keep)})`);
-  }
-  const groups = groupMessages(messages);
+function applyMicro(groups: AgentMessage[][], keep: number, fallback: AgentMessage[]): AgentMessage[] {
   const toolGroupIdx: number[] = [];
   for (let gi = 0; gi < groups.length; gi++) {
     const head = groups[gi]![0]!;
@@ -125,7 +117,7 @@ export function microMessages(messages: AgentMessage[], opts: MicroOptions = {})
     }
   }
   const compactCount = Math.max(0, toolGroupIdx.length - keep);
-  if (compactCount === 0) return messages;
+  if (compactCount === 0) return fallback;
   const compacted = new Set(toolGroupIdx.slice(0, compactCount));
   return groups.map((group, gi) => {
     if (!compacted.has(gi)) return group;
@@ -140,11 +132,57 @@ export function microMessages(messages: AgentMessage[], opts: MicroOptions = {})
 }
 
 /**
+ * Layer 3: replace the BODIES of older tool results with a placeholder,
+ * keeping every call (assistant tool_calls, ids, pairing) and the message
+ * count intact. Only groups whose assistant carries tool_calls count toward
+ * the "recent N" budget; a result shorter than the placeholder still gets
+ * replaced — the rule stays one sentence ("older than N tool groups") and
+ * deterministic, which the cache check downstream depends on.
+ */
+export function microMessages(messages: AgentMessage[], opts: MicroOptions = {}): AgentMessage[] {
+  const keep = opts.keepRecentToolGroups ?? MICRO_KEEP_RECENT_TOOL_GROUPS;
+  if (!Number.isInteger(keep) || keep < 0) {
+    throw new RangeError(`micro keepRecentToolGroups must be an integer >= 0 (got ${String(keep)})`);
+  }
+  return applyMicro(groupMessages(messages), keep, messages);
+}
+
+/**
  * Layer order is fixed: snip first (whole groups gone need no micro pass),
- * then micro. Both return fresh arrays; the input is never mutated, so the
- * caller decides how the trimmed snapshot reaches the wire (clone tail —
- * never an in-place splice of the live log).
+ * then micro. The input is never mutated.
+ *
+ * Hot path: group the input ONCE and run both layers over the shared grouping.
+ * snip's cold path (group count over the 50-budget) is rare; when it fires the
+ * post-snip structure is deterministic — [head_groups, [marker], tail_groups],
+ * every element already atomic (marker is a plain assistant, no tool_calls) —
+ * so we reuse the synthesized groups instead of re-grouping the flat output.
+ * When snip is a no-op the same groups flow straight into micro, halving the
+ * grouping cost on the common path. Identity is preserved: `messages` is
+ * returned when neither layer fires (matches `snipMessages === messages` and
+ * `microMessages === messages` standalone guarantees).
  */
 export function trimRequestMessages(messages: AgentMessage[]): AgentMessage[] {
-  return microMessages(snipMessages(messages));
+  const groups = groupMessages(messages);
+  let afterSnip: AgentMessage[];
+  let groupsForMicro: AgentMessage[][];
+  if (groups.length > SNIP_MAX_GROUPS) {
+    const keepTail = SNIP_MAX_GROUPS - SNIP_KEEP_HEAD_GROUPS - 1;
+    const omitted = groups.length - SNIP_KEEP_HEAD_GROUPS - keepTail;
+    const marker: AgentMessage = {
+      id: `msg_snip_${omitted}_${groups.length}`,
+      ts: 0,
+      role: 'assistant',
+      content: `${SNIP_OMITTED_MARKER_PREFIX}${omitted} message groups omitted]`,
+    };
+    groupsForMicro = [
+      ...groups.slice(0, SNIP_KEEP_HEAD_GROUPS),
+      [marker],
+      ...groups.slice(groups.length - keepTail),
+    ];
+    afterSnip = groupsForMicro.flat();
+  } else {
+    afterSnip = messages;
+    groupsForMicro = groups;
+  }
+  return applyMicro(groupsForMicro, MICRO_KEEP_RECENT_TOOL_GROUPS, afterSnip);
 }
