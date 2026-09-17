@@ -8,7 +8,27 @@ import type { AgentMessage, Usage } from './types.js';
  * gaps between them (compaction pre-checks before the next request).
  */
 
-const CJK_RANGE = /[\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/;
+// CJK coverage (all BMP, so codePointAt + range compare matches the old
+// regex's BMP char class exactly — astral code points fall through to
+// `other` in both, since none of these ranges reaches the surrogate ceiling):
+//   U+2E80–U+9FFF  CJK Radicals + Han
+//   U+AC00–U+D7AF  Hangul Syllables + Jamo
+//   U+F900–U+FAFF  CJK Compatibility Ideographs
+//   U+FF00–U+FFEF  Fullwidth + Halfwidth/Fullwidth Forms
+const CJK_RANGES: readonly (readonly [number, number])[] = [
+  [0x2e80, 0x9fff],
+  [0xac00, 0xd7af],
+  [0xf900, 0xfaff],
+  [0xff00, 0xffef],
+];
+
+function isCJKCodePoint(cp: number): boolean {
+  for (let i = 0; i < CJK_RANGES.length; i++) {
+    const [lo, hi] = CJK_RANGES[i]!;
+    if (cp >= lo && cp <= hi) return true;
+  }
+  return false;
+}
 
 const FRAMING_TOKENS = 4;
 
@@ -17,7 +37,7 @@ export function estimateTextTokens(text: string): number {
   let cjk = 0;
   let other = 0;
   for (const ch of text) {
-    if (CJK_RANGE.test(ch)) cjk += 1;
+    if (isCJKCodePoint(ch.codePointAt(0)!)) cjk += 1;
     else other += 1;
   }
   return cjk + Math.ceil(other / 4);
