@@ -12,15 +12,19 @@ export class LineScreen {
    * row write invalidates it (rows land the cursor at their tail). */
   private cursorAt: { row: number; col: number } | undefined;
   private readonly synchronizedOutput: boolean;
+  private readonly onDrain: (() => void) | undefined;
+  /** stdout buffer over high-water mark: frames drop until 'drain' (R3). */
+  private backpressured = false;
 
   constructor(
     private readonly out: NodeJS.WriteStream & { write(s: string): unknown },
-    opts?: { synchronizedOutput?: boolean },
+    opts?: { synchronizedOutput?: boolean; onDrain?: () => void },
   ) {
     // ?2026（synchronized output）把一帧的全部写入包成一个原子更新：不支持
     // 该私有模式的终端会忽略开关，按普通逐行更新处理。默认关闭——库层行为
     // 不变；cli 经 detectCaps().synchronizedOutput 显式启用。
     this.synchronizedOutput = opts?.synchronizedOutput ?? false;
+    this.onDrain = opts?.onDrain;
   }
 
   get rows(): number {
@@ -32,15 +36,15 @@ export class LineScreen {
   }
 
   enter(): void {
-    this.out.write('\x1b[?1049h'); // alternate screen
-    this.out.write('\x1b[?25l'); // hide cursor
-    this.out.write('\x1b[?2004h'); // bracketed paste
+    this.emit('\x1b[?1049h'); // alternate screen
+    this.emit('\x1b[?25l'); // hide cursor
+    this.emit('\x1b[?2004h'); // bracketed paste
     // Wheel tracking (SGR encoding): the alternate screen has no scrollback,
     // so without this the terminal turns wheel notches into arrow keys that
     // clobber the composer's history navigation. Text selection needs Shift.
-    this.out.write('\x1b[?1000h');
-    this.out.write('\x1b[?1006h');
-    this.out.write('\x1b[?1004h'); // focus reports: the re-assert anchor
+    this.emit('\x1b[?1000h');
+    this.emit('\x1b[?1006h');
+    this.emit('\x1b[?1004h'); // focus reports: the re-assert anchor
     this.prev = undefined;
     this.cursorAt = undefined;
   }
@@ -50,18 +54,18 @@ export class LineScreen {
    * reports then paint escape garbage into the frame), and focusin is the
    * one event that reliably fires after such a reset. */
   reassertModes(): void {
-    this.out.write('\x1b[?1000h');
-    this.out.write('\x1b[?1006h');
-    this.out.write('\x1b[?1004h');
+    this.emit('\x1b[?1000h');
+    this.emit('\x1b[?1006h');
+    this.emit('\x1b[?1004h');
   }
 
   exit(): void {
-    this.out.write('\x1b[?1004l'); // focus reports off
-    this.out.write('\x1b[?1006l'); // SGR mouse off
-    this.out.write('\x1b[?1000l'); // mouse tracking off
-    this.out.write('\x1b[?2004l'); // bracketed paste off
-    this.out.write('\x1b[?25h'); // show cursor
-    this.out.write('\x1b[?1049l'); // leave alternate screen
+    this.emit('\x1b[?1004l'); // focus reports off
+    this.emit('\x1b[?1006l'); // SGR mouse off
+    this.emit('\x1b[?1000l'); // mouse tracking off
+    this.emit('\x1b[?2004l'); // bracketed paste off
+    this.emit('\x1b[?25h'); // show cursor
+    this.emit('\x1b[?1049l'); // leave alternate screen
     this.prev = undefined;
     this.cursorAt = undefined;
   }
@@ -72,12 +76,28 @@ export class LineScreen {
     this.cursorAt = undefined;
   }
 
+  /** 所有写入的唯一通道（R3 背压门）：write() 返回 false = stdout 缓冲越过
+   * highWaterMark——此后 render 整帧丢弃，drain 事件恢复并回调 onDrain 重排
+   * 一次重绘。丢弃语义依赖差分缓存：被丢帧不更新 prev，缓存恒等于屏幕物理
+   * 内容，恢复后首帧从旧真相出发 diff——latest-wins 天然成立，慢终端
+   * （SSH/ConHost）不再堆积一帧比一帧旧的过期写入。 */
+  private emit(s: string): void {
+    if (this.out.write(s) === false && !this.backpressured) {
+      this.backpressured = true;
+      this.out.once('drain', () => {
+        this.backpressured = false;
+        this.onDrain?.();
+      });
+    }
+  }
+
   /**
    * Render a frame. Lines longer than the terminal width are truncated here;
    * use wrapLine upstream for soft wrapping. `cursor` places the hardware
    * cursor (0-based row within this frame, 0-based display column).
    */
   render(lines: string[], cursor?: { row: number; col: number }): void {
+    if (this.backpressured) return;
     const rows = this.rows;
     // Never write into the last column: a single off-by-one glyph width would
     // wrap the row, scroll the buffer, and permanently desync the diff cache.
@@ -110,26 +130,26 @@ export class LineScreen {
     };
     if (dirty.length === 0) {
       if (want !== undefined && (this.cursorAt?.row !== want.row || this.cursorAt?.col !== want.col)) {
-        this.out.write(`\x1b[${want.row};${want.col}H`);
+        this.emit(`\x1b[${want.row};${want.col}H`);
         this.cursorAt = want;
       }
       return;
     }
 
-    if (this.synchronizedOutput) this.out.write('\x1b[?2026h');
+    if (this.synchronizedOutput) this.emit('\x1b[?2026h');
     for (const row of dirty) {
       // Reset SGR before erasing: a line truncated mid-color leaves style
       // state open, which would otherwise bleed into erase and content.
-      this.out.write(`\x1b[${row + 1};1H\x1b[0m\x1b[0K${frame[row]}`);
+      this.emit(`\x1b[${row + 1};1H\x1b[0m\x1b[0K${frame[row]}`);
     }
     this.prev = frame;
     this.cursorAt = undefined; // row writes left the cursor at their tail
 
     if (want !== undefined) {
-      this.out.write(`\x1b[${want.row};${want.col}H`);
+      this.emit(`\x1b[${want.row};${want.col}H`);
       this.cursorAt = want;
     }
-    if (this.synchronizedOutput) this.out.write('\x1b[?2026l');
+    if (this.synchronizedOutput) this.emit('\x1b[?2026l');
   }
 }
 

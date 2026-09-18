@@ -90,7 +90,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const caps = detectCaps();
   let themeName: ThemeName = opts.theme ?? config.ui?.theme ?? 'dark';
   let paint = resolvePalette(themeName, caps);
-  const screen = new LineScreen(process.stdout, { synchronizedOutput: caps.synchronizedOutput });
+  // 背压门（R3）：drain 后重排一帧——被丢的帧不进差分缓存，恢复首帧自然
+  // 从旧真相 diff 到最新画面（latest-wins）。scheduleRender 在下方声明，走闭包延后取。
+  const screen = new LineScreen(process.stdout, {
+    synchronizedOutput: caps.synchronizedOutput,
+    onDrain: () => scheduleRender(),
+  });
   const decoder = new KeyDecoder();
 
   // ---- persistent state -------------------------------------------------

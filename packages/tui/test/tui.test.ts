@@ -362,3 +362,70 @@ describe('wrapLine: CJK break opportunities', () => {
     }
   });
 });
+
+describe('LineScreen backpressure gate (R3)', () => {
+  function bpOut() {
+    const writes: string[] = [];
+    const drainCbs: (() => void)[] = [];
+    let flowing = true;
+    const out = {
+      rows: 3,
+      columns: 40,
+      write(s: string) {
+        writes.push(s);
+        return flowing;
+      },
+      once(_ev: string, cb: () => void) {
+        drainCbs.push(cb);
+      },
+    };
+    return {
+      out: out as unknown as NodeJS.WriteStream & { write(s: string): unknown },
+      writes,
+      drainCbs,
+      setFlowing(v: boolean) {
+        flowing = v;
+      },
+    };
+  }
+
+  it('drops whole frames while backpressured and does not touch the diff cache', () => {
+    const f = bpOut();
+    let drains = 0;
+    const screen = new LineScreen(f.out, { onDrain: () => (drains += 1) });
+    screen.render(['a', 'b', 'c']);
+    f.setFlowing(false);
+    screen.render(['A', 'b', 'c']); // 本帧照常写满（触发门关闭）
+    const mark = f.writes.length;
+    screen.render(['X', 'Y', 'Z']); // 丢弃：零写入
+    screen.render(['x', 'y', 'z']); // 继续丢弃
+    expect(f.writes.length).toBe(mark);
+    expect(f.drainCbs.length).toBe(1); // 一次背压只挂一个监听
+    // drain：门开，onDrain 恰好回调一次；恢复首帧从旧真相 diff 出最新画面。
+    f.setFlowing(true);
+    f.drainCbs[0]!();
+    expect(drains).toBe(1);
+    f.writes.length = 0;
+    screen.render(['x', 'y', 'z']);
+    const repaint = f.writes.join('');
+    expect(repaint).toContain('x'); // 缓存里还是 A 帧 → 三行都重画
+    expect(repaint).toContain('y');
+    expect(repaint).toContain('z');
+  });
+
+  it('re-arms after recovery: a second slow spell closes the gate again', () => {
+    const f = bpOut();
+    const screen = new LineScreen(f.out);
+    screen.render(['a']);
+    f.setFlowing(false);
+    screen.render(['b']);
+    f.setFlowing(true);
+    f.drainCbs[0]!();
+    f.setFlowing(false);
+    screen.render(['c']); // 再次越界 → 再挂一个 drain
+    expect(f.drainCbs.length).toBe(2);
+    const mark = f.writes.length;
+    screen.render(['d']);
+    expect(f.writes.length).toBe(mark);
+  });
+});
