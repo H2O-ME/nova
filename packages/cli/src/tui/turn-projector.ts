@@ -34,6 +34,8 @@ import {
   buildToolFoldRows,
   toolDoneLine,
   readGroupLine,
+  railLine,
+  RAIL_PULSE_MS,
   toolLabel,
   toolStartLine,
   reasoningDetailRows,
@@ -394,7 +396,7 @@ export class TurnProjector {
         // 三态折叠数据源随块常驻内存（resume 后不可展开，与 detail 同契约）；
         // 子代理接管块已挂 detail，点击归属它，不再叠 fold。
         if (entry.block.detail === undefined) {
-          const fold = buildToolFoldRows(paint, lines, content, this.budget());
+          const fold = buildToolFoldRows(paint, lines, content, this.budget(), failed ? 'failed' : 'done');
           if (fold !== undefined) entry.block.fold = { ...fold, state: 0 };
         }
       } else store.pushBlock(lines);
@@ -543,7 +545,8 @@ export class TurnProjector {
       if (tailBuf !== undefined) {
         const last = [...tailBuf].slice(-TOOL_TAIL_SHOW_CHARS).join('').split('\n').pop()?.trimEnd() ?? '';
         if (last.length > 0) {
-          lines.push(`      ${paint.dim(`└ ${fitTail(last, Math.max(10, budget - 9))}`)}`);
+          // 运行中导轨脉冲：ANSI-16 混不了亮度，用时间相位在亮青/暗之间翻转。
+          lines.push(railLine(paint, 'running', Math.floor(elapsed / RAIL_PULSE_MS), fitTail(last, Math.max(8, budget - 6)), budget));
         }
       }
       // Dirty-check: identical rows skip the replace (no wrap-cache churn).

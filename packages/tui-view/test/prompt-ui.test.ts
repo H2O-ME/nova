@@ -18,6 +18,7 @@ import {
   palette,
   planContextSegments,
   plainPalette,
+  railLine,
   segmentBar,
   sparkline,
   statusLine,
@@ -674,5 +675,49 @@ describe('buildToolFoldRows (tri-state fold source, M10 组件3)', () => {
     for (const row of [...f.preview, ...f.full]) {
       expect(styledWidth(row)).toBeLessThanOrEqual(72);
     }
+  });
+});
+
+describe('state rail (M10 组件5)', () => {
+  it('plain shape is state-invariant: `    ▌ text`——色彩承载状态，字形不承载', () => {
+    for (const state of ['running', 'done', 'failed'] as const) {
+      expect(railLine(p, state, 0, 'v', 72)).toBe('    ▌ v');
+    }
+  });
+
+  it('rail color IS the state; running pulses on phase (ANSI palette)', () => {
+    expect(railLine(palette, 'done', 0, 'v', 72)).toContain('\x1b[32m▌');
+    expect(railLine(palette, 'failed', 0, 'v', 72)).toContain('\x1b[31m▌');
+    expect(railLine(palette, 'running', 0, 'v', 72)).toContain('\x1b[36m▌');
+    expect(railLine(palette, 'running', 1, 'v', 72)).toContain('\x1b[2m▌');
+    // 静态状态不随相位变化——只有 running 呼吸。
+    expect(railLine(palette, 'done', 1, 'v', 72)).toContain('\x1b[32m▌');
+  });
+
+  it('rail row respects the whole-row budget', () => {
+    expect(styledWidth(railLine(p, 'done', 0, 'x'.repeat(200), 40))).toBeLessThanOrEqual(40);
+    const cjk = railLine(p, 'failed', 0, '错'.repeat(40), 30);
+    expect(styledWidth(cjk)).toBeLessThanOrEqual(30);
+  });
+
+  it('failed toolDoneLine hangs the first error under a red rail, not an elbow', () => {
+    const failed = toolDoneLine(palette, 'bash', '{"command":"pnpm test"}', 'exit: 1\nboom', 3200, 80);
+    expect(failed).toHaveLength(2);
+    expect(failed[1]).toContain('\x1b[31m▌');
+    expect(failed[1]).toContain('boom');
+    expect(failed[1]).not.toContain('└');
+    // 无输出分支同样走导轨行
+    const quiet = toolDoneLine(p, 'bash', '{"command":"false"}', 'exit: 1', 50, 80);
+    expect(quiet[1]).toBe('    ▌ 命令无输出（退出码 1）');
+  });
+
+  it('fold body rails in the settled state (green done / red failed), trailer included', () => {
+    const done = buildToolFoldRows(palette, ['HEAD'], 'a\nb', 72)!;
+    expect(done.full[0]).toContain('\x1b[32m▌');
+    const failed = buildToolFoldRows(palette, ['HEAD'], 'a\nb', 72, 'failed')!;
+    expect(failed.full[1]).toContain('\x1b[31m▌');
+    const long = buildToolFoldRows(p, ['H'], Array.from({ length: 20 }, (_, i) => `r${i}`).join('\n'), 72)!;
+    expect(long.preview[12]).toContain('▌ … 还有 8 行');
+    expect(long.preview[12]).not.toContain('└');
   });
 });

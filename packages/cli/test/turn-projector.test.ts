@@ -216,7 +216,9 @@ describe('TurnProjector', () => {
     projector.animateRunningTools('•');
     const entry = store.toolBlocks.get('ct')!;
     expect(entry.block.lines.length).toBe(2);
-    expect(entry.block.lines[1]).toContain('└');
+    // M10 组件5：运行中尾行是状态导轨行（▌ 在表头字形列），不再是 └ 折角。
+    expect(entry.block.lines[1]).toContain('▌');
+    expect(entry.block.lines[1]).not.toContain('└');
     for (const line of entry.block.lines) {
       expect(styledWidth(line)).toBeLessThanOrEqual(COLS - 1);
     }

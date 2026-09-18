@@ -11,8 +11,32 @@ import type { Palette } from './palette.js';
 export { toolArgSummary, toolLabel };
 export type { Palette };
 
-/** Tool block gutter: the failure └ row aligns under the content column. */
+/** Tool block gutter: rail/continuation rows align under the content column. */
 export const TOOL_GUTTER: { first: string; rest: string } = { first: '', rest: '      ' };
+
+/** Grok `accent_bar` port: the state rail glyph. */
+export const RAIL = '▌';
+
+/** Block state carried by the rail color — no text row says "running"/"失败". */
+export type RailState = 'running' | 'done' | 'failed';
+
+/** Running-rail pulse half-period (ms): callers divide elapsed by it for the phase. */
+export const RAIL_PULSE_MS = 300;
+
+/**
+ * `    ▌ text` — a continuation row whose rail carries the block state.
+ * The rail sits under the header glyph column, the text under the summary
+ * column. ANSI-16 cannot blend Grok's sine wave, so a running rail pulses
+ * bright-cyan/dim on `phase` (a caller-side time tick); done/failed are
+ * static green/red. `budget` is the whole-row display width.
+ */
+export function railLine(p: Palette, state: RailState, phase: number, text: string, budget: number): string {
+  const rail =
+    state === 'running' ? (phase % 2 === 0 ? p.cyan(RAIL) : p.dim(RAIL))
+    : state === 'failed' ? p.red(RAIL)
+    : p.green(RAIL);
+  return `    ${rail} ${p.dim(clipToWidth(text, Math.max(8, budget - 6)))}`;
+}
 
 /** A nested subagent call the parent is waiting on (codex-style marker). */
 export interface SubagentLiveView {
@@ -100,12 +124,12 @@ export function toolDoneLine(
     // bash results lead with bare `exit: N` / `stdout:` markers; surface the
     // first row carrying actual content instead.
     const first = flat.find((l) => !/^exit: \d+$/.test(l) && !/^(stdout|stderr):\s*$/.test(l) && l !== '(empty)');
-    const inner = cols === undefined ? 100 : Math.max(12, cols - 1 - 8);
+    const railBudget = cols === undefined ? 108 : cols - 1;
     if (first !== undefined) {
-      lines.push(`      ${p.dim(`└ ${clipToWidth(first, inner)}`)}`);
+      lines.push(railLine(p, 'failed', 0, first, railBudget));
     } else {
       const code = /exit: (\d+|null)/.exec(content)?.[1];
-      lines.push(`      ${p.dim(`└ 命令无输出${code !== undefined ? `（退出码 ${code}）` : ''}`)}`);
+      lines.push(railLine(p, 'failed', 0, `命令无输出${code !== undefined ? `（退出码 ${code}）` : ''}`, railBudget));
     }
     return lines;
   }
@@ -235,7 +259,7 @@ export const FOLD_MAX_ROWS = 400;
 export interface ToolFoldRows {
   /** Collapsed 行（工具完成头行原文）。 */
   base: string[];
-  /** Truncated 正文：前 FOLD_PREVIEW_ROWS 行 +（若有）`└ … 还有 N 行` 尾行。 */
+  /** Truncated 正文：前 FOLD_PREVIEW_ROWS 导轨行 +（若有）`… 还有 N 行` 尾行。 */
   preview: string[];
   /** Expanded 正文（≤FOLD_MAX_ROWS 行；正文 ≤K 行时与 preview 一致）。 */
   full: string[];
@@ -243,6 +267,7 @@ export interface ToolFoldRows {
 
 /**
  * 工具输出三态折叠的行源：<2 行内容不值得折叠（返回 undefined）。
+ * 正文与尾行一律走状态导轨行（Grok accent_bar：导轨色即状态，正文保持暗色）。
  * 与 toolDoneLine 同一 sanitize  choke point——外部内容绝不带着 escape 进帧。
  */
 export function buildToolFoldRows(
@@ -250,27 +275,22 @@ export function buildToolFoldRows(
   base: string[],
   content: string,
   budget: number,
+  state: RailState = 'done',
 ): ToolFoldRows | undefined {
   const rows = sanitizeForDisplay(content)
     .split('\n')
     .filter((l) => l.trim().length > 0);
   if (rows.length < 2) return undefined;
+  const rail = (line: string): string => railLine(p, state, 0, line, budget);
   const capped = rows.length > FOLD_MAX_ROWS ? rows.slice(0, FOLD_MAX_ROWS) : rows;
-  const full = subagentDetailRows(p, capped, budget);
+  const full = capped.map(rail);
   const hidden = Math.max(0, rows.length - FOLD_MAX_ROWS);
-  const body =
-    hidden > 0 ? [...full, clipToWidth(`  ${p.dim(`└ … 另有 ${hidden} 行未载入（全文见会话缓存）`)}`, Math.max(8, budget))] : full;
+  const body = hidden > 0 ? [...full, rail(`… 另有 ${hidden} 行未载入（全文见会话缓存）`)] : full;
   const previewBody = capped.slice(0, FOLD_PREVIEW_ROWS);
   const rest = capped.length - previewBody.length;
   const preview =
     rest > 0 || hidden > 0
-      ? [
-          ...subagentDetailRows(p, previewBody, budget),
-          clipToWidth(
-            `  ${p.dim(`└ … 还有 ${rest + hidden} 行 · 再点击展开全文`)}`,
-            Math.max(8, budget),
-          ),
-        ]
+      ? [...previewBody.map(rail), rail(`… 还有 ${rest + hidden} 行 · 再点击展开全文`)]
       : body;
   return { base, preview, full: body };
 }
