@@ -107,6 +107,10 @@ export class TuiStore {
   frameMap:
     | { rows: { block: Block; start: number; count: number }[]; sliceStart: number; historyRows: number }
     | undefined;
+  /** Meter hover (M10 组件1): mousemove over `statusZone` morphs the T2 gauge. */
+  gaugeHover = false;
+  /** Last rendered status-row hit zone: y (1-based SGR row), gaugeEnd (display cols). */
+  statusZone: { y: number; gaugeEnd: number } | undefined;
 
   /** Render trigger — invoked by every mutation method so the view refreshes. */
   readonly onChange: () => void;

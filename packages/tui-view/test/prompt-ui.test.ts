@@ -9,6 +9,7 @@ import {
   contextLegend,
   cursorAfterVerticalMove,
   fitTail,
+  gaugeHitWidth,
   humanTokens,
   isReadOnlyTool,
   layoutComposer,
@@ -20,6 +21,7 @@ import {
   segmentBar,
   sparkline,
   statusLine,
+  usageUrgency,
   bgSubagentDoneLine,
   bgSubagentLine,
   subagentDetailRows,
@@ -416,6 +418,61 @@ describe('contextGaugeForms tiering', () => {
       160,
     );
     expect(forms[0]).toContain('\x1b[31m'); // red pct / red last segment on over
+  });
+});
+
+describe('gauge urgency ramp + hover morph (M10 组件1/2)', () => {
+  const segs: ContextSegment[] = [{ label: '历史', tokens: 3000, color: 'yellow' }];
+
+  it('usageUrgency snaps Grok breakpoints at segment midpoints', () => {
+    expect(usageUrgency(0.49)).toBe('neutral');
+    expect(usageUrgency(0.5)).toBe('cyan');
+    expect(usageUrgency(0.69)).toBe('cyan');
+    expect(usageUrgency(0.7)).toBe('yellow');
+    expect(usageUrgency(0.89)).toBe('yellow');
+    expect(usageUrgency(0.9)).toBe('red');
+    expect(usageUrgency(1.4)).toBe('red');
+  });
+
+  it('the pct color follows the ramp (ANSI palette)', () => {
+    const at = (ratio: number): string =>
+      contextGaugeForms(
+        palette,
+        { segments: [{ label: '历史', tokens: Math.round(10000 * ratio), color: 'yellow' }], used: Math.round(10000 * ratio), capacity: 10000, compact: undefined },
+        160,
+      )[2];
+    expect(at(0.3)).toContain(' 30%'); // neutral: unpainted
+    expect(at(0.3)).not.toContain('\x1b[32m 30%');
+    expect(at(0.55)).toContain('\x1b[36m'); // cyan
+    expect(at(0.8)).toContain('\x1b[33m'); // yellow
+    expect(at(0.95)).toContain('\x1b[31m'); // red long before over
+  });
+
+  it('T2 hover swaps bar cells for the numbers at identical total width', () => {
+    const v = { segments: segs, used: 5200, capacity: 1_050_000, compact: undefined };
+    const base = contextGaugeForms(plainPalette, v, 100);
+    const hover = contextGaugeForms(plainPalette, v, 100, true);
+    expect(base[2]).not.toContain('5.2k/1.05M');
+    expect(hover[2]).toContain('5.2k/1.05M');
+    expect(styledWidth(hover[2])).toBe(styledWidth(base[2]));
+    // 形态换位不挪右缘：三档里只有 T2 变化。
+    expect(hover[0]).toBe(base[0]);
+    expect(hover[1]).toBe(base[1]);
+  });
+
+  it('too little bar to steal → the hover morph is a no-op', () => {
+    // cols=75 gives T2 a 6-cell bar; the 11-wide numbers do not fit.
+    const v = { segments: segs, used: 5200, capacity: 1_050_000, compact: undefined };
+    const base = contextGaugeForms(plainPalette, v, 75);
+    const hover = contextGaugeForms(plainPalette, v, 75, true);
+    expect(hover[2]).toBe(base[2]);
+  });
+
+  it('gaugeHitWidth counts display cols to the first separator, ANSI-free', () => {
+    const line = `${palette.green('  上下文 ██░░')} ${palette.dim('│')} model`;
+    // '  上下文 ██░░' = 2 + 6(CJK×2) + 1 + 4 cols，再加 separator 前的空格 1。
+    expect(gaugeHitWidth(line)).toBe(2 + 6 + 1 + 4 + 1);
+    expect(gaugeHitWidth('  整行都被裁掉的仪表')).toBe(2 + 9 * 2);
   });
 });
 

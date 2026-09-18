@@ -125,6 +125,12 @@ describe('KeyDecoder', () => {
     ]);
     // right/middle press, drag motion, modified press: still swallowed
     expect(decode('\x1b[<2;5;5M', '\x1b[<1;5;5M', '\x1b[<32;5;5M', '\x1b[<4;5;5M')).toEqual([]);
+    // no-button hover motion (?1003) decodes to coordinates for hit-testing;
+    // the motion-flagged click (32, drag) above stays swallowed.
+    expect(new KeyDecoder().push(Buffer.from('\x1b[<35;40;24M', 'utf8'))).toEqual([
+      { type: 'mousemove', x: 40, y: 24 },
+    ]);
+    expect(decode('\x1b[<35;0;7M', '\x1b[<35;40;0M')).toEqual([]);
     // sequences split across chunks still decode
     const decoder = new KeyDecoder();
     expect(decoder.push(Buffer.from('\x1b[<6', 'utf8'))).toEqual([]);
@@ -332,8 +338,11 @@ describe('LineScreen', () => {
     screen.exit();
     const all = writes.join('');
     expect(all.indexOf('\x1b[?1000h')).toBeGreaterThanOrEqual(0);
-    expect(all.indexOf('\x1b[?1006h')).toBeGreaterThan(all.indexOf('\x1b[?1000h'));
-    expect(all.indexOf('\x1b[?1000l')).toBeGreaterThan(all.indexOf('\x1b[?1006h'));
+    // ?1003 hover motion joins the enable/disable pair (组件1 gauge morph).
+    expect(all.indexOf('\x1b[?1003h')).toBeGreaterThan(all.indexOf('\x1b[?1000h'));
+    expect(all.indexOf('\x1b[?1006h')).toBeGreaterThan(all.indexOf('\x1b[?1003h'));
+    expect(all.indexOf('\x1b[?1003l')).toBeGreaterThan(all.indexOf('\x1b[?1006h'));
+    expect(all.indexOf('\x1b[?1000l')).toBeGreaterThan(all.indexOf('\x1b[?1003l'));
   });
 });
 

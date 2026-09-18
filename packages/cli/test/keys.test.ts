@@ -287,3 +287,29 @@ describe('click-to-cycle tool fold (tri-state, M10 组件3)', () => {
     expect(block.fold!.state).toBe(0);
   });
 });
+
+describe('gauge hover morph (M10 组件1)', () => {
+  it('mousemove over the status zone flips gaugeHover; unchanged state costs no render', () => {
+    const { env } = createMockEnv();
+    env.store.statusZone = { y: 24, gaugeEnd: 18 };
+    handleKey(env, { type: 'mousemove', x: 5, y: 24 });
+    expect(env.store.gaugeHover).toBe(true);
+    handleKey(env, { type: 'mousemove', x: 30, y: 24 }); // 仪表段右侧
+    expect(env.store.gaugeHover).toBe(false);
+    handleKey(env, { type: 'mousemove', x: 5, y: 10 }); // 别的行
+    expect(env.store.gaugeHover).toBe(false);
+    const scheduled = vi.mocked(env.scheduleRender).mock.calls.length;
+    handleKey(env, { type: 'mousemove', x: 6, y: 10 });
+    expect(vi.mocked(env.scheduleRender).mock.calls.length).toBe(scheduled);
+    handleKey(env, { type: 'mousemove', x: 7, y: 24 });
+    expect(env.store.gaugeHover).toBe(true);
+    expect(vi.mocked(env.scheduleRender).mock.calls.length).toBe(scheduled + 1);
+  });
+
+  it('mousemove is always consumed — never leaks to the composer', () => {
+    const { env } = createMockEnv('keep');
+    handleKey(env, { type: 'mousemove', x: 5, y: 5 });
+    expect(env.store.input).toBe('keep');
+    expect(env.store.gaugeHover).toBe(false);
+  });
+});

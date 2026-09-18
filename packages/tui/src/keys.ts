@@ -23,6 +23,9 @@ export type Key =
   | { type: 'wheeldown' }
   /** Left-button press at 1-based cell coords (SGR `0;col;rowM`). */
   | { type: 'click'; x: number; y: number }
+  /** No-button hover motion at 1-based cell coords (SGR `35;col;rowM`,
+   *  DEC ?1003). Consumed by status-bar hover hit-testing; drags stay silent. */
+  | { type: 'mousemove'; x: number; y: number }
   | { type: 'tab' }
   | { type: 'shifttab' }
   /** DEC 1004 focus reports (`CSI I` / `CSI O`) — the shell re-asserts mouse
@@ -262,9 +265,10 @@ export class KeyDecoder {
  * SGR mouse event → keys. `params` is the raw `<btn;col;row` string and
  * `final` distinguishes press (`M`) from release (`m`). Wheel notches
  * (64 = up, 65 = down) become wheel keys; a bare left-button press
- * (button 0) becomes a coordinate `click` for transcript hit-testing.
- * Releases, drags/motion, modified and other buttons are consumed so
- * enabling tracking never injects phantom input.
+ * (button 0) becomes a coordinate `click` for transcript hit-testing; a
+ * no-button motion (35, DEC ?1003) becomes `mousemove`. Releases, drags,
+ * modified and other buttons are consumed so enabling tracking never
+ * injects phantom input.
  */
 /**
  * CSI 方向键修饰键参数（`1;5C` 的 5 = ctrl；`1;2`=shift、`1;3`=alt）→
@@ -280,18 +284,25 @@ function arrowKey(params: string, base: 'left' | 'right' | 'up' | 'down' | 'home
 }
 
 function parseMouseButton(params: string, final: string): Key | undefined {
-  if (final !== 'M') return undefined; // release / motion: ignore
+  if (final !== 'M') return undefined; // release / motion-end: ignore
   if (!params.startsWith('<')) return undefined; // legacy X10 encoding: not ours
   const parts = params.slice(1).split(';');
   const button = Number.parseInt(parts[0] ?? '', 10);
+  const coord = (xRaw: string | undefined, yRaw: string | undefined): { x: number; y: number } | undefined => {
+    const x = Number.parseInt(xRaw ?? '', 10);
+    const y = Number.parseInt(yRaw ?? '', 10);
+    return Number.isFinite(x) && Number.isFinite(y) && x > 0 && y > 0 ? { x, y } : undefined;
+  };
   if (button === 64) return { type: 'wheelup' };
   if (button === 65) return { type: 'wheeldown' };
+  if (button === 35) {
+    // ?1003 hover motion (no button held): drags (32/33/…) stay swallowed.
+    const c = coord(parts[1], parts[2]);
+    return c === undefined ? undefined : { type: 'mousemove', ...c };
+  }
   if (button === 0) {
-    const x = Number.parseInt(parts[1] ?? '', 10);
-    const y = Number.parseInt(parts[2] ?? '', 10);
-    if (Number.isFinite(x) && Number.isFinite(y) && x > 0 && y > 0) {
-      return { type: 'click', x, y };
-    }
+    const c = coord(parts[1], parts[2]);
+    if (c !== undefined) return { type: 'click', ...c };
   }
   return undefined;
 }

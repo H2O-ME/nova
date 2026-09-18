@@ -68,7 +68,7 @@ describe('LineScreen mode toggles', () => {
     screen.render(['x', 'y']);
     writes.length = 0;
     screen.reassertModes();
-    expect(writes).toEqual(['\x1b[?1000h', '\x1b[?1006h', '\x1b[?1004h']);
+    expect(writes).toEqual(['\x1b[?1000h', '\x1b[?1003h', '\x1b[?1006h', '\x1b[?1004h']);
   });
 });
 

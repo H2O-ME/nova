@@ -108,11 +108,12 @@ export function gaugeCacheKey(v: {
   toolCount: number;
   compactLimit: number | undefined;
   cols: number;
+  hover: boolean;
 }): string {
   return (
     `${v.messagesLen}|${v.usageAnchor?.promptTokens ?? -1}|${v.model}|` +
     `${v.codeMode}|${v.modelMetaVersion}|${v.capacity ?? 0}|${v.toolCount}|` +
-    `${v.compactLimit ?? 0}|${v.cols}`
+    `${v.compactLimit ?? 0}|${v.cols}|${v.hover ? 1 : 0}`
   );
 }
 
@@ -225,13 +226,34 @@ export interface ContextGaugeView {
 }
 
 /**
+ * Usage urgency color ramp (Grok 断点混色移植). Grok blends raw RGB across
+ * breakpoints 0/50/65/75/85/95 (primary→accent→warning→error); an ANSI-16
+ * palette cannot interpolate, so the blend snaps at each segment's midpoint
+ * — effective thresholds: neutral <50%, cyan <70%, yellow <90%, red ≥90%.
+ */
+export type UsageUrgency = 'neutral' | 'cyan' | 'yellow' | 'red';
+
+export function usageUrgency(ratio: number): UsageUrgency {
+  const pct = ratio * 100;
+  if (pct < 50) return 'neutral';
+  if (pct < 70) return 'cyan';
+  if (pct < 90) return 'yellow';
+  return 'red';
+}
+
+/**
  * One breakdown → three gauge forms for the status bar to pick by space:
  * T0 full / T1 compact% only ≥50% / T2 bar+pct only, compact% only ≥70%.
+ * `hovered` (M10 组件1) morphs the T2 form only: the bar gives cells to the
+ * `已用/总量` numbers it normally drops. Same-total-width by construction —
+ * the swap steals exactly `1 + nums` columns from the bar, and when the bar
+ * cannot spare them (very narrow T2) the morph is a no-op.
  */
 export function contextGaugeForms(
   p: Palette,
   v: ContextGaugeView,
   cols: number,
+  hovered = false,
 ): [string, string, string] {
   const r = v.compact !== undefined && v.compact > 0 ? v.used / v.compact : undefined;
   const compactTag = (show: boolean): string =>
@@ -244,10 +266,16 @@ export function contextGaugeForms(
   }
   const capacity = v.capacity;
   const form = (tier: StatusTier): string => {
-    const cells =
+    let cells =
       tier === 2
         ? Math.max(6, Math.min(16, cols - 70))
         : Math.max(8, Math.min(24, cols - 118));
+    const nums = p.bold(`${humanTokens(v.used)}/${humanTokens(capacity)}`);
+    // Hover morph: steal the numbers' width (plus the space before them)
+    // from the bar. Below 3 cells of visible bar the morph shows nothing
+    // worth seeing — keep the base form.
+    const morph = hovered && tier === 2 && cells - 1 - styledWidth(nums) >= 3;
+    if (morph) cells -= 1 + styledWidth(nums);
     const { counts, freeCells, over } = planContextSegments(v.segments, capacity, cells);
     const bar = segmentBar(p, v.segments, counts, freeCells, over);
     // pct derives from the SAME used the numbers show — planContextSegments'
@@ -257,10 +285,14 @@ export function contextGaugeForms(
     const pctNum = Math.round(ratio * 100);
     // A nonzero trickle must not read "0%" next to a near-empty track.
     const pct = (v.used > 0 && pctNum === 0 ? '<1' : String(pctNum)).padStart(2, ' ');
-    const pctColor = over || ratio >= 1 ? p.red : ratio >= 0.7 ? p.yellow : p.green;
-    const pctTag = ` · ${pctColor(`${pct}%`)}`;
-    if (tier === 2) return `  ${bar}${pctTag}${compactTag(r !== undefined && r >= 0.7)}`;
-    const nums = p.bold(`${humanTokens(v.used)}/${humanTokens(capacity)}`);
+    const urgency = usageUrgency(ratio);
+    const pctStr = `${pct}%`;
+    const pctTag = ` · ${over || urgency === 'neutral' ? pctStr : p[urgency](pctStr)}`;
+    if (tier === 2) {
+      return morph
+        ? `  ${bar} ${nums}${pctTag}${compactTag(r !== undefined && r >= 0.7)}`
+        : `  ${bar}${pctTag}${compactTag(r !== undefined && r >= 0.7)}`;
+    }
     const line = `  ${p.dim('上下文')} ${bar} ${nums}${pctTag}`;
     return tier === 0 ? `${line}${compactTag(true)}` : `${line}${compactTag(r !== undefined && r >= 0.5)}`;
   };
@@ -294,6 +326,22 @@ export function padBetween(left: string, right: string, width: number): string {
 }
 
 export { padDisplay } from './text.js';
+
+/** SGR color resets emitted by the Palette wrappers (R1 sanitize keeps them minimal). */
+// eslint-disable-next-line no-control-regex
+const SGR_SEQ = /\x1b\[[0-9;]*m/g;
+
+/**
+ * Gauge hit width of an assembled status row (M10 组件1 hover zone): the
+ * display columns before the first `│` group separator — the gauge field is
+ * always the row's head. No separator (row clipped inside the gauge) falls
+ * back to the whole clipped row's width.
+ */
+export function gaugeHitWidth(statusLine: string): number {
+  const plain = statusLine.replace(SGR_SEQ, '');
+  const sep = plain.indexOf('│');
+  return styledWidth(sep >= 0 ? plain.slice(0, sep) : plain);
+}
 
 export interface StatusView {
   cols: number;

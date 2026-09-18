@@ -1,8 +1,8 @@
 /**
- * Key routing chain: approval modal → model picker → session picker →
- * global keys → composer/popup. Each layer consumes its keys and returns
- * true; unrecognized keys fall through. Modal layers are mutually exclusive
- * with the composer (an open popup swallows everything).
+ * Key routing chain: hover motion → click → approval modal → model picker →
+ * session picker → global keys → composer/popup. Each layer consumes its keys
+ * and returns true; unrecognized keys fall through. Modal layers are
+ * mutually exclusive with the composer (an open popup swallows everything).
  */
 
 import { existsSync, statSync } from 'node:fs';
@@ -51,6 +51,7 @@ export interface KeyEnv {
 }
 
 export function handleKey(env: KeyEnv, k: Key): void {
+  if (keyGaugeHover(env, k)) return;
   if (keyClick(env, k)) return;
   if (keyApprovalModal(env, k)) return;
   if (keyModeSelect(env, k)) return;
@@ -97,6 +98,20 @@ function keyModeSelect(env: KeyEnv, k: Key): boolean {
     default:
       return false; // typing starts the session immediately
   }
+}
+
+/** Hover motion (M10 组件1): always consumed; flips the gauge morph only on
+ *  zone edges so a moving mouse never re-renders frames for nothing. */
+function keyGaugeHover(env: KeyEnv, k: Key): boolean {
+  if (k.type !== 'mousemove') return false;
+  const { store } = env;
+  const zone = store.statusZone;
+  const over = zone !== undefined && k.y === zone.y && k.x <= zone.gaugeEnd;
+  if (store.gaugeHover !== over) {
+    store.gaugeHover = over;
+    env.scheduleRender();
+  }
+  return true;
 }
 
 /** Left click: toggle an expandable reasoning summary, else swallow. */

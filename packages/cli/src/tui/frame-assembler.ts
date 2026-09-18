@@ -23,6 +23,7 @@ import {
   contextBreakdown,
   contextGaugeForms,
   gaugeCacheKey,
+  gaugeHitWidth,
   statusBar,
   type ContextBreakdownView,
   type StatusView,
@@ -89,12 +90,18 @@ export class FrameAssembler {
       toolCount: parts.toolCount,
       compactLimit: parts.compactLimit,
       cols,
+      hover: d.store.gaugeHover,
     });
     if (this.contextLineCache === undefined || this.contextLineCache.key !== key) {
       const { segments, used, capacity } = contextBreakdown(d.contextView());
       this.contextLineCache = {
         key,
-        lines: contextGaugeForms(d.paint(), { segments, used, capacity, compact: parts.compactLimit }, cols),
+        lines: contextGaugeForms(
+          d.paint(),
+          { segments, used, capacity, compact: parts.compactLimit },
+          cols,
+          d.store.gaugeHover,
+        ),
       };
     }
     return this.contextLineCache.lines;
@@ -147,6 +154,9 @@ export class FrameAssembler {
 
     // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
     const status = clipToWidth(statusBar(paint, this.deps.statusView()), cols - 1);
+    // 仪表 hover 命中区（M10 组件1）：状态栏恒为帧底行（bottomStack 末位），
+    // 仪表字段是行首段——命中宽取首个 `│` 前的显示列数，按键链按此翻转 hover。
+    store.statusZone = { y: rows, gaugeEnd: gaugeHitWidth(status) };
 
     // 位置指示：上滚时呼吸行改为「上方还有 N 行」（回底自动消失；不占内容行、
     // 不进状态栏——上滚不进状态栏是 tui-design 红线）。

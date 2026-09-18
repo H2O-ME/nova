@@ -46,6 +46,7 @@ export class LineScreen {
     // so without this the terminal turns wheel notches into arrow keys that
     // clobber the composer's history navigation. Text selection needs Shift.
     this.emit('\x1b[?1000h');
+    this.emit('\x1b[?1003h'); // hover motion reports (?1006 SGR-encoded): the status-bar gauge morph
     this.emit('\x1b[?1006h');
     this.emit('\x1b[?1004h'); // focus reports: the re-assert anchor
     this.prev = undefined;
@@ -58,6 +59,7 @@ export class LineScreen {
    * one event that reliably fires after such a reset. */
   reassertModes(): void {
     this.emit('\x1b[?1000h');
+    this.emit('\x1b[?1003h');
     this.emit('\x1b[?1006h');
     this.emit('\x1b[?1004h');
   }
@@ -65,6 +67,7 @@ export class LineScreen {
   exit(): void {
     this.emit('\x1b[?1004l'); // focus reports off
     this.emit('\x1b[?1006l'); // SGR mouse off
+    this.emit('\x1b[?1003l'); // hover motion off
     this.emit('\x1b[?1000l'); // mouse tracking off
     this.emit('\x1b[?2004l'); // bracketed paste off
     this.emit('\x1b[?25h'); // show cursor

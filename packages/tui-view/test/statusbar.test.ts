@@ -73,6 +73,7 @@ describe('gaugeCacheKey', () => {
     toolCount: 5,
     compactLimit: undefined,
     cols: 120,
+    hover: false,
   };
   it('changes when any render-relevant input changes', () => {
     const k = gaugeCacheKey(base);
@@ -80,6 +81,8 @@ describe('gaugeCacheKey', () => {
     expect(gaugeCacheKey({ ...base, cols: 119 })).not.toBe(k);
     expect(gaugeCacheKey({ ...base, codeMode: 'ptc' })).not.toBe(k);
     expect(gaugeCacheKey({ ...base, usageAnchor: { promptTokens: 1, completionTokens: 0, cachedTokens: 0 } })).not.toBe(k);
+    // hover 换形是渲染相关输入：形态缓存必须随之失效。
+    expect(gaugeCacheKey({ ...base, hover: true })).not.toBe(k);
     expect(gaugeCacheKey(base)).toBe(k); // 稳定
   });
 });
