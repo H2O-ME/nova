@@ -59,33 +59,93 @@ export function flattenBlocks(
   blocks: FrameBlock[],
   cols: number,
 ): { flat: string[]; rowMap: { block: FrameBlock; start: number; count: number }[] } {
-  const flat: string[] = [];
-  const rowMap: { block: FrameBlock; start: number; count: number }[] = [];
+  return new Flattener().flatten(blocks, cols);
+}
 
-  const active: { block: FrameBlock; wrapped: string[] }[] = [];
-  for (const block of blocks) {
-    const w = wrapBlock(block, cols);
-    if (!w.some((row) => row.trim().length > 0)) continue;
-    active.push({ block, wrapped: w });
+interface FlatEntry {
+  block: FrameBlock;
+  /** The wrapped-rows array identity cached on the block at reconcile time. */
+  wrapped: string[];
+  /** Has at least one non-blank row (blank blocks leave the transcript). */
+  active: boolean;
+}
+
+/**
+ * Incremental block→row flattening (M10 R4, port of Grok's layout cache).
+ *
+ * Every store mutation clears `block.wrapped`, so (block identity, wrapped
+ * array identity) is a complete dirty signal: reconcile keeps the prefix of
+ * entries where both match and re-wraps only from the first divergence.
+ * A streaming frame therefore costs O(#blocks) pointer compares + a
+ * row-pointer copy in the join pass + wrapLine on the changed tail only —
+ * the old full `flattenBlocks` re-scanned and re-wrapped the whole history
+ * every tick (`trim()` allocating per row).
+ */
+export class Flattener {
+  private entries: FlatEntry[] = [];
+  private cols = -1;
+  private result: { flat: string[]; rowMap: { block: FrameBlock; start: number; count: number }[] } = {
+    flat: [],
+    rowMap: [],
+  };
+  /** Block index where the last reconcile recomputed (full-hit ⇒ blocks.length). */
+  lastRebuiltFrom = 0;
+
+  /** Forget everything: next flatten rebuilds (terminal resize, session swap). */
+  reset(): void {
+    this.entries = [];
+    this.cols = -1;
+    this.result = { flat: [], rowMap: [] };
+    this.lastRebuiltFrom = 0;
   }
 
-  for (let i = 0; i < active.length; i++) {
-    const cur = active[i]!;
-    rowMap.push({ block: cur.block, start: flat.length, count: cur.wrapped.length });
-    flat.push(...cur.wrapped);
-
-    if (i < active.length - 1) {
-      const next = active[i + 1]!;
-      const tight =
-        (cur.block.kind === 'user' && next.block.kind === 'reasoning') ||
-        (cur.block.kind === 'reasoning' && next.block.kind === 'assistant');
-      if (!tight) {
-        flat.push('');
-      }
+  flatten(blocks: FrameBlock[], cols: number): { flat: string[]; rowMap: { block: FrameBlock; start: number; count: number }[] } {
+    if (cols !== this.cols) {
+      this.cols = cols;
+      this.entries = [];
     }
-  }
+    let k = 0;
+    while (
+      k < this.entries.length &&
+      k < blocks.length &&
+      this.entries[k]!.block === blocks[k] &&
+      this.entries[k]!.wrapped === blocks[k]!.wrapped
+    ) {
+      k++;
+    }
+    this.lastRebuiltFrom = k;
+    // Full hit ⇒ the cached entries cover exactly the block list (a prefix
+    // match with a longer cache is a truncation, not a hit).
+    if (k === blocks.length && this.entries.length === k) return this.result;
+    this.entries.length = k;
 
-  return { flat, rowMap };
+    for (let i = k; i < blocks.length; i++) {
+      const block = blocks[i]!;
+      const wrapped = wrapBlock(block, cols);
+      this.entries.push({ block, wrapped, active: wrapped.some((row) => row.trim().length > 0) });
+    }
+
+    const flat: string[] = [];
+    const rowMap: { block: FrameBlock; start: number; count: number }[] = [];
+    let hasPrev = false;
+    let prevKind: FrameBlock['kind'];
+    for (const entry of this.entries) {
+      if (!entry.active) continue;
+      // kind is optional — "no previous" and "previous kind undefined" differ.
+      if (hasPrev && !isTightGap(prevKind, entry.block.kind)) flat.push('');
+      rowMap.push({ block: entry.block, start: flat.length, count: entry.wrapped.length });
+      for (const row of entry.wrapped) flat.push(row);
+      prevKind = entry.block.kind;
+      hasPrev = true;
+    }
+    this.result = { flat, rowMap };
+    return this.result;
+  }
+}
+
+/** user→reasoning and reasoning→assistant sit tight (no blank row between). */
+function isTightGap(prev: FrameBlock['kind'], cur: FrameBlock['kind']): boolean {
+  return (prev === 'user' && cur === 'reasoning') || (prev === 'reasoning' && cur === 'assistant');
 }
 
 export { bottomStack, sliceHistory };

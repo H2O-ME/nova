@@ -26,15 +26,8 @@ import {
   type ContextBreakdownView,
   type StatusView,
 } from '@nova-agent/tui-view';
-import { flattenBlocks, sliceHistory, type ActiveViewDeps } from './frame.js';
-import type { Block, TuiStore } from './store.js';
-
-/** 展平结果缓存（按 cols + blocksVersion 失效）；重算要重跑全部 wrapBlock。 */
-type FlattenCache = {
-  cols: number;
-  version: number;
-  result: { flat: string[]; rowMap: { block: Block; start: number; count: number }[] };
-};
+import { Flattener, sliceHistory, type ActiveViewDeps } from './frame.js';
+import type { TuiStore } from './store.js';
 
 export interface FrameAssemblerDeps {
   store: TuiStore;
@@ -61,7 +54,8 @@ export interface FrameAssemblerDeps {
 }
 
 export class FrameAssembler {
-  private cachedFlatten: FlattenCache | undefined;
+  /** 增量展平器（M10 R4）：脏起点前缀复用，替代旧的版本键全量缓存。 */
+  private readonly flattener = new Flattener();
   /** 上一帧展平后的总行数（滚动锚定的增量基准；-1 = 尚无帧）。 */
   private lastFlatLen = -1;
   private contextLineCache: { key: string; lines: [string, string, string] } | undefined;
@@ -118,10 +112,7 @@ export class FrameAssembler {
     });
     // 运行中排队的消息：composer 上方的暗色 lane，始终可见（消息队列语义）。
     const queueLines = messageQueueRows(paint, store.messageQueue, cols);
-    if (this.cachedFlatten === undefined || this.cachedFlatten.cols !== cols || this.cachedFlatten.version !== store.blocksVersion) {
-      this.cachedFlatten = { cols, version: store.blocksVersion, result: flattenBlocks(store.blocks, cols) };
-    }
-    const { flat, rowMap } = this.cachedFlatten.result;
+    const { flat, rowMap } = this.flattener.flatten(store.blocks, cols);
     // 滚动锚定（stick-to-content）：用户上滚后（scrollFromEnd>0）新输出
     // 不再把视口往直播拽——按上一帧以来的新增行数等量增大 offset，把视口
     // 钉在用户当时看的绝对位置；回到底部（offset 归 0）后恢复跟随。
@@ -150,8 +141,8 @@ export class FrameAssembler {
     );
   }
 
-  /** 终端尺寸变化：丢弃展平缓存（wrapBlock 缓存另经 invalidateWraps）。 */
+  /** 终端尺寸变化/换会话：丢弃展平器（wrapBlock 缓存另经 invalidateWraps）。 */
   invalidate(): void {
-    this.cachedFlatten = undefined;
+    this.flattener.reset();
   }
 }

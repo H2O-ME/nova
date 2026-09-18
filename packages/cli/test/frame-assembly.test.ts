@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
-import { flattenBlocks, type FrameBlock } from '../src/tui/frame.js';
+import { Flattener, flattenBlocks, type FrameBlock } from '../src/tui/frame.js';
 
 function block(
   lines: string[],
@@ -139,5 +139,98 @@ describe('frame assembly coherence', () => {
       }
       expect(entry.count).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * Flattener (M10 R4): incremental block→row cache. The contract is dual —
+ * results must be byte-identical to a fresh flattenBlocks after any mutation
+ * sequence, and the dirty-signal (block identity + wrapped array identity)
+ * must actually keep the rebuild prefix at the first divergence.
+ */
+describe('Flattener incremental cache', () => {
+  const cols = 60;
+
+  /** Mirrors TuiStore.replaceBlock: content change always clears the wrap cache. */
+  function replaceBlock(target: FrameBlock, lines: string[]): void {
+    target.lines = lines;
+    target.wrapped = undefined;
+  }
+
+  it('stays equivalent to a fresh flattenBlocks across a scripted mutation sequence', () => {
+    const f = new Flattener();
+    const blocks: FrameBlock[] = [];
+    const check = () => expect(f.flatten(blocks, cols)).toEqual(flattenBlocks(blocks, cols));
+
+    for (let i = 0; i < 6; i++) {
+      blocks.push(block([`用户消息 ${i}`, '较长的第二行内容 '.repeat(6)], 'user'));
+      check();
+      blocks.push(block([`思考 ${i}`], 'reasoning', { first: '│ ', rest: '│ ' }));
+      check();
+      blocks.push(block([`回答 ${i}`.padEnd(80, 'x')], 'assistant'));
+      check();
+    }
+    // Mid-stream mutation of an older block (tool line form).
+    replaceBlock(blocks[1]!, ['思考已定稿']);
+    check();
+    // Blank-only block appended, then removed again.
+    blocks.push(block(['   ', ''], 'system'));
+    check();
+    blocks.pop();
+    check();
+    // Splice out an early block (history truncation / block lifecycle).
+    blocks.splice(0, 1);
+    check();
+    // Clear-all (session reset).
+    blocks.length = 0;
+    check();
+  });
+
+  it('reuses the untouched prefix: append rebuilds only from the new tail', () => {
+    const f = new Flattener();
+    const blocks = [block(['A'], 'user'), block(['B'], 'assistant')];
+    f.flatten(blocks, cols);
+    blocks.push(block(['C'], 'tool'));
+    f.flatten(blocks, cols);
+    expect(f.lastRebuiltFrom).toBe(2);
+  });
+
+  it('a dirty block in the middle invalidates everything after it', () => {
+    const f = new Flattener();
+    const blocks = [block(['A'], 'user'), block(['B'], 'assistant'), block(['C'], 'tool')];
+    f.flatten(blocks, cols);
+    replaceBlock(blocks[1]!, ['B changed']);
+    f.flatten(blocks, cols);
+    expect(f.lastRebuiltFrom).toBe(1);
+  });
+
+  it('no mutation ⇒ full hit returns the identical result object', () => {
+    const f = new Flattener();
+    const blocks = [block(['A'], 'user'), block(['B'], 'assistant')];
+    const first = f.flatten(blocks, cols);
+    expect(f.flatten(blocks, cols)).toBe(first);
+    expect(f.lastRebuiltFrom).toBe(blocks.length);
+  });
+
+  it('tail truncation is not mistaken for a full hit', () => {
+    const f = new Flattener();
+    const blocks = [block(['A'], 'user'), block(['B'], 'assistant'), block(['C'], 'tool')];
+    const before = f.flatten(blocks, cols);
+    blocks.pop();
+    const after = f.flatten(blocks, cols);
+    expect(after).not.toBe(before);
+    expect(after).toEqual(flattenBlocks(blocks, cols));
+  });
+
+  it('width change rebuilds from scratch; reset() does too', () => {
+    const f = new Flattener();
+    const blocks = [block(['A'], 'user'), block(['B'], 'assistant')];
+    f.flatten(blocks, cols);
+    f.flatten(blocks, cols - 20);
+    expect(f.lastRebuiltFrom).toBe(0);
+    f.flatten(blocks, cols - 20);
+    f.reset();
+    f.flatten(blocks, cols - 20);
+    expect(f.lastRebuiltFrom).toBe(0);
   });
 });

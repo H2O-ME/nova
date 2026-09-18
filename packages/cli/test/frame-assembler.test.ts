@@ -81,7 +81,7 @@ describe('FrameAssembler', () => {
     expect(t.store.frameMap.historyRows).toBeGreaterThanOrEqual(0);
   });
 
-  it('caches the flattened transcript until blocksVersion moves', () => {
+  it('reuses the flattened transcript while no block is touched (identity-based cache)', () => {
     const t = setup();
     t.store.pushBlock(['  a']);
     const args = { commandMatches: [], modelContextTokens: () => undefined, currentModel: 'm1', currentSessionFile: '/s.jsonl' };
