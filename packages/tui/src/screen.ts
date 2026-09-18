@@ -15,6 +15,9 @@ export class LineScreen {
   private readonly onDrain: (() => void) | undefined;
   /** stdout buffer over high-water mark: frames drop until 'drain' (R3). */
   private backpressured = false;
+  /** 帧数组双缓冲（R8）：prev 与本帧各占一块，乒乓轮换。 */
+  private readonly scratch: [string[], string[]] = [[], []];
+  private scratchIdx = 0;
 
   constructor(
     private readonly out: NodeJS.WriteStream & { write(s: string): unknown },
@@ -102,19 +105,22 @@ export class LineScreen {
     // Never write into the last column: a single off-by-one glyph width would
     // wrap the row, scroll the buffer, and permanently desync the diff cache.
     const safeCols = Math.max(1, this.cols - 1);
-    const frame: string[] = [];
+    // 双缓冲乒乓（R8）：prev 恒指向另一块缓冲，本帧数组原位重填——
+    // 每帧少一次 rows 长度数组分配，且不引入跨帧别名。
+    const frame = this.scratch[this.scratchIdx];
     for (let i = 0; i < rows; i++) {
       // Choke point: no unmodeled control write may reach the terminal from a
       // frame line — the diff cache and the screen must stay byte-identical.
       const line = lines[i] === undefined ? undefined : sanitizeForDisplay(lines[i]!);
       if (line === undefined) {
-        frame.push('');
+        frame[i] = '';
       } else if (styledWidth(line) > safeCols) {
-        frame.push(truncateStyled(line, safeCols));
+        frame[i] = truncateStyled(line, safeCols);
       } else {
-        frame.push(line);
+        frame[i] = line;
       }
     }
+    frame.length = rows;
 
     // Empty-frame drop (Grok presenter): a frame with no row delta and no
     // cursor move writes zero bytes — not even the ?2026 wrapper. Idle ticks
@@ -143,6 +149,7 @@ export class LineScreen {
       this.emit(`\x1b[${row + 1};1H\x1b[0m\x1b[0K${frame[row]}`);
     }
     this.prev = frame;
+    this.scratchIdx ^= 1; // 下一帧填另一块缓冲
     this.cursorAt = undefined; // row writes left the cursor at their tail
 
     if (want !== undefined) {

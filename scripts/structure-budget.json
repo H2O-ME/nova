@@ -98,6 +98,6 @@
  "packages/tui/src/index.ts": 6,
  "packages/tui/src/keys.ts": 298,
  "packages/tui/src/sanitize.ts": 36,
- "packages/tui/src/screen.ts": 288,
+ "packages/tui/src/screen.ts": 295,
  "packages/tui/src/width.ts": 87
 }
