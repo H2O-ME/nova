@@ -128,9 +128,10 @@ function toggleDetailBlock(env: KeyEnv, block: Block): void {
   if (block.detail !== undefined) {
     const expanded = block.expanded !== true;
     block.expanded = expanded;
-    // `base` is the collapsed truth (subagent live/done row); the legacy
-    // reasoning shape regenerates its summary row from secs.
-    const base = block.detail.base ?? [summaryRow(env.paint, block.detail.secs, false)];
+    // `base` is the collapsed truth (subagent live/done row); the reasoning
+    // fold header regenerates its summary row from secs with the current
+    // expanded state, so the ▸/▾ affordance flips on click.
+    const base = block.detail.base ?? [summaryRow(env.paint, block.detail.secs, expanded)];
     env.store.replaceBlock(block, expanded ? [...base, ...block.detail.lines] : base);
     return;
   }

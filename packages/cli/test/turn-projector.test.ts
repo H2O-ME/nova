@@ -246,7 +246,8 @@ describe('TurnProjector', () => {
     expect(store.activeToolId).toBeUndefined();
     expect(store.readGroup).toBeUndefined();
     expect(store.reasoningBlock).toBeUndefined();
-    expect(store.blocks.some((b) => b.kind === 'reasoning')).toBe(false);
+    // The message commit adopted the 已思考 header: transcript, not transient.
+    expect(store.blocks.some((b) => b.kind === 'reasoning')).toBe(true);
   });
 
   it('next beginTurn starts clean after a torn-down turn', () => {
@@ -421,5 +422,63 @@ describe('live read verb group (M10 组件4)', () => {
     projector.toolResult(r2, 'y');
     expect(group.lines).toHaveLength(3);
     expect(group.lines[0]).toContain('✓');
+  });
+});
+
+describe('reasoning fold header (M10 组件11)', () => {
+  it('answer start freezes the thought into a ▸ 已思考 header with click detail', () => {
+    const { store, projector, advance } = harness();
+    projector.beginTurn('q');
+    projector.appendReasoning('先看看仓库结构');
+    advance(4200);
+    projector.appendAssistant('好的。');
+    const headers = store.blocks.filter((b) => b.kind === 'reasoning');
+    expect(headers).toHaveLength(1);
+    expect(headers[0]!.lines).toEqual(['▸ 已思考 4.2s']);
+    expect(headers[0]!.detail?.lines.join('\n')).toContain('先看看仓库结构');
+    // Live window is gone: nothing streams into the header anymore.
+    expect(store.reasoningBlock).toBeUndefined();
+  });
+
+  it('the message commit adopts the header; without it endTurn drops the transient', () => {
+    const h1 = harness();
+    h1.projector.beginTurn('q');
+    h1.projector.appendReasoning('想');
+    h1.projector.appendAssistant('答');
+    h1.projector.closeAssistant();
+    h1.tickUntilIdle();
+    h1.projector.endTurn();
+    expect(h1.store.blocks.some((b) => b.kind === 'reasoning')).toBe(true);
+
+    const h2 = harness();
+    h2.projector.beginTurn('q');
+    h2.projector.appendReasoning('想');
+    h2.projector.appendAssistant('没提交');
+    h2.projector.endTurn();
+    expect(h2.store.blocks.some((b) => b.kind === 'reasoning')).toBe(false);
+  });
+
+  it('retry drops the uncommitted header with the partial answer', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('q');
+    projector.appendReasoning('想');
+    projector.appendAssistant('答了一半');
+    projector.resetAssistant();
+    expect(store.blocks.some((b) => b.kind === 'reasoning')).toBe(false);
+  });
+
+  it('a later thought evicts only its own header: committed ones stay, one burst at a time', () => {
+    const { store, projector, tickUntilIdle } = harness();
+    projector.beginTurn('q');
+    projector.appendReasoning('第一段思考');
+    projector.appendAssistant('第一段回答');
+    projector.closeAssistant();
+    tickUntilIdle();
+    // Second burst never reaches an answer — tool start discards it whole.
+    projector.appendReasoning('第二段思考');
+    projector.toolStart(call('bash', 'z1', '{"command":"ls"}'));
+    const headers = store.blocks.filter((b) => b.kind === 'reasoning');
+    expect(headers).toHaveLength(1);
+    expect(headers[0]!.lines[0]).toContain('已思考');
   });
 });

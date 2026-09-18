@@ -20,6 +20,7 @@ import {
   isFailureContent,
   isReadOnlyTool,
   REASONING_FULL_MAX_CHARS,
+  REASONING_FULL_MAX_LINES,
   REASONING_LIVE_KEEP_CHARS,
   REASONING_MAX_PARTIAL_CHARS,
   REVEAL_CATCH_UP_TICKS,
@@ -35,6 +36,8 @@ import {
   readGroupLine,
   toolLabel,
   toolStartLine,
+  reasoningDetailRows,
+  summaryRow,
   type Palette,
 } from '@nova-agent/tui-view';
 import {
@@ -93,6 +96,10 @@ export class TurnProjector {
 
   private reasoningBuffer = '';
   private reasoningOpen = false;
+  /** Wall clock when the current thinking burst opened (fold-header seconds). */
+  private reasoningStartAt = 0;
+  /** 已思考摘要头块：答案提交（message）前仍是瞬态，重试/失败/中断清场。 */
+  private reasoningFolded: Block | undefined;
 
   /** The foreground subagent call whose progress rows map into live rows. */
   private liveFeedCallId: string | undefined;
@@ -160,6 +167,7 @@ export class TurnProjector {
     // An abort/error never reaches the fold: no transient reasoning line may
     // survive into history.
     this.discardReasoning();
+    this.dropFoldedReasoning();
     this.reasoningOpen = false;
     this.reasoningBuffer = '';
     this.reasoningShown = '';
@@ -191,7 +199,7 @@ export class TurnProjector {
       // Codex cell contract: margins belong to each cell; flattenBlocks owns
       // the single blank row between non-empty store.blocks — the answer
       // opens with NO manual separator.
-      this.foldToSummary();
+      this.foldReasoningToHeader();
       this.md = createMarkdownRenderer(paint);
       this.assistantSeparator = undefined;
       // The block opens empty; the reveal tick fills it (smoothing).
@@ -221,6 +229,7 @@ export class TurnProjector {
       // just reads as a stray outdented line).
       store.pushBlock(['⋯'], { first: '    ', rest: '    ' }, 'reasoning');
       store.reasoningBlock = store.blocks[store.blocks.length - 1];
+      this.reasoningStartAt = this.deps.now();
     }
     // The buffer is the truth (memory-only); the DISPLAY is fed through the
     // smoother — the live tail types out steadily instead of lurching.
@@ -236,6 +245,8 @@ export class TurnProjector {
   closeAssistant(): void {
     const { store } = this.deps;
     this.flushAssistant();
+    // The answer commits: its 已思考 header is transcript now, not transient.
+    this.reasoningFolded = undefined;
     if (this.assistantOpen && this.assistantText.trim().length === 0) {
       // A whitespace-only answer (blank lines before tool calls) leaves no
       // trace: drop the blank block and its separator BY IDENTITY — tool
@@ -247,14 +258,49 @@ export class TurnProjector {
   }
 
   /**
-   * 思考段收尾（codex 风格）：思考只在流式期间滚动可见，一旦结束——答案
-   * 开始、折叠调用、重试或中断——整块直接消失，转录里只留正式回答。
+   * 思考段收尾（无答案可归属时）：工具调用、重试或中断——整块直接消失，
+   * 转录里只留正式回答。答案起笔走 foldReasoningToHeader（定格摘要头）。
    * 思考正文从不落盘。
    */
   foldReasoning(): void {
     this.foldToSummary();
     this.reasoningBuffer = '';
     this.reasoningOpen = false;
+  }
+
+  /**
+   * 答案起笔（Grok 组件11）：思考段定格为一行 `▸ 已思考 N.Ns` 摘要头，与答案
+   * 同组紧排；全文只作点击展开的 detail 留在内存（reasoning 从不落盘）。
+   * 不挂 base——键链按 detail.secs 重生成摘要行，展开态 ▸/▾ 即时翻转。
+   */
+  private foldReasoningToHeader(): void {
+    const { store, paint } = this.deps;
+    this.dropFoldedReasoning();
+    this.reasoningStream.clear();
+    this.reasoningShown = '';
+    this.reasoningOpen = false;
+    const block = store.reasoningBlock;
+    const text = this.reasoningBuffer;
+    this.reasoningBuffer = '';
+    if (block === undefined || text.trim().length === 0) {
+      this.discardReasoning();
+      return;
+    }
+    const secs = Math.max(0, this.deps.now() - this.reasoningStartAt) / 1000;
+    block.detail = {
+      lines: reasoningDetailRows(paint, text.split('\n').slice(0, REASONING_FULL_MAX_LINES), this.deps.cols()),
+      secs,
+    };
+    store.replaceBlock(block, [summaryRow(paint, secs, false)]);
+    this.reasoningFolded = block;
+    store.reasoningBlock = undefined;
+  }
+
+  /** The folded header is transient until the message event adopts it. */
+  private dropFoldedReasoning(): void {
+    if (this.reasoningFolded === undefined) return;
+    this.deps.store.removeBlock(this.reasoningFolded);
+    this.reasoningFolded = undefined;
   }
 
   /** Provider retry / empty-completion replay: the failed attempt leaves no trace. */
@@ -269,6 +315,7 @@ export class TurnProjector {
     this.assistantOpen = false;
     this.assistantText = '';
     // 重试的失败尝试不留任何痕迹（包括思考摘要行）。
+    this.dropFoldedReasoning();
     this.discardReasoning();
     this.reasoningOpen = false;
     this.reasoningBuffer = '';
@@ -620,7 +667,7 @@ export class TurnProjector {
     }
   }
 
-  /** 思考收尾：整块消失（答案开始/折叠/重试/中断共用），不留摘要行。 */
+  /** 思考收尾：整块消失（折叠调用/重试/中断共用），不留摘要行。 */
   private foldToSummary(): void {
     this.reasoningBuffer = '';
     this.reasoningStream.clear();

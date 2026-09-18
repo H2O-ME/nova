@@ -63,11 +63,18 @@ describe('reasoningLiveRow (codex-style scrolling while streaming)', () => {
   });
 });
 
-describe('summaryRow + reasoningDetailRows (inert click-toggle surfaces)', () => {
+describe('summaryRow + reasoningDetailRows (fold header + click-expand)', () => {
   it('collapsed reads ▸, expanded reads ▾ — the toggle affordance', () => {
     expect(summaryRow(plainPalette, 12, false)).toBe('▸ 已思考 12s');
     expect(summaryRow(plainPalette, 12, true)).toBe('▾ 已思考 12s');
     expect(summaryRow(palette, 12, false)).toContain('[2m▸'); // dim
+  });
+
+  it('sub-10s thoughts keep one decimal; ≥10s rounds away', () => {
+    expect(summaryRow(plainPalette, 4.24, false)).toBe('▸ 已思考 4.2s');
+    expect(summaryRow(plainPalette, 0.8, false)).toBe('▸ 已思考 0.8s');
+    expect(summaryRow(plainPalette, 9.99, false)).toBe('▸ 已思考 10.0s');
+    expect(summaryRow(plainPalette, 12.6, false)).toBe('▸ 已思考 13s');
   });
 
   it('detail keeps original line breaks with a continuous quote lane', () => {

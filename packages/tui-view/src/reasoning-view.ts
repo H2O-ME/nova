@@ -2,9 +2,10 @@
  * Reasoning, Codex-style: deltas accumulate in a memory buffer. While the
  * block streams it renders as a rolling window of plain dim text — the
  * newest REASONING_LIVE_MAX_ROWS source lines, live tail included, each
- * clipped to EXACTLY one display row (never wrapped). When the thought ends
- * the whole block disappears (fold lives in the shell): the transcript keeps
- * only the answer.
+ * clipped to EXACTLY one display row (never wrapped). When the answer starts
+ * the shell freezes the block into a clickable 已思考 header; a thought
+ * that runs into a tool call or a failed turn is discarded instead — the
+ * transcript keeps only what survived to the answer.
  */
 
 import { wrapLine } from '@nova-agent/tui';
@@ -57,11 +58,12 @@ export function reasoningLiveRow(p: Palette, v: ReasoningView & { done?: readonl
 
 /**
  * Folded summary row (▸/▾ is the click affordance; toggling lives in the
- * shell). The shell no longer folds reasoning into a summary by default, but
- * the row type stays for resumed/edge surfaces.
+ * shell). Sub-10s thoughts keep one decimal (a 0.8s think is still
+ * information); at ≥10s the decimal adds nothing, so it rounds away.
  */
 export function summaryRow(p: Palette, secs: number, expanded: boolean): string {
-  return p.dim(`${expanded ? '▾' : '▸'} 已思考 ${secs}s`);
+  const shown = secs >= 10 ? String(Math.round(secs)) : secs.toFixed(1);
+  return p.dim(`${expanded ? '▾' : '▸'} 已思考 ${shown}s`);
 }
 
 /** Expanded full text: guided by a dim quote lane, keeping clear separation from the answer. */
