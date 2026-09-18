@@ -8,7 +8,7 @@
  * ANSI-aware safety net at render time. Both stay — neither covers the other.
  */
 
-import { styledWidth } from '@nova-agent/tui';
+import { sanitizeForDisplay, styledWidth } from '@nova-agent/tui';
 
 /**
  * Last part of `text` that fits maxWidth display columns. The REPL reasoning
@@ -125,7 +125,7 @@ export function toolArgSummary(name: string, rawArgs: string, max = 72): string 
         : undefined) ??
       (name === 'todo_write' && Array.isArray(args['todos']) ? `${args['todos'].length} 项待办` : undefined) ??
       Object.values(args).find((v): v is string => typeof v === 'string' && v.length > 0);
-    if (keyed !== undefined && keyed.length > 0) return clipArg(name, keyed, max);
+    if (keyed !== undefined && keyed.length > 0) return sanitizeForDisplay(clipArg(name, keyed, max));
   }
-  return clipArg(name, rawArgs, max);
+  return sanitizeForDisplay(clipArg(name, rawArgs, max));
 }

@@ -1,3 +1,4 @@
+import { sanitizeForDisplay } from './sanitize.js';
 import { styledWidth } from './width.js';
 
 /**
@@ -65,7 +66,9 @@ export class LineScreen {
     const safeCols = Math.max(1, this.cols - 1);
     const frame: string[] = [];
     for (let i = 0; i < rows; i++) {
-      const line = lines[i];
+      // Choke point: no unmodeled control write may reach the terminal from a
+      // frame line — the diff cache and the screen must stay byte-identical.
+      const line = lines[i] === undefined ? undefined : sanitizeForDisplay(lines[i]!);
       if (line === undefined) {
         frame.push('');
       } else if (styledWidth(line) > safeCols) {

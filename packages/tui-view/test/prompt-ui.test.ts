@@ -135,6 +135,18 @@ describe('ui helpers', () => {
     expect(errored[0]).toContain('✗');
   });
 
+  it('sanitizes external tool output before it enters the tool lines', () => {
+    // A colored child process erases its own row (`\x1b[2K`) and rewrites
+    // with `\r`; neither control write may ride into the frame string.
+    const done = toolDoneLine(p, 'bash', '{"command":"ls"}', 'ok\x1b[2Kdone\rnext', 50);
+    expect(done.join('\n')).toContain('okdone');
+    expect(done.join('\n')).not.toContain('\x1b[2K');
+    expect(done.join('\n')).not.toContain('\r');
+    const failed = toolDoneLine(p, 'bash', '{"command":"cargo build"}', 'exit: 101\n\x1b[2Kerror: boom', 3200);
+    expect(failed[1]).toContain('error: boom');
+    expect(failed.join('\n')).not.toContain('\x1b[2K');
+  });
+
   it('clips by display columns: CJK paths keep the basename, commands cut at tokens', () => {
     const path = 'D:\\下载\\com.highschool.learningbox_1.26.0_解压\\manifest.json';
     const clipped = toolArgSummary('read_file', JSON.stringify({ path }), 30);

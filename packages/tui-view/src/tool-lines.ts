@@ -3,7 +3,7 @@
  * columns; the ` · meta · Ns` tail always stays on the first row.
  */
 
-import { styledWidth } from '@nova-agent/tui';
+import { sanitizeForDisplay, styledWidth } from '@nova-agent/tui';
 import { clipPath, clipToWidth, toolArgSummary } from './clip.js';
 import { toolLabel } from './labels.js';
 import type { Palette } from './palette.js';
@@ -87,8 +87,11 @@ export function toolDoneLine(
   const secs = ` · ${(durationMs / 1000).toFixed(1)}s`;
   const summaryBudget = (fixedPlain: string): number =>
     cols === undefined ? 72 : Math.max(12, cols - 1 - styledWidth(fixedPlain));
-  const flat = content
-    .replaceAll('\r', '')
+  // Tool output is external content: converge escapes before they enter the
+  // frame string (see packages/tui sanitize.ts) — a stray `\x1b[2K` would
+  // otherwise execute on screen while the diff cache remembers stale text.
+  const clean = sanitizeForDisplay(content);
+  const flat = clean
     .split('\n')
     .filter((l) => l.trim().length > 0);
   if (isFailureContent(content)) {
