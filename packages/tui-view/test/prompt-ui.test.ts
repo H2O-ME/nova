@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
+import { RAIL_WAVE_TICKS, railPhase } from '../src/index.js';
 import {
   allocateCells,
   approvalChip,
@@ -683,6 +684,15 @@ describe('state rail (M10 组件5)', () => {
     for (const state of ['running', 'done', 'failed'] as const) {
       expect(railLine(p, state, 0, 'v', 72)).toBe('  ▌ v');
     }
+  });
+
+  it('railPhase：行偏移产生行波、周期闭合、两档都会出现', () => {
+    const rows = new Set(Array.from({ length: 20 }, (_, r) => railPhase(0, r)));
+    expect(rows.size).toBe(2); // 同一 tick，不同行取到不同相位（亮段自上而下流过）
+    for (const t of [0, 5, 17]) expect(railPhase(t, 0)).toBe(railPhase(t + RAIL_WAVE_TICKS, 0));
+    const cycle = Array.from({ length: RAIL_WAVE_TICKS }, (_, t) => railPhase(t, 0));
+    expect(cycle.filter((v) => v === 0).length).toBeGreaterThan(5);
+    expect(cycle.filter((v) => v === 1).length).toBeGreaterThan(5);
   });
 
   it('rail color IS the state; running pulses on phase (ANSI palette)', () => {

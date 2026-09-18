@@ -22,7 +22,7 @@ export const REASONING_INDENT_COLS = 4;
 export const REASONING_LIVE_KEEP_CHARS = 4000;
 
 /** Stream smoothing (typewriter): tick rate + per-tick reveal pacing. */
-export const REVEAL_TICK_MS = 30;
+export const REVEAL_TICK_MS = 33;
 /** Floor chars per tick (≈66 cps) so a slow trickle still reads as typing. */
 export const REVEAL_MIN_CHARS = 2;
 /** Backlog drains in ~this many ticks — a burst never lags visibly. */
@@ -51,6 +51,16 @@ export const HINT_ROWS = 1;
 export const HISTORY_MIN_ROWS = 3;
 
 /** Animation + render scheduling. */
+/**
+ * TUI 的全局动效时钟（Grok 30fps）：**所有**活元素都从这一个计数器取相位——
+ * 转轮帧、导轨行波、以后的完成闪都除以/模它，不再各开各的定时器。
+ */
+export const TICK_MS = 33;
+/** 转轮每 N 个 tick 换一帧：33×4 ≈ 132ms/帧（Grok 同一节拍）。 */
+export const SPINNER_TICKS_PER_FRAME = 4;
+/** 导轨一次完整呼吸的 tick 数（Grok `sin²(tick*0.15)`：2π/0.15 ≈ 42）。 */
+export const RAIL_WAVE_TICKS = 42;
+/** 行式 runner（REPL/exec 进度行）自己的刷新间隔——不是 TUI 的动效时钟。 */
 export const SPINNER_TICK_MS = 90;
 export const RENDER_BUDGET_MS = 16;
 

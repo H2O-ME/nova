@@ -7,6 +7,7 @@ import { sanitizeForDisplay, styledWidth } from '@nova-agent/tui';
 import { clipToWidth, toolArgSummary } from './clip.js';
 import { CONTENT_COL, MARK_LEAD } from './layout.js';
 import { toolLabel } from './labels.js';
+import { RAIL_WAVE_TICKS } from './tokens.js';
 import type { Palette } from './palette.js';
 
 export { toolArgSummary, toolLabel };
@@ -36,6 +37,19 @@ export type RailState = 'running' | 'done' | 'failed';
 
 /** Running-rail pulse half-period (ms): callers divide elapsed by it for the phase. */
 export const RAIL_PULSE_MS = 300;
+
+/**
+ * 导轨脉冲相位（Grok accent_bar 的 `sin²(tick*0.15 + row/32·2π)` 行波）。
+ * ANSI-16 混不出渐变，所以只取波形的**上下半**（0=亮青、1=暗，正是 `railLine`
+ * 的 `phase % 2` 契约）；关键是 `row` 偏移：多行生存面（bash 尾行、折叠正文）
+ * 于是"亮段从上往下流过"，读起来是一整块在呼吸，而不是整块同步闪一下。
+ * 相位一律取自全局 tick（`TICK_MS` 时钟），不再用各行自己的 elapsed——
+ * 两条同刻开始的活动行会永远反相，看着像坏了。
+ */
+export function railPhase(tick: number, row = 0): number {
+  const wave = Math.sin((((tick - row * 4) % RAIL_WAVE_TICKS) / RAIL_WAVE_TICKS) * Math.PI * 2) ** 2;
+  return wave > 0.5 ? 0 : 1;
+}
 
 /**
  * `  ▌ text` — a continuation row whose rail carries the block state.

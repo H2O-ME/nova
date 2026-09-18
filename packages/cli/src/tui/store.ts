@@ -12,6 +12,7 @@ import {
   REASONING_FULL_MAX_LINES,
   REASONING_MAX_LINES,
   REASONING_MAX_PARTIAL_CHARS,
+  SPINNER_TICKS_PER_FRAME,
   TOOL_GUTTER,
   TPS_INTERVAL_MS,
   TPS_SAMPLES,
@@ -101,7 +102,15 @@ export class TuiStore {
   /** 组件7：拒绝行上打出的字——随 deny 授权回流给模型作追问/指令。 */
   approvalNote = '';
   approvalPreview: string[] | undefined;
-  spinnerFrame = 0;
+  /**
+   * 全局动效时钟：壳层唯一的 `TICK_MS` 定时器递增它，转轮帧、导轨行波、以及
+   * 以后所有"活"的元素都从这一个计数器取相位（Grok 就是一个 tick 驱动全部动效）。
+   */
+  tick = 0;
+  /** 转轮帧 = tick / 4（≈132ms/帧）。派生量，别再去赋值它。 */
+  get spinnerFrame(): number {
+    return Math.floor(this.tick / SPINNER_TICKS_PER_FRAME);
+  }
   interruptAt = 0;
   lastCtrlC = 0;
   streaming = false;

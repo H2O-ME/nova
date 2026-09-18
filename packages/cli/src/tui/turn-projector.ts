@@ -37,7 +37,7 @@ import {
   toolDoneLine,
   readGroupLine,
   railLine,
-  RAIL_PULSE_MS,
+  railPhase,
   toolLabel,
   toolStartLine,
   reasoningDetailRows,
@@ -548,8 +548,9 @@ export class TurnProjector {
       if (tailBuf !== undefined) {
         const last = [...tailBuf].slice(-TOOL_TAIL_SHOW_CHARS).join('').split('\n').pop()?.trimEnd() ?? '';
         if (last.length > 0) {
-          // 运行中导轨脉冲：ANSI-16 混不了亮度，用时间相位在亮青/暗之间翻转。
-          lines.push(railLine(paint, 'running', Math.floor(elapsed / RAIL_PULSE_MS), fitTail(last, Math.max(8, budget - CONTENT_COL)), budget));
+          // 导轨脉冲取自全局 tick（Grok sin² 行波，ANSI-16 只取上下半）——
+          // 所有活元素同拍，不再各按各的 elapsed 反相闪。
+          lines.push(railLine(paint, 'running', railPhase(store.tick), fitTail(last, Math.max(8, budget - CONTENT_COL)), budget));
         }
       }
       // Dirty-check: identical rows skip the replace (no wrap-cache churn).

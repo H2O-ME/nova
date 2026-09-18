@@ -7,7 +7,7 @@ import {
   HISTORY_LIMIT,
   RENDER_BUDGET_MS,
   SESSION_LIST_LIMIT,
-  SPINNER_TICK_MS,
+  TICK_MS,
   resolvePalette,
 } from '@nova-agent/tui-view';
 import {
@@ -282,7 +282,9 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   const spinner = {
     start() {
       spinnerTimer ??= setInterval(() => {
-        store.spinnerFrame += 1;
+        // 单一动效时钟（Grok 30fps）：tick 递增后，转轮帧 = tick/4（≈132ms/帧），
+        // 导轨行波与其余活元素都从同一个 tick 取相位。
+        store.tick += 1;
         // Animate the bullet of every running tool block (codex-style
         // activity marker): the elapsed/interrupt suffixes, live output tail
         // and the subagent live-row cycle are all projection — they live in
@@ -298,7 +300,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
         // streams; after the turn ends the self-managed interval takes over.
         bgSubagentRows.sync();
         scheduleRender();
-      }, SPINNER_TICK_MS);
+      }, TICK_MS);
     },
     stop() {
       if (spinnerTimer !== undefined) {
