@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { palette, plainPalette, SPINNER_FRAMES, type ComposerLayout } from '../src/index.js';
-import { COMPOSER_PREFIX, COMPOSER_PREFIX_WIDTH, composerWrapBudget, composerZone, cursorPosition, messageQueueRows, renderComposerRow } from '../src/index.js';
+import { COMPOSER_PREFIX, COMPOSER_PREFIX_WIDTH, chipBadge, composerWrapBudget, composerZone, cursorPosition, foldChips, messageQueueRows, renderComposerRow } from '../src/index.js';
 
 const layout = (over: Partial<ComposerLayout> = {}): ComposerLayout => ({
   rows: [{ text: 'hello', caretIdx: -1 }],
@@ -105,5 +105,59 @@ describe('composerWrapBudget', () => {
   it('subtracts the prefix and margins, floored at 1', () => {
     expect(composerWrapBudget(80)).toBe(80 - COMPOSER_PREFIX_WIDTH - 2);
     expect(composerWrapBudget(3)).toBe(1);
+  });
+});
+
+describe('chip fold: 长粘贴纯显示折叠 (M10 组件8)', () => {
+  // 缓冲区 = `head\n<3 行粘贴>\ntail`；chip 恰好罩住粘贴段。
+  const pasted = 'L1\nL2\nL3';
+  const input = `head\n${pasted}\ntail`;
+  const chip = { start: 5, end: 5 + pasted.length };
+
+  it('无 chip 时是恒等投影（既有 composer 语义零扰动）', () => {
+    const f = foldChips(input, []);
+    expect(f.text).toBe(input);
+    expect(f.toDisplay(7)).toBe(7);
+    expect(f.toBuffer(7)).toBe(7);
+  });
+
+  it('徽章就地替换区间：行数学只见徽章文本', () => {
+    const f = foldChips(input, [chip]);
+    expect(f.text).toBe('head\n⧉ 粘贴 3行 8字\ntail');
+    expect(f.text).not.toContain('L2'); // 粘贴段只在缓冲，不在显示
+  });
+
+  it('chip 内部/右缘的显示映射钳到徽章边界，往返一致', () => {
+    const f = foldChips(input, [chip]);
+    const bStart = 5;
+    const bEnd = 5 + '⧉ 粘贴 3行 8字'.length;
+    expect(f.toDisplay(chip.start)).toBe(bStart); // 光标停在徽章上（渲染反色首字）
+    expect(f.toDisplay(chip.start, 'end')).toBe(bEnd); // 右移整越
+    expect(f.toDisplay(10)).toBe(bStart); // 非法内部位置钳左缘
+    expect(f.toDisplay(chip.end)).toBe(bEnd);
+    expect(f.toBuffer(bStart)).toBe(chip.start);
+    expect(f.toBuffer(bStart + 3)).toBe(chip.start); // ↑↓ 落进徽章 → 左缘
+    expect(f.toBuffer(bEnd)).toBe(chip.end);
+    // 徽章之后的位置带位移往返
+    const tailBuf = chip.end + 2;
+    expect(f.toBuffer(f.toDisplay(tailBuf))).toBe(tailBuf);
+  });
+
+  it('多 chip 排序折叠；畸形（重叠/倒挂/越界）防御性跳过', () => {
+    const two = `ab\n${pasted}\ncd\n${pasted}`;
+    const p1 = { start: 3, end: 3 + pasted.length };
+    const s2 = two.indexOf(pasted, p1.end + 1);
+    const p2 = { start: s2, end: s2 + pasted.length };
+    const f = foldChips(two, [p2, p1]); // 乱序入参
+    expect((f.text.match(/⧉ 粘贴/g) ?? []).length).toBe(2);
+    expect(f.toBuffer(f.toDisplay(p2.end))).toBe(p2.end);
+    const bad = foldChips('short', [{ start: 4, end: 2 }, { start: 0, end: 99 }]);
+    expect(bad.text).toBe('short'); // 倒挂与越界都不进折叠
+  });
+
+  it('chipBadge：行数按换行计，字数 >999 折 k', () => {
+    expect(chipBadge('a\nb', { start: 0, end: 3 })).toBe('⧉ 粘贴 2行 3字');
+    const big = 'x'.repeat(1500);
+    expect(chipBadge(big, { start: 0, end: big.length })).toContain('1.5k字');
   });
 });

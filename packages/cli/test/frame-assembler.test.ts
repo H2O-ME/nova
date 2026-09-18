@@ -81,6 +81,17 @@ describe('FrameAssembler', () => {
     expect(t.store.frameMap.historyRows).toBeGreaterThanOrEqual(0);
   });
 
+  it('composer 带粘贴 chip 时帧内只出现徽章行，粘贴段不炸窗（M10 组件8）', () => {
+    const t = setup();
+    t.store.setInputAll('a\nb\nc');
+    t.store.inputChips.push({ start: 2, end: 5 });
+    t.store.cursorPos = 5;
+    t.assembler.render({ commandMatches: [], modelContextTokens: () => undefined, currentModel: 'm1', currentSessionFile: '/s.jsonl' });
+    const frame = t.frames.at(-1)!;
+    expect(frame.lines.join('\n')).toContain('⧉ 粘贴 2行 3字');
+    expect(frame.cursor.col).toBeGreaterThanOrEqual(0);
+  });
+
   it('reuses the flattened transcript while no block is touched (identity-based cache)', () => {
     const t = setup();
     t.store.pushBlock(['  a']);

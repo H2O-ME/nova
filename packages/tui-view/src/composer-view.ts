@@ -198,3 +198,81 @@ export function cursorAfterVerticalMove(input: string, cursorPos: number, width:
   const idx = caretIdxInRow(wrap.rows[target] ?? '', wrap.caretCol);
   return (wrap.rowStart[target] ?? 0) + idx;
 }
+
+// ---- paste chips (Grok 组件8): display-only fold over the buffer ----
+
+/** A chip is a UTF-16 range of `input` rendered as one badge cell-run. */
+export interface ComposerChip {
+  start: number;
+  end: number;
+}
+
+/** `⧉ 粘贴 24行 1.2k字` — plain-text badge (wrap math is ANSI-free by contract). */
+export function chipBadge(input: string, chip: ComposerChip): string {
+  const seg = input.slice(chip.start, chip.end);
+  const lines = (seg.match(/\n/g)?.length ?? 0) + 1;
+  const chars = [...seg].length;
+  return `⧉ 粘贴 ${lines}行 ${chars > 999 ? `${(chars / 1000).toFixed(1)}k` : chars}字`;
+}
+
+export interface ChipFold {
+  /** Input with every chip range replaced by its badge. */
+  text: string;
+  /** Buffer unit → display unit; interior positions clamp to the badge edge. */
+  toDisplay(buf: number, side?: 'start' | 'end'): number;
+  /** Display unit → buffer unit; badge interior maps to the chip boundary. */
+  toBuffer(disp: number): number;
+}
+
+/**
+ * Fold chips out of the display WITHOUT touching the buffer (the submit path
+ * still sees the full pasted text). The cursor is only ever parked on chip
+ * boundaries by the key chain, so `toBuffer` needs just two rules: badge
+ * interior → chip.start, exactly past a badge → chip.end.
+ */
+export function foldChips(input: string, chips: readonly ComposerChip[]): ChipFold {
+  const sorted = [...chips].sort((a, b) => a.start - b.start);
+  const badges: { dStart: number; dEnd: number; chip: ComposerChip }[] = [];
+  let text = '';
+  let prev = 0;
+  for (const c of sorted) {
+    if (c.start < prev || c.end <= c.start || c.end > input.length) continue; // defensive: skip malformed
+    text += input.slice(prev, c.start);
+    const badge = chipBadge(input, c);
+    badges.push({ dStart: text.length, dEnd: text.length + badge.length, chip: c });
+    text += badge;
+    prev = c.end;
+  }
+  text += input.slice(prev);
+  const shiftTo = (buf: number): number => {
+    let shift = 0;
+    for (const b of badges) {
+      if (b.chip.end <= buf) shift += b.dEnd - b.dStart - (b.chip.end - b.chip.start);
+      else if (b.chip.start >= buf) break;
+    }
+    return buf + shift;
+  };
+  return {
+    text,
+    toDisplay(buf, side = 'start'): number {
+      for (const b of badges) {
+        if (buf > b.chip.start && buf < b.chip.end) return side === 'end' ? b.dEnd : b.dStart;
+        if (buf === b.chip.end && side !== 'end') return b.dEnd; // 边界右缘：光标在徽章之后
+        if (buf === b.chip.start && side === 'end') return b.dEnd;
+      }
+      return shiftTo(buf);
+    },
+    toBuffer(disp): number {
+      for (const b of badges) {
+        if (disp >= b.dStart && disp < b.dEnd) return b.chip.start;
+        if (disp === b.dEnd) return b.chip.end;
+      }
+      let shift = 0;
+      for (const b of badges) {
+        if (disp > b.dEnd) shift += b.dEnd - b.dStart - (b.chip.end - b.chip.start);
+        else if (disp <= b.dStart) break;
+      }
+      return disp - shift;
+    },
+  };
+}

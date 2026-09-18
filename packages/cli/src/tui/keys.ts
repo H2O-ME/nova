@@ -12,9 +12,11 @@ import {
   composerWrapBudget,
   cursorAfterVerticalMove,
   DOUBLE_CTRLC_MS,
+  foldChips,
   MODEL_PICKER_WINDOW,
   PASTE_MAX_CHARS,
   SESSION_PICKER_WINDOW,
+  type ComposerChip,
   type Palette,
 } from '@nova-agent/tui-view';
 import type { Block, TuiStore } from './store.js';
@@ -339,8 +341,7 @@ function keyGlobal(env: KeyEnv, k: Key): boolean {
       return true;
     }
     if (store.input.length > 0) {
-      store.input = '';
-      store.cursorPos = 0;
+      store.setInputAll('');
       env.scheduleRender();
       return true;
     }
@@ -371,6 +372,23 @@ function keyGlobal(env: KeyEnv, k: Key): boolean {
   return false;
 }
 
+/** 组件8：↑/↓ 在折叠面上算视觉列，再映射回缓冲区位置（徽章内部→chip 左缘）。 */
+function verticalMove(env: KeyEnv, delta: number): void {
+  const { store } = env;
+  const fold = foldChips(store.input, store.inputChips);
+  const disp = fold.toDisplay(store.cursorPos);
+  const moved = cursorAfterVerticalMove(fold.text, disp, composerWrapBudget(env.cols()), delta);
+  store.cursorPos = fold.toBuffer(Math.min(moved, fold.text.length));
+}
+
+/** 词级移动落进 chip 内部时弹回边界（方向侧）。 */
+function clampOutOfChips(chips: readonly ComposerChip[], pos: number, side: 'start' | 'end'): number {
+  for (const c of chips) {
+    if (pos > c.start && pos < c.end) return side === 'start' ? c.start : c.end;
+  }
+  return pos;
+}
+
 /** Composer editing, history, scrolling, command palette nav/complete/run. */
 function keyComposerAndPopup(env: KeyEnv, k: Key): void {
   const { store } = env;
@@ -381,8 +399,7 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       if (popupMatches.length > 0) {
         const selected = popupMatches[Math.min(store.popupIndex, popupMatches.length - 1)];
         if (selected !== undefined) {
-          store.input = selected.name;
-          store.cursorPos = store.input.length;
+          store.setInputAll(selected.name);
           env.submit();
         }
         break;
@@ -391,7 +408,7 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       break;
     }
     case 'newline': {
-      store.input = store.input.slice(0, store.cursorPos) + '\n' + store.input.slice(store.cursorPos);
+      store.spliceInput(store.cursorPos, 0, '\n');
       store.cursorPos += 1;
       store.popupDismissed = false;
       break;
@@ -400,8 +417,7 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       if (popupMatches.length > 0) {
         const selected = popupMatches[Math.min(store.popupIndex, popupMatches.length - 1)];
         if (selected !== undefined) {
-          store.input = `${selected.name} `;
-          store.cursorPos = store.input.length;
+          store.setInputAll(`${selected.name} `);
         }
       } else if (env.canSwitchMode()) {
         env.toggleCodeMode();
@@ -420,7 +436,7 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
         break;
       }
       if (store.input.includes('\n')) {
-        store.cursorPos = cursorAfterVerticalMove(store.input, store.cursorPos, composerWrapBudget(env.cols()), -1);
+        verticalMove(env, -1);
         break;
       }
       if (store.historyIdx === -1) {
@@ -430,8 +446,7 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
         store.historyIdx -= 1;
       }
       if (store.historyIdx >= 0) {
-        store.input = store.historyStack[store.historyIdx] ?? '';
-        store.cursorPos = store.input.length;
+        store.setInputAll(store.historyStack[store.historyIdx] ?? '');
       }
       break;
     }
@@ -441,18 +456,17 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
         break;
       }
       if (store.input.includes('\n')) {
-        store.cursorPos = cursorAfterVerticalMove(store.input, store.cursorPos, composerWrapBudget(env.cols()), 1);
+        verticalMove(env, 1);
         break;
       }
       if (store.historyIdx >= 0) {
         store.historyIdx += 1;
         if (store.historyIdx >= store.historyStack.length) {
           store.historyIdx = -1;
-          store.input = store.historyDraft;
+          store.setInputAll(store.historyDraft);
         } else {
-          store.input = store.historyStack[store.historyIdx] ?? '';
+          store.setInputAll(store.historyStack[store.historyIdx] ?? '');
         }
-        store.cursorPos = store.input.length;
       }
       break;
     }
@@ -472,23 +486,28 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       store.scrollFromEnd = Math.max(0, store.scrollFromEnd - 3);
       env.preemptRender();
       return;
-    case 'left':
-      store.cursorPos = Math.max(0, store.cursorPos - 1);
+    case 'left': {
+      // 组件8：左移压在 chip 上就整枚跳回左边界（光标恒不进入 chip 内部）。
+      const hop = store.inputChips.find((c) => store.cursorPos > c.start && store.cursorPos <= c.end);
+      store.cursorPos = hop !== undefined ? hop.start : Math.max(0, store.cursorPos - 1);
       break;
-    case 'right':
-      store.cursorPos = Math.min(store.input.length, store.cursorPos + 1);
+    }
+    case 'right': {
+      const hop = store.inputChips.find((c) => store.cursorPos >= c.start && store.cursorPos < c.end);
+      store.cursorPos = hop !== undefined ? hop.end : Math.min(store.input.length, store.cursorPos + 1);
       break;
+    }
     case 'ctrl+left': {
       // 词级左移：先跳过光标前的空白，再跳过连续非空白（与 ctrl+w 切词边界一致）。
       const before = store.input.slice(0, store.cursorPos);
       const cut = before.replace(/\s+$/, '').search(/\S+$/);
-      store.cursorPos = cut >= 0 ? cut : 0;
+      store.cursorPos = clampOutOfChips(store.inputChips, cut >= 0 ? cut : 0, 'start');
       break;
     }
     case 'ctrl+right': {
       // 词级右移：越过紧邻空白与下一个词。
       const m = store.input.slice(store.cursorPos).match(/^\s*\S+/);
-      store.cursorPos = store.cursorPos + (m?.[0].length ?? 0);
+      store.cursorPos = clampOutOfChips(store.inputChips, store.cursorPos + (m?.[0].length ?? 0), 'end');
       break;
     }
     case 'home':
@@ -510,30 +529,36 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
       break;
     case 'backspace':
       if (store.cursorPos > 0) {
-        store.input = store.input.slice(0, store.cursorPos - 1) + store.input.slice(store.cursorPos);
-        store.cursorPos -= 1;
+        // 组件8：chip 右缘先退格 = 展开（还原可见文字），再按才真删——绝不一键吞掉整段粘贴。
+        if (!store.expandChipAt(store.cursorPos, 'end')) {
+          store.spliceInput(store.cursorPos - 1, 1);
+          store.cursorPos -= 1;
+        }
       }
       store.popupDismissed = false;
       break;
     case 'delete':
-      store.input = store.input.slice(0, store.cursorPos) + store.input.slice(store.cursorPos + 1);
+      if (!store.expandChipAt(store.cursorPos, 'start')) {
+        store.spliceInput(store.cursorPos, 1);
+      }
       store.popupDismissed = false;
       break;
     case 'ctrl+u':
-      store.input = store.input.slice(store.cursorPos);
+      store.spliceInput(0, store.cursorPos, '');
       store.cursorPos = 0;
       store.popupDismissed = false;
       break;
     case 'ctrl+w': {
       const before = store.input.slice(0, store.cursorPos).trimEnd();
       const cut = before.lastIndexOf(' ');
-      store.input = (cut >= 0 ? before.slice(0, cut + 1) : '') + store.input.slice(store.cursorPos);
-      store.cursorPos = cut >= 0 ? cut + 1 : 0;
+      const keep = cut >= 0 ? cut + 1 : 0;
+      store.spliceInput(keep, store.cursorPos - keep, '');
+      store.cursorPos = keep;
       store.popupDismissed = false;
       break;
     }
     case 'char':
-      store.input = store.input.slice(0, store.cursorPos) + k.ch + store.input.slice(store.cursorPos);
+      store.spliceInput(store.cursorPos, 0, k.ch);
       store.cursorPos += k.ch.length;
       store.popupDismissed = false;
       break;
@@ -571,8 +596,14 @@ function keyComposerAndPopup(env: KeyEnv, k: Key): void {
         truncated = true;
       }
       if (cleaned.length > 0) {
-        store.input = store.input.slice(0, store.cursorPos) + cleaned + store.input.slice(store.cursorPos);
-        store.cursorPos += cleaned.length;
+        const at = store.cursorPos;
+        store.spliceInput(at, 0, cleaned);
+        // 组件8（Grok KIND_PASTE）：多行粘贴折成 chip；单行仅超长（≥10k 字）才折——
+        // 缓冲区始终存全文，chip 只是显示折叠，提交时模型看到原文一字不少。
+        if (cleaned.includes('\n') || cleaned.length >= 10_000) {
+          store.inputChips.push({ start: at, end: at + cleaned.length });
+        }
+        store.cursorPos = at + cleaned.length;
         store.popupDismissed = false;
       }
       if (truncated) {

@@ -16,6 +16,7 @@ import {
   TPS_INTERVAL_MS,
   TPS_SAMPLES,
   toolBudget,
+  type ComposerChip,
   type Palette,
   type ToolFoldRows,
 } from '@nova-agent/tui-view';
@@ -78,6 +79,8 @@ export class TuiStore {
   scrollFromEnd = 0;
   input = '';
   cursorPos = 0;
+  /** 组件8：composer 粘贴 chip（UTF-16 区间，纯显示折叠，缓冲区原文不动）。 */
+  inputChips: ComposerChip[] = [];
   popupIndex = 0;
   popupDismissed = false;
   historyIdx = -1;
@@ -188,6 +191,38 @@ export class TuiStore {
     this.scrollFromEnd = 0;
     this.blocksVersion += 1;
     this.onChange();
+  }
+
+  /**
+   * 组件8：文本突变的唯一原语——就地 splice 并重记账 chip 区间：
+   * 编辑区之前不动、之后整体平移、与编辑区相交的 chip 溶解（其文字随编辑消失）。
+   * 光标恒在 chip 边界（按键链保证），故相交只可能来自整吞或展开后的编辑。
+   */
+  spliceInput(at: number, deleteCount: number, insert = ''): void {
+    this.input = this.input.slice(0, at) + insert + this.input.slice(at + deleteCount);
+    const end = at + deleteCount;
+    const delta = insert.length - deleteCount;
+    this.inputChips = this.inputChips.flatMap((c) =>
+      c.end <= at ? [c] : c.start >= end ? [{ start: c.start + delta, end: c.end + delta }] : [],
+    );
+    this.onChange();
+  }
+
+  /** 整体替换输入（提交清空/历史召回/弹窗改名）：chip 与旧缓冲一同作废。 */
+  setInputAll(text: string, cursor = text.length): void {
+    this.input = text;
+    this.cursorPos = Math.max(0, Math.min(cursor, text.length));
+    this.inputChips = [];
+    this.onChange();
+  }
+
+  /** 光标压在 chip 边界（side 侧）时展开该 chip：还原可见文字，chip 消失。 */
+  expandChipAt(pos: number, side: 'start' | 'end'): boolean {
+    const i = this.inputChips.findIndex((c) => (side === 'end' ? c.end : c.start) === pos);
+    if (i < 0) return false;
+    this.inputChips.splice(i, 1);
+    this.onChange();
+    return true;
   }
 
   budget(cols: number): number {

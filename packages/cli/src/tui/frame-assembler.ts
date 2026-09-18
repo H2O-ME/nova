@@ -15,6 +15,7 @@ import {
   composerWrapBudget,
   composerZone,
   cursorPosition,
+  foldChips,
   layoutComposer,
   messageQueueRows,
   type Palette,
@@ -118,7 +119,9 @@ export class FrameAssembler {
     const popupLines = d.activeView(activeViewDeps, cols);
 
     // One breathing row between the newest content and the composer.
-    const layout = layoutComposer(store.input, store.cursorPos, composerWrapBudget(cols), COMPOSER_MAX_ROWS);
+    // 组件8：粘贴 chip 纯显示折叠——layout 走折叠面文本，光标位置先映射。
+    const chipFold = foldChips(store.input, store.inputChips);
+    const layout = layoutComposer(chipFold.text, chipFold.toDisplay(store.cursorPos), composerWrapBudget(cols), COMPOSER_MAX_ROWS);
     const composerZoneRows = composerZone(paint, layout, {
       spinnerFrame: store.spinnerFrame,
       streaming: store.streaming,

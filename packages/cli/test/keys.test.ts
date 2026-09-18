@@ -459,3 +459,61 @@ describe('reject-to-followup & digit fast-select (M10 组件7)', () => {
     expect(e2.store.sessionPicker.index).toBe(1);
   });
 });
+
+describe('composer paste chips (M10 组件8)', () => {
+  const pasted = 'log line one\nline two\nline three';
+
+  it('多行粘贴：全文入缓冲、chip 罩住粘贴段、光标落在右界', () => {
+    const { env } = createMockEnv('看这段：');
+    handleKey(env, { type: 'paste', text: pasted });
+    expect(env.store.input).toBe(`看这段：${pasted}`);
+    expect(env.store.inputChips).toEqual([{ start: 4, end: 4 + pasted.length }]);
+    expect(env.store.cursorPos).toBe(env.store.input.length);
+  });
+
+  it('短粘贴（无换行）不成 chip；提交路径看到的永远是全文', () => {
+    const { env } = createMockEnv();
+    handleKey(env, { type: 'paste', text: 'one line paste' });
+    expect(env.store.inputChips).toHaveLength(0);
+    expect(env.store.input).toBe('one line paste');
+  });
+
+  it('←/→ 跨 chip 整越：光标恒不进入内部', () => {
+    const { env } = createMockEnv('');
+    handleKey(env, { type: 'paste', text: pasted });
+    handleKey(env, { type: 'left' });
+    expect(env.store.cursorPos).toBe(0); // chip.start===0 → 弹回左界
+    handleKey(env, { type: 'right' });
+    expect(env.store.cursorPos).toBe(pasted.length); // 整越到右界
+  });
+
+  it('chip 右缘退格先展开（文字还原可见），再按才真删', () => {
+    const { env } = createMockEnv();
+    handleKey(env, { type: 'paste', text: pasted });
+    handleKey(env, { type: 'backspace' });
+    expect(env.store.inputChips).toHaveLength(0); // 展开
+    expect(env.store.input).toBe(pasted); // 文字未损
+    expect(env.store.cursorPos).toBe(pasted.length);
+    handleKey(env, { type: 'backspace' });
+    expect(env.store.input).toBe(pasted.slice(0, -1)); // 第二下才删
+  });
+
+  it('chip 前打字：区间整体后移；setInputAll 连 chip 一起作废', () => {
+    const { env } = createMockEnv();
+    handleKey(env, { type: 'paste', text: pasted });
+    handleKey(env, { type: 'left' }); // 弹到 chip.start===0
+    handleKey(env, { type: 'char', ch: 'x' });
+    expect(env.store.inputChips).toEqual([{ start: 1, end: 1 + pasted.length }]);
+    env.store.setInputAll('');
+    expect(env.store.inputChips).toHaveLength(0);
+  });
+
+  it('ctrl+u 从 chip 左界吞前无物；从 chip 右界整删 chip（相交溶解）', () => {
+    const { env } = createMockEnv('pre-');
+    handleKey(env, { type: 'paste', text: pasted });
+    handleKey(env, { type: 'ctrl+u' }); // 光标在 chip.end，编辑区 [0,cursor) 罩住 chip → 溶解
+    expect(env.store.inputChips).toHaveLength(0);
+    expect(env.store.input).toBe('');
+    expect(env.store.cursorPos).toBe(0);
+  });
+});

@@ -779,8 +779,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     if (store.streaming || store.compactRunning) {
       const cmd = text.split(/\s+/)[0]?.toLowerCase() ?? '';
       if (STREAM_SAFE_COMMANDS.has(cmd)) {
-        store.input = '';
-        store.cursorPos = 0;
+        store.setInputAll('');
         store.popupIndex = 0;
         void runCommand(text)
           .catch((err: unknown) => {
@@ -793,8 +792,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       // 运行中干预（codex 式消息队列）：轮进行中 Enter 不再拒绝——非命令
       // 正文入队，本轮结束后自动下发；队列行常驻 composer 上方可见。
       if (text.length > 0 && !text.startsWith('/')) {
-        store.input = '';
-        store.cursorPos = 0;
+        store.setInputAll('');
         store.popupIndex = 0;
         store.historyIdx = -1;
         store.historyStack.push(text);
@@ -810,8 +808,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       scheduleRender();
       return;
     }
-    store.input = '';
-    store.cursorPos = 0;
+    store.setInputAll('');
     store.popupIndex = 0;
     if (text.length === 0) {
       scheduleRender();
