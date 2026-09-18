@@ -48,12 +48,13 @@ export function wrapBlock(block: FrameBlock, cols: number): string[] {
 
 /** Flatten blocks to rows with a block→row map for click hit-testing.
  *
- * Spacing contract:
- * - Within a turn: User → Reasoning → Assistant forms a cohesive unit without
- *   redundant blank rows (Question → Reasoning is 0 blank rows, Reasoning →
- *   Assistant is 0 blank rows).
- * - Without reasoning: User → Assistant keeps 1 blank row for breathing space.
- * - Between turns: 1 blank row separates different turns / other content blocks.
+ * Spacing contract（Grok：留白只出现在**新语义单元之前**）：
+ * - 一轮之内紧排——user → reasoning → assistant → tool → tool → assistant 之间
+ *   不插空行（原先每个块之间都留一行，8 个工具调用就是 8 行空洞，页面读起来散）。
+ * - 新单元之前留一行：**用户提问**，以及**一切认不出 kind 的块**（命令回显、
+ *   通知、错误、状态行）。认不出就留白是 fail-closed——提示粘在转录里会被读成
+ *   模型输出，比少一行空行贵得多。
+ * - 状态行/通知之后同样留白（它的 kind 未知，下一块即"新单元"）。
  */
 export function flattenBlocks(
   blocks: FrameBlock[],
@@ -143,9 +144,13 @@ export class Flattener {
   }
 }
 
-/** user→reasoning and reasoning→assistant sit tight (no blank row between). */
+/** 上一块是这些之一，才可能"同轮紧排"（未标注的块不在内——它已经另起一段）。 */
+const TIGHT_AFTER = new Set<FrameBlock['kind']>(['user', 'reasoning', 'assistant', 'tool']);
+/** 当前块是这些之一，才是同轮的延续而非新单元。 */
+const TIGHT_BEFORE = new Set<FrameBlock['kind']>(['reasoning', 'assistant', 'tool']);
+
 function isTightGap(prev: FrameBlock['kind'], cur: FrameBlock['kind']): boolean {
-  return (prev === 'user' && cur === 'reasoning') || (prev === 'reasoning' && cur === 'assistant');
+  return TIGHT_AFTER.has(prev) && TIGHT_BEFORE.has(cur);
 }
 
 export { bottomStack, sliceHistory };

@@ -74,28 +74,31 @@ describe('frame assembly coherence', () => {
     expect(flat).toEqual(['问题', '│ 思考过程', '答案']);
   });
 
-  it('tool blocks get a blank separator before the next block', () => {
+  it('一轮之内紧排：只有新语义单元之前才留白', () => {
     const blocks: FrameBlock[] = [
       block(['问题'], 'user'),
       block(['答案'], 'assistant'),
       block(['bash — echo hi'], 'tool'),
       block(['第二条答案'], 'assistant'),
+      block(['下一个问题'], 'user'),
     ];
 
     const { flat } = flattenBlocks(blocks, cols);
 
-    // user → assistant: NOT a tight pair, so 1 blank between.
-    // assistant → tool: 1 blank.
-    // tool → assistant: 1 blank.
-    expect(flat).toEqual([
-      '问题',
-      '',
-      '答案',
-      '',
-      'bash — echo hi',
-      '',
-      '第二条答案',
-    ]);
+    // user → assistant → tool → assistant 全部紧排（同轮）；
+    // 新一轮的 user 块之前才插一行空行。
+    expect(flat).toEqual(['问题', '答案', 'bash — echo hi', '第二条答案', '', '下一个问题']);
+  });
+
+  it('认不出 kind 的块一律另起一段（提示不会被读成模型输出）', () => {
+    const blocks: FrameBlock[] = [
+      block(['答案'], 'assistant'),
+      block(['✗ 命令失败'], undefined),
+      block(['后续'], 'assistant'),
+    ];
+
+    const { flat } = flattenBlocks(blocks, cols);
+    expect(flat).toEqual(['答案', '', '✗ 命令失败', '', '后续']);
   });
 
   it('blank-only blocks are skipped without adding empty rows', () => {
@@ -107,9 +110,10 @@ describe('frame assembly coherence', () => {
 
     const { flat, rowMap } = flattenBlocks(blocks, cols);
 
-    // The blank block is filtered out entirely.
+    // The blank block is filtered out entirely — and two same-turn assistant
+    // rows sit tight, so no separator row is invented either.
     expect(rowMap).toHaveLength(2);
-    expect(flat).toEqual(['内容', '', '后续']);
+    expect(flat).toEqual(['内容', '后续']);
   });
 
   it('rowMap stays contiguous after scrolling (sliceHistory + bottomStack)', () => {
@@ -132,10 +136,10 @@ describe('frame assembly coherence', () => {
       const entry = rowMap[i]!;
       if (i > 0) {
         const prev = rowMap[i - 1]!;
-        // The gap between prev's last row and this entry's start is exactly
-        // the blank separator (1 row) — never 0 (overlap) or 2+ (double gap).
+        // 同轮紧排时 gap=0，新单元之前 gap=1——但绝不重叠（<0）、绝不双空行（>1）。
         const gap = entry.start - (prev.start + prev.count);
-        expect(gap).toBe(1);
+        expect(gap, `block ${i}`).toBeGreaterThanOrEqual(0);
+        expect(gap, `block ${i}`).toBeLessThanOrEqual(1);
       }
       expect(entry.count).toBeGreaterThan(0);
     }

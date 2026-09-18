@@ -60,7 +60,7 @@ describe('ui helpers', () => {
   });
 
   it('formats the running tool line as a one-line summary', () => {
-    expect(toolStartLine(p, 'bash', '{"command":"echo hi"}')).toBe('    • 执行命令 echo hi');
+    expect(toolStartLine(p, 'bash', '{"command":"echo hi"}')).toBe('  • 执行命令 echo hi');
     expect(toolStartLine(p, 'read_file', '{"path":"a.txt"}')).toContain('读取文件');
     expect(toolStartLine(p, 'read_file', '{"path":"a.txt"}')).not.toContain('{');
     expect(toolStartLine(p, 'bash', '{"command":"echo hi"}', '⠙')).toContain('⠙');
@@ -679,9 +679,9 @@ describe('buildToolFoldRows (tri-state fold source, M10 组件3)', () => {
 });
 
 describe('state rail (M10 组件5)', () => {
-  it('plain shape is state-invariant: `    ▌ text`——色彩承载状态，字形不承载', () => {
+  it('plain shape is state-invariant: `  ▌ text`——色彩承载状态，字形不承载', () => {
     for (const state of ['running', 'done', 'failed'] as const) {
-      expect(railLine(p, state, 0, 'v', 72)).toBe('    ▌ v');
+      expect(railLine(p, state, 0, 'v', 72)).toBe('  ▌ v');
     }
   });
 
@@ -708,7 +708,7 @@ describe('state rail (M10 组件5)', () => {
     expect(failed[1]).not.toContain('└');
     // 无输出分支同样走导轨行
     const quiet = toolDoneLine(p, 'bash', '{"command":"false"}', 'exit: 1', 50, 80);
-    expect(quiet[1]).toBe('    ▌ 命令无输出（退出码 1）');
+    expect(quiet[1]).toBe('  ▌ 命令无输出（退出码 1）');
   });
 
   it('fold body rails in the settled state (green done / red failed), trailer included', () => {

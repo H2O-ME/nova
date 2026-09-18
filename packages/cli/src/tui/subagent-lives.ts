@@ -60,7 +60,7 @@ export class SubagentLives {
     if (p.type === 'start') {
       const { store } = this.deps;
       const entry = store.toolBlocks.get(callId);
-      const block = entry !== undefined ? entry.block : store.pushBlock([], TOOL_GUTTER);
+      const block = entry !== undefined ? entry.block : store.pushBlock([], TOOL_GUTTER, 'tool');
       this.lives.set(callId, {
         label: p.label,
         toolCounts: new Map(),

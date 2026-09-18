@@ -105,13 +105,13 @@ export class ReplProgress {
     const { useColor, paint, writeln } = this.deps;
     if (!useColor || this.subagentCallId === undefined) return;
     if (progress.type === 'start') {
-      writeln(paint().dim(`    ⧉ 子代理 ${progress.label} 启动…`));
+      writeln(paint().dim(`  ⧉ 子代理 ${progress.label} 启动…`));
     } else if (progress.type === 'tool_call') {
-      writeln(paint().dim(`    ⧉ ${progress.label} › ${progress.call.name}`));
+      writeln(paint().dim(`  ⧉ ${progress.label} › ${progress.call.name}`));
     } else if (progress.type === 'done') {
       const u = progress.usage;
       writeln(
-        paint().dim(`    ⧉ ${progress.label} 完成 · ${u.turns} 轮 · ${u.toolCalls} 工具 · ${u.promptTokens + u.completionTokens} tok · ${(u.elapsedMs / 1000).toFixed(1)}s`),
+        paint().dim(`  ⧉ ${progress.label} 完成 · ${u.turns} 轮 · ${u.toolCalls} 工具 · ${u.promptTokens + u.completionTokens} tok · ${(u.elapsedMs / 1000).toFixed(1)}s`),
       );
     }
   }

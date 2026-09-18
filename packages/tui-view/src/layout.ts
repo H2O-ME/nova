@@ -27,6 +27,17 @@ export function contentWidth(cols: number): number {
   return Math.max(8, cols - CHROME_PAD_COLS * 2);
 }
 
+/**
+ * 转录区列基线（Grok `accent | left_pad | content` 的 Nova 版）：**标记列 = 卡片
+ * 同一套 2 格内衬**，标记后留 1 格气口，内容列因此恒为 4。原先用户/答案行内容
+ * 在第 4 列、工具/子代理行在第 6 列，一轮读起来是两条错位的轨；现在每个块的
+ * 标记与内容都挂在同一对列上，续行缩进直接取 `CONTENT_INDENT`。
+ */
+export const MARK_COL = CHROME_PAD_COLS;
+export const MARK_LEAD = ' '.repeat(MARK_COL);
+export const CONTENT_COL = MARK_COL + 2;
+export const CONTENT_INDENT = ' '.repeat(CONTENT_COL);
+
 /** 状态条簇分隔符（3 列）。 */
 export const STATUS_SEP = ' │ ';
 /** 快捷键条簇分隔符（5 列）——Grok 两条分隔符宽度不同，别统一。 */

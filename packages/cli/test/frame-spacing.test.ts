@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { flattenBlocks } from '../src/tui/frame.js';
 
-// Codex cell contract: margins belong to each cell — flattenBlocks inserts
-// exactly one blank row between non-empty blocks; push sites stay dumb.
+// Grok 留白契约：空行只出现在**新语义单元之前**（用户提问 / 认不出 kind 的块）；
+// 一轮之内 user → reasoning → assistant → tool 全部紧排，插行由这里单源决定。
 describe('flattenBlocks spacing contract', () => {
   it('user -> reasoning -> assistant form one cohesive group without blank lines', () => {
     const { flat } = flattenBlocks(
@@ -16,15 +16,16 @@ describe('flattenBlocks spacing contract', () => {
     expect(flat).toEqual(['q', 'thinking', 'answer']);
   });
 
-  it('user -> assistant without reasoning keeps 1 blank row for breathing space', () => {
+  it('答案与工具行都是本轮的延续：与提问之间不留白', () => {
     const { flat } = flattenBlocks(
       [
         { lines: ['q'], wrapped: undefined, kind: 'user' },
         { lines: ['answer'], wrapped: undefined, kind: 'assistant' },
+        { lines: ['✓ 执行命令'], wrapped: undefined, kind: 'tool' },
       ],
       80,
     );
-    expect(flat).toEqual(['q', '', 'answer']);
+    expect(flat).toEqual(['q', 'answer', '✓ 执行命令']);
   });
 
   it('separates consecutive turns with 1 blank row', () => {

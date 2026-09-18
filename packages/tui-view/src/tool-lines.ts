@@ -5,14 +5,21 @@
 
 import { sanitizeForDisplay, styledWidth } from '@nova-agent/tui';
 import { clipToWidth, toolArgSummary } from './clip.js';
+import { CONTENT_COL, MARK_LEAD } from './layout.js';
 import { toolLabel } from './labels.js';
 import type { Palette } from './palette.js';
 
 export { toolArgSummary, toolLabel };
 export type { Palette };
 
-/** Tool block gutter: rail/continuation rows align under the content column. */
-export const TOOL_GUTTER: { first: string; rest: string } = { first: '', rest: '      ' };
+/**
+ * Tool blocks carry their **own** lead on every row (marker in `MARK_LEAD`,
+ * text at `CONTENT_COL`), so the frame gutter must not re-indent them — this
+ * is an identity gutter, kept only so call sites can pass it positionally.
+ * (Rail/continuation rows are built by `railLine`, which already prefixes the
+ * lead; handing them a hanging-indent gutter double-indented them.)
+ */
+export const TOOL_GUTTER: { first: string; rest: string } = { first: '', rest: '' };
 
 /** Grok `accent_bar` port: the state rail glyph. */
 export const RAIL = '▌';
@@ -24,8 +31,8 @@ export type RailState = 'running' | 'done' | 'failed';
 export const RAIL_PULSE_MS = 300;
 
 /**
- * `    ▌ text` — a continuation row whose rail carries the block state.
- * The rail sits under the header glyph column, the text under the summary
+ * `  ▌ text` — a continuation row whose rail carries the block state.
+ * The rail sits in the shared marker column, the text in the shared content
  * column. ANSI-16 cannot blend Grok's sine wave, so a running rail pulses
  * bright-cyan/dim on `phase` (a caller-side time tick); done/failed are
  * static green/red. `budget` is the whole-row display width.
@@ -35,7 +42,7 @@ export function railLine(p: Palette, state: RailState, phase: number, text: stri
     state === 'running' ? (phase % 2 === 0 ? p.cyan(RAIL) : p.dim(RAIL))
     : state === 'failed' ? p.red(RAIL)
     : p.green(RAIL);
-  return `    ${rail} ${p.dim(clipToWidth(text, Math.max(8, budget - 6)))}`;
+  return `${MARK_LEAD}${rail} ${p.dim(clipToWidth(text, Math.max(8, budget - CONTENT_COL)))}`;
 }
 
 /** A nested subagent call the parent is waiting on (codex-style marker). */
@@ -57,12 +64,13 @@ export interface SubagentLiveView {
 }
 
 /**
- * Shared width budget for tool rows. wrapBlock folds at `cols-1-gutter`, so
- * row builders must clip into the same budget or the tail gets pushed onto
- * an orphan continuation row.
+ * Shared width budget for tool rows: every tool row carries its own
+ * `CONTENT_COL` lead, so rows clip to `cols-1-CONTENT_COL` and wrapBlock never
+ * has to re-wrap them (a re-wrapped row would lose the ` · 行数 · 耗时` tail to
+ * an orphan continuation row).
  */
 export function toolBudget(cols: number): number {
-  return cols - 1 - styledWidth(TOOL_GUTTER.rest);
+  return cols - 1 - CONTENT_COL;
 }
 
 /** Read-only explorer tools: calls join the live verb group row (读取 N 个文件…). */
@@ -73,7 +81,7 @@ export function isReadOnlyTool(name: string): boolean {
 }
 
 /**
- * `    ⠙ 执行命令 pnpm test` — tool running. The bullet animates (braille
+ * `  ⠙ 执行命令 pnpm test` — tool running. The bullet animates (braille
  * frames); with `cols` the arg summary absorbs the remaining width.
  */
 export function toolStartLine(
@@ -84,9 +92,9 @@ export function toolStartLine(
   cols?: number,
 ): string {
   const label = toolLabel(name);
-  const fixed = `    ${frame} ${label} `;
+  const fixed = `${MARK_LEAD}${frame} ${label} `;
   const budget = cols === undefined ? 72 : Math.max(12, cols - 1 - styledWidth(fixed));
-  return `    ${p.dim(frame)} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, budget))}`;
+  return `${MARK_LEAD}${p.dim(frame)} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, budget))}`;
 }
 
 export function isFailureContent(content: string): boolean {
@@ -119,8 +127,8 @@ export function toolDoneLine(
     .split('\n')
     .filter((l) => l.trim().length > 0);
   if (isFailureContent(content)) {
-    const head = `    ✗ ${label} `;
-    const lines = [`    ${p.red('✗')} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, summaryBudget(head + secs)))}${p.dim(secs)}`];
+    const head = `${MARK_LEAD}✗ ${label} `;
+    const lines = [`${MARK_LEAD}${p.red('✗')} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, summaryBudget(head + secs)))}${p.dim(secs)}`];
     // bash results lead with bare `exit: N` / `stdout:` markers; surface the
     // first row carrying actual content instead.
     const first = flat.find((l) => !/^exit: \d+$/.test(l) && !/^(stdout|stderr):\s*$/.test(l) && l !== '(empty)');
@@ -137,9 +145,9 @@ export function toolDoneLine(
   if (flat.length === 1) meta = ` · ${clipToWidth(flat[0] ?? '', 60)}`;
   // ▸ = 可点击三态展开的 affordance（与 reasoning 折叠头同一语言）。
   else if (flat.length > 1) meta = ` · ${flat.length} 行 ▸`;
-  const head = `    ✓ ${label} ${meta}${secs}`;
+  const head = `${MARK_LEAD}✓ ${label} ${meta}${secs}`;
   return [
-    `    ${p.green('✓')} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, summaryBudget(head)))}${p.dim(meta)}${p.dim(secs)}`,
+    `${MARK_LEAD}${p.green('✓')} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, summaryBudget(head)))}${p.dim(meta)}${p.dim(secs)}`,
   ];
 }
 
@@ -166,7 +174,7 @@ export interface ReadGroupView {
   expanded?: boolean;
 }
 
-/** `    ✓ 读取 2 个文件, 搜索 1 个模式 ▸ · 0.5s` — one run of reads folded into a verb line. */
+/** `  ✓ 读取 2 个文件, 搜索 1 个模式 ▸ · 0.5s` — one run of reads folded into a verb line. */
 export function readGroupLine(p: Palette, v: ReadGroupView, cols?: number): string {
   const counts = new Map<string, number>();
   for (const name of v.names) counts.set(name, (counts.get(name) ?? 0) + 1);
@@ -180,10 +188,10 @@ export function readGroupLine(p: Palette, v: ReadGroupView, cols?: number): stri
   const arrow = v.expanded === true ? ' ▾' : ' ▸';
   const fail = v.failed > 0 ? ` · ${v.failed} 失败` : '';
   const secs = ` · ${(v.durationMs / 1000).toFixed(1)}s`;
-  const fixedPlain = `    ${marker} ${arrow}${fail}${secs}`;
+  const fixedPlain = `${MARK_LEAD}${marker} ${arrow}${fail}${secs}`;
   const budget = cols === undefined ? 80 : Math.max(12, cols - 1 - styledWidth(fixedPlain));
   const text = clipToWidth(segments.join(', '), budget);
-  return `    ${v.running > 0 ? p.dim(marker) : p.green(marker)} ${p.bold(text)}${p.dim(arrow)}${v.failed > 0 ? p.red(fail) : ''}${p.dim(secs)}`;
+  return `${MARK_LEAD}${v.running > 0 ? p.dim(marker) : p.green(marker)} ${p.bold(text)}${p.dim(arrow)}${v.failed > 0 ? p.red(fail) : ''}${p.dim(secs)}`;
 }
 
 export type StopKind = 'complete' | 'max_turns' | 'aborted';
@@ -215,7 +223,7 @@ export function statusLine(
   const body = p.dim(
     ` · ${stats.turns} 轮 · ↑${humanTokens(stats.promptTokens)} ↓${humanTokens(stats.completionTokens)} tok · 缓存 ${hit}% · ${(elapsedMs / 1000).toFixed(1)}s`,
   );
-  return `  ${p[paint](word)}${body}`;
+  return `${MARK_LEAD}${p[paint](word)}${body}`;
 }
 
 /** Context-pressure bar: filled cells track estimate vs auto-compact limit. */
@@ -237,7 +245,7 @@ export function subagentLiveLine(p: Palette, v: SubagentLiveView, frame: string)
   if (v.turns > 0) parts.push(`${v.turns} 轮`);
   if (toks > 0) parts.push(`${toks} tok`);
   const affordance = v.expandable === true ? ` ${p.dim(v.expanded ? '▾' : '▸')}` : '';
-  return `    ${p.dim(frame)} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)}${affordance} ${p.dim(`· ${parts.join(' · ')}`)}`;
+  return `${MARK_LEAD}${p.dim(frame)} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)}${affordance} ${p.dim(`· ${parts.join(' · ')}`)}`;
 }
 
 /**
@@ -312,7 +320,7 @@ export interface BgSubagentView {
 export function bgSubagentLine(p: Palette, v: BgSubagentView): string {
   const parts = [`${v.elapsedSecs}s`];
   if (v.progress !== undefined && v.progress.length > 0) parts.push(v.progress);
-  return `    ${p.dim('…')} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
+  return `${MARK_LEAD}${p.dim('…')} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
 }
 
 const BG_SUBAGENT_STATUS_TEXT: Record<string, string> = {
@@ -329,5 +337,5 @@ export function bgSubagentDoneLine(
   const mark = v.status === 'completed' ? '✓' : '✗';
   const status = BG_SUBAGENT_STATUS_TEXT[v.status] ?? v.status;
   const parts = [status, ...(v.detail !== undefined && v.detail.length > 0 ? [v.detail] : [])];
-  return `    ${p.dim(mark)} ${p.dim('⧉ 子代理')} ${p.dim(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
+  return `${MARK_LEAD}${p.dim(mark)} ${p.dim('⧉ 子代理')} ${p.dim(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
 }

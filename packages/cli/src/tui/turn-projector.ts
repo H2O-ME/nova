@@ -19,6 +19,8 @@ import {
   fitTail,
   isFailureContent,
   isReadOnlyTool,
+  CONTENT_COL,
+  CONTENT_INDENT,
   REASONING_FULL_MAX_CHARS,
   REASONING_FULL_MAX_LINES,
   REASONING_LIVE_KEEP_CHARS,
@@ -229,7 +231,7 @@ export class TurnProjector {
       // visible live (tail-capped); completion folds them away. Every row
       // sits at the text column (an unmarked first row at the marker column
       // just reads as a stray outdented line).
-      store.pushBlock(['⋯'], { first: '    ', rest: '    ' }, 'reasoning');
+      store.pushBlock(['⋯'], { first: CONTENT_INDENT, rest: CONTENT_INDENT }, 'reasoning');
       store.reasoningBlock = store.blocks[store.blocks.length - 1];
       this.reasoningStartAt = this.deps.now();
     }
@@ -365,6 +367,7 @@ export class TurnProjector {
     const block = store.pushBlock(
       [toolStartLine(paint, call.name, call.rawArgs, '•', this.budget())],
       TOOL_GUTTER,
+      'tool',
     );
     store.toolBlocks.set(call.id, { block, startAt: this.deps.now(), name: call.name, rawArgs: call.rawArgs });
     store.activeToolId = call.id;
@@ -414,7 +417,7 @@ export class TurnProjector {
     const { store } = this.deps;
     let group = store.readGroup;
     if (group === undefined) {
-      const block = store.pushBlock([], TOOL_GUTTER);
+      const block = store.pushBlock([], TOOL_GUTTER, 'tool');
       group = { members: [], startAt: this.deps.now(), block };
       store.readGroup = group;
     }
@@ -546,7 +549,7 @@ export class TurnProjector {
         const last = [...tailBuf].slice(-TOOL_TAIL_SHOW_CHARS).join('').split('\n').pop()?.trimEnd() ?? '';
         if (last.length > 0) {
           // 运行中导轨脉冲：ANSI-16 混不了亮度，用时间相位在亮青/暗之间翻转。
-          lines.push(railLine(paint, 'running', Math.floor(elapsed / RAIL_PULSE_MS), fitTail(last, Math.max(8, budget - 6)), budget));
+          lines.push(railLine(paint, 'running', Math.floor(elapsed / RAIL_PULSE_MS), fitTail(last, Math.max(8, budget - CONTENT_COL)), budget));
         }
       }
       // Dirty-check: identical rows skip the replace (no wrap-cache churn).

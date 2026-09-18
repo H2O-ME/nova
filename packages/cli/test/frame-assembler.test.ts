@@ -164,7 +164,7 @@ describe('FrameAssembler logical scroll anchor', () => {
     const top = t.store.frameMap!.sliceStart;
     t.store.pushBlock(['新输出'], undefined, 'assistant');
     t.assembler.render(renderArgs);
-    expect(t.store.scrollFromEnd).toBe(7); // +1 行内容 +1 分隔空行
+    expect(t.store.scrollFromEnd).toBe(6); // 同轮紧排：只 +1 行内容，不再 +1 分隔空行
     expect(t.store.frameMap!.sliceStart).toBe(top);
   });
 
