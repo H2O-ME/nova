@@ -1,13 +1,14 @@
 /**
- * 整帧装配（阶段 E 出壳 tui-mode）：弹窗选择 → composer/队列 → 展平缓存 →
- * 滚动锚定 → 历史切片 → 状态栏裁剪 → 呼吸行位置指示 → 交给 LineScreen。
- * 三个可变缓冲（展平缓存、上帧行数、上下文仪表缓存）都收敛在类里——此前
+ * 整帧装配（阶段 E 出壳 tui-mode）：弹窗选择 → composer/队列 → 增量展平 →
+ * 逻辑滚动锚 → 历史切片 → 状态栏裁剪 → 呼吸行位置指示 → 交给 LineScreen。
+ * 可变缓冲（展平器、滚动锚、上下文仪表缓存）都收敛在类里——此前
  * 散在壳层闭包，属于"只能在真机截图里发现"的那类状态。
  */
 import type { PtcMode, Usage } from '@nova-agent/core';
 import {
   BREATHE_ROWS,
   COMPOSER_MAX_ROWS,
+  HISTORY_MIN_ROWS,
   STATUS_ROWS,
   bottomStack,
   clipToWidth,
@@ -27,7 +28,7 @@ import {
   type StatusView,
 } from '@nova-agent/tui-view';
 import { Flattener, sliceHistory, type ActiveViewDeps } from './frame.js';
-import type { TuiStore } from './store.js';
+import type { Block, TuiStore } from './store.js';
 
 export interface FrameAssemblerDeps {
   store: TuiStore;
@@ -56,8 +57,14 @@ export interface FrameAssemblerDeps {
 export class FrameAssembler {
   /** 增量展平器（M10 R4）：脏起点前缀复用，替代旧的版本键全量缓存。 */
   private readonly flattener = new Flattener();
-  /** 上一帧展平后的总行数（滚动锚定的增量基准；-1 = 尚无帧）。 */
-  private lastFlatLen = -1;
+  /**
+   * 逻辑滚动锚（M10 R5，Grok 双锚简化）：视口顶行所钉的块 + 相对该块起始
+   * 行的偏移（可为负=块前的分隔空行，或等于行数=块后的分隔空行）。每帧由
+   * 锚反推行偏移，历史任意处增删行视口都不漂移。undefined = 贴底直播。
+   */
+  private anchor: { block: Block; rowInBlock: number } | undefined;
+  /** 上帧渲染定稿后的 scrollFromEnd——与本帧入口值不等 = 用户滚过，让位。 */
+  private lastScroll = 0;
   private contextLineCache: { key: string; lines: [string, string, string] } | undefined;
 
   constructor(private readonly deps: FrameAssemblerDeps) {}
@@ -113,17 +120,30 @@ export class FrameAssembler {
     // 运行中排队的消息：composer 上方的暗色 lane，始终可见（消息队列语义）。
     const queueLines = messageQueueRows(paint, store.messageQueue, cols);
     const { flat, rowMap } = this.flattener.flatten(store.blocks, cols);
-    // 滚动锚定（stick-to-content）：用户上滚后（scrollFromEnd>0）新输出
-    // 不再把视口往直播拽——按上一帧以来的新增行数等量增大 offset，把视口
-    // 钉在用户当时看的绝对位置；回到底部（offset 归 0）后恢复跟随。
-    if (store.scrollFromEnd > 0 && this.lastFlatLen >= 0 && flat.length > this.lastFlatLen) {
-      store.scrollFromEnd += flat.length - this.lastFlatLen;
-    }
-    this.lastFlatLen = flat.length;
     const historyBudget = rows - popupLines.length - queueLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
+    // 逻辑滚动锚定（M10 R5）：上滚后每帧由锚块在 rowMap 的最新起始行反推
+    // scrollFromEnd——尾部追加自动补偿（顶行不变⇒偏移随之增长），历史中段
+    // 任意增删行视口也不漂移（旧的「按上帧行数差补偿」只治尾增）。
+    // scrollFromEnd 与上帧定稿值不等 = 用户滚过（keys/滚轮/Home/End）：
+    // 让位其行数，本帧渲染后按新视口顶重锚。锚块消失（截尾/换会话）则
+    // 回落行数语义（结构锚兜底）。
+    if (this.anchor !== undefined && store.scrollFromEnd === this.lastScroll) {
+      const entry = rowMap.find((e) => e.block === this.anchor!.block);
+      if (entry !== undefined) {
+        // scrollFromEnd 钉的是切片**底**距内容底的多寡；锚的是顶行——
+        // top = len - scroll - rows（与 sliceHistory 同一公式）。
+        const visibleRows = Math.max(HISTORY_MIN_ROWS, historyBudget);
+        store.scrollFromEnd = Math.max(0, flat.length - entry.start - this.anchor.rowInBlock - visibleRows);
+      } else {
+        this.anchor = undefined;
+      }
+    }
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
     if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
     store.frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length };
+    // 重锚：贴底不需要锚（恢复直播跟随）；否则钉住视口顶行所在块。
+    this.anchor = store.scrollFromEnd === 0 ? undefined : (anchorAt(rowMap, sliceStart) ?? this.anchor);
+    this.lastScroll = store.scrollFromEnd;
 
     // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
     const status = clipToWidth(statusBar(paint, this.deps.statusView()), cols - 1);
@@ -141,8 +161,22 @@ export class FrameAssembler {
     );
   }
 
-  /** 终端尺寸变化/换会话：丢弃展平器（wrapBlock 缓存另经 invalidateWraps）。 */
+  /** 终端尺寸变化/换会话：丢弃展平器与滚动锚（wrapBlock 缓存另经 invalidateWraps）。 */
   invalidate(): void {
     this.flattener.reset();
+    this.anchor = undefined;
+    this.lastScroll = 0;
   }
+}
+
+/** 按视口顶绝对行定位锚块：首个行区间覆盖 top 的条目；top 落在块前分隔
+ *  空行时 rowInBlock 为负——反推是纯加减法，负值同样精确钉住空行。 */
+function anchorAt(
+  rowMap: { block: Block; start: number; count: number }[],
+  top: number,
+): { block: Block; rowInBlock: number } | undefined {
+  for (const e of rowMap) {
+    if (top < e.start + e.count) return { block: e.block, rowInBlock: top - e.start };
+  }
+  return undefined;
 }

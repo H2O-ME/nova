@@ -111,3 +111,86 @@ describe('FrameAssembler', () => {
     expect(t.frames).toHaveLength(2);
   });
 });
+
+/**
+ * 逻辑滚动锚（M10 R5）：上滚后视口顶行钉在「块 + 块内偏移」上——历史任意
+ * 位置的行数变化（上方块变高、尾部追加）都由锚反推补偿，sliceStart 恒定；
+ * 用户滚动（scrollFromEnd 变化）让位并按新视口顶重锚。
+ */
+describe('FrameAssembler logical scroll anchor', () => {
+  const renderArgs = {
+    commandMatches: [],
+    modelContextTokens: () => undefined,
+    currentModel: 'm1',
+    currentSessionFile: '/s.jsonl',
+  };
+
+  function scrolledSetup(blockCount: number, scrollFromEnd: number) {
+    const t = setup();
+    for (let i = 0; i < blockCount; i++) {
+      t.store.pushBlock([`内容块 ${i}`], undefined, 'assistant');
+    }
+    t.store.scrollFromEnd = scrollFromEnd;
+    t.assembler.render(renderArgs);
+    return t;
+  }
+
+  it('growth above the viewport does not drift the visible top row', () => {
+    const t = scrolledSetup(40, 5);
+    const top = t.store.frameMap!.sliceStart;
+    // 首块 1 行 → 3 行：锚定的是**内容**（块坐标），绝对 sliceStart 随下移，
+    // scrollFromEnd 不变——旧行数锚会把 +2 补到偏移上，视口反而漂 2 行。
+    const first = t.store.blocks[0]!;
+    t.store.replaceBlock(first, ['加长', '第二行', '第三行']);
+    t.assembler.render(renderArgs);
+    expect(t.store.scrollFromEnd).toBe(5);
+    expect(t.store.frameMap!.sliceStart).toBe(top + 2);
+    expect(t.frames[1]!.lines[0]).toBe(t.frames[0]!.lines[0]);
+  });
+
+  it('tail appends keep the anchored top and grow the offset', () => {
+    const t = scrolledSetup(40, 5);
+    const top = t.store.frameMap!.sliceStart;
+    t.store.pushBlock(['新输出'], undefined, 'assistant');
+    t.assembler.render(renderArgs);
+    expect(t.store.scrollFromEnd).toBe(7); // +1 行内容 +1 分隔空行
+    expect(t.store.frameMap!.sliceStart).toBe(top);
+  });
+
+  it('a user scroll wins over derivation and re-anchors the new top', () => {
+    const t = scrolledSetup(40, 5);
+    const anchorTop = t.store.frameMap!.sliceStart;
+    t.store.scrollFromEnd = 12; // 模拟滚轮/PageUp
+    t.assembler.render(renderArgs);
+    const userTop = t.store.frameMap!.sliceStart;
+    expect(userTop).toBeLessThan(anchorTop);
+    // 重锚后追加内容：新的 sliceStart 仍钉在用户选择的位置。
+    t.store.pushBlock(['后续输出'], undefined, 'assistant');
+    t.assembler.render(renderArgs);
+    expect(t.store.frameMap!.sliceStart).toBe(userTop);
+  });
+
+  it('scrolling back to the bottom resumes live-follow (anchor dropped)', () => {
+    const t = scrolledSetup(40, 5);
+    t.store.scrollFromEnd = 0;
+    t.assembler.render(renderArgs);
+    expect(t.store.frameMap!.sliceStart).toBeGreaterThan(0); // 贴底但内容超窗
+    t.store.pushBlock(['直播新行'], undefined, 'assistant');
+    t.assembler.render(renderArgs);
+    expect(t.store.scrollFromEnd).toBe(0);
+  });
+
+  it('anchor block removal falls back to row semantics without crashing', () => {
+    const t = scrolledSetup(40, 5);
+    const top = t.store.frameMap!.sliceStart;
+    // 顶行所在的块被删除（历史截断/块生命周期）。
+    const victim = t.store.blocks.find((b) => {
+      const entry = t.store.frameMap!.rows.find((e) => e.block === b);
+      return entry !== undefined && entry.start <= top && top < entry.start + entry.count;
+    })!;
+    t.store.blocks.splice(t.store.blocks.indexOf(victim), 1);
+    t.assembler.render(renderArgs);
+    expect(t.frames).toHaveLength(2);
+    expect(t.store.scrollFromEnd).toBeGreaterThanOrEqual(0);
+  });
+});
