@@ -24,6 +24,19 @@ export interface ComposerZoneView {
   spinnerFrame: number;
   streaming: boolean;
   genPhase: GenPhase;
+  /** Dim hint in the empty first row — the caret rests on its first char. */
+  placeholder?: string;
+}
+
+/**
+ * What the empty composer whispers. Grok keeps the welcome screen's key hints
+ * off the hero panel and on the prompt itself — the one place the user is
+ * about to act; the mode selector is up, the hint says how to use it.
+ */
+export function composerPlaceholder(v: { modeSelect: boolean }): string {
+  return v.modeSelect
+    ? '描述任务即可开始 · ↑↓ 选模式 · Enter 确认'
+    : '描述任务开始 · / 命令面板 · Esc 中断 · Ctrl+C×2 退出';
 }
 
 /** Up to COMPOSER_MAX_ROWS wrapped input rows with overflow hints. */
@@ -35,9 +48,17 @@ export function composerZone(p: Palette, layout: ComposerLayout, v: ComposerZone
   // frame color follows genPhase (thinking/writing green, tool yellow).
   const frame = SPINNER_FRAMES[v.spinnerFrame % SPINNER_FRAMES.length] ?? '•';
   const lead0 = v.streaming ? `  ${v.genPhase === 'tool' ? p.yellow(frame) : p.green(frame)} ` : COMPOSER_PREFIX;
+  const placeholder = [...(v.placeholder ?? '')];
   layout.rows.forEach((row, i) => {
     const lead = i === 0 && layout.hiddenAbove === 0 ? lead0 : indent;
-    zone.push(lead + renderComposerRow(p, row));
+    const empty =
+      i === 0 && layout.hiddenAbove === 0 && row.text === '' && row.caretIdx === 0 && placeholder.length > 0;
+    zone.push(
+      lead +
+        (empty
+          ? `${p.inverse(placeholder[0] ?? ' ')}${p.dim(placeholder.slice(1).join(''))}`
+          : renderComposerRow(p, row)),
+    );
   });
   if (layout.hiddenBelow > 0) zone.push(`  ${p.dim(`⋯ 下方还有 ${layout.hiddenBelow} 行`)}`);
   return zone;

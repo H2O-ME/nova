@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { palette, plainPalette, SPINNER_FRAMES, type ComposerLayout } from '../src/index.js';
-import { COMPOSER_PREFIX, COMPOSER_PREFIX_WIDTH, chipBadge, composerWrapBudget, composerZone, cursorPosition, foldChips, messageQueueRows, renderComposerRow } from '../src/index.js';
+import { COMPOSER_PREFIX, COMPOSER_PREFIX_WIDTH, chipBadge, composerPlaceholder, composerWrapBudget, composerZone, cursorPosition, foldChips, messageQueueRows, renderComposerRow } from '../src/index.js';
 
 const layout = (over: Partial<ComposerLayout> = {}): ComposerLayout => ({
   rows: [{ text: 'hello', caretIdx: -1 }],
@@ -62,6 +62,31 @@ describe('composerZone', () => {
     expect(thinking[0]).toBe(`  \x1b[32m${frame}\x1b[0m hello`);
     const tool = composerZone(palette, layout(), view({ streaming: true, genPhase: 'tool', spinnerFrame: 13 }));
     expect(tool[0]).toBe(`  \x1b[33m${SPINNER_FRAMES[3]}\x1b[0m hello`); // 13 % 10 = 3
+  });
+});
+
+describe('composerZone 空态占位提示（Grok welcome：按键提示寄生在输入行）', () => {
+  const empty = layout({ rows: [{ text: '', caretIdx: 0 }] });
+
+  it('把光标落在占位文本首字上，其余暗色', () => {
+    const zone = composerZone(palette, empty, view({ placeholder: 'abc' }));
+    expect(zone[0]).toBe(`${COMPOSER_PREFIX}\x1b[7ma\x1b[0m\x1b[2mbc\x1b[0m`);
+    expect(composerZone(plainPalette, empty, view({ placeholder: '描述任务开始' }))[0]).toContain('描述任务开始');
+  });
+
+  it('有输入、光标不在首行、或已上滚时都不出现', () => {
+    expect(composerZone(plainPalette, layout({ rows: [{ text: 'x', caretIdx: 1 }] }), view({ placeholder: 'abc' }))[0]).toContain('x');
+    expect(composerZone(plainPalette, layout({ rows: [{ text: 'abc', caretIdx: -1 }] }), view({ placeholder: 'zzz' }))[0]).toContain('abc');
+    expect(composerZone(plainPalette, layout({ rows: [{ text: '', caretIdx: 0 }], hiddenAbove: 1 }), view({ placeholder: 'zzz' }))[1]).not.toContain('zzz');
+  });
+
+  it('占位符不占额外行：有无 placeholder 行数相同', () => {
+    expect(composerZone(plainPalette, empty, view())).toHaveLength(composerZone(plainPalette, empty, view({ placeholder: 'abc' })).length);
+  });
+
+  it('选择器在架时教 ↑↓，收场后教通用键', () => {
+    expect(composerPlaceholder({ modeSelect: true })).toContain('选模式');
+    expect(composerPlaceholder({ modeSelect: false })).toContain('/ 命令面板');
   });
 });
 

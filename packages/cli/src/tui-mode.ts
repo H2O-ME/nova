@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { KeyDecoder, LineScreen, detectCaps, type Key } from '@nova-agent/tui';
 import {
@@ -1076,14 +1077,13 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // models.dev 目录后台加载（磁盘缓存在即秒回）；到达后结构行自动换容量。
   void refreshModelMeta();
 
-  // Splash: layered destination → identity → action (tui-view/splash.ts).
+  // Splash: the destination hero only (tui-view/splash.ts) — model/approval/
+  // mode already live in the status bar, the key hints in the composer hint.
   store.pushBlock(
     buildSplash(paint, {
       rootDir,
       sessionsRoot: sessionsRoot(),
-      model: client.model,
-      approval: approvalMode,
-      codeMode,
+      home: os.homedir(),
       version: cliVersion(),
       skills: skills.map((s) => s.name),
       warnings: session.warnings,

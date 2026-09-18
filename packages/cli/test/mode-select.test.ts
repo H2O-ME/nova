@@ -34,7 +34,8 @@ describe('ModeSelector', () => {
     t.selector.show();
     expect(t.store.modeSelect?.index).toBe(CODE_MODE_ORDER.indexOf('ptc'));
     expect(t.store.blocks).toHaveLength(1);
-    expect(t.store.blocks[0]!.lines.length).toBeGreaterThan(1);
+    // 分段控件：交互态也只占一行（塌缩前后行数不变，视觉不跳）。
+    expect(t.store.blocks[0]!.lines).toHaveLength(1);
   });
 
   it('move cycles the selection and rewrites the block in place (no new blocks)', () => {

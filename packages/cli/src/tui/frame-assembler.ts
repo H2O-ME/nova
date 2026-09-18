@@ -12,6 +12,7 @@ import {
   STATUS_ROWS,
   bottomStack,
   clipToWidth,
+  composerPlaceholder,
   composerWrapBudget,
   composerZone,
   cursorPosition,
@@ -121,11 +122,19 @@ export class FrameAssembler {
     // One breathing row between the newest content and the composer.
     // 组件8：粘贴 chip 纯显示折叠——layout 走折叠面文本，光标位置先映射。
     const chipFold = foldChips(store.input, store.inputChips);
-    const layout = layoutComposer(chipFold.text, chipFold.toDisplay(store.cursorPos), composerWrapBudget(cols), COMPOSER_MAX_ROWS);
+    const wrapBudget = composerWrapBudget(cols);
+    const layout = layoutComposer(chipFold.text, chipFold.toDisplay(store.cursorPos), wrapBudget, COMPOSER_MAX_ROWS);
+    // 开屏占位提示（Grok welcome）：空输入 + 空闲且无弹窗时才 whispers，
+    // 一旦打字/运行/弹窗即消失——绝不与真内容争同一段。
+    const placeholder =
+      chipFold.text === '' && !store.streaming && popupLines.length === 0
+        ? clipToWidth(composerPlaceholder({ modeSelect: store.modeSelect !== undefined }), wrapBudget)
+        : '';
     const composerZoneRows = composerZone(paint, layout, {
       spinnerFrame: store.spinnerFrame,
       streaming: store.streaming,
       genPhase: store.genPhase,
+      placeholder,
     });
     // 运行中排队的消息：composer 上方的暗色 lane，始终可见（消息队列语义）。
     const queueLines = messageQueueRows(paint, store.messageQueue, cols);
