@@ -7,6 +7,7 @@
 import { styledWidth } from '@nova-agent/tui';
 import { clipToWidth } from './clip.js';
 import { APPROVAL_OPTIONS } from './labels.js';
+import { CHROME_PAD_COLS } from './layout.js';
 import type { Palette } from './palette.js';
 import { formatStamp, padDisplay } from './text.js';
 
@@ -38,45 +39,73 @@ export interface ApprovalPopupView {
   denyNote?: { text: string; focused: boolean };
 }
 
-/** Approval popup: header + preview clip to remaining columns. */
+/**
+ * Approval panel — the interrupting dialog. Same rounded card as the picker
+ * family (`framed` + `panelRow`): the screen speaks one border language, and a
+ * bare left-aligned text block above the input card reads as loose output, not
+ * as a question that needs an answer. The cursor row inverts across the whole
+ * inner width (that band is what makes it a control, not a list).
+ */
 export function buildApprovalPopup(p: Palette, v: ApprovalPopupView, cols: number): string[] {
-  const headPlain = `  ! 需要审批 [${v.permissionLabel}] ${v.toolLabel} `;
-  const summary = clipToWidth(v.argSummary, Math.max(12, cols - 1 - styledWidth(headPlain)));
-  const lines: string[] = [
-    `  ${p.yellow(p.bold('! 需要审批'))} ${p.dim(`[${v.permissionLabel}]`)} ${v.toolLabel} ${p.dim(summary)}`,
-  ];
+  const inner = popupInner(cols);
+  const rows: string[] = [];
+  // 卡片内宽是硬边界：整行内容（含行首那格气口）一律裁进 inner-2，
+  // 否则右边框会溢出一格——卡片语言的底线是每行等宽。
+  const row = (content: string, selected = false): void => {
+    rows.push(panelRow(p, clipToWidth(content, inner - 2), inner, selected));
+  };
+  row(` ${v.toolLabel} ${v.argSummary}`);
   if (v.previewLines !== undefined) {
-    for (const line of v.previewLines) lines.push(`  ${p.dim(clipToWidth(line, Math.max(12, cols - 3)))}`);
+    for (const line of v.previewLines) row(` ${line}`);
   }
   for (let i = 0; i < APPROVAL_OPTIONS.length; i++) {
+    const selected = i === v.index;
     let label = APPROVAL_OPTIONS[i]?.label ?? '';
     if (i === 1 && v.alwaysScope !== undefined) {
-      const budget = Math.max(8, cols - 1 - styledWidth(`  ❯ ${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：`));
-      label = `${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：${clipToWidth(v.alwaysScope.prefix, budget)}`;
+      const lead = ` ${selected ? '❯' : ' '} ${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：`;
+      label = `${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：${clipToWidth(v.alwaysScope.prefix, Math.max(8, inner - 2 - styledWidth(lead)))}`;
     }
     if (i === 2 && v.denyNote !== undefined) {
       if (v.denyNote.text.length > 0) {
-        label = `拒绝：${clipToWidth(v.denyNote.text, Math.max(8, cols - 1 - styledWidth('  ❯ 拒绝：')))}`;
+        label = `拒绝：${clipToWidth(v.denyNote.text, Math.max(8, inner - 4 - styledWidth(label)))}`;
       } else if (v.denyNote.focused) {
         label = '拒绝（打字补充理由）';
       }
     }
-    lines.push(i === v.index ? `  ${p.cyan(p.bold(`❯ ${label}`))}` : `    ${p.dim(label)}`);
+    row(` ${selected ? '❯' : ' '} ${label}`, selected);
   }
-  // 键位归底部快捷键条（hint-bar）——弹窗只留"这条授权意味着什么"这一句内容。
-  if (v.alwaysScope === undefined && v.isExecuteKind === true) {
-    lines.push(`  ${p.dim(clipToWidth('「总是允许」按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）', Math.max(12, cols - 3)))}`);
-  }
-  return lines;
+  // 键位归底部快捷键条（hint-bar）——卡片脚边只留"这条授权意味着什么"。
+  const footer =
+    v.alwaysScope === undefined && v.isExecuteKind === true
+      ? '「总是允许」按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）'
+      : '';
+  return framed(p, `${p.yellow('! 需要审批')} ${p.dim(`[${v.permissionLabel}]`)}`, footer, rows, cols);
 }
 
-/** Bordered panel skeleton: title row + content + hint footer. */
+/**
+ * 弹窗卡片的内宽：与输入卡片同一对边距（左右各 `CHROME_PAD_COLS`）。
+ * 屏幕只有一条左缘——弹窗从第 0 列铺到倒数第二列、输入卡却内缩 2 格，
+ * 两张卡并排就像两个应用的窗口叠在一起。
+ */
+function popupInner(cols: number): number {
+  return Math.max(20, cols - CHROME_PAD_COLS * 2) - 2;
+}
+
+const POPUP_LEAD = ' '.repeat(CHROME_PAD_COLS);
+
+/**
+ * Bordered panel skeleton: caption in the top edge · content rows · footer edge.
+ *
+ * 脚边只放**面板自己的内容**（审批卡放授权语义），绝不放键位——屏幕最后一行的
+ * 快捷键条是唯一的键位面，弹窗里再印一遍 `↑↓ … Enter … Esc` 就是同一件事说两次，
+ * 而两处一旦不一致（窄列整条丢弃 vs 弹窗照印）就只能有一边在骗人。
+ */
 function framed(p: Palette, title: string, hint: string, rows: string[], cols: number): string[] {
-  const inner = cols - 3;
+  const inner = popupInner(cols);
   return [
-    `${p.border('╭─')} ${p.dim(title)} ${p.border('─'.repeat(Math.max(0, inner - styledWidth(`─ ${title} `))))}${p.border('╮')}`,
+    `${POPUP_LEAD}${p.border('╭─')} ${title} ${p.border('─'.repeat(Math.max(0, inner - styledWidth(`─ ${title} `))))}${p.border('╮')}`,
     ...rows,
-    `${p.border('╰')}${p.dim(hint)}${p.border('─'.repeat(Math.max(0, inner - styledWidth(hint))))}${p.border('╯')}`,
+    `${POPUP_LEAD}${p.border('╰')}${p.dim(hint)}${p.border('─'.repeat(Math.max(0, inner - styledWidth(hint))))}${p.border('╯')}`,
   ];
 }
 
@@ -84,7 +113,7 @@ function framed(p: Palette, title: string, hint: string, rows: string[], cols: n
 function panelRow(p: Palette, content: string, inner: number, selected: boolean): string {
   const pad = Math.max(0, inner - 2 - styledWidth(content));
   const body = selected ? p.inverse(`${content}${' '.repeat(pad)}`) : p.dim(`${content}${' '.repeat(pad)}`);
-  return `${p.border('│')} ${body} ${p.border('│')}`;
+  return `${POPUP_LEAD}${p.border('│')} ${body} ${p.border('│')}`;
 }
 
 export interface ModelPopupItem {
@@ -100,7 +129,7 @@ export interface ModelPopupView {
 
 /** Model catalog: long lists scroll inside the popup. */
 export function buildModelPopup(p: Palette, v: ModelPopupView, cols: number): string[] {
-  const inner = cols - 3;
+  const inner = popupInner(cols);
   const winSize = Math.min(MODEL_PICKER_WINDOW, v.items.length);
   const start = Math.max(0, Math.min(v.index - (MODEL_PICKER_WINDOW - 1), v.items.length - winSize));
   const rows: string[] = [];
@@ -112,7 +141,7 @@ export function buildModelPopup(p: Palette, v: ModelPopupView, cols: number): st
     const content = ` ${idx === v.index ? '❯' : ' '} ${idx + 1}. ${item.name}${item.name === v.current ? '（当前）' : ''}${ctxTag}`;
     rows.push(panelRow(p, content, inner, idx === v.index));
   }
-  return framed(p, '模型', SWITCH_HINT, rows, cols);
+  return framed(p, '模型', '', rows, cols);
 }
 
 export interface SessionPopupItem {
@@ -128,7 +157,7 @@ export interface SessionPopupView {
 
 /** Session switcher: same bordered style, current session marked. */
 export function buildSessionPopup(p: Palette, v: SessionPopupView, cols: number): string[] {
-  const inner = cols - 3;
+  const inner = popupInner(cols);
   const winSize = Math.min(SESSION_PICKER_WINDOW, v.items.length);
   const start = Math.max(0, Math.min(v.index - (SESSION_PICKER_WINDOW - 1), v.items.length - winSize));
   const rows: string[] = [];
@@ -144,7 +173,7 @@ export function buildSessionPopup(p: Palette, v: SessionPopupView, cols: number)
     const content = `${marker}${num}${stamp} ${clipToWidth(entry.title, maxTitle)}${suffix}`;
     rows.push(panelRow(p, content, inner, idx === v.index));
   }
-  return framed(p, '会话', SWITCH_HINT, rows, cols);
+  return framed(p, '会话', '', rows, cols);
 }
 
 export interface CommandPopupView {
@@ -152,11 +181,10 @@ export interface CommandPopupView {
   index: number;
 }
 
-const SWITCH_HINT = '↑↓ 选择 · 1-9 快选 · Enter 切换 · Esc 取消';
 
 /** Command palette: 6-row sliding window, cursor always visible. */
 export function buildCommandPopup(p: Palette, v: CommandPopupView, cols: number): string[] {
-  const inner = cols - 3;
+  const inner = popupInner(cols);
   // The index can drift past the list when typing shrinks the matches — clamp
   // so the highlight (and the window math below) always lands on a real row.
   const index = Math.min(v.index, v.matches.length - 1);
@@ -170,7 +198,7 @@ export function buildCommandPopup(p: Palette, v: CommandPopupView, cols: number)
     const content = ` ${label} ${spec.description}`;
     rows.push(panelRow(p, content, inner, visibleStart + i === index));
   }
-  return framed(p, '命令', '↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭', rows, cols);
+  return framed(p, '命令', '', rows, cols);
 }
 
 function humanTok(n: number): string {

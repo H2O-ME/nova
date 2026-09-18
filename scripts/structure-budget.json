@@ -86,7 +86,7 @@
  "packages/tui-view/src/labels.ts": 56,
  "packages/tui-view/src/layout.ts": 112,
  "packages/tui-view/src/palette.ts": 75,
- "packages/tui-view/src/popups.ts": 181,
+ "packages/tui-view/src/popups.ts": 209,
  "packages/tui-view/src/reasoning-view.ts": 88,
  "packages/tui-view/src/smooth.ts": 54,
  "packages/tui-view/src/spacing.ts": 82,
