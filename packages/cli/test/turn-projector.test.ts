@@ -146,10 +146,16 @@ describe('TurnProjector', () => {
 
     const read = call('read_file', 'c2', '{"path":"a.txt"}');
     projector.toolStart(read);
+    // Running reads take no row of their own: the verb group holds the line
+    // in present aspect until the result settles it.
+    const group = store.blocks[store.blocks.length - 1]!;
+    expect(group.lines[0]).toContain('正在读取 1 个文件');
     projector.toolResult(read, 'content');
-    // Read line folds into a group row and its own pending line disappears.
-    expect(store.blocks).not.toContain(store.toolBlocks.get('c2')?.block);
-    expect(allRows(store.blocks).some((l) => l.includes('a.txt') || l.includes('读取'))).toBe(true);
+    expect(store.toolBlocks.has('c2')).toBe(false);
+    expect(store.blocks).toContain(group); // group row rewritten in place
+    expect(group.lines[0]).toContain('读取 1 个文件');
+    expect(group.lines[0]).toContain('✓');
+    expect(group.lines[0]).not.toContain('正在');
   });
 
   it('multi-line tool result attaches the tri-state fold source; header carries ▸', () => {
@@ -308,5 +314,112 @@ describe('TurnProjector.onEvent', () => {
     projector.onEvent({ type: 'usage', usage: { promptTokens: 1, completionTokens: 1, cachedTokens: 0 }, stats }, ctx());
     projector.onEvent({ type: 'turn_aborted', message: { id: 'm', ts: 0, role: 'user', content: 'x' } }, ctx());
     expect(store.blocks).toHaveLength(before);
+  });
+});
+
+describe('live read verb group (M10 组件4)', () => {
+  it('parallel reads share one live row: counts grow, tense flips only when all settle', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('q');
+    const before = store.blocks.length;
+    const r1 = call('read_file', 'r1', '{"path":"a.ts"}');
+    const r2 = call('read_file', 'r2', '{"path":"b.ts"}');
+    const s = call('search_files', 's1', '{"pattern":"todo"}');
+    projector.toolStart(r1);
+    projector.toolStart(r2);
+    projector.toolStart(s);
+    // Three starts, one group block: no per-call pending rows.
+    expect(store.blocks).toHaveLength(before + 1);
+    const row = store.blocks[store.blocks.length - 1]!;
+    // 时态整组翻转（Grok：running 翻 tense only），桶序=首现序。
+    expect(row.lines[0]).toContain('正在读取 2 个文件, 正在搜索 1 个模式');
+    projector.toolResult(r1, 'x');
+    expect(row.lines[0]).toContain('正在'); // one member still running
+    projector.toolResult(r2, 'x');
+    projector.toolResult(s, 'x');
+    expect(row.lines[0]).toContain('读取 2 个文件, 搜索 1 个模式');
+    expect(row.lines[0]).toContain('✓');
+    expect(row.lines[0]).not.toContain('正在');
+    // 点击展开体是成员摘要。
+    expect(row.detail!.lines.join('\n')).toContain('a.ts');
+    expect(row.detail!.lines.join('\n')).toContain('b.ts');
+  });
+
+  it('a failed read folds into the group with a 失败 suffix, no standalone ✗ row', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('q');
+    const ok = call('read_file', 'f1', '{"path":"a.ts"}');
+    const bad = call('read_file', 'f2', '{"path":"gone.ts"}');
+    projector.toolStart(ok);
+    projector.toolResult(ok, 'x');
+    projector.toolStart(bad);
+    projector.toolResult(bad, 'Error: no such file');
+    const group = store.blocks[store.blocks.length - 1]!;
+    expect(group.lines).toHaveLength(1);
+    expect(group.lines[0]).toContain('读取 2 个文件');
+    expect(group.lines[0]).toContain('1 失败');
+    expect(group.lines[0]).not.toContain('✗');
+    // 失败成员在展开体里标 ✗。
+    expect(group.detail!.lines.join('\n')).toContain('✗ gone.ts');
+  });
+
+  it('a non-read call closes the run; the next read opens a fresh group', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('q');
+    const r = call('read_file', 'g1', '{"path":"a.ts"}');
+    projector.toolStart(r);
+    projector.toolResult(r, 'x');
+    const group = store.blocks[store.blocks.length - 1]!;
+    const bash = call('bash', 'g2', '{"command":"ls"}');
+    projector.toolStart(bash);
+    expect(store.readGroup).toBeUndefined();
+    expect(group.lines[0]).toContain('读取 1 个文件');
+    expect(store.blocks[store.blocks.length - 1]).not.toBe(group); // bash 有自己的活行
+    projector.toolResult(bash, 'done');
+    const r2 = call('list_dir', 'g3', '{"path":"src"}');
+    projector.toolStart(r2);
+    const second = store.blocks[store.blocks.length - 1]!;
+    expect(second).not.toBe(group);
+    expect(second.lines[0]).toContain('正在列出 1 个目录');
+  });
+
+  it('never-returned members vanish at endTurn (all-pending leaves no row)', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('q');
+    projector.toolStart(call('read_file', 'i1', '{"path":"a.ts"}'));
+    projector.endTurn();
+    expect(store.readGroup).toBeUndefined();
+    expect(allRows(store.blocks).join('\n')).not.toContain('读取');
+    expect(store.toolBlocks.size).toBe(0);
+
+    const h2 = harness();
+    h2.projector.beginTurn('q');
+    const a = call('read_file', 'i2', '{"path":"a.ts"}');
+    const b = call('read_file', 'i3', '{"path":"b.ts"}');
+    h2.projector.toolStart(a);
+    h2.projector.toolStart(b);
+    h2.projector.toolResult(a, 'x');
+    h2.projector.endTurn();
+    const text = allRows(h2.store.blocks).join('\n');
+    expect(text).toContain('读取 1 个文件');
+    expect(text).not.toContain('读取 2');
+    expect(text).not.toContain('正在');
+  });
+
+  it('an expanded group keeps detail rows across re-renders', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('q');
+    const r1 = call('read_file', 'e1', '{"path":"a.ts"}');
+    const r2 = call('read_file', 'e2', '{"path":"b.ts"}');
+    projector.toolStart(r1);
+    projector.toolResult(r1, 'x');
+    const group = store.blocks[store.blocks.length - 1]!;
+    group.expanded = true; // 点击展开态挂在块上
+    projector.toolStart(r2);
+    expect(group.lines).toHaveLength(3); // header + 2 成员（含在跑）
+    expect(group.lines[0]).toContain('▾');
+    projector.toolResult(r2, 'y');
+    expect(group.lines).toHaveLength(3);
+    expect(group.lines[0]).toContain('✓');
   });
 });

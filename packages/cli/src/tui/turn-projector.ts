@@ -32,7 +32,7 @@ import {
   toolArgSummary,
   buildToolFoldRows,
   toolDoneLine,
-  toolGroupLine,
+  readGroupLine,
   toolLabel,
   toolStartLine,
   type Palette,
@@ -49,7 +49,7 @@ import { createMarkdownRenderer, type MarkdownRenderer } from '../markdown.js';
 import { reasoningLiveRow } from '@nova-agent/tui-view';
 import { emptyCompletionNotice, llmRetryNotice, turnStopLines } from '../runner-loop.js';
 import type { StopKind } from '@nova-agent/tui-view';
-import type { Block, TuiStore } from './store.js';
+import type { Block, ReadGroup, ReadGroupMember, ToolEntry, TuiStore } from './store.js';
 import { SubagentLives } from './subagent-lives.js';
 
 export interface TurnProjectorDeps {
@@ -164,7 +164,7 @@ export class TurnProjector {
     this.reasoningBuffer = '';
     this.reasoningShown = '';
     this.clearStreams();
-    store.closeReadGroup();
+    this.finalizeReadGroup();
     this.assistantBlock = undefined;
     this.assistantSeparator = undefined;
     this.md = undefined;
@@ -187,7 +187,7 @@ export class TurnProjector {
       this.assistantBlock = undefined;
       store.genPhase = 'writing';
       this.reasoningOpen = false;
-      store.closeReadGroup();
+      this.finalizeReadGroup();
       // Codex cell contract: margins belong to each cell; flattenBlocks owns
       // the single blank row between non-empty store.blocks — the answer
       // opens with NO manual separator.
@@ -303,9 +303,15 @@ export class TurnProjector {
     // removed and a later reasoning burst starts a fresh block.
     this.foldReasoning();
     store.genPhase = 'tool';
-    // A new non-read call ends the current read-only group.
-    if (!isReadOnlyTool(call.name)) store.closeReadGroup();
     if (call.name === 'subagent') this.liveFeedCallId = call.id;
+    // A read-only call joins the live verb group instead of opening its own
+    // pending line: running members flip the group row's aspect (Grok 组件4).
+    if (isReadOnlyTool(call.name)) {
+      this.readGroupStart(call);
+      return;
+    }
+    // Any other call ends the current read-only run.
+    this.finalizeReadGroup();
     // Soft-wrapped continuation rows hang under the summary column.
     const block = store.pushBlock(
       [toolStartLine(paint, call.name, call.rawArgs, '•', this.budget())],
@@ -322,29 +328,14 @@ export class TurnProjector {
     if (call.name === 'subagent') this.liveFeedCallId = undefined;
     const duration = entry === undefined ? 0 : Math.max(0, this.deps.now() - entry.startAt);
     const failed = isFailureContent(content);
-    if (isReadOnlyTool(call.name) && !failed) {
-      // codex "Explored": the read's own line disappears and its summary
-      // folds into the running group line.
+    if (isReadOnlyTool(call.name)) {
+      // The live verb group's member settles in place: a failure joins the
+      // same row as a red suffix instead of a standalone line breaking the run.
       this.subagentLives.settle(call.id, [], duration);
       store.toolBlocks.delete(call.id);
-      if (entry !== undefined) store.removeBlock(entry.block);
-      // 宽预算存原文：公共目录折叠与最终排布都发生在 toolGroupLine 渲染时。
-      const raw = toolArgSummary(call.name, call.rawArgs, 400);
-      const summary = raw.length === 0 || raw === '{}' ? toolLabel(call.name) : raw;
-      if (store.readGroup === undefined) {
-        store.readGroup = {
-          entries: [summary],
-          startAt: entry === undefined ? this.deps.now() - duration : entry.startAt,
-          block: store.pushBlock([], TOOL_GUTTER),
-        };
-      } else {
-        store.readGroup.entries.push(summary);
-      }
-      store.replaceBlock(store.readGroup.block, [
-        toolGroupLine(paint, store.readGroup.entries, this.deps.now() - store.readGroup.startAt, this.budget()),
-      ]);
+      this.readGroupSettle(call, entry, failed);
     } else {
-      store.closeReadGroup();
+      this.finalizeReadGroup();
       const lines = toolDoneLine(paint, call.name, call.rawArgs, content, duration, this.budget());
       // Dissolve any live state BEFORE the toolBlocks entry drops: on the
       // takeover path the block stays in place and carries the nested log as
@@ -361,6 +352,107 @@ export class TurnProjector {
         }
       } else store.pushBlock(lines);
     }
+  }
+
+  // ---- live read verb group (Grok 组件4) ------------------------------------
+
+  private readGroupSummary(call: ToolCall): string {
+    const raw = toolArgSummary(call.name, call.rawArgs, 400);
+    return raw.length === 0 || raw === '{}' ? toolLabel(call.name) : raw;
+  }
+
+  private ensureReadGroup(): ReadGroup {
+    const { store } = this.deps;
+    let group = store.readGroup;
+    if (group === undefined) {
+      const block = store.pushBlock([], TOOL_GUTTER);
+      group = { members: [], startAt: this.deps.now(), block };
+      store.readGroup = group;
+    }
+    return group;
+  }
+
+  private readGroupStart(call: ToolCall): void {
+    const { store } = this.deps;
+    const group = this.ensureReadGroup();
+    const member: ReadGroupMember = {
+      name: call.name,
+      summary: this.readGroupSummary(call),
+      failed: false,
+      pending: true,
+    };
+    group.members.push(member);
+    store.toolBlocks.set(call.id, {
+      block: group.block,
+      startAt: this.deps.now(),
+      name: call.name,
+      rawArgs: call.rawArgs,
+      groupMember: member,
+    });
+    this.renderReadGroup();
+  }
+
+  private readGroupSettle(call: ToolCall, entry: ToolEntry | undefined, failed: boolean): void {
+    const group = this.ensureReadGroup();
+    const member = entry?.groupMember;
+    if (member !== undefined && group.members.includes(member)) {
+      member.pending = false;
+      member.failed = failed;
+    } else {
+      // A start we never claimed (or a group closed mid-flight): settle as a fresh member.
+      group.members.push({
+        name: call.name,
+        summary: this.readGroupSummary(call),
+        failed,
+        pending: false,
+      });
+    }
+    this.renderReadGroup();
+  }
+
+  /** One row rewritten on every member change: running members keep the
+   *  present aspect; the member summaries ride along as click detail (base
+   *  refreshed so the ▸/▾ rotation stays exact even mid-run). */
+  private renderReadGroup(): void {
+    const { store, paint } = this.deps;
+    const group = store.readGroup;
+    if (group === undefined) return;
+    let running = 0;
+    let failed = 0;
+    for (const m of group.members) {
+      if (m.pending) running += 1;
+      if (m.failed) failed += 1;
+    }
+    const durationMs = Math.max(0, this.deps.now() - group.startAt);
+    const line = readGroupLine(
+      paint,
+      {
+        names: group.members.map((m) => m.name),
+        running,
+        failed,
+        durationMs,
+        expanded: group.block.expanded === true,
+      },
+      this.budget(),
+    );
+    const details = group.members.map((m) => `  ${paint.dim(`${m.failed ? '✗ ' : '› '}${m.summary}`)}`);
+    group.block.detail = { lines: details, secs: Math.round(durationMs / 1000), base: [line] };
+    store.replaceBlock(group.block, group.block.expanded === true ? [line, ...details] : [line]);
+  }
+
+  /** Ends the run: members that never returned vanish (no result, no trace);
+   *  with nothing settled the row itself is dropped. */
+  private finalizeReadGroup(): void {
+    const { store } = this.deps;
+    const group = store.readGroup;
+    if (group === undefined) return;
+    for (const [id, entry] of store.toolBlocks) {
+      if (entry.block === group.block && entry.groupMember?.pending === true) store.toolBlocks.delete(id);
+    }
+    group.members = group.members.filter((m) => !m.pending);
+    if (group.members.length === 0) store.removeBlock(group.block);
+    else this.renderReadGroup();
+    store.closeReadGroup();
   }
 
   /** Live bash output lands in the running tool block's tail buffer. */
@@ -386,6 +478,9 @@ export class TurnProjector {
     const budget = this.budget();
     for (const [callId, entry] of store.toolBlocks) {
       if (this.subagentLives.has(callId)) continue;
+      // Group-owned reads are drawn by the verb group row — repainting here
+      // would scribble a pending line onto the shared group block.
+      if (entry.groupMember !== undefined) continue;
       const elapsed = now - entry.startAt;
       const suffix = store.interruptAt > 0
         ? paint.yellow(' · 正在中断…')
@@ -474,7 +569,7 @@ export class TurnProjector {
         this.toolResult(event.call, event.result.content);
         return;
       case 'done': {
-        store.closeReadGroup();
+        this.finalizeReadGroup();
         this.foldReasoning();
         // A normal completion ends at the reply — no per-turn stats line (the
         // status bar carries tokens; /session carries details). Only abnormal

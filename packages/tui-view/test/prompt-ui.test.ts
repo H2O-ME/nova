@@ -26,7 +26,7 @@ import {
   subagentLiveLine,
   toolArgSummary,
   toolDoneLine,
-  toolGroupLine,
+  readGroupLine,
   toolStartLine,
   wrapComposer,
   type ContextSegment,
@@ -63,20 +63,43 @@ describe('ui helpers', () => {
     expect(toolStartLine(p, 'bash', '{"command":"echo hi"}', '⠙')).toContain('⠙');
   });
 
-  it('classifies read-only tools and renders the exploration group line', () => {
+  it('classifies read-only tools and renders the verb group line', () => {
     expect(isReadOnlyTool('read_file')).toBe(true);
     expect(isReadOnlyTool('list_dir')).toBe(true);
     expect(isReadOnlyTool('bash')).toBe(false);
 
-    const group = toolGroupLine(p, ['a.ts', 'b.ts', 'c.ts'], 500);
-    expect(group).toContain('✓');
-    expect(group).toContain('查看');
-    expect(group).toContain('a.ts, b.ts, c.ts');
-    expect(group).toContain('3 次');
-    expect(group).toContain('0.5s');
+    // 桶按首现顺序排布，计数进短语而非名字列表。
+    const done = readGroupLine(
+      p,
+      { names: ['read_file', 'search_files', 'read_file'], running: 0, failed: 0, durationMs: 500 },
+    );
+    expect(done).toContain('✓');
+    expect(done).toContain('读取 2 个文件, 搜索 1 个模式');
+    expect(done).toContain('0.5s');
+    expect(done).toContain('▸');
 
-    const long = toolGroupLine(p, ['x'.repeat(100), 'y.ts'], 100);
-    expect(long).toContain('…');
+    // 有成员在跑：整体现在时（正在…）+ 活动标记，✓ 让位。
+    const running = readGroupLine(
+      p,
+      { names: ['read_file', 'read_file'], running: 1, failed: 0, durationMs: 800 },
+    );
+    expect(running).toContain('正在读取 2 个文件');
+    expect(running).not.toContain('✓');
+
+    // 失败成员并进同一行：红色 N 失败 后缀，不另起行。
+    const failed = readGroupLine(
+      p,
+      { names: ['read_file', 'read_file'], running: 0, failed: 1, durationMs: 500 },
+    );
+    expect(failed).toContain('· 1 失败');
+
+    // 展开态 affordance 翻成 ▾。
+    const expanded = readGroupLine(
+      p,
+      { names: ['list_dir'], running: 0, failed: 0, durationMs: 200, expanded: true },
+    );
+    expect(expanded).toContain('列出 1 个目录');
+    expect(expanded).toContain('▾');
   });
 
   it('collapses successful tool results to one line', () => {
@@ -113,10 +136,14 @@ describe('ui helpers', () => {
         5900,
         budget,
       )[0]!;
-      const group = toolGroupLine(
+      const group = readGroupLine(
         p,
-        ['x'.repeat(60) + '.ts', 'y'.repeat(60) + '.ts', 'z.ts'],
-        500,
+        {
+          names: ['read_file', 'read_file', 'list_dir', 'search_files', 'search_files'],
+          running: 2,
+          failed: 1,
+          durationMs: 5900,
+        },
         budget,
       );
       for (const line of [running, done, group]) {
@@ -170,21 +197,6 @@ describe('ui helpers', () => {
     expect(done.endsWith('1.7s')).toBe(true); // duration never orphans onto its own row
     const start = toolStartLine(p, 'bash', JSON.stringify({ command: `cd ${longPath} && ls -R` }), '⠙', cols);
     expect(styledWidth(start)).toBeLessThanOrEqual(cols - 1);
-  });
-
-  it('collapses the shared directory in exploration group lines', () => {
-    const dir = 'D:\\下载\\com.highschool.learningbox_1.26.0_解压';
-    const entries = [`${dir}\\manifest.json`, `${dir}\\common\\bf1.py`, `${dir}\\pages\\buy\\buy.js`];
-    const line = toolGroupLine(p, entries, 1700, 80);
-    expect(styledWidth(line)).toBeLessThanOrEqual(79);
-    expect(line).toContain('3 次');
-    expect(line.endsWith('1.7s')).toBe(true);
-    // 公共前缀只出现一次（收窄保尾段），名字以相对尾段呈现。
-    expect(line.match(/1\.26\.0_解压/g)).toHaveLength(1);
-    expect(line).toContain('bf1.py');
-    // 足够宽的终端：不折叠，原样拼接全路径。
-    const wide = toolGroupLine(p, entries, 1700, 220);
-    expect(wide).toContain(`${dir}\\manifest.json, ${dir}\\common\\bf1.py`);
   });
 
   it('formats the status line with cache hit and stop word', () => {

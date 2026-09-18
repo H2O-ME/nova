@@ -38,10 +38,20 @@ export interface ToolEntry {
   name: string;
   rawArgs: string;
   tailBuf?: string;
+  /** Read-only call claimed by the live verb group: no own line, animates not. */
+  groupMember?: ReadGroupMember;
+}
+
+export interface ReadGroupMember {
+  name: string;
+  summary: string;
+  failed: boolean;
+  /** No result yet: keeps the group line in present aspect. */
+  pending: boolean;
 }
 
 export interface ReadGroup {
-  entries: string[];
+  members: ReadGroupMember[];
   startAt: number;
   block: Block;
 }

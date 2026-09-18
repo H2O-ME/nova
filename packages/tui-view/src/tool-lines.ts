@@ -4,7 +4,7 @@
  */
 
 import { sanitizeForDisplay, styledWidth } from '@nova-agent/tui';
-import { clipPath, clipToWidth, toolArgSummary } from './clip.js';
+import { clipToWidth, toolArgSummary } from './clip.js';
 import { toolLabel } from './labels.js';
 import type { Palette } from './palette.js';
 
@@ -41,7 +41,7 @@ export function toolBudget(cols: number): number {
   return cols - 1 - styledWidth(TOOL_GUTTER.rest);
 }
 
-/** Read-only explorer tools: completed calls fold into one "查看" group row. */
+/** Read-only explorer tools: calls join the live verb group row (读取 N 个文件…). */
 const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files']);
 
 export function isReadOnlyTool(name: string): boolean {
@@ -119,55 +119,47 @@ export function toolDoneLine(
   ];
 }
 
-function fitGroupNames(entries: string[], budget: number): string {
-  const joined = entries.join(', ');
-  if (styledWidth(joined) <= budget) return joined;
-  let prefix = '';
-  let pathSep = '/';
-  let items = entries;
-  if (entries.length > 1) {
-    const parts = entries.map((e) => e.split(/[\\/]/));
-    pathSep = entries[0]?.includes('\\') === true ? '\\' : '/';
-    let common = 0;
-    while (
-      common < (parts[0]?.length ?? 0) - 1 &&
-      parts.every((p) => p.length > common && p[common] === parts[0]?.[common])
-    ) {
-      common += 1;
-    }
-    if (common > 0) {
-      prefix = `${parts[0]?.slice(0, common).join(pathSep) ?? ''}${pathSep}`;
-      items = entries.map((e) => (e.startsWith(prefix) ? e.slice(prefix.length) : e));
-    }
-  }
-  const render = (names: string[]): string => `${prefix}${names.join(', ')}`;
-  let out = render(items);
-  if (styledWidth(out) <= budget) return out;
-  if (prefix.length > 0) {
-    const clipped = clipPath(prefix.slice(0, -pathSep.length), Math.max(4, Math.floor(budget / 4)));
-    prefix = `${clipped}${pathSep}`;
-    out = render(items);
-    if (styledWidth(out) <= budget) return out;
-  }
-  const kept: string[] = [];
-  let width = styledWidth(prefix);
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i] ?? '';
-    const w = styledWidth(item) + (kept.length > 0 ? 2 : 0);
-    if (width + w + 4 > budget) break; // room for the leading `…, ` (2+1+1 cols)
-    kept.unshift(item);
-    width += w;
-  }
-  if (kept.length === 0) return clipPath(items[items.length - 1] ?? '', budget);
-  return render(kept.length < items.length ? ['…', ...kept] : kept);
+/**
+ * Read-group verb/noun table (Grok `verb_group` port): members bucket by
+ * tool name in first-appearance order; the whole label flips tense while any
+ * member runs. Chinese carries aspect via the 正在 prefix, not conjugation.
+ */
+const VERB_GROUP: Record<string, { verb: string; noun: string }> = {
+  read_file: { verb: '读取', noun: '文件' },
+  list_dir: { verb: '列出', noun: '目录' },
+  search_files: { verb: '搜索', noun: '模式' },
+};
+
+export interface ReadGroupView {
+  /** Tool name of every member, still-running ones included (bucketed in first-appearance order). */
+  names: string[];
+  /** Members yet to return — >0 flips every segment to present aspect and the marker to `•`. */
+  running: number;
+  /** Members that completed with an error: red ` · N 失败` suffix, never a standalone row. */
+  failed: number;
+  durationMs: number;
+  /** ▾ vs ▸ affordance for the click-expand member list. */
+  expanded?: boolean;
 }
 
-/** `    ✓ 查看 a.ts, b.ts · 3 次 · 0.5s` — consecutive reads fold into one row. */
-export function toolGroupLine(p: Palette, entries: string[], durationMs: number, cols?: number): string {
-  const suffix = ` · ${entries.length} 次 · ${(durationMs / 1000).toFixed(1)}s`;
-  const fixed = `    ✓ 查看 ${suffix}`;
-  const budget = cols === undefined ? 80 : Math.max(12, cols - 1 - styledWidth(fixed));
-  return `    ${p.green('✓')} ${p.bold('查看')} ${p.cyan(fitGroupNames(entries, budget))}${p.dim(suffix)}`;
+/** `    ✓ 读取 2 个文件, 搜索 1 个模式 ▸ · 0.5s` — one run of reads folded into a verb line. */
+export function readGroupLine(p: Palette, v: ReadGroupView, cols?: number): string {
+  const counts = new Map<string, number>();
+  for (const name of v.names) counts.set(name, (counts.get(name) ?? 0) + 1);
+  const aspect = v.running > 0 ? '正在' : '';
+  const segments: string[] = [];
+  for (const [name, count] of counts) {
+    const kind = VERB_GROUP[name] ?? { verb: toolLabel(name), noun: '调用' };
+    segments.push(`${aspect}${kind.verb} ${count} 个${kind.noun}`);
+  }
+  const marker = v.running > 0 ? '•' : '✓';
+  const arrow = v.expanded === true ? ' ▾' : ' ▸';
+  const fail = v.failed > 0 ? ` · ${v.failed} 失败` : '';
+  const secs = ` · ${(v.durationMs / 1000).toFixed(1)}s`;
+  const fixedPlain = `    ${marker} ${arrow}${fail}${secs}`;
+  const budget = cols === undefined ? 80 : Math.max(12, cols - 1 - styledWidth(fixedPlain));
+  const text = clipToWidth(segments.join(', '), budget);
+  return `    ${v.running > 0 ? p.dim(marker) : p.green(marker)} ${p.bold(text)}${p.dim(arrow)}${v.failed > 0 ? p.red(fail) : ''}${p.dim(secs)}`;
 }
 
 export type StopKind = 'complete' | 'max_turns' | 'aborted';
