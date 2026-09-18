@@ -184,6 +184,7 @@ export function resolveActiveView(store: TuiStore, paint: Palette, cols: number,
         index: store.approvalIndex,
         isExecuteKind: store.approval.kind === 'execute',
         alwaysScope: n > 0 ? { words: n, total: words.length, prefix: words.slice(0, n).join(' ') } : undefined,
+        denyNote: { text: store.approvalNote, focused: store.approvalIndex === 2 },
       },
       cols,
     );

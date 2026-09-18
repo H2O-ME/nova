@@ -82,6 +82,34 @@ describe('buildApprovalPopup', () => {
     expect(lines[2]).toContain('…');
   });
 
+  it('拒绝行打字转追问：理由上屏、聚焦提示行与占位（M10 组件7）', () => {
+    const typed = buildApprovalPopup(plainPalette, {
+      ...view,
+      previewLines: undefined,
+      index: 2,
+      denyNote: { text: '别碰 CI', focused: true },
+    }, 80);
+    expect(typed[3]).toBe('  ❯ 拒绝：别碰 CI');
+    expect(typed[4]).toContain('打字即补充拒绝理由');
+    expect(typed[4]).toContain('⌫ 删字');
+    // 空理由 + 聚焦：占位提示打字；失焦回到原文案。
+    const focused = buildApprovalPopup(plainPalette, {
+      ...view,
+      previewLines: undefined,
+      index: 2,
+      denyNote: { text: '', focused: true },
+    }, 80);
+    expect(focused[3]).toContain('拒绝（打字补充理由）');
+    const unfocused = buildApprovalPopup(plainPalette, {
+      ...view,
+      previewLines: undefined,
+      index: 0,
+      denyNote: { text: '', focused: false },
+    }, 80);
+    expect(unfocused[3]).toBe('    拒绝');
+    expect(unfocused[4]).toBe('  ↑↓ 选择 · Enter 确认 · Esc 拒绝');
+  });
+
   it('approval options stay y/a/n-ordered', () => {
     expect(APPROVAL_OPTIONS.map((o) => o.code)).toEqual(['allow', 'always', 'deny']);
     expect(APPROVAL_OPTIONS.map((o) => o.label)).toEqual(['允许一次', '总是允许', '拒绝']);
@@ -116,6 +144,8 @@ describe('framed panels (model/session/command)', () => {
     const s = buildSessionPopup(plainPalette, { items: sessions, index: 3 }, cols);
     for (const line of s) expect(styledWidth(line)).toBe(cols - 1); // 内容行由 padDisplay 铺满到内宽
     expect(s[4]).toContain('（当前）'); // 窗口从 idx 0 起，当前会话在 idx 3（第 4 内容行）
+    expect(s[1]).toContain(' 1. '); // 组件7：绝对编号前缀（数字键可直达）
+    expect(s[4]).toContain(' 4. ');
   });
 
   it('command frame rows are exactly cols-1; usage column pad-aligns', () => {

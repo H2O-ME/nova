@@ -13,8 +13,19 @@ export interface AlwaysGrant {
   answer: 'always';
   scopeWords: number;
 }
-export type AskResult = AskAnswer | AlwaysGrant;
+/**
+ * A denial carrying the reason the user typed on the reject row (组件7,
+ * Grok reject-to-followup): the reason rides into the tool result so the
+ * model receives the instruction instead of a bare "Permission denied".
+ */
+export interface DenyGrant {
+  answer: 'deny';
+  reason: string;
+}
+export type AskResult = AskAnswer | AlwaysGrant | DenyGrant;
 export type AskFn = (call: ToolCall, kind: PermissionKind) => Promise<AskResult>;
+/** decideDetailed's verdict: deny may carry the user-typed reason. */
+export type DecideResult = 'allow' | { decision: 'deny'; reason?: string };
 
 /** Chaining/substitution markers — a command containing them grants whole-command memory only. */
 function isCompoundCommand(command: string): boolean {
@@ -38,9 +49,14 @@ function normalizeAsk(raw: unknown): AskResult {
   if (raw === 'allow' || raw === 'deny') return raw;
   if (raw === 'always') return raw;
   if (typeof raw === 'object' && raw !== null) {
-    const grant = raw as Partial<AlwaysGrant>;
+    const grant = raw as { answer?: unknown; scopeWords?: unknown; reason?: unknown };
     if (grant.answer === 'always' && Number.isInteger(grant.scopeWords) && (grant.scopeWords as number) >= 1) {
       return { answer: 'always', scopeWords: grant.scopeWords as number };
+    }
+    if (grant.answer === 'deny') {
+      if (typeof grant.reason !== 'string') return 'deny';
+      const reason = grant.reason.trim().slice(0, 400);
+      return reason.length > 0 ? { answer: 'deny', reason } : 'deny';
     }
   }
   return 'deny';
@@ -186,17 +202,28 @@ export class PermissionService {
   }
 
   async decide(toolName: string, kind: PermissionKind, call: ToolCall): Promise<'allow' | 'deny'> {
+    const result = await this.decideDetailed(toolName, kind, call);
+    return result === 'allow' ? 'allow' : 'deny';
+  }
+
+  /**
+   * decide() with the user-typed deny reason preserved end to end (组件7):
+   * the host folds it into the hook verdict so the model sees the actual
+   * instruction, not a bare "Permission denied: by user".
+   */
+  async decideDetailed(toolName: string, kind: PermissionKind, call: ToolCall): Promise<DecideResult> {
     const verdict = await this.check(toolName, kind, call);
-    if (verdict !== 'ask') return verdict === 'allow' ? 'allow' : 'deny';
+    if (verdict !== 'ask') return verdict === 'allow' ? 'allow' : { decision: 'deny' };
 
     const result = await this.enqueueAsk(call, kind);
     const answer: AskAnswer = typeof result === 'string' ? result : result.answer;
     if (answer === 'always') {
-      const scoped = typeof result === 'string' ? 1 : result.scopeWords;
+      const scoped = typeof result === 'object' && result.answer === 'always' ? result.scopeWords : 1;
       this.remembered.add(this.scopeKey(kind, call, scoped) ?? this.rememberKey(toolName, kind, call));
     }
     this.audit?.({ toolName, kind, outcome: answer });
-    return answer === 'deny' ? 'deny' : 'allow';
+    if (answer !== 'deny') return 'allow';
+    return typeof result === 'object' && result.answer === 'deny' ? { decision: 'deny', reason: result.reason } : { decision: 'deny' };
   }
 
   /**

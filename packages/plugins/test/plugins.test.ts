@@ -274,6 +274,31 @@ describe('PermissionService', () => {
   });
 });
 
+describe('permission gate in agentHooks (M10 组件7)', () => {
+  it('agentHooks surfaces a DenyGrant reason to the model as "by user: <text>"', async () => {
+    const host = new PluginHost('.');
+    host.use({
+      name: 'gatee',
+      activate(ctx) {
+        ctx.registerTool({
+          name: 'boom',
+          description: '',
+          parameters: { type: 'object' },
+          execute: async () => 'ran',
+        }, { permission: 'execute' });
+      },
+    });
+    await host.activate();
+    const permission = new PermissionService('read-only', async () => ({ answer: 'deny', reason: '别碰 CI' }));
+    const verdict = await host.agentHooks(permission).beforeToolCall!({ id: 'c', name: 'boom', args: {}, rawArgs: '{}' });
+    expect(verdict).toEqual({ action: 'deny', reason: 'by user: 别碰 CI' });
+    // 无理由的普通 deny 保持旧文案。
+    const plain = new PermissionService('read-only', async () => 'deny');
+    const v2 = await host.agentHooks(plain).beforeToolCall!({ id: 'c2', name: 'boom', args: {}, rawArgs: '{}' });
+    expect(v2).toEqual({ action: 'deny', reason: 'by user' });
+  });
+});
+
 describe('builtinPlugins', () => {
   it('activates all built-in tools in a host', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-builtin-'));

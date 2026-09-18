@@ -251,6 +251,38 @@ describe('PermissionService adjustable always scope (M10 组件6)', () => {
   });
 });
 
+describe('PermissionService deny with reason (M10 组件7)', () => {
+  it('DenyGrant carries the user-typed reason through decideDetailed', async () => {
+    const svc = new PermissionService('read-only', scriptedAsk([{ answer: 'deny', reason: ' 别碰 CI ' }]).ask);
+    await expect(svc.decideDetailed('bash', EXECUTE, call('bash', { command: 'rm x' }))).resolves.toEqual({
+      decision: 'deny',
+      reason: '别碰 CI',
+    });
+  });
+
+  it('plain deny / blank or non-string reasons deny without a reason', async () => {
+    const plain = new PermissionService('read-only', scriptedAsk(['deny']).ask);
+    await expect(plain.decideDetailed('bash', EXECUTE, call('bash'))).resolves.toEqual({ decision: 'deny' });
+    const blank = new PermissionService('read-only', scriptedAsk([{ answer: 'deny', reason: '   ' }]).ask);
+    await expect(blank.decideDetailed('bash', EXECUTE, call('bash'))).resolves.toEqual({ decision: 'deny' });
+    const junk = new PermissionService(
+      'read-only',
+      scriptedAsk([{ answer: 'deny', reason: 42 } as unknown as AskResult]).ask,
+    );
+    await expect(junk.decideDetailed('bash', EXECUTE, call('bash'))).resolves.toEqual({ decision: 'deny' });
+  });
+
+  it("decide() keeps the flat 'allow'|'deny' contract; 'never' denies reasonless; allow stays a string", async () => {
+    const svc = new PermissionService('read-only', scriptedAsk([{ answer: 'deny', reason: 'x' }]).ask);
+    await expect(svc.decide('bash', EXECUTE, call('bash'))).resolves.toBe('deny');
+    const never = new PermissionService('read-only', scriptedAsk([{ answer: 'deny', reason: 'x' }]).ask);
+    never.setPolicy('never');
+    await expect(never.decideDetailed('bash', EXECUTE, call('bash'))).resolves.toEqual({ decision: 'deny' });
+    const ok = new PermissionService('read-only', scriptedAsk(['allow']).ask);
+    await expect(ok.decideDetailed('bash', EXECUTE, call('bash'))).resolves.toBe('allow');
+  });
+});
+
 describe('PermissionService ask serialization', () => {
   it('concurrent ask-path decides dispatch the asker one at a time (TUI modal contract)', async () => {
     // PTC run_code fires parallel sub-calls through the same PermissionService.

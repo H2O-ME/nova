@@ -383,3 +383,79 @@ describe('approval always-scope adjustment (M10 组件6)', () => {
     expect(answers).toEqual(['deny']);
   });
 });
+
+describe('reject-to-followup & digit fast-select (M10 组件7)', () => {
+  function withDenyRow(): { env: KeyEnv; answers: AskResult[] } {
+    const { env } = createMockEnv();
+    const answers: AskResult[] = [];
+    env.store.approval = {
+      call: { id: 'c1', name: 'bash', args: { command: 'git status' }, rawArgs: '{}' },
+      kind: 'execute',
+      resolve: (a) => {
+        answers.push(a);
+      },
+    };
+    env.store.approvalIndex = 2; // 拒绝行
+    return { env, answers };
+  }
+
+  it('拒绝行打字进理由缓冲；⌫ 删字；Enter 携理由 deny', () => {
+    const { env, answers } = withDenyRow();
+    handleKey(env, { type: 'char', ch: 'n' }); // n 在拒绝行是文字，不是快捷拒绝
+    handleKey(env, { type: 'char', ch: 'o' });
+    handleKey(env, { type: 'char', ch: ' ' });
+    handleKey(env, { type: 'char', ch: 'z' });
+    handleKey(env, { type: 'paste', text: 'ignored' }); // 粘贴不进缓冲（v1 只收逐字）
+    handleKey(env, { type: 'backspace' });
+    expect(env.store.approvalNote).toBe('no ');
+    expect(answers).toHaveLength(0);
+    handleKey(env, { type: 'enter' });
+    expect(answers).toEqual([{ answer: 'deny', reason: 'no ' }]);
+    expect(env.store.approval).toBeUndefined();
+  });
+
+  it('y/a 快捷批准在拒绝行仍然有效；Esc 丢弃缓冲直接拒绝', () => {
+    const a = withDenyRow();
+    handleKey(a.env, { type: 'char', ch: 'x' });
+    handleKey(a.env, { type: 'char', ch: 'y' });
+    expect(a.answers).toEqual(['allow']);
+
+    const b = withDenyRow();
+    handleKey(b.env, { type: 'char', ch: 'x' });
+    handleKey(b.env, { type: 'esc' });
+    expect(b.answers).toEqual(['deny']); // Esc 不带理由
+    expect(b.env.store.approvalNote).toBe('x'); // 缓冲随弹窗作废
+  });
+
+  it('空理由 Enter 走普通 deny；离开拒绝行后打字不再进缓冲', () => {
+    const a = withDenyRow();
+    handleKey(a.env, { type: 'enter' });
+    expect(a.answers).toEqual(['deny']);
+
+    const b = withDenyRow();
+    b.env.store.approvalIndex = 0;
+    handleKey(b.env, { type: 'char', ch: 'z' }); // 非拒绝行的 z 不是 y/a/n/1-3 → 吞掉无效果
+    expect(b.env.store.approvalNote).toBe('');
+    expect(b.answers).toHaveLength(0);
+  });
+
+  it("model/session picker: '1'-'9' 直达对应行，越界数字不动作", () => {
+    const { env } = createMockEnv();
+    env.store.modelPicker = { models: ['m-a', 'm-b', 'm-c'], index: 0 };
+    handleKey(env, { type: 'char', ch: '3' });
+    expect(env.store.modelPicker.index).toBe(2);
+    handleKey(env, { type: 'char', ch: '9' }); // 只有 3 个模型——越界不挪
+    expect(env.store.modelPicker.index).toBe(2);
+
+    const { env: e2 } = createMockEnv();
+    e2.store.sessionPicker = {
+      entries: [
+        { file: 'a.jsonl', id: 'a', mtime: 1, createdAt: 1, title: 'a' },
+        { file: 'b.jsonl', id: 'b', mtime: 2, createdAt: 2, title: 'b' },
+      ],
+      index: 0,
+    };
+    handleKey(e2, { type: 'char', ch: '2' });
+    expect(e2.store.sessionPicker.index).toBe(1);
+  });
+});

@@ -31,6 +31,11 @@ export interface ApprovalPopupView {
    * 自带实时预览、静态前缀说明行换成 ←/→ 提示；缺省时行为与旧弹窗一致。
    */
   alwaysScope?: { words: number; total: number; prefix: string };
+  /**
+   * 组件7：拒绝行的打字转追问——text 是已缓冲的拒绝理由（随 deny 回给模型），
+   * focused 时行尾占位与提示行换成输入引导。
+   */
+  denyNote?: { text: string; focused: boolean };
 }
 
 /** Approval popup: header + preview clip to remaining columns. */
@@ -49,12 +54,22 @@ export function buildApprovalPopup(p: Palette, v: ApprovalPopupView, cols: numbe
       const budget = Math.max(8, cols - 1 - styledWidth(`  ❯ ${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：`));
       label = `${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：${clipToWidth(v.alwaysScope.prefix, budget)}`;
     }
+    if (i === 2 && v.denyNote !== undefined) {
+      if (v.denyNote.text.length > 0) {
+        label = `拒绝：${clipToWidth(v.denyNote.text, Math.max(8, cols - 1 - styledWidth('  ❯ 拒绝：')))}`;
+      } else if (v.denyNote.focused) {
+        label = '拒绝（打字补充理由）';
+      }
+    }
     lines.push(i === v.index ? `  ${p.cyan(p.bold(`❯ ${label}`))}` : `    ${p.dim(label)}`);
   }
   if (v.alwaysScope !== undefined) {
     lines.push(`  ${p.dim(clipToWidth('←/→ 调整「总是允许」的授权词数（当前命令前 N 词）', Math.max(12, cols - 3)))}`);
   } else if (v.isExecuteKind === true) {
     lines.push(`  ${p.dim(clipToWidth('总是允许按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）', Math.max(12, cols - 3)))}`);
+  }
+  if (v.denyNote?.focused === true) {
+    lines.push(`  ${p.dim(clipToWidth('打字即补充拒绝理由（随结果回给模型） · Enter 确认 · ⌫ 删字', Math.max(12, cols - 3)))}`);
   }
   lines.push(`  ${p.dim(clipToWidth('↑↓ 选择 · Enter 确认 · Esc 拒绝', Math.max(12, cols - 3)))}`);
   return lines;
@@ -126,10 +141,11 @@ export function buildSessionPopup(p: Palette, v: SessionPopupView, cols: number)
     const entry = v.items[idx];
     if (entry === undefined) continue;
     const marker = ` ${idx === v.index ? '❯' : ' '} `;
+    const num = `${idx + 1}. `;
     const stamp = formatStamp(entry.mtime);
     const suffix = entry.isCurrent ? '（当前）' : '';
-    const maxTitle = Math.max(0, inner - 2 - styledWidth(marker) - styledWidth(stamp) - 1 - styledWidth(suffix));
-    const content = `${marker}${stamp} ${clipToWidth(entry.title, maxTitle)}${suffix}`;
+    const maxTitle = Math.max(0, inner - 2 - styledWidth(marker) - styledWidth(num) - styledWidth(stamp) - 1 - styledWidth(suffix));
+    const content = `${marker}${num}${stamp} ${clipToWidth(entry.title, maxTitle)}${suffix}`;
     rows.push(panelRow(p, content, inner, idx === v.index));
   }
   return framed(p, '会话', SWITCH_HINT, rows, cols);
@@ -140,7 +156,7 @@ export interface CommandPopupView {
   index: number;
 }
 
-const SWITCH_HINT = '↑↓ 选择 · Enter 切换 · Esc 取消';
+const SWITCH_HINT = '↑↓ 选择 · 1-9 快选 · Enter 切换 · Esc 取消';
 
 /** Command palette: 6-row sliding window, cursor always visible. */
 export function buildCommandPopup(p: Palette, v: CommandPopupView, cols: number): string[] {

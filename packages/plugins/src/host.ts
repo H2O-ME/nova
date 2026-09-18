@@ -151,8 +151,10 @@ export class PluginHost {
         if (permission) {
           const kind = await this.permissionFor(call.name, call.args);
           if (kind) {
-            const decision = await permission.decide(call.name, kind, call);
-            if (decision === 'deny') return { action: 'deny', reason: 'by user' };
+            const decision = await permission.decideDetailed(call.name, kind, call);
+            if (decision !== 'allow') {
+              return { action: 'deny', reason: decision.reason !== undefined ? `by user: ${decision.reason}` : 'by user' };
+            }
           }
         }
         let effective: ToolCallVerdict = { action: 'allow' };

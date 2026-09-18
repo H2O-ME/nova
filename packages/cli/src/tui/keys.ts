@@ -171,9 +171,6 @@ function keyApprovalModal(env: KeyEnv, k: Key): boolean {
     store.approval = undefined;
     store.approvalPreview = undefined;
   };
-  // 组件6：词数 >1 才是显式范围授权；1 走引擎默认（程序前缀）。
-  const scopeGrant = (code: AskAnswer | 'always'): AskResult =>
-    code === 'always' && store.approvalScope > 1 ? { answer: 'always', scopeWords: store.approvalScope } : code;
   if (k.type === 'ctrl+c') {
     resolve('deny');
     env.abortLast();
@@ -186,13 +183,17 @@ function keyApprovalModal(env: KeyEnv, k: Key): boolean {
     env.scheduleRender();
     return true;
   }
+  if (denyNoteStep(env, k, resolve)) {
+    env.scheduleRender();
+    return true;
+  }
   if (k.type === 'up') store.approvalIndex = Math.max(0, store.approvalIndex - 1);
   else if (k.type === 'down') store.approvalIndex = Math.min(APPROVAL_CODES.length - 1, store.approvalIndex + 1);
   else if (k.type === 'enter') {
-    resolve(scopeGrant(APPROVAL_CODES[store.approvalIndex] ?? 'deny'));
+    resolve(scopeGrant(store, APPROVAL_CODES[store.approvalIndex] ?? 'deny'));
   } else if (k.type === 'char') {
     if (k.ch === 'y' || k.ch === 'Y') resolve('allow');
-    else if (k.ch === 'a' || k.ch === 'A') resolve(scopeGrant('always'));
+    else if (k.ch === 'a' || k.ch === 'A') resolve(scopeGrant(store, 'always'));
     else if (k.ch === 'n' || k.ch === 'N') resolve('deny');
     else if (k.ch === '1') store.approvalIndex = 0;
     else if (k.ch === '2') store.approvalIndex = 1;
@@ -204,12 +205,52 @@ function keyApprovalModal(env: KeyEnv, k: Key): boolean {
   return true;
 }
 
+/** 组件6：词数 >1 才是显式范围授权；1 走引擎默认（程序前缀）。 */
+function scopeGrant(store: TuiStore, code: AskAnswer): AskResult {
+  return code === 'always' && store.approvalScope > 1 ? { answer: 'always', scopeWords: store.approvalScope } : code;
+}
+
 /** 组件6：「总是允许」行上 ←/→ 挪授权词数，钳制在 [1, 命令词数]；其余行不动。 */
 function scopeStep(store: TuiStore, k: Key): void {
   if (store.approvalIndex !== 1) return;
   const total = store.approvalScopeWords().length;
   if (total <= 1) return;
   store.approvalScope = k.type === 'right' ? Math.min(total, store.approvalScope + 1) : Math.max(1, store.approvalScope - 1);
+}
+
+/**
+ * 组件7：拒绝行打字即转追问——可打印字符（含数字与 n）进理由缓冲、⌫ 删字、
+ * Enter 携理由 deny（理由随工具结果回给模型）。y/a 快捷批准保持全局有效；
+ * up/down/esc 不吞，留给选择链。
+ */
+function denyNoteStep(env: KeyEnv, k: Key, resolve: (a: AskResult) => void): boolean {
+  const { store } = env;
+  if (store.approvalIndex !== 2) return false;
+  if (k.type === 'char') {
+    if (k.ch === 'y' || k.ch === 'Y') resolve('allow');
+    else if (k.ch === 'a' || k.ch === 'A') resolve(scopeGrant(store, 'always'));
+    else if (k.ch >= ' ') store.approvalNote = [...store.approvalNote, k.ch].slice(0, 200).join('');
+    else return false;
+    return true;
+  }
+  if (k.type === 'backspace') {
+    store.approvalNote = [...store.approvalNote].slice(0, -1).join('');
+    return true;
+  }
+  if (k.type === 'enter' && store.approvalNote.length > 0) {
+    resolve({ answer: 'deny', reason: store.approvalNote });
+    return true;
+  }
+  return false;
+}
+
+/** 组件7：数字键快选列表前 9 项（绝对索引，滑动窗口自行跟随）。命中返回 true。 */
+function digitJump(k: Key, picker: { index: number }, length: number): boolean {
+  if (k.type !== 'char' || k.ch < '1' || k.ch > '9') return false;
+  const target = Number(k.ch) - 1;
+  if (target >= length) return false;
+  picker.index = target;
+  return true;
 }
 
 /** Model picker (↑↓/pagescroll · Enter switch · Esc cancel). */
@@ -232,6 +273,8 @@ function keyModelPicker(env: KeyEnv, k: Key): boolean {
     picker.index = Math.max(0, picker.index - 1);
   } else if (k.type === 'wheeldown') {
     picker.index = Math.min(picker.models.length - 1, picker.index + 1);
+  } else if (digitJump(k, picker, picker.models.length)) {
+    // 组件7：'1'..'9' 直达前 9 个模型（窗口自行跟随）。
   } else if (k.type === 'enter') {
     const model = picker.models[picker.index];
     store.modelPicker = undefined;
@@ -263,6 +306,8 @@ function keySessionPicker(env: KeyEnv, k: Key): boolean {
     picker.index = Math.max(0, picker.index - winSize);
   } else if (k.type === 'pagedown') {
     picker.index = Math.min(picker.entries.length - 1, picker.index + winSize);
+  } else if (digitJump(k, picker, picker.entries.length)) {
+    // 组件7：'1'..'9' 直达最近会话前 9 条。
   } else if (k.type === 'enter') {
     const entry = picker.entries[picker.index];
     store.sessionPicker = undefined;

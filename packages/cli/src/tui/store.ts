@@ -90,6 +90,8 @@ export class TuiStore {
   approvalIndex = 0;
   /** 组件6：always 行的授权词数（当前命令前 N 词），每次弹窗重置为 1。 */
   approvalScope = 1;
+  /** 组件7：拒绝行上打出的字——随 deny 授权回流给模型作追问/指令。 */
+  approvalNote = '';
   approvalPreview: string[] | undefined;
   spinnerFrame = 0;
   interruptAt = 0;
