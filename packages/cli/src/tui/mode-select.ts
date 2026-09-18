@@ -1,13 +1,16 @@
 /**
- * 开屏执行模式选择器的状态机（阶段 E 出壳）：交互式选择块的挂载、↑↓/滚轮
- * 移动、Enter 确认（走 Tab 同一 setCodeMode 门）、Esc 保持当前，以及**原位
- * 塌缩**（选择块改写为确认行，不在转录里留交互残骸）。行构造纯函数在
- * tui-view/splash.ts（modeSelectRows/modeSelectedRow/nextModeIndex）。
+ * 开屏执行模式选择器的状态机（阶段 E 出壳）：welcome 卡片整块归它所有——
+ * 挂载、↑↓/滚轮移动、Enter 确认（走 Tab 同一 setCodeMode 门）、Esc 保持当前，
+ * 以及**原位塌缩**（同一块换回无选择器形态，不在转录里留交互残骸）。
+ * 行构造纯函数在 tui-view/splash.ts（buildWelcome/nextModeIndex）。
  */
 import type { PtcMode } from '@nova-agent/core';
 import { codeRuntimeAvailable } from '@nova-agent/plugins';
-import { modeSelectedRow, modeSelectRows, nextModeIndex, type Palette } from '@nova-agent/tui-view';
+import { buildWelcome, nextModeIndex, type Palette, type WelcomeInfo } from '@nova-agent/tui-view';
 import type { Block, TuiStore } from './store.js';
+
+/** 卡片内容（`cols` 由选择器按当前终端宽度补）。 */
+type WelcomeContent = Omit<WelcomeInfo, 'cols'>;
 
 /** Tab 与选择器共用的模式循环序（native → PTC → 混合 → native…）。 */
 export const CODE_MODE_ORDER: PtcMode[] = ['native', 'ptc', 'both'];
@@ -17,6 +20,8 @@ export interface ModeSelectorDeps {
   paint(): Palette;
   cols(): number;
   codeMode(): PtcMode;
+  /** 卡片内容快照：工作区/技能会随 applyWorkspace 重指，一律取活值。 */
+  info(): WelcomeContent;
   /** 与 Tab 同一入口：false = Node 太旧拒绝或宿主重建失败（选择块留存再选）。 */
   setCodeMode(next: PtcMode): Promise<boolean>;
   render(): void;
@@ -27,33 +32,41 @@ export class ModeSelector {
 
   constructor(private readonly deps: ModeSelectorDeps) {}
 
-  /** 开屏后挂载选择块，初始选中当前模式。 */
+  /** 整块卡片：选择器在架时带分段控件行，塌缩后同块换回静态形态。 */
+  private rows(index?: number): string[] {
+    const d = this.deps;
+    const select = index === undefined ? undefined : { index, ptcAvailable: codeRuntimeAvailable() };
+    return buildWelcome(d.paint(), {
+      ...d.info(),
+      cols: d.cols(),
+      codeMode: d.codeMode(),
+      ...(select !== undefined ? { select } : {}),
+    });
+  }
+
+  /** 开屏后挂载卡片，初始选中当前模式。 */
   show(): void {
     const d = this.deps;
     const index = Math.max(0, CODE_MODE_ORDER.indexOf(d.codeMode()));
-    this.block = d.store.pushBlock(
-      modeSelectRows(d.paint(), { index, ptcAvailable: codeRuntimeAvailable(), cols: d.cols() }),
-    );
+    this.block = d.store.pushBlock(this.rows(index));
     d.store.modeSelect = { index };
   }
 
-  /** 选择块仍在转录里（可能被 /clear/会话切换清掉）。 */
+  /** 卡片仍在转录里（可能被 /clear/会话切换清掉）。 */
   private alive(): boolean {
     return this.block !== undefined && this.deps.store.blocks.includes(this.block);
   }
 
-  /** 原位塌缩成确认行（首条提交/确认/放弃都走这里）。 */
+  /** 原位换回静态卡片（首条提交/确认/放弃都走这里）。 */
   collapse(): void {
     const d = this.deps;
     if (d.store.modeSelect === undefined) return;
     d.store.modeSelect = undefined;
-    if (this.alive()) {
-      d.store.replaceBlock(this.block!, [modeSelectedRow(d.paint(), d.codeMode(), d.cols())]);
-    }
+    if (this.alive()) d.store.replaceBlock(this.block!, this.rows());
     this.block = undefined;
   }
 
-  /** 外部清场（/clear、会话切换）：只丢块引用，不塌缩出确认行。 */
+  /** 外部清场（/clear、会话切换）：只丢块引用，不塌缩出静态卡片。 */
   reset(): void {
     this.block = undefined;
     this.deps.store.modeSelect = undefined;
@@ -63,11 +76,8 @@ export class ModeSelector {
     const d = this.deps;
     if (d.store.modeSelect === undefined) return;
     d.store.modeSelect.index = nextModeIndex(d.store.modeSelect.index, delta, codeRuntimeAvailable());
-    if (this.alive() && d.store.modeSelect !== undefined) {
-      d.store.replaceBlock(
-        this.block!,
-        modeSelectRows(d.paint(), { index: d.store.modeSelect.index, ptcAvailable: codeRuntimeAvailable(), cols: d.cols() }),
-      );
+    if (this.alive()) {
+      d.store.replaceBlock(this.block!, this.rows(d.store.modeSelect.index));
     }
   }
 

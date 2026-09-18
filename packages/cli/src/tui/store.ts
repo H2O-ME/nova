@@ -89,6 +89,11 @@ export class TuiStore {
   sessionPicker: { entries: SessionEntry[]; index: number } | undefined;
   /** Startup mode selector: active at launch, collapsed on confirm/Esc/first submit. */
   modeSelect: { index: number } | undefined;
+  /**
+   * 开屏卡片垂直居中：首轮提交前把视口空白挪到内容上方（消掉整屏空洞），
+   * 第一条消息落地即关闭——之后是文档流，不再挪。
+   */
+  welcomeCenter = false;
   approval: ApprovalState | undefined;
   approvalIndex = 0;
   /** 组件6：always 行的授权词数（当前命令前 N 词），每次弹窗重置为 1。 */
@@ -112,7 +117,13 @@ export class TuiStore {
   tpsSamples = 0;
   genPhase: GenPhase = 'idle';
   frameMap:
-    | { rows: { block: Block; start: number; count: number }[]; sliceStart: number; historyRows: number }
+    | {
+        rows: { block: Block; start: number; count: number }[];
+        sliceStart: number;
+        historyRows: number;
+        /** 开屏居中时顶部的空白行数：点击行号要先减它才落到内容坐标。 */
+        topPad: number;
+      }
     | undefined;
   /** Meter hover (M10 组件1): mousemove over `statusZone` morphs the T2 gauge. */
   gaugeHover = false;

@@ -233,7 +233,7 @@ describe('click-to-expand subagent detail', () => {
       expanded: false,
     };
     store.blocks.push(block);
-    store.frameMap = { rows: [{ block, start: 0, count: 1 }], sliceStart: 0, historyRows: 1 };
+    store.frameMap = { rows: [{ block, start: 0, count: 1 }], sliceStart: 0, historyRows: 1, topPad: 0 };
 
     handleKey(env, { type: 'click', y: 1 });
     expect(block.expanded).toBe(true);
@@ -249,7 +249,7 @@ describe('click-to-expand subagent detail', () => {
     const store = env.store;
     const block = { lines: ['plain row'], wrapped: undefined };
     store.blocks.push(block);
-    store.frameMap = { rows: [{ block, start: 0, count: 1 }], sliceStart: 0, historyRows: 1 };
+    store.frameMap = { rows: [{ block, start: 0, count: 1 }], sliceStart: 0, historyRows: 1, topPad: 0 };
 
     handleKey(env, { type: 'click', y: 1 });
     expect(block.lines).toEqual(['plain row']);
@@ -265,7 +265,7 @@ describe('click-to-cycle tool fold (tri-state, M10 组件3)', () => {
       fold: { base: ['HEAD'], preview: ['P1', 'MORE'], full: ['P1', 'P2', 'P3'], state: 0 as 0 | 1 | 2 },
     };
     env.store.blocks.push(block);
-    env.store.frameMap = { rows: [{ block, start: 0, count: 1 }], sliceStart: 0, historyRows: 1 };
+    env.store.frameMap = { rows: [{ block, start: 0, count: 1 }], sliceStart: 0, historyRows: 1, topPad: 0 };
     return { env, block };
   }
 

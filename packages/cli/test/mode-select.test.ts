@@ -5,7 +5,7 @@ import type { PtcMode } from '@nova-agent/core';
 import { TuiStore } from '../src/tui/store.js';
 import { CODE_MODE_ORDER, ModeSelector } from '../src/tui/mode-select.js';
 
-/** 假宿主：setCodeMode 恒成功并回写当前模式；块级投影全在真实 TuiStore 上。 */
+/** 假宿主：setCodeMode 恒成功并回写当前模式；卡片整块投影全在真实 TuiStore 上。 */
 function setup(initial: PtcMode = 'native') {
   const store = new TuiStore(() => undefined);
   let codeMode: PtcMode = initial;
@@ -14,8 +14,16 @@ function setup(initial: PtcMode = 'native') {
   const selector = new ModeSelector({
     store,
     paint: () => plainPalette,
-    cols: () => 80,
+    cols: () => 100,
     codeMode: () => codeMode,
+    info: () => ({
+      rootDir: 'D:/work/demo',
+      sessionsRoot: '/home/me/.nova/sessions',
+      home: '/home/me',
+      version: '1.2.3',
+      skills: [],
+      warnings: [],
+    }),
     setCodeMode: async (next) => {
       setCalls.push(next);
       codeMode = next;
@@ -28,14 +36,19 @@ function setup(initial: PtcMode = 'native') {
   return { store, selector, setCalls, current: () => codeMode, renderCount: () => renders };
 }
 
+/** 卡片行数（顶框 + 工作区/会话/模式/沙箱 + 底框）。 */
+const CARD_ROWS = 6;
+
 describe('ModeSelector', () => {
-  it('show mounts the interactive block and selects the current mode', () => {
+  it('show mounts the welcome card with the picker on the current mode', () => {
     const t = setup('ptc');
     t.selector.show();
     expect(t.store.modeSelect?.index).toBe(CODE_MODE_ORDER.indexOf('ptc'));
     expect(t.store.blocks).toHaveLength(1);
-    // 分段控件：交互态也只占一行（塌缩前后行数不变，视觉不跳）。
-    expect(t.store.blocks[0]!.lines).toHaveLength(1);
+    const card = t.store.blocks[0]!.lines.join('\n');
+    expect(card).toContain('┏');
+    expect(card).toContain('[ •PTC ]'); // 光标胶囊，且它就是已生效档位（带点）
+    expect(card).toContain('当前模式');
   });
 
   it('move cycles the selection and rewrites the block in place (no new blocks)', () => {
@@ -55,9 +68,12 @@ describe('ModeSelector', () => {
     await t.selector.confirm();
     expect(t.setCalls).toEqual(['ptc']);
     expect(t.store.modeSelect).toBeUndefined();
-    // 原位塌缩：同一块只剩一行确认行，转录里没有交互残骸。
+    // 原位换形：同一块仍是同一块，只是模式行退回静态形态（交互残骸为零）。
     expect(t.store.blocks).toHaveLength(1);
-    expect(t.store.blocks[0]!.lines).toHaveLength(1);
+    expect(t.store.blocks[0]!.lines).toHaveLength(CARD_ROWS);
+    const card = t.store.blocks[0]!.lines.join('\n');
+    expect(card).toContain('Tab 可随时切换');
+    expect(card).not.toContain('↑↓');
     expect(t.renderCount()).toBe(1);
   });
 
@@ -67,7 +83,7 @@ describe('ModeSelector', () => {
     t.selector.dismiss();
     expect(t.setCalls).toEqual([]);
     expect(t.store.modeSelect).toBeUndefined();
-    expect(t.store.blocks[0]!.lines.length).toBe(1);
+    expect(t.store.blocks[0]!.lines).toHaveLength(CARD_ROWS);
   });
 
   it('reset (clear / session switch) drops the block reference without collapsing', () => {

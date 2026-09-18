@@ -13,7 +13,6 @@ function setup() {
     model: 'm1',
     approvalMode: 'read-only',
     codeMode: 'native',
-    pristine: true,
     streaming: false,
     interruptAt: undefined,
     inputEmpty: true,

@@ -348,7 +348,6 @@ export interface StatusView {
   model: string;
   approvalMode: string;
   codeMode: PtcMode;
-  pristine: boolean;
   streaming: boolean;
   interruptAt: number;
   inputEmpty: boolean;
@@ -364,14 +363,14 @@ export interface StatusView {
   gaugeForms: readonly [string, string, string];
 }
 
-/** Mode chips: current mode inverted; all three side by side pre-start. */
+/**
+ * Mode field: the applied mode, bold. The three-way chip row it replaced was
+ * a *second* copy of the welcome card's segmented picker (and disagreed with
+ * it whenever the picker's cursor sat elsewhere) — one control per job, so
+ * the picker owns "pick a mode" and this owns "here is what you're in".
+ */
 function modeChips(p: Palette, tier: StatusTier, v: StatusView): string {
-  const chip = (m: PtcMode): string =>
-    m === v.codeMode ? p.inverse(` ${codeModeLabel(m)} `) : p.dim(` ${codeModeLabel(m)} `);
-  const body =
-    v.pristine && tier < 2
-      ? (['native', 'ptc', 'both'] as PtcMode[]).map((m) => chip(m)).join('')
-      : chip(v.codeMode);
+  const body = p.bold(codeModeLabel(v.codeMode));
   return tier === 0 ? `${p.dim('模式')} ${body}` : body;
 }
 

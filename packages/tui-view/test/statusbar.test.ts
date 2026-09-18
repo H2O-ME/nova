@@ -92,7 +92,6 @@ const baseView: StatusView = {
   model: 'vendor/claude-test',
   approvalMode: 'auto-edit',
   codeMode: 'native',
-  pristine: true,
   streaming: false,
   interruptAt: 0,
   inputEmpty: true,
@@ -109,10 +108,10 @@ const baseView: StatusView = {
 const bar = (over: Partial<StatusView> = {}): string => statusBar(plainPalette, { ...baseView, ...over });
 
 describe('statusBar composition (wide)', () => {
-  it('T0 keeps gauge/model/mode-chips/approval-label/hints and pins the right cluster', () => {
+  it('T0 keeps gauge/model/mode/approval-label/hints and pins the right cluster', () => {
     const b = bar({ lastCtrlC: 999_500 }); // now-lastCtrlC=500ms → 退出提示在
-    // 芯片自带前后空格：' 混合 ' 与 join 的 ' · ' 相连处是双空格。
-    expect(b.startsWith('G0 │ vendor/claude-test · 模式  普通  PTC  混合  · 审批 自动编辑 │ 再按一次 Ctrl+C 退出')).toBe(true);
+    // 模式字段只报当前档：三档并排的旧芯片与开屏卡片里的选择器重复且互相矛盾。
+    expect(b.startsWith('G0 │ vendor/claude-test · 模式 普通 · 审批 自动编辑 │ 再按一次 Ctrl+C 退出')).toBe(true);
     expect(b.endsWith('tps ▂▂▃▄▅▅▆▇▇█  10 · cache 75%')).toBe(true);
   });
 

@@ -159,7 +159,18 @@ export class FrameAssembler {
     }
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
     if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
-    store.frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length };
+    // 开屏垂直居中：内容比视口短时，把一半空白从底部挪到顶部（只在贴底且首轮
+    // 提交前做——一旦有对话就是文档流，挪动反而像 bug）。
+    let topPad = 0;
+    if (store.welcomeCenter && store.scrollFromEnd === 0) {
+      const slack = historyLines.length - flat.length;
+      topPad = Math.max(0, Math.floor(slack / 2));
+      if (topPad > 0) {
+        historyLines.splice(historyLines.length - topPad, topPad);
+        for (let i = 0; i < topPad; i++) historyLines.unshift('');
+      }
+    }
+    store.frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length, topPad };
     // 重锚：贴底不需要锚（恢复直播跟随）；否则钉住视口顶行所在块。
     this.anchor = store.scrollFromEnd === 0 ? undefined : (anchorAt(rowMap, sliceStart) ?? this.anchor);
     this.lastScroll = store.scrollFromEnd;

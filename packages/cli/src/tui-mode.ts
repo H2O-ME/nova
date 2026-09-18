@@ -44,7 +44,7 @@ import {
   createUsageAnchors,
   resetUsageAnchors,
 } from './runner-loop.js';
-import { buildSplash, contextLegend, humanTokens, REVEAL_TICK_MS, SPINNER_FRAMES, TOOL_GUTTER } from '@nova-agent/tui-view';
+import { contextLegend, humanTokens, REVEAL_TICK_MS, SPINNER_FRAMES, TOOL_GUTTER } from '@nova-agent/tui-view';
 import { TuiCommands } from './tui/commands.js';
 import { CompactWait } from './tui/compact-wait.js';
 import { FrameAssembler } from './tui/frame-assembler.js';
@@ -603,12 +603,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     ]);
   };
 
-  /**
-   * 芯片呈现的"未开始"判据：三枚芯片并排仅在会话未开始时展示。
-   */
-  const displayPristine = (): boolean =>
-    !store.streaming && !store.compactRunning && messages.length <= 1 && store.input.length === 0;
-
   /** Switch to a concrete mode; false = refused (Node too old) or failed (host rebuild). */
   async function setCodeMode(next: PtcMode): Promise<boolean> {
     if (next !== 'native' && !codeRuntimeAvailable()) {
@@ -657,6 +651,15 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     paint: () => paint,
     cols: () => screen.cols,
     codeMode: () => codeMode,
+    // 卡片内容全取活值：resume 后工作区/技能可能已重指，闭包访问器才不会冻旧值。
+    info: () => ({
+      rootDir,
+      sessionsRoot: sessionsRoot(),
+      home: os.homedir(),
+      version: cliVersion(),
+      skills: skills.map((s) => s.name),
+      warnings: session.warnings,
+    }),
     setCodeMode: (next) => setCodeMode(next),
     render: scheduleRender,
   });
@@ -776,6 +779,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const text = store.input.trim();
     // First submit ends the startup selector: the picked (or current) mode is
     // what this first message runs under — collapse to the confirmation row.
+    // 卡片也不再居中：从这条消息起是文档流。
+    store.welcomeCenter = false;
     modeSelector.collapse();
     if (store.streaming || store.compactRunning) {
       const cmd = text.split(/\s+/)[0]?.toLowerCase() ?? '';
@@ -981,7 +986,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     model: client.model,
     approvalMode: permission.approvalMode,
     codeMode,
-    pristine: displayPristine(),
     streaming: store.streaming,
     interruptAt: store.interruptAt,
     inputEmpty: store.input.length === 0,
@@ -1077,21 +1081,10 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   // models.dev 目录后台加载（磁盘缓存在即秒回）；到达后结构行自动换容量。
   void refreshModelMeta();
 
-  // Splash: the destination hero only (tui-view/splash.ts) — model/approval/
-  // mode already live in the status bar, the key hints in the composer hint.
-  store.pushBlock(
-    buildSplash(paint, {
-      rootDir,
-      sessionsRoot: sessionsRoot(),
-      home: os.homedir(),
-      version: cliVersion(),
-      skills: skills.map((s) => s.name),
-      warnings: session.warnings,
-      cols: screen.cols,
-    }),
-  );
-  // Startup mode selector: an interactive block the key chain owns until the
-  // user confirms, keeps the current mode, or simply starts typing.
+  // Welcome card + startup mode picker: one block, owned by ModeSelector (↑↓
+  // repaints it in place, collapse rewrites the same block). Centered in the
+  // empty viewport until the first message lands.
+  store.welcomeCenter = true;
   modeSelector.show();
 
   await new Promise<void>((resolve) => {

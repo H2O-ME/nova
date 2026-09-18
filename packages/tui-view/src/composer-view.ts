@@ -48,17 +48,14 @@ export function composerZone(p: Palette, layout: ComposerLayout, v: ComposerZone
   // frame color follows genPhase (thinking/writing green, tool yellow).
   const frame = SPINNER_FRAMES[v.spinnerFrame % SPINNER_FRAMES.length] ?? '•';
   const lead0 = v.streaming ? `  ${v.genPhase === 'tool' ? p.yellow(frame) : p.green(frame)} ` : COMPOSER_PREFIX;
-  const placeholder = [...(v.placeholder ?? '')];
+  const ph = v.placeholder ?? '';
   layout.rows.forEach((row, i) => {
     const lead = i === 0 && layout.hiddenAbove === 0 ? lead0 : indent;
-    const empty =
-      i === 0 && layout.hiddenAbove === 0 && row.text === '' && row.caretIdx === 0 && placeholder.length > 0;
-    zone.push(
-      lead +
-        (empty
-          ? `${p.inverse(placeholder[0] ?? ' ')}${p.dim(placeholder.slice(1).join(''))}`
-          : renderComposerRow(p, row)),
-    );
+    const empty = i === 0 && layout.hiddenAbove === 0 && row.text === '' && row.caretIdx === 0 && ph.length > 0;
+    // Caret stays a block on its own cell with the hint one column over: an
+    // inverse block *on* a CJK hint char just eats a glyph and reads as a
+    // corrupted character.
+    zone.push(lead + (empty ? `${p.inverse(' ')}${p.dim(ph)}` : renderComposerRow(p, row)));
   });
   if (layout.hiddenBelow > 0) zone.push(`  ${p.dim(`⋯ 下方还有 ${layout.hiddenBelow} 行`)}`);
   return zone;

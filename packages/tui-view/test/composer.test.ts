@@ -68,9 +68,9 @@ describe('composerZone', () => {
 describe('composerZone 空态占位提示（Grok welcome：按键提示寄生在输入行）', () => {
   const empty = layout({ rows: [{ text: '', caretIdx: 0 }] });
 
-  it('把光标落在占位文本首字上，其余暗色', () => {
+  it('光标独占一格，占位文本让开一格（绝不吃掉一个汉字）', () => {
     const zone = composerZone(palette, empty, view({ placeholder: 'abc' }));
-    expect(zone[0]).toBe(`${COMPOSER_PREFIX}\x1b[7ma\x1b[0m\x1b[2mbc\x1b[0m`);
+    expect(zone[0]).toBe(`${COMPOSER_PREFIX}\x1b[7m \x1b[0m\x1b[2mabc\x1b[0m`);
     expect(composerZone(plainPalette, empty, view({ placeholder: '描述任务开始' }))[0]).toContain('描述任务开始');
   });
 

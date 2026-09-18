@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
-import { buildSplash, modeSelectRows, modeSelectedRow, nextModeIndex, type SplashInfo } from '../src/index.js';
+import { buildWelcome, nextModeIndex, type WelcomeView } from '../src/index.js';
 import { plainPalette } from '../src/palette.js';
 
-function base(): SplashInfo {
+function base(over: Partial<WelcomeView> = {}): WelcomeView {
   return {
     rootDir: 'D:/work/demo',
     sessionsRoot: 'C:/Users/me/.nova/sessions',
@@ -12,144 +12,125 @@ function base(): SplashInfo {
     skills: [],
     warnings: [],
     cols: 100,
+    codeMode: 'native',
+    ...over,
   };
 }
 
-/** Panel rows = from the top border through the bottom border. */
-function panel(lines: string[]): string[] {
-  const top = lines.findIndex((l) => l.trimStart().startsWith('╭'));
-  const bottom = lines.findIndex((l) => l.trimStart().startsWith('╰'));
-  return lines.slice(top, bottom + 1);
+/** Rows between the two horizontal borders (the card body). */
+function body(lines: string[]): string[] {
+  const top = lines.findIndex((l) => l.trimStart().startsWith('┏'));
+  const bottom = lines.findIndex((l) => l.trimStart().startsWith('┗'));
+  return lines.slice(top + 1, bottom);
 }
 
-describe('buildSplash', () => {
-  it('renders the version in the brand line', () => {
-    const lines = buildSplash(plainPalette, base());
-    expect(lines.find((l) => l.includes('Nova'))).toContain('v0.2.0');
-  });
-
-  it('renders an empty version as bare v prefix only', () => {
-    const lines = buildSplash(plainPalette, { ...base(), version: '' });
-    const brand = lines.find((l) => l.includes('Nova'));
-    // No "undefined"/"null" leakage when the caller forgets the field.
-    expect(brand).toBeDefined();
-    expect(brand).not.toContain('undefined');
-    expect(brand).not.toContain('null');
-  });
-
-  it('drops the ASCII logotype — the panel is the whole hero', () => {
-    const lines = buildSplash(plainPalette, base());
-    expect(lines.some((l) => l.includes('| |/ /'))).toBe(false);
-    expect(lines[0]!.trimStart().startsWith('╭')).toBe(true);
-  });
-
-  it('carries the destination only: no model/approval/mode echo of the status bar', () => {
-    const lines = buildSplash(plainPalette, base());
-    expect(lines.some((l) => l.includes('D:/work/demo'))).toBe(true);
-    expect(lines.some((l) => l.includes('.nova/sessions'))).toBe(true);
-    expect(lines.some((l) => l.includes('模型'))).toBe(false);
-    expect(lines.some((l) => l.includes('审批'))).toBe(false);
-    expect(lines.some((l) => l.includes('模式'))).toBe(false);
-    // The key hints moved to the composer placeholder, not a panel row.
-    expect(lines.some((l) => l.includes('Ctrl+C'))).toBe(false);
-  });
-
-  it('abbreviates the home prefix so the informative tail survives clipping', () => {
-    const lines = buildSplash(plainPalette, { ...base(), cols: 60 });
-    expect(lines.some((l) => l.includes('~/.nova/sessions'))).toBe(true);
-    expect(lines.some((l) => l.includes('C:/Users/me'))).toBe(false);
-    // 家目录之外的绝对路径原样显示（不误伤）。
-    const other = buildSplash(plainPalette, { ...base(), rootDir: '/srv/app', cols: 60 });
-    expect(other.some((l) => l.includes('/srv/app'))).toBe(true);
-  });
-
-  it('centers the panel and keeps every border row the same width', () => {
-    for (const cols of [40, 60, 80, 100, 140]) {
-      const lines = panel(buildSplash(plainPalette, { ...base(), cols }));
-      const width = styledWidth(lines[0]!);
-      for (const row of lines) expect(styledWidth(row)).toBe(width);
-      expect(width).toBeLessThanOrEqual(cols);
-      // Centered, not pinned to the left gutter, once there is room to spare.
-      if (cols >= 60) expect(lines[0]!.startsWith('  ')).toBe(true);
-    }
-  });
-
-  it('clips long paths but keeps the version intact', () => {
-    const lines = buildSplash(plainPalette, { ...base(), cols: 24 });
-    expect(lines[0]).toContain('v0.2.0');
+describe('buildWelcome（单张居中卡片承载开屏）', () => {
+  it('品牌与版本在顶边框里', () => {
+    const lines = buildWelcome(plainPalette, base());
     expect(lines[0]).toContain('Nova');
-    for (const line of buildSplash(plainPalette, { ...base(), cols: 24 })) {
-      expect(styledWidth(line)).toBeLessThanOrEqual(24);
-    }
+    expect(lines[0]).toContain('v0.2.0');
+    const empty = buildWelcome(plainPalette, base({ version: '' }));
+    expect(empty[0]).toContain('Nova');
+    expect(empty.join('\n')).not.toContain('undefined');
   });
 
-  it('renders the trust-posture hint as a dim row right below the panel', () => {
-    const lines = buildSplash(plainPalette, base());
-    const borderIdx = lines.findIndex((l) => l.trimStart().startsWith('╰'));
-    expect(borderIdx).toBeGreaterThan(0);
-    const hint = lines[borderIdx + 1]!;
-    expect(hint).toContain('bash / run_code');
-    // Doc-aligned honesty: no claim of sandboxing or system-level isolation.
-    expect(hint).toContain('无沙箱');
-    expect(hint).not.toContain('沙箱级');
-    // 精简后的揭示仍在一行内，不再占整段"说教"。
-    expect(styledWidth(hint)).toBeLessThan(60);
+  it('卡片只承载去处/技能/模式/信任，不复读状态栏的身份信息', () => {
+    const text = buildWelcome(plainPalette, base()).join('\n');
+    expect(text).toContain('D:/work/demo');
+    expect(text).toContain('模式');
+    expect(text).toContain('沙箱');
+    expect(text).not.toContain('审批');
+    expect(text).not.toContain('Ctrl+C'); // 按键提示归 composer 占位行
   });
 
-  it('shows the hint even when skills/warnings are absent', () => {
-    expect(buildSplash(plainPalette, base()).some((l) => l.includes('bash / run_code'))).toBe(true);
+  it('家目录前缀折成 ~/，让尾段活过裁剪', () => {
+    const text = buildWelcome(plainPalette, base({ cols: 60 })).join('\n');
+    expect(text).toContain('~/.nova/sessions');
+    expect(text).not.toContain('C:/Users/me');
+    expect(buildWelcome(plainPalette, base({ rootDir: '/srv/app', cols: 60 })).join('\n')).toContain('/srv/app');
   });
 
-  it('lists skills and warnings as plain rows below the panel', () => {
-    const lines = buildSplash(plainPalette, { ...base(), skills: ['pdf', 'git-flow'], warnings: ['技能目录不可读'] });
-    const skills = lines.find((l) => l.includes('技能'));
-    expect(skills).toContain('pdf');
-    expect(skills).toContain('git-flow');
-    expect(lines.at(-1)).toContain('技能目录不可读');
-    // 面板本身不因长清单而变宽（技能在框外）。
-    expect(panel(lines)).toHaveLength(4);
-  });
-
-  it('clamps every row to the cols budget on narrow screens', () => {
+  it('每一行等宽、整块水平居中、且绝不超出 cols', () => {
     for (const cols of [40, 60, 80, 100, 140]) {
-      const lines = buildSplash(plainPalette, {
-        ...base(),
-        cols,
-        skills: Array.from({ length: 12 }, (_, i) => `skill-${i}`),
-        warnings: ['warn'.repeat(40)],
-      });
-      for (const line of lines) expect(styledWidth(line), `cols=${cols}`).toBeLessThanOrEqual(cols);
+      const lines = buildWelcome(plainPalette, base({ cols }));
+      const width = styledWidth(lines[0]!);
+      for (const line of lines) expect(styledWidth(line), `cols=${cols}`).toBe(width);
+      expect(width).toBeLessThanOrEqual(cols);
+      // 居中：左右留白至多差一格。
+      const left = lines[0]!.length - lines[0]!.trimStart().length;
+      expect(Math.abs(cols - width - left)).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('信任姿态如实写进卡片：无沙箱、不宣称隔离', () => {
+    const row = body(buildWelcome(plainPalette, base())).find((l) => l.includes('沙箱'))!;
+    expect(row).toContain('无');
+    expect(row).toContain('bash / run_code');
+    expect(row).not.toContain('沙箱级');
+  });
+
+  it('技能以计数形式入卡（名字清单留给 /skill）', () => {
+    const row = body(buildWelcome(plainPalette, base({ skills: ['a', 'b', 'c'] }))).find((l) => l.includes('技能'))!;
+    expect(row).toContain('3 个');
+    expect(row).toContain('/skill');
+    expect(body(buildWelcome(plainPalette, base())).some((l) => l.includes('技能'))).toBe(false);
+  });
+
+  it('告警作为 ⚠ 行并入同一张卡（不再散落框外）', () => {
+    const lines = buildWelcome(plainPalette, base({ warnings: ['技能目录不可读'] }));
+    expect(body(lines).some((l) => l.includes('⚠ 技能目录不可读'))).toBe(true);
+  });
+
+  it('选择器塌缩后模式行只剩当前档与 Tab 提示', () => {
+    const row = body(buildWelcome(plainPalette, base({ codeMode: 'ptc' }))).find((l) => l.includes('模式'))!;
+    expect(row).toContain('PTC');
+    expect(row).toContain('Tab 可随时切换');
+    expect(row).not.toContain('↑↓');
   });
 });
 
-describe('startup mode selector (modeSelectRows, 单行分段控件)', () => {
-  it('renders one row with the highlighted option as its own capsule', () => {
-    const rows = modeSelectRows(plainPalette, { index: 1, ptcAvailable: true, cols: 100 });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toContain('[ PTC ]');
-    expect(rows[0]).toContain('[普通]');
-    expect(rows[0]).toContain('[混合]');
-    expect(rows[0]).toContain('Enter 确认');
+describe('卡片内的模式分段控件（select 在架）', () => {
+  const modeRow = (over: Partial<WelcomeView>) =>
+    body(buildWelcome(plainPalette, base(over))).find((l) => l.includes('模式'))!;
+
+  it('光标是反色胶囊，已生效档位带 • 点，待切换时明说「将切到」', () => {
+    const row = modeRow({ select: { index: 2, ptcAvailable: true } });
+    expect(row).toContain('[ 混合 ]'); // cursor capsule
+    expect(row).toContain('[•普通]'); // applied
+    expect(row).toContain('[PTC]');
+    expect(row).toContain('将切到 混合');
   });
 
-  it('annotates the runtime floor only when an unavailable option is highlighted', () => {
-    expect(modeSelectRows(plainPalette, { index: 1, ptcAvailable: false, cols: 100 })[0]).toContain('需 Node ≥ 22.19');
-    expect(modeSelectRows(plainPalette, { index: 0, ptcAvailable: false, cols: 100 })[0]).not.toContain('22.19');
+  it('按键提示不在卡里重复——它归 composer 占位行，卡只放控件', () => {
+    const row = modeRow({ select: { index: 0, ptcAvailable: true } });
+    expect(row).toContain('当前模式');
+    expect(row).not.toContain('将切到');
+    expect(row).not.toContain('Enter');
+    expect(row).not.toContain('↑↓');
   });
 
-  it('degrades by dropping whole fields, never mid-word', () => {
-    const wide = modeSelectRows(plainPalette, { index: 0, ptcAvailable: true, cols: 100 })[0]!;
-    expect(wide).toContain('内置工具直调');
-    const tight = modeSelectRows(plainPalette, { index: 1, ptcAvailable: true, cols: 56 })[0]!;
-    expect(tight).not.toContain('编排'); // 先丢说明性文字
-    expect(tight).toContain('Enter 确认'); // 按键提示留到最后
-    expect(styledWidth(tight)).toBeLessThanOrEqual(54);
+  it('运行时不支持类型剥离时点名 Node 下限', () => {
+    expect(modeRow({ select: { index: 1, ptcAvailable: false } })).toContain('需 Node ≥ 22.19');
+    expect(modeRow({ select: { index: 0, ptcAvailable: false } })).not.toContain('22.19');
+  });
+
+  it('选择器在架不撑宽卡片：塌缩前后同一尺寸，不会跳一下', () => {
+    const card = (over: Partial<WelcomeView>) =>
+      styledWidth(buildWelcome(plainPalette, base(over))[0]!.trimStart());
+    expect(card({ cols: 100, select: { index: 1, ptcAvailable: true } })).toBeLessThanOrEqual(60);
+    expect(card({ cols: 100, select: { index: 1, ptcAvailable: true } })).toBe(card({ cols: 100 }));
+  });
+
+  it('窄屏整字段降级：先丢尾注、再裁控件，绝不词中截断', () => {
+    expect(modeRow({ cols: 100, select: { index: 1, ptcAvailable: true } })).toContain('将切到 PTC');
+    const tight = modeRow({ cols: 40, select: { index: 1, ptcAvailable: true } });
+    expect(tight).not.toContain('将切到');
+    expect(tight).toContain('[•普通]'); // 控件本体留到最后
   });
 
   it('rows stay within the terminal budget on narrow screens', () => {
     for (const cols of [40, 60, 80]) {
-      for (const row of modeSelectRows(plainPalette, { index: 0, ptcAvailable: true, cols })) {
+      for (const row of buildWelcome(plainPalette, base({ cols, select: { index: 1, ptcAvailable: true } }))) {
         expect(styledWidth(row)).toBeLessThanOrEqual(cols);
       }
     }
@@ -166,14 +147,5 @@ describe('nextModeIndex (skip unavailable segments, wrap at ends)', () => {
   it('skips PTC and 混合 when the runtime lacks type stripping', () => {
     expect(nextModeIndex(0, 1, false)).toBe(0); // only 普通 selectable: no move
     expect(nextModeIndex(0, -1, false)).toBe(0);
-  });
-});
-
-describe('modeSelectedRow (collapsed confirmation)', () => {
-  it('names the kept mode with the switch hint', () => {
-    const row = modeSelectedRow(plainPalette, 'ptc', 100);
-    expect(row).toContain('执行模式');
-    expect(row).toContain('[PTC]');
-    expect(row).toContain('Tab 可随时切换');
   });
 });
