@@ -78,9 +78,6 @@ export interface TuiOptions {
 
 // 用户/答案行的 gutter 前缀（开态原始 ANSI 的挂行契约）出壳 ./tui/gutters.ts。
 
-/** Composer prompt prefix; the cursor column math depends on its width. */
-// （COMPOSER_PREFIX / 宽度基准已移至 ./composer.ts——换行预算与光标列数都在那边。）
-
 export async function startTui(opts: TuiOptions): Promise<void> {
   const { config } = opts;
   // The live workspace: follows the session across /session switches.
@@ -938,6 +935,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     activeView: (viewDeps, cols) => resolveActiveView(store, paint, cols, viewDeps),
     // 访问器（非值）：statusView/contextView 在壳层更下方声明，且读活状态。
     statusView: () => statusView(),
+    tabMode: () => canSwitchMode(),
     contextView: () => contextView(),
     gaugeKeyParts: () => ({
       messagesLen: messages.length,

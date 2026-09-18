@@ -46,6 +46,8 @@ export const TPS_INTERVAL_MS = 500;
 /** Frame layout constants. */
 export const BREATHE_ROWS = 1;
 export const STATUS_ROWS = 1;
+/** 底部快捷键条（Grok shortcuts_bar）：屏幕最后一行。 */
+export const HINT_ROWS = 1;
 export const HISTORY_MIN_ROWS = 3;
 
 /** Animation + render scheduling. */

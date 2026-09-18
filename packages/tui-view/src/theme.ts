@@ -46,6 +46,7 @@ function createLightPalette(truecolor: boolean): Palette {
       magenta: wrap('35'),
       bold: wrap('1'),
       inverse: wrap('7'),
+      border: wrap('37'), // 亮底描边用中灰（90 在浅底上等于看不见）
       ...base,
     };
   }
@@ -59,6 +60,7 @@ function createLightPalette(truecolor: boolean): Palette {
     magenta: rgb(175, 0, 175),
     bold: wrap('1'),
     inverse: wrap('7'),
+    border: rgb(150, 150, 150),
     ...base,
   };
 }

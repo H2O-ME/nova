@@ -79,16 +79,17 @@ export function buildApprovalPopup(p: Palette, v: ApprovalPopupView, cols: numbe
 function framed(p: Palette, title: string, hint: string, rows: string[], cols: number): string[] {
   const inner = cols - 3;
   return [
-    `╭─ ${p.dim(title)} ${'─'.repeat(Math.max(0, inner - styledWidth(`─ ${title} `)))}╮`,
+    `${p.border('╭─')} ${p.dim(title)} ${p.border('─'.repeat(Math.max(0, inner - styledWidth(`─ ${title} `))))}${p.border('╮')}`,
     ...rows,
-    `╰${p.dim(hint)}${'─'.repeat(Math.max(0, inner - styledWidth(hint)))}╯`,
+    `${p.border('╰')}${p.dim(hint)}${p.border('─'.repeat(Math.max(0, inner - styledWidth(hint))))}${p.border('╯')}`,
   ];
 }
 
 /** Panel content row: the selected row inverts across the full width. */
 function panelRow(p: Palette, content: string, inner: number, selected: boolean): string {
   const pad = Math.max(0, inner - 2 - styledWidth(content));
-  return selected ? `│ ${p.inverse(`${content}${' '.repeat(pad)}`)} │` : `│ ${p.dim(`${content}${' '.repeat(pad)}`)} │`;
+  const body = selected ? p.inverse(`${content}${' '.repeat(pad)}`) : p.dim(`${content}${' '.repeat(pad)}`);
+  return `${p.border('│')} ${body} ${p.border('│')}`;
 }
 
 export interface ModelPopupItem {

@@ -19,8 +19,8 @@ function base(over: Partial<WelcomeView> = {}): WelcomeView {
 
 /** Rows between the two horizontal borders (the card body). */
 function body(lines: string[]): string[] {
-  const top = lines.findIndex((l) => l.trimStart().startsWith('┏'));
-  const bottom = lines.findIndex((l) => l.trimStart().startsWith('┗'));
+  const top = lines.findIndex((l) => l.trimStart().startsWith('╭'));
+  const bottom = lines.findIndex((l) => l.trimStart().startsWith('╰'));
   return lines.slice(top + 1, bottom);
 }
 

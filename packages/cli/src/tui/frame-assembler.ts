@@ -8,15 +8,20 @@ import type { PtcMode, Usage } from '@nova-agent/core';
 import {
   BREATHE_ROWS,
   COMPOSER_MAX_ROWS,
+  COMPOSER_PLACEHOLDER,
   HISTORY_MIN_ROWS,
+  HINT_ROWS,
   STATUS_ROWS,
   bottomStack,
   clipToWidth,
-  composerPlaceholder,
+  composerCard,
+  composerCardWidth,
+  composerInfo,
   composerWrapBudget,
-  composerZone,
   cursorPosition,
   foldChips,
+  hintBar,
+  hintItems,
   layoutComposer,
   messageQueueRows,
   type Palette,
@@ -41,6 +46,8 @@ export interface FrameAssemblerDeps {
   activeView(deps: ActiveViewDeps, cols: number): string[];
   /** 状态栏帧快照（含上下文仪表三档形态）。 */
   statusView(): StatusView;
+  /** 快捷键条用：Tab 此刻是否真能切执行模式（壳层 canSwitchMode 的活值访问器）。 */
+  tabMode(): boolean;
   /** 上下文分解快照（仪表缓存与 /session 明细共用一份读数）。 */
   contextView(): ContextBreakdownView;
   /** 仪表缓存键的分量（任一变化即重算三档形态；见 gaugeCacheKey）。 */
@@ -121,25 +128,31 @@ export class FrameAssembler {
 
     // One breathing row between the newest content and the composer.
     // 组件8：粘贴 chip 纯显示折叠——layout 走折叠面文本，光标位置先映射。
+    // 输入区是圆角卡片（Grok prompt）：左右内衬 2 + 上下边框，正文宽连边框一起扣。
     const chipFold = foldChips(store.input, store.inputChips);
-    const wrapBudget = composerWrapBudget(cols);
+    const wrapBudget = composerWrapBudget(composerCardWidth(cols) - 2);
     const layout = layoutComposer(chipFold.text, chipFold.toDisplay(store.cursorPos), wrapBudget, COMPOSER_MAX_ROWS);
-    // 开屏占位提示（Grok welcome）：空输入 + 空闲且无弹窗时才 whispers，
-    // 一旦打字/运行/弹窗即消失——绝不与真内容争同一段。
+    // 占位行只说"在这里输入"——键位归屏幕最后一行的快捷键条（设计语言里的分工）。
     const placeholder =
-      chipFold.text === '' && !store.streaming && popupLines.length === 0
-        ? clipToWidth(composerPlaceholder({ modeSelect: store.modeSelect !== undefined }), wrapBudget)
-        : '';
-    const composerZoneRows = composerZone(paint, layout, {
+      chipFold.text === '' && !store.streaming && popupLines.length === 0 ? COMPOSER_PLACEHOLDER : '';
+    const composerZoneRows = composerCard(paint, layout, {
       spinnerFrame: store.spinnerFrame,
       streaming: store.streaming,
       genPhase: store.genPhase,
+      cols,
+      info: composerInfo({
+        rows: layout.totalRows,
+        cursorRow: layout.cursorRow,
+        chars: [...store.input].length,
+        queued: store.messageQueue.length,
+      }),
       placeholder,
     });
     // 运行中排队的消息：composer 上方的暗色 lane，始终可见（消息队列语义）。
     const queueLines = messageQueueRows(paint, store.messageQueue, cols);
     const { flat, rowMap } = this.flattener.flatten(store.blocks, cols);
-    const historyBudget = rows - popupLines.length - queueLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS;
+    const historyBudget =
+      rows - popupLines.length - queueLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS - HINT_ROWS;
     // 逻辑滚动锚定（M10 R5）：上滚后每帧由锚块在 rowMap 的最新起始行反推
     // scrollFromEnd——尾部追加自动补偿（顶行不变⇒偏移随之增长），历史中段
     // 任意增删行视口也不漂移（旧的「按上帧行数差补偿」只治尾增）。
@@ -159,12 +172,13 @@ export class FrameAssembler {
     }
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
     if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
-    // 开屏垂直居中：内容比视口短时，把一半空白从底部挪到顶部（只在贴底且首轮
-    // 提交前做——一旦有对话就是文档流，挪动反而像 bug）。
+    // 开屏垂直锚定（Grok welcome 的 remaining/3）：内容比视口短时，把三分之
+    // 一空白挪到顶部——不是居中，居中在终端里读起来像浮在半空。只在贴底且
+    // 首轮提交前做——一旦有对话就是文档流，挪动反而像 bug。
     let topPad = 0;
     if (store.welcomeCenter && store.scrollFromEnd === 0) {
       const slack = historyLines.length - flat.length;
-      topPad = Math.max(0, Math.floor(slack / 2));
+      topPad = Math.max(0, Math.floor(slack / 3));
       if (topPad > 0) {
         historyLines.splice(historyLines.length - topPad, topPad);
         for (let i = 0; i < topPad; i++) historyLines.unshift('');
@@ -177,9 +191,9 @@ export class FrameAssembler {
 
     // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
     const status = clipToWidth(statusBar(paint, this.deps.statusView()), cols - 1);
-    // 仪表 hover 命中区（M10 组件1）：状态栏恒为帧底行（bottomStack 末位），
+    // 仪表 hover 命中区（M10 组件1）：状态栏现在是倒数第二行（底行让给快捷键条），
     // 仪表字段是行首段——命中宽取首个 `│` 前的显示列数，按键链按此翻转 hover。
-    store.statusZone = { y: rows, gaugeEnd: gaugeHitWidth(status) };
+    store.statusZone = { y: rows - HINT_ROWS, gaugeEnd: gaugeHitWidth(status) };
 
     // 位置指示：上滚时呼吸行改为「上方还有 N 行」（回底自动消失；不占内容行、
     // 不进状态栏——上滚不进状态栏是 tui-design 红线）。
@@ -187,11 +201,40 @@ export class FrameAssembler {
       sliceStart > 0
         ? clipToWidth(paint.dim(`  ⋯ 上方还有 ${sliceStart} 行 · Home 跳顶 / End 回到底部`), cols - 1)
         : '';
+    // 快捷键条：屏幕最后一行，键位随"谁占用键盘"换一套，超宽从尾部整条丢。
+    const hints = clipToWidth(
+      hintBar(
+        paint,
+        hintItems({
+          picker: this.hintPicker(store, activeViewDeps),
+          modeSelect: store.modeSelect !== undefined,
+          streaming: store.streaming || store.compactRunning,
+          queue: store.messageQueue.length,
+          tabMode: d.tabMode(),
+        }),
+        cols - 1,
+      ),
+      cols - 1,
+    );
 
     d.write(
-      bottomStack(historyLines, popupLines, queueLines, composerZoneRows, status, breathText),
-      cursorPosition({ historyRows: historyLines.length, popupRows: popupLines.length, queueRows: queueLines.length, layout }),
+      bottomStack(historyLines, popupLines, queueLines, composerZoneRows, status, breathText, hints),
+      cursorPosition({
+        historyRows: historyLines.length,
+        popupRows: popupLines.length,
+        queueRows: queueLines.length,
+        leadRows: 1, // 卡片顶框那一行
+        layout,
+      }),
     );
+  }
+
+  /** 键盘被哪个面板占用（决定快捷键条换哪套键位）。 */
+  private hintPicker(store: TuiStore, deps: ActiveViewDeps): 'approval' | 'command' | 'model' | 'session' | undefined {
+    if (store.approval !== undefined) return 'approval';
+    if (store.modelPicker !== undefined) return 'model';
+    if (store.sessionPicker !== undefined) return 'session';
+    return store.input.startsWith('/') && !store.popupDismissed && deps.commandMatches.length > 0 ? 'command' : undefined;
   }
 
   /** 终端尺寸变化/换会话：丢弃展平器与滚动锚（wrapBlock 缓存另经 invalidateWraps）。 */

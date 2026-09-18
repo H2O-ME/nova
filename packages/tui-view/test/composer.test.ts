@@ -4,8 +4,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { palette, plainPalette, SPINNER_FRAMES, type ComposerLayout } from '../src/index.js';
-import { COMPOSER_PREFIX, COMPOSER_PREFIX_WIDTH, chipBadge, composerPlaceholder, composerWrapBudget, composerZone, cursorPosition, foldChips, messageQueueRows, renderComposerRow } from '../src/index.js';
+import { styledWidth } from '@nova-agent/tui';
+import { palette, plainPalette, SPINNER_FRAMES, type ComposerLayout, type HintState } from '../src/index.js';
+import { COMPOSER_PLACEHOLDER, COMPOSER_PREFIX_WIDTH, chipBadge, composerCard, composerLead, composerWrapBudget, composerZone, cursorPosition, foldChips, hintBar, hintItems, messageQueueRows, renderComposerRow } from '../src/index.js';
 
 const layout = (over: Partial<ComposerLayout> = {}): ComposerLayout => ({
   rows: [{ text: 'hello', caretIdx: -1 }],
@@ -43,7 +44,9 @@ describe('composerZone', () => {
   it('prefixes the first visible row with ❯ and aligns continuation rows', () => {
     const p = plainPalette;
     const zone = composerZone(p, layout({ rows: [{ text: 'one', caretIdx: -1 }, { text: 'two', caretIdx: -1 }] }), view());
-    expect(zone[0]!.startsWith(COMPOSER_PREFIX)).toBe(true);
+    expect(zone[0]!.startsWith(composerLead(plainPalette))).toBe(true);
+    expect(zone[0]!.includes('\x1b')).toBe(false); // plain 调色板 = 零 ANSI（前缀不再硬写转义码）
+    expect(composerZone(palette, layout(), view())[0]!.startsWith(`  \x1b[36m\x1b[1m❯\x1b[0m`)).toBe(true);
     expect(zone[0]!.endsWith('one')).toBe(true);
     expect(zone[1]).toBe(' '.repeat(COMPOSER_PREFIX_WIDTH) + 'two');
     expect(zone).toHaveLength(2);
@@ -70,7 +73,7 @@ describe('composerZone 空态占位提示（Grok welcome：按键提示寄生在
 
   it('光标独占一格，占位文本让开一格（绝不吃掉一个汉字）', () => {
     const zone = composerZone(palette, empty, view({ placeholder: 'abc' }));
-    expect(zone[0]).toBe(`${COMPOSER_PREFIX}\x1b[7m \x1b[0m\x1b[2mabc\x1b[0m`);
+    expect(zone[0]).toBe(`${composerLead(palette)}\x1b[7m \x1b[0m\x1b[2mabc\x1b[0m`);
     expect(composerZone(plainPalette, empty, view({ placeholder: '描述任务开始' }))[0]).toContain('描述任务开始');
   });
 
@@ -84,9 +87,79 @@ describe('composerZone 空态占位提示（Grok welcome：按键提示寄生在
     expect(composerZone(plainPalette, empty, view())).toHaveLength(composerZone(plainPalette, empty, view({ placeholder: 'abc' })).length);
   });
 
-  it('选择器在架时教 ↑↓，收场后教通用键', () => {
-    expect(composerPlaceholder({ modeSelect: true })).toContain('选模式');
-    expect(composerPlaceholder({ modeSelect: false })).toContain('/ 命令面板');
+  it('占位符只说"在这里输入"，键位归底部快捷键条', () => {
+    expect(COMPOSER_PLACEHOLDER).toBe('描述任务…');
+    const zone = composerZone(plainPalette, empty, view({ placeholder: COMPOSER_PLACEHOLDER }));
+    expect(zone[0]).not.toContain('Esc');
+    expect(zone[0]).not.toContain('Ctrl+C');
+  });
+});
+
+describe('composerCard（输入区圆角卡片，Grok prompt）', () => {
+  const cardView = (over: Partial<Parameters<typeof composerCard>[2]> = {}) => ({
+    spinnerFrame: 0,
+    streaming: false,
+    genPhase: 'idle' as const,
+    cols: 80,
+    ...over,
+  });
+
+  it('单行草稿恒 3 行：顶框 / 正文 / 底框，各行等宽且留出 2 格内衬', () => {
+    const rows = composerCard(plainPalette, layout(), cardView());
+    expect(rows).toHaveLength(3);
+    expect(rows[0]!.startsWith('  ╭─')).toBe(true);
+    expect(rows[1]!.startsWith('  │  ')).toBe(true); // 边框 + 内衬（❯ 前缀由 composerLead 自证）
+    expect(rows[1]).toContain('hello');
+    expect(rows[2]!.startsWith('  ╰─')).toBe(true);
+    const w = styledWidth(rows[0]!);
+    for (const r of rows) expect(styledWidth(r)).toBe(w);
+    expect(w).toBeLessThanOrEqual(80);
+  });
+
+  it('底框右缘嵌输入元信息；无元信息时整段省略', () => {
+    const withInfo = composerCard(plainPalette, layout(), cardView({ info: '第 2/3 行 · 40 字' }))[2]!;
+    expect(withInfo).toContain('第 2/3 行 · 40 字');
+    expect(withInfo.trimEnd().endsWith('╯')).toBe(true);
+    expect(composerCard(plainPalette, layout(), cardView({ info: '' }))[2]).not.toContain('行');
+  });
+
+  it('info 过长时裁进框宽，绝不把 ╯ 顶出屏幕', () => {
+    const rows = composerCard(plainPalette, layout(), cardView({ cols: 40, info: 'x'.repeat(80) }));
+    for (const r of rows) expect(styledWidth(r)).toBeLessThanOrEqual(40);
+  });
+});
+
+describe('hintBar（屏幕最后一行的键位条，Grok shortcuts_bar）', () => {
+  const state = (over: Partial<HintState> = {}): HintState => ({
+    picker: undefined,
+    modeSelect: false,
+    streaming: false,
+    queue: 0,
+    tabMode: true,
+    ...over,
+  });
+
+  it('条目间是 5 列 "  │  "（与状态条的 3 列分隔符不通用）', () => {
+    expect(hintBar(plainPalette, hintItems(state()), 100)).toContain('  │  ');
+  });
+
+  it('超宽按原序从尾部整条丢弃，不折行也不加省略号', () => {
+    const narrow = hintBar(plainPalette, hintItems(state()), 14);
+    expect(styledWidth(narrow)).toBeLessThanOrEqual(14);
+    expect(narrow).toContain('⏎:发送');
+    expect(narrow).not.toContain('Ctrl+C');
+    expect(narrow).not.toContain('…');
+  });
+
+  it('Tab 真能切模式时才印它（不骗人）', () => {
+    expect(hintBar(plainPalette, hintItems(state({ tabMode: false })), 120)).not.toContain('Tab');
+    expect(hintBar(plainPalette, hintItems(state({ tabMode: true })), 120)).toContain('Tab');
+  });
+
+  it('谁占用键盘就换哪套键位', () => {
+    expect(hintBar(plainPalette, hintItems(state({ picker: 'approval' })), 120)).toContain('1-9:选项');
+    expect(hintBar(plainPalette, hintItems(state({ modeSelect: true })), 120)).toContain('↑↓:选模式');
+    expect(hintBar(plainPalette, hintItems(state({ streaming: true, queue: 2 })), 120)).toContain('Esc:中断');
   });
 });
 

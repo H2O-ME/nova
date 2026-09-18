@@ -46,7 +46,7 @@ describe('ModeSelector', () => {
     expect(t.store.modeSelect?.index).toBe(CODE_MODE_ORDER.indexOf('ptc'));
     expect(t.store.blocks).toHaveLength(1);
     const card = t.store.blocks[0]!.lines.join('\n');
-    expect(card).toContain('┏');
+    expect(card).toContain('╭');
     expect(card).toContain('[ •PTC ]'); // 光标胶囊，且它就是已生效档位（带点）
     expect(card).toContain('当前模式');
   });

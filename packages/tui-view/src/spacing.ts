@@ -34,7 +34,7 @@ export function sliceHistory(
   return { lines, sliceStart, maxScroll };
 }
 
-/** Bottom stack order: history · breathing row · popups · queue · composer · status. */
+/** Bottom stack order: history · breathing row · popups · queue · composer · status · hints. */
 export function bottomStack(
   historyLines: string[],
   popupLines: string[],
@@ -43,7 +43,10 @@ export function bottomStack(
   status: string,
   /** 滚动位置提示复用呼吸行（空串=普通空行；不占内容行、不进状态栏）。 */
   breathText?: string,
+  /** 屏幕最后一行的快捷键条（Grok 底部栈：prompt → status_line → shortcuts）。 */
+  hints?: string,
 ): string[] {
   const breath = Array<string>(BREATHE_ROWS).fill(breathText ?? '');
-  return [...historyLines, ...breath, ...popupLines, ...queueLines, ...composerRows, status];
+  const tail = hints === undefined || hints === '' ? [] : [hints];
+  return [...historyLines, ...breath, ...popupLines, ...queueLines, ...composerRows, status, ...tail];
 }

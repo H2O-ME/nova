@@ -86,7 +86,7 @@ export function buildWelcome(p: Palette, v: WelcomeView): string[] {
   const ver = v.version.length > 0 ? `v${v.version}` : '';
   const content = Math.max(
     SPLASH_MIN_INNER,
-    styledWidth(`┏━ ${brand} ${ver} ━┓`),
+    styledWidth(`╭─ ${brand} ${ver} ─╮`),
     ...values.map(([l, val]) => 1 + Math.max(8, styledWidth(l)) + styledWidth(val) + 2),
     ...v.warnings.map((w) => styledWidth(`⚠ ${w}`) + 2),
   );
@@ -94,16 +94,16 @@ export function buildWelcome(p: Palette, v: WelcomeView): string[] {
   const valWidth = Math.max(6, inner - 2 - LABEL_CELL);
   const lead = ' '.repeat(Math.max(0, Math.floor((v.cols - inner - 2) / 2)));
   const row = (r: string): string =>
-    `${lead}${p.dim('┃')} ${r}${' '.repeat(Math.max(0, inner - 2 - styledWidth(r)))} ${p.dim('┃')}`;
+    `${lead}${p.border('│')} ${r}${' '.repeat(Math.max(0, inner - 2 - styledWidth(r)))} ${p.border('│')}`;
   const label = (text: string): string => ` ${padDisplay(text, 8)}`;
 
   const verW = styledWidth(ver);
   const brandW = styledWidth(brand);
   const withVer = verW > 0 && inner >= brandW + verW + 8;
   const dashes = Math.max(1, inner - brandW - (withVer ? verW + 6 : 5));
-  const top = `${lead}${p.dim('┏━ ')}${p.cyan(p.bold(brand))}${p.dim(` ${'─'.repeat(dashes)} `)}`;
+  const top = `${lead}${p.border('╭─ ')}${p.cyan(p.bold(brand))}${p.border(` ${'─'.repeat(dashes)} `)}`;
   const lines: string[] = [
-    withVer ? `${top}${p.dim(ver)}${p.dim(' ━┓')}` : `${top}${p.dim('━┓')}`,
+    withVer ? `${top}${p.border(ver)}${p.border(' ─╮')}` : `${top}${p.border('─╮')}`,
   ];
   for (const [l, val] of values) {
     const fitted =
@@ -115,7 +115,7 @@ export function buildWelcome(p: Palette, v: WelcomeView): string[] {
     lines.push(row(`${label(l)}${fitted}`));
   }
   for (const warning of v.warnings) lines.push(row(p.yellow(clipToWidth(`⚠ ${warning}`, inner - 2))));
-  lines.push(`${lead}${p.dim(`┗${'━'.repeat(inner)}┛`)}`);
+  lines.push(`${lead}${p.border(`╰${'─'.repeat(inner)}╯`)}`);
   return lines;
 }
 

@@ -41,6 +41,7 @@ function setup() {
     rows: () => 24,
     activeView: () => ['  [popup]'],
     statusView: () => status,
+    tabMode: () => true,
     contextView: () => context,
     gaugeKeyParts: () => ({
       messagesLen: 0,

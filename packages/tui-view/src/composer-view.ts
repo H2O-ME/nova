@@ -5,15 +5,24 @@
 
 import { styledWidth } from '@nova-agent/tui';
 import { clipToWidth } from './clip.js';
+import { cardBottom, cardRow, cardTop, CHROME_PAD_COLS } from './layout.js';
 import { SPINNER_FRAMES } from './tokens.js';
 import type { Palette } from './palette.js';
 
 /** Generation phase (composer lead spinner coloring). */
 export type GenPhase = 'idle' | 'thinking' | 'writing' | 'tool';
 
-/** Composer prompt prefix; cursor column math depends on its width. */
-export const COMPOSER_PREFIX = `  \x1b[36m\x1b[1m❯\x1b[0m `;
-export const COMPOSER_PREFIX_WIDTH = styledWidth(COMPOSER_PREFIX);
+/**
+ * Composer prompt prefix: `  ❯ ` = 4 display columns. The width is the source
+ * of truth for wrap budget / cursor column / continuation indent, so it is a
+ * literal (never derived from a styled string, whose escapes would leak).
+ */
+export const COMPOSER_PREFIX_WIDTH = 4;
+
+/** The caret itself, painted through the injected palette (light theme ≠ cyan). */
+export function composerLead(p: Palette): string {
+  return `  ${p.cyan(p.bold('❯'))} `;
+}
 
 /** Wrap budget inside the composer: prompt prefix + right margin + caret. */
 export function composerWrapBudget(cols: number): number {
@@ -29,14 +38,45 @@ export interface ComposerZoneView {
 }
 
 /**
- * What the empty composer whispers. Grok keeps the welcome screen's key hints
- * off the hero panel and on the prompt itself — the one place the user is
- * about to act; the mode selector is up, the hint says how to use it.
+ * 空输入时的占位提示。Grok 的设计语言里这一行**只说"在这里输入"**——键位属于
+ * 底部快捷键条（hint-bar），开屏卡片也不重复。原先把 `Esc 中断 · Ctrl+C×2 退出`
+ * 塞进占位行，等于哪儿都在说、哪儿都不像设计。
  */
-export function composerPlaceholder(v: { modeSelect: boolean }): string {
-  return v.modeSelect
-    ? '描述任务即可开始 · ↑↓ 选模式 · Enter 确认'
-    : '描述任务开始 · / 命令面板 · Esc 中断 · Ctrl+C×2 退出';
+export const COMPOSER_PLACEHOLDER = '描述任务…';
+
+/** 输入卡片左右内衬（Grok `prompt_inset(false) = 2`）。 */
+export const COMPOSER_H_PAD = CHROME_PAD_COLS;
+/** 卡片比裸输入行多出的行数：顶框 + 底框（底框兼 info 行）。 */
+export const COMPOSER_CARD_ROWS = 2;
+
+export interface ComposerCardView extends ComposerZoneView {
+  cols: number;
+  /** 底框右缘的输入元信息（空则整段省略，Grok 的 `!info.is_blank()` 守卫）。 */
+  info?: string;
+}
+
+export function composerCardWidth(cols: number): number {
+  return Math.max(20, cols - COMPOSER_H_PAD * 2);
+}
+
+/** 输入区卡片：`╭─╮ / │ ❯ 输入 │ / ╰─ info ─╯`（Grok 单行草稿恒 3 行）。 */
+export function composerCard(p: Palette, layout: ComposerLayout, v: ComposerCardView): string[] {
+  const spec = { width: composerCardWidth(v.cols), ...(v.info === undefined || v.info === '' ? {} : { info: v.info }) };
+  const lead = ' '.repeat(COMPOSER_H_PAD);
+  return [
+    lead + cardTop(p, spec),
+    ...composerZone(p, layout, v).map((row) => lead + cardRow(p, spec, row, 0)),
+    lead + cardBottom(p, spec),
+  ];
+}
+
+/** 底框 info：只放输入区自己的状态（行/字/排队），不与状态栏重复。 */
+export function composerInfo(v: { rows: number; cursorRow: number; chars: number; queued: number }): string {
+  const bits: string[] = [];
+  if (v.rows > 1) bits.push(`第 ${v.cursorRow + 1}/${v.rows} 行`);
+  if (v.chars > 0) bits.push(`${v.chars} 字`);
+  if (v.queued > 0) bits.push(`排队 ${v.queued}`);
+  return bits.join(' · ');
 }
 
 /** Up to COMPOSER_MAX_ROWS wrapped input rows with overflow hints. */
@@ -47,7 +87,7 @@ export function composerZone(p: Palette, layout: ComposerLayout, v: ComposerZone
   // While streaming the ❯ lead becomes a spinner frame (same 1-col width);
   // frame color follows genPhase (thinking/writing green, tool yellow).
   const frame = SPINNER_FRAMES[v.spinnerFrame % SPINNER_FRAMES.length] ?? '•';
-  const lead0 = v.streaming ? `  ${v.genPhase === 'tool' ? p.yellow(frame) : p.green(frame)} ` : COMPOSER_PREFIX;
+  const lead0 = v.streaming ? `  ${v.genPhase === 'tool' ? p.yellow(frame) : p.green(frame)} ` : composerLead(p);
   const ph = v.placeholder ?? '';
   layout.rows.forEach((row, i) => {
     const lead = i === 0 && layout.hiddenAbove === 0 ? lead0 : indent;
@@ -74,11 +114,13 @@ export function cursorPosition(v: {
   historyRows: number;
   popupRows: number;
   queueRows?: number;
+  /** 输入卡片顶框行数（光标落在卡片第二行上）。 */
+  leadRows?: number;
   layout: ComposerLayout;
 }): { row: number; col: number } {
   const hintRows = v.layout.hiddenAbove > 0 ? 1 : 0;
   return {
-    row: v.historyRows + 1 + v.popupRows + (v.queueRows ?? 0) + hintRows + v.layout.cursorRow,
+    row: v.historyRows + 1 + v.popupRows + (v.queueRows ?? 0) + (v.leadRows ?? 0) + hintRows + v.layout.cursorRow,
     col: COMPOSER_PREFIX_WIDTH + v.layout.cursorCol,
   };
 }

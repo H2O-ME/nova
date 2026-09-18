@@ -11,6 +11,12 @@ export interface Palette {
   bold(text: string): string;
   inverse(text: string): string;
   /**
+   * Chrome 描边（卡片边框、分隔竖线）。**不是** `dim`：faint(SGR 2) 叠 1px 竖笔
+   * 在 Windows Terminal/Cascadia 下几乎不可见，框像被劈掉两侧——描边要的是
+   * "比正文暗一档但确实存在"，所以走 bright-black(SGR 90) 这一档灰。
+   */
+  border(text: string): string;
+  /**
    * Open-state control primitives for the line-oriented runners (REPL spinner,
    * progress rows): the no-op string on plainPalette means a non-color or
    * NO_COLOR stream simply omits the control sequence instead of emitting a
@@ -41,6 +47,7 @@ export const palette: Palette = {
   magenta: ansi('35'),
   bold: ansi('1'),
   inverse: ansi('7'),
+  border: ansi('90'),
   reset: () => '\x1b[0m',
   clearLine: () => '\r\x1b[2K',
   clearRight: () => '\x1b[0K',
@@ -57,6 +64,7 @@ export const plainPalette: Palette = {
   magenta: (text) => text,
   bold: (text) => text,
   inverse: (text) => text,
+  border: (text) => text,
   // Plain streams (NO_COLOR / piped / non-TTY) must stay silent: the line-
   // oriented runners gate visual progress on `useColor`, so a stray erase or
   // reset here would land as a raw escape in the captured output.
