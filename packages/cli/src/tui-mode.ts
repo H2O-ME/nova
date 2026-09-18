@@ -906,7 +906,12 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   };
 
   function handleKey(k: Key): void {
-    tuiHandleKey(keyEnv, k);
+    // 焦点回归重断言 DEC 模式（M10 R6）：ConPTY 中继可能中途剥掉私有模式，
+    // SGR 鼠标静默降级成 X10，上报会以转义乱码画进帧里；focusin 是这种重置
+    // 后必到的事件。focusout 消费掉不进责任链。
+    if (k.type === 'focusin') screen.reassertModes();
+    else if (k.type === 'focusout') return;
+    else tuiHandleKey(keyEnv, k);
   }
 
 

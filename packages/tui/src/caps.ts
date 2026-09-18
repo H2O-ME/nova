@@ -18,5 +18,8 @@ export function detectCaps(
   const term = env['TERM'] ?? '';
   const color = isTTY && !noColor && term !== 'dumb';
   const truecolor = color && (env['COLORTERM'] === 'truecolor' || env['COLORTERM'] === '24bit');
-  return { color, truecolor, synchronizedOutput: isTTY && term !== 'dumb' };
+  // tmux redraws the whole pane when a ?2026 block closes — synchronized
+  // output inside tmux amplifies paints instead of preventing them.
+  const inTmux = env['TERM_PROGRAM'] === 'tmux' || env['TMUX'] !== undefined;
+  return { color, truecolor, synchronizedOutput: isTTY && term !== 'dumb' && !inTmux };
 }

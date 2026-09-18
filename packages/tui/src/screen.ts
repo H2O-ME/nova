@@ -40,11 +40,23 @@ export class LineScreen {
     // clobber the composer's history navigation. Text selection needs Shift.
     this.out.write('\x1b[?1000h');
     this.out.write('\x1b[?1006h');
+    this.out.write('\x1b[?1004h'); // focus reports: the re-assert anchor
     this.prev = undefined;
     this.cursorAt = undefined;
   }
 
+  /** Re-emit the DEC mouse/focus modes: ConPTY relays can strip private
+   * modes mid-session (SGR mouse silently degrades to X10 and the raw
+   * reports then paint escape garbage into the frame), and focusin is the
+   * one event that reliably fires after such a reset. */
+  reassertModes(): void {
+    this.out.write('\x1b[?1000h');
+    this.out.write('\x1b[?1006h');
+    this.out.write('\x1b[?1004h');
+  }
+
   exit(): void {
+    this.out.write('\x1b[?1004l'); // focus reports off
     this.out.write('\x1b[?1006l'); // SGR mouse off
     this.out.write('\x1b[?1000l'); // mouse tracking off
     this.out.write('\x1b[?2004l'); // bracketed paste off

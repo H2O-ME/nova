@@ -28,6 +28,48 @@ describe('detectCaps', () => {
     expect(caps.truecolor).toBe(false);
     expect(caps.synchronizedOutput).toBe(true);
   });
+
+  it('tmux disables synchronized output (pane-wide repaint at block close)', () => {
+    expect(detectCaps({ TERM_PROGRAM: 'tmux', COLORTERM: 'truecolor' }, true).synchronizedOutput).toBe(false);
+    expect(detectCaps({ TMUX: '/tmp/tmux-1000/default,1234,0' }, true).synchronizedOutput).toBe(false);
+    // …but color stays on inside tmux — only the sync wrapper is gated.
+    expect(detectCaps({ TERM_PROGRAM: 'tmux', COLORTERM: 'truecolor' }, true).truecolor).toBe(true);
+  });
+});
+
+describe('KeyDecoder focus reports (DEC 1004)', () => {
+  it('decodes CSI I / CSI O as focusin / focusout', () => {
+    const d = new KeyDecoder();
+    expect(d.push(Buffer.from('\x1b[I', 'utf8')).map((k) => k.type)).toEqual(['focusin']);
+    expect(d.push(Buffer.from('\x1b[O', 'utf8')).map((k) => k.type)).toEqual(['focusout']);
+  });
+});
+
+describe('LineScreen mode toggles', () => {
+  function fakeOut(): { out: NodeJS.WriteStream & { write(s: string): unknown }; writes: string[] } {
+    const writes: string[] = [];
+    const out = { write: (s: string) => writes.push(s) } as never;
+    return { out, writes };
+  }
+
+  it('enables focus reports on enter and disables them last-ish on exit', () => {
+    const { out, writes } = fakeOut();
+    const screen = new LineScreen(out);
+    screen.enter();
+    expect(writes).toContain('\x1b[?1004h');
+    writes.length = 0;
+    screen.exit();
+    expect(writes).toContain('\x1b[?1004l');
+  });
+
+  it('reassertModes re-emits mouse and focus modes without touching the frame', () => {
+    const { out, writes } = fakeOut();
+    const screen = new LineScreen(out);
+    screen.render(['x', 'y']);
+    writes.length = 0;
+    screen.reassertModes();
+    expect(writes).toEqual(['\x1b[?1000h', '\x1b[?1006h', '\x1b[?1004h']);
+  });
 });
 
 describe('LineScreen synchronized output', () => {

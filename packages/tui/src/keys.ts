@@ -25,6 +25,11 @@ export type Key =
   | { type: 'click'; x: number; y: number }
   | { type: 'tab' }
   | { type: 'shifttab' }
+  /** DEC 1004 focus reports (`CSI I` / `CSI O`) — the shell re-asserts mouse
+   * capture on focusin (Windows ConPTY can silently strip the private modes,
+   * degrading SGR mouse to X10 and painting escape garbage into the frame). */
+  | { type: 'focusin' }
+  | { type: 'focusout' }
   | { type: 'esc' }
   | { type: 'ctrl+c' }
   | { type: 'ctrl+d' }
@@ -168,6 +173,10 @@ export class KeyDecoder {
           return arrowKey(params, 'end');
         case 'Z':
           return { type: 'shifttab' };
+        case 'I':
+          return { type: 'focusin' }; // DEC 1004 focus report
+        case 'O':
+          return { type: 'focusout' };
         case 'M':
         case 'm':
           // SGR mouse mode (?1006h): `ESC [ < btn ; col ; row M/m`. Wheel
