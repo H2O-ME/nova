@@ -125,7 +125,8 @@ function keyClick(env: KeyEnv, k: Key): boolean {
   }
   const map = store.frameMap;
   if (map !== undefined) {
-    // 开屏居中时视口顶部有几行合成空白，点击行号要先减掉才落到内容坐标。
+    // 视口顶部有几行合成空白（贴底锚定把富余挪到内容上方；开屏只挪 1/3），
+    // 点击行号要先减掉它才落到内容坐标。
     const row = k.y - 1 - map.topPad;
     if (row >= 0 && row < map.historyRows) {
       const flatIdx = map.sliceStart + row;

@@ -12,6 +12,7 @@ import {
   HISTORY_MIN_ROWS,
   HINT_ROWS,
   STATUS_ROWS,
+  anchorHistory,
   bottomStack,
   clipToWidth,
   composerCard,
@@ -172,19 +173,16 @@ export class FrameAssembler {
     }
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
     if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
-    // 开屏垂直锚定（Grok welcome 的 remaining/3）：内容比视口短时，把三分之
-    // 一空白挪到顶部——不是居中，居中在终端里读起来像浮在半空。只在贴底且
-    // 首轮提交前做——一旦有对话就是文档流，挪动反而像 bug。
-    let topPad = 0;
-    if (store.welcomeCenter && store.scrollFromEnd === 0) {
-      const slack = historyLines.length - flat.length;
-      topPad = Math.max(0, Math.floor(slack / 3));
-      if (topPad > 0) {
-        historyLines.splice(historyLines.length - topPad, topPad);
-        for (let i = 0; i < topPad; i++) historyLines.unshift('');
-      }
-    }
-    store.frameMap = { rows: rowMap, sliceStart, historyRows: historyLines.length, topPad };
+    // 视口富余空白的落点（M10 批9）：贴底直播时空白整段上浮，最新一行永远贴着
+    // composer；开屏阶段只挪 1/3（Grok welcome 的 remaining/3），其余沉底；上滚
+    // 后不挪——那时内容本就顶到视口上缘，再挪就像 bug。
+    const anchored = anchorHistory(
+      historyLines,
+      flat.length,
+      store.scrollFromEnd === 0 ? (store.welcomeCenter ? 'welcome' : 'tail') : 'none',
+    );
+    const { lines: viewLines, topPad } = anchored;
+    store.frameMap = { rows: rowMap, sliceStart, historyRows: viewLines.length, topPad };
     // 重锚：贴底不需要锚（恢复直播跟随）；否则钉住视口顶行所在块。
     this.anchor = store.scrollFromEnd === 0 ? undefined : (anchorAt(rowMap, sliceStart) ?? this.anchor);
     this.lastScroll = store.scrollFromEnd;
@@ -220,9 +218,9 @@ export class FrameAssembler {
     );
 
     d.write(
-      bottomStack(historyLines, popupLines, queueLines, composerZoneRows, status, breathText, hints),
+      bottomStack(viewLines, popupLines, queueLines, composerZoneRows, status, breathText, hints),
       cursorPosition({
-        historyRows: historyLines.length,
+        historyRows: viewLines.length,
         popupRows: popupLines.length,
         queueRows: queueLines.length,
         leadRows: 1, // 卡片顶框那一行

@@ -205,3 +205,65 @@ describe('FrameAssembler logical scroll anchor', () => {
     expect(t.store.scrollFromEnd).toBeGreaterThanOrEqual(0);
   });
 });
+
+/**
+ * 转录区贴底锚定（M10 批9）：整帧终端里，composer 钉在屏幕下缘，文档流会把最新
+ * 一行推离输入区半屏（真机截图病灶）。富余空白因此整段上浮到内容上方——最新一行
+ * 永远贴着历史区底缘。开屏阶段例外（只挪 1/3），上滚后不挪。
+ */
+describe('FrameAssembler 短转录贴底锚定', () => {
+  const renderArgs = {
+    commandMatches: [],
+    modelContextTokens: () => undefined,
+    currentModel: 'm1',
+    currentSessionFile: '/s.jsonl',
+  };
+
+  it('最新一行贴着历史区底缘，富余空白全在顶上', () => {
+    const t = setup();
+    t.store.pushBlock(['第一行'], undefined, 'assistant');
+    t.store.pushBlock(['最新一行'], undefined, 'assistant');
+    t.assembler.render(renderArgs);
+    const frame = t.frames.at(-1)!;
+    const { historyRows, topPad } = t.store.frameMap!;
+    expect(topPad).toBeGreaterThan(0);
+    expect(frame.lines[historyRows - 1]).toBe('最新一行');
+    // 内容与 composer 之间没有任何空行（呼吸行只有一行，且归 bottomStack 管）。
+    expect(frame.lines[historyRows]).toBe('');
+    expect(frame.lines.slice(0, topPad)).toEqual(Array<string>(topPad).fill(''));
+    expect(frame.lines[topPad]).toBe('第一行');
+  });
+
+  it('开屏阶段只挪三分之一，其余沉底（卡片浮在屏幕上部）', () => {
+    const t = setup();
+    t.store.welcomeCenter = true;
+    t.store.pushBlock(['开屏卡片'], undefined, 'assistant');
+    t.assembler.render(renderArgs);
+    const frame = t.frames.at(-1)!;
+    const { historyRows, topPad } = t.store.frameMap!;
+    expect(frame.lines[topPad]).toBe('开屏卡片');
+    expect(topPad).toBeGreaterThan(0);
+    expect(topPad).toBeLessThan(historyRows - 1); // 没把富余用完
+    expect(frame.lines[historyRows - 1]).toBe(''); // 底部仍留白
+  });
+
+  it('topPad 恒等于历史区顶部连续空白行数——点击坐标减它就是内容行', () => {
+    for (const blocks of [1, 2, 6]) {
+      const t = setup();
+      for (let i = 0; i < blocks; i++) t.store.pushBlock([`块 ${i}`], undefined, 'assistant');
+      t.assembler.render(renderArgs);
+      const frame = t.frames.at(-1)!;
+      const { historyRows, topPad } = t.store.frameMap!;
+      const leading = frame.lines.slice(0, historyRows).findIndex((l) => l !== '');
+      expect(leading).toBe(topPad);
+    }
+  });
+
+  it('上滚后不挪（内容本就顶到视口上缘，再挪像 bug）', () => {
+    const t = setup();
+    for (let i = 0; i < 40; i++) t.store.pushBlock([`块 ${i}`], undefined, 'assistant');
+    t.store.scrollFromEnd = 5;
+    t.assembler.render(renderArgs);
+    expect(t.store.frameMap!.topPad).toBe(0);
+  });
+});
