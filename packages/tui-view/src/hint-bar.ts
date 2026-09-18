@@ -23,6 +23,10 @@ export interface HintState {
   queue: number;
   /** Tab 此刻真能切执行模式吗——不能就别把键位印在屏幕上骗人。 */
   tabMode: boolean;
+  /** 审批光标停在「总是允许」行：←/→ 真的在调授权词数，才把这对键印出来。 */
+  approvalScope?: boolean;
+  /** 审批光标停在「拒绝」行：打字即补拒绝理由（弹窗自己不再重复键位）。 */
+  denyTyping?: boolean;
 }
 
 /** 键位表：状态 → 从左到右要看到的几条。顺序即优先级（尾部先丢）。 */
@@ -33,6 +37,8 @@ export function hintItems(v: HintState): HintItem[] {
       { key: '1-9', label: '选项' },
       { key: '⏎', label: '确认' },
       { key: 'Esc', label: '拒绝' },
+      ...(v.approvalScope ? [{ key: '←→', label: '调授权词数' }] : []),
+      ...(v.denyTyping ? [{ key: '打字', label: '补理由' }, { key: '⌫', label: '删字' }] : []),
     ];
   }
   if (v.picker === 'command') {

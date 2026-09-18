@@ -1,6 +1,6 @@
 /**
  * SubagentLives state-machine tests: the takeover contract (one block morphs
- * 调用 → ⧉ live → done, never two lines for one fact), the click-expand
+ * 调用 → ◈ live → done, never two lines for one fact), the click-expand
  * detail survival on the DONE row (a regression this extraction fixes — the
  * old shell deleted the takeover block before rewriting it and the re-push
  * stripped `detail`), and the abort fallback to a static ■ row.
@@ -50,7 +50,7 @@ describe('SubagentLives', () => {
     // Same block, morphed into the live row — no second line for one fact.
     expect(store.blocks).toHaveLength(before);
     expect(store.blocks).toContain(block);
-    expect(block.lines[0]).toContain('⧉ 子代理');
+    expect(block.lines[0]).toContain('◈ 子代理');
     expect(block.lines[0]).not.toContain('调用 subagent');
   });
 
@@ -63,7 +63,7 @@ describe('SubagentLives', () => {
     lives.renderAll('⠹');
     // animateRunningTools skips live ids: the takeover block is never
     // re-drawn back into a 调用 line with an elapsed suffix.
-    expect(block.lines[0]).toContain('⧉ 子代理');
+    expect(block.lines[0]).toContain('◈ 子代理');
     expect(block.lines.join('\n')).not.toContain('调用 subagent');
   });
 
@@ -108,7 +108,7 @@ describe('SubagentLives', () => {
     const { store, lives } = harness();
     // No pending tool line (progress raced tool_call_start): fallback block.
     lives.progress('cX', { type: 'start', label: '侦察' });
-    const fallback = store.blocks.find((b) => b.lines.some((l) => l.includes('⧉')));
+    const fallback = store.blocks.find((b) => b.lines.some((l) => l.includes('◈')));
     expect(fallback).toBeDefined();
     lives.settle('cX', ['done'], 1000);
     expect(store.blocks).not.toContain(fallback);

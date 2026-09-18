@@ -32,24 +32,25 @@ describe('buildApprovalPopup', () => {
     expect(lines[1]).toBe('  --- a.ts');
   });
 
-  it('three options with the selected one marked, then the hint row', () => {
+  it('三个选项 + 选中态标记；键位不再出现在弹窗里（归底部快捷键条）', () => {
     const lines = buildApprovalPopup(plainPalette, { ...view, previewLines: undefined }, 80);
-    expect(lines).toHaveLength(5); // header + 3 options + hint
+    expect(lines).toHaveLength(4); // header + 3 options
     expect(lines[1]).toBe('    允许一次');
     expect(lines[2]).toBe('  ❯ 总是允许');
     expect(lines[3]).toBe('    拒绝');
-    expect(lines[4]).toBe('  ↑↓ 选择 · Enter 确认 · Esc 拒绝');
+    expect(lines.join('\n')).not.toContain('Esc');
+    expect(lines.join('\n')).not.toContain('Enter');
   });
 
-  it('names the always-grant scope for execute-class approvals only', () => {
+  it('执行类审批才留一句授权语义（不是键位说明）', () => {
     const exec = buildApprovalPopup(plainPalette, { ...view, previewLines: undefined, isExecuteKind: true }, 80);
-    expect(exec).toHaveLength(6);
-    expect(exec[4]).toContain('总是允许按命令程序前缀记忆');
+    expect(exec).toHaveLength(5);
+    expect(exec[4]).toContain('「总是允许」按命令程序前缀记忆');
     const other = buildApprovalPopup(plainPalette, { ...view, previewLines: undefined, isExecuteKind: false }, 80);
-    expect(other).toHaveLength(5);
+    expect(other).toHaveLength(4);
   });
 
-  it('always 行带实时前 N 词预览，静态说明行换成 ←/→ 提示（M10 组件6）', () => {
+  it('always 行带实时前 N 词预览（M10 组件6）；范围在架时语义行让位', () => {
     const scoped = buildApprovalPopup(plainPalette, {
       ...view,
       previewLines: undefined,
@@ -57,8 +58,7 @@ describe('buildApprovalPopup', () => {
       alwaysScope: { words: 2, total: 4, prefix: 'git status' },
     }, 80);
     expect(scoped[2]).toBe('  ❯ 总是允许 前2/4词：git status');
-    expect(scoped[4]).toContain('←/→ 调整「总是允许」的授权词数');
-    expect(scoped[4]).not.toContain('命令程序前缀'); // 可调时静态说明让位
+    expect(scoped).toHaveLength(4); // 预览本身就是内容，不再挂提示行
     // 非选中行同样带预览（范围是当前状态，不是选中态装饰）。
     const offSel = buildApprovalPopup(plainPalette, {
       ...view,
@@ -90,8 +90,7 @@ describe('buildApprovalPopup', () => {
       denyNote: { text: '别碰 CI', focused: true },
     }, 80);
     expect(typed[3]).toBe('  ❯ 拒绝：别碰 CI');
-    expect(typed[4]).toContain('打字即补充拒绝理由');
-    expect(typed[4]).toContain('⌫ 删字');
+    expect(typed).toHaveLength(4); // 键位（打字/⌫）归底部快捷键条，弹窗不再重复
     // 空理由 + 聚焦：占位提示打字；失焦回到原文案。
     const focused = buildApprovalPopup(plainPalette, {
       ...view,
@@ -107,7 +106,7 @@ describe('buildApprovalPopup', () => {
       denyNote: { text: '', focused: false },
     }, 80);
     expect(unfocused[3]).toBe('    拒绝');
-    expect(unfocused[4]).toBe('  ↑↓ 选择 · Enter 确认 · Esc 拒绝');
+    expect(unfocused).toHaveLength(4); // 无提示行：键位归底部快捷键条
   });
 
   it('approval options stay y/a/n-ordered', () => {

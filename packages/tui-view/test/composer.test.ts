@@ -156,6 +156,16 @@ describe('hintBar（屏幕最后一行的键位条，Grok shortcuts_bar）', () 
     expect(hintBar(plainPalette, hintItems(state({ tabMode: true })), 120)).toContain('Tab');
   });
 
+  it('审批键位随光标所在行换：←→ 只在可调范围时印，打字/⌫ 只在拒绝行', () => {
+    const bar = (over: Partial<HintState>): string =>
+      hintBar(plainPalette, hintItems(state({ picker: 'approval', ...over })), 120);
+    expect(bar({})).not.toContain('←→');
+    expect(bar({ approvalScope: true })).toContain('←→:调授权词数');
+    expect(bar({})).not.toContain('⌫');
+    expect(bar({ denyTyping: true })).toContain('打字:补理由');
+    expect(bar({ denyTyping: true })).toContain('⌫:删字');
+  });
+
   it('谁占用键盘就换哪套键位', () => {
     expect(hintBar(plainPalette, hintItems(state({ picker: 'approval' })), 120)).toContain('1-9:选项');
     expect(hintBar(plainPalette, hintItems(state({ modeSelect: true })), 120)).toContain('↑↓:选模式');
@@ -221,14 +231,14 @@ describe('chip fold: 长粘贴纯显示折叠 (M10 组件8)', () => {
 
   it('徽章就地替换区间：行数学只见徽章文本', () => {
     const f = foldChips(input, [chip]);
-    expect(f.text).toBe('head\n⧉ 粘贴 3行 8字\ntail');
+    expect(f.text).toBe('head\n▤ 粘贴 3行 8字\ntail');
     expect(f.text).not.toContain('L2'); // 粘贴段只在缓冲，不在显示
   });
 
   it('chip 内部/右缘的显示映射钳到徽章边界，往返一致', () => {
     const f = foldChips(input, [chip]);
     const bStart = 5;
-    const bEnd = 5 + '⧉ 粘贴 3行 8字'.length;
+    const bEnd = 5 + '▤ 粘贴 3行 8字'.length;
     expect(f.toDisplay(chip.start)).toBe(bStart); // 光标停在徽章上（渲染反色首字）
     expect(f.toDisplay(chip.start, 'end')).toBe(bEnd); // 右移整越
     expect(f.toDisplay(10)).toBe(bStart); // 非法内部位置钳左缘
@@ -247,14 +257,14 @@ describe('chip fold: 长粘贴纯显示折叠 (M10 组件8)', () => {
     const s2 = two.indexOf(pasted, p1.end + 1);
     const p2 = { start: s2, end: s2 + pasted.length };
     const f = foldChips(two, [p2, p1]); // 乱序入参
-    expect((f.text.match(/⧉ 粘贴/g) ?? []).length).toBe(2);
+    expect((f.text.match(/▤ 粘贴/g) ?? []).length).toBe(2);
     expect(f.toBuffer(f.toDisplay(p2.end))).toBe(p2.end);
     const bad = foldChips('short', [{ start: 4, end: 2 }, { start: 0, end: 99 }]);
     expect(bad.text).toBe('short'); // 倒挂与越界都不进折叠
   });
 
   it('chipBadge：行数按换行计，字数 >999 折 k', () => {
-    expect(chipBadge('a\nb', { start: 0, end: 3 })).toBe('⧉ 粘贴 2行 3字');
+    expect(chipBadge('a\nb', { start: 0, end: 3 })).toBe('▤ 粘贴 2行 3字');
     const big = 'x'.repeat(1500);
     expect(chipBadge(big, { start: 0, end: big.length })).toContain('1.5k字');
   });

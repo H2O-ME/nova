@@ -267,12 +267,19 @@ export interface ComposerChip {
   end: number;
 }
 
-/** `⧉ 粘贴 24行 1.2k字` — plain-text badge (wrap math is ANSI-free by contract). */
+/**
+ * `▤ 粘贴 24行 1.2k字` — plain-text badge (wrap math is ANSI-free by contract).
+ * The mark is `▤` (rules = "a block of lines") because Windows Terminal's
+ * Cascadia Mono has no glyph for `⧉`: it renders a hex tofu box, which is
+ * worse than no mark at all (probed against the real terminal, M10 批7).
+ */
+export const CHIP_MARK = '▤';
+
 export function chipBadge(input: string, chip: ComposerChip): string {
   const seg = input.slice(chip.start, chip.end);
   const lines = (seg.match(/\n/g)?.length ?? 0) + 1;
   const chars = [...seg].length;
-  return `⧉ 粘贴 ${lines}行 ${chars > 999 ? `${(chars / 1000).toFixed(1)}k` : chars}字`;
+  return `${CHIP_MARK} 粘贴 ${lines}行 ${chars > 999 ? `${(chars / 1000).toFixed(1)}k` : chars}字`;
 }
 
 export interface ChipFold {

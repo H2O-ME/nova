@@ -24,6 +24,13 @@ export const TOOL_GUTTER: { first: string; rest: string } = { first: '', rest: '
 /** Grok `accent_bar` port: the state rail glyph. */
 export const RAIL = '▌';
 
+/**
+ * Subagent marker: `◈` (nested diamond). Chosen by probing the real terminal —
+ * the previous `◈` (U+29C9) has no glyph in Cascadia Mono and printed as a hex
+ * tofu box, which reads as broken output rather than as a nested delegation.
+ */
+export const SUBAGENT_MARK = '◈';
+
 /** Block state carried by the rail color — no text row says "running"/"失败". */
 export type RailState = 'running' | 'done' | 'failed';
 
@@ -234,7 +241,7 @@ export function contextBar(ratio: number, cells = 8): string {
 
 /**
  * Live subagent row (single line, re-rendered per nested event): the agent
- * glyph `⧉` + label, the latest nested tool and the running totals. No
+ * glyph `◈` + label, the latest nested tool and the running totals. No
  * nested text is streamed — the transcript stays readable while the work
  * is provably progressing (dsh's "result, not intermediate steps" contract).
  */
@@ -245,7 +252,7 @@ export function subagentLiveLine(p: Palette, v: SubagentLiveView, frame: string)
   if (v.turns > 0) parts.push(`${v.turns} 轮`);
   if (toks > 0) parts.push(`${toks} tok`);
   const affordance = v.expandable === true ? ` ${p.dim(v.expanded ? '▾' : '▸')}` : '';
-  return `${MARK_LEAD}${p.dim(frame)} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)}${affordance} ${p.dim(`· ${parts.join(' · ')}`)}`;
+  return `${MARK_LEAD}${p.dim(frame)} ${p.bold(`${SUBAGENT_MARK} 子代理`)} ${p.cyan(v.label)}${affordance} ${p.dim(`· ${parts.join(' · ')}`)}`;
 }
 
 /**
@@ -320,7 +327,7 @@ export interface BgSubagentView {
 export function bgSubagentLine(p: Palette, v: BgSubagentView): string {
   const parts = [`${v.elapsedSecs}s`];
   if (v.progress !== undefined && v.progress.length > 0) parts.push(v.progress);
-  return `${MARK_LEAD}${p.dim('…')} ${p.bold('⧉ 子代理')} ${p.cyan(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
+  return `${MARK_LEAD}${p.dim('…')} ${p.bold(`${SUBAGENT_MARK} 子代理`)} ${p.cyan(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
 }
 
 const BG_SUBAGENT_STATUS_TEXT: Record<string, string> = {
@@ -337,5 +344,5 @@ export function bgSubagentDoneLine(
   const mark = v.status === 'completed' ? '✓' : '✗';
   const status = BG_SUBAGENT_STATUS_TEXT[v.status] ?? v.status;
   const parts = [status, ...(v.detail !== undefined && v.detail.length > 0 ? [v.detail] : [])];
-  return `${MARK_LEAD}${p.dim(mark)} ${p.dim('⧉ 子代理')} ${p.dim(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
+  return `${MARK_LEAD}${p.dim(mark)} ${p.dim(`${SUBAGENT_MARK} 子代理`)} ${p.dim(v.label)} ${p.dim(`· ${parts.join(' · ')}`)}`;
 }

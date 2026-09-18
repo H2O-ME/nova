@@ -165,7 +165,7 @@ export class TurnProjector {
     store.interruptAt = 0;
     store.genPhase = 'idle';
     // 中断/出错时活行等不到 tool_call_result 的改写：回退为静态行并清场，
-    // 否则「⧉ 子代理 … tok」的假活行会永远停在转录里。
+    // 否则「◈ 子代理 … tok」的假活行会永远停在转录里。
     this.subagentLives.abortAll();
     this.liveFeedCallId = undefined;
     // An abort/error never reaches the fold: no transient reasoning line may

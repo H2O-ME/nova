@@ -211,6 +211,8 @@ export class FrameAssembler {
           streaming: store.streaming || store.compactRunning,
           queue: store.messageQueue.length,
           tabMode: d.tabMode(),
+          approvalScope: store.approvalIndex === 1 && store.approvalScopeWords().length > 1,
+          denyTyping: store.approvalIndex === 2,
         }),
         cols - 1,
       ),

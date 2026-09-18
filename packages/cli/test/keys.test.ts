@@ -227,9 +227,9 @@ describe('click-to-expand subagent detail', () => {
     const { env } = createMockEnv();
     const store = env.store;
     const block = {
-      lines: ['⧉ 子代理 done row'],
+      lines: ['◈ 子代理 done row'],
       wrapped: undefined,
-      detail: { lines: ['  › read_file a.ts'], secs: 3, base: ['⧉ 子代理 done row'] },
+      detail: { lines: ['  › read_file a.ts'], secs: 3, base: ['◈ 子代理 done row'] },
       expanded: false,
     };
     store.blocks.push(block);
@@ -237,11 +237,11 @@ describe('click-to-expand subagent detail', () => {
 
     handleKey(env, { type: 'click', y: 1 });
     expect(block.expanded).toBe(true);
-    expect(block.lines).toEqual(['⧉ 子代理 done row', '  › read_file a.ts']);
+    expect(block.lines).toEqual(['◈ 子代理 done row', '  › read_file a.ts']);
 
     handleKey(env, { type: 'click', y: 1 });
     expect(block.expanded).toBe(false);
-    expect(block.lines).toEqual(['⧉ 子代理 done row']);
+    expect(block.lines).toEqual(['◈ 子代理 done row']);
   });
 
   it('blocks without detail are not toggled by clicks', () => {

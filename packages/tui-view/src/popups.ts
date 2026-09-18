@@ -63,15 +63,10 @@ export function buildApprovalPopup(p: Palette, v: ApprovalPopupView, cols: numbe
     }
     lines.push(i === v.index ? `  ${p.cyan(p.bold(`❯ ${label}`))}` : `    ${p.dim(label)}`);
   }
-  if (v.alwaysScope !== undefined) {
-    lines.push(`  ${p.dim(clipToWidth('←/→ 调整「总是允许」的授权词数（当前命令前 N 词）', Math.max(12, cols - 3)))}`);
-  } else if (v.isExecuteKind === true) {
-    lines.push(`  ${p.dim(clipToWidth('总是允许按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）', Math.max(12, cols - 3)))}`);
+  // 键位归底部快捷键条（hint-bar）——弹窗只留"这条授权意味着什么"这一句内容。
+  if (v.alwaysScope === undefined && v.isExecuteKind === true) {
+    lines.push(`  ${p.dim(clipToWidth('「总是允许」按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）', Math.max(12, cols - 3)))}`);
   }
-  if (v.denyNote?.focused === true) {
-    lines.push(`  ${p.dim(clipToWidth('打字即补充拒绝理由（随结果回给模型） · Enter 确认 · ⌫ 删字', Math.max(12, cols - 3)))}`);
-  }
-  lines.push(`  ${p.dim(clipToWidth('↑↓ 选择 · Enter 确认 · Esc 拒绝', Math.max(12, cols - 3)))}`);
   return lines;
 }
 

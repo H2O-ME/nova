@@ -1,6 +1,6 @@
 /**
  * Subagent live rows. Foreground children TAKE OVER their pending tool line —
- * one block morphs 调用 → ⧉ live → 完成行, so the same fact is never drawn
+ * one block morphs 调用 → ◈ live → 完成行, so the same fact is never drawn
  * twice (the line animation skips taken-over entries). Background (detached)
  * children have no pending line to adopt, so they pin their own row and
  * self-refresh until the job settles. The nested execution log accumulates in

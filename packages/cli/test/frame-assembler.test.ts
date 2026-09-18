@@ -88,7 +88,7 @@ describe('FrameAssembler', () => {
     t.store.cursorPos = 5;
     t.assembler.render({ commandMatches: [], modelContextTokens: () => undefined, currentModel: 'm1', currentSessionFile: '/s.jsonl' });
     const frame = t.frames.at(-1)!;
-    expect(frame.lines.join('\n')).toContain('⧉ 粘贴 2行 3字');
+    expect(frame.lines.join('\n')).toContain('▤ 粘贴 2行 3字');
     expect(frame.cursor.col).toBeGreaterThanOrEqual(0);
   });
 

@@ -611,7 +611,7 @@ describe('subagent live line & detail rows', () => {
 describe('background subagent rows (run_in_background visibility)', () => {
   it('live row shows elapsed + latest nested activity', () => {
     const line = bgSubagentLine(p, { label: 'decode-sha', elapsedSecs: 45, progress: '12 tools · read_file a.ts {"path":"x"}' });
-    expect(line).toContain('⧉ 子代理');
+    expect(line).toContain('◈ 子代理');
     expect(line).toContain('decode-sha');
     expect(line).toContain('45s');
     expect(line).toContain('12 tools');
