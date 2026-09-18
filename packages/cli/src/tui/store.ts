@@ -5,7 +5,7 @@
  */
 
 import type { ToolCall } from '@nova-agent/core';
-import type { PermissionKind } from '@nova-agent/plugins';
+import { alwaysScopeWords, type AskResult, type PermissionKind } from '@nova-agent/plugins';
 import type { SessionEntry } from '../sessions.js';
 import {
   APPROVAL_OPTIONS,
@@ -61,7 +61,7 @@ export type GenPhase = 'idle' | 'thinking' | 'writing' | 'tool';
 export interface ApprovalState {
   call: ToolCall;
   kind: PermissionKind;
-  resolve: (a: 'allow' | 'deny' | 'always') => void;
+  resolve: (a: AskResult) => void;
 }
 
 export const APPROVAL_CODES = APPROVAL_OPTIONS.map((o) => o.code);
@@ -88,6 +88,8 @@ export class TuiStore {
   modeSelect: { index: number } | undefined;
   approval: ApprovalState | undefined;
   approvalIndex = 0;
+  /** 组件6：always 行的授权词数（当前命令前 N 词），每次弹窗重置为 1。 */
+  approvalScope = 1;
   approvalPreview: string[] | undefined;
   spinnerFrame = 0;
   interruptAt = 0;
@@ -152,6 +154,16 @@ export class TuiStore {
 
   closeReadGroup(): void {
     this.readGroup = undefined;
+  }
+
+  /**
+   * 组件6：当前审批可调节的 always 授权词表——execute 且命令是裸式才有词，
+   * 复合/无 command 返回 []（不可调，维持默认记忆粒度）。
+   */
+  approvalScopeWords(): string[] {
+    const ap = this.approval;
+    if (ap === undefined || ap.kind !== 'execute') return [];
+    return alwaysScopeWords(ap.call.args['command']);
   }
 
   /** Queue a message typed while a turn is streaming (rendered above the composer). */

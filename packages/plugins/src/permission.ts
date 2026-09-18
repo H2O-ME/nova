@@ -3,7 +3,48 @@ import type { PermissionKind } from './types.js';
 
 export type ApprovalMode = 'read-only' | 'auto-edit' | 'full';
 export type AskAnswer = 'allow' | 'deny' | 'always';
-export type AskFn = (call: ToolCall, kind: PermissionKind) => Promise<AskAnswer>;
+/**
+ * An "always" answer carrying an explicit grant scope (Grok 组件6 port): the
+ * answerer may pin the memory to the FIRST N WORDS of the command instead of
+ * the default program prefix. Validated against the actual call in decide();
+ * an out-of-range N silently falls back to the default scope.
+ */
+export interface AlwaysGrant {
+  answer: 'always';
+  scopeWords: number;
+}
+export type AskResult = AskAnswer | AlwaysGrant;
+export type AskFn = (call: ToolCall, kind: PermissionKind) => Promise<AskResult>;
+
+/** Chaining/substitution markers — a command containing them grants whole-command memory only. */
+function isCompoundCommand(command: string): boolean {
+  return /[&;|\n\r]/.test(command) || command.includes('$(') || command.includes('`');
+}
+
+/**
+ * The word list an execute command can scope an "always" grant over:
+ * a bare (non-compound) command's tokens; [] for compound commands,
+ * where only whole-command memory is safe (no meaningful word prefix).
+ */
+export function alwaysScopeWords(command: unknown): string[] {
+  if (typeof command !== 'string') return [];
+  const trimmed = command.trim();
+  if (trimmed.length === 0 || isCompoundCommand(trimmed)) return [];
+  return trimmed.split(/\s+/);
+}
+
+/** Fail-closed normalization: anything malformed denies the call. */
+function normalizeAsk(raw: unknown): AskResult {
+  if (raw === 'allow' || raw === 'deny') return raw;
+  if (raw === 'always') return raw;
+  if (typeof raw === 'object' && raw !== null) {
+    const grant = raw as Partial<AlwaysGrant>;
+    if (grant.answer === 'always' && Number.isInteger(grant.scopeWords) && (grant.scopeWords as number) >= 1) {
+      return { answer: 'always', scopeWords: grant.scopeWords as number };
+    }
+  }
+  return 'deny';
+}
 
 /**
  * Session-level policy applied BEFORE any interactive answerer runs
@@ -33,6 +74,11 @@ export interface ApprovalAudit {
  *   (`exec:git`), so `git status` approves later `git ...` commands but not
  *   `rm -rf`;
  * - other kinds are remembered per tool name + kind.
+ *
+ * An asker may pin the scope tighter/looser (组件6, Grok 可调 always 范围):
+ * `alwaysScopeWords` 给出可选词数，`{answer:'always', scopeWords:N}` 把记忆
+ * 钉在命令前 N 词（`git status` → 放行 `git status …`，不波及 `git commit`）。
+ * N 越界或命令是复合式时回落默认范围——授权范围永远由引擎校验，不由询问器自定。
  *
  * All failure modes fail closed: a throwing asker or an invalid answer
  * denies the call instead of opening the gate.
@@ -102,8 +148,7 @@ export class PermissionService {
     if (kind === 'execute') {
       const command = typeof call.args['command'] === 'string' ? call.args['command'].trim() : '';
       if (command.length > 0) {
-        const compound = /[&;|\n\r]/.test(command) || command.includes('$(') || command.includes('`');
-        if (compound) return `exec:${command.replace(/\s+/g, ' ')}`;
+        if (isCompoundCommand(command)) return `exec:${command.replace(/\s+/g, ' ')}`;
         const program = (command.split(/\s+/)[0] ?? '').toLowerCase();
         if (program.length > 0) return `exec:${program}`;
       }
@@ -111,8 +156,31 @@ export class PermissionService {
     return `${toolName}:${kind}`;
   }
 
+  /**
+   * The grant scope the user pinned with ←/→ (组件6): first N words of the
+   * command, program lowercased like the default key. undefined when N runs
+   * past the words or the command has no word-prefix semantics (compound).
+   */
+  private scopeKey(kind: PermissionKind, call: ToolCall, n: number): string | undefined {
+    if (kind !== 'execute') return undefined;
+    const words = alwaysScopeWords(call.args['command']);
+    if (words.length === 0 || n > words.length) return undefined;
+    const [first, ...rest] = words;
+    return `exec:${[(first ?? '').toLowerCase(), ...rest.slice(0, n - 1)].join(' ')}`;
+  }
+
+  /** Any remembered word-prefix (2..N words) covering this bare command. */
+  private scopeHit(call: ToolCall): boolean {
+    const words = alwaysScopeWords(call.args['command']);
+    for (let n = 2; n <= words.length; n++) {
+      if (this.remembered.has(this.scopeKey('execute', call, n) ?? '')) return true;
+    }
+    return false;
+  }
+
   async check(toolName: string, kind: PermissionKind, call: ToolCall): Promise<'allow' | 'deny' | 'ask'> {
     if (this.remembered.has(this.rememberKey(toolName, kind, call))) return 'allow';
+    if (kind === 'execute' && this.scopeHit(call)) return 'allow';
     if (this.autoAllows(kind)) return 'allow';
     return 'ask';
   }
@@ -121,9 +189,12 @@ export class PermissionService {
     const verdict = await this.check(toolName, kind, call);
     if (verdict !== 'ask') return verdict === 'allow' ? 'allow' : 'deny';
 
-    const answer = await this.enqueueAsk(call, kind);
-
-    if (answer === 'always') this.remembered.add(this.rememberKey(toolName, kind, call));
+    const result = await this.enqueueAsk(call, kind);
+    const answer: AskAnswer = typeof result === 'string' ? result : result.answer;
+    if (answer === 'always') {
+      const scoped = typeof result === 'string' ? 1 : result.scopeWords;
+      this.remembered.add(this.scopeKey(kind, call, scoped) ?? this.rememberKey(toolName, kind, call));
+    }
     this.audit?.({ toolName, kind, outcome: answer });
     return answer === 'deny' ? 'deny' : 'allow';
   }
@@ -133,12 +204,10 @@ export class PermissionService {
    * captured call/kind), immune to a previous asker's failure. 'never'
    * short-circuits; a throwing asker or an invalid answer denies.
    */
-  private enqueueAsk(call: ToolCall, kind: PermissionKind): Promise<AskAnswer> {
-    const dispatch = (): AskAnswer | Promise<AskAnswer> => {
+  private enqueueAsk(call: ToolCall, kind: PermissionKind): Promise<AskResult> {
+    const dispatch = (): AskResult | Promise<AskResult> => {
       if (this.policy === 'never') return 'deny';
-      return this.ask(call, kind)
-        .then((raw) => (raw === 'allow' || raw === 'deny' || raw === 'always' ? raw : 'deny'))
-        .catch(() => 'deny' as AskAnswer);
+      return this.ask(call, kind).then(normalizeAsk).catch(() => 'deny' as AskResult);
     };
     const run = this.askChain.then(dispatch, dispatch);
     this.askChain = run.then(

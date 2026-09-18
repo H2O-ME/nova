@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleKey, type KeyEnv } from '../src/tui/keys.js';
 import { TuiStore } from '../src/tui/store.js';
+import type { AskResult } from '@nova-agent/plugins';
 import { plainPalette } from '@nova-agent/tui-view';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -311,5 +312,74 @@ describe('gauge hover morph (M10 组件1)', () => {
     handleKey(env, { type: 'mousemove', x: 5, y: 5 });
     expect(env.store.input).toBe('keep');
     expect(env.store.gaugeHover).toBe(false);
+  });
+});
+
+describe('approval always-scope adjustment (M10 组件6)', () => {
+  function withApproval(command: string): { env: KeyEnv; answers: AskResult[] } {
+    const { env } = createMockEnv();
+    const answers: AskResult[] = [];
+    env.store.approval = {
+      call: { id: 'c1', name: 'bash', args: { command }, rawArgs: JSON.stringify({ command }) },
+      kind: 'execute',
+      resolve: (a) => {
+        answers.push(a);
+      },
+    };
+    env.store.approvalIndex = 1; // 「总是允许」行
+    return { env, answers };
+  }
+
+  it('←/→ on the always row walks the scope within [1, 命令词数]', () => {
+    const { env } = withApproval('git status -sb extra');
+    handleKey(env, { type: 'right' });
+    expect(env.store.approvalScope).toBe(2);
+    handleKey(env, { type: 'right' });
+    handleKey(env, { type: 'right' });
+    expect(env.store.approvalScope).toBe(4);
+    handleKey(env, { type: 'right' }); // 封顶在词数
+    expect(env.store.approvalScope).toBe(4);
+    handleKey(env, { type: 'left' });
+    expect(env.store.approvalScope).toBe(3);
+    handleKey(env, { type: 'left' });
+    handleKey(env, { type: 'left' });
+    expect(env.store.approvalScope).toBe(1); // 触底不再减
+    handleKey(env, { type: 'left' });
+    expect(env.store.approvalScope).toBe(1);
+  });
+
+  it('off the always row, or a compound command, ←/→ moves nothing', () => {
+    const { env } = withApproval('git status');
+    env.store.approvalIndex = 0;
+    handleKey(env, { type: 'right' });
+    expect(env.store.approvalScope).toBe(1);
+    expect(env.store.approvalIndex).toBe(0); // 不被 composer 层挪光标
+    const { env: comp } = withApproval('cd x && ls'); // 复合命令：无词前缀可调
+    handleKey(comp, { type: 'right' });
+    expect(comp.store.approvalScope).toBe(1);
+  });
+
+  it('Enter/a carry the scope only when N>1; N=1 resolves plain always', () => {
+    const a = withApproval('git status -sb');
+    handleKey(a.env, { type: 'right' });
+    handleKey(a.env, { type: 'enter' });
+    expect(a.answers).toEqual([{ answer: 'always', scopeWords: 2 }]);
+    expect(a.env.store.approval).toBeUndefined();
+
+    const b = withApproval('git status -sb');
+    handleKey(b.env, { type: 'enter' });
+    expect(b.answers).toEqual(['always']);
+
+    const c = withApproval('git status -sb');
+    handleKey(c.env, { type: 'right' });
+    handleKey(c.env, { type: 'char', ch: 'a' });
+    expect(c.answers).toEqual([{ answer: 'always', scopeWords: 2 }]);
+  });
+
+  it('deny/allow paths never mint a grant', () => {
+    const { env, answers } = withApproval('git status -sb');
+    handleKey(env, { type: 'right' });
+    handleKey(env, { type: 'esc' });
+    expect(answers).toEqual(['deny']);
   });
 });

@@ -240,6 +240,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     new Promise((resolve) => {
       store.approval = { call, kind, resolve };
       store.approvalIndex = 0;
+      store.approvalScope = 1;
       store.approvalPreview = undefined;
       // Best-effort effect preview (edit_file's diff etc.) inside the popup —
       // the user approves what the call WILL do, not just the arg JSON.

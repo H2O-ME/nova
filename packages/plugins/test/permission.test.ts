@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionService, type AskAnswer, type AskFn } from '../src/permission.js';
+import { PermissionService, alwaysScopeWords, type AskAnswer, type AskFn, type AskResult } from '../src/permission.js';
 import type { PermissionKind } from '../src/types.js';
 import type { ToolCall } from '@nova-agent/core';
 
@@ -15,7 +15,7 @@ const EXECUTE: PermissionKind = 'execute';
 const NETWORK: PermissionKind = 'network';
 
 /** Asker that records every dispatch and answers from a fixed script. */
-function scriptedAsk(answers: AskAnswer[]): { ask: AskFn; asked: ToolCall[] } {
+function scriptedAsk(answers: AskResult[]): { ask: AskFn; asked: ToolCall[] } {
   const asked: ToolCall[] = [];
   let i = 0;
   const ask: AskFn = async (c) => {
@@ -184,6 +184,70 @@ describe('PermissionService always-memory scopes', () => {
     await expect(svc.check('bash', EXECUTE, call('bash', { command: 'git diff' }))).resolves.toBe('allow');
     await expect(svc.check('bash', EXECUTE, call('bash', { command: 'curl evil' }))).resolves.toBe('ask');
     expect(asked).toHaveLength(1);
+  });
+});
+
+describe('PermissionService adjustable always scope (M10 组件6)', () => {
+  it('a 2-word grant covers the same prefix but never a sibling subcommand', async () => {
+    const { ask, asked } = scriptedAsk([{ answer: 'always', scopeWords: 2 }, 'deny']);
+    const svc = new PermissionService('read-only', ask);
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'git status -sb' }))).resolves.toBe('allow');
+    // 前 2 词命中即放行（含更多尾词）。
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'git status --porcelain' }))).resolves.toBe('allow');
+    // 更短的同前缀命令：词数不足 2，前缀语义不成立 → 重新询问（脚本 deny）。
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'git' }))).resolves.toBe('deny');
+    expect(asked).toHaveLength(2);
+    // 兄弟子命令绝不命中。
+    await expect(svc.check('bash', EXECUTE, call('bash', { command: 'git commit -m x' }))).resolves.toBe('ask');
+    // 程序前缀也没被记住——范围比默认更紧。
+    await expect(svc.check('bash', EXECUTE, call('bash', { command: 'git log' }))).resolves.toBe('ask');
+  });
+
+  it('out-of-range / compound / non-execute grants fall back to the default scope', async () => {
+    // N 超出命令词数：回落默认（程序前缀），不抛错也不放大授权。
+    const { ask } = scriptedAsk([{ answer: 'always', scopeWords: 9 }, 'allow']);
+    const svc = new PermissionService('read-only', ask);
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'git status' }))).resolves.toBe('allow');
+    await expect(svc.check('bash', EXECUTE, call('bash', { command: 'git log' }))).resolves.toBe('allow'); // exec:git 生效
+
+    // 复合命令没有词前缀语义：scope grant 回落整条记忆。
+    const { ask: ask2 } = scriptedAsk([{ answer: 'always', scopeWords: 2 }]);
+    const svc2 = new PermissionService('read-only', ask2);
+    await expect(svc2.decide('bash', EXECUTE, call('bash', { command: 'cd x && git status' }))).resolves.toBe('allow');
+    await expect(svc2.check('bash', EXECUTE, call('bash', { command: 'git log' }))).resolves.toBe('ask');
+    await expect(svc2.check('bash', EXECUTE, call('bash', { command: 'cd x && git   status' }))).resolves.toBe('allow');
+
+    // 非 execute 的 grant：scope 无意义，回落 tool:kind。
+    const { ask: ask3 } = scriptedAsk([{ answer: 'always', scopeWords: 3 }]);
+    const svc3 = new PermissionService('read-only', ask3);
+    await expect(svc3.decide('write_file', WRITE, call('write_file', { path: 'a' }))).resolves.toBe('allow');
+    await expect(svc3.decide('write_file', WRITE, call('write_file', { path: 'b' }))).resolves.toBe('allow');
+  });
+
+  it('malformed grants deny (fail-closed), plain AskAnswer strings keep working', async () => {
+    const bad: unknown[] = [
+      { answer: 'always', scopeWords: 0 },
+      { answer: 'always', scopeWords: 1.5 },
+      { answer: 'always' },
+      { answer: 'allow', scopeWords: 2 },
+      { answer: 'yes', scopeWords: 2 },
+      'maybe',
+    ];
+    for (const raw of bad) {
+      const ask: AskFn = async () => raw as AskResult;
+      const svc = new PermissionService('read-only', ask);
+      await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'git status' }))).resolves.toBe('deny');
+    }
+  });
+
+  it('alwaysScopeWords: bare commands expose tokens, compound/empty expose none', () => {
+    expect(alwaysScopeWords(' git  status -sb ')).toEqual(['git', 'status', '-sb']);
+    expect(alwaysScopeWords('git commit -m "two words"')).toHaveLength(5); // 词法前缀本就朴素
+    expect(alwaysScopeWords('echo $(whoami)')).toEqual([]);
+    expect(alwaysScopeWords('ls && ls')).toEqual([]);
+    expect(alwaysScopeWords('')).toEqual([]);
+    expect(alwaysScopeWords(undefined)).toEqual([]);
+    expect(alwaysScopeWords(42)).toEqual([]);
   });
 });
 

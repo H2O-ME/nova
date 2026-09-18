@@ -171,6 +171,9 @@ export interface ActiveViewDeps {
  */
 export function resolveActiveView(store: TuiStore, paint: Palette, cols: number, deps: ActiveViewDeps): string[] {
   if (store.approval !== undefined) {
+    // 组件6：裸式命令才有可调词表；1 词命令无范围可调（等价默认程序前缀）。
+    const words = store.approvalScopeWords();
+    const n = words.length > 1 ? Math.min(store.approvalScope, words.length) : 0;
     return buildApprovalPopup(
       paint,
       {
@@ -180,6 +183,7 @@ export function resolveActiveView(store: TuiStore, paint: Palette, cols: number,
         previewLines: store.approvalPreview,
         index: store.approvalIndex,
         isExecuteKind: store.approval.kind === 'execute',
+        alwaysScope: n > 0 ? { words: n, total: words.length, prefix: words.slice(0, n).join(' ') } : undefined,
       },
       cols,
     );

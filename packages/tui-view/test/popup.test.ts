@@ -49,6 +49,39 @@ describe('buildApprovalPopup', () => {
     expect(other).toHaveLength(5);
   });
 
+  it('always 行带实时前 N 词预览，静态说明行换成 ←/→ 提示（M10 组件6）', () => {
+    const scoped = buildApprovalPopup(plainPalette, {
+      ...view,
+      previewLines: undefined,
+      isExecuteKind: true,
+      alwaysScope: { words: 2, total: 4, prefix: 'git status' },
+    }, 80);
+    expect(scoped[2]).toBe('  ❯ 总是允许 前2/4词：git status');
+    expect(scoped[4]).toContain('←/→ 调整「总是允许」的授权词数');
+    expect(scoped[4]).not.toContain('命令程序前缀'); // 可调时静态说明让位
+    // 非选中行同样带预览（范围是当前状态，不是选中态装饰）。
+    const offSel = buildApprovalPopup(plainPalette, {
+      ...view,
+      previewLines: undefined,
+      index: 0,
+      alwaysScope: { words: 1, total: 4, prefix: 'git' },
+    }, 80);
+    expect(offSel[2]).toContain('总是允许 前1/4词：git');
+  });
+
+  it('scope preview clips into the row budget at narrow cols', () => {
+    // cols=30 时头部 12 列摘要下限本就溢出（弹窗既有债务）；40 列验证导轨范围行的裁剪。
+    const lines = buildApprovalPopup(plainPalette, {
+      ...view,
+      argSummary: 'pnpm i',
+      previewLines: undefined,
+      isExecuteKind: true,
+      alwaysScope: { words: 2, total: 6, prefix: 'pnpm workspace run filter' },
+    }, 40);
+    for (const line of lines) expect(styledWidth(line)).toBeLessThanOrEqual(39);
+    expect(lines[2]).toContain('…');
+  });
+
   it('approval options stay y/a/n-ordered', () => {
     expect(APPROVAL_OPTIONS.map((o) => o.code)).toEqual(['allow', 'always', 'deny']);
     expect(APPROVAL_OPTIONS.map((o) => o.label)).toEqual(['允许一次', '总是允许', '拒绝']);

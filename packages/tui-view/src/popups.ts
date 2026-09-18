@@ -26,6 +26,11 @@ export interface ApprovalPopupView {
   index: number;
   /** Execute-class approvals name the always-grant scope. */
   isExecuteKind?: boolean;
+  /**
+   * 组件6：可交互调节的 always 授权范围（命令前 N 词）。给出时「总是允许」行
+   * 自带实时预览、静态前缀说明行换成 ←/→ 提示；缺省时行为与旧弹窗一致。
+   */
+  alwaysScope?: { words: number; total: number; prefix: string };
 }
 
 /** Approval popup: header + preview clip to remaining columns. */
@@ -39,13 +44,19 @@ export function buildApprovalPopup(p: Palette, v: ApprovalPopupView, cols: numbe
     for (const line of v.previewLines) lines.push(`  ${p.dim(clipToWidth(line, Math.max(12, cols - 3)))}`);
   }
   for (let i = 0; i < APPROVAL_OPTIONS.length; i++) {
-    const label = APPROVAL_OPTIONS[i]?.label ?? '';
+    let label = APPROVAL_OPTIONS[i]?.label ?? '';
+    if (i === 1 && v.alwaysScope !== undefined) {
+      const budget = Math.max(8, cols - 1 - styledWidth(`  ❯ ${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：`));
+      label = `${label} 前${v.alwaysScope.words}/${v.alwaysScope.total}词：${clipToWidth(v.alwaysScope.prefix, budget)}`;
+    }
     lines.push(i === v.index ? `  ${p.cyan(p.bold(`❯ ${label}`))}` : `    ${p.dim(label)}`);
   }
-  if (v.isExecuteKind === true) {
-    lines.push(`  ${p.dim('总是允许按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）')}`);
+  if (v.alwaysScope !== undefined) {
+    lines.push(`  ${p.dim(clipToWidth('←/→ 调整「总是允许」的授权词数（当前命令前 N 词）', Math.max(12, cols - 3)))}`);
+  } else if (v.isExecuteKind === true) {
+    lines.push(`  ${p.dim(clipToWidth('总是允许按命令程序前缀记忆（git status → git …；含 &&/;/| 整条）', Math.max(12, cols - 3)))}`);
   }
-  lines.push(`  ${p.dim('↑↓ 选择 · Enter 确认 · Esc 拒绝')}`);
+  lines.push(`  ${p.dim(clipToWidth('↑↓ 选择 · Enter 确认 · Esc 拒绝', Math.max(12, cols - 3)))}`);
   return lines;
 }
 

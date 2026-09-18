@@ -159,30 +159,40 @@ function toggleDetailBlock(env: KeyEnv, block: Block): void {
 }
 
 import { APPROVAL_CODES } from './store.js';
+import type { AskAnswer, AskResult } from '@nova-agent/plugins';
 import { summaryRow } from '@nova-agent/tui-view';
 
-/** Approval modal swallows everything (arrows + Enter, y/a/n + 1/2/3). */
+/** Approval modal swallows everything (arrows + Enter, y/a/n + 1/2/3; ←/→ tunes the always scope). */
 function keyApprovalModal(env: KeyEnv, k: Key): boolean {
   const { store } = env;
   if (store.approval === undefined) return false;
-  const resolve = (answer: 'allow' | 'deny' | 'always'): void => {
+  const resolve = (answer: AskResult): void => {
     store.approval?.resolve(answer);
     store.approval = undefined;
     store.approvalPreview = undefined;
   };
+  // 组件6：词数 >1 才是显式范围授权；1 走引擎默认（程序前缀）。
+  const scopeGrant = (code: AskAnswer | 'always'): AskResult =>
+    code === 'always' && store.approvalScope > 1 ? { answer: 'always', scopeWords: store.approvalScope } : code;
   if (k.type === 'ctrl+c') {
     resolve('deny');
     env.abortLast();
     env.scheduleRender();
     return true;
   }
+  // 组件6：←/→ 属于范围调节，先行截断，不进选择链。
+  if (k.type === 'left' || k.type === 'right') {
+    scopeStep(store, k);
+    env.scheduleRender();
+    return true;
+  }
   if (k.type === 'up') store.approvalIndex = Math.max(0, store.approvalIndex - 1);
   else if (k.type === 'down') store.approvalIndex = Math.min(APPROVAL_CODES.length - 1, store.approvalIndex + 1);
   else if (k.type === 'enter') {
-    resolve(APPROVAL_CODES[store.approvalIndex] ?? 'deny');
+    resolve(scopeGrant(APPROVAL_CODES[store.approvalIndex] ?? 'deny'));
   } else if (k.type === 'char') {
     if (k.ch === 'y' || k.ch === 'Y') resolve('allow');
-    else if (k.ch === 'a' || k.ch === 'A') resolve('always');
+    else if (k.ch === 'a' || k.ch === 'A') resolve(scopeGrant('always'));
     else if (k.ch === 'n' || k.ch === 'N') resolve('deny');
     else if (k.ch === '1') store.approvalIndex = 0;
     else if (k.ch === '2') store.approvalIndex = 1;
@@ -192,6 +202,14 @@ function keyApprovalModal(env: KeyEnv, k: Key): boolean {
   }
   env.scheduleRender();
   return true;
+}
+
+/** 组件6：「总是允许」行上 ←/→ 挪授权词数，钳制在 [1, 命令词数]；其余行不动。 */
+function scopeStep(store: TuiStore, k: Key): void {
+  if (store.approvalIndex !== 1) return;
+  const total = store.approvalScopeWords().length;
+  if (total <= 1) return;
+  store.approvalScope = k.type === 'right' ? Math.min(total, store.approvalScope + 1) : Math.max(1, store.approvalScope - 1);
 }
 
 /** Model picker (↑↓/pagescroll · Enter switch · Esc cancel). */
