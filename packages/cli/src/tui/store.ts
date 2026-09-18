@@ -17,6 +17,7 @@ import {
   TPS_SAMPLES,
   toolBudget,
   type Palette,
+  type ToolFoldRows,
 } from '@nova-agent/tui-view';
 
 export interface Block {
@@ -26,6 +27,8 @@ export interface Block {
   /** Click-expand body (subagent nested log): rows shown under `base`. */
   detail?: { lines: string[]; secs: number; base?: string[] };
   expanded?: boolean;
+  /** 工具输出三态折叠（Grok 组件3）：0=Collapsed 头行 / 1=Truncated 预览 / 2=Expanded 全文。 */
+  fold?: ToolFoldRows & { state: 0 | 1 | 2 };
   kind?: 'user' | 'reasoning' | 'assistant' | 'tool' | 'system';
 }
 

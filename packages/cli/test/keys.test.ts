@@ -254,3 +254,36 @@ describe('click-to-expand subagent detail', () => {
     expect(block.lines).toEqual(['plain row']);
   });
 });
+
+describe('click-to-cycle tool fold (tri-state, M10 组件3)', () => {
+  function foldBlock() {
+    const { env } = createMockEnv();
+    const block = {
+      lines: ['HEAD'],
+      wrapped: undefined,
+      fold: { base: ['HEAD'], preview: ['P1', 'MORE'], full: ['P1', 'P2', 'P3'], state: 0 as 0 | 1 | 2 },
+    };
+    env.store.blocks.push(block);
+    env.store.frameMap = { rows: [{ block, start: 0, count: 1 }], sliceStart: 0, historyRows: 1 };
+    return { env, block };
+  }
+
+  it('cycles Collapsed → Truncated → Expanded → Collapsed', () => {
+    const { env, block } = foldBlock();
+    handleKey(env, { type: 'click', y: 1 });
+    expect(block.lines).toEqual(['HEAD', 'P1', 'MORE']);
+    handleKey(env, { type: 'click', y: 1 });
+    expect(block.lines).toEqual(['HEAD', 'P1', 'P2', 'P3']);
+    handleKey(env, { type: 'click', y: 1 });
+    expect(block.lines).toEqual(['HEAD']);
+    expect(block.fold!.state).toBe(0);
+  });
+
+  it('detail wins when a block somehow carries both', () => {
+    const { env, block } = foldBlock();
+    block.detail = { lines: ['D1'], secs: 1, base: ['HEAD'] };
+    handleKey(env, { type: 'click', y: 1 });
+    expect(block.lines).toEqual(['HEAD', 'D1']);
+    expect(block.fold!.state).toBe(0);
+  });
+});

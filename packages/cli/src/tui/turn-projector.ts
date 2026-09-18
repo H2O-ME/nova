@@ -30,6 +30,7 @@ import {
   TOOL_TAIL_KEEP_CHARS,
   TOOL_TAIL_SHOW_CHARS,
   toolArgSummary,
+  buildToolFoldRows,
   toolDoneLine,
   toolGroupLine,
   toolLabel,
@@ -350,8 +351,15 @@ export class TurnProjector {
       // collapsed click-expand; a fallback standalone block is removed.
       this.subagentLives.settle(call.id, lines, duration);
       store.toolBlocks.delete(call.id);
-      if (entry !== undefined) store.replaceBlock(entry.block, lines);
-      else store.pushBlock(lines);
+      if (entry !== undefined) {
+        store.replaceBlock(entry.block, lines);
+        // 三态折叠数据源随块常驻内存（resume 后不可展开，与 detail 同契约）；
+        // 子代理接管块已挂 detail，点击归属它，不再叠 fold。
+        if (entry.block.detail === undefined) {
+          const fold = buildToolFoldRows(paint, lines, content, this.budget());
+          if (fold !== undefined) entry.block.fold = { ...fold, state: 0 };
+        }
+      } else store.pushBlock(lines);
     }
   }
 

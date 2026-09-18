@@ -111,7 +111,8 @@ export function toolDoneLine(
   }
   let meta = '';
   if (flat.length === 1) meta = ` · ${clipToWidth(flat[0] ?? '', 60)}`;
-  else if (flat.length > 1) meta = ` · ${flat.length} 行`;
+  // ▸ = 可点击三态展开的 affordance（与 reasoning 折叠头同一语言）。
+  else if (flat.length > 1) meta = ` · ${flat.length} 行 ▸`;
   const head = `    ✓ ${label} ${meta}${secs}`;
   return [
     `    ${p.green('✓')} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, summaryBudget(head)))}${p.dim(meta)}${p.dim(secs)}`,
@@ -231,6 +232,55 @@ export function subagentLiveLine(p: Palette, v: SubagentLiveView, frame: string)
  */
 export function subagentDetailRows(p: Palette, entries: readonly string[], budget: number): string[] {
   return entries.map((entry) => clipToWidth(`  ${p.dim(entry)}`, Math.max(8, budget)));
+}
+
+/** Truncated 态预览行数（Grok 组件3 三态折叠：Collapsed→Truncated→Expanded）。 */
+export const FOLD_PREVIEW_ROWS = 12;
+/** 展开体内存护栏：core 侧已有 40KB 溢出落盘，这里再挡极端长单行为 TUI 内存兜底。 */
+export const FOLD_MAX_ROWS = 400;
+
+/** 三态折叠的行源（attach 时一次算全，点击只做数组拼接）。 */
+export interface ToolFoldRows {
+  /** Collapsed 行（工具完成头行原文）。 */
+  base: string[];
+  /** Truncated 正文：前 FOLD_PREVIEW_ROWS 行 +（若有）`└ … 还有 N 行` 尾行。 */
+  preview: string[];
+  /** Expanded 正文（≤FOLD_MAX_ROWS 行；正文 ≤K 行时与 preview 一致）。 */
+  full: string[];
+}
+
+/**
+ * 工具输出三态折叠的行源：<2 行内容不值得折叠（返回 undefined）。
+ * 与 toolDoneLine 同一 sanitize  choke point——外部内容绝不带着 escape 进帧。
+ */
+export function buildToolFoldRows(
+  p: Palette,
+  base: string[],
+  content: string,
+  budget: number,
+): ToolFoldRows | undefined {
+  const rows = sanitizeForDisplay(content)
+    .split('\n')
+    .filter((l) => l.trim().length > 0);
+  if (rows.length < 2) return undefined;
+  const capped = rows.length > FOLD_MAX_ROWS ? rows.slice(0, FOLD_MAX_ROWS) : rows;
+  const full = subagentDetailRows(p, capped, budget);
+  const hidden = Math.max(0, rows.length - FOLD_MAX_ROWS);
+  const body =
+    hidden > 0 ? [...full, clipToWidth(`  ${p.dim(`└ … 另有 ${hidden} 行未载入（全文见会话缓存）`)}`, Math.max(8, budget))] : full;
+  const previewBody = capped.slice(0, FOLD_PREVIEW_ROWS);
+  const rest = capped.length - previewBody.length;
+  const preview =
+    rest > 0 || hidden > 0
+      ? [
+          ...subagentDetailRows(p, previewBody, budget),
+          clipToWidth(
+            `  ${p.dim(`└ … 还有 ${rest + hidden} 行 · 再点击展开全文`)}`,
+            Math.max(8, budget),
+          ),
+        ]
+      : body;
+  return { base, preview, full: body };
 }
 
 export interface BgSubagentView {

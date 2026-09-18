@@ -72,7 +72,11 @@ describe('LineScreen choke point', () => {
     screen.enter();
     writes.length = 0;
     screen.render(['evil\x1b[2J\x1b[Htext', '']);
-    const body = writes.join('').replace(/\x1b\[\d+;1H\x1b\[0m\x1b\[0K/g, '');
+    // Built via new RegExp: a literal would carry raw control chars (no-control-regex).
+    const esc = String.fromCharCode(27);
+    const body = writes
+      .join('')
+      .replace(new RegExp(`${esc}\\[\\d+;1H${esc}\\[0m${esc}\\[0K`, 'g'), '');
     expect(body).toBe('eviltext');
   });
 

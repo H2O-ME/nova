@@ -122,15 +122,24 @@ function keyClick(env: KeyEnv, k: Key): boolean {
   return true;
 }
 
-/** Click on a detail-bearing block: toggle collapsed base ↔ base + detail. */
+/** Click on an expandable block: detail (subagent/reasoning) toggles; tool
+ * output cycles the tri-state fold Collapsed → Truncated → Expanded. */
 function toggleDetailBlock(env: KeyEnv, block: Block): void {
-  if (block.detail === undefined) return;
-  const expanded = block.expanded !== true;
-  block.expanded = expanded;
-  // `base` is the collapsed truth (subagent live/done row); the legacy
-  // reasoning shape regenerates its summary row from secs.
-  const base = block.detail.base ?? [summaryRow(env.paint, block.detail.secs, false)];
-  env.store.replaceBlock(block, expanded ? [...base, ...block.detail.lines] : base);
+  if (block.detail !== undefined) {
+    const expanded = block.expanded !== true;
+    block.expanded = expanded;
+    // `base` is the collapsed truth (subagent live/done row); the legacy
+    // reasoning shape regenerates its summary row from secs.
+    const base = block.detail.base ?? [summaryRow(env.paint, block.detail.secs, false)];
+    env.store.replaceBlock(block, expanded ? [...base, ...block.detail.lines] : base);
+    return;
+  }
+  const fold = block.fold;
+  if (fold === undefined) return;
+  // 行源在 toolResult 时一次算全（preview/full 已含样式与行计数），点击纯拼接。
+  fold.state = fold.state === 0 ? 1 : fold.state === 1 ? 2 : 0;
+  const body = fold.state === 0 ? [] : fold.state === 1 ? fold.preview : fold.full;
+  env.store.replaceBlock(block, [...fold.base, ...body]);
 }
 
 import { APPROVAL_CODES } from './store.js';

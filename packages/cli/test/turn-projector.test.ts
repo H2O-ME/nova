@@ -152,6 +152,27 @@ describe('TurnProjector', () => {
     expect(allRows(store.blocks).some((l) => l.includes('a.txt') || l.includes('读取'))).toBe(true);
   });
 
+  it('multi-line tool result attaches the tri-state fold source; header carries ▸', () => {
+    const { store, projector } = harness();
+    projector.beginTurn('q');
+    const bash = call('bash', 'cf', '{"command":"ls"}');
+    projector.toolStart(bash);
+    const block = store.blocks[store.blocks.length - 1]!;
+    projector.toolResult(bash, 'r1\nr2\nr3');
+    expect(block.fold).toBeDefined();
+    expect(block.fold!.state).toBe(0);
+    expect(block.fold!.full).toHaveLength(3);
+    expect(block.fold!.base).toEqual(block.lines); // Collapsed 真相 = 头行
+    expect(block.lines[0]).toContain('▸');
+
+    const echo = call('bash', 'cg', '{"command":"echo"}');
+    projector.toolStart(echo);
+    const single = store.blocks[store.blocks.length - 1]!;
+    projector.toolResult(echo, 'single');
+    expect(single.fold).toBeUndefined();
+    expect(single.lines[0]).not.toContain('▸');
+  });
+
   it('running-line animation keeps every row inside cols-1 with CJK args', () => {
     const { store, projector, advance } = harness();
     projector.beginTurn('q');

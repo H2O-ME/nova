@@ -107,7 +107,7 @@ export class LineScreen {
     const safeCols = Math.max(1, this.cols - 1);
     // 双缓冲乒乓（R8）：prev 恒指向另一块缓冲，本帧数组原位重填——
     // 每帧少一次 rows 长度数组分配，且不引入跨帧别名。
-    const frame = this.scratch[this.scratchIdx];
+    const frame = this.scratch[this.scratchIdx]!;
     for (let i = 0; i < rows; i++) {
       // Choke point: no unmodeled control write may reach the terminal from a
       // frame line — the diff cache and the screen must stay byte-identical.

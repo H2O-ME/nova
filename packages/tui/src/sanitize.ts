@@ -12,8 +12,8 @@
  * bytes from exotic sequences (DCS/PM/SOS) may stay visible — visible text
  * cannot corrupt the screen, control writes can.
  */
-// eslint-disable-next-line no-control-regex
 const ESCAPES =
+  // eslint-disable-next-line no-control-regex
   /\x1b\[[0-9;]*m|\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-~]|\r\n?|\t|[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x80-\x9f]|\x1b/g;
 
 /** Tab expansion width — aligned with common editor defaults. */

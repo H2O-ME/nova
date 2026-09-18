@@ -3,6 +3,7 @@ import { styledWidth } from '@nova-agent/tui';
 import {
   allocateCells,
   approvalChip,
+  buildToolFoldRows,
   contextBar,
   contextGaugeForms,
   contextLegend,
@@ -558,5 +559,51 @@ describe('background subagent rows (run_in_background visibility)', () => {
     );
     expect(bgSubagentDoneLine(p, { label: 'scout', status: 'failed' })).toContain('失败');
     expect(bgSubagentDoneLine(p, { label: 'scout', status: 'killed' })).toContain('已停止');
+  });
+});
+
+describe('buildToolFoldRows (tri-state fold source, M10 组件3)', () => {
+  const base = ['HEAD'];
+
+  it('single-line or empty content is not foldable', () => {
+    expect(buildToolFoldRows(p, base, 'one line', 72)).toBeUndefined();
+    expect(buildToolFoldRows(p, base, '', 72)).toBeUndefined();
+    expect(buildToolFoldRows(p, base, '\n  \n', 72)).toBeUndefined();
+  });
+
+  it('short body: preview equals full, no truncation footer', () => {
+    const f = buildToolFoldRows(p, base, 'a\nb\nc', 72)!;
+    expect(f.full).toHaveLength(3);
+    expect(f.preview).toEqual(f.full);
+    expect(f.base).toBe(base);
+  });
+
+  it('long body: preview is 12 rows + a counted footer; full keeps every row', () => {
+    const content = Array.from({ length: 20 }, (_, i) => `row ${i}`).join('\n');
+    const f = buildToolFoldRows(p, base, content, 72)!;
+    expect(f.full).toHaveLength(20);
+    expect(f.preview).toHaveLength(13);
+    expect(f.preview[12]).toContain('还有 8 行');
+  });
+
+  it('extreme body caps at FOLD_MAX_ROWS with a not-loaded note', () => {
+    const content = Array.from({ length: 500 }, (_, i) => `r${i}`).join('\n');
+    const f = buildToolFoldRows(p, base, content, 72)!;
+    expect(f.full).toHaveLength(401); // 400 载入 + 1 未载入提示
+    expect(f.full[400]).toContain('另有 100 行未载入');
+    expect(f.preview[12]).toContain('还有 488 行');
+  });
+
+  it('external escapes are sanitized before they enter fold rows', () => {
+    const f = buildToolFoldRows(p, base, '\x1b[2Krisky\nsecond', 72)!;
+    for (const row of f.full) expect(row).not.toContain('\x1b[2K');
+  });
+
+  it('every fold row fits the budget (no orphan continuations under the gutter)', () => {
+    const content = Array.from({ length: 30 }, (_, i) => `${i} ${'长'.repeat(80)}`).join('\n');
+    const f = buildToolFoldRows(p, base, content, 72)!;
+    for (const row of [...f.preview, ...f.full]) {
+      expect(styledWidth(row)).toBeLessThanOrEqual(72);
+    }
   });
 });
