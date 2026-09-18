@@ -8,6 +8,9 @@ import { styledWidth } from './width.js';
  */
 export class LineScreen {
   private prev: string[] | undefined;
+  /** Where the hardware cursor was left at the end of the last frame; any
+   * row write invalidates it (rows land the cursor at their tail). */
+  private cursorAt: { row: number; col: number } | undefined;
   private readonly synchronizedOutput: boolean;
 
   constructor(
@@ -38,6 +41,7 @@ export class LineScreen {
     this.out.write('\x1b[?1000h');
     this.out.write('\x1b[?1006h');
     this.prev = undefined;
+    this.cursorAt = undefined;
   }
 
   exit(): void {
@@ -47,11 +51,13 @@ export class LineScreen {
     this.out.write('\x1b[?25h'); // show cursor
     this.out.write('\x1b[?1049l'); // leave alternate screen
     this.prev = undefined;
+    this.cursorAt = undefined;
   }
 
   /** Forget the previous frame: next render repaints everything. */
   invalidate(): void {
     this.prev = undefined;
+    this.cursorAt = undefined;
   }
 
   /**
@@ -78,18 +84,38 @@ export class LineScreen {
       }
     }
 
-    if (this.synchronizedOutput) this.out.write('\x1b[?2026h');
+    // Empty-frame drop (Grok presenter): a frame with no row delta and no
+    // cursor move writes zero bytes — not even the ?2026 wrapper. Idle ticks
+    // on SSH/Windows consoles stop paying the write-amplification tax, and
+    // the composer cursor stops receiving redundant repositions.
+    const dirty: number[] = [];
     for (let row = 0; row < rows; row++) {
-      const next = frame[row] ?? '';
-      if (this.prev?.[row] === next) continue;
+      if (this.prev?.[row] !== frame[row]) dirty.push(row);
+    }
+    const want = cursor === undefined ? undefined : {
+      row: Math.min(rows, cursor.row + 1),
+      col: Math.max(1, cursor.col + 1),
+    };
+    if (dirty.length === 0) {
+      if (want !== undefined && (this.cursorAt?.row !== want.row || this.cursorAt?.col !== want.col)) {
+        this.out.write(`\x1b[${want.row};${want.col}H`);
+        this.cursorAt = want;
+      }
+      return;
+    }
+
+    if (this.synchronizedOutput) this.out.write('\x1b[?2026h');
+    for (const row of dirty) {
       // Reset SGR before erasing: a line truncated mid-color leaves style
       // state open, which would otherwise bleed into erase and content.
-      this.out.write(`\x1b[${row + 1};1H\x1b[0m\x1b[0K${next}`);
+      this.out.write(`\x1b[${row + 1};1H\x1b[0m\x1b[0K${frame[row]}`);
     }
     this.prev = frame;
+    this.cursorAt = undefined; // row writes left the cursor at their tail
 
-    if (cursor !== undefined) {
-      this.out.write(`\x1b[${Math.min(rows, cursor.row + 1)};${Math.max(1, cursor.col + 1)}H`);
+    if (want !== undefined) {
+      this.out.write(`\x1b[${want.row};${want.col}H`);
+      this.cursorAt = want;
     }
     if (this.synchronizedOutput) this.out.write('\x1b[?2026l');
   }

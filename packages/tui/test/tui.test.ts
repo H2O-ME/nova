@@ -282,6 +282,39 @@ describe('LineScreen', () => {
     expect(writes.join('')).toContain('\x1b[1;1H\x1b[0m\x1b[0Ka');
   });
 
+  it('drops fully identical frames without writing a single byte', () => {
+    const { out, writes } = fakeOut(3, 40);
+    const screen = new LineScreen(out, { synchronizedOutput: true });
+    screen.enter();
+    writes.length = 0;
+    screen.render(['a', 'b', 'c'], { row: 0, col: 1 });
+    writes.length = 0;
+    screen.render(['a', 'b', 'c'], { row: 0, col: 1 });
+    expect(writes).toEqual([]); // not even the ?2026 wrapper
+  });
+
+  it('emits only the cursor move when rows are unchanged', () => {
+    const { out, writes } = fakeOut(3, 40);
+    const screen = new LineScreen(out);
+    screen.enter();
+    screen.render(['a', 'b', 'c'], { row: 0, col: 1 });
+    writes.length = 0;
+    screen.render(['a', 'b', 'c'], { row: 2, col: 5 });
+    expect(writes).toEqual(['\x1b[3;6H']);
+  });
+
+  it('re-emits the cursor after row writes even when the target is unchanged', () => {
+    // Writing rows lands the physical cursor at the last row's tail, so the
+    // previous target no longer holds: the MoveTo must go out again.
+    const { out, writes } = fakeOut(3, 40);
+    const screen = new LineScreen(out);
+    screen.enter();
+    screen.render(['a', 'b', 'c'], { row: 0, col: 1 });
+    writes.length = 0;
+    screen.render(['a', 'B', 'c'], { row: 0, col: 1 });
+    expect(writes.join('')).toContain('\x1b[1;2H');
+  });
+
   it('toggles bracketed paste mode with the screen', () => {
     const { out, writes } = fakeOut(2, 40);
     const screen = new LineScreen(out);
