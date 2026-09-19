@@ -1,31 +1,31 @@
-import type { ToolCall } from '@nova-agent/core';
+import type {
+  ApprovalAudit,
+  ApprovalMode,
+  ApprovalPolicy,
+  AskAnswer,
+  AskFn,
+  AskResult,
+  DecideResult,
+  ToolCall,
+} from '@nova-agent/core';
 import type { PermissionKind } from './types.js';
 
-export type ApprovalMode = 'read-only' | 'auto-edit' | 'full';
-export type AskAnswer = 'allow' | 'deny' | 'always';
 /**
- * An "always" answer carrying an explicit grant scope (Grok 组件6 port): the
- * answerer may pin the memory to the FIRST N WORDS of the command instead of
- * the default program prefix. Validated against the actual call in decide();
- * an out-of-range N silently falls back to the default scope.
+ * The approval vocabulary lives in core (the kernel event stream speaks it:
+ * `approval_request` / `resolveApproval`); re-exported here unchanged so the
+ * historical `@nova-agent/plugins` import sites keep working verbatim.
  */
-export interface AlwaysGrant {
-  answer: 'always';
-  scopeWords: number;
-}
-/**
- * A denial carrying the reason the user typed on the reject row (组件7,
- * Grok reject-to-followup): the reason rides into the tool result so the
- * model receives the instruction instead of a bare "Permission denied".
- */
-export interface DenyGrant {
-  answer: 'deny';
-  reason: string;
-}
-export type AskResult = AskAnswer | AlwaysGrant | DenyGrant;
-export type AskFn = (call: ToolCall, kind: PermissionKind) => Promise<AskResult>;
-/** decideDetailed's verdict: deny may carry the user-typed reason. */
-export type DecideResult = 'allow' | { decision: 'deny'; reason?: string };
+export type {
+  ApprovalMode,
+  AskAnswer,
+  AlwaysGrant,
+  DenyGrant,
+  AskResult,
+  AskFn,
+  DecideResult,
+  ApprovalPolicy,
+  ApprovalAudit,
+} from '@nova-agent/core';
 
 /** Chaining/substitution markers — a command containing them grants whole-command memory only. */
 function isCompoundCommand(command: string): boolean {
@@ -60,22 +60,6 @@ function normalizeAsk(raw: unknown): AskResult {
     }
   }
   return 'deny';
-}
-
-/**
- * Session-level policy applied BEFORE any interactive answerer runs
- * (dsh-style fail-closed vocabulary):
- * - 'ask' — delegate to the composed asker (TUI modal / readline prompt).
- * - 'never' — deterministically deny every ask without dispatching any
- *   asker. The strict headless stance (exec/CI): the outcome is knowable
- *   without asking, and a later-registered asker cannot bypass it.
- */
-export type ApprovalPolicy = 'ask' | 'never';
-
-export interface ApprovalAudit {
-  toolName: string;
-  kind: PermissionKind;
-  outcome: AskAnswer;
 }
 
 /**

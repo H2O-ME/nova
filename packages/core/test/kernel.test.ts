@@ -1,0 +1,376 @@
+/**
+ * AgentSession / ApprovalBroker / EventPump — the kernel handle contract every
+ * surface will drive (M11 批1). No plugins, no terminal: a scripted provider,
+ * a temp-dir session log and the event stream itself are the assertions.
+ */
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  AgentSession,
+  ApprovalBroker,
+  EventPump,
+  JobRegistry,
+  NOT_EXECUTED_GUIDANCE,
+  Session,
+  persistMissingToolResults,
+  type AgentHooks,
+  type AgentMessage,
+  type ChatProvider,
+  type KernelEvent,
+  type StreamEvent,
+  type ToolCall,
+  type ToolDefinition,
+} from '../src/index.js';
+import { scriptedProvider } from './helpers/scripted-provider.js';
+
+function echoTool(registry: string[]): ToolDefinition {
+  return {
+    name: 'echo',
+    description: 'echo back',
+    parameters: { type: 'object', properties: { text: { type: 'string' } } },
+    execute: (args) => {
+      registry.push(String(args['text'] ?? ''));
+      return `echo: ${String(args['text'] ?? '')}`;
+    },
+    presentCall: (args) => ({
+      card: 'generic',
+      kind: 'other',
+      title: String(args['text'] ?? ''),
+    }),
+  };
+}
+
+const toolCallScript: StreamEvent = {
+  type: 'tool_call_delta',
+  index: 0,
+  id: 'call_1',
+  name: 'echo',
+  argsDelta: '{"text":"hi"}',
+};
+
+async function makeSession(): Promise<Session> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'nova-kernel-'));
+  return Session.create(dir, 'sess_kernel');
+}
+
+/**
+ * The permission gate expressed over a broker without importing plugins:
+ * 'auto' short-circuits, null routes through the broker asker (deny answers
+ * the classic "Permission denied: by user" content).
+ */
+function brokerHooks(broker: ApprovalBroker, auto: 'allow' | 'deny' | null): AgentHooks {
+  return {
+    beforeToolCall: async (call: ToolCall) => {
+      if (auto === 'allow') return { action: 'allow' };
+      if (auto === 'deny') return { action: 'deny', reason: 'by test' };
+      const answer = await broker.asker(call, 'execute');
+      return answer === 'allow'
+        ? { action: 'allow' }
+        : answer === 'deny'
+          ? { action: 'deny', reason: 'by user' }
+          : { action: 'allow' };
+    },
+  };
+}
+
+interface Harness {
+  agent: AgentSession;
+  broker: ApprovalBroker;
+  events: KernelEvent[];
+  executed: string[];
+}
+
+async function harness(
+  scripts: StreamEvent[][],
+  opts?: {
+    auto?: 'allow' | 'deny' | null;
+    hooks?: AgentHooks;
+    provider?: ChatProvider;
+    maxTurns?: number;
+  },
+): Promise<Harness> {
+  const session = await makeSession();
+  const messages: AgentMessage[] = [];
+  const jobs = new JobRegistry();
+  const broker = new ApprovalBroker(() => ({ card: 'generic', kind: 'execute', title: 'echo' }));
+  const executed: string[] = [];
+  const provider =
+    opts?.provider ?? scriptedProvider(scripts.map((events) => events));
+  const agent = new AgentSession({
+    session,
+    messages,
+    provider,
+    rootDir: () => tmpdir(),
+    tools: () => [echoTool(executed)],
+    hooks: () => opts?.hooks ?? brokerHooks(broker, opts?.auto ?? null),
+    jobs,
+    approvals: broker,
+    maxTurns: opts?.maxTurns ?? 5,
+    cacheDir: () => tmpdir(),
+  });
+  const events: KernelEvent[] = [];
+  agent.subscribe((e) => events.push(e));
+  return { agent, broker, events, executed };
+}
+
+async function untilIdle(agent: AgentSession): Promise<void> {
+  for (let i = 0; i < 3000 && (agent.running || agent.status === 'compacting'); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  expect(agent.running).toBe(false);
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+describe('AgentSession run lifecycle', () => {
+  it('commits the prompt, streams events and logs the model surface', async () => {
+    const h = await harness(
+      [
+        [toolCallScript, { type: 'usage', usage: { promptTokens: 10, completionTokens: 2, cachedTokens: 0 } }],
+        [{ type: 'text_delta', text: 'all done' }],
+      ],
+      { auto: 'allow' },
+    );
+    await h.agent.prompt('go');
+    await untilIdle(h.agent);
+
+    const types = h.events.map((e) => e.type);
+    expect(types[0]).toBe('user_message');
+    expect(types).toContain('turn_start');
+    expect(types).toContain('tool_call_start');
+    expect(types).toContain('tool_call_result');
+    expect(types).toContain('text_delta');
+    expect(types).toContain('done');
+    expect(h.agent.usageSnapshot().promptTokens).toBe(10);
+    expect(h.agent.lastPromptTokens).toBe(10);
+
+    const roles = h.agent.session.allMessages().map((m) => m.role);
+    expect(roles).toEqual(['user', 'assistant', 'tool', 'assistant']);
+    // "model-visible means logged": the surface projects identically to the log.
+    expect(h.agent.session.deriveMessages().length).toBe(h.agent.messages.length);
+  });
+
+  it('derives phase transitions from the loop events', async () => {
+    const h = await harness(
+      [
+        [{ type: 'reasoning_delta', text: 'hmm' }, toolCallScript],
+        [{ type: 'text_delta', text: 'ok' }],
+      ],
+      { auto: 'allow' },
+    );
+    await h.agent.prompt('go');
+    await untilIdle(h.agent);
+    const phases = h.events.filter((e) => e.type === 'phase').map((e) => (e as { phase: string }).phase);
+    // two loop turns: turn_start re-prices the phase to 'thinking' after the tool
+    expect(phases).toEqual(['thinking', 'tool', 'thinking', 'writing', 'idle']);
+  });
+
+  it('queues prompts during a run and flushes them as a second run', async () => {
+    const h = await harness(
+      [[{ type: 'text_delta', text: 'first' }], [{ type: 'text_delta', text: 'second' }]],
+      { auto: 'allow' },
+    );
+    await h.agent.prompt('one');
+    expect(h.agent.running).toBe(true);
+    await h.agent.prompt('two');
+    expect(h.agent.queued).toEqual(['two']);
+    const queueEvents = h.events.filter((e) => e.type === 'queue_update');
+    expect(queueEvents[0]).toEqual({ type: 'queue_update', items: ['two'] });
+    await untilIdle(h.agent);
+    expect(h.agent.queued).toEqual([]);
+    expect(h.agent.session.allMessages().filter((m) => m.role === 'user')).toHaveLength(2);
+    expect(h.events.filter((e) => e.type === 'turn_start')).toHaveLength(2);
+  });
+
+  it('interrupt mid-stream logs the abort marker and ends the run', async () => {
+    const h = await harness([], {
+      auto: 'allow',
+      provider: {
+        async *stream() {
+          yield { type: 'text_delta', text: 'a' };
+          await sleep(50);
+          yield { type: 'text_delta', text: 'b' };
+        },
+      },
+    });
+    await h.agent.prompt('go');
+    await sleep(10);
+    h.agent.abort();
+    await untilIdle(h.agent);
+    const types = h.events.map((e) => e.type);
+    expect(types).toContain('turn_aborted');
+    expect(h.agent.session.allMessages().some((m) => m.role === 'user' && m.content.includes('interrupted'))).toBe(
+      true,
+    );
+  });
+
+  it('classifies a failing gate as run_failed and repairs the log', async () => {
+    const h = await harness(
+      [[toolCallScript]],
+      {
+        hooks: {
+          beforeToolCall: async () => {
+            throw new Error('gate exploded');
+          },
+        },
+      },
+    );
+    await h.agent.prompt('go');
+    await untilIdle(h.agent);
+    const failure = h.events.find((e) => e.type === 'run_failed') as
+      | { message: string; aborted: boolean }
+      | undefined;
+    expect(failure?.message).toBe('gate exploded');
+    expect(failure?.aborted).toBe(false);
+    // the committed assistant tool_call got a synthesized result in the LOG
+    const logged = h.agent.session.allMessages();
+    const assistant = logged.find((m) => m.role === 'assistant');
+    expect(assistant?.role === 'assistant' && assistant.toolCalls?.length).toBe(1);
+    const callId = assistant?.role === 'assistant' ? assistant.toolCalls?.[0]?.id : undefined;
+    expect(logged.some((m) => m.role === 'tool' && m.toolCallId === callId && m.content === NOT_EXECUTED_GUIDANCE)).toBe(
+      true,
+    );
+    // repair is idempotent (core's own abandonment cleanup already ran in memory)
+    expect(await persistMissingToolResults(h.agent.session, [...h.agent.messages])).toBe(0);
+  });
+});
+
+describe('approval over the event stream', () => {
+  it('carries the request as an event, answers by id, and reports resolution', async () => {
+    const h = await harness([[toolCallScript], [{ type: 'text_delta', text: 'after approval' }]], {
+      auto: null,
+    });
+    await h.agent.prompt('go');
+    while (!h.events.some((e) => e.type === 'approval_request')) await sleep(1);
+    const request = (h.events.find((e) => e.type === 'approval_request') as {
+      request: { id: string; view?: { card: string } };
+    }).request;
+    expect(request.view?.card).toBe('generic');
+    expect(h.agent.pendingApprovals().map((p) => p.id)).toEqual([request.id]);
+    expect(h.agent.currentPhase).toBe('waiting_approval');
+    expect(h.agent.resolveApproval(request.id, 'allow')).toBe(true);
+    expect(h.agent.resolveApproval(request.id, 'allow')).toBe(false);
+    await untilIdle(h.agent);
+
+    expect(h.events.filter((e) => e.type === 'approval_resolved')).toHaveLength(1);
+    expect(h.executed).toEqual(['hi']);
+    expect(h.events.some((e) => e.type === 'done')).toBe(true);
+    expect(h.events.some((e) => e.type === 'tool_call_result')).toBe(true);
+  });
+
+  it('abort fail-closes every outstanding ask as deny', async () => {
+    const h = await harness([[toolCallScript], [{ type: 'text_delta', text: 'never reached' }]], {
+      auto: null,
+    });
+    await h.agent.prompt('go');
+    while (!h.events.some((e) => e.type === 'approval_request')) await sleep(1);
+    h.agent.abort();
+    await untilIdle(h.agent);
+    const resolved = h.events.find((e) => e.type === 'approval_resolved') as
+      | { resolution: { source: string } }
+      | undefined;
+    expect(resolved?.resolution.source).toBe('aborted');
+    // The gated call produced NO executed tool: either the deny verdict or the
+    // aborted-skip synthesized it a result (loop-internal race), both fine.
+    expect(h.executed).toEqual([]);
+    const denial = h.events.find((e) => e.type === 'tool_call_result') as
+      | { result: { content: string } }
+      | undefined;
+    expect(denial).toBeDefined();
+    expect(denial?.result.content).toMatch(/Permission denied|not executed/);
+  });
+
+  it('a closed broker denies without publishing', async () => {
+    const broker = new ApprovalBroker(() => undefined);
+    broker.failAll('closed');
+    const answer = await broker.asker({ id: 'c', name: 'x', args: {}, rawArgs: '{}' }, 'execute');
+    expect(answer).toBe('deny');
+  });
+});
+
+describe('EventPump', () => {
+  it('fans out to async consumers in order and ends on close', async () => {
+    const pump = new EventPump();
+    const a: KernelEvent[] = [];
+    const b: KernelEvent[] = [];
+    const drainA = (async () => {
+      for await (const e of pump.events()) a.push(e);
+    })();
+    const drainB = (async () => {
+      for await (const e of pump.events()) b.push(e);
+    })();
+    const note: KernelEvent = { type: 'notice', code: 'surface_lagged', text: 'x' };
+    pump.publish(note);
+    pump.publish(note);
+    pump.close();
+    await Promise.all([drainA, drainB]);
+    expect(a).toEqual([note, note]);
+    expect(b).toEqual([note, note]);
+  });
+
+  it('a throwing listener is re-thrown async and never kills the pump', async () => {
+    const pump = new EventPump();
+    const uncaught: unknown[] = [];
+    const onErr = (err: unknown): void => uncaught.push(err);
+    process.on('uncaughtException', onErr);
+    pump.subscribe(() => {
+      throw new Error('surface bug');
+    });
+    const seen: KernelEvent[] = [];
+    const off = pump.subscribe((e) => seen.push(e));
+    pump.publish({ type: 'notice', code: 'compact_failed', text: 'still delivered' });
+    await sleep(10);
+    off();
+    process.off('uncaughtException', onErr);
+    expect(seen).toHaveLength(1);
+    expect(uncaught).toHaveLength(1);
+  });
+});
+
+describe('compaction through the handle', () => {
+  it('compacts in place, splices the surface and reports progress events', async () => {
+    const session = await makeSession();
+    const messages: AgentMessage[] = [
+      { id: 'msg_ctx_1', ts: 1, role: 'user', content: '<environment>\ncwd=x\n</environment>' },
+      { id: 'msg_u1', ts: 2, role: 'user', content: 'first task' },
+      { id: 'msg_a1', ts: 3, role: 'assistant', content: 'first answer' },
+    ];
+    for (const m of messages) await session.append(m);
+    const broker = new ApprovalBroker(() => undefined);
+    const agent = new AgentSession({
+      session,
+      messages,
+      provider: scriptedProvider([[{ type: 'text_delta', text: 'THE SUMMARY' }]]),
+      rootDir: () => tmpdir(),
+      tools: () => [],
+      hooks: () => ({}),
+      jobs: new JobRegistry(),
+      approvals: broker,
+      cacheDir: () => tmpdir(),
+    });
+    const events: KernelEvent[] = [];
+    agent.subscribe((e) => events.push(e));
+    const outcome = await agent.compact('manual');
+    expect(
+      events
+        .filter((e) => e.type === 'compaction')
+        .map((e) => (e as { progress: { state: string } }).progress.state),
+    ).toEqual(['start', 'done']);
+    expect(outcome.retained).toBeGreaterThan(0);
+    expect(messages.some((m) => m.content.includes('THE SUMMARY'))).toBe(true);
+    // projection parity: the spliced surface is what a resume would derive
+    expect(session.deriveMessages().map((m) => m.id)).toEqual(messages.map((m) => m.id));
+  });
+
+  it('rejects compaction while a run is active', async () => {
+    const h = await harness(
+      [[{ type: 'text_delta', text: 'x' }, { type: 'text_delta', text: 'y' }]],
+      { auto: 'allow' },
+    );
+    await h.agent.prompt('go');
+    await expect(h.agent.compact('manual')).rejects.toThrow('while a run is active');
+    await untilIdle(h.agent);
+  });
+});

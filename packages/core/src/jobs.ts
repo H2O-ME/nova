@@ -84,6 +84,25 @@ export class JobRegistry {
   /** Terminal jobs (completed/failed) awaiting announcement; drainFinished consumes. */
   private readonly pendingNotices: JobNotice[] = [];
   private counter = 0;
+  /**
+   * Live-transition listener (kernel `job_update` events). Fired on start,
+   * settle and stop-request with a fresh snapshot; best-effort — a throwing
+   * listener never corrupts job bookkeeping.
+   */
+  private listener: ((job: JobSnapshot) => void) | undefined;
+
+  setListener(listener: ((job: JobSnapshot) => void) | undefined): void {
+    this.listener = listener;
+  }
+
+  private announce(entry: JobEntry): void {
+    if (this.listener === undefined) return;
+    try {
+      this.listener(snapshotOf(entry));
+    } catch {
+      // visibility is best-effort by contract
+    }
+  }
 
   /** Register a started job; returns its model-facing snapshot. */
   start(start: JobStart): JobSnapshot {
@@ -102,6 +121,7 @@ export class JobRegistry {
       done: start.done,
     };
     this.jobs.set(id, entry);
+    this.announce(entry);
     void start.done
       .then((outcome) => {
         // Natural completion/failure is announced once; a stop-initiated kill
@@ -121,6 +141,7 @@ export class JobRegistry {
           entry.status = 'killed';
         }
         if (outcome.detail !== undefined) entry.detail = outcome.detail;
+        this.announce(entry);
       })
       .catch((err: unknown) => {
         // A rejecting done promise is a producer bug (contract: never reject);
@@ -134,6 +155,7 @@ export class JobRegistry {
           status: 'failed',
           detail: entry.detail,
         });
+        this.announce(entry);
       });
     return snapshotOf(entry);
   }
@@ -188,6 +210,7 @@ export class JobRegistry {
     if (entry === undefined) return undefined;
     if (entry.status === 'running') {
       entry.status = 'stopping';
+      this.announce(entry);
       entry.cancel(reason);
     }
     return snapshotOf(entry);
