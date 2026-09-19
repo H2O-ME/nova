@@ -22,11 +22,7 @@ import {
 } from '../agent/options.js';
 import { errMessage } from '../errors.js';
 import { newId } from '../ids.js';
-import {
-  shouldCompactBefore,
-  wrapAutoCompact,
-  type WrapAutoCompactOptions,
-} from '../auto-compact.js';
+import { shouldCompactBefore } from '../auto-compact.js';
 import { compactSession, type CompactedSession } from '../compact.js';
 import type {
   ApprovalBroker,
@@ -93,8 +89,10 @@ export interface AgentSessionDeps {
   autoCompactLimit?: number;
   /**
    * Headless single-run mode: the boundary gates (pre/post) are useless when
-   * one run spans the whole task, so compact INSIDE every request via the
-   * beforeLLMCall chain (the exec wrapAutoCompact pattern, kernelized).
+   * one run spans the whole task — the assembly layer gates INSIDE every
+   * request by wrapping the composed hooks once (plugins'
+   * `wrapHeadlessCompact`); this flag only makes the boundary gates stand
+   * down so nobody double-compacts.
    */
   perRequestCompact?: boolean;
 }
@@ -402,17 +400,13 @@ export class AgentSession {
 
   private agentOptions(signal: AbortSignal): AgentOptions {
     const deps = this.deps;
-    const hooks = deps.hooks();
-    if (deps.perRequestCompact === true && deps.autoCompactLimit !== undefined) {
-      this.wrapHooks(hooks);
-    }
     return {
       provider: deps.provider,
       messages: deps.messages,
       rootDir: deps.rootDir(),
       systemPrompt: deps.systemPrompt,
       tools: deps.tools(),
-      hooks,
+      hooks: deps.hooks(),
       maxTurns: deps.maxTurns,
       cacheDir: deps.cacheDir(),
       jobs: deps.jobs,
@@ -522,26 +516,8 @@ export class AgentSession {
   }
 
   /**
-   * The per-request gate for headless single-run tasks. `deps.hooks()` hands
-   * out a fresh composed object per run, so wrapping it here cannot
-   * double-wrap across runs.
+   * The per-request gate for headless single-run tasks lives in the assembly
+   * layer (`plugins.createAgentKernel` wraps the composed hooks once); this
+   * flag only tells the boundary gates to stand down.
    */
-  private wrapHooks(hooks: AgentHooks): void {
-    const opts: WrapAutoCompactOptions = {
-      enabled: true,
-      limit: this.deps.autoCompactLimit ?? 0,
-      compact: async (msgs) => {
-        const outcome = await compactSession({
-          client: this.deps.provider,
-          session: this.deps.session,
-          messages: msgs,
-          trigger: 'auto',
-        });
-        msgs.splice(0, msgs.length, ...outcome.surface);
-      },
-      onError: (err) => this.notice('compact_failed', `自动压缩失败（继续运行）：${errMessage(err)}`),
-      onWarn: (code, text) => this.notice(code, text),
-    };
-    wrapAutoCompact(hooks, opts);
-  }
 }
