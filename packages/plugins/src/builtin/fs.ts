@@ -1,6 +1,13 @@
 import { chmod, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ToolExecuteContext, ToolPermissionKind } from '@nova-agent/core';
+import {
+  isFailureContent,
+  type DiffCallView,
+  type DiffResultView,
+  type ReadResultView,
+  type ToolExecuteContext,
+  type ToolPermissionKind,
+} from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 import { intArg, strArg } from './args.js';
 
@@ -302,6 +309,65 @@ async function executeEditFile(
   return `edited ${played.count} occurrence(s) in ${path.relative(c.rootDir, file) || file}`;
 }
 
+/**
+ * Render intent for the write tools. Paths are reported **as the model asked
+ * for them** — pre-resolution: unlike `preview` (which runs once permission is
+ * being asked for and may read the disk), `presentCall` is pure and synchronous
+ * and must touch no filesystem, so an approval prompt can build the diff card
+ * for a path that does not exist yet.
+ */
+function writeCallView(args: Record<string, unknown>): DiffCallView | undefined {
+  const target = strArg(args, 'path');
+  const content = strArg(args, 'content');
+  if (target === undefined || content === undefined) return undefined;
+  // oldText: null = "no prior text to match", i.e. create/overwrite.
+  return { card: 'diff', diffs: [{ path: target, oldText: null, newText: content }] };
+}
+
+function editCallView(args: Record<string, unknown>): DiffCallView | undefined {
+  const target = strArg(args, 'path');
+  const oldText = strArg(args, 'old_string');
+  const newText = strArg(args, 'new_string');
+  if (target === undefined || oldText === undefined || newText === undefined) return undefined;
+  return { card: 'diff', diffs: [{ path: target, oldText, newText }] };
+}
+
+/** Same intended mutations, now tagged with whether the tool reported success. */
+function diffResultView(call: DiffCallView | undefined, content: string): DiffResultView | undefined {
+  if (call === undefined) return undefined;
+  return { card: 'diff', ok: !isFailureContent(content), diffs: call.diffs };
+}
+
+/**
+ * read_file result: the `[lines A-B of N]` header `executeReadFile` emits is the
+ * only window marker, so partiality reads off it (a `limit` that never bound
+ * anything still returned the whole file, and must not claim truncation).
+ */
+function readResultView(args: Record<string, unknown>, content: string): ReadResultView | undefined {
+  const target = strArg(args, 'path');
+  if (target === undefined || isFailureContent(content)) return undefined;
+  const header = /^\[lines (\d+)-(\d+) of (\d+)\]/.exec(content);
+  if (header === null) {
+    return { card: 'read', path: target, lineCount: content.split('\n').length, truncated: false };
+  }
+  const from = Number(header[1]);
+  const to = Number(header[2]);
+  return { card: 'read', path: target, lineCount: to - from + 1, truncated: to < Number(header[3]) };
+}
+
+/** list_dir result: entry count plus this tool's `(... N more)` overflow marker. */
+function listViewResultView(args: Record<string, unknown>, content: string): ReadResultView | undefined {
+  if (isFailureContent(content)) return undefined;
+  const more = /\n\(\.\.\. \d+ more\)/.exec(content);
+  const body = more === null ? content : content.slice(0, more.index);
+  return {
+    card: 'read',
+    path: strArg(args, 'path') ?? '.',
+    lineCount: body === '(empty directory)' ? 0 : body.split('\n').length,
+    truncated: more !== null,
+  };
+}
+
 export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin {
   const trustedReadRoots = options?.trustedReadRoots ?? [];
   return {
@@ -330,6 +396,9 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
         async execute(args, c: ToolExecuteContext) {
           return executeReadFile(args, c);
         },
+        presentResult(args, content) {
+          return readResultView(args, content);
+        },
         // Read-only: safe to dispatch concurrently with sibling reads.
         isConcurrencySafe() {
           return true;
@@ -352,6 +421,9 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
         },
         async execute(args, c: ToolExecuteContext) {
           return executeListDir(args, c);
+        },
+        presentResult(args, content) {
+          return listViewResultView(args, content);
         },
         // Read-only: safe to dispatch concurrently with sibling reads.
         isConcurrencySafe() {
@@ -460,6 +532,12 @@ export function fsWritePlugin(): Plugin {
         async execute(args, c: ToolExecuteContext) {
           return executeWriteFile(args, c);
         },
+        presentCall(args) {
+          return writeCallView(args);
+        },
+        presentResult(args, content) {
+          return diffResultView(writeCallView(args), content);
+        },
       }, { permission: 'write' });
 
       ctx.registerTool({
@@ -522,6 +600,12 @@ export function fsWritePlugin(): Plugin {
         },
         async execute(args, c: ToolExecuteContext) {
           return executeEditFile(args, c);
+        },
+        presentCall(args) {
+          return editCallView(args);
+        },
+        presentResult(args, content) {
+          return diffResultView(editCallView(args), content);
         },
       }, { permission: 'write' });
     },

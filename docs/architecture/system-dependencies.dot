@@ -1,0 +1,61 @@
+// NovaAgent — 包间依赖与外部集成图（L2/L3，current-state）
+// 证据: scripts/dep-direction.mjs ALLOW 白名单 + 各包 package.json dependencies
+//       + packages/*/src 内 `@nova-agent/*` import 实测计数（2026-09-18, 全部吻合）
+// 渲染: dot -Tsvg system-dependencies.dot -o system-dependencies.svg
+digraph novaagent {
+    rankdir=TB;
+    splines=true;
+    nodesep=0.4; ranksep=0.7;
+    fontname="Helvetica";
+    node [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", fillcolor="#f5f5f5"];
+    edge [fontname="Helvetica", fontsize=9];
+
+    // ── 内核层：零上游（dep-direction.mjs 强制；实测 core/tui 源码 0 处 @nova-agent import）
+    subgraph cluster_kernel {
+        label="内核层（零上游，pnpm gates 机检）"; style=dashed; color="#888888";
+        core   [label="core\nagent 循环 · 会话 JSONL v2\n工具调度 · token 估算\nrequest-trim · jobs", fillcolor="#cfe3f7"];
+        tui    [label="tui\n差分渲染(?2026) · 按键解码\nCJK 宽度 · 能力探测", fillcolor="#cfe3f7"];
+    }
+
+    // ── 能力层：只依赖内核
+    subgraph cluster_mid {
+        label="能力层"; style=dashed; color="#888888";
+        ai      [label="ai\nOpenAI 兼容客户端\nSSE · 重试 · usage 提取\n(→core 仅类型)", fillcolor="#d8ecc8"];
+        plugins [label="plugins\n插件宿主 · 审批\n内置工具 · skills\nPTC run_code(worker 线程)", fillcolor="#d8ecc8"];
+        tuiView [label="tui-view\n纯视图层(零 IO)\npalette · status · composer\nreasoning · splash", fillcolor="#d8ecc8"];
+    }
+
+    // ── 渠道/壳层
+    qqbot [label="qqbot\nQQ 网关 WS 状态机\ntoken · REST · qqbot_send", fillcolor="#fbe8c8"];
+    cli   [label="cli（产品壳 bin=nova）\ntui-mode 壳层 · cli/tui 九模块\nrunner 三态 · exec · config", fillcolor="#f7d0d0"];
+
+    // 内部依赖（边标签 = src 内 import 实测次数）
+    ai      -> core   [label="types-only ×2"];
+    plugins -> core   [label="×20"];
+    tuiView -> tui    [label="×8"];
+    tuiView -> core   [label="×3"];
+    qqbot   -> core   [label="×2"];
+    qqbot   -> plugins [label="×2"];
+    cli     -> core   [label="×29"];
+    cli     -> tui    [label="×8"];
+    cli     -> tuiView [label="×30"];
+    cli     -> ai     [label="×1"];
+    cli     -> plugins [label="×11"];
+    cli     -> qqbot  [label="×2"];
+
+    // ── 外部系统（跨信任边界，虚线）
+    node [shape=box3d, fillcolor="#e0e0e0"];
+    provider [label="OpenAI 兼容 LLM 端点\n{baseURL}/chat/completions"];
+    modelsdev [label="models.dev\n/api.json"];
+    qqopen  [label="QQ 开放平台\napi.bot.qq.com / api.sgroup.qq.com"];
+    novaDir [shape=folder, label="~/.nova/\nconfig · sessions · cache · skills\n(工作区零写入)"];
+    user    [shape=ellipse, fillcolor="#ffffff", label="用户"];
+
+    edge [style=dashed];
+    user    -> cli      [label="nova / exec / qqbot", style=solid];
+    ai      -> provider [label="fetch+SSE · prompt_cache_key"];
+    cli     -> modelsdev [label="24h 缓存回落"];
+    qqbot   -> qqopen   [label="WS + REST"];
+    core    -> novaDir  [label="JSONL 先写盘\n溢出/存档"];
+    cli     -> novaDir  [label="config.json 唯一源"];
+}

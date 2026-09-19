@@ -87,7 +87,7 @@ pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tu
 
 | 包 | 职责 | 关键文件 |
 | --- | --- | --- |
-| `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、请求级修剪（snip/micro）、后台 jobs | `agent.ts`（公共面桶文件）+ `agent/{options,notices,request,stream,tools,loop}.ts`（选项常量 / at-least-once 通知簿记 / 请求装配 / 流式与空补全重试 / 工具调度与溢出落盘 / runAgent 主体）、`session.ts`、`estimate.ts`、`request-trim.ts`、`jobs.ts`、`types.ts`、`ids.ts`、`tools/get-time.ts`（M1 demo 工具，仍在发布） |
+| `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、请求级修剪（snip/micro）、后台 jobs、**呈现意图词汇表** | `agent.ts`（公共面桶文件）+ `agent/{options,notices,request,stream,tools,loop}.ts`（选项常量 / at-least-once 通知簿记 / 请求装配 / 流式与空补全重试 / 工具调度与溢出落盘 / runAgent 主体）、`session.ts`、`estimate.ts`、`request-trim.ts`、`jobs.ts`、`types.ts`、`presentation.ts`（`ToolCallKind` / `ToolCallView` / `ToolResultView` / `FileDiff`——只描述调用是什么，文案/颜色/列宽归 surface）、`ids.ts`、`tools/get-time.ts`（M1 demo 工具，仍在发布） |
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈（Retry-After 双形式严格解析 + 自有退避 32s 封顶）、usage/缓存命中提取 | `client.ts`、`sse.ts` |
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`types.ts`、`builtin/{fs,bash,jobs,todo,search,search-worker,index}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
 | `tui` | 零依赖终端原语：行级差分渲染（可选 ?2026 同步输出）、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标 + ?1003 悬停 motion、CSI 修饰键参数）、CJK 宽度处理、终端能力探测 | `screen.ts`、`keys.ts`、`width.ts`、`caps.ts` |
@@ -101,6 +101,13 @@ pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tu
 工具、斜杠命令、生命周期钩子（`beforeLLMCall` / `beforeToolCall` / `afterToolResult`）全部经 `PluginContext` 注册；内置 fs/bash 工具与 skills 走**同一 API、同一审批门**，保证内核最小。`PluginContext` 提供 `tools()` 活视图；`ToolExecuteContext` 提供 `dispatch` 嵌套分发缝（PTC 子调用回流用）。**Hook 结果结构化**：`ToolCallVerdict` 是判别联合（`allow` 不带字段 / `deny` 只带 `reason` / `rewrite` 必带 plain-object `args`），`validateToolCallVerdict(unknown)` 纯函数在宿主组合器与 `runAgent` 门各验一次（fail-closed：畸形 verdict 一律 deny，附可行动 reason；手写 `AgentHooks` 绕开宿主时第二道网兜底）。`beforeLLMCall` 链另带工具集护栏（按名集合比较，非数组身份：钩子可收窄工具集（PTC 投影）或 clone 保持集合不变，**加宽直接抛错**——工具集是前缀缓存的一部分，无审批记录的加宽既破缓存又扩模型可调用面）。
 
 **专用工具优先于 shell**（治"模型绕开内置工具跑 `find | wc -l`"）：系统提示与工具 description 双侧写 DSH 式排他句——`Use read_file — not shell commands like cat/head/tail`、`Use search_files — not shell grep/rg/find`（结构化行号结果 + 免审批摩擦是卖点）；bash 聚焦行为契约（git/包管理器/构建/测试），不给反向劝退句（DSH 验证过：跨调用选择放系统提示、单次调用格式放 description）。批量聚合（数文件/汇总）导向 `run_code` 程序化出口而非 bash 管道。
+
+### 呈现意图词汇表（core 拥有形状，surface 拥有观感）
+要让 TUI / WebUI / headless 真的成为同一内核的可插拔外壳，缺的不是"把函数搬进 core"，而是**一次工具调用长什么样**的中立表达。此前它散在三处硬编码里：`tui-view` 按工具名查中文标签、按工具名判"参数是不是路径"（`PATH_ARG_TOOLS`）、按工具名判"是不是只读"（`READ_ONLY_TOOLS`），连纯字符串语义的失败判定 `isFailureContent` 也被关在渲染包（headless 消费者只能抄一份）。换个界面就得重猜一遍。
+
+现在 `core/presentation.ts` 收拢这层契约：`ToolCallKind` + `card` 判别的 `ToolCallView` / `ToolResultView`（`terminal` / `diff` / `search` / `read` / `plan` / `generic`）。**分工线画在这里**：core 只拥有调用的**形状与语义**（无文案、无颜色、无列宽——文件的测试有文本守卫盯住 CJK 与 ANSI 泄漏），**文案 / 颜色 / 列宽 / 降级档位一律归各 surface**（`tui-view` 的 `labels.ts`、Web 的 CSS、bot 通道的纯文本）。工具经 `ToolDefinition.presentCall?(args)` / `presentResult?(args, content)` 声明自己是什么，界面 `switch (view.card)` 消费，**不再按工具名特判**；两个方法都是纯函数且 `presentCall` **不得读盘**（它在授权前被调用，审批弹窗要能为尚不存在的文件画出 diff），故签名里没有 `ctx`。未声明的工具（含第三方、`jobs`、`run_code`）自动落 `generic` 卡——**永远不会不可渲染，只是不够具体**。
+
+三条护栏让它不烂回去：结果文本的解析器与产它的格式化同文件（bash 解析自己 `exit: N` / `stdout:` 的排版，`search_files` 解析自己的 `path:line:` 行），格式改动不会隔着一个包把某个界面 stranded；`presentCall`/`presentResult` 不进 `serializeTools`，**不影响前缀缓存**；`tui-view` 的两张名字表改为由 kind 派生，core 测试逐名断言与历史集合等价（迁移零渲染差异）。`isFailureContent` 由 `tui-view` 原样 re-export，公共面不变。
 
 ### 上下文与缓存命中率（核心差异化）
 目标：**稳定前缀 = 高缓存命中**。四层机制：

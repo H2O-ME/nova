@@ -9,6 +9,7 @@
  */
 
 import { sanitizeForDisplay, styledWidth } from '@nova-agent/tui';
+import { isPathArgKind, toolCallKind } from '@nova-agent/core';
 
 /**
  * Last part of `text` that fits maxWidth display columns. The REPL reasoning
@@ -87,14 +88,13 @@ export function clipCommand(text: string, maxCols: number): string {
   return `${out} …`;
 }
 
-/** Path-valued tools read as locations, so the tail is the story. */
-const PATH_ARG_TOOLS = new Set(['read_file', 'write_file', 'edit_file', 'list_dir']);
-
 /** Pick the clip style by tool semantics, then flatten whitespace. */
 function clipArg(name: string, text: string, maxCols: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   if (name === 'bash') return clipCommand(flat, maxCols);
-  if (PATH_ARG_TOOLS.has(name)) return clipPath(flat, maxCols);
+  // Path-valued tools read as locations, so the tail is the story. Which tools
+  // those are comes from the call's semantic kind (core), not a name list here.
+  if (isPathArgKind(toolCallKind(name))) return clipPath(flat, maxCols);
   return clipToWidth(flat, maxCols);
 }
 

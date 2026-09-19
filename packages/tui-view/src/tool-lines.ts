@@ -4,6 +4,7 @@
  */
 
 import { sanitizeForDisplay, styledWidth } from '@nova-agent/tui';
+import { isFailureContent, isReadOnlyKind, toolCallKind } from '@nova-agent/core';
 import { clipToWidth, toolArgSummary } from './clip.js';
 import { CONTENT_COL, MARK_LEAD } from './layout.js';
 import { toolLabel } from './labels.js';
@@ -94,11 +95,14 @@ export function toolBudget(cols: number): number {
   return cols - 1 - CONTENT_COL;
 }
 
-/** Read-only explorer tools: calls join the live verb group row (读取 N 个文件…). */
-const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files']);
-
+/**
+ * Read-only explorer tools: calls join the live verb group row (读取 N 个文件…).
+ * The grouping is derived from the call's semantic *kind* (core owns which
+ * built-in tool is which), so a new read-only tool joins it without a name
+ * being appended to a list in the rendering layer.
+ */
 export function isReadOnlyTool(name: string): boolean {
-  return READ_ONLY_TOOLS.has(name);
+  return isReadOnlyKind(toolCallKind(name));
 }
 
 /**
@@ -117,15 +121,12 @@ export function toolStartLine(
   const budget = cols === undefined ? 72 : Math.max(12, cols - 1 - styledWidth(fixed));
   return `${MARK_LEAD}${p.dim(frame)} ${p.bold(label)} ${p.cyan(toolArgSummary(name, rawArgs, budget))}`;
 }
-
-export function isFailureContent(content: string): boolean {
-  return (
-    content.startsWith('Error') ||
-    content.startsWith('Permission denied') ||
-    /(^|\n)exit: [1-9]/.test(content) ||
-    content.includes('did not exit')
-  );
-}
+/**
+ * Failure semantics moved to `@nova-agent/core`: a tool's return string is its
+ * only report channel, so "did this fail" is domain truth every surface
+ * consumes — re-exported here unchanged for existing importers.
+ */
+export { isFailureContent };
 
 /** Collapsed outcome, one row on success; failures hang the first error row. */
 export function toolDoneLine(

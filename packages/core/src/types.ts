@@ -157,6 +157,24 @@ export interface ToolDefinition {
    * state — the caller may invoke it before permission is granted.
    */
   preview?(args: Record<string, unknown>, ctx: { rootDir: string }): Promise<string> | string;
+  /**
+   * Provider-neutral **render intent** for one call, decided before it runs
+   * (approval prompts, live tool rows). Optional: a tool without it renders as
+   * a generic card from `{name, args}` — never unrenderable, only less
+   * specific. Must be *pure and synchronous*: it is called before permission is
+   * granted, so it cannot read the filesystem or await anything (a surface that
+   * needs post-grant detail uses `preview` instead).
+   */
+  presentCall?(args: Record<string, unknown>): import('./presentation.js').ToolCallView | undefined;
+  /**
+   * Render intent for the result, given the string `execute` returned. Also
+   * pure. Return `undefined` for anything unrecognized — the surface falls back
+   * to a generic card over the raw text, so an evolving tool never breaks a UI.
+   */
+  presentResult?(
+    args: Record<string, unknown>,
+    content: string,
+  ): import('./presentation.js').ToolResultView | undefined;
 }
 
 /**

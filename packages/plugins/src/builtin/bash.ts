@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import type { ToolExecuteContext } from '@nova-agent/core';
+import type { TerminalCallView, TerminalResultView, ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
 export interface BashPluginOptions {
@@ -518,6 +518,35 @@ async function executeBash(
   return parts.join('\n');
 }
 
+/**
+ * Parse the `exit: N` / `stdout:` / `stderr:` shape that `executeBash` above
+ * produces back into a structured terminal card. Lives beside the formatter on
+ * purpose: the text layout is this file's private contract with its own
+ * `presentResult`, so a format change can never silently strand a UI — and no
+ * other module may parse bash output. Unrecognized text (spawn errors, a
+ * background-job handle) returns undefined and renders as a generic card.
+ */
+export function bashResultView(content: string): TerminalResultView | undefined {
+  const head = /(?:^|\n)exit: (\d+|null)(?:\n|$)/.exec(content);
+  if (head === null) return undefined;
+  const marker = 'stdout:\n';
+  const at = content.indexOf(marker);
+  const dropped = /truncated: (\d+) bytes in the middle/.exec(content);
+  const raw = head[1] ?? 'null';
+  return {
+    card: 'terminal',
+    output: at === -1 ? '' : content.slice(at + marker.length),
+    exitCode: raw === 'null' ? null : Number(raw),
+    ...(dropped !== null ? { droppedBytes: Number(dropped[1] ?? '0') } : {}),
+  };
+}
+
+/** The command a bash call wants to run, or undefined when there is none. */
+function bashCommand(args: Record<string, unknown>): string | undefined {
+  const command = args['command'];
+  return typeof command === 'string' && command.trim().length > 0 ? command : undefined;
+}
+
 export function bashPlugin(options?: BashPluginOptions): Plugin {
   const defaultTimeoutMs = options?.timeoutMs ?? DEFAULT_BASH_TIMEOUT_MS;
   const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_BASH_OUTPUT_BYTES;
@@ -544,6 +573,13 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
           additionalProperties: false,
         },
         execute: (args, c) => executeBash(args, c, defaultTimeoutMs, maxOutputBytes, options?.shellPath),
+        presentCall(args): TerminalCallView | undefined {
+          const command = bashCommand(args);
+          return command === undefined ? undefined : { card: 'terminal', command };
+        },
+        presentResult(_args, content) {
+          return bashResultView(content);
+        },
       }, { permission: 'execute' });
     },
   };

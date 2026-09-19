@@ -1,3 +1,4 @@
+import { isFailureContent } from '@nova-agent/core';
 import type { TodoItem, ToolExecuteContext } from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 
@@ -69,6 +70,14 @@ export function todoPlugin(): Plugin {
               return `${mark} ${item.content}`;
             })
             .join('\n');
+        },
+        presentResult(args, content) {
+          const parsed = parseTodos(args['todos']);
+          if (typeof parsed === 'string' || isFailureContent(content)) return undefined;
+          return {
+            card: 'plan',
+            items: parsed.map((item) => ({ text: item.content, status: item.status })),
+          };
         },
         // Pure log write, no filesystem or process effects.
         isConcurrencySafe() {

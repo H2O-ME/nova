@@ -1,8 +1,13 @@
-import { errMessage } from '@nova-agent/core';
+import { errMessage, isFailureContent } from '@nova-agent/core';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
-import type { ToolExecuteContext } from '@nova-agent/core';
+import type {
+  FileLocation,
+  SearchCallView,
+  SearchResultView,
+  ToolExecuteContext,
+} from '@nova-agent/core';
 import type { Plugin } from '../types.js';
 import { codeRuntimeAvailable } from '../ptc/code-runtime.js';
 import { looksBinary, resolveAnywhere, rootPermissionKind } from './fs.js';
@@ -309,6 +314,49 @@ async function executeSearch(
   return results.join('\n') + haltNote();
 }
 
+/** Trailing operator notes this tool appends to a result body (not hits). */
+const SEARCH_NOTE_RE = /^（(?:已达结果上限|搜索已中止)/;
+
+/** Render intent for a search call: which pattern, and matched against what. */
+function searchCallView(args: Record<string, unknown>): SearchCallView | undefined {
+  const content = strArg(args, 'content_regex');
+  if (content !== undefined) return { card: 'search', query: content, mode: 'content' };
+  const glob = strArg(args, 'name_glob');
+  if (glob !== undefined) return { card: 'search', query: glob, mode: 'name' };
+  return undefined;
+}
+
+/** `path:line: text` → a jump target; anything unparsable is not a hit. */
+function parseHitLine(line: string): FileLocation | undefined {
+  const hit = /^(.+?):(\d+): /.exec(line);
+  if (hit === null) return undefined;
+  const num = Number(hit[2]);
+  return { path: hit[1] ?? '', line: num };
+}
+
+/**
+ * search_files result view. The `path:line: text` / bare-path line format is
+ * this file's contract with its own `presentResult` (same discipline as bash):
+ * the worker and the in-process fallback both emit it, and a format change
+ * cannot strand a UI because an unrecognized body yields no locations.
+ */
+function searchResultView(args: Record<string, unknown>, content: string): SearchResultView | undefined {
+  const call = searchCallView(args);
+  if (call === undefined || isFailureContent(content)) return undefined;
+  const lines = content.split('\n').filter((line) => line.trim().length > 0);
+  if (lines.length === 1 && lines[0] === '(no matches)') {
+    return { card: 'search', matches: [], truncated: false };
+  }
+  const hits = lines.filter((line) => !SEARCH_NOTE_RE.test(line));
+  return {
+    card: 'search',
+    matches: call.mode === 'content'
+      ? hits.map(parseHitLine).filter((hit): hit is FileLocation => hit !== undefined)
+      : hits.map((path) => ({ path })),
+    truncated: hits.length !== lines.length,
+  };
+}
+
 export function searchPlugin(options?: SearchPluginOptions): Plugin {
   const wallMs = options?.wallMs ?? 30_000;
   const trustedReadRoots = options?.trustedReadRoots ?? [];
@@ -341,6 +389,12 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
           return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.', trustedReadRoots);
         },
         execute: (args, c) => executeSearch(args, c, wallMs, wantWorker),
+        presentCall(args) {
+          return searchCallView(args);
+        },
+        presentResult(args, content) {
+          return searchResultView(args, content);
+        },
         // Read-only: safe to dispatch concurrently with sibling reads.
         isConcurrencySafe() {
           return true;
