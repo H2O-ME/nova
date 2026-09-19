@@ -109,6 +109,8 @@ export class TuiStore {
   interruptAt = 0;
   lastCtrlC = 0;
   streaming = false;
+  /** 本轮起点（活体行的耗时基准）；轮结束清空——屏幕要能回答"跑了多久"。 */
+  turnStartedAt: number | undefined = undefined;
   compactRunning = false;
   modeSwitching = false;
   activeToolId: string | undefined;

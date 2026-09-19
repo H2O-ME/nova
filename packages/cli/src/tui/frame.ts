@@ -133,7 +133,10 @@ export class Flattener {
     for (const entry of this.entries) {
       if (!entry.active) continue;
       // kind is optional — "no previous" and "previous kind undefined" differ.
-      if (hasPrev && !isTightGap(prevKind, entry.block.kind)) flat.push('');
+      if (hasPrev && !isDenseRun(prevKind, entry.block.kind)) flat.push('');
+      // 用户提问自带一行 vpad（Grok 的 prompt 块比别的块多一行呼吸）：一轮读起来
+      // 是"提问（隔两行）思考（隔一行）答案（隔一行）工具面"，而不是一整块实心砖。
+      if (entry.block.kind === 'user') flat.push('');
       rowMap.push({ block: entry.block, start: flat.length, count: entry.wrapped.length });
       for (const row of entry.wrapped) flat.push(row);
       prevKind = entry.block.kind;
@@ -144,13 +147,13 @@ export class Flattener {
   }
 }
 
-/** 上一块是这些之一，才可能"同轮紧排"（未标注的块不在内——它已经另起一段）。 */
-const TIGHT_AFTER = new Set<FrameBlock['kind']>(['user', 'reasoning', 'assistant', 'tool']);
-/** 当前块是这些之一，才是同轮的延续而非新单元。 */
-const TIGHT_BEFORE = new Set<FrameBlock['kind']>(['reasoning', 'assistant', 'tool']);
-
-function isTightGap(prev: FrameBlock['kind'], cur: FrameBlock['kind']): boolean {
-  return TIGHT_AFTER.has(prev) && TIGHT_BEFORE.has(cur);
+/**
+ * 连续工具行算 Grok 的 **dense run**（`scrollback/state/layout.rs:1555-1563`：条目之间
+ * 恒 1 空行，只有连续折叠的工具面彼此不留）。批7 把"紧排"抄成了整轮不分——于是
+ * 提问/思考/答案/工具挤成一块实心砖，正是"太贴着不好看"的那件事。
+ */
+function isDenseRun(prev: FrameBlock['kind'], cur: FrameBlock['kind']): boolean {
+  return prev === 'tool' && cur === 'tool';
 }
 
 export { bottomStack, sliceHistory };

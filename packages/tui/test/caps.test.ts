@@ -3,30 +3,37 @@ import { detectCaps, KeyDecoder, LineScreen } from '../src/index.js';
 
 describe('detectCaps', () => {
   it('NO_COLOR forces plain regardless of TTY', () => {
-    const caps = detectCaps({ NO_COLOR: '1', COLORTERM: 'truecolor' }, true);
+    const caps = detectCaps({ NO_COLOR: '1', COLORTERM: 'truecolor' }, true, 'win32');
     expect(caps.color).toBe(false);
     expect(caps.truecolor).toBe(false);
   });
 
   it('non-TTY output never gets color or sync output', () => {
-    const caps = detectCaps({ TERM: 'xterm-256color' }, false);
+    const caps = detectCaps({ TERM: 'xterm-256color' }, false, 'win32');
     expect(caps).toEqual({ color: false, truecolor: false, synchronizedOutput: false });
   });
 
   it('TERM=dumb is treated as colorless', () => {
-    expect(detectCaps({ TERM: 'dumb' }, true).color).toBe(false);
+    expect(detectCaps({ TERM: 'dumb' }, true, 'win32').color).toBe(false);
   });
 
   it('COLORTERM=truecolor upgrades to 24-bit on a TTY', () => {
-    const caps = detectCaps({ COLORTERM: 'truecolor', TERM: 'xterm' }, true);
+    const caps = detectCaps({ COLORTERM: 'truecolor', TERM: 'xterm' }, true, 'linux');
     expect(caps).toEqual({ color: true, truecolor: true, synchronizedOutput: true });
   });
 
   it('plain TTY without COLORTERM stays 16-color', () => {
-    const caps = detectCaps({ TERM: 'xterm' }, true);
+    const caps = detectCaps({ TERM: 'xterm' }, true, 'linux');
     expect(caps.color).toBe(true);
     expect(caps.truecolor).toBe(false);
     expect(caps.synchronizedOutput).toBe(true);
+  });
+
+  it('truecolor 品牌表补环境变量漏报（Grok 同款升回）', () => {
+    expect(detectCaps({ TERM_PROGRAM: 'Windows Terminal', TERM: 'xterm-256color' }, true, 'linux').truecolor).toBe(true);
+    expect(detectCaps({ TERM_PROGRAM: 'tmux', TERM: 'xterm' }, true, 'linux').truecolor).toBe(false);
+    // Windows 无条件为真：ConHost 自 Win10 起就吃 38;2，而它什么都不报。
+    expect(detectCaps({ TERM: 'xterm' }, true, 'win32').truecolor).toBe(true);
   });
 
   it('tmux disables synchronized output (pane-wide repaint at block close)', () => {

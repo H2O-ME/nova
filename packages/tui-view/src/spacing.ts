@@ -7,9 +7,9 @@
  * trimmed, and the render layer owns the single breathing row between
  * history and the composer zone.
  *
- * `flattenBlocks` tightens this on intra-turn pairs (user→reasoning,
- * reasoning→assistant get 0 blank rows so the turn reads as one cohesive
- * unit); the base contract still holds for all other adjacencies.
+ * `flattenBlocks` owns the two Grok exceptions on top of that base contract
+ * （批14）：连续折叠的工具行算一个 dense run（彼此不留行），用户提问自带一行 vpad
+ * （前面净两行）。批7 曾把"紧排"套到整轮——提问/思考/答案/工具挤成一块实心砖。
  */
 
 import { BREATHE_ROWS, HISTORY_MIN_ROWS } from './tokens.js';

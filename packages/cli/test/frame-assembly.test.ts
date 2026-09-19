@@ -8,7 +8,7 @@
  * markdown) and asserting the assembled output is frame-coherent:
  *   - no row exceeds the terminal column budget
  *   - every non-blank block has a contiguous rowMap entry
- *   - the spacing contract holds (tight pairs have 0 blank rows between them)
+ *   - the spacing contract holds (entries are separated; only tool runs are dense)
  *
  * This is the test that catches the exact class of bug the individual helpers
  * exist to prevent: a half-drawn frame where one block overflows, wraps to the
@@ -58,23 +58,21 @@ describe('frame assembly coherence', () => {
     }
   });
 
-  it('tight pairs (user→reasoning, reasoning→assistant) have zero blank rows between them', () => {
+  it('工具行之间才紧排（dense run），其余条目之间恒一行呼吸', () => {
     const blocks: FrameBlock[] = [
-      block(['问题'], 'user'),
-      block(['思考过程'], 'reasoning', { first: '│ ', rest: '│ ' }),
-      block(['答案'], 'assistant'),
+      block(['bash — echo a'], 'tool'),
+      block(['bash — echo b'], 'tool'),
+      block(['bash — echo c'], 'tool'),
     ];
 
     const { flat, rowMap } = flattenBlocks(blocks, cols);
 
-    // All three blocks present.
     expect(rowMap).toHaveLength(3);
-
-    // No blank rows at all — the entire assembly is 3 tight rows.
-    expect(flat).toEqual(['问题', '│ 思考过程', '答案']);
+    // 连续工具面挤在一起，彼此不留行——一轮里几十个工具调用不会把屏幕撑成空行串。
+    expect(flat).toEqual(['bash — echo a', 'bash — echo b', 'bash — echo c']);
   });
 
-  it('一轮之内紧排：只有新语义单元之前才留白', () => {
+  it('一轮之内逐个留呼吸，新一轮提问再多让一行', () => {
     const blocks: FrameBlock[] = [
       block(['问题'], 'user'),
       block(['答案'], 'assistant'),
@@ -85,9 +83,8 @@ describe('frame assembly coherence', () => {
 
     const { flat } = flattenBlocks(blocks, cols);
 
-    // user → assistant → tool → assistant 全部紧排（同轮）；
-    // 新一轮的 user 块之前才插一行空行。
-    expect(flat).toEqual(['问题', '答案', 'bash — echo hi', '第二条答案', '', '下一个问题']);
+    // 条目之间恒 1 行；user 块自带 vpad ⇒ 跨轮之间净 2 行。
+    expect(flat).toEqual(['', '问题', '', '答案', '', 'bash — echo hi', '', '第二条答案', '', '', '下一个问题']);
   });
 
   it('认不出 kind 的块一律另起一段（提示不会被读成模型输出）', () => {
@@ -110,10 +107,11 @@ describe('frame assembly coherence', () => {
 
     const { flat, rowMap } = flattenBlocks(blocks, cols);
 
-    // The blank block is filtered out entirely — and two same-turn assistant
-    // rows sit tight, so no separator row is invented either.
+    // The blank-only block is filtered out entirely (no double gap), while the
+    // two live assistant rows still get the one separator row every entry pair
+    // earns under the Grok rhythm.
     expect(rowMap).toHaveLength(2);
-    expect(flat).toEqual(['内容', '后续']);
+    expect(flat).toEqual(['内容', '', '后续']);
   });
 
   it('rowMap stays contiguous after scrolling (sliceHistory + bottomStack)', () => {

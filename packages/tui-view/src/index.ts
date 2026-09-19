@@ -6,6 +6,7 @@ export * from './layout.js';
 export * from './clip.js';
 export * from './tool-lines.js';
 export * from './status-view.js';
+export * from './turn-status.js';
 export * from './text.js';
 export * from './popups.js';
 export * from './composer-view.js';

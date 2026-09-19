@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { flattenBlocks } from '../src/tui/frame.js';
 
-// Grok 留白契约：空行只出现在**新语义单元之前**（用户提问 / 认不出 kind 的块）；
-// 一轮之内 user → reasoning → assistant → tool 全部紧排，插行由这里单源决定。
+// Grok 留白契约（scrollback/state/layout.rs:1555-1563 + entry_renderer.rs:405-412）：
+// 条目之间恒 1 空行，用户提问自带 vpad（净 2 行），只有连续折叠的工具行彼此不留。
 describe('flattenBlocks spacing contract', () => {
-  it('user -> reasoning -> assistant form one cohesive group without blank lines', () => {
+  it('条目之间恒留一行：提问/思考/答案不再挤成一块实心砖', () => {
     const { flat } = flattenBlocks(
       [
         { lines: ['q'], wrapped: undefined, kind: 'user' },
@@ -13,10 +13,10 @@ describe('flattenBlocks spacing contract', () => {
       ],
       80,
     );
-    expect(flat).toEqual(['q', 'thinking', 'answer']);
+    expect(flat).toEqual(['', 'q', '', 'thinking', '', 'answer']);
   });
 
-  it('答案与工具行都是本轮的延续：与提问之间不留白', () => {
+  it('答案与工具行也各起一行呼吸（批7 的整轮紧排抄反了）', () => {
     const { flat } = flattenBlocks(
       [
         { lines: ['q'], wrapped: undefined, kind: 'user' },
@@ -25,10 +25,10 @@ describe('flattenBlocks spacing contract', () => {
       ],
       80,
     );
-    expect(flat).toEqual(['q', 'answer', '✓ 执行命令']);
+    expect(flat).toEqual(['', 'q', '', 'answer', '', '✓ 执行命令']);
   });
 
-  it('separates consecutive turns with 1 blank row', () => {
+  it('跨轮：上一轮的答案与下一轮提问之间净 2 行（gap 1 + prompt vpad 1）', () => {
     const { flat } = flattenBlocks(
       [
         { lines: ['a1'], wrapped: undefined, kind: 'assistant' },
@@ -36,7 +36,7 @@ describe('flattenBlocks spacing contract', () => {
       ],
       80,
     );
-    expect(flat).toEqual(['a1', '', 'q2']);
+    expect(flat).toEqual(['a1', '', '', 'q2']);
   });
 
   it('no leading or trailing blank rows', () => {
@@ -68,6 +68,8 @@ describe('flattenBlocks spacing contract', () => {
     expect(rowMap).toHaveLength(3);
     const covered = rowMap.reduce((n, seg) => n + seg.count, 0);
     expect(covered).toBe(3);
-    expect(flat).toHaveLength(3);
+    // 其余全是分隔空行——rowMap 的 count 只数内容行，点击命中靠 start 不靠连续性。
+    expect(flat).toHaveLength(6);
+    expect(flat.filter((row) => row === '')).toHaveLength(3);
   });
 });

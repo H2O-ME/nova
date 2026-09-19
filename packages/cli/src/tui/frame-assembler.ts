@@ -26,6 +26,7 @@ import {
   hintItems,
   layoutComposer,
   messageQueueRows,
+  turnStatus,
   type HistoryAnchor,
   type Palette,
 } from '@nova-agent/tui-view';
@@ -153,9 +154,29 @@ export class FrameAssembler {
     });
     // 运行中排队的消息：composer 上方的暗色 lane，始终可见（消息队列语义）。
     const queueLines = messageQueueRows(paint, store.messageQueue, cols);
+    // 活体行（Grok turn_status）：跑动时钉在 composer 上方，一行转轮+阶段+本轮耗时，
+    // 空闲整块消失。与队列 lane 同族，所以共用 composer 前那一槽（gap 在前）。
+    const liveLines =
+      store.streaming && store.turnStartedAt !== undefined
+        ? [
+            '',
+            turnStatus(paint, {
+              phase: store.genPhase,
+              spinnerFrame: store.spinnerFrame,
+              elapsedMs: Date.now() - store.turnStartedAt,
+            }),
+          ]
+        : [];
+    const preComposer = [...liveLines, ...queueLines];
     const { flat, rowMap } = this.flattener.flatten(store.blocks, cols);
     const historyBudget =
-      rows - popupLines.length - queueLines.length - composerZoneRows.length - STATUS_ROWS - BREATHE_ROWS - HINT_ROWS;
+      rows -
+      popupLines.length -
+      preComposer.length -
+      composerZoneRows.length -
+      STATUS_ROWS -
+      BREATHE_ROWS -
+      HINT_ROWS;
     // 逻辑滚动锚定（M10 R5）：上滚后每帧由锚块在 rowMap 的最新起始行反推
     // scrollFromEnd——尾部追加自动补偿（顶行不变⇒偏移随之增长），历史中段
     // 任意增删行视口也不漂移（旧的「按上帧行数差补偿」只治尾增）。
@@ -226,11 +247,11 @@ export class FrameAssembler {
       );
 
     d.write(
-      bottomStack(viewLines, popupLines, queueLines, composerZoneRows, status, breathText, hints),
+      bottomStack(viewLines, popupLines, preComposer, composerZoneRows, status, breathText, hints),
       cursorPosition({
         historyRows: viewLines.length,
         popupRows: popupLines.length,
-        queueRows: queueLines.length,
+        queueRows: preComposer.length,
         leadRows: 1, // 卡片顶框那一行
         layout,
       }),

@@ -162,6 +162,7 @@ export class TurnProjector {
   endTurn(): void {
     const { store } = this.deps;
     store.streaming = false;
+    store.turnStartedAt = undefined; // 活体行随本轮一起消失
     store.interruptAt = 0;
     store.genPhase = 'idle';
     // 中断/出错时活行等不到 tool_call_result 的改写：回退为静态行并清场，

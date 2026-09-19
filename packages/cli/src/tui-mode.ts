@@ -484,6 +484,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     store.tpsLastTokens = store.tpsTokens;
     store.tpsLastAt = Date.now();
     const startedAt = Date.now();
+    store.turnStartedAt = startedAt; // 活体行的耗时基准（见 tui-view/turn-status）
 
     // ---- steady-tick reveal (typewriter) --------------------------------
     // The projector queues both streams; this turn-owned ticker drains them on
@@ -855,6 +856,7 @@ export async function startTui(opts: TuiOptions): Promise<void> {
       spinner.stop();
       store.pushBlock([paint.red(`  ✗ 本轮失败：${errMessage(err)}`)], TOOL_GUTTER);
       store.streaming = false;
+      store.turnStartedAt = undefined;
       scheduleRender();
     });
   }

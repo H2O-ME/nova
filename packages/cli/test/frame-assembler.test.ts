@@ -164,7 +164,7 @@ describe('FrameAssembler logical scroll anchor', () => {
     const top = t.store.frameMap!.sliceStart;
     t.store.pushBlock(['新输出'], undefined, 'assistant');
     t.assembler.render(renderArgs);
-    expect(t.store.scrollFromEnd).toBe(6); // 同轮紧排：只 +1 行内容，不再 +1 分隔空行
+    expect(t.store.scrollFromEnd).toBe(7); // 条目之间恒一行呼吸：+1 内容 +1 分隔
     expect(t.store.frameMap!.sliceStart).toBe(top);
   });
 
@@ -291,5 +291,52 @@ describe('FrameAssembler 短转录贴底锚定', () => {
     t.store.scrollFromEnd = 5;
     t.assembler.render(renderArgs);
     expect(t.store.frameMap!.topPad).toBe(0);
+  });
+});
+/**
+ * 活体行（Grok `views/turn_status.rs`）：跑动时钉在输入卡上方，空闲整块消失。
+ * 它占的是转录的两行（行 + 呼吸行）——转录窗口随之收缩，这是 Grok 的既有行为。
+ */
+describe('FrameAssembler 活体行', () => {
+  const args = {
+    commandMatches: [],
+    modelContextTokens: () => undefined,
+    currentModel: 'm1',
+    currentSessionFile: '/s.jsonl',
+  };
+  const boxTop = (lines: string[]): number => lines.findIndex((l) => l.trimStart().startsWith('╭'));
+
+  it('空闲不占行；跑动时输入卡上方一行给出阶段与本轮耗时', () => {
+    const idle = setup();
+    idle.store.pushBlock(['内容'], undefined, 'assistant');
+    idle.assembler.render(args);
+    const idleRows = idle.store.frameMap!.historyRows;
+
+    const live = setup();
+    live.store.pushBlock(['内容'], undefined, 'assistant');
+    live.store.streaming = true;
+    live.store.turnStartedAt = Date.now() - 5200;
+    live.store.genPhase = 'writing';
+    live.assembler.render(args);
+    const lines = live.frames.at(-1)!.lines;
+    const top = boxTop(lines);
+    expect(lines[top - 1]).toContain('回答中');
+    expect(lines[top - 1]).toContain('5.2s');
+    expect(lines[top - 2]).toBe('');
+    expect(live.store.frameMap!.historyRows).toBe(idleRows - 2);
+  });
+
+  it('轮结束（streaming 落回 false）后整块消失，转录窗口复原', () => {
+    const t = setup();
+    t.store.pushBlock(['内容'], undefined, 'assistant');
+    t.store.streaming = true;
+    t.store.turnStartedAt = Date.now() - 1500;
+    t.assembler.render(args);
+    const withRow = t.store.frameMap!.historyRows;
+    t.store.streaming = false;
+    t.store.turnStartedAt = undefined;
+    t.assembler.render(args);
+    expect(t.frames.at(-1)!.lines[boxTop(t.frames.at(-1)!.lines) - 1]).not.toContain('进行中');
+    expect(t.store.frameMap!.historyRows).toBe(withRow + 2);
   });
 });
