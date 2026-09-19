@@ -149,8 +149,8 @@ export class Scrollback {
    */
   viewport(rows: number): Viewport {
     const height = this.layout.height;
-    const screen = Array.from<string>({ length: rows }, () => '');
-    const owner = Array.from<number>({ length: rows }, () => -1);
+    const screen = Array.from({ length: rows }, (): string => '');
+    const owner = Array.from({ length: rows }, (): number => -1);
     if (rows <= 0) return { screen, owner, above: 0, below: 0, atBottom: true };
 
     const center = this.entries.length === 1 && this.entries[0]!.center === true && height < rows;

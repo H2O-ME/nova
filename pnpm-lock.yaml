@@ -54,6 +54,9 @@ importers:
       '@nova-agent/tui':
         specifier: workspace:*
         version: link:../tui
+      '@nova-agent/tui-app':
+        specifier: workspace:*
+        version: link:../tui-app
       '@nova-agent/web':
         specifier: workspace:*
         version: link:../web

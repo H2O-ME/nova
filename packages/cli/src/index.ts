@@ -17,7 +17,7 @@ options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
   qqbot           QQ 机器人模式（需配置 qqbot.appId / qqbot.clientSecret）
   --web           浏览器界面（本机 HTTP+WS 单进程，打印带 token 的 URL；NOVA_WEB_PORT 固定端口）
-  --repl          （过渡期兼容保留：交互形态本就是 readline REPL）
+  --repl          强制 readline 回落形态（默认是 TUI；非 TTY 自动回落）
   --resume        续接历史会话文件
   --approval      临时覆盖审批档位；exec 模式下无法交互确认，未放行的请求会被拒绝
   --theme         临时覆盖界面主题（config 的 ui.theme 是持久设置；NO_COLOR 恒定无色）
@@ -157,9 +157,21 @@ async function dispatch(parsed: ParsedArgs, rootDir: string, config: Config): Pr
     await startWeb({ rootDir, config, ...resumeAndApproval(parsed), ...webPort() });
     return;
   }
-  // M11 批1c：旧全屏 TUI 已退役（批4 的新 tui-app 会以 surface 形态回来），
-  // 交互一律走 readline REPL；--repl 旗标保留为兼容 no-op。
-  await startRepl({
+  // M11 批4d：默认交互形态是 tui-app（全屏 TUI）。没有 TTY（管道 / CI /
+  // 重定向）时回落 readline REPL——TUI 需要 alternate screen 与原始按键，
+  // 在非 TTY 上只会毁掉输出；--repl 强制 REPL。
+  const interactive = process.stdout.isTTY === true && process.stdin.isTTY === true;
+  if (parsed.repl || !interactive) {
+    await startRepl({
+      rootDir,
+      config,
+      ...resumeAndApproval(parsed),
+      ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
+    });
+    return;
+  }
+  const { startTui } = await import('./tui-mode.js');
+  await startTui({
     rootDir,
     config,
     ...resumeAndApproval(parsed),

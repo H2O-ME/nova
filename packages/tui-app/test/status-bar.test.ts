@@ -5,7 +5,8 @@
  * numbers do, and the right cluster never moves its separator as values tick.
  */
 import { describe, expect, it } from 'vitest';
-import { plainPalette } from '../src/theme.js';
+import { styledWidth } from '@nova-agent/tui';
+import { buildPalette, plainPalette } from '../src/theme.js';
 import { GROUP_SEP, ITEM_SEP, humanTokens, statusLine, type StatusInput } from '../src/status-bar.js';
 
 const palette = plainPalette();
@@ -147,6 +148,27 @@ describe('the right cluster', () => {
     const line = statusLine(base({ tps: 0, cacheHitRate: null }), palette).line;
     expect(line).not.toContain('⚡');
     expect(line).not.toContain('cache');
+  });
+});
+
+describe('a colour terminal', () => {
+  const color = buildPalette({ color: true, truecolor: true });
+
+  it('lays out by display columns, not by escape bytes', () => {
+    const plain = statusLine(base(), palette);
+    const painted = statusLine(base(), color);
+    // Same tier as the uncoloured terminal: counting the SGR bytes would have
+    // dropped fields a 120-column terminal has room for.
+    expect(painted.line).toContain('deepseek/deepseek-v4.1-flash');
+    expect(painted.line).toContain('只读');
+    expect(painted.line).toContain('⚡');
+    expect(styledWidth(painted.line)).toBe(styledWidth(plain.line));
+    expect(painted.line.length).toBeGreaterThan(styledWidth(painted.line));
+  });
+
+  it('reports the gauge columns for hover hit-testing in display width', () => {
+    const view = statusLine(base(), color);
+    expect(view.gaugeCols?.end).toBeLessThan(40);
   });
 });
 

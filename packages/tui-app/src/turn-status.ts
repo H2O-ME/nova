@@ -11,6 +11,7 @@
  * differently from "it is working".
  */
 import type { TurnPhase } from '@nova-agent/core';
+import { styledWidth } from '@nova-agent/tui';
 import { paint, type Palette } from './theme.js';
 
 /** Grok's braille spinner; frame = `(tick / SPINNER_DIVISOR) % frames.length`. */
@@ -97,7 +98,8 @@ export function turnStatusLine(input: TurnStatusInput, palette: Palette): string
   const head = `${spinner} ${label}`;
   const elapsed = paint(palette, palette.gray, formatDuration(input.now - input.startedAt));
   const queued = input.queued > 0 ? paint(palette, palette.gray, ` ⧉${input.queued}`) : '';
-  const fixed = head.length + elapsed.length + queued.length + right.length;
+  // Display columns, not bytes: the fields are already coloured.
+  const fixed = styledWidth(head) + styledWidth(elapsed) + styledWidth(queued) + styledWidth(right);
   // The screen does the ANSI-aware truncation if a narrow terminal still cuts
   // this row; the fill only aims the timer at the right edge.
   const fill = Math.max(1, input.cols - fixed - 1);

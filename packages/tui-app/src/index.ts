@@ -6,7 +6,18 @@
  * purpose — the shell that drives them is thin, and everything a screenshot
  * could disagree about is testable without a terminal.
  */
-export { buildPalette, plainPalette, paint, usageUrgency, waveBrightness, blend, BG_BASE, type Palette } from './theme.js';
+export {
+  buildPalette,
+  plainPalette,
+  paint,
+  capsule,
+  usageUrgency,
+  waveBrightness,
+  blend,
+  BG_BASE,
+  type Palette,
+  type ThemeName,
+} from './theme.js';
 export {
   MARK_COL,
   MARK_GAP,
@@ -81,3 +92,51 @@ export {
   type VerbKind,
   type VerbRun,
 } from './verb-group.js';
+
+export {
+  cardTop,
+  cardRow,
+  cardBottom,
+  fit,
+  composerCard,
+  approvalCard,
+  approvalScopeOf,
+  callHeadline,
+  queueLane,
+  hintBar,
+  listPanel,
+  welcomeCard,
+  modeSelector,
+  COMPOSER_PLACEHOLDER,
+  COMPOSER_LEAD,
+  APPROVAL_OPTIONS,
+  QUEUE_PREVIEW_ROWS,
+  type ApprovalChoice,
+  type ApprovalInput,
+  type ApprovalScope,
+  type ComposerInput,
+  type ComposerView,
+  type KeyboardOwner,
+  type HintInput,
+  type ListPanelInput,
+  type QueueInput,
+  type WelcomeInput,
+} from './panels.js';
+export { buildFrame, frameRegions, type Frame, type FrameInput } from './frame.js';
+export {
+  createUiState,
+  handleKey,
+  WHEEL_ROWS,
+  PAGE_ROWS,
+  type ApprovalState,
+  type CommandSpec,
+  type KeyContext,
+  type PanelRow,
+  type PanelState,
+  type TuiAction,
+  type UiState,
+} from './keys.js';
+export { TuiApp, type CommandOutcome, type TuiAppOptions } from './app.js';
+export { reduce, initialTranscript, type Block, type TranscriptState, type ReduceContext } from './blocks.js';
+export { buildEntries, type BlockPainter, type EntryInput, type RenderOpts } from './entries.js';
+export { paintBlock, markdown, reasoningLines, toolLines, MARKS, TRUNCATED_ROWS, EXPANDED_ROWS, type PaintOpts } from './render.js';

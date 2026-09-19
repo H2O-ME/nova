@@ -62,6 +62,19 @@ export interface Palette {
   pasteBg: string;
   pasteFg: string;
   pasteDim: string;
+  /**
+   * A selected segment's capsule: background plus its own foreground. Colour,
+   * never reverse video — SGR 7 changes the terminal's font fallback, so a
+   * capsule built that way can only ever hold ASCII (see the file header).
+   */
+  capsuleBg: string;
+  capsuleFg: string;
+  /**
+   * The theme's background, as the colour a rail row blends its wave *toward*:
+   * dark and light are not a coat of paint over one table, so the blend target
+   * has to move with the theme.
+   */
+  bg: string;
   mdHeading1: string;
   mdHeading2: string;
   mdHeading3: string;
@@ -119,6 +132,8 @@ const GROKNIGHT = {
   pasteBg: '#111111',
   pasteFg: '#c8c8c8',
   pasteDim: '#414141',
+  capsuleBg: '#3a3a42',
+  capsuleFg: '#e1e1e1',
   mdHeading1: '#1abc9c',
   mdHeading2: '#7aa2f7',
   mdHeading3: '#9d7cd8',
@@ -130,7 +145,64 @@ const GROKNIGHT = {
   zoneFragment: '#7aa2f7',
   zoneSkills: '#bb9af7',
   zoneMessages: '#e0af68',
+  bg: '#141414',
 } as const;
+
+/**
+ * The light theme, on the same semantic slots: a daylight counterpart to
+ * GrokNight rather than a second design. The neutrals invert, the brand teal
+ * stays the accent, and every semantic slot keeps its meaning — a card that
+ * says "success is green" reads the same in both.
+ */
+const NOVADAY = {
+  text: '#1f2328',
+  textSecondary: '#3d444d',
+  gray: '#6e7781',
+  grayBright: '#57606a',
+  grayDim: '#8c959f',
+  accent: '#0f766e',
+  accentUser: '#24292f',
+  accentAssistant: '#7c3aed',
+  accentThinking: '#7c3aed',
+  accentTool: '#57606a',
+  accentSystem: '#0969da',
+  accentSuccess: '#1a7f37',
+  accentError: '#cf222e',
+  accentRunning: '#0969da',
+  accentSkill: '#0969da',
+  accentPlan: '#9a6700',
+  border: '#d0d7de',
+  borderActive: '#afb8c1',
+  selectionBorder: '#c8d1d9',
+  command: '#9a6700',
+  path: '#bc4c00',
+  running: '#0969da',
+  warning: '#9a6700',
+  ok: '#1a7f37',
+  warn: '#9a6700',
+  fail: '#cf222e',
+  diffInsertBg: '#dafbe1',
+  diffInsertFg: '#1a7f37',
+  diffDeleteBg: '#ffebe9',
+  diffDeleteFg: '#cf222e',
+  pasteBg: '#f6f8fa',
+  pasteFg: '#24292f',
+  pasteDim: '#d0d7de',
+  capsuleBg: '#d0d7de',
+  capsuleFg: '#1f2328',
+  mdHeading1: '#0f766e',
+  mdHeading2: '#0969da',
+  mdHeading3: '#8250df',
+  mdCode: '#0550ae',
+  mdMuted: '#6e7781',
+  link: '#0969da',
+  zonePrompt: '#0f766e',
+  zoneSchema: '#1a7f37',
+  zoneFragment: '#0969da',
+  zoneSkills: '#8250df',
+  zoneMessages: '#9a6700',
+  bg: '#ffffff',
+} as const satisfies Record<Slot, string>;
 
 type Slot = keyof typeof GROKNIGHT;
 
@@ -174,6 +246,9 @@ const ANSI16: Record<Slot, string> = {
   pasteBg: '',
   pasteFg: sgr('37'),
   pasteDim: sgr('90'),
+  capsuleBg: sgr('100'),
+  capsuleFg: sgr('97'),
+  bg: '',
   mdHeading1: sgr('36'),
   mdHeading2: sgr('34'),
   mdHeading3: sgr('35'),
@@ -187,16 +262,34 @@ const ANSI16: Record<Slot, string> = {
   zoneMessages: sgr('33'),
 };
 
+/**
+ * A 16-colour terminal cannot express a light background, but it can express
+ * the darker foregrounds a light one needs: only the neutral slots change, and
+ * everything semantic keeps the mapping that survives on either background.
+ */
+const ANSI16_LIGHT: Record<Slot, string> = {
+  ...ANSI16,
+  text: sgr('30'),
+  textSecondary: sgr('30'),
+  accentUser: sgr('30'),
+  capsuleFg: sgr('30'),
+  pasteFg: sgr('30'),
+};
+
+export type ThemeName = 'dark' | 'light' | 'plain';
+
 export function plainPalette(): Palette {
   const empty = Object.fromEntries(Object.keys(GROKNIGHT).map((key) => [key, ''])) as Record<Slot, string>;
   return { reset: '', bold: '', dim: '', ...empty };
 }
 
-export function buildPalette(opts: { color: boolean; truecolor: boolean }): Palette {
-  if (!opts.color) return plainPalette();
-  const table = opts.truecolor ? undefined : ANSI16;
+export function buildPalette(opts: { color: boolean; truecolor: boolean; theme?: ThemeName }): Palette {
+  const theme = opts.theme ?? 'dark';
+  if (!opts.color || theme === 'plain') return plainPalette();
+  const table = theme === 'light' ? NOVADAY : GROKNIGHT;
+  const ansi = theme === 'light' ? ANSI16_LIGHT : ANSI16;
   const slots = Object.fromEntries(
-    (Object.keys(GROKNIGHT) as Slot[]).map((key) => [key, table?.[key] ?? fg(GROKNIGHT[key])]),
+    (Object.keys(GROKNIGHT) as Slot[]).map((key) => [key, opts.truecolor ? fg(table[key]) : ansi[key]]),
   ) as Record<Slot, string>;
   return { reset: sgr('0'), bold: sgr('1'), dim: slots.gray, ...slots };
 }
@@ -204,6 +297,12 @@ export function buildPalette(opts: { color: boolean; truecolor: boolean }): Pale
 /** Wrap text in a colour, restoring the palette's default afterwards. */
 export function paint(palette: Palette, color: string, text: string): string {
   return color === '' ? text : `${color}${text}${palette.reset}`;
+}
+
+/** Wrap text in a capsule (background + foreground), for selected segments. */
+export function capsule(palette: Palette, text: string): string {
+  if (palette.capsuleBg === '' && palette.capsuleFg === '') return text;
+  return `${palette.capsuleBg}${palette.capsuleFg}${text}${palette.reset}`;
 }
 
 /**
@@ -248,5 +347,5 @@ function hex(channels: readonly number[]): string {
   return `#${channels.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** The GrokNight background, exported for surfaces that blend against it. */
-export const BG_BASE = '#141414';
+/** The default theme's background — `Palette.bg` is the honest source. */
+export const BG_BASE = GROKNIGHT.bg;

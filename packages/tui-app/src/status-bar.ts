@@ -14,6 +14,7 @@
  *    visible in the frame itself).
  */
 import type { ApprovalMode, PtcMode } from '@nova-agent/core';
+import { styledWidth } from '@nova-agent/tui';
 import { paint, usageUrgency, type Palette } from './theme.js';
 
 /** Widths of the two separator kinds. They are NOT interchangeable. */
@@ -88,7 +89,10 @@ export function statusLine(input: StatusInput, palette: Palette): StatusView {
   const right = rightCluster(input, palette);
   for (const tier of TIERS) {
     const built = assemble(input, palette, tier, right);
-    if (built.line.length <= input.cols) return built;
+    // Display width, never `String.length`: every field is already wrapped in
+    // SGR sequences, and counting those would drop whole fields on a colour
+    // terminal that has room for them.
+    if (styledWidth(built.line) <= input.cols) return built;
   }
   return { line: '', gaugeCols: undefined };
 }
@@ -99,17 +103,19 @@ function assemble(input: StatusInput, palette: Palette, tier: Tier, right: strin
   const parts: string[] = [];
   let gaugeCols: { start: number; end: number } | undefined;
   if (gauge !== undefined) {
-    gaugeCols = { start: 0, end: gauge.length };
+    gaugeCols = { start: 0, end: styledWidth(gauge) };
     parts.push(gauge);
   }
   if (middle.text.length > 0) parts.push(middle.text);
   if (input.transient !== undefined && tier.transient) parts.push(paint(palette, palette.warn, input.transient));
   if (parts.length === 0 && right.length === 0) return { line: '', gaugeCols: undefined };
   const left = parts.join(GROUP_SEP);
+  const leftCols = styledWidth(left);
+  const rightCols = styledWidth(right);
   // The right cluster is pushed to the edge; when there is no room for the gap
   // it simply trails the left (a squeezed bar is better than a broken one).
-  const gap = right.length > 0 && input.cols - left.length - right.length > 0 ? 1 : 0;
-  const pad = Math.max(0, input.cols - left.length - right.length - gap);
+  const gap = rightCols > 0 && input.cols - leftCols - rightCols > 0 ? 1 : 0;
+  const pad = Math.max(0, input.cols - leftCols - rightCols - gap);
   return { line: `${left}${' '.repeat(pad)}${' '.repeat(gap)}${right}`, ...(gaugeCols !== undefined ? { gaugeCols } : {}) };
 }
 
@@ -151,6 +157,10 @@ function gaugeField(input: StatusInput, palette: Palette, fidelity: 'full' | 'nu
   if (fidelity === 'numbers') return compact === '' ? colored : `${colored} ${compact}`;
   const cells = 8;
   const filled = Math.round(ratio * cells);
+  // One cell that cannot be drawn is not a small bar, it is noise: at a
+  // million-token window an opening 13k of usage rounds to zero cells, and
+  // eight `░` cells claim "nothing known yet". The numbers speak for
+  // themselves, and the bar returns as soon as it has a cell to show.
   if (filled === 0) return compact === '' ? colored : `${colored} ${compact}`;
   return `${bar(input, palette, cells, filled)} ${colored}${compact === '' ? '' : ` ${compact}`}`;
 }

@@ -48,16 +48,21 @@ export function toolBudget(cols: number): number {
   return Math.max(8, cols - 1 - CONTENT_COL);
 }
 
-/** Columns the bottom chrome may use (inset on the left, flush-safe on the right). */
+/**
+ * Columns the bottom chrome (and every card) is wide, starting at
+ * `CHROME_PAD_COLS`: the row's total width is `CHROME_PAD_COLS + chromeWidth`,
+ * which is `cols - 1` — the last column is never written into, because one
+ * off-by-one glyph would wrap the row and desync the terminal's own scroll.
+ */
 export function chromeWidth(cols: number): number {
   return Math.max(10, cols - 1 - CHROME_PAD_COLS);
 }
 
 /**
- * The bottom stack: transcript → breathing row → popups → queue lane →
- * composer card → status bar → hint bar. Only the transcript shrinks; every
- * other row is fixed height, which is why the whole layout can be computed
- * top-down from a row count.
+ * The bottom stack: transcript → breathing row → popups → queue lane → live
+ * turn row → composer card → status bar → hint bar. Only the transcript
+ * shrinks; every other row is fixed height, which is why the whole layout can
+ * be computed top-down from a row count.
  */
 export interface BottomStack {
   /** Rows the transcript region is allowed to occupy. */
@@ -66,13 +71,15 @@ export interface BottomStack {
   breath: number;
   popup: number;
   queue: number;
+  /** The live turn row: one row while a turn runs, none when it ends. */
+  turn: number;
   composer: number;
   status: number;
   hints: number;
 }
 
 export function bottomStack(rows: number, parts: Omit<BottomStack, 'transcript' | 'breath'>): BottomStack {
-  const fixed = parts.popup + parts.queue + parts.composer + parts.status + parts.hints;
+  const fixed = parts.popup + parts.queue + parts.turn + parts.composer + parts.status + parts.hints;
   const breath = rows - fixed > SCROLLBACK_MIN_ROWS + 1 ? 1 : 0;
   const transcript = Math.max(1, rows - fixed - breath);
   return { transcript, breath, ...parts };

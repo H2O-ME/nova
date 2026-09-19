@@ -4,7 +4,8 @@
  * different. Those three are the whole point of the row.
  */
 import { describe, expect, it } from 'vitest';
-import { plainPalette } from '../src/theme.js';
+import { styledWidth } from '@nova-agent/tui';
+import { buildPalette, plainPalette } from '../src/theme.js';
 import {
   SPINNER_DIVISOR,
   formatDuration,
@@ -94,6 +95,16 @@ describe('the row', () => {
     const line = turnStatusLine(base({ cols: 40 }), palette);
     expect(line.length).toBeLessThanOrEqual(40);
     expect(line.trimEnd()).toContain('2.4s');
+  });
+});
+
+describe('a colour terminal', () => {
+  const color = buildPalette({ color: true, truecolor: true });
+
+  it('still aims the timer at the right edge', () => {
+    const line = turnStatusLine(base({ cols: 40 }), color);
+    expect(styledWidth(line)).toBe(39);
+    expect(line.length).toBeGreaterThan(39);
   });
 });
 
