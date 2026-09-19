@@ -156,6 +156,69 @@ export function toolCallKind(name: string): ToolCallKind {
 }
 
 /**
+ * Just enough of a registry entry to resolve a call's render intent. The
+ * plugin host's `ToolDefinition` satisfies it structurally, so a surface can
+ * hand in `host.tools` without core knowing what a plugin is.
+ */
+export interface ToolViewSource {
+  name: string;
+  presentCall?(args: Record<string, unknown>): ToolCallView | undefined;
+  presentResult?(args: Record<string, unknown>, content: string): ToolResultView | undefined;
+}
+
+/** Keys whose value reads as *the thing this call is about*, best first. */
+const OPERAND_KEYS = ['path', 'file', 'file_path', 'dir', 'directory', 'command', 'pattern', 'query', 'name', 'glob', 'id'];
+
+/**
+ * The fallback card for a call no tool declared a view for. The title is the
+ * call's primary operand as **data**, picked by argument *shape* — never by
+ * tool name (that name-keyed guessing is what this vocabulary replaced); with
+ * no string operand at all it degrades to the raw args, so a third-party tool
+ * is still renderable, only less specific.
+ */
+export function genericCallView(call: { name: string; args: Record<string, unknown> }): GenericCallView {
+  const strings = Object.entries(call.args).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0,
+  );
+  const chosen = OPERAND_KEYS.map((key) => strings.find(([k]) => k === key)).find((entry) => entry !== undefined) ?? strings[0];
+  const title = chosen?.[1] ?? truncateJson(call.args);
+  const subtitle = chosen === undefined ? undefined : strings.find(([, value]) => value !== chosen[1])?.[1];
+  return { card: 'generic', kind: toolCallKind(call.name), title, ...(subtitle !== undefined ? { subtitle } : {}) };
+}
+
+function truncateJson(args: Record<string, unknown>): string {
+  const text = JSON.stringify(args) ?? '{}';
+  return text.length > 200 ? `${text.slice(0, 197)}…` : text;
+}
+
+/** Render intent for a call: the tool's own declaration, else the generic card. */
+export function callViewOf(
+  tools: readonly ToolViewSource[],
+  call: { name: string; args: Record<string, unknown> },
+): ToolCallView {
+  return tools.find((tool) => tool.name === call.name)?.presentCall?.(call.args) ?? genericCallView(call);
+}
+
+/**
+ * Render intent for a result: the tool's own declaration, else the generic
+ * card over the raw text — with `ok` from the shared failure semantics below,
+ * so a surface no longer copies that heuristic to decide how to color a row.
+ */
+export function resultViewOf(
+  tools: readonly ToolViewSource[],
+  call: { name: string; args: Record<string, unknown> },
+  content: string,
+): ToolResultView {
+  return (
+    tools.find((tool) => tool.name === call.name)?.presentResult?.(call.args, content) ?? {
+      card: 'generic',
+      ok: !isFailureContent(content),
+      text: content,
+    }
+  );
+}
+
+/**
  * Does this tool-result string represent a failure? A tool's return value is
  * its only report channel, so this string semantics is a *core* fact, not a
  * rendering choice (previously it lived in the terminal view layer, where

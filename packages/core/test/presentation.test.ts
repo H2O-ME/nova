@@ -9,9 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_TOOL_KINDS,
+  callViewOf,
   isFailureContent,
   isPathArgKind,
   isReadOnlyKind,
+  resultViewOf,
   toolCallKind,
 } from '../src/index.js';
 
@@ -70,6 +72,57 @@ describe('tool call kinds', () => {
     for (const name of ALL_NAMES) {
       expect(isPathArgKind(toolCallKind(name))).toBe(PATH_ARG_BY_NAME.includes(name));
     }
+  });
+});
+
+describe('view resolution from a tool registry', () => {
+  const tools = [
+    {
+      name: 'bash',
+      presentCall: (args: Record<string, unknown>) => ({ card: 'terminal' as const, command: String(args['command'] ?? '') }),
+      presentResult: (args: Record<string, unknown>, content: string) =>
+        args['command'] === undefined ? undefined : { card: 'terminal' as const, output: content, exitCode: 0 },
+    },
+    {
+      name: 'read_file',
+      presentCall: () => ({ card: 'generic' as const, kind: 'read' as const, title: 'declared' }),
+      presentResult: () => undefined, // an evolving tool: no result view yet
+    },
+  ];
+
+  it("prefers the tool's own declared view", () => {
+    expect(callViewOf(tools, { name: 'bash', args: { command: 'ls' } })).toEqual({ card: 'terminal', command: 'ls' });
+    expect(callViewOf(tools, { name: 'read_file', args: { path: 'a.ts' } })).toEqual({
+      card: 'generic',
+      kind: 'read',
+      title: 'declared',
+    });
+  });
+
+  it('falls back to a generic card for an undeclared tool, keyed by argument shape', () => {
+    const view = callViewOf(tools, { name: 'my_tool', args: { note: 'x', path: 'src/a.ts' } });
+    expect(view).toEqual({ card: 'generic', kind: 'other', title: 'src/a.ts', subtitle: 'x' });
+  });
+
+  it('degrades to raw args when no string operand exists, and never throws', () => {
+    const view = callViewOf(tools, { name: 'weird', args: { count: 3, nested: { a: 1 } } });
+    expect(view.card).toBe('generic');
+    expect(view.card === 'generic' && view.title).toContain('count');
+  });
+
+  it('resolves result views with the shared failure semantics on the fallback path', () => {
+    expect(resultViewOf(tools, { name: 'bash', args: { command: 'ls' } }, 'exit: 0\nstdout:\nok')).toEqual({
+      card: 'terminal',
+      output: 'exit: 0\nstdout:\nok',
+      exitCode: 0,
+    });
+    // Declares presentCall but no presentResult → generic card, ok from content.
+    expect(resultViewOf(tools, { name: 'read_file', args: { path: 'a.ts' } }, 'Error: nope')).toEqual({
+      card: 'generic',
+      ok: false,
+      text: 'Error: nope',
+    });
+    expect(resultViewOf(tools, { name: 'unknown', args: {} }, 'wrote 3 chars')).toMatchObject({ card: 'generic', ok: true });
   });
 });
 

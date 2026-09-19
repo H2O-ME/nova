@@ -101,7 +101,8 @@ describe('WebController', () => {
       const ready = conn.frames[0];
       expect(ready).toMatchObject({ type: 'ready', info: { model: 'test-model', approvalMode: 'read-only' } });
       if (ready?.type !== 'ready') throw new Error('no ready');
-      expect(ready.info.history).toHaveLength(1); // the context fragment only
+      expect(ready.info.history).toHaveLength(0); // the seeded fragment is not user-visible
+      expect(ready.info.usedTokens).toBe(0);
       expect(ready.info.sessionFile).toContain('sess_');
       await controller.dispose();
     });
@@ -247,6 +248,77 @@ describe('WebController', () => {
       const listed = conn.frames.at(-1);
       if (listed?.type !== 'sessions') throw new Error('no sessions frame');
       expect(listed.items.some((s) => controller.agent.session.file.endsWith(s.file.slice(-20)))).toBe(true);
+      await controller.dispose();
+    });
+  });
+
+  it('tool events arrive with server-resolved views (the browser does no per-tool guessing)', async () => {
+    await withFakeHome(async () => {
+      // `full` so the bash call runs instead of parking on the approval gate.
+      const { controller, rootDir } = await makeController(
+        [
+          [
+            { type: 'tool_call_delta', index: 0, id: 'c1', name: 'bash', argsDelta: JSON.stringify({ command: 'echo hi' }) },
+            { type: 'finish', finishReason: 'tool_calls' },
+          ],
+          TEXT_TURN,
+        ],
+        'full',
+      );
+      const { writeFile } = await import('node:fs/promises');
+      await writeFile(path.join(rootDir, 'seed.txt'), 'x\n');
+      const conn = new FakeConn();
+      controller.attach(conn);
+      await handle(controller, conn, { type: 'prompt', text: 'run echo' });
+      await conn.waitFor((frames) => frames.some((f) => f.type === 'event' && f.event.type === 'tool_call_result'));
+      const start = conn.frames.find((f) => f.type === 'event' && f.event.type === 'tool_call_start');
+      expect(start).toMatchObject({ view: { card: 'terminal', command: 'echo hi' } });
+      const result = conn.frames.find((f) => f.type === 'event' && f.event.type === 'tool_call_result');
+      expect(result).toMatchObject({ resultView: { card: 'terminal', exitCode: 0 } });
+      await controller.dispose();
+    });
+  });
+
+  it('mode switches are echoed to every client as a state frame', async () => {
+    await withFakeHome(async () => {
+      const { controller } = await makeController([TEXT_TURN]);
+      const conn = new FakeConn();
+      controller.attach(conn);
+      await handle(controller, conn, { type: 'set_approval_mode', mode: 'full' });
+      expect(conn.frames.at(-1)).toMatchObject({ type: 'state', approvalMode: 'full' });
+      await handle(controller, conn, { type: 'set_code_mode', mode: 'ptc' });
+      expect(conn.frames.at(-1)).toMatchObject({ type: 'state', codeMode: 'ptc' });
+      await controller.dispose();
+    });
+  });
+
+  it('replay of a session that ran tools rebuilds the tool cards from the log', async () => {
+    await withFakeHome(async () => {
+      const { controller, rootDir } = await makeController([
+        [
+          { type: 'tool_call_delta', index: 0, id: 'c1', name: 'read_file', argsDelta: JSON.stringify({ path: 'a.txt' }) },
+          { type: 'finish', finishReason: 'tool_calls' },
+        ],
+        TEXT_TURN,
+      ]);
+      const { writeFile } = await import('node:fs/promises');
+      await writeFile(path.join(rootDir, 'a.txt'), 'one\ntwo\n');
+      const conn = new FakeConn();
+      controller.attach(conn);
+      await handle(controller, conn, { type: 'prompt', text: 'read a.txt' });
+      await conn.waitFor((frames) => frames.some((f) => f.type === 'event' && f.event.type === 'done'));
+      const file = controller.agent.session.file;
+      await handle(controller, conn, { type: 'new_session' });
+      await handle(controller, conn, { type: 'resume', file });
+      await conn.waitFor((frames) => frames.filter((f) => f.type === 'ready').length >= 3);
+      const ready = conn.frames.filter((f) => f.type === 'ready').at(-1);
+      if (ready?.type !== 'ready') throw new Error('no ready');
+      const toolBlock = ready.info.history.find((b) => b.kind === 'tool');
+      // `read_file` declares no call card → generic (kind still `read`); its
+      // result declares the read card.
+      expect(toolBlock).toMatchObject({ kind: 'tool', callId: 'c1', name: 'read_file', view: { card: 'generic', kind: 'read' } });
+      expect(toolBlock?.kind === 'tool' && toolBlock.result?.card).toBe('read');
+      expect(ready.info.history.some((b) => b.kind === 'user' && b.text === 'read a.txt')).toBe(true);
       await controller.dispose();
     });
   });

@@ -12,7 +12,8 @@ import type { LaunchWebOptions } from './options.js';
 export { WebController } from './controller.js';
 export { startWebServer, type WebServerHandle, type StartWebServerOptions } from './server.js';
 export { createLaunchAuth, cookieHeader, cookieValue, verifyCookie, AUTH_COOKIE, type LaunchAuth } from './auth.js';
-export { parseClientFrame, serializeServerFrame, toAskResult, MAX_CLIENT_FRAME_BYTES, MAX_PROMPT_CHARS, type ClientFrame, type ServerFrame, type ReadyInfo, type SessionListItem, type WireAnswer } from './protocol.js';
+export { parseClientFrame, serializeServerFrame, toAskResult, MAX_CLIENT_FRAME_BYTES, MAX_PROMPT_CHARS, type ApprovalMode, type ClientFrame, type PtcMode, type ServerFrame, type ReadyInfo, type SessionListItem, type WireAnswer, type WireBlock } from './protocol.js';
+export { projectTranscript } from './transcript.js';
 export { upgrade, acceptKey, encodeTextFrame, WS_MAX_MESSAGE_BYTES, type WsConnection, type WsHandlers } from './ws.js';
 export type { LaunchWebOptions, ControllerOptions } from './options.js';
 
@@ -29,6 +30,7 @@ export async function launchWeb(opts: LaunchWebOptions): Promise<WebServerHandle
     providerModelLabel: opts.providerModelLabel,
     ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
     ...(opts.bindSessionAffinity !== undefined ? { bindSessionAffinity: opts.bindSessionAffinity } : {}),
+    ...(opts.contextWindow !== undefined ? { contextWindow: opts.contextWindow } : {}),
   });
   const auth = createLaunchAuth();
   const handle = await startWebServer({

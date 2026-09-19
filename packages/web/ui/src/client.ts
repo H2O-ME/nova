@@ -74,13 +74,22 @@ function handleFrame(frame: ServerFrame, dispatch: (a: Action) => void): void {
       dispatch({ type: 'ready', info: frame.info });
       break;
     case 'event':
-      dispatch({ type: 'event', event: frame.event });
+      // The host resolves render intent server-side; the reducer only carries it.
+      dispatch({
+        type: 'event',
+        event: frame.event,
+        ...(frame.view !== undefined ? { view: frame.view } : {}),
+        ...(frame.resultView !== undefined ? { resultView: frame.resultView } : {}),
+      });
+      break;
+    case 'state':
+      dispatch({ type: 'state', approvalMode: frame.approvalMode, codeMode: frame.codeMode });
+      break;
+    case 'sessions':
+      dispatch({ type: 'sessions', items: frame.items });
       break;
     case 'error':
       dispatch({ type: 'error', message: frame.message });
-      break;
-    case 'sessions':
-      // 批3 的会话面板消费；2b 只把列表留在 ready 之外的备用缓存。
       break;
   }
 }

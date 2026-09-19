@@ -9,6 +9,7 @@ import { launchWeb } from '@nova-agent/web';
 import type { ApprovalMode } from '@nova-agent/plugins';
 import type { Config } from './config.js';
 import { createProvider, toKernelConfig } from './kernel-boot.js';
+import { createModelMetaStore } from './model-meta.js';
 
 export interface WebModeOptions {
   rootDir: string;
@@ -30,6 +31,12 @@ function webStaticDir(): string {
 export async function startWeb(opts: WebModeOptions): Promise<void> {
   const { rootDir, config } = opts;
   const client = createProvider(config);
+  // The context gauge needs a denominator: config override first, else the
+  // models.dev catalog (best-effort — an unknown model just renders without a
+  // percentage rather than guessing a window).
+  const contextWindow =
+    config.provider.contextWindow ??
+    (await createModelMetaStore().lookup(config.provider.model, config.provider.baseURL).catch(() => undefined))?.contextWindow;
   const handle = await launchWeb({
     rootDir,
     provider: client,
@@ -38,6 +45,7 @@ export async function startWeb(opts: WebModeOptions): Promise<void> {
     ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
     staticDir: webStaticDir(),
     bindSessionAffinity: (sessionId) => client.setSessionId(sessionId),
+    ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(opts.port !== undefined ? { port: opts.port } : {}),
   });
   console.log(`Nova WebUI：${handle.url}`);

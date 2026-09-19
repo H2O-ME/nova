@@ -14,13 +14,18 @@
  */
 import path from 'node:path';
 import {
+  callViewOf,
+  isInsideNovaHome,
   listRecentSessions,
+  resultViewOf,
+  sessionWorkspace,
   sessionsRoot,
   type AgentSession,
   type KernelEvent,
 } from '@nova-agent/core';
 import { createAgentKernel, type Kernel } from '@nova-agent/plugins';
 import { toAskResult, type ClientFrame, type ReadyInfo, type ServerFrame } from './protocol.js';
+import { projectTranscript } from './transcript.js';
 import type { WsConnection } from './ws.js';
 import type { ControllerOptions } from './options.js';
 
@@ -33,11 +38,18 @@ export class WebController {
   /** A frame the client sends before its run starts (used only to echo model). */
   private readonly modelLabel: string;
   private readonly bindAffinity: ((sessionId: string) => void) | undefined;
+  private readonly contextWindow: number | undefined;
 
-  private constructor(kernel: Kernel, modelLabel: string, bindAffinity: ((sessionId: string) => void) | undefined) {
+  private constructor(
+    kernel: Kernel,
+    modelLabel: string,
+    bindAffinity: ((sessionId: string) => void) | undefined,
+    contextWindow: number | undefined,
+  ) {
     this.kernel = kernel;
     this.modelLabel = modelLabel;
     this.bindAffinity = bindAffinity;
+    this.contextWindow = contextWindow;
   }
 
   static async create(opts: ControllerOptions): Promise<WebController> {
@@ -47,7 +59,7 @@ export class WebController {
       config: opts.config,
       ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
     });
-    const controller = new WebController(kernel, opts.providerModelLabel, opts.bindSessionAffinity);
+    const controller = new WebController(kernel, opts.providerModelLabel, opts.bindSessionAffinity, opts.contextWindow);
     controller.subscribeTo(kernel.agent);
     return controller;
   }
@@ -112,9 +124,11 @@ export class WebController {
           break;
         case 'set_approval_mode':
           this.agent.setApprovalMode(frame.mode);
+          this.broadcastState();
           break;
         case 'set_code_mode':
           await this.kernel.setCodeMode(frame.mode);
+          this.broadcastState();
           break;
       }
     } catch (err) {
@@ -128,6 +142,13 @@ export class WebController {
       opts.resumeFile !== undefined
         ? await this.kernel.newAgentSession({ resumeFile: opts.resumeFile })
         : await this.kernel.newAgentSession();
+    // Resuming re-points the tools at the workspace that session was created
+    // in (the marker it logged). The kernel deliberately does not do this on
+    // its own — which session is "the same workspace" is a surface decision.
+    const workspace = opts.resumeFile !== undefined ? sessionWorkspace(agent.session) : undefined;
+    if (workspace !== undefined && workspace !== this.kernel.rootDir() && !isInsideNovaHome(workspace)) {
+      await this.kernel.setWorkspace(workspace).catch(() => undefined);
+    }
     this.subscribeTo(agent);
     this.broadcast(serialize({ type: 'ready', info: this.readyInfo() }));
   }
@@ -150,19 +171,42 @@ export class WebController {
       model: this.modelLabel,
       approvalMode: agent.approvalMode ?? 'read-only',
       codeMode: this.kernel.codeMode(),
-      history: agent.messages,
+      history: projectTranscript(agent.messages, this.kernel.host.tools),
       pendingApprovals: agent.pendingApprovals(),
+      usedTokens: agent.lastPromptTokens,
+      ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),
     };
   }
 
   private subscribeTo(agent: AgentSession): void {
     this.unsubscribe?.();
     this.unsubscribe = agent.subscribe((event) => {
-      this.broadcast(serialize({ type: 'event', event }));
+      this.broadcast(serialize(this.wireFrame(event)));
     });
     // The live session owns the provider's affinity identity (per-session
     // prompt_cache_key / x-session-id headers).
     this.bindAffinity?.(agent.session.id);
+  }
+
+  /**
+   * Attach render intent to the two tool events. Resolved here, from the LIVE
+   * registry (`host.tools` is re-read every event — a workspace switch or a PTC
+   * rebuild swaps the host), so no surface re-derives per-tool knowledge.
+   */
+  private wireFrame(event: KernelEvent): ServerFrame {
+    if (event.type === 'tool_call_start') {
+      return { type: 'event', event, view: callViewOf(this.kernel.host.tools, event.call) };
+    }
+    if (event.type === 'tool_call_result') {
+      return { type: 'event', event, resultView: resultViewOf(this.kernel.host.tools, event.call, event.result.content) };
+    }
+    return { type: 'event', event };
+  }
+
+  private broadcastState(): void {
+    this.broadcast(
+      serialize({ type: 'state', approvalMode: this.agent.approvalMode ?? 'read-only', codeMode: this.kernel.codeMode() }),
+    );
   }
 
   private broadcast(text: string): void {

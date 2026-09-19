@@ -22,6 +22,12 @@ export interface ControllerOptions {
    * the owning surface injects it — exec/repl/qqbot do the same by hand.
    */
   bindSessionAffinity?: (sessionId: string) => void;
+  /**
+   * Model context window, when the owning shell knows it (config override or
+   * model metadata). The surface only needs the denominator to draw the
+   * context gauge; resolving it is the shell's business.
+   */
+  contextWindow?: number;
 }
 
 export interface LaunchWebOptions extends ControllerOptions {

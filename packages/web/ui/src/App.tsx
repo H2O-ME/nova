@@ -1,24 +1,53 @@
 /**
- * App shell (2b): transcript on top, bottom stack (approval modal → queue →
- * composer → status). The transcript is the sole scroller; everything else
- * is fixed-height chrome — same partition discipline as the terminal.
+ * App shell (M11 批2/批3): header strip → transcript → bottom stack (approval
+ * modal → queue → composer). The transcript is the sole scroller; everything
+ * else is fixed-height chrome — same partition discipline as the terminal.
+ *
+ * The shell owns only view-local state (which panel is open); every agent fact
+ * comes from the reducer, which comes from the host's frames.
  */
+import { useState } from 'react';
 import { Approval } from './Approval.js';
 import { Composer } from './Composer.js';
+import { Header } from './Header.js';
+import { Sessions } from './Sessions.js';
 import { Transcript } from './Transcript.js';
 import { useAgent } from './client.js';
 
 export function App(): JSX.Element {
   const { state, send, connection } = useAgent();
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const approval = state.pendingApproval;
-  const running = state.phase !== 'idle' && state.phase !== 'disconnected' && state.phase !== 'waiting_approval';
+  const idle = state.phase === 'idle' || state.phase === 'disconnected';
+  const running = !idle && state.phase !== 'waiting_approval';
+  const toggleSessions = (): void => {
+    const next = !sessionsOpen;
+    setSessionsOpen(next);
+    if (next) send({ type: 'list_sessions' });
+  };
   return (
     <div className="flex h-dvh flex-col">
-      <Transcript blocks={state.blocks} />
+      <Header
+        model={state.meta?.model ?? '—'}
+        rootDir={state.meta?.rootDir ?? ''}
+        approvalMode={state.approvalMode}
+        codeMode={state.codeMode}
+        usedTokens={state.usedTokens}
+        contextWindow={state.contextWindow}
+        queued={state.queued.length}
+        sessionsOpen={sessionsOpen}
+        send={send}
+        onToggleSessions={toggleSessions}
+        onCompact={() => send({ type: 'compact' })}
+        compactBusy={state.phase === 'compacting'}
+        canCompact={state.connected}
+      />
+      {sessionsOpen && state.sessions !== null && (
+        <Sessions items={state.sessions} currentFile={state.meta?.sessionFile ?? ''} send={send} onClose={() => setSessionsOpen(false)} />
+      )}
+      <Transcript blocks={state.blocks} idle={idle} />
       <div className="px-6 pb-2">
-        <div className="mx-auto w-full max-w-3xl">
-          {approval !== null && <Approval request={approval} send={send} />}
-        </div>
+        <div className="mx-auto w-full max-w-3xl">{approval !== null && <Approval request={approval} send={send} />}</div>
       </div>
       <Composer
         send={send}
@@ -26,7 +55,7 @@ export function App(): JSX.Element {
         phase={approval !== null ? 'waiting_approval' : state.phase}
         queued={state.queued}
         running={running}
-        meta={state.meta === null ? null : { model: state.meta.model, approvalMode: state.meta.approvalMode, rootDir: state.meta.rootDir }}
+        meta={state.meta === null ? null : { model: state.meta.model, approvalMode: state.approvalMode, rootDir: state.meta.rootDir }}
         connected={connection === 'open'}
       />
     </div>

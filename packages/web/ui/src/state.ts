@@ -1,11 +1,20 @@
 /**
- * The transcript reducer (M11 批2): KernelEvent in, UI blocks out — pure
- * function, no React, no timers. This is the browser's only reducer; the
- * components below are projections of its state. Reconnect = a `ready` frame
- * REPLACES the transcript with the durable-log replay baseline (the same
- * contract the surfaces share: the log is the truth, sockets are disposable).
+ * The transcript reducer (M11 批2/批3): frames in, UI state out — pure
+ * function, no React, no timers. This is the browser's only reducer; every
+ * component below is a projection of its state.
+ *
+ * Two contracts it lives by:
+ *  - **The durable log is the truth.** A (re)`ready` frame REPLACES the
+ *    transcript with the host's projection of the log; sockets are disposable.
+ *    Note what is NOT here: no message parsing, no per-tool knowledge — the
+ *    host resolves render intent (`view`/`resultView`) and ships blocks.
+ *  - **Views come from the vocabulary.** Tool rows render `switch (view.card)`;
+ *    a card this bundle has never seen still renders from its own fields,
+ *    because `generic` is always available as the fallback.
  */
-import type { ApprovalRequest, KernelEvent, ReadyInfo, TurnPhase } from './types.js';
+import type {
+  ApprovalMode, ApprovalRequest, KernelEvent, PtcMode, ReadyInfo, SessionListItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
+} from './types.js';
 
 export type Block =
   | { id: string; kind: 'user'; text: string }
@@ -17,30 +26,44 @@ export type Block =
       callId: string;
       name: string;
       args: string;
-      state: 'running' | 'ok' | 'fail';
+      view: ToolCallView;
+      /** Absent until the call reports — the row renders as in-flight. */
+      result?: ToolResultView;
+      /** Live tail line while the call runs (bash output etc.). */
       tail?: string;
-      detail?: string;
     }
   | { id: string; kind: 'hint'; text: string; tone: 'info' | 'warn' };
 
 export interface UiState {
   connected: boolean;
   meta: ReadyInfo | null;
+  approvalMode: ApprovalMode;
+  codeMode: PtcMode;
   blocks: Block[];
   phase: TurnPhase | 'disconnected';
   pendingApproval: ApprovalRequest | null;
   queued: readonly string[];
   turnCount: number;
+  /** Prompt tokens of the last request (the context gauge's numerator). */
+  usedTokens: number;
+  contextWindow: number | null;
+  /** Session switcher contents; null = not fetched (panel closed). */
+  sessions: readonly SessionListItem[] | null;
 }
 
 export const initialState: UiState = {
   connected: false,
   meta: null,
+  approvalMode: 'read-only',
+  codeMode: 'native',
   blocks: [],
   phase: 'idle',
   pendingApproval: null,
   queued: [],
   turnCount: 0,
+  usedTokens: 0,
+  contextWindow: null,
+  sessions: null,
 };
 
 let blockSeq = 0;
@@ -49,7 +72,9 @@ const nextId = (): string => `b${(blockSeq += 1)}`;
 export type Action =
   | { type: 'connection'; connected: boolean }
   | { type: 'ready'; info: ReadyInfo }
-  | { type: 'event'; event: KernelEvent }
+  | { type: 'event'; event: KernelEvent; view?: ToolCallView; resultView?: ToolResultView }
+  | { type: 'state'; approvalMode: ApprovalMode; codeMode: PtcMode }
+  | { type: 'sessions'; items: readonly SessionListItem[] }
   | { type: 'error'; message: string };
 
 export function reduce(state: UiState, action: Action): UiState {
@@ -67,32 +92,45 @@ export function reduce(state: UiState, action: Action): UiState {
         ...state,
         connected: true,
         meta: action.info,
+        approvalMode: action.info.approvalMode,
+        codeMode: action.info.codeMode,
         phase: 'idle',
         pendingApproval: action.info.pendingApprovals[0] ?? null,
         queued: [],
-        blocks: replay(action.info),
+        // A session switch re-baselines everything session-scoped; the session
+        // list is cleared so the panel refetches against the new transcript.
+        sessions: null,
+        usedTokens: action.info.usedTokens,
+        contextWindow: action.info.contextWindow ?? null,
+        blocks: action.info.history.map(replayBlock),
       };
     case 'event':
-      return reduceEvent(state, action.event);
+      return reduceEvent(state, action.event, action.view, action.resultView);
+    case 'state':
+      return { ...state, approvalMode: action.approvalMode, codeMode: action.codeMode };
+    case 'sessions':
+      return { ...state, sessions: action.items };
     case 'error':
       return hint(state, `宿主提示：${action.message}`, 'warn');
   }
 }
 
-/** Rebuild the transcript from the projected log (2b scope: text surfaces only). */
-function replay(info: ReadyInfo): Block[] {
-  const blocks: Block[] = [];
-  for (const raw of info.history) {
-    const msg = raw as { role?: string; content?: string; id?: string };
-    if (typeof msg.content !== 'string') continue;
-    if (msg.role === 'user') {
-      if (msg.id?.startsWith('msg_ctx_') || msg.content.startsWith('<environment>')) continue; // seeded fragment
-      blocks.push({ id: nextId(), kind: 'user', text: msg.content });
-    } else if (msg.role === 'assistant' && msg.content.length > 0) {
-      blocks.push({ id: nextId(), kind: 'text', text: msg.content, streaming: false });
-    }
+/** One replayed log entry → one block (the host already did the interpretation). */
+function replayBlock(entry: WireBlock): Block {
+  if (entry.kind === 'tool') {
+    return {
+      id: nextId(),
+      kind: 'tool',
+      callId: entry.callId,
+      name: entry.name,
+      args: entry.args,
+      view: entry.view,
+      ...(entry.result !== undefined ? { result: entry.result } : {}),
+    };
   }
-  return blocks;
+  return entry.kind === 'user'
+    ? { id: nextId(), kind: 'user', text: entry.text }
+    : { id: nextId(), kind: 'text', text: entry.text, streaming: false };
 }
 
 /** Events that only touch the transcript (block list). */
@@ -101,11 +139,22 @@ type TranscriptEvent = Extract<
   { type: 'user_message' | 'text_delta' | 'reasoning_delta' | 'tool_call_start' | 'tool_call_result' | 'tool_progress' | 'done' }
 >;
 
-/** Events that only touch run state (phase, approvals, queue, notices). */
+/** Events that only touch run state (phase, approvals, queue, notices, usage). */
 type RunStateEvent = Extract<
   KernelEvent,
-  { type: 'turn_start' | 'phase' | 'approval_request' | 'approval_resolved' | 'queue_update' | 'compaction' | 'notice' | 'run_failed' }
+  { type: 'turn_start' | 'phase' | 'approval_request' | 'approval_resolved' | 'queue_update' | 'compaction' | 'notice' | 'run_failed' | 'usage' }
 >;
+
+function reduceEvent(
+  state: UiState,
+  event: KernelEvent,
+  view: ToolCallView | undefined,
+  resultView: ToolResultView | undefined,
+): UiState {
+  if (isTranscriptEvent(event)) return reduceTranscript(state, event, view, resultView);
+  if (isRunStateEvent(event)) return reduceRunState(state, event);
+  return state;
+}
 
 function isTranscriptEvent(event: KernelEvent): event is TranscriptEvent {
   switch (event.type) {
@@ -132,22 +181,19 @@ function isRunStateEvent(event: KernelEvent): event is RunStateEvent {
     case 'compaction':
     case 'notice':
     case 'run_failed':
+    case 'usage':
       return true;
     default:
       return false;
   }
 }
 
-/** Dispatch by family: transcript events and run-state events never overlap,
- *  so each reducer stays a small switch (the loop's data events have no
- *  transcript effect beyond what the families below already cover). */
-function reduceEvent(state: UiState, event: KernelEvent): UiState {
-  if (isTranscriptEvent(event)) return reduceTranscript(state, event);
-  if (isRunStateEvent(event)) return reduceRunState(state, event);
-  return state;
-}
-
-function reduceTranscript(state: UiState, event: TranscriptEvent): UiState {
+function reduceTranscript(
+  state: UiState,
+  event: TranscriptEvent,
+  view: ToolCallView | undefined,
+  resultView: ToolResultView | undefined,
+): UiState {
   switch (event.type) {
     case 'user_message':
       return appendBlock(state, { id: nextId(), kind: 'user', text: event.message.content });
@@ -162,13 +208,15 @@ function reduceTranscript(state: UiState, event: TranscriptEvent): UiState {
         callId: event.call.id,
         name: event.call.name,
         args: event.call.rawArgs,
-        state: 'running',
+        // The host resolves this from the LIVE tool registry; a client that
+        // somehow got no view still renders (generic card from name+args).
+        view: view ?? { card: 'generic', kind: 'other', title: event.call.name },
       });
     case 'tool_call_result':
-      return markToolResult(state, event.call.id, event.result.content);
+      return markToolResult(state, event.call.id, resultView);
     case 'tool_progress': {
       const tail = lastLine(event.text);
-      return { ...state, blocks: mapTool(state, undefined, (b) => (b.state === 'running' ? { ...b, tail } : b)) };
+      return { ...state, blocks: mapTool(state, undefined, (b) => (b.result === undefined ? { ...b, tail } : b)) };
     }
     case 'done':
       return { ...state, blocks: closeStreaming(state.blocks) };
@@ -181,6 +229,10 @@ function reduceRunState(state: UiState, event: RunStateEvent): UiState {
       return { ...state, turnCount: state.turnCount + 1 };
     case 'phase':
       return { ...state, phase: event.phase };
+    case 'usage':
+      // The gauge's numerator is CONSUMPTION (prompt tokens of the last
+      // request), not the cumulative session total.
+      return { ...state, usedTokens: event.usage.promptTokens };
     case 'approval_request':
       return { ...state, pendingApproval: event.request };
     case 'approval_resolved':
@@ -216,16 +268,20 @@ function streamBlock(state: UiState, kind: 'text' | 'reasoning', text: string): 
   return appendBlock(state, { id: nextId(), kind, text, streaming: true });
 }
 
-/** Rewrite tool rows by call id (all running rows when the id is unknown). */
+/** Rewrite tool rows by call id (all unfinished rows when the id is unknown). */
 function mapTool(state: UiState, callId: string | undefined, fn: (block: Extract<Block, { kind: 'tool' }>) => Block): Block[] {
   return state.blocks.map((b) => (b.kind === 'tool' && (callId === undefined || b.callId === callId) ? fn(b) : b));
 }
 
-function markToolResult(state: UiState, callId: string, content: string): UiState {
-  const failed = isFailureText(content);
+function markToolResult(state: UiState, callId: string, result: ToolResultView | undefined): UiState {
   return {
     ...state,
-    blocks: mapTool(state, callId, (b) => ({ ...b, state: failed ? 'fail' : 'ok', detail: failed ? firstLine(content) : undefined })),
+    blocks: mapTool(state, callId, (b) => ({
+      ...b,
+      // Without a view from the host the row keeps its call card and stays
+      // in-flight rather than inventing a verdict from the raw text.
+      result: result ?? b.result,
+    })),
   };
 }
 
@@ -239,16 +295,6 @@ function closeStreaming(blocks: Block[]): Block[] {
 
 function replaceLast(blocks: Block[], block: Block): Block[] {
   return [...blocks.slice(0, -1), block];
-}
-
-/** Mirror of the kernel's failure heuristic (presentation.ts) — kept minimal
- * client-side so the ui bundle doesn't reach into core internals. */
-function isFailureText(content: string): boolean {
-  return content.startsWith('Permission denied') || content.startsWith('Error:') || /^exit: [1-9]/m.test(content);
-}
-
-function firstLine(text: string): string {
-  return text.split('\n').find((l) => l.trim().length > 0) ?? '';
 }
 
 function lastLine(text: string): string {

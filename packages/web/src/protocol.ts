@@ -10,7 +10,18 @@
  * back as a typed rejection with a renderable reason. The frame budget
  * doubles as a DoS floor; the kernel handle behind each frame is trusted.
  */
-import type { ApprovalRequest, AskResult, KernelEvent } from '@nova-agent/core';
+import type {
+  ApprovalMode,
+  ApprovalRequest,
+  AskResult,
+  KernelEvent,
+  PtcMode,
+  ToolCallView,
+  ToolResultView,
+} from '@nova-agent/core';
+
+/** Mode vocabularies are core's (the config schema and the engine speak them). */
+export type { ApprovalMode, PtcMode };
 
 /** Max bytes of one inbound text frame (prompt bodies are user-typed, not tool dumps). */
 export const MAX_CLIENT_FRAME_BYTES = 512 * 1024;
@@ -34,34 +45,61 @@ export type ClientFrame =
   | { type: 'list_sessions' }
   | { type: 'resume'; file: string }
   | { type: 'new_session' }
-  | { type: 'set_approval_mode'; mode: 'read-only' | 'auto-edit' | 'full' }
-  | { type: 'set_code_mode'; mode: 'native' | 'ptc' | 'both' };
+  | { type: 'set_approval_mode'; mode: ApprovalMode }
+  | { type: 'set_code_mode'; mode: PtcMode };
 
 export type ServerFrame =
-  /** A kernel event, verbatim (the protocol IS the observable surface). */
-  | { type: 'event'; event: KernelEvent }
+  /**
+   * A kernel event, verbatim, plus the **views** a surface needs to draw it.
+   * The event stays the protocol's spine (a client that ignores the extra
+   * fields still renders the stream); `view`/`resultView` are resolved
+   * server-side from the live tool registry, so the browser never re-derives
+   * per-tool render intent and third-party tools render from `generic`.
+   */
+  | { type: 'event'; event: KernelEvent; view?: ToolCallView; resultView?: ToolResultView }
   /** Everything a fresh client needs to rebuild the transcript. */
   | { type: 'ready'; info: ReadyInfo }
   | { type: 'sessions'; items: SessionListItem[] }
+  /** Session-level mode readout (after a switch, or when one is changed remotely). */
+  | { type: 'state'; approvalMode: ApprovalMode; codeMode: PtcMode }
   | { type: 'error'; message: string };
+
+/** One renderable transcript entry (see `transcript.ts` for the projection). */
+export type WireBlock =
+  | { kind: 'user'; text: string }
+  | { kind: 'text'; text: string }
+  | {
+      kind: 'tool';
+      callId: string;
+      name: string;
+      args: string;
+      view: ToolCallView;
+      /** Absent while the call is still running (or if the run died mid-call). */
+      result?: ToolResultView;
+    };
 
 export interface ReadyInfo {
   rootDir: string;
   sessionFile: string;
   model: string;
-  approvalMode: 'read-only' | 'auto-edit' | 'full';
-  codeMode: 'native' | 'ptc' | 'both';
-  /** Messages projected from the durable log (replay baseline for reconnect). */
-  history: readonly unknown[];
+  approvalMode: ApprovalMode;
+  codeMode: PtcMode;
+  /** Transcript projection of the durable log (replay baseline for reconnect). */
+  history: readonly WireBlock[];
   /** Approval requests still outstanding (re-render the modal after reload). */
   pendingApprovals: readonly ApprovalRequest[];
+  /** Prompt tokens of the last request — the context gauge's numerator. */
+  usedTokens: number;
+  /** Model context window, when known (config or models.dev); the denominator. */
+  contextWindow?: number;
 }
 
 export interface SessionListItem {
+  /** Absolute path of the JSONL log (the `resume` frame's only accepted form). */
   file: string;
+  /** First real user prompt, single line; '' when the log has none. */
   title: string;
   mtime: number;
-  workspace?: string;
 }
 
 export type FrameRejection = { ok: false; reason: string };
