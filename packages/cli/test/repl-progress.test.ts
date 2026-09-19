@@ -5,23 +5,22 @@
  */
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
-import { palette as realPalette } from '@nova-agent/tui-view';
 import type { SubagentProgress } from '@nova-agent/core';
 import { ReplProgress } from '../src/repl-progress.js';
+import type { Paint } from '../src/lines.js';
 
-/** Fake palette: real color codes for the styled text under test, readable
- *  placeholders for the open-state control primitives so the assertions can
- *  pin tail content without coupling to literal escape bytes. */
-const fakePalette = {
-  dim: realPalette.dim,
-  cyan: realPalette.cyan,
-  green: realPalette.green,
-  yellow: realPalette.yellow,
-  red: realPalette.red,
-  blue: realPalette.blue,
-  magenta: realPalette.magenta,
-  bold: realPalette.bold,
-  inverse: realPalette.inverse,
+/** Fake paint: real dim code (the only colour the transient rows use),
+ *  readable placeholders for the open-state control primitives so the
+ *  assertions can pin tail content without coupling to literal escape bytes. */
+const noop = (t: string): string => t;
+const fakePalette: Paint = {
+  dim: (t) => `\x1b[2m${t}\x1b[0m`,
+  cyan: noop,
+  green: noop,
+  yellow: noop,
+  red: noop,
+  gray: noop,
+  bold: noop,
   reset: () => '<RST>',
   clearLine: () => '<CL>',
   clearRight: () => '<CR>',

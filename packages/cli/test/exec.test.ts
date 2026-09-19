@@ -33,8 +33,18 @@ describe('runExec', () => {
       });
 
       const events = lines.map((line) => JSON.parse(line) as { type: string });
-      expect(events.map((e) => e.type)).toEqual(['turn_start', 'text_delta', 'usage', 'message', 'done']);
-      expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
+      // 内核流的 JSON 面 = KernelEvent 全量（phase 换帧行是新增成员，additive）；
+      // AgentEvent 子序列的序与形不变——消费者按 type 过滤即可。
+      expect(events.filter((e) => e.type !== 'phase').map((e) => e.type)).toEqual([
+        'user_message',
+        'turn_start',
+        'text_delta',
+        'usage',
+        'message',
+        'done',
+      ]);
+      expect(events.at(-1)).toMatchObject({ type: 'phase', phase: 'idle' });
+      expect(events.find((e) => e.type === 'done')).toMatchObject({ type: 'done', stopReason: 'complete' });
 
       const sessionsDir = path.join(home, '.nova', 'sessions', sessionDateBucket());
       const files = await readdir(sessionsDir);

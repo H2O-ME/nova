@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { collectProjectDocs, writeAgentsMd } from '../src/agents-md.js';
+import { collectProjectDocs, writeAgentsMd } from '@nova-agent/plugins';
 
 describe('writeAgentsMd', () => {
   it('writes AGENTS.md summarizing package.json name and scripts', async () => {

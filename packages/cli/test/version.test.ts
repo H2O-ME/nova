@@ -18,7 +18,6 @@ const PACKAGE_DIRS = [
   'packages/ai',
   'packages/plugins',
   'packages/tui',
-  'packages/tui-view',
   'packages/cli',
 ];
 

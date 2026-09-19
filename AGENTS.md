@@ -24,7 +24,7 @@ pnpm gates        # 结构棘轮：依赖方向白名单 + 逐文件行数硬上
 pnpm gates:update # 同步行数上限（下调静默；上调逐条打印 RAISED，增长必须显式发生）
 pnpm check        # 本地快环：lint + gates + 变更相关测试（秒级，随手跑）
 pnpm verify       # 全环：build + typecheck + test + gates（提交前跑）
-pnpm nova         # 交互运行（TTY 下全屏 TUI；非 TTY 自动回落 readline；--repl 强制 readline）
+pnpm nova         # 交互运行（M11 过渡期：三模式统一为 readline REPL——旧全屏 TUI 已随批1删除，tui-app 于批4重生）
 pnpm changeset    # 写变更集（面向用户改动的 minor/patch 记录）
 pnpm release      # changeset version + sync root version + commit + tag 一条龙
 ```
@@ -35,7 +35,7 @@ pnpm release      # changeset version + sync root version + commit + tag 一条�
 
 `nova` 的形态：
 
-- `nova` → 交互 TUI / readline。
+- `nova` → 交互 readline REPL（M11 过渡期；`--repl` 保留为兼容 no-op）。
 - `nova -- --approval auto-edit` → 临时覆盖审批档位。
 - `nova -- --resume ~/.nova/sessions/<YYYY/MM/DD>/<id>.jsonl` → 续接历史会话。
 - `nova qqbot` → QQ 机器人模式（需配置 qqbot.appId/clientSecret；对端独立会话、never 审批）
@@ -83,7 +83,7 @@ Skills 放 `~/.nova/skills/<name>/SKILL.md`（用户级）或项目级 `.nova/sk
 
 ## 4. 架构
 
-pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tui, tui-view, plugins, ai, qqbot, core}`，`qqbot → {plugins, core}`，`tui-view → {tui, core}`，`plugins → core`，`ai → core`（仅类型），`core`/`tui` 不依赖任何上层包。
+pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tui, plugins, ai, qqbot, core}`，`qqbot → {plugins, core}`，`plugins → core`，`ai → core`（仅类型），`core`/`tui` 不依赖任何上层包。`tui-view` 包已随 M11 批1 删除（§7）；批2 的 `web → {core, plugins}` 与批4 的 `tui-app → {tui, core, plugins}` 落地时同步白名单。
 
 | 包 | 职责 | 关键文件 |
 | --- | --- | --- |
@@ -91,7 +91,6 @@ pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tu
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈（Retry-After 双形式严格解析 + 自有退避 32s 封顶）、usage/缓存命中提取 | `client.ts`、`sse.ts` |
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`types.ts`、`builtin/{fs,bash,jobs,todo,search,search-worker,index}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
 | `tui` | 零依赖终端原语：行级差分渲染（可选 ?2026 同步输出）、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标 + ?1003 悬停 motion、CSI 修饰键参数）、CJK 宽度处理、终端能力探测 | `screen.ts`、`keys.ts`、`width.ts`、`caps.ts` |
-| `tui-view` | TUI 纯视图层（零终端 IO）：tokens 常量、调色板/标签、**设计语言原语**、裁剪族、工具行、状态栏、弹窗、composer、快捷键条、reasoning、间距、开屏 | `tokens.ts`、`palette.ts`、`theme.ts`（语义主题层）、`labels.ts`、`layout.ts`（chrome 列宽/圆角卡片/分隔符）、`text.ts`、`clip.ts`、`tool-lines.ts`、`status-view.ts`、`popups.ts`、`composer-view.ts`、`hint-bar.ts`、`reasoning-view.ts`、`spacing.ts`、`splash.ts`、`turn-status.ts`、`smooth.ts` |
 | `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（~1090 行壳层：生命周期/IO/启动装配）、`tui/{store,keys,frame,frame-assembler,commands,mode-select,session-switch,compact-wait,gutters}.ts`（TuiStore / 按键责任链 / 行数学与弹窗选择 / 整帧装配与仪表缓存 / 命令呈现 / 开屏选择器 / 会话切换 / 压缩等待态 / gutter 常量）、`tui/{turn-projector,subagent-lives}.ts`（轮次投影状态机——`onEvent` 承接事件呈现归约 / 子代理活行与后台行状态机）、`session-runtime.ts`（三 runner 共享启动工厂 + buildHost 宿主装配单源 + 模型列表缓存）、`auto-compact.ts`（统一 TokenGate + 无头 wrapHeadlessAutoCompact）、`runner-shared.ts`（计时/maxTurns/审批效果预览与 toast 正文/hooks 重绑/自动压缩编排/runAgent 公共 kwargs 装配）、`runner-loop.ts`（四 runner 事件消费簿记与轮次失败归类单源：日志追加/usage 锚点/重试与空补全文案/中断归类/失败归类/回合状态行/toast）、`command-core.ts`（斜杠命令逻辑核：repl/TUI 共用公式与文案）、`exec.ts`、`repl.ts`、`repl-progress.ts`（REPL 瞬态进度行单主：spinner/推理尾行/bash 尾行/子代理暗行）、`compact.ts`、`config.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`commands.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`version.ts`、`spinner.ts`；`scripts/sync-root-version.mjs`（根包版本同步）——M9.5 起呈现计算一律直连 `@nova-agent/tui-view`，5 个转发门面已删 |
 | `qqbot` | QQ 机器人接入插件（第三方插件编写示范，只依赖 core/plugins 公共 API）：WebSocket 网关状态机、token 管理、REST 发消息、`qqbot_send` 工具、通道装配 | `protocol.ts`（AccessTokenManager/QqGateway/QqApi）、`runtime.ts`（createQqBotChannel）、`plugin.ts` |
 
@@ -146,6 +145,8 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 启动只把每个 skill 的 name+description 注入索引，命中触发词时才加载正文——模型可自调用 `skill` 工具，也可 `/skill <name>` 手动触发。项目级 `.nova/skills/` 优先于用户级 `~/.nova/skills/`。
 
 ### TUI（自研差分渲染，codex 风格）
+
+> ⚠️ **M11 批1 注**：本节所述 `tui-view`/`cli/tui`/`tui-mode.ts` 已整体删除（见 §7）——以下段落作为批4 新 `tui-app` 重写的**设计参照**保留（度量、节奏、Grok 源证据仍然有效），描述的实现本体与文件清单已过时，批5 全面重写。
 alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a + 1-9、always 行 ←/→ 调授权词数、拒绝行打字补理由）；模型/会话切换面板 1-9 数字快选；PageUp/PageDown/滚轮滚动（上滚不改状态栏样式——常驻视图保持稳定，↓/滚轮回到底）；仪表悬停（?1003 any-motion：悬停上下文仪表换形，T2 档让格给「已用/总量」数字、总宽不变，拖拽仍被吞）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动；**长粘贴折成 `⧉ 粘贴 N行 X字` chip**——纯显示折叠，缓冲区存全文、提交一字不差，←/→ 整越、边界退格先展开防一键吞粘贴）；**运行中消息队列**（轮进行中回车入队不拒绝——队列暗色 lane 常驻 composer 上方，本轮结束后自动下发队首，Esc 中断后接续发送）；流式 markdown（列表缩进 2 列挂圆点，换行续行对齐条目文本列）、工具输出**三态折叠**（Collapsed 头行 → Truncated 12 行预览 → Expanded 400 行封顶，点击轮转、▸/▾ affordance）、reasoning 定高活窗口（定格 2 行 + 活尾 1 行、每行裁到单一显示行绝不折行、空行不进窗——每个 delta 只重写活尾一行，整段不重排；**答案起笔定格成 `▸ 已思考 N.Ns`**（<10s 一位小数）、与答案同组紧排，轮内不留空行，**点击可展开思考全文**——▸/▾ 前缀为 affordance，全文仅存会话内存（reasoning 从不落盘，resume 后不可展开），展开正文逐行暗色、软折行走 gutter 预算）；长命令实时显示已耗时与输出尾行；**跑动时输入卡上方一条活体行**（`turn-status.ts`，Grok `turn_status.rs`：转轮 + 阶段词 + 本轮累计耗时，`<10s` 一位小数 / `<60s` 整秒 / 更久 `m+s`，空闲整块消失——它占转录两行，窗口随之收缩，与 Grok 同）；系统通知（Windows toast / macOS osascript / Linux notify-send）。分层：`tui`（终端原语）→ `tui-view`（纯视图，零 IO）→ `cli/tui/`（`store.ts` TuiStore / `keys.ts` 按键责任链 / `frame.ts` 帧装配 / `turn-projector.ts` 轮次投影状态机——流式平滑、assistant/思考块生命周期、工具行形变、行动画、中断清场，假时钟 + `plainPalette` 可单测 / `subagent-lives.ts` 子代理接管活行与后台行状态机）→ `tui-mode.ts`（壳层：生命周期 + IO + `agentTurn` 事件归约的委派，块级投影一律走 TurnProjector；TUI 可变状态全部收敛在 TuiStore 实例里，壳层与按键链读写同一实例）；决策背景见 `docs/tui-design.md`。
 
 **单行状态栏**三段式 `上下文仪表 │ 模型 · 执行模式 · 审批档位 │（右缘）tps · cache`——`│` 分大组、`·` 分组内，层级靠分隔符而非字数堆砌：
@@ -189,7 +190,16 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 
 ## 7. 里程碑与状态
 
-**版本现状**：0.3.0 已发行；M1（agent 核心）→ M9（治理换血与结构棘轮）全部落地（M9 已收口、0.4.0 备发待指令），**M10（Grok Build TUI 设计移植）进行中**——渲染层批1/批2（sanitize、空帧丢弃+游标去重、tmux 门+焦点重断言、增量展平、逻辑滚动锚、stdout 背压门、帧数组乒乓）与组件层批3/批4（工具输出三态折叠、只读动词短语组行、reasoning `▸ 已思考 N.Ns` 折叠头、仪表 ?1003 悬停换形 + 用量断点混色、`▌` 状态导轨、always 词数授权调节、1-9 编号快选 + 拒绝理由回流、composer 粘贴 chip）与**开屏 welcome 重做**（批5/5b：去处 hero 居中、模式选择器并入卡片、状态栏去重复控件）已落地；**设计语言底座**（批6：`layout.ts` 分区/列宽/圆角卡片/边框槽 + `hint-bar.ts` 唯一键位面）、**转录一条轨与留白节奏**（批7：`MARK_COL`/`CONTENT_COL`、恒等 gutter、只在新语义单元前留白）、**字形经真机探针选定 + 审批键位归一**（批7b）、**动效单时钟**（批8：33ms tick 驱动转轮与导轨行波）、**转录区贴底锚定**（批9：短转录空白上浮、最新行贴着输入卡）、**审批卡并入卡片语言与整屏一条左缘**（批10：四张卡同边距、卡片脚边不再印键位）、**底部 chrome 补完同一条左缘**（批11：状态栏/快捷键条走 `CHROME_PAD_COLS`、反色 run 里不夹非 ASCII 字形）、**开屏卡垂直居中与版面收口**（批12：`anchorHistory` 三态、分段控件三格等宽、键名回 ASCII 字面、仪表 0 格降级、光标格与占位文本留气口）为逐批移植；**Grok 观感对齐四层**（批13 dark 主题换绑 GrokNight RGB + truecolor 探测补品牌表/Windows 无条件、批14 转录留白节奏改条目间恒 1 行 + 工具 dense run + 提问 vpad）进行中，差距逐层与批次计划见 [docs/tui-design.md](./docs/tui-design.md) 末节（含 Grok 源码行号证据），决策与 Grok 源证据见各 commit；组件10（ConHost 字形替身表）待用户表态，原生 scrollback（R7）为停车场不做。M1–M8.5 逐条机制与决策背景已归档 [docs/MILESTONES.md](./docs/MILESTONES.md)——本节只记现状与方向，不再膨胀。
+**版本现状**：0.3.0 已发行；M1→M9 全部落地（M9 已收口）。**M10（Grok Build TUI 设计移植）已并入 M11**——其逐值设计成果（GrokNight RGB、`layout.ts` 度量、留白节奏、单时钟动效等）作为批4 新 `tui-app` 重写的移植清单保留，但旧 `tui-view` 全包（≈3,000 行纯视图层）与 `cli/tui` 壳（≈4,500 行）连同 `tui-mode.ts` 已在**批1 一并删除**：TUI 反复拖累开发、渲染计算与产品逻辑纠缠，判定病入膏肓、无迁移价值，按“一行不留全部重写”处理。
+
+**M11（内核收拢 + 可插拔 Surface + WebUI + TUI 全量重写）进行中**：
+- **批0**：`core/presentation.ts` 呈现意图词汇表（`ToolCallKind` / `card` 判别的 `ToolCallView`/`ToolResultView`）——core 拥有调用**形状与语义**，文案/颜色/列宽归各 surface。
+- **批1**：**内核层落地**——`core/kernel/`（`AgentSession` 句柄 + `KernelEvent` 协议 + `ApprovalBroker` 审批请求-响应桥 + `EventPump` 滞后隔离）；compact/auto-compact/context/paths/session-index 从 cli **下沉 core**；`plugins/runtime.ts` 的 `createAgentKernel` 为**装配单源**（host/审批桥/`PermissionService`/`JobRegistry`/上下文片段一处装配，provider 注入）。审批、job、子代理、phase、运行中队列、压缩进度**全部收编为内核事件**——“model-visible means logged”由内核 `consume()` 直接保证，四个 runner 手写簿记终结。旧 TUI 删除后 `exec`/`repl`/`qqbot`/`nova` 全部改为**内核事件流的消费者**：exec=JSONL(KernelEvent) + never 审批 + perRequestCompact；qqbot=每对端 `newAgentSession` + `activateSession` 重指 current；repl/index=单一读行主循环，`agent.prompt()` 后台跑轮、审批经 `approval_request` 事件到达、下一条输入路由作答。过渡期呈现层 = `cli/src/lines.ts`（极简行渲染）。
+- **批2-3**（待）：`packages/web`——单 Node 进程 HTTP 静态托管 + 单 WebSocket 事件流（launch token→HttpOnly 签名 cookie 仅绑 localhost），React18+Vite+Tailwind 前端最小闭环→完整化（presentation 六卡工具卡、会话列表/恢复、compact、上下文仪表、模式/审批切换）。
+- **批4**（待）：`packages/tui-app` 新 TUI——grok pager 逐值移植（scrollback 状态机 + gap 规则 + 单时钟 + GrokNight RGB + sin² 行波），消费内核事件与 presentation 词汇。
+- **批5**（待）：AGENTS.md/README/docs 全面重写、changeset、0.4.0 发行。
+
+新依赖方向（`dep-direction` 白名单已同步）：`web → {core, plugins}`、`tui-app → {tui, core, plugins}`，`cli` 去 `tui-view`。**可插拔 Surface 契约**（core 导出 `AgentSurface`）：官方 surface（repl/exec/qqbot/未来的 tui-app/web）与第三方同地位，只依赖 core/plugins 公共 API，由 cli 按 argv 装配。M1–M8.5 逐条机制与决策背景已归档 [docs/MILESTONES.md](./docs/MILESTONES.md)。
 
 **已移除**：MCP 客户端（`@nova-agent/mcp` 与 `/mcp`，M3 引入）——按实际场景裁剪，`nova` 不再读 `.nova/mcp.json`。
 

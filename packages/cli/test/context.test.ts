@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SkillMetadata } from '@nova-agent/plugins';
-import { buildContextFragment, expandSkillInvocation, type SessionEnvInfo } from '../src/context.js';
+import { buildContextFragment, type SessionEnvInfo } from '@nova-agent/core';
+import { expandSkillInvocation } from '../src/command-core.js';
 
 const env: SessionEnvInfo = {
   platform: 'win32',

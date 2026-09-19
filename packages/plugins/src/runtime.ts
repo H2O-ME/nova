@@ -105,11 +105,15 @@ function wrapHeadlessCompact(
     enabled: true,
     limit: p.limit,
     compact: async (msgs) => {
-      const session = p.currentSession()?.session;
-      if (session === undefined) return;
-      const outcome = await compactSession({ client: p.provider, session, messages: msgs, trigger: 'auto' });
+      const current = p.currentSession();
+      if (current === undefined) return;
+      const outcome = await compactSession({ client: p.provider, session: current.session, messages: msgs, trigger: 'auto' });
       // In-place: runAgent and the agent share this array.
       msgs.splice(0, msgs.length, ...outcome.surface);
+      // The headless gate never passes through AgentSession.compact() (no
+      // `compaction` event on this path), so announce success over the notice
+      // channel — exec/qqbot render it, web translates by code.
+      current.notice('compacted', `已自动压缩上下文 — 保留 ${outcome.retained} 条最近用户消息`);
     },
     onError: (err) => p.notice('compact_failed', `自动压缩失败（继续运行）：${errMessage(err)}`),
     onWarn: (code, text) => p.notice(code, text),

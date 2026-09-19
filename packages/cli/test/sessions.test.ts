@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Session } from '@nova-agent/core';
-import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from '../src/sessions.js';
+import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from '@nova-agent/core';
 
 const writeSession = async (
   file: string,

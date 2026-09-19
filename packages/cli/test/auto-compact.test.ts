@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentHooks, AgentMessage, ChatRequest, ToolDefinition, Usage } from '@nova-agent/core';
-import { shouldCompactBefore, wrapAutoCompact, type PreflightInput, type WrapAutoCompactOptions } from '../src/auto-compact.js';
+import { shouldCompactBefore, wrapAutoCompact, type PreflightInput, type WrapAutoCompactOptions } from '@nova-agent/core';
 
 /** Build a minimal ChatRequest image used only for full-image pricing. */
 function requestImage(text: string, tools: ToolDefinition[] = []): ChatRequest {
@@ -71,7 +71,7 @@ describe('wrapAutoCompact', () => {
         compacted.count += 1;
       },
       onError: (err) => errors.push(err),
-      onWarn: (text) => warns.push(text),
+      onWarn: (_code: 'compact_fused' | 'compact_alias_broken', text) => warns.push(text),
       ...opts,
     });
     return { hooks: baseHooks, compacted, warns, errors };
@@ -119,7 +119,7 @@ describe('wrapAutoCompact', () => {
         compacted.count += 1;
       },
       onError: () => {},
-      onWarn: (text) => warns.push(text),
+      onWarn: (_code: 'compact_fused' | 'compact_alias_broken', text) => warns.push(text),
     });
     await baseHooks.beforeLLMCall?.(req);
     expect(compacted.count).toBe(0);

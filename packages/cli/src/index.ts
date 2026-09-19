@@ -10,13 +10,13 @@ import { cliVersion } from './version.js';
 const HELP = `nova — 自研本地编码智能体
 
 usage:
-  nova [--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
+  nova [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
   nova exec "<task>" [--json] [--approval ...] [--resume <session.jsonl>]
 
 options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
   qqbot           QQ 机器人模式（需配置 qqbot.appId / qqbot.clientSecret）
-  --repl          强制使用 readline REPL（默认 TTY 下进全屏 TUI）
+  --repl          （过渡期兼容保留：交互形态本就是 readline REPL）
   --resume        续接历史会话文件
   --approval      临时覆盖审批档位；exec 模式下无法交互确认，未放行的请求会被拒绝
   --theme         临时覆盖界面主题（config 的 ui.theme 是持久设置；NO_COLOR 恒定无色）
@@ -156,25 +156,15 @@ async function main(): Promise<void> {
     if (parsed.positional.length > 0) {
       console.error(`warning: 交互模式忽略多余位置参数：${parsed.positional.join(' ')}（exec 模式请用 nova exec "<task>"）`);
     }
-    const interactive = process.stdin.isTTY === true && process.stdout.isTTY === true;
-    if (interactive && !parsed.repl) {
-      const { startTui } = await import('./tui-mode.js');
-      await startTui({
-        rootDir,
-        config,
-        ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
-        ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
-        ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
-      });
-    } else {
-      await startRepl({
-        rootDir,
-        config,
-        ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
-        ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
-        ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
-      });
-    }
+    // M11 批1c：旧全屏 TUI 已退役（批4 的新 tui-app 会以 surface 形态回来），
+    // 交互一律走 readline REPL；--repl 旗标保留为兼容 no-op。
+    await startRepl({
+      rootDir,
+      config,
+      ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
+      ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
+      ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
+    });
   } catch (err) {
     console.error(errMessage(err));
     process.exitCode = 1;

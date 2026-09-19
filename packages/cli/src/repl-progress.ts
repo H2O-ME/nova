@@ -1,20 +1,20 @@
 /**
- * REPL 瞬态进度渲染单主（M9.5 阶段 F 出壳）：spinner 生命周期、推理流
- * 尾行、bash 实时输出尾行、嵌套子代理进度暗行——四者共享同一条契约：
- * 它们是「会被 `\r\x1b[2K` 原位擦除的一次性行」，写之前必须裁进单显示行
- * 预算（折行的垃圾不会被下一次 `\r` 擦掉），且无颜色/非 TTY 时整体跳过。
+ * REPL 瞬态进度渲染单主：spinner 生命周期、推理流尾行、bash 实时输出尾行、
+ * 嵌套子代理进度暗行——四者共享同一条契约：它们是「会被 `\r\x1b[2K` 原位
+ * 擦除的一次性行」，写之前必须裁进单显示行预算（折行的垃圾不会被下一次
+ * `\r` 擦掉），且无颜色/非 TTY 时整体跳过。
  *
- * 类不碰定时器也不碰 process.*：spinner/write/writeln/cols/paint 全部注入，
- * 行契约可用假 writer 直接测试。spinner.stop 的擦行序（`\r\x1b[0K`）留在
- * Spinner 本体——中断路径的既有观感以它为准，这里逐字沿用。
+ * M11 批1c：内核事件流的消费者在 repl 的订阅回调里按事件转调这些方法；
+ * 类本身不碰定时器也不碰 process.*（spinner/write/writeln/cols/paint 全
+ * 注入），行契约可用假 writer 直接测试。
  */
-import { styledWidth } from '@nova-agent/tui';
+import { stringWidth } from '@nova-agent/tui';
 import type { SubagentProgress } from '@nova-agent/core';
-import { fitTail, TOOL_TAIL_KEEP_CHARS, type Palette } from '@nova-agent/tui-view';
+import { fitTail, TOOL_TAIL_KEEP_CHARS, type Paint } from './lines.js';
 
 export interface ReplProgressDeps {
   /** 当前调色板（/theme 运行中可变——访问器而非值拷贝）。 */
-  paint(): Palette;
+  paint(): Paint;
   /** NO_COLOR / 非 TTY：瞬态行与子代理明细行整体跳过。 */
   useColor: boolean;
   spinner: { start(): void; stop(): void };
@@ -45,7 +45,7 @@ export class ReplProgress {
     this.deps.spinner.start();
   }
 
-  /** 一轮用户请求开始前：清推理尾（与出壳前的复位点逐字同位）。 */
+  /** 一轮用户请求开始前：清推理尾。 */
   resetReasoning(): void {
     this.reasoningTail = '';
   }
@@ -67,7 +67,7 @@ export class ReplProgress {
     spinner.stop();
     // 单行暗色状态显示推理流尾（DeepSeek reasoner 式）：换行折成 ⏎，
     // 尾段裁进「一行减前缀」的列预算。
-    const maxCols = Math.max(10, cols() - styledWidth('  ⋯ ') - 1);
+    const maxCols = Math.max(10, cols() - stringWidth('  ⋯ ') - 1);
     this.reasoningTail = fitTail(`${this.reasoningTail}${text}`.replaceAll('\n', ' ⏎ '), maxCols);
     write(`${paint().clearLine()}${paint().dim(`  ⋯ ${this.reasoningTail}`)}`);
     this.reasoningLive = true;
@@ -84,12 +84,10 @@ export class ReplProgress {
   onToolProgress(text: string): void {
     const { useColor, write, paint, cols } = this.deps;
     if (!useColor) return;
-    // 缓冲预算与 TUI 工具尾行同源 TOOL_TAIL_KEEP_CHARS（此前 repl 手滚
-    // 2000 的第二套实现；显示仍被 fitTail 裁到单行，观感不变）。
     this.progressTail = (this.progressTail + text).slice(-TOOL_TAIL_KEEP_CHARS);
     const last = this.progressTail.slice(this.progressTail.lastIndexOf('\n') + 1).trimEnd();
     if (last.length === 0) return;
-    const maxCols = Math.max(10, cols() - styledWidth('  └ ') - 1);
+    const maxCols = Math.max(10, cols() - stringWidth('  └ ') - 1);
     write(`${paint().clearLine()}${paint().dim(`  └ ${fitTail(last, maxCols)}`)}${paint().reset()}`);
     this.progressLive = true;
   }
@@ -138,7 +136,7 @@ export class ReplProgress {
     this.deps.spinner.stop();
   }
 
-  /** 出错/中断路径（出壳前 catch 块的 spinner.stop + clearProgress 原样）。 */
+  /** 出错/中断路径（spinner.stop + clearProgress）。 */
   onAbort(): void {
     this.deps.spinner.stop();
     this.clearProgress();

@@ -54,9 +54,6 @@ importers:
       '@nova-agent/tui':
         specifier: workspace:*
         version: link:../tui
-      '@nova-agent/tui-view':
-        specifier: workspace:*
-        version: link:../tui-view
       zod:
         specifier: ^4.1.13
         version: 4.5.4
@@ -98,19 +95,6 @@ importers:
         version: 26.4.0
 
   packages/tui:
-    devDependencies:
-      '@types/node':
-        specifier: ^26.4.0
-        version: 26.4.0
-
-  packages/tui-view:
-    dependencies:
-      '@nova-agent/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova-agent/tui':
-        specifier: workspace:*
-        version: link:../tui
     devDependencies:
       '@types/node':
         specifier: ^26.4.0

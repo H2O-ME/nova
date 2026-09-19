@@ -14,9 +14,8 @@ const ALLOW = {
   tui: [],
   ai: ['core'],
   plugins: ['core'],
-  'tui-view': ['tui', 'core'],
   qqbot: ['core', 'plugins'],
-  cli: ['tui', 'tui-view', 'plugins', 'ai', 'core', 'qqbot'],
+  cli: ['tui', 'plugins', 'ai', 'core', 'qqbot'],
 };
 
 /** 递归收集 .ts 源文件。 */

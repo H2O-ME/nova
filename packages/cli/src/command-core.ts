@@ -1,14 +1,17 @@
 /**
- * 斜杠命令的逻辑核（无色、无 IO）：repl 与 TUI 的命令 switch 只做呈现。
- * 此前公式/文案/序列各写一份且已出现漂移——/new 的重置序列逐行拷贝但
- * resetSessionCache 只在 TUI 有、/plugins 两壳信息量不一致、/session 命中率
- * 一个一位小数一个取整。纯函数便于 commands.test 直接断言。
+ * 斜杠命令的逻辑核（无色、无 IO）：repl 的命令 switch 只做呈现。
+ * 纯函数便于 commands.test 直接断言。M11 批1c：`/new` 的重置序列随
+ * openFreshSession 一并退役——内核 `kernel.newAgentSession()` 是新会话
+ * 的唯一公式（建日志 + 种片段 + 重指 current 一处收拢）。
  */
 import path from 'node:path';
-import { errMessage, Session, emptyStats, type AgentMessage, type Session as SessionT, type Usage, type UsageStats } from '@nova-agent/core';
-import { APPROVAL_ORDER, approvalLabel, padDisplay } from '@nova-agent/tui-view';
-import type { ApprovalMode } from '@nova-agent/plugins';
-import { resetUsageAnchors, type UsageAnchorState } from './runner-loop.js';
+import { errMessage, type Usage, type UsageStats } from '@nova-agent/core';
+import {
+  readSkillBody,
+  type ApprovalMode,
+  type SkillMetadata,
+} from '@nova-agent/plugins';
+import { APPROVAL_ORDER, approvalLabel, padDisplay } from './lines.js';
 
 /** /approvals：循环切换到下一档位（只读 → 自动编辑 → 全部放行 → 只读…）。 */
 export function nextApprovalMode(current: ApprovalMode): ApprovalMode {
@@ -125,32 +128,36 @@ export function modelListError(err: unknown): string {
   return `模型列表获取失败：${errMessage(err)}`;
 }
 
-export interface FreshSessionDeps {
-  sessionsDir: string;
-  rootDir: string;
-  /** 重绑缓存亲和身份：保留旧 id 会把旧会话的缓存键带进新会话。 */
-  setClientSessionId(id: string): void;
-  stats: UsageStats;
-  anchors: UsageAnchorState;
-  /** TUI 的转录缓存清场；repl 无此态。 */
-  resetSessionCache?(): void;
-  recordWorkspace(session: SessionT, rootDir: string): Promise<void>;
-  seedContext(session: SessionT, messages: AgentMessage[]): Promise<void>;
-}
+export type SkillInvocation = { ok: true; content: string } | { ok: false; error: string };
 
 /**
- * /new 的新会话序列（两壳曾逐行拷贝，连注释都相同，且已漂移）：建会话 →
- * 记录工作区 → 重绑缓存亲和 → 清空消息面与统计 → 锚点归零（保留任一会让
- * 旧会话缓存键进入新会话或触发伪压缩）→ 重新注入上下文片段。
+ * `/skill <name>` expands to a user message carrying the skill's full
+ * instructions, which then runs like any normal user input. Returns
+ * undefined when the input is not a skill invocation.（M11：从 cli 的
+ * context 壳文件收进命令逻辑核——片段装配本体已下沉 core。）
  */
-export async function openFreshSession(deps: FreshSessionDeps): Promise<{ session: SessionT; messages: AgentMessage[] }> {
-  const session = await Session.create(deps.sessionsDir);
-  await deps.recordWorkspace(session, deps.rootDir);
-  deps.setClientSessionId(session.id);
-  const messages: AgentMessage[] = [];
-  Object.assign(deps.stats, emptyStats());
-  resetUsageAnchors(deps.anchors);
-  deps.resetSessionCache?.();
-  await deps.seedContext(session, messages);
-  return { session, messages };
+export async function expandSkillInvocation(
+  input: string,
+  skills: readonly SkillMetadata[],
+): Promise<SkillInvocation | undefined> {
+  const trimmed = input.trim();
+  if (trimmed !== '/skill' && !trimmed.startsWith('/skill ')) return undefined;
+  const name = trimmed.slice('/skill'.length).trim().split(/\s+/)[0] ?? '';
+  if (name.length === 0) {
+    const available = skills.map((s) => s.name).join(', ');
+    return { ok: false, error: `用法：/skill <name>${available.length > 0 ? `（可用：${available}）` : '（未安装任何技能）'}` };
+  }
+  const skill = skills.find((s) => s.name === name);
+  if (!skill) {
+    const available = skills.map((s) => s.name).join(', ');
+    return { ok: false, error: `未知技能 "${name}"${available.length > 0 ? `（可用：${available}）` : '（未安装任何技能）'}` };
+  }
+  const body = await readSkillBody(skill).catch(() => undefined);
+  if (body === undefined) {
+    return { ok: false, error: `无法读取技能 "${name}" 的内容：${skill.file}` };
+  }
+  return {
+    ok: true,
+    content: `[调用技能 ${skill.name}]\n\n${body}\n\n请按照以上技能指令处理我的请求。`,
+  };
 }

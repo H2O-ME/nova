@@ -25,7 +25,6 @@
     "@nova-agent/core": "workspace:*",
     "@nova-agent/plugins": "workspace:*",
     "@nova-agent/tui": "workspace:*",
-    "@nova-agent/tui-view": "workspace:*",
     "zod": "^4.1.13",
     "@nova-agent/qqbot": "workspace:*"
   },

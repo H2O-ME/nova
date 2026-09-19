@@ -1,7 +1,7 @@
 /** 斜杠命令目录：TUI 命令面板、/help 与 readline 模式共用。 */
 
 import type { PtcMode } from '@nova-agent/core';
-import { CODE_MODE_HINT, codeModeLabel, padDisplay } from '@nova-agent/tui-view';
+import { CODE_MODE_HINT, codeModeLabel, padDisplay } from './lines.js';
 
 export interface CommandSpec {
   /** 命令名（含开头的 /），例如 '/model'。 */

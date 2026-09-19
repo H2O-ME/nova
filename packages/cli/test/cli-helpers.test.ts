@@ -1,16 +1,12 @@
 /**
- * CLI-only helpers (not re-exported through @nova-agent/tui-view):
- * system prompt byte-stability, markdown-lite rendering, and the
- * Windows toast PowerShell script. The shared view helpers
- * (statusbar / composer / popup / reasoning / context gauge) are tested
- * once in packages/tui-view/test/ — re-testing them here only duplicated
- * coverage of thin façade re-exports.
+ * CLI-only helpers: system prompt byte-stability (via the plugins package),
+ * markdown-lite rendering, and the Windows toast PowerShell script.
  */
 import { describe, expect, it } from 'vitest';
-import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from '../src/system-prompt.js';
+import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from '@nova-agent/plugins';
 import { createMarkdownRenderer, renderMarkdownLite } from '../src/markdown.js';
 import { buildWindowsToastScript } from '../src/notify.js';
-import { plainPalette } from '@nova-agent/tui-view';
+import { plainPaint } from '../src/lines.js';
 
 describe('system prompt', () => {
   it('forbids tool use on greetings and unsolicited work', () => {
@@ -40,7 +36,7 @@ describe('system prompt', () => {
 });
 
 describe('markdown lite', () => {
-  const p = plainPalette;
+  const p = plainPaint;
 
   it('strips inline markdown symbols', () => {
     const lines = renderMarkdownLite('run `pnpm test` and **verify** the output', p);
@@ -87,11 +83,11 @@ describe('markdown inline: code span / bold isolation', () => {
   it('bold never matches across a code span (placeholder extraction)', () => {
     // Marker palette makes the wrapping observable in plain text.
     const p = {
-      ...plainPalette,
+      ...plainPaint,
       cyan: (text: string) => `<c>${text}</c>`,
       bold: (text: string) => `<b>${text}</b>`,
     };
-    const lines = renderMarkdownLite('use `a**b` and **c** now', p as typeof plainPalette);
+    const lines = renderMarkdownLite('use `a**b` and **c** now', p as typeof plainPaint);
     expect(lines).toEqual(['use <c>a**b</c> and <b>c</b> now']);
   });
 });

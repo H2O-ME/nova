@@ -32,6 +32,9 @@ export type TurnPhase =
 
 /** Stable machine codes for operational notices (text is the fallback rendering). */
 export type NoticeCode =
+  /** A per-request (headless) auto-compaction succeeded — the success line for
+   *  runs whose compaction never surfaces as a `compaction` event. */
+  | 'compacted'
   /** Auto-compact ran and the retained floor is STILL over the limit: fused off for this session. */
   | 'compact_fused'
   /** A plugin hook replaced the messages array, so in-place compaction was disarmed. */

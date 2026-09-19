@@ -1,8 +1,6 @@
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createModelListCache, filterCommands, modeOverviewRows, COMMAND_SPECS } from '../src/commands.js';
+import { parseApprovalAnswer } from '../src/repl.js';
 import {
   agentsMdWrittenLine,
   approvalSwitchLine,
@@ -13,7 +11,6 @@ import {
   modelListRows,
   newSessionLine,
   nextApprovalMode,
-  openFreshSession,
   pluginCommandLine,
   pluginReportLines,
   pluginToolLine,
@@ -24,7 +21,6 @@ import {
   themeUnknownMessage,
   unknownCommandParts,
 } from '../src/command-core.js';
-import { createUsageAnchors } from '../src/runner-loop.js';
 
 describe('filterCommands', () => {
   it('matches by prefix when input is a bare slash command', () => {
@@ -151,35 +147,6 @@ describe('command-core', () => {
     expect(pluginCommandLine('p', 'hi', 'desc')).toBe('插件=p · /hi — desc');
   });
 
-  it('openFreshSession seeds a fragment and resets stats + anchors', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'nova-cmd-'));
-    const seeded: string[] = [];
-    const stats = { promptTokens: 99, completionTokens: 9, cachedTokens: 0, turns: 4, missTokens: 0, missTurns: 0 };
-    const anchors = createUsageAnchors();
-    anchors.lastPromptTokens = 99;
-    let boundId = '';
-    const { session, messages } = await openFreshSession({
-      sessionsDir: dir,
-      rootDir: dir,
-      setClientSessionId: (id) => {
-        boundId = id;
-      },
-      stats: stats as never,
-      anchors,
-      recordWorkspace: async () => undefined,
-      seedContext: async (_session, msgs) => {
-        // 镜像真实 seedContextFragment：向消息面推入片段消息。
-        msgs.push({ id: 'msg_ctx_test', ts: 0, role: 'user', content: 'frag' } as never);
-        seeded.push(`${msgs.length}`);
-      },
-    });
-    expect(boundId).toBe(session.id);
-    expect(messages).toHaveLength(1); // 只注入的上下文片段
-    expect(seeded).toEqual(['1']);
-    expect(stats).toEqual({ promptTokens: 0, completionTokens: 0, cachedTokens: 0, turns: 0, missTokens: 0, missTurns: 0 });
-    expect(anchors.lastPromptTokens).toBe(0);
-    expect(session.file.startsWith(dir)).toBe(true);
-  });
 });
 
 describe('M9.5 repl 报告行下沉', () => {
@@ -245,5 +212,24 @@ describe('M9.5 repl 报告行下沉', () => {
     });
     expect(withTools.some((r) => r.includes('bash'))).toBe(true);
     expect(withTools.some((r) => r.includes('没有已注册的工具'))).toBe(false);
+  });
+});
+
+describe('parseApprovalAnswer（审批行内答案 → AskResult）', () => {
+  it('y/a 前缀=allow/always；n/no=纯拒绝', () => {
+    expect(parseApprovalAnswer('y')).toBe('allow');
+    expect(parseApprovalAnswer('yes')).toBe('allow');
+    expect(parseApprovalAnswer('a')).toBe('always');
+    expect(parseApprovalAnswer('always')).toBe('always');
+    expect(parseApprovalAnswer('n')).toBe('deny');
+    expect(parseApprovalAnswer('no')).toBe('deny');
+  });
+  it('`n <理由>` 把理由折进 DenyGrant（拒绝从死路变成一次指令）', () => {
+    expect(parseApprovalAnswer('n 别动 main 分支')).toEqual({ answer: 'deny', reason: '别动 main 分支' });
+    expect(parseApprovalAnswer('nope 这命令太危险')).toEqual({ answer: 'deny', reason: '这命令太危险' });
+  });
+  it('未识别输入 fail-closed 为纯 deny', () => {
+    expect(parseApprovalAnswer('run the tests')).toBe('deny');
+    expect(parseApprovalAnswer('?')).toBe('deny');
   });
 });

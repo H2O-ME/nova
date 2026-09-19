@@ -3,23 +3,22 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  COMPACT_SUMMARY_PREFIX,
-  Session,
-  TURN_ABORTED_GUIDANCE,
-  type AgentMessage,
-  type ChatProvider,
-  type ChatRequest,
-  type UserMessage,
-} from '@nova-agent/core';
-import {
+  buildContextFragment,
   compactSession,
+  COMPACT_SUMMARY_PREFIX,
   isCompactSummary,
   selectRecentMessages,
   serializeConversationForSummary,
   serializeFullConversation,
+  Session,
   surfaceDivergence,
-} from '../src/compact.js';
-import { buildContextFragment, type SessionEnvInfo } from '../src/context.js';
+  TURN_ABORTED_GUIDANCE,
+  type AgentMessage,
+  type ChatProvider,
+  type ChatRequest,
+  type SessionEnvInfo,
+  type UserMessage,
+} from '@nova-agent/core';
 
 const env: SessionEnvInfo = { platform: 'win32', cwd: 'D:\\w', shell: 'bash', today: '2026-08-31' };
 const fragmentText = buildContextFragment(env, undefined, []);
