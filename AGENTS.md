@@ -36,6 +36,7 @@ pnpm release      # changeset version + sync root version + commit + tag 一条�
 `nova` 的形态：
 
 - `nova` → 交互 readline REPL（M11 过渡期；`--repl` 保留为兼容 no-op）。
+- `nova --web` → **WebUI**（本机浏览器界面）：单 Node 进程 = HTTP 静态托管（前端产物 `packages/web/public`，`pnpm build` 连带产出）+ 单 WebSocket 内核事件流；启动打印**一次性带 launch token 的 localhost URL**，校验后落 HttpOnly 签名 cookie（仅本机可达）。`NOVA_WEB_PORT` 固定端口（前端开发流：先 `nova --web`，再在 `packages/web/ui` 跑 `pnpm dev`，http/ws 全代理过去）。前端源码零构建依赖：React 18 + Vite + Tailwind，状态归一处纯 reducer。
 - `nova -- --approval auto-edit` → 临时覆盖审批档位。
 - `nova -- --resume ~/.nova/sessions/<YYYY/MM/DD>/<id>.jsonl` → 续接历史会话。
 - `nova qqbot` → QQ 机器人模式（需配置 qqbot.appId/clientSecret；对端独立会话、never 审批）
@@ -83,7 +84,7 @@ Skills 放 `~/.nova/skills/<name>/SKILL.md`（用户级）或项目级 `.nova/sk
 
 ## 4. 架构
 
-pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tui, plugins, ai, qqbot, core}`，`qqbot → {plugins, core}`，`plugins → core`，`ai → core`（仅类型），`core`/`tui` 不依赖任何上层包。`tui-view` 包已随 M11 批1 删除（§7）；批2 的 `web → {core, plugins}` 与批4 的 `tui-app → {tui, core, plugins}` 落地时同步白名单。
+pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tui, plugins, ai, qqbot, web, core}`，`web → {core, plugins}`，`qqbot → {plugins, core}`，`plugins → core`，`ai → core`（仅类型），`core`/`tui` 不依赖任何上层包。`tui-view` 包已随 M11 批1 删除（§7）；批4 的 `tui-app → {tui, core, plugins}` 落地时同步白名单。`packages/web/ui` 是 `web` 包内的**前端子包**（private，不在依赖图里——它只 import 类型，构建期被 esbuild 擦除），归 `web` 一档。
 
 | 包 | 职责 | 关键文件 |
 | --- | --- | --- |
@@ -91,7 +92,8 @@ pnpm monorepo，依赖方向强制单向（`pnpm gates` 机检）：`cli → {tu
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈（Retry-After 双形式严格解析 + 自有退避 32s 封顶）、usage/缓存命中提取 | `client.ts`、`sse.ts` |
 | `plugins` | 微型插件容器（工具/命令/钩子/服务注册 + 钩子组合）、权限审批、内置工具、skills、PTC 代码运行时 | `host.ts`、`permission.ts`、`types.ts`、`builtin/{fs,bash,jobs,todo,search,search-worker,index}.ts`、`skills.ts`、`ptc/{run-code,code-runtime,worker,sdk,json}.ts` |
 | `tui` | 零依赖终端原语：行级差分渲染（可选 ?2026 同步输出）、原始按键解码（含 SGR 鼠标：滚轮 + 左键点击坐标 + ?1003 悬停 motion、CSI 修饰键参数）、CJK 宽度处理、终端能力探测 | `screen.ts`、`keys.ts`、`width.ts`、`caps.ts` |
-| `cli` | 产品壳：全屏 TUI + readline 回落 + 非交互 exec + 配置发现 + 模型元数据 | `tui-mode.ts`（~1090 行壳层：生命周期/IO/启动装配）、`tui/{store,keys,frame,frame-assembler,commands,mode-select,session-switch,compact-wait,gutters}.ts`（TuiStore / 按键责任链 / 行数学与弹窗选择 / 整帧装配与仪表缓存 / 命令呈现 / 开屏选择器 / 会话切换 / 压缩等待态 / gutter 常量）、`tui/{turn-projector,subagent-lives}.ts`（轮次投影状态机——`onEvent` 承接事件呈现归约 / 子代理活行与后台行状态机）、`session-runtime.ts`（三 runner 共享启动工厂 + buildHost 宿主装配单源 + 模型列表缓存）、`auto-compact.ts`（统一 TokenGate + 无头 wrapHeadlessAutoCompact）、`runner-shared.ts`（计时/maxTurns/审批效果预览与 toast 正文/hooks 重绑/自动压缩编排/runAgent 公共 kwargs 装配）、`runner-loop.ts`（四 runner 事件消费簿记与轮次失败归类单源：日志追加/usage 锚点/重试与空补全文案/中断归类/失败归类/回合状态行/toast）、`command-core.ts`（斜杠命令逻辑核：repl/TUI 共用公式与文案）、`exec.ts`、`repl.ts`、`repl-progress.ts`（REPL 瞬态进度行单主：spinner/推理尾行/bash 尾行/子代理暗行）、`compact.ts`、`config.ts`、`context.ts`、`system-prompt.ts`、`agents-md.ts`、`sessions.ts`、`commands.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`version.ts`、`spinner.ts`；`scripts/sync-root-version.mjs`（根包版本同步）——M9.5 起呈现计算一律直连 `@nova-agent/tui-view`，5 个转发门面已删 |
+| `web` | WebUI surface（与 repl/exec/qqbot 同地位的内核表面）：单 Node 进程 = HTTP 静态托管 + 单 WebSocket 内核事件流；launch token → HMAC 签名 HttpOnly cookie（仅本机）；前端子包 `ui/` 为其浏览器侧 | `ws.ts`（自写 RFC6455 服务端：握手/掩码解码/分片/心跳/上限）、`auth.ts`（launch token 与 cookie 签名，`timingSafeEqual` 比对）、`protocol.ts`（帧 schema 全函数式校验 + `toAskResult` 线上答案→内核裁决）、`controller.ts`（`WebController`：attach 回放 `ready` 基线、事件扇出、会话切换/恢复、亲和绑定）、`server.ts`（HTTP 门 + `/ws` upgrade 门 + 静态托管，穿越拒）、`options.ts`、`index.ts`（`launchWeb`）；`ui/src/{state.ts,client.ts,Transcript.tsx,Approval.tsx,Composer.tsx,markdown.tsx}`（纯 reducer + WS 客户端与投影组件） |
+| `cli` | 产品壳（**surface 装配 + 过渡期 readline REPL**）：argv → 装配哪个 surface + 配置发现 + 模型元数据 | `index.ts`（argv 解析与 surface 选择）、`kernel-boot.ts`（`toKernelConfig` + provider 工厂）、`web-mode.ts`（`nova --web`，`bindSessionAffinity` 注入 provider 会话亲和）、`repl.ts`（过渡 REPL：主循环唯一读行、事件 subscribe 呈现、审批挂起时下一条输入路由作答）、`repl-progress.ts`（瞬态进度行：spinner/推理尾行/bash 尾行/子代理暗行）、`exec.ts`（非交互 JSONL=`KernelEvent` 全量 + never 审批）、`qqbot-mode.ts`（每对端独立会话）、`lines.ts`（过渡期行渲染单源：调色/工具行/状态行/审批提问）、`command-core.ts`（斜杠命令逻辑核）、`commands.ts`、`config.ts`、`model-meta.ts`、`markdown.ts`、`notify.ts`、`spinner.ts`、`version.ts`；`scripts/sync-root-version.mjs`（根包版本同步） |
 | `qqbot` | QQ 机器人接入插件（第三方插件编写示范，只依赖 core/plugins 公共 API）：WebSocket 网关状态机、token 管理、REST 发消息、`qqbot_send` 工具、通道装配 | `protocol.ts`（AccessTokenManager/QqGateway/QqApi）、`runtime.ts`（createQqBotChannel）、`plugin.ts` |
 
 ## 5. 核心设计
@@ -195,7 +197,8 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 **M11（内核收拢 + 可插拔 Surface + WebUI + TUI 全量重写）进行中**：
 - **批0**：`core/presentation.ts` 呈现意图词汇表（`ToolCallKind` / `card` 判别的 `ToolCallView`/`ToolResultView`）——core 拥有调用**形状与语义**，文案/颜色/列宽归各 surface。
 - **批1**：**内核层落地**——`core/kernel/`（`AgentSession` 句柄 + `KernelEvent` 协议 + `ApprovalBroker` 审批请求-响应桥 + `EventPump` 滞后隔离）；compact/auto-compact/context/paths/session-index 从 cli **下沉 core**；`plugins/runtime.ts` 的 `createAgentKernel` 为**装配单源**（host/审批桥/`PermissionService`/`JobRegistry`/上下文片段一处装配，provider 注入）。审批、job、子代理、phase、运行中队列、压缩进度**全部收编为内核事件**——“model-visible means logged”由内核 `consume()` 直接保证，四个 runner 手写簿记终结。旧 TUI 删除后 `exec`/`repl`/`qqbot`/`nova` 全部改为**内核事件流的消费者**：exec=JSONL(KernelEvent) + never 审批 + perRequestCompact；qqbot=每对端 `newAgentSession` + `activateSession` 重指 current；repl/index=单一读行主循环，`agent.prompt()` 后台跑轮、审批经 `approval_request` 事件到达、下一条输入路由作答。过渡期呈现层 = `cli/src/lines.ts`（极简行渲染）。
-- **批2-3**（待）：`packages/web`——单 Node 进程 HTTP 静态托管 + 单 WebSocket 事件流（launch token→HttpOnly 签名 cookie 仅绑 localhost），React18+Vite+Tailwind 前端最小闭环→完整化（presentation 六卡工具卡、会话列表/恢复、compact、上下文仪表、模式/审批切换）。
+- **批2a（已落地）**：`packages/web` 后端零依赖 WS（自写 RFC6455）+ launch-token→HMAC cookie 认证 + `WebController`（attach 回放 ready、事件扇出、resume 限 sessions 根内）；38 项协议/认证/集成测试。
+- **批2b/2c（已落地）**：WebUI 首版真机可用——前端 `packages/web/ui`（React 18 + Vite + Tailwind，**状态归一处纯 reducer**：`KernelEvent` 入、UI 块出，React 只做投影，18 条直测钉住流式合并/工具行形变/审批清场/断线语义）；markdown 走**元素树渲染**（无 `innerHTML`，XSS 靠构造而非转义）；`nova --web` 接线（`cli/web-mode.ts`，provider 的 `setSessionId` 经 `bindSessionAffinity` 注入——provider 对象归 owning surface，core 只见 `ChatProvider` 接口）；前端产物由同一进程静态托管，`pnpm build` 的 `-r` 连带产出（故入 `.gitignore`，与 `dist/` 同性质）。真机冒烟 8/8：无凭据 401、错 token 403、真 token 302+cookie、静态 200、穿越拒、WS 101、首帧 `ready`（含 history 基线）。
 - **批4**（待）：`packages/tui-app` 新 TUI——grok pager 逐值移植（scrollback 状态机 + gap 规则 + 单时钟 + GrokNight RGB + sin² 行波），消费内核事件与 presentation 词汇。
 - **批5**（待）：AGENTS.md/README/docs 全面重写、changeset、0.4.0 发行。
 

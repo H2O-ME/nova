@@ -32,10 +32,12 @@ export class WebController {
   private unsubscribe: (() => void) | undefined;
   /** A frame the client sends before its run starts (used only to echo model). */
   private readonly modelLabel: string;
+  private readonly bindAffinity: ((sessionId: string) => void) | undefined;
 
-  private constructor(kernel: Kernel, modelLabel: string) {
+  private constructor(kernel: Kernel, modelLabel: string, bindAffinity: ((sessionId: string) => void) | undefined) {
     this.kernel = kernel;
     this.modelLabel = modelLabel;
+    this.bindAffinity = bindAffinity;
   }
 
   static async create(opts: ControllerOptions): Promise<WebController> {
@@ -45,7 +47,7 @@ export class WebController {
       config: opts.config,
       ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
     });
-    const controller = new WebController(kernel, opts.providerModelLabel);
+    const controller = new WebController(kernel, opts.providerModelLabel, opts.bindSessionAffinity);
     controller.subscribeTo(kernel.agent);
     return controller;
   }
@@ -158,6 +160,9 @@ export class WebController {
     this.unsubscribe = agent.subscribe((event) => {
       this.broadcast(serialize({ type: 'event', event }));
     });
+    // The live session owns the provider's affinity identity (per-session
+    // prompt_cache_key / x-session-id headers).
+    this.bindAffinity?.(agent.session.id);
   }
 
   private broadcast(text: string): void {

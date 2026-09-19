@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+html, body, #root { height: 100%; }
+body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; }
+* { scrollbar-width: thin; scrollbar-color: #3a3a44 transparent; }
+::selection { background: #1abc9c44; }

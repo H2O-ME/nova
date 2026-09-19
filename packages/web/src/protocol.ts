@@ -10,7 +10,7 @@
  * back as a typed rejection with a renderable reason. The frame budget
  * doubles as a DoS floor; the kernel handle behind each frame is trusted.
  */
-import type { AskResult, KernelEvent } from '@nova-agent/core';
+import type { ApprovalRequest, AskResult, KernelEvent } from '@nova-agent/core';
 
 /** Max bytes of one inbound text frame (prompt bodies are user-typed, not tool dumps). */
 export const MAX_CLIENT_FRAME_BYTES = 512 * 1024;
@@ -54,7 +54,7 @@ export interface ReadyInfo {
   /** Messages projected from the durable log (replay baseline for reconnect). */
   history: readonly unknown[];
   /** Approval requests still outstanding (re-render the modal after reload). */
-  pendingApprovals: readonly unknown[];
+  pendingApprovals: readonly ApprovalRequest[];
 }
 
 export interface SessionListItem {

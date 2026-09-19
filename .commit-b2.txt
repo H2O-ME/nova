@@ -1,0 +1,31 @@
+feat(web,cli): 批2b/2c WebUI 首版真机可用——React 前端 + nova --web 接线（M11）
+
+前端 packages/web/ui（React 18 + Vite + Tailwind，private 子包；产物由 `pnpm build`
+的 `-r` 连带产出到 ../public，同进程静态托管）：
+
+- **状态归一处纯 reducer**（state.ts）：KernelEvent 入、UI 块出，React 只做投影。流式
+  delta 按 kind 合并进同一块、新块前自动关闭上一段流；工具行按 callId 形变
+  （running/ok/fail + 首错行 + 活尾行）；审批按 id 清场；`ready` 帧用投影日志重建转录
+  ——重连 = 换基线，不是续游标（durable log 是唯一真相，socket 可弃）。
+  18 条直测钉住这些不变量（vitest include 加 `packages/*/*/test`，前端首次进测试网）。
+  测试当场揪出两个真 bug：中断轮不关流（打字光标永远闪在不会生长的半截文本上）、
+  合成 'disconnected' 相位在重连后不回正。
+- markdown 走**元素树渲染**（markdown.tsx，无 innerHTML / dangerouslySetInnerHTML）：
+  XSS 靠构造消灭而非转义，协议层测试另有恶意注入用例。
+- 组件全是 reducer 状态的投影：Transcript（贴底自动滚动）、Approval（diff 预览着色 +
+  拒绝理由输入）、Composer（运行中排队 lane + 中断钮）、状态行。
+
+cli 接线：
+
+- web-mode.ts：`nova --web` 起单进程。provider 对象归 owning surface 所有，`setSessionId`
+  经 `bindSessionAffinity` 注入——core 只见 `ChatProvider` 接口（web 包不 import ai 包）。
+  `NOVA_WEB_PORT` 固定端口供前端 dev server 代理。
+- index.ts 的 `main` 拆出 `dispatch`/`runExecMode`：`--web` 分支让 main 复杂度超限
+  （26 > 22），按 surface 选择分派归位，四个 surface 各自懒加载。
+- 前端产物入 `.gitignore`（`packages/web/public/`，与 `dist/` 同性质，构建时重生）。
+
+真机冒烟（构建产物 + 真进程）8/8：无凭据 401、错 token 403、真 token 302 + HttpOnly
+SameSite=Strict cookie、静态 index 200、assets 200（156KB js / 14KB css）、穿越路径拒、
+WS upgrade 101、首帧 ready 含 history 基线。
+
+全环：build + typecheck + 50 文件 531 测试 + gates + lint 0 error（存量 warning 未增）。

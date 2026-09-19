@@ -15,6 +15,13 @@ export interface ControllerOptions {
   resumeFile?: string;
   /** Display label for the active model (from config; the surface shows it). */
   providerModelLabel: string;
+  /**
+   * Cache-affinity rebind: called with the session id after the initial
+   * session is created and on every session switch. Only the provider's
+   * builder knows how (the ChatProvider contract has no setSessionId), so
+   * the owning surface injects it — exec/repl/qqbot do the same by hand.
+   */
+  bindSessionAffinity?: (sessionId: string) => void;
 }
 
 export interface LaunchWebOptions extends ControllerOptions {

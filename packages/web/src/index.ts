@@ -28,6 +28,7 @@ export async function launchWeb(opts: LaunchWebOptions): Promise<WebServerHandle
     config: opts.config,
     providerModelLabel: opts.providerModelLabel,
     ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
+    ...(opts.bindSessionAffinity !== undefined ? { bindSessionAffinity: opts.bindSessionAffinity } : {}),
   });
   const auth = createLaunchAuth();
   const handle = await startWebServer({

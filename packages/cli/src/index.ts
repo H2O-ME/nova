@@ -3,19 +3,20 @@ import { errMessage } from '@nova-agent/core';
 import path from 'node:path';
 import process from 'node:process';
 import { themeTarget, type ThemeName } from './command-core.js';
-import { loadConfig } from './config.js';
+import { loadConfig, type Config } from './config.js';
 import { startRepl } from './repl.js';
 import { cliVersion } from './version.js';
 
 const HELP = `nova — 自研本地编码智能体
 
 usage:
-  nova [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
+  nova [--web] [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
   nova exec "<task>" [--json] [--approval ...] [--resume <session.jsonl>]
 
 options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
   qqbot           QQ 机器人模式（需配置 qqbot.appId / qqbot.clientSecret）
+  --web           浏览器界面（本机 HTTP+WS 单进程，打印带 token 的 URL；NOVA_WEB_PORT 固定端口）
   --repl          （过渡期兼容保留：交互形态本就是 readline REPL）
   --resume        续接历史会话文件
   --approval      临时覆盖审批档位；exec 模式下无法交互确认，未放行的请求会被拒绝
@@ -33,11 +34,12 @@ interface ParsedArgs {
   themeOverride?: ThemeName;
   json: boolean;
   repl: boolean;
+  web: boolean;
   positional: string[];
 }
 
 function parseArgs(args: string[]): ParsedArgs | undefined {
-  const parsed: ParsedArgs = { json: false, repl: false, positional: [] };
+  const parsed: ParsedArgs = { json: false, repl: false, web: false, positional: [] };
   // Everything after a bare `--` is positional verbatim, so a task starting
   // with '-' (nova exec -- "-check the config") is passed through untouched.
   let positionalOnly = false;
@@ -76,6 +78,8 @@ function parseArgs(args: string[]): ParsedArgs | undefined {
       parsed.json = true;
     } else if (arg === '--repl') {
       parsed.repl = true;
+    } else if (arg === '--web') {
+      parsed.web = true;
     } else if (!positionalOnly && arg.startsWith('-')) {
       console.error(`unknown option: ${arg}（--help 查看用法）`);
       process.exitCode = 1;
@@ -113,62 +117,82 @@ async function main(): Promise<void> {
   }
   const parsed = parseArgs(args);
   if (parsed === undefined) return;
-  const execMode = parsed.positional[0] === 'exec';
-  const qqbotMode = parsed.positional[0] === 'qqbot';
-  const taskParts = execMode ? parsed.positional.slice(1) : parsed.positional;
-
   const rootDir = path.resolve(process.cwd());
   try {
-    const config = await loadConfig();
-    if (qqbotMode) {
-      const { startQqBot } = await import('./qqbot-mode.js');
-      await startQqBot({ rootDir, config });
-      return;
-    }
-    if (execMode) {
-      let prompt = taskParts.join(' ').trim();
-      if (prompt.length === 0 && process.stdin.isTTY !== true) {
-        prompt = (await readStdin()).trim();
-      }
-      if (prompt.length === 0) {
-        console.error('usage: nova exec "<task>"（或通过管道传入任务文本）');
-        process.exitCode = 1;
-        return;
-      }
-      const { runExec } = await import('./exec.js');
-      await runExec({
-        rootDir,
-        config,
-        prompt,
-        json: parsed.json,
-        ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
-        ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
-      });
-      return;
-    }
-    if (parsed.json) {
-      console.error('--json 仅在 exec 模式有效');
-      process.exitCode = 1;
-      return;
-    }
-    // Interactive mode ignores stray positionals (exec handles its own), but
-    // flag them so a typo like `nova epwn` does not silently drop the intent.
-    if (parsed.positional.length > 0) {
-      console.error(`warning: 交互模式忽略多余位置参数：${parsed.positional.join(' ')}（exec 模式请用 nova exec "<task>"）`);
-    }
-    // M11 批1c：旧全屏 TUI 已退役（批4 的新 tui-app 会以 surface 形态回来），
-    // 交互一律走 readline REPL；--repl 旗标保留为兼容 no-op。
-    await startRepl({
-      rootDir,
-      config,
-      ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
-      ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
-      ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
-    });
+    await dispatch(parsed, rootDir, await loadConfig());
   } catch (err) {
     console.error(errMessage(err));
     process.exitCode = 1;
   }
+}
+
+/**
+ * Surface selection: `nova qqbot` / `nova exec` / `nova --web` / interactive
+ * REPL. Each surface is loaded lazily so a plain interactive run never pays
+ * for the qqbot/web/exec graphs.
+ */
+async function dispatch(parsed: ParsedArgs, rootDir: string, config: Config): Promise<void> {
+  const mode = parsed.positional[0];
+  if (mode === 'qqbot') {
+    const { startQqBot } = await import('./qqbot-mode.js');
+    await startQqBot({ rootDir, config });
+    return;
+  }
+  if (mode === 'exec') {
+    await runExecMode(parsed, rootDir, config);
+    return;
+  }
+  if (parsed.json) {
+    console.error('--json 仅在 exec 模式有效');
+    process.exitCode = 1;
+    return;
+  }
+  // Interactive mode ignores stray positionals (exec handles its own), but
+  // flag them so a typo like `nova epwn` does not silently drop the intent.
+  if (parsed.positional.length > 0) {
+    console.error(`warning: 交互模式忽略多余位置参数：${parsed.positional.join(' ')}（exec 模式请用 nova exec "<task>"）`);
+  }
+  if (parsed.web) {
+    const { startWeb } = await import('./web-mode.js');
+    await startWeb({ rootDir, config, ...resumeAndApproval(parsed), ...webPort() });
+    return;
+  }
+  // M11 批1c：旧全屏 TUI 已退役（批4 的新 tui-app 会以 surface 形态回来），
+  // 交互一律走 readline REPL；--repl 旗标保留为兼容 no-op。
+  await startRepl({
+    rootDir,
+    config,
+    ...resumeAndApproval(parsed),
+    ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
+  });
+}
+
+async function runExecMode(parsed: ParsedArgs, rootDir: string, config: Config): Promise<void> {
+  let prompt = parsed.positional.slice(1).join(' ').trim();
+  if (prompt.length === 0 && process.stdin.isTTY !== true) {
+    prompt = (await readStdin()).trim();
+  }
+  if (prompt.length === 0) {
+    console.error('usage: nova exec "<task>"（或通过管道传入任务文本）');
+    process.exitCode = 1;
+    return;
+  }
+  const { runExec } = await import('./exec.js');
+  await runExec({ rootDir, config, prompt, json: parsed.json, ...resumeAndApproval(parsed) });
+}
+
+/** Flags every interactive surface accepts (resume + approval override). */
+function resumeAndApproval(parsed: ParsedArgs): { resumeFile?: string; approvalOverride?: 'read-only' | 'auto-edit' | 'full' } {
+  return {
+    ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
+    ...(parsed.approvalOverride !== undefined ? { approvalOverride: parsed.approvalOverride } : {}),
+  };
+}
+
+/** `NOVA_WEB_PORT` pins the port for the frontend dev-server proxy flow. */
+function webPort(): { port?: number } {
+  const fixed = Number.parseInt(process.env['NOVA_WEB_PORT'] ?? '', 10);
+  return Number.isInteger(fixed) && fixed > 0 ? { port: fixed } : {};
 }
 
 await main();

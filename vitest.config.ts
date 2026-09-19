@@ -12,6 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['packages/*/test/**/*.test.ts'],
+    // 两档：包级 test/，以及嵌套子包（packages/web/ui 的浏览器侧纯函数直测）。
+    include: ['packages/*/test/**/*.test.ts', 'packages/*/*/test/**/*.test.ts'],
   },
 });

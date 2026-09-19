@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# 前端构建产物（packages/web/ui 的 vite 输出）：与 dist/ 同性质，`pnpm build` 时由 -r 顺带重生
+packages/web/public/
 .nova/
 .zcode/
 skills-lock.json
