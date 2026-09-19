@@ -100,6 +100,19 @@ importers:
         specifier: ^26.4.0
         version: 26.4.0
 
+  packages/web:
+    dependencies:
+      '@nova-agent/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova-agent/plugins':
+        specifier: workspace:*
+        version: link:../plugins
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+
 packages:
 
   '@changesets/apply-release-plan@8.1.0':

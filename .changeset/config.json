@@ -8,6 +8,7 @@
       "@nova-agent/ai",
       "@nova-agent/plugins",
       "@nova-agent/tui",
+      "@nova-agent/web",
       "@nova-agent/cli"
     ]
   ],

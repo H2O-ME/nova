@@ -1,0 +1,27 @@
+{
+  "name": "@nova-agent/web",
+  "version": "0.3.0",
+  "type": "module",
+  "description": "WebUI surface（M11 批2）：单 Node 进程 = HTTP 静态托管 + 单 WebSocket 内核事件流；launch token → 签名 HttpOnly cookie 仅绑 localhost。只依赖 core/plugins 公共 API——与 repl/exec/qqbot 同地位的内核可插拔表面。",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "public"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova-agent/core": "workspace:*",
+    "@nova-agent/plugins": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0"
+  }
+}

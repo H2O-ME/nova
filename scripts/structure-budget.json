@@ -81,5 +81,12 @@
  "packages/tui/src/keys.ts": 309,
  "packages/tui/src/sanitize.ts": 36,
  "packages/tui/src/screen.ts": 298,
- "packages/tui/src/width.ts": 87
+ "packages/tui/src/width.ts": 87,
+ "packages/web/src/auth.ts": 59,
+ "packages/web/src/controller.ts": 178,
+ "packages/web/src/index.ts": 43,
+ "packages/web/src/options.ts": 33,
+ "packages/web/src/protocol.ts": 168,
+ "packages/web/src/server.ts": 159,
+ "packages/web/src/ws.ts": 235
 }

@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest';
+import { AUTH_COOKIE, cookieHeader, cookieValue, createLaunchAuth, verifyCookie } from '../src/auth.js';
+
+describe('launch auth cookie', () => {
+  it('only the exact launch token yields a cookie value', () => {
+    const auth = createLaunchAuth();
+    expect(cookieValue(auth, auth.token)).toContain(`${auth.token}.`);
+    expect(cookieValue(auth, 'deadbeef')).toBeUndefined();
+    expect(cookieValue(auth, '')).toBeUndefined();
+  });
+
+  it('verifyCookie accepts a signed cookie and rejects tampered ones', () => {
+    const auth = createLaunchAuth();
+    const value = cookieValue(auth, auth.token) as string;
+    const header = `${AUTH_COOKIE}=${value}`;
+    expect(verifyCookie(auth, header)).toBe(true);
+    // Flip the signature, swap the token, drop the cookie.
+    expect(verifyCookie(auth, header.slice(0, -2) + 'ff')).toBe(false);
+    expect(verifyCookie(auth, `${AUTH_COOKIE}=${auth.token}.${auth.token}`)).toBe(false);
+    expect(verifyCookie(auth, 'other=x')).toBe(false);
+    expect(verifyCookie(auth, undefined)).toBe(false);
+  });
+
+  it('a cookie from one process does not verify in another (per-process secret)', () => {
+    const a = createLaunchAuth();
+    const b = createLaunchAuth();
+    const value = cookieValue(a, a.token) as string;
+    expect(verifyCookie(b, `${AUTH_COOKIE}=${value}`)).toBe(false);
+  });
+
+  it('Set-Cookie is host-hardened: HttpOnly, SameSite=Strict, path-scoped', () => {
+    const header = cookieHeader('tok.sig');
+    expect(header).toBe('nova_ws=tok.sig; Path=/; HttpOnly; SameSite=Strict');
+  });
+
+  it('cookie parsing survives sibling cookies', () => {
+    const auth = createLaunchAuth();
+    const value = cookieValue(auth, auth.token) as string;
+    expect(verifyCookie(auth, `sid=abc; ${AUTH_COOKIE}=${value}; theme=dark`)).toBe(true);
+  });
+});
