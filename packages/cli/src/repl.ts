@@ -1,8 +1,7 @@
 import { createInterface } from 'node:readline/promises';
 import type { OpenAICompatClient } from '@nova-agent/ai';
-import { createAgentKernel, writeAgentsMd, type ApprovalMode, type Kernel } from '@nova-agent/plugins';
+import { createAgentKernel, type ApprovalMode, type Kernel } from '@nova-agent/plugins';
 import {
-  errMessage,
   type AgentSession,
   type AskResult,
   type KernelEvent,
@@ -11,32 +10,14 @@ import { detectCaps } from '@nova-agent/tui';
 import { awaitIdle, createProvider, toKernelConfig } from './kernel-boot.js';
 import { type Config } from './config.js';
 import { createModelListCache } from './commands.js';
-import { COMMAND_SPECS, modeOverviewRows } from './commands.js';
-import {
-  agentsMdWrittenLine,
-  approvalSwitchLine,
-  expandSkillInvocation,
-  helpRows,
-  MODEL_LIST_EMPTY,
-  modelListError,
-  modelListRows,
-  newSessionLine,
-  nextApprovalMode,
-  pluginReportLines,
-  sessionReportLines,
-  themeSwitchedMessage,
-  themeTarget,
-  themeUnknownMessage,
-  unknownCommandParts,
-  type ThemeName,
-} from './command-core.js';
+import { modelListRows, type ThemeName } from './command-core.js';
+import { runAgentCommand, type CommandPorts } from './command-runner.js';
 import {
   approvalLabel,
   approvalPromptText,
   banner,
   emptyCompletionNotice,
   maxTurnsHint,
-  permissionLabel,
   resolvePaint,
   retryNotice,
   statusLine,
@@ -334,159 +315,76 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   }
   bindSession(kernel.agent);
 
-  /** 命令 switch：返回 false = 退出主循环。 */
+  /** 一句话下发（普通输入与 `/skill` 展开的提示词同走这里）。 */
+  async function submit(text: string): Promise<void> {
+    turnStartedAt = Date.now();
+    prog.resetReasoning();
+    // 提交 + 起跑（或入队）全在内核；主循环立刻回到读行——运行中可继续输入。
+    await agent.prompt(text);
+  }
+
+  /**
+   * 斜杠命令：语义全在 `command-runner`（与 TUI 共用一份），这里只出端口——
+   * note 走 stdout、模型选择走序号提问、清屏是 `console.clear()`。
+   * 返回 false = 退出主循环。
+   */
+  const commandPorts: CommandPorts = {
+    kernel,
+    client,
+    config,
+    approvalOverride: opts.approvalOverride,
+    theme: () => themeName,
+    setTheme: (theme) => {
+      themeName = theme;
+      paint = resolvePaint(theme);
+      useColor = caps.color && theme !== 'plain';
+    },
+    note: (text) => {
+      for (const row of text.split('\n')) console.log(row);
+    },
+    fetchModels: () => fetchModelList(),
+    pickModel: async (models) => {
+      console.log(`当前模型：${client.model}`);
+      for (const row of modelListRows(client.model, [...models])) console.log(row);
+      subPromptPending = true;
+      let raw: string | null;
+      try {
+        raw = await lines.next(paint.cyan('输入序号切换模型，回车取消：'));
+      } finally {
+        subPromptPending = false;
+      }
+      const pick = raw?.trim();
+      if (pick === null || pick === undefined || pick.length === 0) return undefined;
+      const idx = Number.parseInt(pick, 10);
+      const model = Number.isInteger(idx) ? models[idx - 1] : undefined;
+      if (model === undefined) {
+        console.log(`无效序号：${pick}`);
+        return undefined;
+      }
+      return model;
+    },
+    bindSession,
+    clear: () => {
+      console.clear();
+      console.log('（已清屏，会话记录保留在磁盘）');
+    },
+    modeHint: '（repl 遵循 config.json 的 tools.code.mode）',
+    exit: async () => {
+      // 优雅收尾：轮在跑就先中断并等它解绕（挂起审批 fail-close、半截日志
+      // 修复都在内核 abort 路径里）——退出绝不把进行中的轮丢在半路。
+      if (agent.running) {
+        agent.abort();
+        await awaitIdle(agent);
+      }
+    },
+  };
+
   async function runCommand(input: string): Promise<boolean> {
-    const [cmd = ''] = input.split(/\s+/);
-    switch (cmd) {
-      case '/exit':
-      case '/quit':
-        // 优雅收尾：轮在跑就先中断并等它解绕（挂起审批 fail-close、半截日志
-        // 修复都在内核 abort 路径里）——退出绝不把进行中的轮丢在半路。
-        if (agent.running) {
-          agent.abort();
-          await awaitIdle(agent);
-        }
-        return false;
-      case '/help':
-        console.log(helpRows(COMMAND_SPECS).join('\n'));
-        break;
-      case '/new': {
-        // 新会话公式全在内核：建日志（当天日期桶，跨天自动换桶）+ 种上下文
-        // 片段 + 重指 current；这里只换订阅面并重绑缓存亲和身份。
-        const next = await kernel.newAgentSession();
-        client.setSessionId(next.session.id);
-        bindSession(next);
-        console.log(newSessionLine(next.session.file));
-        break;
-      }
-      case '/session': {
-        for (const row of sessionReportLines({
-          file: agent.session.file,
-          messageCount: agent.messages.length,
-          stats: agent.usageSnapshot(),
-          lastUsage: agent.lastUsage,
-          lastPromptTokens: agent.lastPromptTokens,
-          autoCompactTokenLimit: config.autoCompactTokenLimit,
-        })) console.log(row);
-        break;
-      }
-      case '/model': {
-        try {
-          const models = await fetchModelList();
-          if (models.length === 0) {
-            console.log(MODEL_LIST_EMPTY);
-            break;
-          }
-          console.log(`当前模型：${client.model}`);
-          for (const row of modelListRows(client.model, models)) console.log(row);
-          subPromptPending = true;
-          let raw: string | null;
-          try {
-            raw = await lines.next(paint.cyan('输入序号切换模型，回车取消：'));
-          } finally {
-            subPromptPending = false;
-          }
-          const pick = raw?.trim();
-          if (pick === null || pick === undefined || pick.length === 0) {
-            console.log('已取消');
-            break;
-          }
-          const idx = Number.parseInt(pick, 10);
-          const model = Number.isInteger(idx) ? models[idx - 1] : undefined;
-          if (model === undefined) {
-            console.log(`无效序号：${pick}`);
-            break;
-          }
-          if (model === client.model) {
-            console.log(`已是当前模型：${model}`);
-            break;
-          }
-          client.setModel(model);
-          console.log(`模型已切换为 ${model}`);
-        } catch (err) {
-          console.log(modelListError(err));
-        }
-        break;
-      }
-      case '/theme': {
-        const arg = input.trim().split(/\s+/)[1];
-        if (arg === undefined) {
-          console.log(`当前主题：${themeName}（/theme dark|light|plain 切换；NO_COLOR 恒定无色）`);
-          break;
-        }
-        const target = themeTarget(arg);
-        if (target === undefined) {
-          console.log(themeUnknownMessage(arg));
-          break;
-        }
-        themeName = target;
-        paint = resolvePaint(target);
-        useColor = caps.color && target !== 'plain';
-        console.log(themeSwitchedMessage(target));
-        break;
-      }
-      case '/plugins': {
-        const rows = pluginReportLines({
-          approvalMode: kernel.permission.approvalMode,
-          override: opts.approvalOverride !== undefined,
-          tools: kernel.host.toolEntries.map((entry) => ({
-            plugin: entry.plugin,
-            name: entry.tool.name,
-            permission: permissionLabel(entry.permission),
-          })),
-          commands: kernel.host.commandEntries.map((entry) => ({
-            plugin: entry.plugin,
-            name: entry.command.name,
-            description: entry.command.description,
-          })),
-        });
-        for (const row of rows) console.log(row);
-        break;
-      }
-      case '/approvals': {
-        const next = nextApprovalMode(kernel.permission.approvalMode);
-        kernel.permission.setMode(next);
-        console.log(approvalSwitchLine(next));
-        break;
-      }
-      case '/mode': {
-        // repl 没有 Tab 切换缝，模式来自 config 的 tools.code.mode（与内核
-        // 装配同源）；行语义与 /mode 旧面板一致。
-        const current = kernel.codeMode();
-        console.log(`执行模式 ${paint.dim('· repl 遵循 config.json 的 tools.code.mode')}`);
-        for (const row of modeOverviewRows(current)) {
-          console.log(`  ${row.current ? paint.cyan(row.text) : paint.dim(row.text)}`);
-        }
-        break;
-      }
-      case '/compact': {
-        if (agent.running) {
-          console.log(paint.yellow('  本轮进行中，压缩会在轮结束后自动把关（或稍后再试）'));
-          break;
-        }
-        console.log('正在压缩会话…');
-        try {
-          const outcome = await agent.compact('manual');
-          console.log(`已压缩 — 会话原位压缩（日志保留完整历史），摘要 ${outcome.summary.length} 字，保留 ${outcome.retained} 条最近用户消息`);
-        } catch (err) {
-          console.error(paint.red(`压缩失败：${errMessage(err)}`));
-        }
-        break;
-      }
-      case '/clear':
-        console.clear();
-        console.log('（已清屏，会话记录保留在磁盘）');
-        break;
-      case '/init': {
-        const file = await writeAgentsMd(kernel.rootDir());
-        console.log(agentsMdWrittenLine(file));
-        break;
-      }
-      default: {
-        const unknown = unknownCommandParts(cmd);
-        console.log(`${unknown.head}${unknown.hint}`);
-      }
-    }
+    const outcome = await runAgentCommand(input, commandPorts);
+    if (outcome === 'exit') return false;
+    // `/skill <name>` 展开成提示词：与普通输入同一路径下发（此前它落进
+    // 「未知命令」——两壳各写一份语义的直接后果）。
+    if (typeof outcome === 'object') await submit(outcome.prompt);
     return true;
   }
 
@@ -517,19 +415,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       continue;
     }
 
-    const skillInvocation = await expandSkillInvocation(input, kernel.skills);
-    if (skillInvocation !== undefined) {
-      if (!skillInvocation.ok) {
-        console.log(skillInvocation.error);
-        continue;
-      }
-      input = skillInvocation.content;
-    }
-
-    turnStartedAt = Date.now();
-    prog.resetReasoning();
-    // 提交 + 起跑（或入队）全在内核；主循环立刻回到读行——运行中可继续输入。
-    await agent.prompt(input);
+    await submit(input);
   }
 
   rl.close();

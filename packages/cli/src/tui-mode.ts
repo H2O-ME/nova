@@ -2,34 +2,19 @@
  * `nova`（M11 批4d）：默认交互形态 = 全屏 TUI（`@nova-agent/tui-app` surface）。
  *
  * 与 repl 的关系是**同内核、两 surface**：装配（provider/config/审批覆盖/
- * jobs 订阅）走同一批小件；命令文案与 /mode /session /plugins 的数据装配复用
- * command-core 的纯函数，只有呈现面不同（TUI 是卡片与面板，repl 打印行）。
+ * jobs 订阅）走同一批小件；斜杠命令走同一个 runner（`command-runner`），
+ * 只有呈现面不同（TUI 是卡片与面板，repl 打印行）。
  * 非 TTY（管道/CI）由 index.ts 回落 repl，本文件只负责 TUI 形态。
  */
 import os from 'node:os';
 import { errMessage, type PtcMode } from '@nova-agent/core';
-import { createAgentKernel, writeAgentsMd, type ApprovalMode, type Kernel } from '@nova-agent/plugins';
+import { createAgentKernel, type ApprovalMode, type Kernel } from '@nova-agent/plugins';
 import { detectCaps } from '@nova-agent/tui';
 import { TuiApp, buildPalette, type ThemeName } from '@nova-agent/tui-app';
 import type { Config } from './config.js';
-import { COMMAND_SPECS, createModelListCache, modeOverviewRows } from './commands.js';
-import {
-  agentsMdWrittenLine,
-  approvalSwitchLine,
-  expandSkillInvocation,
-  helpRows,
-  MODEL_LIST_EMPTY,
-  modelListError,
-  newSessionLine,
-  nextApprovalMode,
-  pluginReportLines,
-  sessionReportLines,
-  themeSwitchedMessage,
-  themeTarget,
-  themeUnknownMessage,
-  unknownCommandParts,
-} from './command-core.js';
-import { codeModeLabel, permissionLabel } from './lines.js';
+import { COMMAND_SPECS, createModelListCache } from './commands.js';
+import { runAgentCommand, type CommandPorts } from './command-runner.js';
+import { codeModeLabel } from './lines.js';
 import { createProvider, toKernelConfig } from './kernel-boot.js';
 import { createModelMetaStore } from './model-meta.js';
 
@@ -135,158 +120,47 @@ function fillContextWindow(app: TuiApp, config: Config): void {
     .catch(() => undefined);
 }
 
-/** 斜杠命令与技能调用：TUI 面。返回 `'handled'` = 已消费，字符串 = 送去提问。 */
-async function runCommand(input: string, deps: Deps): Promise<string | 'handled' | undefined> {
+/**
+ * 斜杠命令：TUI 面只出端口——语义（对内核做什么、参数怎么解析）全在
+ * `command-runner` 里，两个壳共用；这里给的是呈现（note 进转录、模型选择走
+ * 面板、清屏清转录）。
+ */
+function commandPorts(deps: Deps): CommandPorts {
   const { app, kernel, client } = deps;
-  const [cmd = ''] = input.split(/\s+/);
-  switch (cmd) {
-    case '/exit':
-    case '/quit':
-      app.requestExit();
-      return 'handled';
-    case '/help':
-    case '/session':
-    case '/plugins':
-    case '/mode':
-      app.note(reportCommand(cmd, deps));
-      return 'handled';
-    case '/new': {
-      const next = await kernel.newAgentSession();
-      client.setSessionId(next.session.id);
-      app.setAgent(next);
-      app.note(newSessionLine(next.session.file));
-      return 'handled';
-    }
-    case '/model':
-      await openModelPanel(deps);
-      return 'handled';
-    case '/theme':
-      switchTheme(input, deps);
-      return 'handled';
-    case '/approvals': {
-      const next = nextApprovalMode(kernel.permission.approvalMode);
-      kernel.permission.setMode(next);
-      app.note(approvalSwitchLine(next));
-      return 'handled';
-    }
-    case '/compact':
-      await compactNow(deps);
-      return 'handled';
-    case '/clear':
-      app.clear();
-      return 'handled';
-    case '/init':
-      app.note(agentsMdWrittenLine(await writeAgentsMd(kernel.rootDir())));
-      return 'handled';
-    case '/skill': {
-      const invocation = await expandSkillInvocation(input, kernel.skills);
-      if (invocation === undefined) return undefined;
-      if (!invocation.ok) {
-        app.note(invocation.error, 'warn');
-        return 'handled';
-      }
-      return invocation.content;
-    }
-    default: {
-      const unknown = unknownCommandParts(cmd);
-      app.note(`${unknown.head}${unknown.hint}`, 'warn');
-      return 'handled';
-    }
-  }
+  return {
+    kernel,
+    client,
+    config: deps.config,
+    approvalOverride: deps.approvalOverride,
+    theme: () => deps.theme,
+    setTheme: (theme) => {
+      deps.theme = theme;
+      applyTheme(app, theme);
+    },
+    note: (text, tone) => app.note(text, tone),
+    fetchModels: () => deps.modelCache(),
+    pickModel: (models) =>
+      new Promise<string | undefined>((resolve) => {
+        app.openPanel({
+          title: `模型 · 当前 ${client.model}`,
+          rows: models.map((model) => ({ label: model, detail: model === client.model ? '当前' : undefined })),
+          // Esc 关面板时 `TuiApp` 回调 `-1`（"没选"），await 的那头才不会永远挂着。
+          onSelect: (index) => resolve(index < 0 ? undefined : models[index]),
+        });
+      }),
+    bindSession: (agent) => app.setAgent(agent),
+    clear: () => app.clear(),
+    modeHint: '（未开会话前可用 Tab 切换）',
+    exit: () => app.requestExit(),
+  };
 }
 
-/** The read-only reports: same pure builders as the repl, printed into a note. */
-function reportCommand(cmd: string, deps: Deps): string {
-  const { kernel } = deps;
-  switch (cmd) {
-    case '/help':
-      return helpRows(COMMAND_SPECS).join('\n');
-    case '/session':
-      return sessionReportLines({
-        file: kernel.agent.session.file,
-        messageCount: kernel.agent.messages.length,
-        stats: kernel.agent.usageSnapshot(),
-        lastUsage: kernel.agent.lastUsage,
-        lastPromptTokens: kernel.agent.lastPromptTokens,
-        autoCompactTokenLimit: deps.config.autoCompactTokenLimit,
-      }).join('\n');
-    case '/plugins':
-      return pluginReportLines({
-        approvalMode: kernel.permission.approvalMode,
-        override: deps.approvalOverride !== undefined,
-        tools: kernel.host.toolEntries.map((entry) => ({
-          plugin: entry.plugin,
-          name: entry.tool.name,
-          permission: permissionLabel(entry.permission),
-        })),
-        commands: kernel.host.commandEntries.map((entry) => ({
-          plugin: entry.plugin,
-          name: entry.command.name,
-          description: entry.command.description,
-        })),
-      }).join('\n');
-    default:
-      return [
-        `执行模式：${codeModeLabel(kernel.codeMode())}（未开会话前可用 Tab 切换）`,
-        ...modeOverviewRows(kernel.codeMode()).map((row) => `  ${row.text}`),
-      ].join('\n');
-  }
-}
-
-/** `/model`: the catalog opens as a panel; picking a row retargets the client. */
-async function openModelPanel(deps: Deps): Promise<void> {
-  const { app, client } = deps;
-  try {
-    const models = await deps.modelCache();
-    if (models.length === 0) {
-      app.note(MODEL_LIST_EMPTY);
-      return;
-    }
-    app.openPanel({
-      title: `模型 · 当前 ${client.model}`,
-      rows: models.map((model) => ({ label: model, detail: model === client.model ? '当前' : undefined })),
-      onSelect: (index) => {
-        const model = models[index];
-        if (model === undefined) return;
-        client.setModel(model);
-        app.setModel(model);
-        app.note(`模型已切换为 ${model}`);
-      },
-    });
-  } catch (err) {
-    app.note(modelListError(err), 'warn');
-  }
-}
-
-function switchTheme(input: string, deps: Deps): void {
-  const arg = input.trim().split(/\s+/)[1];
-  if (arg === undefined) {
-    deps.app.note(`当前主题：${deps.theme}（/theme dark|light|plain 切换；NO_COLOR 恒定无色）`);
-    return;
-  }
-  const target = themeTarget(arg);
-  if (target === undefined) {
-    deps.app.note(themeUnknownMessage(arg), 'warn');
-    return;
-  }
-  deps.theme = target;
-  applyTheme(deps.app, target);
-  deps.app.note(themeSwitchedMessage(target));
-}
-
-async function compactNow(deps: Deps): Promise<void> {
-  const { app, kernel } = deps;
-  if (kernel.agent.running) {
-    app.note('本轮进行中，压缩会在轮结束后自动把关（或稍后再试）', 'warn');
-    return;
-  }
-  app.note('正在压缩会话…');
-  try {
-    const outcome = await kernel.agent.compact('manual');
-    app.note(`已压缩 — 摘要 ${outcome.summary.length} 字，保留 ${outcome.retained} 条最近消息`);
-  } catch (err) {
-    app.note(`压缩失败：${errMessage(err)}`, 'warn');
-  }
+/** `<TuiApp>` 的斜杠输入入口：命令 → 端口；技能展开成一句提问。 */
+async function runCommand(input: string, deps: Deps): Promise<string | 'handled'> {
+  const outcome = await runAgentCommand(input, commandPorts(deps));
+  // `exit` 已经经端口把壳层关掉（`app.requestExit()`），这里只报"已消费"；
+  // `/skill` 展开成提示词，交回 `TuiApp.submit` 去提问。
+  return typeof outcome === 'object' ? outcome.prompt : 'handled';
 }
 
 /** Tab：未开会话前循环 普通 → PTC → 混合（重建宿主由内核 setCodeMode 负责）。 */

@@ -291,12 +291,10 @@ describe('the TUI surface', () => {
     harness = await open([toolCall('read_file', { path: 'note.txt' }), delta('答案：42')]);
     await writeFile(path.join(harness.workspace, 'note.txt'), 'hello from disk\n');
 
-    harness.send('你好');
-    harness.send('\r');
+    await submit(harness, '你好', '答案：42');
     await waitIdle(harness.kernel);
 
     const screen = harness.screen();
-    console.log('=== SCREEN ===' + JSON.stringify(screen));
     expect(screen).toContain('你好');
     // A lone read-only call is a verb-group row, not a row per call (grok's
     // verb_group): the file name is behind the fold.
@@ -328,16 +326,15 @@ describe('the TUI surface', () => {
   it('blocks on an approval, and the keyboard answers it', async () => {
     harness = await open([toolCall('write_file', { path: 'out.txt', content: 'written' }), delta('写好了')]);
 
-    harness.send('写一个文件');
-    harness.send('\r');
+    await submit(harness, '写一个文件', '需要审批');
     await waitFor(() => harness!.kernel.agent.pendingApprovals().length === 1, 'the approval request');
-    await settle();
 
     let screen = harness.screen();
     expect(screen).toContain('需要审批');
     expect(screen).toContain('out.txt');
 
     harness.send('\r'); // the cursor starts on 「允许」
+    await waitFor(() => harness!.screen().includes('写好了'), 'the turn after the approval');
     await waitIdle(harness.kernel);
 
     expect(await readFile(path.join(harness.workspace, 'out.txt'), 'utf8')).toBe('written');
@@ -348,13 +345,13 @@ describe('the TUI surface', () => {
 
   it('sends a typed denial reason back to the model as an instruction', async () => {
     harness = await open([toolCall('write_file', { path: 'no.txt', content: 'x' }), delta('好的')]);
-    harness.send('写一个文件\r');
-    await waitFor(() => harness!.kernel.agent.pendingApprovals().length === 1, 'the approval request');
+    await submit(harness, '写一个文件', '需要审批');
 
     harness.send('\x1b[B'); // ↓ to 「总是允许」
     harness.send('\x1b[B'); // ↓ to 「拒绝」
     harness.send('换个路径');
     harness.send('\r');
+    await waitFor(() => harness!.screen().includes('好的'), 'the turn after the denial');
     await waitIdle(harness.kernel);
 
     expect(lastToolResult(harness.kernel)).toContain('Permission denied: by user: 换个路径');

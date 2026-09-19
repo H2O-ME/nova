@@ -273,6 +273,9 @@ export class TuiApp {
         return;
       }
       case 'panelClose':
+        // `-1` = dismissed without a choice, so a caller awaiting a pick can
+        // settle instead of hanging on a promise nobody will resolve.
+        this.panelSelect?.(-1);
         this.panelSelect = undefined;
         return;
       case 'submit':
@@ -359,7 +362,8 @@ export class TuiApp {
     this.version += 1;
   }
 
-  /** A modal list (model/session pickers); the caller owns the selection. */
+  /** A modal list (model/session pickers); the caller owns the selection.
+   *  `onSelect(-1)` means the panel was dismissed without a choice. */
   openPanel(opts: { title: string; rows: readonly PanelRow[]; onSelect: (index: number) => void }): void {
     this.panelSelect = opts.onSelect;
     this.state = { ...this.state, panel: { kind: 'modal', title: opts.title, rows: opts.rows, cursor: 0 } };
