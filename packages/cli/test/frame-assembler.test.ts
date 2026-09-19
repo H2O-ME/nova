@@ -209,7 +209,8 @@ describe('FrameAssembler logical scroll anchor', () => {
 /**
  * 转录区贴底锚定（M10 批9）：整帧终端里，composer 钉在屏幕下缘，文档流会把最新
  * 一行推离输入区半屏（真机截图病灶）。富余空白因此整段上浮到内容上方——最新一行
- * 永远贴着历史区底缘。开屏阶段例外（只挪 1/3），上滚后不挪。
+ * 永远贴着历史区底缘。开屏是唯一的例外（转录里只有 welcome 卡片时居中，批12），
+ * 上滚后不挪。
  */
 describe('FrameAssembler 短转录贴底锚定', () => {
   const renderArgs = {
@@ -234,17 +235,42 @@ describe('FrameAssembler 短转录贴底锚定', () => {
     expect(frame.lines[topPad]).toBe('第一行');
   });
 
-  it('开屏阶段只挪三分之一，其余沉底（卡片浮在屏幕上部）', () => {
+  it('开屏卡片居中：转录里只有它时空白分上下两半（冷启动读作欢迎页）', () => {
     const t = setup();
-    t.store.welcomeCenter = true;
     t.store.pushBlock(['开屏卡片'], undefined, 'assistant');
     t.assembler.render(renderArgs);
     const frame = t.frames.at(-1)!;
     const { historyRows, topPad } = t.store.frameMap!;
     expect(frame.lines[topPad]).toBe('开屏卡片');
-    expect(topPad).toBeGreaterThan(0);
-    expect(topPad).toBeLessThan(historyRows - 1); // 没把富余用完
-    expect(frame.lines[historyRows - 1]).toBe(''); // 底部仍留白
+    // 上下两半至多差一行（奇数富余时多的一格沉到下面）。
+    const above = topPad;
+    const below = historyRows - 1 - topPad;
+    expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
+    expect(frame.lines.slice(topPad + 1, historyRows)).toEqual(Array<string>(below).fill(''));
+  });
+
+  it('首条消息落地即并回文档流：卡片不再居中，最新一行贴着输入卡', () => {
+    const t = setup();
+    t.store.pushBlock(['开屏卡片'], undefined, 'assistant');
+    t.store.pushBlock(['你的提问'], undefined, 'user');
+    t.assembler.render(renderArgs);
+    const frame = t.frames.at(-1)!;
+    const { historyRows, topPad } = t.store.frameMap!;
+    expect(frame.lines[historyRows - 1]).toBe('你的提问');
+    expect(frame.lines[topPad]).toBe('开屏卡片');
+  });
+
+  it('底部 chrome 与卡片同一对边距——整屏只有一条左缘', () => {
+    const t = setup();
+    t.store.pushBlock(['内容'], undefined, 'assistant');
+    t.assembler.render(renderArgs);
+    const frame = t.frames.at(-1)!;
+    const status = frame.lines.at(-2)!;
+    const hints = frame.lines.at(-1)!;
+    expect(status.startsWith('  ')).toBe(true);
+    expect(hints.startsWith('  ')).toBe(true);
+    // 仪表 hover 命中区跟着内衬走（绝对列 = 内衬 + 段宽）。
+    expect(t.store.statusZone!.gaugeEnd).toBeGreaterThan(2);
   });
 
   it('topPad 恒等于历史区顶部连续空白行数——点击坐标减它就是内容行', () => {

@@ -35,17 +35,17 @@ export function hintItems(v: HintState): HintItem[] {
     return [
       { key: '↑↓', label: '选择' },
       { key: '1-9', label: '选项' },
-      { key: '⏎', label: '确认' },
+      { key: 'Enter', label: '确认' },
       { key: 'Esc', label: '拒绝' },
       ...(v.approvalScope ? [{ key: '←→', label: '调授权词数' }] : []),
-      ...(v.denyTyping ? [{ key: '打字', label: '补理由' }, { key: '⌫', label: '删字' }] : []),
+      ...(v.denyTyping ? [{ key: '打字', label: '补理由' }, { key: 'Backspace', label: '删字' }] : []),
     ];
   }
   if (v.picker === 'command') {
     return [
       { key: '↑↓', label: '选择' },
       { key: 'Tab', label: '补全' },
-      { key: '⏎', label: '执行' },
+      { key: 'Enter', label: '执行' },
       { key: 'Esc', label: '关闭' },
     ];
   }
@@ -53,14 +53,14 @@ export function hintItems(v: HintState): HintItem[] {
     return [
       { key: '↑↓', label: '选择' },
       { key: '1-9', label: '快选' },
-      { key: '⏎', label: '切换' },
+      { key: 'Enter', label: '切换' },
       { key: 'Esc', label: '取消' },
     ];
   }
   if (v.modeSelect) {
     return [
       { key: '↑↓', label: '选模式' },
-      { key: '⏎', label: '确认' },
+      { key: 'Enter', label: '确认' },
       { key: 'Esc', label: '保持' },
       { key: '输入', label: '直接开始' },
     ];
@@ -68,14 +68,14 @@ export function hintItems(v: HintState): HintItem[] {
   if (v.streaming) {
     const items: HintItem[] = [
       { key: 'Esc', label: '中断' },
-      { key: '⏎', label: v.queue > 0 ? '继续排队' : '排队' },
+      { key: 'Enter', label: v.queue > 0 ? '继续排队' : '排队' },
     ];
     if (v.queue > 0) items.push({ key: '队列', label: `${v.queue}` });
     items.push({ key: 'Ctrl+C', label: '退出' });
     return items;
   }
   return [
-    { key: '⏎', label: '发送' },
+    { key: 'Enter', label: '发送' },
     { key: '/', label: '命令' },
     { key: '↑↓', label: '历史' },
     ...(v.tabMode ? [{ key: 'Tab', label: '切模式' }] : []),

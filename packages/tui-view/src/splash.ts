@@ -84,9 +84,18 @@ export function buildWelcome(p: Palette, v: WelcomeView): string[] {
 
   const brand = 'Nova';
   const ver = v.version.length > 0 ? `v${v.version}` : '';
+  // 卡片宽度按**选择器在架的三种光标位与塌缩形态里最宽的那个**定：只按当前形态量，
+  // 选择器收起那一刻右边框就横跳一格（居中时还整块左右挪一次）。光标位取遍 0..2 是
+  // 因为尾注随待切档变长（`当前模式` vs `将切到 混合`）。
+  const pickerW = Math.max(
+    ...MODE_OPTIONS.map(
+      (_, i) => styledWidth(modeValue(p, { ...v, select: { index: i, ptcAvailable: true } }, Number.MAX_SAFE_INTEGER)),
+    ),
+  );
   const content = Math.max(
     SPLASH_MIN_INNER,
     styledWidth(`╭─ ${brand} ${ver} ─╮`),
+    11 + pickerW,
     ...values.map(([l, val]) => 1 + Math.max(8, styledWidth(l)) + styledWidth(val) + 2),
     ...v.warnings.map((w) => styledWidth(`⚠ ${w}`) + 2),
   );
@@ -166,11 +175,17 @@ function modeValue(p: Palette, v: WelcomeView, budget: number): string {
   }
   const pending = modeOption(MODE_OPTIONS[sel.index]?.mode ?? v.codeMode);
   const state = pending.mode === v.codeMode ? '当前模式' : `将切到 ${pending.label}`;
+  // 三格等宽：`普通`/`混合` 是 4 列、`PTC` 是 3 列，不补齐就是 `[ 普通 ]│[PTC]│[混合]`
+  // ——一条长短不齐的锯齿，读起来像手抖而不像分段控件。
+  const cellW = Math.max(...MODE_OPTIONS.map((entry) => styledWidth(entry.label)));
   const segments = MODE_OPTIONS.map((entry, i) => {
-    const dot = entry.mode === v.codeMode ? '•' : '';
-    const text = i === sel.index ? `[ ${dot}${entry.label} ]` : `[${dot}${entry.label}]`;
+    // 已生效档用颜色标，不用字形：反色 run 会换字体回落，把 `•` 这类"宽度看上下文"
+    // 的字形撑偏一格，整行的右边框就跟着错位（真机截图对照出来的）。三条通道照旧
+    // 分开写——颜色=已生效、反色胶囊=光标、尾注=Enter 会不会改变。
+    const label = entry.mode === v.codeMode ? p.cyan(padDisplay(entry.label, cellW)) : padDisplay(entry.label, cellW);
+    const text = `[ ${label} ]`;
     return i === sel.index ? p.inverse(text) : p.dim(text);
-  }).join(p.dim('│'));
+  }).join(p.dim(' │ '));
   const note = !sel.ptcAvailable && pending.mode !== 'native' ? ' · 需 Node ≥ 22.19' : '';
   const head = `${segments} `;
   const line = head + p.dim(state + note);

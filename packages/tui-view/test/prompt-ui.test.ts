@@ -451,15 +451,31 @@ describe('gauge urgency ramp + hover morph (M10 组件1/2)', () => {
   });
 
   it('T2 hover swaps bar cells for the numbers at identical total width', () => {
-    const v = { segments: segs, used: 5200, capacity: 1_050_000, compact: undefined };
+    // 用量得先画得出格子——0 格时整条 bar 已被降级丢掉（见下一条）。
+    const fat: ContextSegment[] = [{ label: '历史', tokens: 200_000, color: 'yellow' }];
+    const v = { segments: fat, used: 200_000, capacity: 1_050_000, compact: undefined };
     const base = contextGaugeForms(plainPalette, v, 100);
     const hover = contextGaugeForms(plainPalette, v, 100, true);
-    expect(base[2]).not.toContain('5.2k/1.05M');
-    expect(hover[2]).toContain('5.2k/1.05M');
+    expect(base[2]).not.toContain('200k/1.05M');
+    expect(hover[2]).toContain('200k/1.05M');
     expect(styledWidth(hover[2])).toBe(styledWidth(base[2]));
     // 形态换位不挪右缘：三档里只有 T2 变化。
     expect(hover[0]).toBe(base[0]);
     expect(hover[1]).toBe(base[1]);
+  });
+
+  it('一格都画不出时整条 bar 降级掉（百万窗口开局不再是一屏底纹）', () => {
+    const v = { segments: segs, used: 5200, capacity: 1_050_000, compact: undefined };
+    const [t0, t1, t2] = contextGaugeForms(plainPalette, v, 120);
+    for (const line of [t0, t1, t2]) {
+      expect(line).not.toContain('░');
+      expect(line).toContain('5.2k/1.05M');
+    }
+    expect(t0).toContain('上下文');
+    // 用量涨到画得出一格，条形就回来。
+    const grownSegs: ContextSegment[] = [{ label: '历史', tokens: 200_000, color: 'yellow' }];
+    const grown = contextGaugeForms(plainPalette, { segments: grownSegs, used: 200_000, capacity: 1_050_000 }, 120);
+    expect(grown[0]).toContain('█');
   });
 
   it('too little bar to steal → the hover morph is a no-op', () => {

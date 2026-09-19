@@ -90,11 +90,6 @@ export class TuiStore {
   sessionPicker: { entries: SessionEntry[]; index: number } | undefined;
   /** Startup mode selector: active at launch, collapsed on confirm/Esc/first submit. */
   modeSelect: { index: number } | undefined;
-  /**
-   * 开屏卡片垂直居中：首轮提交前把视口空白挪到内容上方（消掉整屏空洞），
-   * 第一条消息落地即关闭——之后是文档流，不再挪。
-   */
-  welcomeCenter = false;
   approval: ApprovalState | undefined;
   approvalIndex = 0;
   /** 组件6：always 行的授权词数（当前命令前 N 词），每次弹窗重置为 1。 */

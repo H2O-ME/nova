@@ -38,17 +38,16 @@ describe('anchorHistory — 视口富余空白的落点', () => {
     expect(lines.slice(0, topPad)).toEqual(Array<string>(topPad).fill(''));
   });
 
-  it('开屏只挪三分之一（Grok welcome 的 remaining/3），其余沉底', () => {
-    const { lines, topPad } = anchorHistory(viewport(3, 12), 3, 'welcome');
-    expect(topPad).toBe(3);
-    expect(lines.slice(0, topPad)).toEqual(['', '', '']);
-    expect(lines[topPad]).toBe('c0');
-    // 富余没被用完：底部仍留着空白，卡片浮在屏幕上部而不是压在输入框上。
-    expect(lines[11]).toBe('');
+  it('开屏居中：富余空白对半分，落不下去的那一格沉在内容下面', () => {
+    const { lines, topPad } = anchorHistory(viewport(3, 12), 3, 'center');
+    expect(topPad).toBe(4); // 富余 9 → floor(9/2)，多的一格在下面
+    expect(lines.slice(0, topPad)).toEqual(Array<string>(topPad).fill(''));
+    expect(lines.slice(topPad, topPad + 3)).toEqual(['c0', 'c1', 'c2']);
+    expect(lines.slice(topPad + 3)).toEqual(Array<string>(5).fill(''));
   });
 
   it('上滚后不挪，内容溢出视口时也不挪', () => {
-    for (const mode of ['none', 'welcome', 'tail'] as const) {
+    for (const mode of ['none', 'tail', 'center'] as const) {
       const full = viewport(12, 12);
       expect(anchorHistory(full, 12, mode)).toEqual({ lines: full, topPad: 0 });
     }
@@ -58,11 +57,9 @@ describe('anchorHistory — 视口富余空白的落点', () => {
 
   it('topPad 恒等于合成空白行数——点击行号减它就是内容坐标', () => {
     for (const content of [0, 1, 5, 8]) {
-      for (const mode of ['welcome', 'tail'] as const) {
-        const { lines, topPad } = anchorHistory(viewport(content, 8), content, mode);
-        expect(lines.filter((l) => l === '')).toHaveLength(8 - content);
-        expect(lines.slice(topPad, topPad + content)).toEqual(Array.from({ length: content }, (_, i) => `c${i}`));
-      }
+      const { lines, topPad } = anchorHistory(viewport(content, 8), content, 'tail');
+      expect(lines.filter((l) => l === '')).toHaveLength(8 - content);
+      expect(lines.slice(topPad, topPad + content)).toEqual(Array.from({ length: content }, (_, i) => `c${i}`));
     }
   });
 });

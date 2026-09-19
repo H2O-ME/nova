@@ -778,8 +778,6 @@ export async function startTui(opts: TuiOptions): Promise<void> {
     const text = store.input.trim();
     // First submit ends the startup selector: the picked (or current) mode is
     // what this first message runs under — collapse to the confirmation row.
-    // 卡片也不再居中：从这条消息起是文档流。
-    store.welcomeCenter = false;
     modeSelector.collapse();
     if (store.streaming || store.compactRunning) {
       const cmd = text.split(/\s+/)[0]?.toLowerCase() ?? '';
@@ -1082,9 +1080,8 @@ export async function startTui(opts: TuiOptions): Promise<void> {
   void refreshModelMeta();
 
   // Welcome card + startup mode picker: one block, owned by ModeSelector (↑↓
-  // repaints it in place, collapse rewrites the same block). Centered in the
-  // empty viewport until the first message lands.
-  store.welcomeCenter = true;
+  // repaints it in place, collapse rewrites the same block). Bottom-anchored
+  // like every other transcript block, so the empty screen has no hole in it.
   modeSelector.show();
 
   await new Promise<void>((resolve) => {

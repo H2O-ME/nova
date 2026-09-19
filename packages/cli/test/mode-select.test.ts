@@ -47,7 +47,7 @@ describe('ModeSelector', () => {
     expect(t.store.blocks).toHaveLength(1);
     const card = t.store.blocks[0]!.lines.join('\n');
     expect(card).toContain('╭');
-    expect(card).toContain('[ •PTC ]'); // 光标胶囊，且它就是已生效档位（带点）
+    expect(card).toContain('[ PTC  ]'); // 三格等宽（已生效档靠颜色标，不夹字形）
     expect(card).toContain('当前模式');
   });
 

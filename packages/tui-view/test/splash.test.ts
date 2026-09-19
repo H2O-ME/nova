@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { styledWidth } from '@nova-agent/tui';
 import { buildWelcome, nextModeIndex, type WelcomeView } from '../src/index.js';
-import { plainPalette } from '../src/palette.js';
+import { palette, plainPalette } from '../src/palette.js';
 
 function base(over: Partial<WelcomeView> = {}): WelcomeView {
   return {
@@ -93,12 +93,27 @@ describe('卡片内的模式分段控件（select 在架）', () => {
   const modeRow = (over: Partial<WelcomeView>) =>
     body(buildWelcome(plainPalette, base(over))).find((l) => l.includes('模式'))!;
 
-  it('光标是反色胶囊，已生效档位带 • 点，待切换时明说「将切到」', () => {
+  it('光标是反色胶囊，已生效档位靠颜色区分，待切换时明说「将切到」', () => {
     const row = modeRow({ select: { index: 2, ptcAvailable: true } });
     expect(row).toContain('[ 混合 ]'); // cursor capsule
-    expect(row).toContain('[•普通]'); // applied
-    expect(row).toContain('[PTC]');
+    expect(row).toContain('[ 普通 ]'); // applied（颜色标，见下方 ANSI 断言）
+    expect(row).toContain('[ PTC  ]');
     expect(row).toContain('将切到 混合');
+  });
+
+  it('三格等宽：CJK 档名与 ASCII 档名排成一条网格，不是长短不齐的锯齿', () => {
+    const cells = modeRow({ select: { index: 0, ptcAvailable: true } }).match(/\[[^\]]*\]/g) ?? [];
+    expect(cells).toHaveLength(3);
+    expect(new Set(cells.map((cell) => styledWidth(cell))).size).toBe(1);
+  });
+
+  it('三通道分开写：颜色=已生效、反色=光标、尾注=是否改变；卡内不再放会漂宽的字形', () => {
+    const colored = buildWelcome(palette, base({ select: { index: 0, ptcAvailable: true } }));
+    const row = body(colored).find((l) => l.includes('模式'))!;
+    expect(row).toContain('\x1b[7m'); // 光标胶囊反色
+    expect(row).toContain('\x1b[36m'); // 已生效档青色
+    expect(row).not.toContain('•'); // 反色 run 里的字形宽度不由我们做主
+    expect(row).toContain('当前模式');
   });
 
   it('按键提示不在卡里重复——它归 composer 占位行，卡只放控件', () => {
@@ -125,7 +140,7 @@ describe('卡片内的模式分段控件（select 在架）', () => {
     expect(modeRow({ cols: 100, select: { index: 1, ptcAvailable: true } })).toContain('将切到 PTC');
     const tight = modeRow({ cols: 40, select: { index: 1, ptcAvailable: true } });
     expect(tight).not.toContain('将切到');
-    expect(tight).toContain('[•普通]'); // 控件本体留到最后
+    expect(tight).toContain('[ 普通 ]'); // 控件本体留到最后
   });
 
   it('rows stay within the terminal budget on narrow screens', () => {

@@ -12,6 +12,7 @@ import {
   HISTORY_MIN_ROWS,
   HINT_ROWS,
   STATUS_ROWS,
+  CHROME_PAD_COLS,
   anchorHistory,
   bottomStack,
   clipToWidth,
@@ -25,6 +26,7 @@ import {
   hintItems,
   layoutComposer,
   messageQueueRows,
+  type HistoryAnchor,
   type Palette,
 } from '@nova-agent/tui-view';
 import {
@@ -173,25 +175,29 @@ export class FrameAssembler {
     }
     const { lines: historyLines, sliceStart, maxScroll } = sliceHistory(flat, historyBudget, store.scrollFromEnd);
     if (store.scrollFromEnd > maxScroll) store.scrollFromEnd = maxScroll;
-    // 视口富余空白的落点（M10 批9）：贴底直播时空白整段上浮，最新一行永远贴着
-    // composer；开屏阶段只挪 1/3（Grok welcome 的 remaining/3），其余沉底；上滚
-    // 后不挪——那时内容本就顶到视口上缘，再挪就像 bug。
-    const anchored = anchorHistory(
-      historyLines,
-      flat.length,
-      store.scrollFromEnd === 0 ? (store.welcomeCenter ? 'welcome' : 'tail') : 'none',
-    );
+    // 视口富余空白的落点（M10 批9/批12）：贴底时空白整段上浮，最新一行永远贴着
+    // composer。开屏例外——转录里只有那张 welcome 卡片时居中，让冷启动读作一个欢
+    // 迎页而不是半屏空（真机截图判的）；首条消息落地即并回文档流。上滚后不挪：
+    // 那时内容本就顶到视口上缘，再挪就像 bug。
+    const anchor: HistoryAnchor =
+      store.scrollFromEnd !== 0 ? 'none' : store.blocks.length <= 1 ? 'center' : 'tail';
+    const anchored = anchorHistory(historyLines, flat.length, anchor);
     const { lines: viewLines, topPad } = anchored;
     store.frameMap = { rows: rowMap, sliceStart, historyRows: viewLines.length, topPad };
     // 重锚：贴底不需要锚（恢复直播跟随）；否则钉住视口顶行所在块。
     this.anchor = store.scrollFromEnd === 0 ? undefined : (anchorAt(rowMap, sliceStart) ?? this.anchor);
     this.lastScroll = store.scrollFromEnd;
 
+    // 底部 chrome 与四张卡同一对边距（M10 批11）：状态栏/快捷键条从第 0 列起、卡片
+    // 从第 2 列起，屏幕上就有两条左缘，且快捷键条第一项贴窗口边被切。
+    const chromeLead = ' '.repeat(CHROME_PAD_COLS);
+    const chromeWidth = cols - 1 - CHROME_PAD_COLS;
     // 按显示宽裁剪：绝不折行顶动布局（statusBar 内部已做截左保右）。
-    const status = clipToWidth(statusBar(paint, this.deps.statusView()), cols - 1);
+    const statusText = clipToWidth(statusBar(paint, this.deps.statusView()), chromeWidth);
+    const status = chromeLead + statusText;
     // 仪表 hover 命中区（M10 组件1）：状态栏现在是倒数第二行（底行让给快捷键条），
-    // 仪表字段是行首段——命中宽取首个 `│` 前的显示列数，按键链按此翻转 hover。
-    store.statusZone = { y: rows - HINT_ROWS, gaugeEnd: gaugeHitWidth(status) };
+    // 仪表字段是行首段——命中宽取首个 `│` 前的显示列数（加内衬才是绝对列），按键链按此翻转 hover。
+    store.statusZone = { y: rows - HINT_ROWS, gaugeEnd: CHROME_PAD_COLS + gaugeHitWidth(statusText) };
 
     // 位置指示：上滚时呼吸行改为「上方还有 N 行」（回底自动消失；不占内容行、
     // 不进状态栏——上滚不进状态栏是 tui-design 红线）。
@@ -200,22 +206,24 @@ export class FrameAssembler {
         ? clipToWidth(paint.dim(`  ⋯ 上方还有 ${sliceStart} 行 · Home 跳顶 / End 回到底部`), cols - 1)
         : '';
     // 快捷键条：屏幕最后一行，键位随"谁占用键盘"换一套，超宽从尾部整条丢。
-    const hints = clipToWidth(
-      hintBar(
-        paint,
-        hintItems({
-          picker: this.hintPicker(store, activeViewDeps),
-          modeSelect: store.modeSelect !== undefined,
-          streaming: store.streaming || store.compactRunning,
-          queue: store.messageQueue.length,
-          tabMode: d.tabMode(),
-          approvalScope: store.approvalIndex === 1 && store.approvalScopeWords().length > 1,
-          denyTyping: store.approvalIndex === 2,
-        }),
-        cols - 1,
-      ),
-      cols - 1,
-    );
+    const hints =
+      chromeLead +
+      clipToWidth(
+        hintBar(
+          paint,
+          hintItems({
+            picker: this.hintPicker(store, activeViewDeps),
+            modeSelect: store.modeSelect !== undefined,
+            streaming: store.streaming || store.compactRunning,
+            queue: store.messageQueue.length,
+            tabMode: d.tabMode(),
+            approvalScope: store.approvalIndex === 1 && store.approvalScopeWords().length > 1,
+            denyTyping: store.approvalIndex === 2,
+          }),
+          chromeWidth,
+        ),
+        chromeWidth,
+      );
 
     d.write(
       bottomStack(viewLines, popupLines, queueLines, composerZoneRows, status, breathText, hints),

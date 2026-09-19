@@ -73,7 +73,8 @@ describe('composerZone 空态占位提示（Grok welcome：按键提示寄生在
 
   it('光标独占一格，占位文本让开一格（绝不吃掉一个汉字）', () => {
     const zone = composerZone(palette, empty, view({ placeholder: 'abc' }));
-    expect(zone[0]).toBe(`${composerLead(palette)}\x1b[7m \x1b[0m\x1b[2mabc\x1b[0m`);
+    // 光标格之后留一格气口：块紧贴着字，真机上读作"光标吃掉了第一个汉字"。
+    expect(zone[0]).toBe(`${composerLead(palette)}\x1b[7m \x1b[0m \x1b[2mabc\x1b[0m`);
     expect(composerZone(plainPalette, empty, view({ placeholder: '描述任务开始' }))[0]).toContain('描述任务开始');
   });
 
@@ -146,9 +147,22 @@ describe('hintBar（屏幕最后一行的键位条，Grok shortcuts_bar）', () 
   it('超宽按原序从尾部整条丢弃，不折行也不加省略号', () => {
     const narrow = hintBar(plainPalette, hintItems(state()), 14);
     expect(styledWidth(narrow)).toBeLessThanOrEqual(14);
-    expect(narrow).toContain('⏎:发送');
+    expect(narrow).toContain('Enter:发送');
     expect(narrow).not.toContain('Ctrl+C');
     expect(narrow).not.toContain('…');
+  });
+
+  it('键名只印键盘上真有的字面（return/backspace 符号走终端字体回落，宽度不由我们做主）', () => {
+    for (const over of [
+      {},
+      { picker: 'approval' as const },
+      { picker: 'command' as const },
+      { picker: 'model' as const },
+      { modeSelect: true },
+      { streaming: true },
+    ]) {
+      expect(hintBar(plainPalette, hintItems(state(over)), 200)).not.toMatch(/[⏎⌫]/);
+    }
   });
 
   it('Tab 真能切模式时才印它（不骗人）', () => {
@@ -156,14 +170,14 @@ describe('hintBar（屏幕最后一行的键位条，Grok shortcuts_bar）', () 
     expect(hintBar(plainPalette, hintItems(state({ tabMode: true })), 120)).toContain('Tab');
   });
 
-  it('审批键位随光标所在行换：←→ 只在可调范围时印，打字/⌫ 只在拒绝行', () => {
+  it('审批键位随光标所在行换：←→ 只在可调范围时印，打字/Backspace 只在拒绝行', () => {
     const bar = (over: Partial<HintState>): string =>
       hintBar(plainPalette, hintItems(state({ picker: 'approval', ...over })), 120);
     expect(bar({})).not.toContain('←→');
     expect(bar({ approvalScope: true })).toContain('←→:调授权词数');
-    expect(bar({})).not.toContain('⌫');
+    expect(bar({})).not.toContain('Backspace');
     expect(bar({ denyTyping: true })).toContain('打字:补理由');
-    expect(bar({ denyTyping: true })).toContain('⌫:删字');
+    expect(bar({ denyTyping: true })).toContain('Backspace:删字');
   });
 
   it('谁占用键盘就换哪套键位', () => {

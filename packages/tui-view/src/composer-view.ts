@@ -94,8 +94,9 @@ export function composerZone(p: Palette, layout: ComposerLayout, v: ComposerZone
     const empty = i === 0 && layout.hiddenAbove === 0 && row.text === '' && row.caretIdx === 0 && ph.length > 0;
     // Caret stays a block on its own cell with the hint one column over: an
     // inverse block *on* a CJK hint char just eats a glyph and reads as a
-    // corrupted character.
-    zone.push(lead + (empty ? `${p.inverse(' ')}${p.dim(ph)}` : renderComposerRow(p, row)));
+    // corrupted character. The gap has to be spelled out — a block abutting
+    // 描 is what "光标压在提示上" looks like on a real terminal.
+    zone.push(lead + (empty ? `${p.inverse(' ')} ${p.dim(ph)}` : renderComposerRow(p, row)));
   });
   if (layout.hiddenBelow > 0) zone.push(`  ${p.dim(`⋯ 下方还有 ${layout.hiddenBelow} 行`)}`);
   return zone;

@@ -271,13 +271,21 @@ export function contextGaugeForms(
         ? Math.max(6, Math.min(16, cols - 70))
         : Math.max(8, Math.min(24, cols - 118));
     const nums = p.bold(`${humanTokens(v.used)}/${humanTokens(capacity)}`);
-    // Hover morph: steal the numbers' width (plus the space before them)
-    // from the bar. Below 3 cells of visible bar the morph shows nothing
-    // worth seeing — keep the base form.
-    const morph = hovered && tier === 2 && cells - 1 - styledWidth(nums) >= 3;
-    if (morph) cells -= 1 + styledWidth(nums);
+    const paintedIn = (n: number): number =>
+      planContextSegments(v.segments, capacity, n).counts.reduce((sum, c) => sum + c, 0);
+    // Hover morph: steal the numbers' width (plus the space before them) from the
+    // bar — same total width by construction. Two guards: below 3 cells of
+    // visible bar there is nothing worth seeing, and the steal must not wipe out
+    // the last colored cell (that would trade information for the same pixels).
+    const steal = 1 + styledWidth(nums);
+    const morph = hovered && tier === 2 && cells - steal >= 3 && paintedIn(cells - steal) > 0;
+    if (morph) cells -= steal;
     const { counts, freeCells, over } = planContextSegments(v.segments, capacity, cells);
     const bar = segmentBar(p, v.segments, counts, freeCells, over);
+    // 一格都填不上时（用量不到容量的半格——百万窗口的开局就是这样）整条 bar 只剩纯
+    // 底纹，说的是"什么还不知道"，读起来就是噪声。按整字段降级丢掉 bar，让
+    // `已用/总量 · 百分比` 自己说话；用量涨上来一格后条形自然回来。
+    const painted = counts.reduce((sum, c) => sum + c, 0);
     // pct derives from the SAME used the numbers show — planContextSegments'
     // segment sum is a scaled estimate and can diverge (drift clamping, a
     // zeroed anchor keeping factor=1), which once printed "0/1.05M · 5%".
@@ -289,11 +297,13 @@ export function contextGaugeForms(
     const pctStr = `${pct}%`;
     const pctTag = ` · ${over || urgency === 'neutral' ? pctStr : p[urgency](pctStr)}`;
     if (tier === 2) {
+      if (painted === 0) return `  ${nums}${pctTag}${compactTag(r !== undefined && r >= 0.7)}`;
       return morph
         ? `  ${bar} ${nums}${pctTag}${compactTag(r !== undefined && r >= 0.7)}`
         : `  ${bar}${pctTag}${compactTag(r !== undefined && r >= 0.7)}`;
     }
-    const line = `  ${p.dim('上下文')} ${bar} ${nums}${pctTag}`;
+    const barField = painted === 0 ? '' : `${bar} `;
+    const line = `  ${p.dim('上下文')} ${barField}${nums}${pctTag}`;
     return tier === 0 ? `${line}${compactTag(true)}` : `${line}${compactTag(r !== undefined && r >= 0.5)}`;
   };
   return [form(0), form(1), form(2)];
