@@ -1,5 +1,64 @@
 # @nova-agent/cli
 
+## 0.4.0
+
+### Minor Changes
+
+- 1b6376d: **内核收拢 + 可插拔 Surface（M11）**：拆掉"每个 runner 各自记簿记、各自猜阶段"的重复，把内核做成**唯一协议面 + 多家 surface**。
+  
+  - **`AgentSession` 句柄与 `KernelEvent` 协议**（core 新增公共导出）：surface 只拿到句柄——`prompt` / `abort` / `compact` / `resolveApproval` / `subscribe` / `pendingApprovals` / `usageSnapshot` / `dispose`——不再自己跑 `runAgent` 生成器、不再自己落盘。"model-visible means logged" 由内核 `consume()` 直接保证：凡进了模型可见面的事件必已进日志，surface 无从遗漏。
+  - **旁路通道收编为事件**：`phase`（thinking/writing/tool/waiting/compacting）、`approval_request`、`tool_progress`、`subagent_update`、`job_update`、`notice`、`compaction/*` 全部并进 `KernelEvent`——原先 TUI 自推 phase、审批走 host 里一个隐形 await、job 靠轮询、压缩进度只存在于 SessionEvent 的四处旁路，现在是一条流。
+  - **审批事件化（fail-closed 不变）**：`PermissionService` 的 ask 注入点保留为底层，内核提供适配器把 ask 转成"发 `approval_request` + 等 `resolveApproval`"；surface 断连或 abort 时挂起审批收敛为 deny。headless 消费者（exec/qqbot）继续走确定性拒绝。
+  - **能力下沉**：`compact` / `auto-compact` / 上下文片段 / 工作区路径 / 会话索引从 cli 下沉 core（新公共导出）。`plugins/runtime.ts` 的 `createAgentKernel` 成为**装配单源**——host、审批桥、`PermissionService`、`JobRegistry`、上下文片段一处装配，provider 注入；core 保持 provider 与宿主无关。
+  - **cli 变瘦**：argv → 装配哪个 surface + 配置发现 + provider 工厂 + 模型元数据。斜杠命令语义收为 `command-runner.ts` **一个 runner 两壳共用**（对内核做什么、参数怎么解析、报什么文案单源），顺带修掉 `nova --repl` 的 `/skill <name>` 死路（原先进「未知命令」）。exec/repl/qqbot 全部改为内核事件流的消费者——功能与 JSON 事件流 schema 不变。
+  - `core` 另导出 `AgentSurface`（纯类型）：官方 surface 与第三方 surface 同地位，只依赖 core/plugins 公共 API，由 cli 按 argv 装配。
+- 1b6376d: **TUI 全量重写：删除旧实现，新增 `@nova-agent/tui-app`**（M11 批4）。旧 `@nova-agent/tui-view` 全包（≈3,000 行纯视图层）、`cli/tui` 壳（≈4,500 行）与旧 `tui-mode.ts` **一行不留地删除**——渲染计算与产品逻辑长期纠缠、反复拖累开发。新包是 `nova` 的默认形态（非 TTY 与 `--repl` 仍回落 readline REPL）。
+  
+  - **三层分工**：纯函数层（`blocks` 事件归约 → `entries` 滚动条目 → `render` 显示行 → `panels` 卡片 → `frame` 整帧装配，`Palette` 注入、可假时钟直测）／按键层（`keys.ts` 一个 reducer：审批 → 模态面板 → 全局键 → 输入区，动作是描述不是执行）／壳层（`app.ts` 只留 alternate screen、raw 键盘、**一个时钟** `TICK_MS=33`、内核订阅与 tps/cache 计量——壳层不做版面算术）。
+  - **M10 的逐值设计成果全部移植**：GrokNight RGB 四档调色板（truecolor / 16 色 / light / plain）、`layout.ts` 度量与**整屏一条左缘**、留白节奏与密度规则（工具行紧排、其余块一空行、提问自带 vpad）、**动词短语聚合行**、工具行**三态折叠**、reasoning 定高活窗口、导轨 `sin²` 行波、`<10s` 一位小数的活体行、贴底锚定（仅"转录里只剩欢迎卡"时居中）、输入卡 / 审批卡 / 队列 lane / 快捷键条 / 欢迎卡 / 列表面板。
+  - **键位**：`Enter` 发送、`Shift+Enter` 换行、`/` 命令面板（Tab 补全 / ↑↓ 选择）、`Tab` 未开会话前循环 普通→PTC→混合、`↑↓` shell 式输入历史（草稿自动寄存）、`PageUp`/`PageDown`/滚轮滚动、工具行点击三态折叠（动词组行点击即展开成员）、`Ctrl+C` 中断 → 清草稿 → 两段退出、`Esc` 中断。
+  - **保留的交互**：长粘贴折成 chip（缓冲区存全文，提交一字不差）、审批「总是允许」行 ←/→ 调授权词数（词前缀匹配）、「拒绝」行打字补理由并回流给模型、外部内容显示净化与焦点重读（沿用 `@nova-agent/tui`）。
+  - **有意的取舍**：上下文仪表只有总量（无分区着色、无悬停换形）；↑↓ 是历史而非多行光标移动；启动**不等** models.dev（`contextWindow` 先取配置，目录异步到达后回填，冷缓存/断网不再先给十几秒空屏）。
+  - **同批修掉的真 bug**：彩色终端下状态栏整字段被丢（调色板字符串用 `.length` 算宽 → 改走 `stringWidth`）；动词组行的 `▸` 是死 affordance（点击无反应 → `toggleEntry` 认 `group:` 前缀）。
+
+### Patch Changes
+
+- 1b6376d: 拒绝转追问（Grok 组件7 移植）：审批弹窗选中「拒绝」行后打字即补充拒绝理由（⌫ 删字、Enter 携理由拒绝、y/a 快捷批准不受影响），理由经 `{answer:'deny', reason}` → `decideDetailed` → hook verdict 一路回流，模型看到 `Permission denied: by user: <理由>` 而非光秃拒绝；AskFn 加宽 DenyGrant（老询问器零改动），空/畸形理由回落普通拒绝。
+- b6255b3: 审批「总是允许」粒度可交互调节（Grok 组件6 移植）：弹窗选中 always 行时 ←/→ 调整授权词数（命令前 N 词实时预览、Enter/a 携带 `{answer:'always', scopeWords:N}`）；PermissionService 按**词前缀匹配**放行同前缀命令（`git status` 范围放行 `git status -sb`、不波及 `git commit`），N 越界/复合命令回落默认记忆粒度，畸形 grant fail-closed 拒绝；AskFn 返回值加宽（仍接受原 AskAnswer 字符串），弹窗提示行补全列裁剪。
+- 42c1bfb: 治理换血与消重拆壳（M9.0–M9.K，行为保持不变重构）。
+  
+  - **公共面新增**：core 导出 `errMessage`（错误转消息字符串单源）与 `truncateUtf8Head` / `truncateUtf8Tail`（UTF-8 整字符边界字节裁剪，收编 agent 落盘 / jobs 读取 / AGENTS.md 裁剪三份同构循环）；plugins 导出 `resolveShellName`（bash/powershell 解析单源，收编 cli `declaredShell` 与 bash `invocation` 两份真相）；呈现层的 `Palette` 接口补 `reset` / `clearLine` / `clearRight` 开态原语（收编手滚 raw ANSI；无色调色板对控制码返回空串，保证 NO_COLOR 恒静默）。
+  - **结构棘轮**：`pnpm gates`（依赖方向机检 + 逐文件行数硬上限，只降不升）、`pnpm check` 快环 / `pnpm verify` 全环分层、oxlint complexity/max-depth/长函数规则上线；决策笔记体系删除。
+  - **消重**：四 runner 的用户消息提交/重试与空补全文案/回合失败归类/审批预览与 toast/hooks 重绑单源；repl 与 TUI 的 13 个斜杠命令下沉 command-core（M11 批5 进一步收为 `command-runner.ts` 一个 runner 两壳共用）；`repl.ts` 的瞬态进度行出壳 `ReplProgress`、`/session` `/model` `/plugins` 报告行下沉；core 的 989 行 `agent.ts` 拆为 `agent/{notices,request,stream,tools,loop,options}.ts` + 桶文件（40+ 条行为测试不动）；plugins 的 fs/bash/search/run-code 内联 execute 体提为顶层具名函数，工厂只留 schema+接线；各包 `test/helpers/` 收敛 `scriptedProvider`（5 拷贝）与 `withFakeHome`（2 拷贝）。
+  - **声明的行为例外（漂移修复）**：repl 审批预览宽度统一走 `toolArgSummary`；exec/qqbot 调色板装配走 `resolvePalette`，开始尊重 `ui.theme` 与 `NO_COLOR`（此前恒暗色）；repl bash 输出尾行缓冲并入 TUI 同源的 `TOOL_TAIL_KEEP_CHARS`（显示行仍裁到单行，观感不变）。
+  - **缺陷修复**：TUI 首装与 exec 路径的 `hooksRef` 从未赋值——嵌套 subagent 因此绕开父审批门（exec 的 never 策略形同虚设）；重绑单源后审批门对嵌套调用恢复生效。
+  - **热路径微优化（行为不变）**：`request-trim` 的 snip+micro 共享一次 `groupMessages`（snip 未改动时同引用短路）；`estimateTextTokens` 的 CJK 判定由正则改为码点区间比较（消除每字符 regex.test）；`OpenAICompatClient` 的工具序列化按数组身份 `WeakMap` 缓存，`PluginHost.tools` 返回稳定引用跨轮失效仅在 registerTool——启动后稳定工具集下每请求免一次 sort+map。
+- ef55de7: Terminal capability gates and focus re-assertion (M10 R6, ported from Grok Build): `detectCaps` now disables ?2026 synchronized output inside tmux (`TERM_PROGRAM=tmux` / `TMUX` set) — tmux repaints the whole pane when a sync block closes, so the wrapper amplifies paints there instead of preventing them; color is unaffected. `LineScreen` enables DEC 1004 focus reports and exposes `reassertModes()`; the TUI shell calls it on every focusin because Windows ConPTY relays can strip DEC private modes mid-session, silently degrading SGR mouse to X10 and painting raw mouse reports as escape garbage into the frame. `KeyDecoder` decodes `CSI I`/`CSI O` as new `focusin`/`focusout` key events (consumed at the chain head, never leaking into the composer).
+- 3f15834: stdout 背压门（M10 R3，Grok WriterSync 单飞的 Node 等价物）：`LineScreen` 任一写入让 `write()` 返回 false（缓冲越过高水位）即关闭渲染门——后续帧整帧丢弃且**不更新差分缓存**（缓存恒等于屏幕物理内容），`drain` 事件开门并回调重排一次重绘，恢复首帧从旧真相直接 diff 到最新画面（latest-wins）。慢终端（SSH/ConHost）流式高峰期不再堆积一帧比一帧旧的过期写入。
+- Updated dependencies [1b6376d]
+- Updated dependencies [b6255b3]
+- Updated dependencies [1e35cdb]
+- Updated dependencies [1b6376d]
+- Updated dependencies [1b6376d]
+- Updated dependencies [1b6376d]
+- Updated dependencies [42c1bfb]
+- Updated dependencies [37ea5d6]
+- Updated dependencies [1e35cdb]
+- Updated dependencies [494541f]
+- Updated dependencies [1e35cdb]
+- Updated dependencies [ef55de7]
+- Updated dependencies [1999ce0]
+- Updated dependencies [1fc1728]
+- Updated dependencies [3d9b23a]
+- Updated dependencies [3f15834]
+  - @nova-agent/plugins@0.4.0
+  - @nova-agent/core@0.4.0
+  - @nova-agent/tui-app@0.4.0
+  - @nova-agent/tui@0.4.0
+  - @nova-agent/web@0.4.0
+  - @nova-agent/ai@0.4.0
+  - @nova-agent/qqbot@0.2.3
+
 ## 0.3.0
 
 ### Minor Changes

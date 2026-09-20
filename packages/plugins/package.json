@@ -1,6 +1,6 @@
 {
   "name": "@nova-agent/plugins",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "description": "Micro plugin container: services, tools, commands, hooks; built-in fs/bash tool plugins.",
   "exports": {
