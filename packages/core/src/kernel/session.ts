@@ -46,6 +46,7 @@ import type {
   UserMessage,
 } from '../types.js';
 import { EventPump } from './pump.js';
+import { RunMeter } from './metrics.js';
 import type { KernelEvent, NoticeCode, TurnPhase } from './protocol.js';
 
 export interface UsageAnchorState {
@@ -150,6 +151,8 @@ export class AgentSession {
   private readonly deps: AgentSessionDeps;
   private readonly stats: UsageStats = emptyStats();
   private readonly anchors: UsageAnchorState = createAnchors();
+  /** Per-run timings for the `run_stats` event (one run at a time). */
+  private readonly meter = new RunMeter();
   private readonly pending: string[] = [];
   private runController: AbortController | undefined;
   private compactAbort: AbortController | undefined;
@@ -381,6 +384,7 @@ export class AgentSession {
   }
 
   private async startRun(signal: AbortSignal): Promise<void> {
+    this.meter.start();
     try {
       await this.preflightCompact();
       const options = this.agentOptions(signal);
@@ -391,6 +395,9 @@ export class AgentSession {
       // Repair the log BEFORE classification/propagation — the old trio of
       // persist → repair → classify, now owned by the run loop itself.
       await persistMissingToolResults(this.deps.session, this.deps.messages).catch(() => undefined);
+      // A failed run still has numbers worth showing (how far it got, what it
+      // spent); they precede `run_failed`, the terminator, like `done`'s do.
+      this.publishRunStats();
       this.publish({ type: 'run_failed', message: errMessage(err), aborted: signal.aborted });
     } finally {
       // Outstanding asks must not outlive the run that made them.
@@ -422,6 +429,7 @@ export class AgentSession {
 
   /** Bookkeeping (durable log), phase derivation and publishing — one pass. */
   private async consume(event: KernelEvent): Promise<void> {
+    this.meter.observe(event);
     switch (event.type) {
       case 'turn_start':
       case 'reasoning_delta':
@@ -464,7 +472,14 @@ export class AgentSession {
       default:
         break;
     }
+    // A run's numbers go out BEFORE its terminator: `done` is the last frame a
+    // consumer waits for, so stats after it would be missed (the smoke did once).
+    if (event.type === 'done') this.publishRunStats();
     this.publish(event);
+  }
+
+  private publishRunStats(): void {
+    this.publish({ type: 'run_stats', stats: this.meter.finish() });
   }
 
   private approvalsBusy(): boolean {

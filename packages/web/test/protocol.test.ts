@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_CLIENT_FRAME_BYTES,
+  MAX_HISTORY_BLOCKS,
   MAX_PROMPT_CHARS,
   parseClientFrame,
   serializeServerFrame,
@@ -21,6 +22,17 @@ describe('parseClientFrame', () => {
     expect(frame({ type: 'resume', file: '/home/u/.nova/sessions/2026/09/19/sess_x.jsonl' })).toMatchObject({ type: 'resume' });
     expect(frame({ type: 'set_approval_mode', mode: 'auto-edit' })).toMatchObject({ mode: 'auto-edit' });
     expect(frame({ type: 'set_code_mode', mode: 'ptc' })).toMatchObject({ mode: 'ptc' });
+    expect(frame({ type: 'load_earlier', have: 0 })).toEqual({ type: 'load_earlier', have: 0 });
+  });
+
+  it('rejects a pagination cursor that is not a count', () => {
+    // The cursor indexes the host's baseline: anything but a bounded integer
+    // (a float, a negative, a string, a missing field) is refused up front.
+    expect(frame({ type: 'load_earlier' })).toMatchObject({ ok: false, reason: expect.stringContaining('have') });
+    expect(frame({ type: 'load_earlier', have: -1 })).toMatchObject({ ok: false });
+    expect(frame({ type: 'load_earlier', have: 1.5 })).toMatchObject({ ok: false });
+    expect(frame({ type: 'load_earlier', have: '40' })).toMatchObject({ ok: false });
+    expect(frame({ type: 'load_earlier', have: MAX_HISTORY_BLOCKS + 1 })).toMatchObject({ ok: false });
   });
 
   it('rejects non-JSON, non-objects, unknown types and empty prompts', () => {

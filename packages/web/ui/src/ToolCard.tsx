@@ -32,6 +32,8 @@ export function ToolCard({
   result,
   tail,
   idle,
+  selected,
+  onOpen,
 }: {
   name: string;
   args: string;
@@ -40,21 +42,34 @@ export function ToolCard({
   tail: string | undefined;
   /** Nothing is running: an unfinished call is stale, not in-flight. */
   idle: boolean;
+  /** This call is the one open in the detail panel. */
+  selected: boolean;
+  onOpen: () => void;
 }): JSX.Element {
   const model = toolCardModel({ name, args, view, result, idle });
   return (
     <div className="ml-0 space-y-1">
-      <div className="flex items-baseline gap-3">
+      {/* The whole header row is the affordance: clicking a tool line opens
+          its detail panel, which is where args and full output live. */}
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`查看 ${name} 调用详情`}
+        className={`flex w-full items-baseline gap-3 rounded px-1 text-left hover:bg-[#17171e] ${
+          selected ? 'bg-[#17171e] ring-1 ring-[#2c2c36]' : ''
+        }`}
+      >
         <span className={`select-none ${MARK_CLS[model.state]}`}>{MARK[model.state]}</span>
-        <div className="min-w-0 flex-1 text-[13px]">
+        <span className="min-w-0 flex-1 text-[13px]">
           {model.mono ? (
             <code className="font-mono text-[#e6e6ea]">{model.headline}</code>
           ) : (
             <span className="break-all text-[#e6e6ea]">{model.headline}</span>
           )}
           {model.subtitle !== undefined && <span className="ml-2 text-[#6c6c76]">{model.subtitle}</span>}
-        </div>
-      </div>
+        </span>
+        <span className="select-none text-[11px] text-[#3c3c46]">详情</span>
+      </button>
       {tail !== undefined && model.state === 'running' && (
         <div className="ml-7 truncate border-l-2 border-[#1abc9c]/60 pl-2 font-mono text-[12px] text-[#6c6c76]">{tail}</div>
       )}

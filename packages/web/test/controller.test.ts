@@ -1,4 +1,4 @@
-import { mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -104,6 +104,67 @@ describe('WebController', () => {
       expect(ready.info.history).toHaveLength(0); // the seeded fragment is not user-visible
       expect(ready.info.usedTokens).toBe(0);
       expect(ready.info.sessionFile).toContain('sess_');
+      await controller.dispose();
+    });
+  });
+
+  it('pages a long history: ready ships the tail, load_earlier walks back', async () => {
+    await withFakeHome(async (home) => {
+      // A synthetic log is the cheapest way to a long session: 50 turns of
+      // user+assistant = 100 blocks, well past what one `ready` may carry.
+      const dir = path.join(home, '.nova', 'sessions', '2026', '09', '20');
+      await mkdir(dir, { recursive: true });
+      const file = path.join(dir, 'sess_long.jsonl');
+      const lines = [JSON.stringify({ type: 'session', v: 2, id: 'sess_long', createdAt: 1 })];
+      for (let i = 1; i <= 50; i += 1) {
+        lines.push(JSON.stringify({ type: 'message', message: { id: `u${i}`, ts: i * 2, role: 'user', content: `q${i}` } }));
+        lines.push(JSON.stringify({ type: 'message', message: { id: `a${i}`, ts: i * 2 + 1, role: 'assistant', content: `a${i}` } }));
+      }
+      await writeFile(file, `${lines.join('\n')}\n`, 'utf8');
+
+      const { controller } = await makeController([]);
+      const conn = new FakeConn();
+      controller.attach(conn);
+      await handle(controller, conn, { type: 'resume', file });
+      const ready = conn.frames.filter((f) => f.type === 'ready').at(-1);
+      if (ready?.type !== 'ready') throw new Error('no ready after resume');
+      expect(ready.info.historyTotal).toBe(100);
+      expect(ready.info.history).toHaveLength(40);
+      // The tail is what a reader wants first: the newest turn is on screen.
+      expect(ready.info.history.at(-1)).toMatchObject({ kind: 'text', text: 'a50' });
+
+      await handle(controller, conn, { type: 'load_earlier', have: 40 });
+      const first = conn.frames.filter((f) => f.type === 'history_earlier').at(-1);
+      if (first?.type !== 'history_earlier') throw new Error('no earlier batch');
+      expect(first.blocks).toHaveLength(40);
+      expect(first.blocks[0]).toMatchObject({ kind: 'user', text: 'q11' });
+      expect(first.blocks.at(-1)).toMatchObject({ kind: 'text', text: 'a30' });
+      expect(first.total).toBe(100);
+
+      // Holding everything already: the answer is an empty batch, not an error.
+      await handle(controller, conn, { type: 'load_earlier', have: 100 });
+      const done = conn.frames.filter((f) => f.type === 'history_earlier').at(-1);
+      if (done?.type !== 'history_earlier') throw new Error('no closing batch');
+      expect(done.blocks).toHaveLength(0);
+      expect(done.total).toBe(100);
+      await controller.dispose();
+    });
+  });
+
+  it('reports a finished run\'s timings as a run_stats event', async () => {
+    await withFakeHome(async () => {
+      const { controller } = await makeController([TEXT_TURN]);
+      const conn = new FakeConn();
+      controller.attach(conn);
+      await handle(controller, conn, { type: 'prompt', text: 'say hi' });
+      await conn.waitFor((frames) => frames.some((f) => f.type === 'event' && f.event.type === 'run_stats'));
+      const stats = conn.events().find((e) => e.type === 'run_stats');
+      if (stats?.type !== 'run_stats') throw new Error('no run_stats');
+      expect(stats.stats.requests).toBe(1);
+      expect(stats.stats.promptTokens).toBe(10); // the scripted usage report
+      expect(stats.stats.completionTokens).toBe(3);
+      expect(stats.stats.cachedTokens).toBe(8);
+      expect(stats.stats.durationMs).toBeGreaterThanOrEqual(0);
       await controller.dispose();
     });
   });

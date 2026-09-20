@@ -14,6 +14,10 @@ import type { WireBlock } from './protocol.js';
  * results by call id regardless of message order (the log is append-only but a
  * crashed run can leave a result orphaned) — an unmatched call keeps its view
  * with no result, and an unmatched result is dropped rather than invented.
+ *
+ * Each tool block also carries the result TEXT (the detail panel's content) and
+ * a timestamp: the log is the only place a resumed session's rows can get
+ * either, since the live stream's events are gone by then.
  */
 export function projectTranscript(messages: readonly AgentMessage[], tools: readonly ToolViewSource[]): WireBlock[] {
   const results = new Map<string, ToolResultMessage>();
@@ -37,7 +41,10 @@ export function projectTranscript(messages: readonly AgentMessage[], tools: read
         name: call.name,
         args: call.rawArgs,
         view: callViewOf(tools, call),
-        ...(result !== undefined ? { result: resultViewOf(tools, call, result.content) } : {}),
+        ts: result?.ts ?? msg.ts,
+        ...(result !== undefined
+          ? { result: resultViewOf(tools, call, result.content), output: result.content }
+          : {}),
       });
     }
   }

@@ -33,9 +33,9 @@ describe('runExec', () => {
       });
 
       const events = lines.map((line) => JSON.parse(line) as { type: string });
-      // 内核流的 JSON 面 = KernelEvent 全量（phase 换帧行是新增成员，additive）；
-      // AgentEvent 子序列的序与形不变——消费者按 type 过滤即可。
-      expect(events.filter((e) => e.type !== 'phase').map((e) => e.type)).toEqual([
+      // 内核流的 JSON 面 = KernelEvent 全量（phase 换帧行、run_stats 统计行都是新增成员，
+      // additive）；AgentEvent 子序列的序与形不变——消费者按 type 过滤即可。
+      expect(events.filter((e) => e.type !== 'phase' && e.type !== 'run_stats').map((e) => e.type)).toEqual([
         'user_message',
         'turn_start',
         'text_delta',
@@ -43,6 +43,8 @@ describe('runExec', () => {
         'message',
         'done',
       ]);
+      // 统计行跟在 done 之后（CI 消费者可直接读耗时/吞吐）。
+      expect(events.find((e) => e.type === 'run_stats')).toMatchObject({ stats: { requests: 1 } });
       expect(events.at(-1)).toMatchObject({ type: 'phase', phase: 'idle' });
       expect(events.find((e) => e.type === 'done')).toMatchObject({ type: 'done', stopReason: 'complete' });
 

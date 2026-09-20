@@ -65,9 +65,23 @@ try {
   check('前端 bundle 可取', asset.status === 200 && js.length > 10000, `${script} ${js.length}B`);
   // Batch-3 markers: the card footnotes only exist in the new card-view module,
   // and the sessions/pendingApprovals wire fields only exist in the new protocol.
-  const markers = ['退出码', '结果被截断', '改动未完成', '搜索文件名', 'pendingApprovals', 'list_sessions'];
+  // Batch-6 markers: the detail panel, the stats bar and the pagination cursor
+  // are strings no earlier bundle could contain.
+  const markers = [
+    '退出码',
+    '结果被截断',
+    '改动未完成',
+    '搜索文件名',
+    'pendingApprovals',
+    'list_sessions',
+    '关闭详情',
+    '加载更早',
+    '缓存命中',
+    '首 token 平均',
+    'load_earlier',
+  ];
   const missing = markers.filter((m) => !js.includes(m));
-  check('bundle 是批3产物（六卡文案 + 新协议字段）', missing.length === 0, missing.length > 0 ? `缺少 ${missing.join(', ')}` : markers.length + ' 个标记齐备');
+  check('bundle 携带六卡文案 + 批6 详情/统计/分页', missing.length === 0, missing.length > 0 ? `缺少 ${missing.join(', ')}` : markers.length + ' 个标记齐备');
 
   // Traversal is still refused on the static lane.
   const traversal = await fetch(`${base}/assets/..%2f..%2fpackage.json`, { headers: { cookie }, redirect: 'manual' });
@@ -82,6 +96,10 @@ try {
     check('ready.info 携带 history/审批/用量基线',
       Array.isArray(info.history) && Array.isArray(info.pendingApprovals) && typeof info.usedTokens === 'number' && typeof info.approvalMode === 'string',
       `history=${info.history.length} approval=${info.approvalMode} code=${info.codeMode} tokens=${info.usedTokens}`);
+    // The replay baseline is paginated: the tail ships, the total is promised.
+    check('ready.info 携带分页游标',
+      typeof info.historyTotal === 'number' && info.historyTotal >= info.history.length,
+      `history=${info.history.length}/${info.historyTotal}`);
   }
 
   // A real turn that must call a tool: batch 3's claim is that the *host*
@@ -95,8 +113,19 @@ try {
     `cards=[${cards.join(', ')}]`);
   check('工具结果帧随事件携带 resultView', resultFrames.length > 0 && resultFrames.every((f) => f.resultView !== undefined),
     `results=[${resultFrames.map((f) => f.resultView?.card ?? '无').join(', ')}]`);
+  // Batch 6: the detail panel needs the result TEXT, which rides the same frame.
+  check('工具结果帧携带详情面板要的原文',
+    resultFrames.length > 0 && resultFrames.every((f) => typeof f.event.result?.content === 'string' && f.event.result.content.length > 0),
+    `outputs=${resultFrames.map((f) => f.event.result.content.length).join(',')}B`);
   check('本轮有终态', turn.some((f) => f.type === 'event' && (f.event.type === 'done' || f.event.type === 'run_failed')),
     `types=${turn.filter((f) => f.type === 'event').map((f) => f.event.type).slice(-4).join(',')}`);
+  // Batch 6: the stats rows are kernel-measured — a real run must report them.
+  const stats = turn.find((f) => f.type === 'event' && f.event.type === 'run_stats');
+  check('真实轮次产出 run_stats（耗时/首 token/用量）',
+    stats !== undefined && stats.event.stats.requests >= 1 && stats.event.stats.durationMs > 0 && stats.event.stats.promptTokens > 0,
+    stats === undefined
+      ? '无 run_stats 帧'
+      : `requests=${stats.event.stats.requests} first=${stats.event.stats.firstTokenMs ?? '未上报'}ms dur=${stats.event.stats.durationMs}ms in=${stats.event.stats.promptTokens} out=${stats.event.stats.completionTokens}`);
 
   // Batch-3 surface controls, wire level: mode switch, session list, new session.
   const modeFrames = await wsSend(cookie, { type: 'set_approval_mode', mode: 'auto-edit' }, 2);

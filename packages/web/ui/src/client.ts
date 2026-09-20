@@ -88,6 +88,9 @@ function handleFrame(frame: ServerFrame, dispatch: (a: Action) => void): void {
     case 'sessions':
       dispatch({ type: 'sessions', items: frame.items });
       break;
+    case 'history_earlier':
+      dispatch({ type: 'history_earlier', blocks: frame.blocks, total: frame.total });
+      break;
     case 'error':
       dispatch({ type: 'error', message: frame.message });
       break;

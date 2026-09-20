@@ -56,7 +56,7 @@ describe('projectTranscript', () => {
     expect(blocks).toEqual([{ kind: 'user', text: 'real question' }]);
   });
 
-  it('renders a tool call with its resolved view and paired result', () => {
+  it('renders a tool call with its resolved view, its result and the text the detail panel shows', () => {
     const toolCall = call({ id: 'c1', name: 'bash', args: { command: 'ls' }, rawArgs: '{"command":"ls"}' });
     const blocks = projectTranscript(
       [user('u1', 'go'), assistant('a1', '', [toolCall]), toolResult('c1', 'exit: 0\nstdout:\nok')],
@@ -70,6 +70,11 @@ describe('projectTranscript', () => {
         name: 'bash',
         args: '{"command":"ls"}',
         view: { card: 'terminal', command: 'ls' },
+        // The replayed row needs the result TEXT as well as its view: the live
+        // event stream that carried it is long gone by the time a client
+        // attaches, and the detail panel must still open on an old row.
+        output: 'exit: 0\nstdout:\nok',
+        ts: 0,
         result: { card: 'terminal', output: 'exit: 0\nstdout:\nok', exitCode: 0 },
       },
     ]);

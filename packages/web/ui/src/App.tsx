@@ -11,12 +11,16 @@ import { Approval } from './Approval.js';
 import { Composer } from './Composer.js';
 import { Header } from './Header.js';
 import { Sessions } from './Sessions.js';
+import { StatsBar } from './StatsBar.js';
+import { ToolDetail } from './ToolDetail.js';
 import { Transcript } from './Transcript.js';
 import { useAgent } from './client.js';
 
 export function App(): JSX.Element {
   const { state, send, connection } = useAgent();
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  /** Which call's detail panel is open (view-local: the reducer has no opinion). */
+  const [openCallId, setOpenCallId] = useState<string | null>(null);
   const approval = state.pendingApproval;
   const idle = state.phase === 'idle' || state.phase === 'disconnected';
   const running = !idle && state.phase !== 'waiting_approval';
@@ -25,6 +29,9 @@ export function App(): JSX.Element {
     setSessionsOpen(next);
     if (next) send({ type: 'list_sessions' });
   };
+  const openTool = (callId: string): void => setOpenCallId((current) => (current === callId ? null : callId));
+  const detail =
+    openCallId === null ? undefined : state.blocks.find((b) => b.kind === 'tool' && b.callId === openCallId);
   return (
     <div className="flex h-dvh flex-col">
       <Header
@@ -45,10 +52,23 @@ export function App(): JSX.Element {
       {sessionsOpen && state.sessions !== null && (
         <Sessions items={state.sessions} currentFile={state.meta?.sessionFile ?? ''} send={send} onClose={() => setSessionsOpen(false)} />
       )}
-      <Transcript blocks={state.blocks} idle={idle} />
+      <div className="flex min-h-0 flex-1">
+        <Transcript
+          blocks={state.blocks}
+          idle={idle}
+          hidden={Math.max(0, state.historyTotal - state.historyLoaded)}
+          onLoadEarlier={() => send({ type: 'load_earlier', have: state.historyLoaded })}
+          onOpenTool={openTool}
+          selectedCallId={openCallId}
+        />
+        {detail !== undefined && detail.kind === 'tool' && (
+          <ToolDetail block={detail} onClose={() => setOpenCallId(null)} />
+        )}
+      </div>
       <div className="px-6 pb-2">
         <div className="mx-auto w-full max-w-3xl">{approval !== null && <Approval request={approval} send={send} />}</div>
       </div>
+      <StatsBar totals={state.totals} busy={running} />
       <Composer
         send={send}
         disabled={!state.connected || approval !== null}

@@ -13,7 +13,7 @@
  *    because `generic` is always available as the fallback.
  */
 import type {
-  ApprovalMode, ApprovalRequest, KernelEvent, PtcMode, ReadyInfo, SessionListItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
+  ApprovalMode, ApprovalRequest, JobSnapshot, KernelEvent, PtcMode, ReadyInfo, RunStats, SessionListItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
 } from './types.js';
 
 export type Block =
@@ -27,12 +27,50 @@ export type Block =
       name: string;
       args: string;
       view: ToolCallView;
+      /** When the call started (the transcript's clock; log ts on replay). */
+      ts?: number;
       /** Absent until the call reports — the row renders as in-flight. */
       result?: ToolResultView;
+      /** The result text, for the detail panel. */
+      output?: string;
       /** Live tail line while the call runs (bash output etc.). */
       tail?: string;
     }
-  | { id: string; kind: 'hint'; text: string; tone: 'info' | 'warn' };
+  | { id: string; kind: 'hint'; text: string; tone: 'info' | 'warn' }
+  /** A finished run's numbers, rendered as the turn's meta row. */
+  | { id: string; kind: 'meta'; stats: RunStats }
+  /** One background job, updated in place by id for the life of the job. */
+  | { id: string; kind: 'job'; job: JobSnapshot };
+
+/** Session-cumulative numbers (the stats bar). Sums of the `run_stats` stream. */
+export interface SessionTotals {
+  runs: number;
+  requests: number;
+  toolCalls: number;
+  retries: number;
+  llmMs: number;
+  toolMs: number;
+  /** Summed over runs that reported a first token — the average's numerator. */
+  firstTokenMs: number;
+  firstTokenRuns: number;
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+}
+
+export const emptyTotals: SessionTotals = {
+  runs: 0,
+  requests: 0,
+  toolCalls: 0,
+  retries: 0,
+  llmMs: 0,
+  toolMs: 0,
+  firstTokenMs: 0,
+  firstTokenRuns: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  cachedTokens: 0,
+};
 
 export interface UiState {
   connected: boolean;
@@ -49,6 +87,12 @@ export interface UiState {
   contextWindow: number | null;
   /** Session switcher contents; null = not fetched (panel closed). */
   sessions: readonly SessionListItem[] | null;
+  /** Baseline blocks the browser holds (from `ready` plus `load_earlier`). */
+  historyLoaded: number;
+  /** Blocks the baseline has in all — anything above `historyLoaded` is older. */
+  historyTotal: number;
+  /** Cumulative run numbers for the stats bar (session-scoped, like the kernel's). */
+  totals: SessionTotals;
 }
 
 export const initialState: UiState = {
@@ -64,6 +108,9 @@ export const initialState: UiState = {
   usedTokens: 0,
   contextWindow: null,
   sessions: null,
+  historyLoaded: 0,
+  historyTotal: 0,
+  totals: emptyTotals,
 };
 
 let blockSeq = 0;
@@ -75,6 +122,7 @@ export type Action =
   | { type: 'event'; event: KernelEvent; view?: ToolCallView; resultView?: ToolResultView }
   | { type: 'state'; approvalMode: ApprovalMode; codeMode: PtcMode }
   | { type: 'sessions'; items: readonly SessionListItem[] }
+  | { type: 'history_earlier'; blocks: readonly WireBlock[]; total: number }
   | { type: 'error'; message: string };
 
 export function reduce(state: UiState, action: Action): UiState {
@@ -103,6 +151,11 @@ export function reduce(state: UiState, action: Action): UiState {
         usedTokens: action.info.usedTokens,
         contextWindow: action.info.contextWindow ?? null,
         blocks: action.info.history.map(replayBlock),
+        historyLoaded: action.info.history.length,
+        historyTotal: action.info.historyTotal,
+        // Totals count runs the kernel measured in THIS process; a resume does
+        // not inherit the old process's numbers (nor invent any).
+        totals: emptyTotals,
       };
     case 'event':
       return reduceEvent(state, action.event, action.view, action.resultView);
@@ -110,6 +163,14 @@ export function reduce(state: UiState, action: Action): UiState {
       return { ...state, approvalMode: action.approvalMode, codeMode: action.codeMode };
     case 'sessions':
       return { ...state, sessions: action.items };
+    case 'history_earlier':
+      // Older blocks go in FRONT; the cursor is what the browser now holds.
+      return {
+        ...state,
+        blocks: [...action.blocks.map(replayBlock), ...state.blocks],
+        historyLoaded: state.historyLoaded + action.blocks.length,
+        historyTotal: action.total,
+      };
     case 'error':
       return hint(state, `宿主提示：${action.message}`, 'warn');
   }
@@ -125,7 +186,9 @@ function replayBlock(entry: WireBlock): Block {
       name: entry.name,
       args: entry.args,
       view: entry.view,
+      ...(entry.ts !== undefined ? { ts: entry.ts } : {}),
       ...(entry.result !== undefined ? { result: entry.result } : {}),
+      ...(entry.output !== undefined ? { output: entry.output } : {}),
     };
   }
   return entry.kind === 'user'
@@ -136,13 +199,37 @@ function replayBlock(entry: WireBlock): Block {
 /** Events that only touch the transcript (block list). */
 type TranscriptEvent = Extract<
   KernelEvent,
-  { type: 'user_message' | 'text_delta' | 'reasoning_delta' | 'tool_call_start' | 'tool_call_result' | 'tool_progress' | 'done' }
+  {
+    type:
+      | 'user_message'
+      | 'text_delta'
+      | 'reasoning_delta'
+      | 'tool_call_start'
+      | 'tool_call_result'
+      | 'tool_progress'
+      | 'job_update'
+      | 'llm_retry'
+      | 'empty_completion'
+      | 'done';
+  }
 >;
 
-/** Events that only touch run state (phase, approvals, queue, notices, usage). */
+/** Events that only touch run state (phase, approvals, queue, notices, usage, totals). */
 type RunStateEvent = Extract<
   KernelEvent,
-  { type: 'turn_start' | 'phase' | 'approval_request' | 'approval_resolved' | 'queue_update' | 'compaction' | 'notice' | 'run_failed' | 'usage' }
+  {
+    type:
+      | 'turn_start'
+      | 'phase'
+      | 'approval_request'
+      | 'approval_resolved'
+      | 'queue_update'
+      | 'compaction'
+      | 'notice'
+      | 'run_failed'
+      | 'usage'
+      | 'run_stats';
+  }
 >;
 
 function reduceEvent(
@@ -164,6 +251,9 @@ function isTranscriptEvent(event: KernelEvent): event is TranscriptEvent {
     case 'tool_call_start':
     case 'tool_call_result':
     case 'tool_progress':
+    case 'job_update':
+    case 'llm_retry':
+    case 'empty_completion':
     case 'done':
       return true;
     default:
@@ -182,6 +272,7 @@ function isRunStateEvent(event: KernelEvent): event is RunStateEvent {
     case 'notice':
     case 'run_failed':
     case 'usage':
+    case 'run_stats':
       return true;
     default:
       return false;
@@ -208,16 +299,25 @@ function reduceTranscript(
         callId: event.call.id,
         name: event.call.name,
         args: event.call.rawArgs,
+        ts: Date.now(),
         // The host resolves this from the LIVE tool registry; a client that
         // somehow got no view still renders (generic card from name+args).
         view: view ?? { card: 'generic', kind: 'other', title: event.call.name },
       });
     case 'tool_call_result':
-      return markToolResult(state, event.call.id, resultView);
+      return markToolResult(state, event.call.id, resultView, event.result.content);
     case 'tool_progress': {
       const tail = lastLine(event.text);
       return { ...state, blocks: mapTool(state, undefined, (b) => (b.result === undefined ? { ...b, tail } : b)) };
     }
+    case 'job_update':
+      return upsertJob(state, event.job);
+    case 'llm_retry':
+      // The in-flight answer is being re-requested: say so in the transcript,
+      // where the gap in the output otherwise looks like a stall.
+      return hint(state, `已重新请求模型（${event.attempt}/${event.maxRetries}）· ${event.error}`, 'warn');
+    case 'empty_completion':
+      return hint(state, `空补全（${event.finishReason}），正在重发同一请求（${event.attempt}/${event.maxRetries}）`, 'warn');
     case 'done':
       return { ...state, blocks: closeStreaming(state.blocks) };
   }
@@ -251,6 +351,14 @@ function reduceRunState(state: UiState, event: RunStateEvent): UiState {
       const settled = { ...state, blocks: closeStreaming(state.blocks) };
       return hint(settled, event.aborted ? '已中断' : `出错：${event.message}`, 'warn');
     }
+    case 'run_stats':
+      // Two records of the same numbers: the turn's own meta row (where it
+      // happened) and the running session totals (the stats bar).
+      return {
+        ...state,
+        blocks: [...state.blocks, { id: nextId(), kind: 'meta', stats: event.stats }],
+        totals: addRun(state.totals, event.stats),
+      };
   }
 }
 
@@ -273,7 +381,7 @@ function mapTool(state: UiState, callId: string | undefined, fn: (block: Extract
   return state.blocks.map((b) => (b.kind === 'tool' && (callId === undefined || b.callId === callId) ? fn(b) : b));
 }
 
-function markToolResult(state: UiState, callId: string, result: ToolResultView | undefined): UiState {
+function markToolResult(state: UiState, callId: string, result: ToolResultView | undefined, output: string): UiState {
   return {
     ...state,
     blocks: mapTool(state, callId, (b) => ({
@@ -281,7 +389,40 @@ function markToolResult(state: UiState, callId: string, result: ToolResultView |
       // Without a view from the host the row keeps its call card and stays
       // in-flight rather than inventing a verdict from the raw text.
       result: result ?? b.result,
+      output,
     })),
+  };
+}
+
+/**
+ * Background jobs live as ONE transcript row each, injected where they started
+ * and rewritten in place as they progress — the same "one place, later updates
+ * replace the first" rule the terminal's live rows follow. A job that outlives
+ * its run stays visible until it settles.
+ */
+function upsertJob(state: UiState, job: JobSnapshot): UiState {
+  const id = `job:${job.id}`;
+  const block: Block = { id, kind: 'job', job };
+  const at = state.blocks.findIndex((b) => b.id === id);
+  if (at < 0) return { ...state, blocks: [...state.blocks, block] };
+  const blocks = [...state.blocks];
+  blocks[at] = block;
+  return { ...state, blocks };
+}
+
+function addRun(totals: SessionTotals, stats: RunStats): SessionTotals {
+  return {
+    runs: totals.runs + 1,
+    requests: totals.requests + stats.requests,
+    toolCalls: totals.toolCalls + stats.toolCalls,
+    retries: totals.retries + stats.retries,
+    llmMs: totals.llmMs + stats.llmMs,
+    toolMs: totals.toolMs + stats.toolMs,
+    firstTokenMs: totals.firstTokenMs + (stats.firstTokenMs ?? 0),
+    firstTokenRuns: totals.firstTokenRuns + (stats.firstTokenMs === undefined ? 0 : 1),
+    promptTokens: totals.promptTokens + stats.promptTokens,
+    completionTokens: totals.completionTokens + stats.completionTokens,
+    cachedTokens: totals.cachedTokens + stats.cachedTokens,
   };
 }
 

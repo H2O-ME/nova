@@ -23,6 +23,28 @@ function toolResult(content: string, id = 'c1'): KernelEvent {
   return { type: 'tool_call_result', turn: 1, call: { ...CALL, id }, result: { id: 'r1', ts: 0, role: 'tool', toolCallId: id, name: 'bash', content } };
 }
 
+const EMPTY_STATS = { turns: 1, promptTokens: 0, completionTokens: 0, cachedTokens: 0, missTokens: 0, missTurns: 0 };
+
+/** A `run_stats` event with the uninteresting fields filled in. */
+function runStats(over: Partial<Extract<KernelEvent, { type: 'run_stats' }>['stats']>): KernelEvent {
+  return {
+    type: 'run_stats',
+    stats: {
+      startedAt: 1_700_000_000_000,
+      durationMs: 1_000,
+      llmMs: 1_000,
+      toolMs: 0,
+      requests: 1,
+      toolCalls: 1,
+      retries: 0,
+      promptTokens: 100,
+      completionTokens: 20,
+      cachedTokens: 40,
+      ...over,
+    },
+  };
+}
+
 function readyInfo(over: Partial<ReadyInfo> = {}): ReadyInfo {
   return {
     rootDir: 'D:/proj',
@@ -31,6 +53,7 @@ function readyInfo(over: Partial<ReadyInfo> = {}): ReadyInfo {
     approvalMode: 'read-only',
     codeMode: 'native',
     history: [],
+    historyTotal: 0,
     pendingApprovals: [],
     usedTokens: 0,
     ...over,
@@ -234,9 +257,86 @@ describe('reduce / turn bookkeeping', () => {
     const state = fold([
       { event: { type: 'turn_start', turn: 1 } },
       { event: { type: 'turn_start', turn: 2 } },
-      { event: { type: 'llm_retry', attempt: 1, maxRetries: 3, error: 'x', stats: { turns: 2, promptTokens: 1, completionTokens: 1, cachedTokens: 0, missTokens: 0, missTurns: 0 } } },
+      { event: { type: 'phase', phase: 'thinking' } },
+      { event: { type: 'usage', usage: { promptTokens: 5, completionTokens: 1, cachedTokens: 0 }, stats: EMPTY_STATS } },
     ]);
     expect(state.turnCount).toBe(2);
     expect(state.blocks).toHaveLength(0);
+    expect(state.usedTokens).toBe(5);
+  });
+
+  it('shows a re-request and an empty completion as warning hints', () => {
+    const retried = fold([
+      { event: { type: 'llm_retry', attempt: 2, maxRetries: 5, error: 'socket hang up', stats: EMPTY_STATS } },
+    ]);
+    expect(retried.blocks[0]).toMatchObject({ kind: 'hint', tone: 'warn', text: expect.stringContaining('2/5') });
+
+    const empty = fold([{ event: { type: 'empty_completion', attempt: 1, maxRetries: 3, finishReason: 'stop' } }]);
+    expect(empty.blocks[0]).toMatchObject({ kind: 'hint', tone: 'warn', text: expect.stringContaining('空补全') });
+  });
+});
+
+describe('reduce / run stats', () => {
+  it('records a run as one meta row and folds it into the session totals', () => {
+    const first = fold([{ event: runStats({ durationMs: 12_000, firstTokenMs: 900, completionTokens: 40, llmMs: 2_000 }) }]);
+    expect(first.blocks[0]).toMatchObject({ kind: 'meta' });
+    expect(first.totals).toMatchObject({ runs: 1, requests: 1, toolCalls: 1, llmMs: 2_000, firstTokenMs: 900, firstTokenRuns: 1 });
+
+    const second = fold([{ event: runStats({ durationMs: 3_000, completionTokens: 10, llmMs: 1_000 }) }], first);
+    expect(second.totals).toMatchObject({ runs: 2, llmMs: 3_000, firstTokenRuns: 1, completionTokens: 50 });
+    // A run that never streamed a token contributes no latency sample.
+    expect(second.totals.firstTokenMs).toBe(900);
+  });
+
+  it('re-baselines the totals on ready: a resumed session does not inherit them', () => {
+    const ran = fold([{ event: runStats({}) }]);
+    expect(ran.totals.runs).toBe(1);
+    const resumed = reduce(ran, { type: 'ready', info: readyInfo() });
+    expect(resumed.totals.runs).toBe(0);
+  });
+});
+
+describe('reduce / tool detail and jobs', () => {
+  it('keeps the result text so the detail panel can show it', () => {
+    const state = fold([
+      { event: { type: 'tool_call_start', turn: 1, call: CALL }, view: TERMINAL_CALL },
+      { event: toolResult('line one\nline two') },
+    ]);
+    expect(state.blocks[0]).toMatchObject({ kind: 'tool', output: 'line one\nline two' });
+    expect(state.blocks[0]).toHaveProperty('ts');
+  });
+
+  it('upserts a background job in place instead of appending a row per update', () => {
+    const job = (status: 'running' | 'completed', progress?: string): KernelEvent => ({
+      type: 'job_update',
+      job: { id: 'bash-1', kind: 'bash', label: 'pnpm build', status, ...(progress !== undefined ? { progress } : {}) },
+    });
+    const started = fold([{ event: job('running', 'starting') }]);
+    expect(started.blocks).toHaveLength(1);
+    const settled = fold([{ event: job('running', 'still going') }, { event: job('completed') }], started);
+    expect(settled.blocks).toHaveLength(1);
+    expect(settled.blocks[0]).toMatchObject({ kind: 'job', job: { id: 'bash-1', status: 'completed' } });
+  });
+});
+
+describe('reduce / history pagination', () => {
+  it('ships the tail and reports how much is still unloaded', () => {
+    const history: WireBlock[] = [{ kind: 'user', text: 'q3' }, { kind: 'text', text: 'a3' }];
+    const state = reduce(initialState, { type: 'ready', info: readyInfo({ history, historyTotal: 40 }) });
+    expect(state.historyLoaded).toBe(2);
+    expect(state.historyTotal).toBe(40);
+  });
+
+  it('prepends an older batch and advances the cursor', () => {
+    const state = reduce(
+      reduce(initialState, { type: 'ready', info: readyInfo({ history: [{ kind: 'user', text: 'q3' }], historyTotal: 3 }) }),
+      {
+        type: 'history_earlier',
+        blocks: [{ kind: 'user', text: 'q1' }, { kind: 'text', text: 'a1' }],
+        total: 3,
+      },
+    );
+    expect(state.blocks.map((b) => (b.kind === 'user' || b.kind === 'text' ? b.text : `<${b.kind}>`))).toEqual(['q1', 'a1', 'q3']);
+    expect(state.historyLoaded).toBe(3);
   });
 });

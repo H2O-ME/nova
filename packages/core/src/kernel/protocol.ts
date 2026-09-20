@@ -18,6 +18,7 @@
 import type { AgentEvent, UserMessage } from '../types.js';
 import type { ApprovalRequest, ApprovalResolution } from '../approval.js';
 import type { JobSnapshot } from '../jobs.js';
+import type { RunStats } from './metrics.js';
 import type { SubagentProgress } from '../tools/subagent.js';
 
 /** What the agent is doing right now (drives live rows: spinner verb, web pulse). */
@@ -95,5 +96,7 @@ export type KernelEvent =
    * each runner classified it locally.
    */
   | { type: 'run_failed'; message: string; aborted: boolean }
+  /** The run is over: its timings and token totals (never logged, never model-visible). */
+  | { type: 'run_stats'; stats: RunStats }
   /** Operational line (auto-compact fuse/alias/failure). */
   | { type: 'notice'; code: NoticeCode; text: string };

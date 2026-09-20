@@ -11,6 +11,7 @@
  */
 export * from './kernel/protocol.js';
 export { EventPump } from './kernel/pump.js';
+export { RunMeter, type RunStats } from './kernel/metrics.js';
 export {
   AgentSession,
   persistMissingToolResults,

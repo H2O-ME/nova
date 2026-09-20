@@ -24,8 +24,8 @@ import {
   type KernelEvent,
 } from '@nova-agent/core';
 import { createAgentKernel, type Kernel } from '@nova-agent/plugins';
+import { HistoryBaseline } from './baseline.js';
 import { toAskResult, type ClientFrame, type ReadyInfo, type ServerFrame } from './protocol.js';
-import { projectTranscript } from './transcript.js';
 import type { WsConnection } from './ws.js';
 import type { ControllerOptions } from './options.js';
 
@@ -39,6 +39,8 @@ export class WebController {
   private readonly modelLabel: string;
   private readonly bindAffinity: ((sessionId: string) => void) | undefined;
   private readonly contextWindow: number | undefined;
+  /** The current session's frozen replay projection (`ready` ships its tail). */
+  private readonly baseline = new HistoryBaseline();
 
   private constructor(
     kernel: Kernel,
@@ -122,6 +124,11 @@ export class WebController {
         case 'new_session':
           await this.switchSession({});
           break;
+        case 'load_earlier':
+          client.send(
+            serialize({ type: 'history_earlier', blocks: this.baseline.earlierThan(frame.have), total: this.baseline.total }),
+          );
+          break;
         case 'set_approval_mode':
           this.agent.setApprovalMode(frame.mode);
           this.broadcastState();
@@ -165,13 +172,17 @@ export class WebController {
 
   private readyInfo(): ReadyInfo {
     const agent = this.agent;
+    // Freeze the baseline here: this is the projection the client's cursor
+    // counts against, and it must not move under a paginating client.
+    const { tail, total } = this.baseline.refresh(agent.messages, this.kernel.host.tools);
     return {
       rootDir: this.kernel.rootDir(),
       sessionFile: agent.session.file,
       model: this.modelLabel,
       approvalMode: agent.approvalMode ?? 'read-only',
       codeMode: this.kernel.codeMode(),
-      history: projectTranscript(agent.messages, this.kernel.host.tools),
+      history: tail,
+      historyTotal: total,
       pendingApprovals: agent.pendingApprovals(),
       usedTokens: agent.lastPromptTokens,
       ...(this.contextWindow !== undefined ? { contextWindow: this.contextWindow } : {}),

@@ -3,13 +3,34 @@
  * when the user is already near it (the terminal's tail-follow contract), and
  * renders each block by kind — tool rows delegate to ToolCard, so the card
  * shapes live in exactly one place.
+ *
+ * Two rows exist for things the transcript would otherwise swallow: a run's
+ * `meta` line (when it ran, how long, how fast) and a background `job` row
+ * that is rewritten in place as the job progresses.
  */
 import { useEffect, useRef } from 'react';
 import { renderMarkdown } from './markdown.js';
 import { ToolCard } from './ToolCard.js';
+import { formatClock, runMetaText } from './format.js';
+import type { JobSnapshot } from './types.js';
 import type { Block } from './state.js';
 
-export function Transcript({ blocks, idle }: { blocks: Block[]; idle: boolean }): JSX.Element {
+export function Transcript({
+  blocks,
+  idle,
+  hidden,
+  onLoadEarlier,
+  onOpenTool,
+  selectedCallId,
+}: {
+  blocks: Block[];
+  idle: boolean;
+  /** Older blocks the baseline holds but the browser has not loaded yet. */
+  hidden: number;
+  onLoadEarlier: () => void;
+  onOpenTool: (callId: string) => void;
+  selectedCallId: string | null;
+}): JSX.Element {
   const endRef = useRef<HTMLDivElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -22,14 +43,43 @@ export function Transcript({ blocks, idle }: { blocks: Block[]; idle: boolean })
   return (
     <div ref={boxRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
       <div className="mx-auto max-w-3xl space-y-2">
-        {blocks.map((block) => <BlockRow key={block.id} block={block} idle={idle} />)}
+        {hidden > 0 && (
+          <div className="pb-1 text-center">
+            <button
+              type="button"
+              onClick={onLoadEarlier}
+              className="rounded-full border border-[#2c2c36] px-3 py-1 text-[12px] text-[#8a8a94] hover:border-[#3c3c46] hover:text-[#d4d4d8]"
+            >
+              加载更早（还有 {hidden} 条）
+            </button>
+          </div>
+        )}
+        {blocks.map((block) => (
+          <BlockRow
+            key={block.id}
+            block={block}
+            idle={idle}
+            onOpenTool={onOpenTool}
+            selectedCallId={selectedCallId}
+          />
+        ))}
         <div ref={endRef} />
       </div>
     </div>
   );
 }
 
-function BlockRow({ block, idle }: { block: Block; idle: boolean }): JSX.Element | null {
+function BlockRow({
+  block,
+  idle,
+  onOpenTool,
+  selectedCallId,
+}: {
+  block: Block;
+  idle: boolean;
+  onOpenTool: (callId: string) => void;
+  selectedCallId: string | null;
+}): JSX.Element | null {
   switch (block.kind) {
     case 'user':
       return (
@@ -61,8 +111,18 @@ function BlockRow({ block, idle }: { block: Block; idle: boolean }): JSX.Element
           result={block.result}
           tail={block.tail}
           idle={idle}
+          selected={block.callId === selectedCallId}
+          onOpen={() => onOpenTool(block.callId)}
         />
       );
+    case 'meta':
+      return (
+        <div className="ml-7 text-[11px] text-[#5c5c66]">
+          {formatClock(block.stats.startedAt)} · {runMetaText(block.stats)}
+        </div>
+      );
+    case 'job':
+      return <JobRow job={block.job} />;
     case 'hint':
       return (
         <div className={`ml-7 text-[13px] ${block.tone === 'warn' ? 'text-[#e0af68]' : 'text-[#6c6c76]'}`}>
@@ -70,4 +130,26 @@ function BlockRow({ block, idle }: { block: Block; idle: boolean }): JSX.Element
         </div>
       );
   }
+}
+
+const JOB_MARK: Record<string, string> = { running: '⧗', completed: '✓', failed: '✗', killed: '⊘' };
+const JOB_CLS: Record<string, string> = {
+  running: 'text-[#1abc9c]',
+  completed: 'text-[#9ece6a]',
+  failed: 'text-[#f7768e]',
+  killed: 'text-[#6c6c76]',
+};
+
+/** A background job: one row, rewritten in place until it settles. */
+function JobRow({ job }: { job: JobSnapshot }): JSX.Element {
+  const mark = JOB_MARK[job.status] ?? '⧗';
+  return (
+    <div className="ml-7 flex flex-wrap items-baseline gap-x-2 font-mono text-[12px]">
+      <span className={JOB_CLS[job.status] ?? 'text-[#8a8a94]'}>{mark}</span>
+      <span className="text-[#8a8a94]">后台 {job.id}</span>
+      <span className="min-w-0 flex-1 truncate text-[#6c6c76]">{job.label}</span>
+      {job.detail !== undefined && <span className="text-[#6c6c76]">{job.detail}</span>}
+      {job.progress !== undefined && <span className="w-full truncate text-[#5c5c66]">{job.progress}</span>}
+    </div>
+  );
 }

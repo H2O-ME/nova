@@ -27,6 +27,13 @@ export type { ApprovalMode, PtcMode };
 export const MAX_CLIENT_FRAME_BYTES = 512 * 1024;
 /** Max chars of a prompt — generous for pasted stack traces, far below frame size. */
 export const MAX_PROMPT_CHARS = 200_000;
+/**
+ * Blocks the replay baseline keeps out of one `ready` frame, and the size of
+ * each older batch. A session's history is unbounded; the attach payload is not.
+ */
+export const HISTORY_TAIL = 40;
+/** Upper bound for the client's `have` cursor (a guard, not a real limit). */
+export const MAX_HISTORY_BLOCKS = 1_000_000;
 /** Ids crossing the wire (approval/session ids) are kernel-generated ASCII tokens. */
 const ID_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 // Session files: absolute paths to JSONL under ~/.nova — length-capped. The
@@ -46,7 +53,14 @@ export type ClientFrame =
   | { type: 'resume'; file: string }
   | { type: 'new_session' }
   | { type: 'set_approval_mode'; mode: ApprovalMode }
-  | { type: 'set_code_mode'; mode: PtcMode };
+  | { type: 'set_code_mode'; mode: PtcMode }
+  /**
+   * Page back through the replay baseline: `have` is how many baseline blocks
+   * the client already holds (counting from the NEWEST), the host answers with
+   * the batch immediately older than them. A long session therefore attaches
+   * with a bounded payload instead of its whole history.
+   */
+  | { type: 'load_earlier'; have: number };
 
 export type ServerFrame =
   /**
@@ -59,6 +73,8 @@ export type ServerFrame =
   | { type: 'event'; event: KernelEvent; view?: ToolCallView; resultView?: ToolResultView }
   /** Everything a fresh client needs to rebuild the transcript. */
   | { type: 'ready'; info: ReadyInfo }
+  /** One older slice of the replay baseline (answer to `load_earlier`). */
+  | { type: 'history_earlier'; blocks: readonly WireBlock[]; total: number }
   | { type: 'sessions'; items: SessionListItem[] }
   /** Session-level mode readout (after a switch, or when one is changed remotely). */
   | { type: 'state'; approvalMode: ApprovalMode; codeMode: PtcMode }
@@ -74,8 +90,16 @@ export type WireBlock =
       name: string;
       args: string;
       view: ToolCallView;
+      /** Timestamp of the call (log `ts` on replay) — the transcript's clock. */
+      ts?: number;
       /** Absent while the call is still running (or if the run died mid-call). */
       result?: ToolResultView;
+      /**
+       * The tool's result text, for the detail panel. The model-facing message
+       * is already size-bounded (~40KB, oversized output spills to disk), so
+       * this needs no cap of its own.
+       */
+      output?: string;
     };
 
 export interface ReadyInfo {
@@ -84,8 +108,14 @@ export interface ReadyInfo {
   model: string;
   approvalMode: ApprovalMode;
   codeMode: PtcMode;
-  /** Transcript projection of the durable log (replay baseline for reconnect). */
+  /**
+   * The NEWEST slice of the durable log's projection — the replay baseline.
+   * Older blocks are fetched with `load_earlier`; `historyTotal` says how many
+   * there are in all, so the client can show what it has not loaded yet.
+   */
   history: readonly WireBlock[];
+  /** Total blocks in the baseline (`history` is its tail). */
+  historyTotal: number;
   /** Approval requests still outstanding (re-render the modal after reload). */
   pendingApprovals: readonly ApprovalRequest[];
   /** Prompt tokens of the last request — the context gauge's numerator. */
@@ -135,6 +165,13 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'list_sessions':
     case 'new_session':
       return { type: obj['type'] } as ClientFrame;
+    case 'load_earlier': {
+      const have = obj['have'];
+      if (typeof have !== 'number' || !Number.isInteger(have) || have < 0 || have > MAX_HISTORY_BLOCKS) {
+        return reject(`load_earlier.have must be an integer in 0..${MAX_HISTORY_BLOCKS}`);
+      }
+      return { type: 'load_earlier', have };
+    }
     case 'resolve_approval': {
       if (typeof obj['id'] !== 'string' || !ID_RE.test(obj['id'])) return reject('resolve_approval.id must be an ASCII token');
       const answer = normalizeAnswer(obj['answer']);
