@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1240" height="840" viewBox="0 0 1240 840" role="img">
-  <title>NovaAgent 包分层架构：cli 产品壳装配 tui / tui-view / plugins / ai / qqbot，全部收敛到零依赖的 core 内核</title>
+  <title>NovaAgent 包分层架构（M11）：cli 产品壳按 argv 装配各 surface（tui-app / web / repl / exec / qqbot），全部收敛到零依赖的 core 内核</title>
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="#99a1ab"/>
@@ -9,84 +9,102 @@
 
   <!-- ═ Band 1 · cli ═ -->
   <rect x="40" y="36" width="920" height="176" rx="12" fill="#f2f6fb" stroke="#c9d8ea"/>
-  <text x="60" y="66" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="16.5" font-weight="700" fill="#1b1d21">cli · 产品壳</text>
+  <text x="60" y="66" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="16.5" font-weight="700" fill="#1b1d21">cli · 产品壳（surface 装配）</text>
   <text x="940" y="64" text-anchor="end" font-family="Consolas,'SFMono-Regular',Menlo,monospace" font-size="11.5" fill="#8a919c">@nova-agent/cli → 全部下游</text>
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="12.5" fill="#3f4650">
     <rect x="60"  y="82" width="150" height="36" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
     <text x="135" y="105" text-anchor="middle">nova 全屏 TUI</text>
     <rect x="224" y="82" width="150" height="36" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
-    <text x="299" y="105" text-anchor="middle">repl 回落</text>
+    <text x="299" y="105" text-anchor="middle">nova --web</text>
     <rect x="388" y="82" width="150" height="36" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
-    <text x="463" y="105" text-anchor="middle">exec 非交互</text>
+    <text x="463" y="105" text-anchor="middle">repl 回落</text>
     <rect x="552" y="82" width="150" height="36" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
-    <text x="627" y="105" text-anchor="middle">qqbot 模式</text>
+    <text x="627" y="105" text-anchor="middle">exec 非交互</text>
+    <rect x="716" y="82" width="150" height="36" rx="8" fill="#ffffff" stroke="#c9d8ea"/>
+    <text x="791" y="105" text-anchor="middle">qqbot 模式</text>
   </g>
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="12" fill="#5f6772">
-    <text x="60" y="150">装配：session-runtime（三 runner 工厂）· runner-shared · auto-compact TokenGate · compact</text>
-    <text x="60" y="174">壳层：tui-mode（agentTurn 事件归约）· config / context / system-prompt / model-meta / commands</text>
-    <text x="60" y="198">tui/：store（TuiStore）· keys 责任链 · frame 装配 · subagent-lives 活行状态机</text>
+    <text x="60" y="150">装配：index.ts（argv → surface 选择：TTY 走 TUI，非 TTY 与 --repl 回落 REPL）· kernel-boot（toKernelConfig + provider 工厂）</text>
+    <text x="60" y="174">接线：tui-mode（TuiApp + 命令端口 + Tab 切模式）· web-mode（launch token + 会话亲和）· repl（单一读行主循环）· exec（JSONL=KernelEvent）</text>
+    <text x="60" y="198">公共：command-runner（斜杠命令语义单源，两壳共用）· config（schema 严格校验）· model-meta（models.dev 24h 缓存）</text>
   </g>
 
   <line x1="250" y1="212" x2="250" y2="244" stroke="#99a1ab" marker-end="url(#ar)"/>
   <line x1="700" y1="212" x2="700" y2="244" stroke="#99a1ab" marker-end="url(#ar)"/>
 
-  <!-- ═ Band 2 · 能力层 ═ -->
-  <rect x="40" y="248" width="920" height="214" rx="12" fill="#fafbfc" stroke="#dfe3e8"/>
+  <!-- ═ Band 2 · surface 与能力层 ═ -->
+  <rect x="40" y="248" width="1160" height="214" rx="12" fill="#fafbfc" stroke="#dfe3e8"/>
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
-    <!-- tui -->
-    <rect x="56" y="268" width="168" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
-    <text x="72" y="292" font-size="14" font-weight="700" fill="#33608c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">tui</text>
-    <text x="72" y="311" font-size="11.5" fill="#8a919c">终端原语 · 零依赖</text>
+    <!-- tui-app -->
+    <rect x="48" y="268" width="180" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
+    <text x="64" y="292" font-size="14" font-weight="700" fill="#5b4a8c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">tui-app</text>
+    <text x="64" y="311" font-size="11.5" fill="#8a919c">TUI surface · 默认形态</text>
     <g font-size="11.5" fill="#4a525d">
-      <text x="72" y="336">行级差分渲染</text>
-      <text x="72" y="356">按键解码 keys</text>
-      <text x="72" y="376">（含 SGR 鼠标）</text>
-      <text x="72" y="396">CJK 显示宽度</text>
+      <text x="64" y="336">blocks 事件归约</text>
+      <text x="64" y="356">entries / render / panels</text>
+      <text x="64" y="376">frame 整帧装配</text>
+      <text x="64" y="396">keys 责任链 reducer</text>
+      <text x="64" y="416">app 壳层：屏幕·键盘·时钟</text>
+      <text x="64" y="436" fill="#8a919c">依赖 tui + core + plugins</text>
     </g>
-    <!-- tui-view -->
-    <rect x="240" y="268" width="168" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
-    <text x="256" y="292" font-size="14" font-weight="700" fill="#33608c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">tui-view</text>
-    <text x="256" y="311" font-size="11.5" fill="#8a919c">纯视图 · 零 IO</text>
+    <!-- web -->
+    <rect x="240" y="268" width="180" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
+    <text x="256" y="292" font-size="14" font-weight="700" fill="#5b4a8c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">web</text>
+    <text x="256" y="311" font-size="11.5" fill="#8a919c">Web surface · nova --web</text>
     <g font-size="11.5" fill="#4a525d">
-      <text x="256" y="336">palette / clip / labels</text>
-      <text x="256" y="356">状态栏 / 工具行 / 弹窗</text>
-      <text x="256" y="376">composer / reasoning</text>
-      <text x="256" y="396">splash / frame</text>
-      <text x="256" y="416" fill="#8a919c">依赖 tui + core</text>
+      <text x="256" y="336">ws：自写 RFC6455</text>
+      <text x="256" y="356">auth：launch token→cookie</text>
+      <text x="256" y="376">controller：回放 + 扇出</text>
+      <text x="256" y="396">ui/：React 18 纯 reducer</text>
+      <text x="256" y="416">markdown 元素树渲染</text>
+      <text x="256" y="436" fill="#8a919c">依赖 core + plugins</text>
+    </g>
+    <!-- tui -->
+    <rect x="432" y="268" width="180" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
+    <text x="448" y="292" font-size="14" font-weight="700" fill="#33608c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">tui</text>
+    <text x="448" y="311" font-size="11.5" fill="#8a919c">终端原语 · 零依赖</text>
+    <g font-size="11.5" fill="#4a525d">
+      <text x="448" y="336">行级差分渲染（?2026）</text>
+      <text x="448" y="356">按键解码（SGR 鼠标）</text>
+      <text x="448" y="376">CJK 显示宽度</text>
+      <text x="448" y="396">终端能力探测</text>
+      <text x="448" y="436" fill="#8a919c">零上游依赖</text>
     </g>
     <!-- plugins -->
-    <rect x="424" y="268" width="168" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
-    <text x="440" y="292" font-size="14" font-weight="700" fill="#a35a06" font-family="Consolas,'SFMono-Regular',Menlo,monospace">plugins</text>
-    <text x="440" y="311" font-size="11.5" fill="#8a919c">插件容器 · 一切皆插件</text>
+    <rect x="624" y="268" width="180" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
+    <text x="640" y="292" font-size="14" font-weight="700" fill="#a35a06" font-family="Consolas,'SFMono-Regular',Menlo,monospace">plugins</text>
+    <text x="640" y="311" font-size="11.5" fill="#8a919c">插件容器 · 装配单源</text>
     <g font-size="11.5" fill="#4a525d">
-      <text x="440" y="336">host：tool/cmd/hook</text>
-      <text x="440" y="356">permission 三档审批</text>
-      <text x="440" y="376">always 记忆 · fail-closed</text>
-      <text x="440" y="396">builtin fs bash search</text>
-      <text x="440" y="416">todo jobs subagent …</text>
-      <text x="440" y="436">ptc run_code · skills</text>
+      <text x="640" y="336">host：tool/cmd/hook</text>
+      <text x="640" y="356">permission 三档审批</text>
+      <text x="640" y="376">builtin fs/bash/search…</text>
+      <text x="640" y="396">skills · PTC run_code</text>
+      <text x="640" y="416">createAgentKernel</text>
+      <text x="640" y="436" fill="#8a919c">依赖 core</text>
     </g>
     <!-- ai -->
-    <rect x="608" y="268" width="168" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
-    <text x="624" y="292" font-size="14" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">ai</text>
-    <text x="624" y="311" font-size="11.5" fill="#8a919c">OpenAI 兼容客户端</text>
+    <rect x="816" y="268" width="180" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
+    <text x="832" y="292" font-size="14" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">ai</text>
+    <text x="832" y="311" font-size="11.5" fill="#8a919c">OpenAI 兼容客户端</text>
     <g font-size="11.5" fill="#4a525d">
-      <text x="624" y="336">手写 fetch + SSE</text>
-      <text x="624" y="356">重试 · 断流自愈</text>
-      <text x="624" y="376">截断防御</text>
-      <text x="624" y="396">usage / 缓存提取</text>
-      <text x="624" y="416">tools 字典序稳定排序</text>
+      <text x="832" y="336">手写 fetch + SSE</text>
+      <text x="832" y="356">重试 · 断流自愈</text>
+      <text x="832" y="376">截断防御</text>
+      <text x="832" y="396">usage / 缓存提取</text>
+      <text x="832" y="416">tools 字典序稳定排序</text>
+      <text x="832" y="436" fill="#8a919c">依赖 core（仅类型）</text>
     </g>
     <!-- qqbot -->
-    <rect x="792" y="268" width="168" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
-    <text x="808" y="292" font-size="14" font-weight="700" fill="#a35a06" font-family="Consolas,'SFMono-Regular',Menlo,monospace">qqbot</text>
-    <text x="808" y="311" font-size="11.5" fill="#8a919c">第三方插件示范</text>
+    <rect x="1008" y="268" width="180" height="176" rx="10" fill="#ffffff" stroke="#d8dce1"/>
+    <text x="1024" y="292" font-size="14" font-weight="700" fill="#a35a06" font-family="Consolas,'SFMono-Regular',Menlo,monospace">qqbot</text>
+    <text x="1024" y="311" font-size="11.5" fill="#8a919c">第三方 surface 示范</text>
     <g font-size="11.5" fill="#4a525d">
-      <text x="808" y="336">WS 网关状态机</text>
-      <text x="808" y="356">心跳自愈 · 指数退避</text>
-      <text x="808" y="376">token 单飞刷新</text>
-      <text x="808" y="396">REST 被动回复</text>
-      <text x="808" y="416">依赖 core + plugins</text>
+      <text x="1024" y="336">WS 网关状态机</text>
+      <text x="1024" y="356">心跳自愈 · 指数退避</text>
+      <text x="1024" y="376">token 单飞刷新</text>
+      <text x="1024" y="396">REST 被动回复</text>
+      <text x="1024" y="416">对端独立会话</text>
+      <text x="1024" y="436" fill="#8a919c">依赖 core + plugins</text>
     </g>
   </g>
 
@@ -99,25 +117,25 @@
   <text x="940" y="516" text-anchor="end" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="11.5" fill="#5f6772">不依赖任何上层包</text>
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
     <rect x="56" y="532" width="168" height="86" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
-    <text x="70" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">agent.ts</text>
-    <text x="70" y="576" font-size="11.5" fill="#4a525d">runAgent 事件流循环</text>
-    <text x="70" y="594" font-size="11.5" fill="#4a525d">并行工具调度 · 钩子</text>
+    <text x="70" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">kernel/</text>
+    <text x="70" y="576" font-size="11.5" fill="#4a525d">AgentSession 句柄</text>
+    <text x="70" y="594" font-size="11.5" fill="#4a525d">KernelEvent · 审批桥</text>
     <rect x="240" y="532" width="168" height="86" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
-    <text x="254" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">session.ts</text>
-    <text x="254" y="576" font-size="11.5" fill="#4a525d">JSONL 事件日志 v2</text>
-    <text x="254" y="594" font-size="11.5" fill="#4a525d">投影 · 抗损坏修复</text>
+    <text x="254" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">agent/</text>
+    <text x="254" y="576" font-size="11.5" fill="#4a525d">runAgent 事件流循环</text>
+    <text x="254" y="594" font-size="11.5" fill="#4a525d">工具调度 · 请求装配</text>
     <rect x="424" y="532" width="168" height="86" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
-    <text x="438" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">estimate.ts</text>
-    <text x="438" y="576" font-size="11.5" fill="#4a525d">token 预估</text>
-    <text x="438" y="594" font-size="11.5" fill="#4a525d">锚点 + WeakMap 记忆化</text>
+    <text x="438" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">session.ts</text>
+    <text x="438" y="576" font-size="11.5" fill="#4a525d">JSONL 事件日志 v2</text>
+    <text x="438" y="594" font-size="11.5" fill="#4a525d">投影 · compact · 抗损坏</text>
     <rect x="608" y="532" width="168" height="86" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
-    <text x="622" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">jobs.ts</text>
-    <text x="622" y="576" font-size="11.5" fill="#4a525d">JobRegistry 后台任务</text>
-    <text x="622" y="594" font-size="11.5" fill="#4a525d">完成通知注入</text>
+    <text x="622" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">presentation.ts</text>
+    <text x="622" y="576" font-size="11.5" fill="#4a525d">呈现意图词汇表</text>
+    <text x="622" y="594" font-size="11.5" fill="#4a525d">callViewOf 活表解析</text>
     <rect x="792" y="532" width="168" height="86" rx="8" fill="#ffffff" stroke="#bfdcd2"/>
-    <text x="806" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">subagent.ts</text>
-    <text x="806" y="576" font-size="11.5" fill="#4a525d">隔离子代理</text>
-    <text x="806" y="594" font-size="11.5" fill="#4a525d">防递归 · 同审批门</text>
+    <text x="806" y="554" font-size="13" font-weight="700" fill="#0e6f5c" font-family="Consolas,'SFMono-Regular',Menlo,monospace">jobs · subagent</text>
+    <text x="806" y="576" font-size="11.5" fill="#4a525d">后台任务 · 完成通知</text>
+    <text x="806" y="594" font-size="11.5" fill="#4a525d">隔离子代理 · 防递归</text>
   </g>
 
   <!-- 数据落盘侧卡 -->
@@ -144,21 +162,23 @@
   <rect x="40" y="676" width="920" height="88" rx="12" fill="#f7f7f8" stroke="#e2e2e4"/>
   <text x="60" y="700" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="12.5" fill="#8a919c">外部世界</text>
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="12" fill="#3f4650">
-    <rect x="60"  y="712" width="160" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
-    <text x="140" y="734" text-anchor="middle">OpenAI 兼容端点</text>
-    <rect x="234" y="712" width="160" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
-    <text x="314" y="734" text-anchor="middle">本机 shell / 文件</text>
-    <rect x="408" y="712" width="160" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
-    <text x="488" y="734" text-anchor="middle">worker 线程（PTC）</text>
-    <rect x="582" y="712" width="160" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
-    <text x="662" y="734" text-anchor="middle">worker（search）</text>
-    <rect x="756" y="712" width="160" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
-    <text x="836" y="734" text-anchor="middle">models.dev 目录</text>
+    <rect x="60"  y="712" width="135" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
+    <text x="127" y="734" text-anchor="middle">OpenAI 兼容端点</text>
+    <rect x="207" y="712" width="135" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
+    <text x="274" y="734" text-anchor="middle">本机 shell / 文件</text>
+    <rect x="354" y="712" width="135" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
+    <text x="421" y="734" text-anchor="middle">worker（PTC/搜索）</text>
+    <rect x="501" y="712" width="135" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
+    <text x="568" y="734" text-anchor="middle">models.dev 目录</text>
+    <rect x="648" y="712" width="135" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
+    <text x="715" y="734" text-anchor="middle">浏览器（--web）</text>
+    <rect x="795" y="712" width="135" height="34" rx="8" fill="#ffffff" stroke="#e2e2e4"/>
+    <text x="862" y="734" text-anchor="middle">QQ 开放平台</text>
   </g>
 
   <!-- 依赖图例 -->
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="12" fill="#5f6772">
-    <text x="40" y="800">依赖严格单向：cli → { tui · tui-view · plugins · ai · qqbot · core }；tui-view → { tui · core }；ai / plugins / qqbot → core</text>
-    <text x="40" y="822">core 与 tui 零上游依赖——纯视图层可脱终端单测，内核不感知渲染与供应商。</text>
+    <text x="40" y="800">依赖严格单向（pnpm gates 机检）：cli → 全部下游；tui-app → { tui · core · plugins }；web → { core · plugins }；qqbot → { plugins · core }；plugins → core；ai → core（仅类型）</text>
+    <text x="40" y="822">core 与 tui 零上游依赖；TUI / Web / REPL / exec / qqbot 是同地位的 AgentSurface，只消费 KernelEvent + presentation，由 cli 按 argv 装配。</text>
   </g>
 </svg>

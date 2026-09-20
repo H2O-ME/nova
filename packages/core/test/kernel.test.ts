@@ -168,16 +168,32 @@ describe('AgentSession run lifecycle', () => {
   });
 
   it('queues prompts during a run and flushes them as a second run', async () => {
-    const h = await harness(
-      [[{ type: 'text_delta', text: 'first' }], [{ type: 'text_delta', text: 'second' }]],
-      { auto: 'allow' },
-    );
+    // The first run is held open by the provider: a scripted stream that
+    // finishes in the same tick can complete during the `await` before the
+    // second prompt, which would start a run instead of queueing behind it.
+    let open = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    let call = 0;
+    const provider: ChatProvider = {
+      async *stream() {
+        call += 1;
+        if (call === 1) await held;
+        yield { type: 'text_delta', text: call === 1 ? 'first' : 'second' };
+      },
+    };
+    const h = await harness([], { auto: 'allow', provider });
     await h.agent.prompt('one');
     expect(h.agent.running).toBe(true);
     await h.agent.prompt('two');
     expect(h.agent.queued).toEqual(['two']);
     const queueEvents = h.events.filter((e) => e.type === 'queue_update');
     expect(queueEvents[0]).toEqual({ type: 'queue_update', items: ['two'] });
+    open();
+    // The flush starts its run asynchronously, so wait for that run to exist
+    // before settling — otherwise the idle check wins the race and returns.
+    for (let i = 0; i < 3000 && h.events.filter((e) => e.type === 'turn_start').length < 2; i++) await sleep(1);
     await untilIdle(h.agent);
     expect(h.agent.queued).toEqual([]);
     expect(h.agent.session.allMessages().filter((m) => m.role === 'user')).toHaveLength(2);

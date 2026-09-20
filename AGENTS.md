@@ -168,25 +168,7 @@ JSONL 从裸消息升级为事件流（`message` / `compaction/*` / `todo/write`
 - 启动**不等** models.dev：`contextWindow` 先取配置，目录异步到达后 `setContextWindow` 回填——冷缓存/断网不再先给十几秒空屏。
 - 命令语义**一个 runner 两壳共用**：`command-runner.ts` 拥有"一条命令对内核做什么、参数怎么解析、报什么"，repl 与 `tui-mode.ts` 只出端口（note / pickModel / clear / bindSession / exit）——直接修掉了 repl 的 `/skill` 死路（它原先进「未知命令」，因为技能展开只挂在非斜杠输入上）。
 
-> ⚠️ **以下段落描述的是批1 删除的旧实现**（`tui-view` / `cli/tui` / 旧 `tui-mode.ts`），作为**设计参照**保留（度量、节奏、Grok 源证据仍有效），批5 全面重写。
-alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑↓ 选择、Tab 补全、输入历史）；审批弹窗（y/n/a + 1-9、always 行 ←/→ 调授权词数、拒绝行打字补理由）；模型/会话切换面板 1-9 数字快选；PageUp/PageDown/滚轮滚动（上滚不改状态栏样式——常驻视图保持稳定，↓/滚轮回到底）；仪表悬停（?1003 any-motion：悬停上下文仪表换形，T2 档让格给「已用/总量」数字、总宽不变，拖拽仍被吞）；Ctrl+C 中断当前轮（空闲时两段退出）；多行 composer（粘贴保留换行、软换行最多 8 行窗口、↑↓ 行间移动；**长粘贴折成 `⧉ 粘贴 N行 X字` chip**——纯显示折叠，缓冲区存全文、提交一字不差，←/→ 整越、边界退格先展开防一键吞粘贴）；**运行中消息队列**（轮进行中回车入队不拒绝——队列暗色 lane 常驻 composer 上方，本轮结束后自动下发队首，Esc 中断后接续发送）；流式 markdown（列表缩进 2 列挂圆点，换行续行对齐条目文本列）、工具输出**三态折叠**（Collapsed 头行 → Truncated 12 行预览 → Expanded 400 行封顶，点击轮转、▸/▾ affordance）、reasoning 定高活窗口（定格 2 行 + 活尾 1 行、每行裁到单一显示行绝不折行、空行不进窗——每个 delta 只重写活尾一行，整段不重排；**答案起笔定格成 `▸ 已思考 N.Ns`**（<10s 一位小数）、与答案同组紧排，轮内不留空行，**点击可展开思考全文**——▸/▾ 前缀为 affordance，全文仅存会话内存（reasoning 从不落盘，resume 后不可展开），展开正文逐行暗色、软折行走 gutter 预算）；长命令实时显示已耗时与输出尾行；**跑动时输入卡上方一条活体行**（`turn-status.ts`，Grok `turn_status.rs`：转轮 + 阶段词 + 本轮累计耗时，`<10s` 一位小数 / `<60s` 整秒 / 更久 `m+s`，空闲整块消失——它占转录两行，窗口随之收缩，与 Grok 同）；系统通知（Windows toast / macOS osascript / Linux notify-send）。分层：`tui`（终端原语）→ `tui-view`（纯视图，零 IO）→ `cli/tui/`（`store.ts` TuiStore / `keys.ts` 按键责任链 / `frame.ts` 帧装配 / `turn-projector.ts` 轮次投影状态机——流式平滑、assistant/思考块生命周期、工具行形变、行动画、中断清场，假时钟 + `plainPalette` 可单测 / `subagent-lives.ts` 子代理接管活行与后台行状态机）→ `tui-mode.ts`（壳层：生命周期 + IO + `agentTurn` 事件归约的委派，块级投影一律走 TurnProjector；TUI 可变状态全部收敛在 TuiStore 实例里，壳层与按键链读写同一实例）；决策背景见 `docs/tui-design.md`。
-
-**单行状态栏**三段式 `上下文仪表 │ 模型 · 执行模式 · 审批档位 │（右缘）tps · cache`——`│` 分大组、`·` 分组内，层级靠分隔符而非字数堆砌：
-- **上下文仪表**：按整窗真实比例分段上色（提示词青 / 工具 schema 绿 / 注入片段蓝 / 技能索引品红 / 消息黄），加粗「已用/总量 · 百分比」；**用量断点混色**（`usageUrgency`：中性 <50% → 青 <70% → 黄 <90% → 红 ≥90%，ANSI-16 混不了渐变、断点快照即 Grok 自己的 t<0.5 取整规则）；`压缩 %` 只在真正逼近阈值时出现（T0 常驻、T1 ≥50%、T2 ≥70%）；**一格都画不出时整条 bar 按整字段降级丢掉**（批12：百万窗口开局 13k 用量只能画 0 格，八格 `░` 底纹说的是"什么还不知道"，读起来是噪声——丢掉后 `已用/总量 · 百分比` 自己说话，用量涨到一格条形就回来；悬停换形同理，让格会让掉最后一格的悬停不换）。
-- **空间不足按优先级整字段降级，绝不词中截断**：同一档位内**先丢瞬时提示**（中断/退出——它们只是锦上添花，不该把「已用/总量」挤出状态栏），再降档：T0 全量 → T1 去 `模式/审批` 标签、模型去供应商前缀 → T2 仪表只留条+百分比、审批降单字（读/编/全）、模型截断 → 极窄时弃模型名（banner 与 `/model` 已可见）。上滚**不进**状态栏：滚动位置从画面本身可见，状态栏样式恒定。右缘仪表组定宽不随 tick 变宽、百分比与数值 `padStart` 位数跳动不挪分隔符、截左不截右。
-- **tps 速度表**：500ms×10 环形窗口，**会话级连续滚动**（发新消息不清空、无新输出不排空到 0），恒绿色（"是否在生成"由 composer 前缀 spinner 表达）。
-- **cache 命中率**：取**会话累计**值且**粘住可见性**——provider 随机分流到不报缓存的后端会让单轮值抖动、整段闪现，故一旦本会话见过缓存上报就常驻，从未上报则整段隐藏。
-- **模型元数据（models.dev）**：启动后台拉 `https://models.dev/api.json`，解析为精简目录落盘缓存（`~/.nova/cache/models-dev.json`，24h TTL，断网用旧缓存），按模型 id 精确→尾段匹配解析上下文窗口/模态/推理/工具/附件能力，喂给结构进度条分母；明细在 `/model` 面板与 `/session`。
-- **执行模式**：新会话未开始时按 Tab 循环 普通 → PTC → 混合（rebuildHost 统一重绑 host+hooks；Node 不满足 22.19 时拒绝并保持原模式；区别见 `/mode`，切换不留历史行、状态栏模式标即时变化）。
-
-**设计语言（Grok 度量逐值移植，M10 批6）**：观感差距先在设计语言有没有一层——**其次才是配色**（批13 把 dark 主题的 truecolor 档整体换绑 GrokNight RGB：accent 青 `#1abc9c`、次要文本 `#6c6c6c`、边框 `#505058`、成功 `#9ece6a`、警告 `#e0af68`、失败 `#f7768e`；`detectCaps` 同时补 truecolor 品牌表与"Windows 无条件为真"，只报 16 色的终端仍逐字节沿用原 ANSI）——Nova 原先每个组件自己算宽度、自己 pad、自己写降级 tier，一处算错整块错位。`tui-view/layout.ts` 把 Grok 实际在用的常量收进来成原语：**屏幕分区**（`bottomStack` = 转录 → 呼吸行 → 弹窗 → 队列 → 输入卡片 → 状态栏 → 快捷键条，转录区是**唯一**收缩者，其余全是定长行，Grok agent.rs:228-299；**收缩者内部的空白落点**由 `anchorHistory` 决定——贴底时空白整段上浮到内容上方（最新一行永远贴着输入卡片，空白落在屏幕顶缘读作"上面还有历史"），**唯一的例外是开屏**（批12：转录里只有那张 welcome 卡片时空白对半分、卡片落在视口中部，整屏读作"一个欢迎页"；批11 曾把它统一进贴底，真机截图证明冷启动那半屏空更像 bug），上滚后不挪）；**转录列基线** `MARK_COL=2 / CONTENT_COL=4`（`MARK_LEAD` + 标记后 1 格气口）：标记列就是卡片用的那 2 格内衬，于是 `❯`（用户）、`•`（答案）、`⠙/✓/✗`（工具）、`▌`（导轨）、`◈`（子代理）全部落在同一列、正文全部从第 4 列起（原先用户/答案在第 4 列、工具在第 6 列，一轮读起来是两条错位的轨）；**条目之间恒留呼吸**（`frame.ts:isDenseRun`，批14 照 Grok 的 `scrollback/state/layout.rs:1555-1563` 逐值改）——转录里每个块对之间 1 空行，**只有连续折叠的工具行**算 dense run 彼此不留（一轮几十个工具调用不会把屏幕撑成空行串），用户提问再自带一行 vpad（净 2 行）。批7 曾把"紧排"套到整轮（提问→思考→答案→工具挤成一块实心砖），那是把 Grok 的 dense-run 例外抄成了通则；**圆角卡片** `cardTop/cardRow/cardBottom`（`╭─╮│╰─╯`，顶框右缘可嵌 caption、底框右缘可嵌 info，`╮╯` 前留 2 格，info 空则整段省略）；**整屏一套边框语言**——开屏卡、输入卡、`/model` `/session` 面板、审批卡的框线一律走新增的 `Palette.border` 槽（dark 的 truecolor 档用 GrokNight 的 `prompt_border_active #505058`、16 色档仍是 bright-black、light 用中灰、plain 恒等），不再裸写制表符：裸框线落在终端默认强度上，跟有色内容并排就显"廉价"，而边框色是**结构色不是主题色**，故与 `dim` 分槽。**四张卡共用同一对边距**（批10：`popupInner()` 把弹窗宽绑到 `composerCardWidth`，边框行与内容行同一 `POPUP_LEAD`——弹窗从第 0 列铺、输入卡内缩 2 格，屏幕上就有两条左缘，两张卡并排像两个应用的窗口叠在一起）；**底部 chrome 内缩同一对边距**（批11：状态栏与快捷键条也从第 `CHROME_PAD_COLS` 列起、定宽 `cols-1-CHROME_PAD_COLS`，与卡片左缘对齐——"一条左缘"管的是整屏不是四张卡；`statusZone.gaugeEnd` 加同样偏移，仪表悬停的命中点跟着挪不偏）；审批卡也是这套语言里的一个卡片（标题栏承载 `! 需要审批 [执行]`、光标行**整行反色铺满内宽**——那条色带才是"这是个控件"的信号）；输入行的 `❯` 同理改由 `composerLead(p)` 经调色板绘制（原先硬编码 cyan+bold 转义码——light 主题下是不知所措的亮青、plain 流里仍吐 ANSI，`COMPOSER_PREFIX` 导出随之移除、`COMPOSER_PREFIX_WIDTH` 成字面量）；**动效只有一个时钟**（`TICK_MS=33`，Grok 30fps）：`TuiStore.tick` 是唯一计数器，壳层一个定时器递增它，**转轮帧是派生量**（`spinnerFrame = tick / 4` ≈ 132ms/帧，与 Grok 同拍；原先它自带一个 90ms 计数器）、导轨行波取 `railPhase(tick, row)`、打字机揭示定时器也改成同周期（30→33ms，两个近频时钟会打出可见的抖拍）；
-**两种分隔符宽度不通用**：状态簇 `" │ "`(3)、快捷键簇 `"  │  "`(5)。**输入区从"一行 `❯`"升级为卡片**（Grok prompt：左右内衬 2、单行草稿恒 3 行、正文宽连边框一起扣、光标落在卡片第二行故 `cursorPosition` 多一层 `leadRows`）。**快捷键条**（`hint-bar.ts`，屏幕最后一行）是这套语言里最关键的分工：**占位符只说"在这里输入"，键位归键位条**——原先键位散在开屏面板、占位行、弹窗提示里，哪儿都在说、哪儿都不像设计；键位随"谁占用键盘"换一套（命令面板 / 模型会话选择 / 审批 / 开屏选择器 / 运行中 / 静息），超宽按原序从尾部**整条丢弃**（不折行、不加省略号），且 **Tab 只在真能切模式时才印出来**（骗人的键位提示比没有提示更糟）。同一条规则在批10 走完剩下的路：**四张卡的底框边都不再印键位**——审批弹窗原有的 `↑↓ 选择 · Enter 确认 · Esc 拒绝` 提示行与模型/会话/命令面板底边的 `↑↓ 选择 · Enter 切换 · Esc 取消` 一并收掉（窄列时快捷键条整条丢弃、弹窗照印，两处不一致必有一边在骗人），卡片脚边只放**面板自己的内容**（审批卡=一句授权语义，选择卡=留空），审批键位改由 `HintState.approvalScope` / `denyTyping` **随光标所在行**出现（停在「总是允许」且命令确有多词可收窄才印 `←→:调授权词数`，停在「拒绝」才印 `打字:补理由 │ Backspace:删字`）。**字形必须经真机探针选定**（批7b）：在 zh-CN Windows Terminal / Cascadia Mono 里逐字形打标尺行测宽与字形存在性——`⧉`(U+29C9) 该字体根本没有、渲染成十六进制豆腐块，于是粘贴 chip 与子代理标记改用探针确认存在的 `▤`/`◈`（`CHIP_MARK`/`SUBAGENT_MARK` 单源）；同时证实本项目框线/导轨/箭头字形全为单格宽、全角 `！：` 为双格，**宽度表与终端一致**（对齐问题不在宽度表，见 commit）。**键名只印键盘上真有的字面**（批12）：快捷键条里的 `⏎`/`⌫` 未经探针就换回 `Enter`/`Backspace`——return/backspace 符号走终端字体回落，宽度不由我们的表做主，而键位提示渲染成豆腐块就是骗人。**反色 run 里不放非 ASCII 字形**（批11）：SGR 7 会换终端的字体回落，`•` 这类宽度"看上下文"的字形落在反色胶囊里可能比 `styledWidth` 多走一格——离线算宽全对、真机右边框错位，只能靠两张帧差分对比才找得到。故定宽卡片行的光标胶囊内只放 ASCII（`[` `]` 空格），状态一律靠颜色表达。
-
-**开屏 = 一张居中卡片（Grok welcome 二稿）**：`buildWelcome` 单块承载全部开场信息——工作区根 / 会话根（家目录前缀折成 `~/…`，让尾段活过裁剪）/ 技能计数 / 模式选择器 / 沙箱姿态，五行同处一框（与输入卡片同一套圆角细线，框线一律走调色板的 `border` 槽，见上），按终端列数**水平居中**，垂直位置走 `anchorHistory` 的 `center` 档（批12）：转录里只有这张卡时空白对半分，卡片落在视口中部，整屏读作一个欢迎页（`frameMap.topPad` 仍在——点击行号要先减掉合成空白）。**首条消息落地即并回文档流**（`tail`）——"空白落在顶缘读作上面还有历史"那条判语有个前提：**上面真的有历史**；冷启动没有历史，18 行顶缘空白就只是 18 行空（批11 把开屏也压进贴底，正是这条前提空转，`store.welcomeCenter` 那个可变标志也随之回来又被删——现在由"转录里只剩一块"推出，不留第二份真相）。身份三件套（模型 · 审批 · 模式）由常驻状态栏独占、卡片**绝不复读**；键位提示一律不进卡片（归底部快捷键条，见上），占位行只剩 `描述任务…`，且光标独占一格、绝不用反色盖住占位文本的汉字，光标格与占位文本之间再留一格气口（批12：块紧贴着字，真机读作"光标吃掉了第一个汉字"）。模式选择器是框内单行分段控件 `[ 普通 ] │ [ PTC  ] │ [ 混合 ] 将切到 PTC`：**三格等宽**（`普通`/`混合` 4 列、`PTC` 3 列，补齐到同一格宽才排成网格——长短不齐的括号读起来像手抖，不像控件），反色胶囊=光标、有色标签=已生效、尾注=「将切到 X / 当前模式」，三个通道分开写才不会"选择器指着 A、状态栏写着 B"（已生效原先印 `•`，批11 改上色，原因见上文反色字形规则）；卡片宽按**光标位在架的三种形态与塌缩形态里最宽的那个**量，选择器收起时右边框不横跳（居中时那一跳会整块左右挪）；整块卡片由 `ModeSelector` 拥有，↑↓ 原位重写、塌缩只是换回静态形态（不跳宽、不留交互残骸）。**状态栏模式字段只报当前档**——原先三档并排的 pristine 芯片与卡片选择器重复且一动就互相矛盾（一个控件一件事），`StatusView.pristine` 随之删除。
-
-**工具行单行预算**：工具行（运行/完成/组行）拿终端列数渲染，参数摘要吸收剩余宽度——但预算必须扣掉本行自带的**内容列内衬**（`toolBudget() = cols-1-CONTENT_COL(4)`，wrapBlock 按同一预算折行，行构建器裁进同一预算才不会把 ` · 行数 · 耗时` 尾巴顶成孤儿续行）——` · 行数 · 耗时` 尾巴恒留本行，不再折出孤儿续行。**工具块不再吃挂行缩进**：`TOOL_GUTTER` 现在是恒等 gutter（`{first:'',rest:''}`）——每行自带标记列内衬，再叠一层挂行会把导轨行推到第 8 列（旧版就是这个双缩进，`✓` 在第 4 列、`▌` 在第 8 列）。截断按**显示列数**而非字符数（CJK 计 2 列）：命令在参数边界切（`cd "…" && ls …`），路径切头保文件名（`…\manifest.json`）。连续只读调用（read/list/search）聚合为一行**动词短语组**（`  ✓ 读取 2 个文件, 搜索 1 个模式 ▸ · 0.5s`，Grok verb_group：成员按工具名分桶、任何成员在跑时整组翻「正在」时态、失败以红色 ` · N 失败` 后缀并入同行而非拆行、成员摘要挂点击 detail）。**状态导轨**（Grok accent_bar）：多行生存面（运行中 bash 尾行、三态折叠正文、失败首错行）以 `  ▌ ` 开头（与 `✓`/`✗`/`❯` 同处标记列），**导轨色即状态**——running 亮青/暗按**全局 tick 的 `railPhase` 行波**（Grok `sin²(tick*0.15 + row/32·2π)`，ANSI-16 混不了渐变、只取波形上下半；行偏移让多行面"亮段自上而下流过"，而不是各行按自己的 elapsed 反相乱闪）、完成绿、失败红常驻；单行 ✓/✗ 已有色彩承载、collapsed 行不挂导轨。审批弹窗头部与 diff 预览同样按列裁剪，弹窗不折行。
-
-累计 token 与分段明细在 `/session`，模态能力标在 `/model` 与 `/session`；`/session` 另报缓存浪费审计（missTokens，噪声底 1024 tok）并可作会话切换器（↑↓ 选择或 1-9 快选、Enter 恢复上下文并切回该会话创建时的工作区）。
+**旧 TUI 的逐值设计记录**（度量、节奏与 Grok 源证据）已归档 [docs/MILESTONES.md](./docs/MILESTONES.md) 的 M10 节——它们是批4 重写的移植清单，描述的实现本体（`tui-view`/`cli/tui`/旧 `tui-mode.ts`）已不存在；同期决策背景在 `docs/tui-design.md`。
 
 ### 数据落盘（codex 式，零工作区写入）
 ```
@@ -251,28 +233,29 @@ alternate screen + 行级 diff 重绘（React-free）；`/` 命令面板（↑�
 
 凡改变以下任一面的可观察行为或签名，即为公共 API 变更；未列入清单的内部实现（模块私有函数、错误文案、事件内部字段等）不构成版本约束。
 
-1. **CLI 用法与参数**：`nova` / `nova exec` 的全部 flags 与形态（`--approval` / `--repl` / `--resume` / `--json` / `-v` / `-h` 等）、`--json` 事件流 schema、进程退出码。
+1. **CLI 用法与参数**：`nova` / `nova exec` / `nova --web` / `nova qqbot` 的全部 flags 与形态（`--approval` / `--repl` / `--resume` / `--json` / `-v` / `-h` 等）、`--json` 事件流 schema、进程退出码。
 2. **配置 schema**：`~/.nova/config.json` 的字段名、类型与语义（§3 清单，含 `{env:NAME}` 引用形式）。
 3. **JSONL 会话日志 v2 格式与投影语义**：事件类型（`message` / `compaction/*` / `todo/write` / `approval` / `code-dispatch`）、字段结构、`Session.deriveMessages()` 投影规则、压缩语义。
-4. **插件 API**：`PluginContext`（`registerTool` / `registerCommand` / `registerHook`）、`ToolDefinition`、`ToolExecuteContext`、钩子签名（`beforeLLMCall` / `beforeToolCall` / `afterToolResult`）、审批档位与 `permission` 声明。
-5. **各 `@nova-agent/*` 包公开导出**：`core`（agent 循环 / 消息模型 / 会话）、`ai`（客户端）、`plugins`（容器 / 审批 / 内置工具）、`tui`（终端原语）、`tui-view`（纯视图层）、`cli`（config / 上下文装配 / runner）的公开导出类型与函数。
+4. **插件 API**：`PluginContext`（`registerTool` / `registerCommand` / `registerHook`）、`ToolDefinition`（含 `presentCall` / `presentResult` / `preview`）、`ToolExecuteContext`、钩子签名（`beforeLLMCall` / `beforeToolCall` / `afterToolResult`）、审批档位与 `permission` 声明。
+5. **内核协议（surface 契约）**：`AgentSession` 句柄的方法集、`KernelEvent` 的变体与字段、`AgentSurface` 接口、`createAgentKernel` 的装配签名——凡实现一个 surface（官方或第三方）所依赖的都是公共面。
+6. **各 `@nova-agent/*` 包公开导出**：`core`（agent 循环 / 消息模型 / 会话 / **kernel 句柄与事件协议** / 呈现意图词汇表）、`ai`（客户端）、`plugins`（容器 / 审批 / 内置工具 / 内核装配）、`tui`（终端原语）、`tui-app`（TUI surface）、`web`（WebUI surface 后端与帧协议）、`qqbot`（渠道插件示范）、`cli`（config / surface 装配 / command-runner）的公开导出类型与函数。
 
 ### 升位映射
 
 | 变更类别 | 判定 | 升位 |
 | --- | --- | --- |
-| 不兼容 | 破坏以上任一 API 面的行为或签名（如日志 v2→v3、插件钩子签名变更） | 记入 RELEASE-NOTES 后升**次版本**（0.y.z 期）/ 主版本（1.0.0 后） |
+| 不兼容 | 破坏以上任一 API 面的行为或签名（如日志 v2→v3、插件钩子签名变更） | 升**次版本**（0.y.z 期）/ 主版本（1.0.0 后），并在 changeset 正文里点名迁移方式（changesets 生成的包 `CHANGELOG.md` 即发行说明） |
 | 向后兼容新增 | 新增 flag / 字段 / 工具 / 导出，既有行为不变 | 升**次版本** |
 | 仅修正 | 只修复错误结果，公共 API 面不变 | 升**修订号**（x>0 时） |
 
 ### 发布流程（changesets）
 
-- monorepo **fixed 锁步组**：6 个 `@nova-agent/*` 工作区包（`core`/`ai`/`plugins`/`tui`/`tui-view`/`cli`）在 changesets fixed 组内恒一致、共享单一版本号（`privatePackages: { version: true, tag: true }`）。根包 `nova-agent` 是 private 且非 workspace 成员（changesets 无法对齐升版），由 `scripts/sync-root-version.mjs` 在 release 流程中读取 `packages/cli/package.json` 同步到同版本——最终 7 个 `package.json` 版本一致。
-- 每项面向用户改动提交一份 changeset（`.changeset/*.md`，标注 minor / patch）；仓库根 `package.json` 只放 `"private": true`。
+- monorepo **fixed 锁步组**：7 个 `@nova-agent/*` 工作区包（`core`/`ai`/`plugins`/`tui`/`tui-app`/`web`/`cli`）在 changesets fixed 组内恒一致、共享单一版本号（`privatePackages: { version: true, tag: true }`）；`qqbot` 刻意留在组外（第三方插件示范，按自身改动独立升位）。根包 `nova-agent` 是 private 且非 workspace 成员（changesets 无法对齐升版），由 `scripts/sync-root-version.mjs` 在 release 流程中读取 `packages/cli/package.json` 同步到同版本——最终锁步组 7 个 + 根包 1 个共 8 个 `package.json` 版本一致。
+- 每项面向用户改动提交一份 changeset（`.changeset/*.md`，标注 minor / patch）；仓库根 `package.json` 只放 `"private": true`。**变更集在发行前可合并**：被后续重写取代的条目（如 M11 批1 删除旧 TUI 后，M10 期间按旧包写的 TUI 条目）应并入取代它的那一条，而不是留成指向不存在包的悬空记录——`changeset version` 遇到不在 workspace 的包名会直接失败。
 - 发行：`pnpm changeset`（写变更集）→ `pnpm changeset version`（统一升版 + 生成 CHANGELOG）→ 提交 → `changeset tag`（本地打附注 tag）→ `pnpm release` 一条龙。
 - **已发行版本内容不可变**（规范第 3 条）：绝不 amend / 移动既有 tag；一切修改以新版本向前发行。
 - tag 形式：附注标签 `vX.Y.Z`——v 前缀是 tag 名，版本号本体为无前缀的 `X.Y.Z`（规范 FAQ）。
 
 ### 0.y.z → 1.0.0 门槛
 
-本项目当前处于 **0.y.z 初始开发阶段**（规范 FAQ）：基线 `0.1.0`，每次发行递增次版本号。升至 **1.0.0** 的判据：软件用于正式生产环境、且上述公共 API 五面稳定（变更频率从"随时可能"降至"仅经慎重评估才破坏"）。`0.y.z` 期的每次发行均视为完整发行——遵守不可变 tag 规则、有 changeset 记录、可回溯。
+本项目当前处于 **0.y.z 初始开发阶段**（规范 FAQ）：基线 `0.1.0`，每次发行递增次版本号。升至 **1.0.0** 的判据：软件用于正式生产环境、且上述公共 API 六面稳定（变更频率从"随时可能"降至"仅经慎重评估才破坏"）。`0.y.z` 期的每次发行均视为完整发行——遵守不可变 tag 规则、有 changeset 记录、可回溯。

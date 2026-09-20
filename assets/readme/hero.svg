@@ -17,7 +17,7 @@
   <!-- 左侧文字 -->
   <text x="72" y="236" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="54" font-weight="700" fill="#1b1d21">NovaAgent</text>
   <text x="72" y="274" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="17" fill="#5f6772">自研、插件化、轻量化的跨平台本地智能体框架</text>
-  <text x="72" y="301" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="14" fill="#8a919c">在当前工作目录运行的 agent CLI / TUI · 一切皆插件 · 工作区零写入</text>
+  <text x="72" y="301" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="14" fill="#8a919c">在当前工作目录运行的 agent CLI / TUI / WebUI · 内核 + 可插拔 Surface · 工作区零写入</text>
 
   <!-- 技术 chips -->
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" fill="#3f4650">
@@ -30,7 +30,7 @@
     <rect x="72"  y="376" width="140" height="34" rx="17" fill="#f4f6f8" stroke="#e3e7eb"/>
     <text x="142" y="398" text-anchor="middle">Linux · Windows</text>
     <rect x="224" y="376" width="84"  height="34" rx="17" fill="#f4f6f8" stroke="#e3e7eb"/>
-    <text x="266" y="398" text-anchor="middle">v0.2.0</text>
+    <text x="266" y="398" text-anchor="middle">v0.4.0</text>
   </g>
 
   <!-- 终端窗口示意 -->
@@ -39,15 +39,15 @@
   <circle cx="624" cy="85" r="5.5" fill="#ff5f56"/>
   <circle cx="643" cy="85" r="5.5" fill="#ffbd2e"/>
   <circle cx="662" cy="85" r="5.5" fill="#27c93f"/>
-  <text x="684" y="90" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5" fill="#8b93a1">nova — TUI</text>
+  <text x="684" y="90" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5" fill="#8b93a1">nova — TUI（tui-app surface）</text>
   <line x1="601" y1="105" x2="1211" y2="105" stroke="#2a2e36"/>
 
   <g font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="15">
     <text x="628" y="140" fill="#8b93a1">$ <tspan fill="#d7dbe0">nova · ~/code/app</tspan></text>
     <text x="628" y="176" fill="#e8c07a">› 数一下 packages 里有多少个测试文件</text>
-    <text x="628" y="216" fill="#b6bec9">  ▸ search_files  name_glob:**/*.test.ts · 46 hits</text>
-    <text x="628" y="240" fill="#b6bec9">  ▸ run_code      按包分组计数 · ✓ 1.4s</text>
-    <text x="628" y="280" fill="#58c98b">✔ 48 个测试文件 · 分布在 7 个包</text>
+    <text x="628" y="216" fill="#b6bec9">  ◈ 读取 2 个文件, 搜索 1 个模式 ▸ · 1.4s</text>
+    <text x="628" y="240" fill="#b6bec9">  ▌ hello.test.ts · 3 行      <tspan fill="#3a3f48">（点击展开三态折叠）</tspan></text>
+    <text x="628" y="280" fill="#58c98b">• 64 个测试文件 · 分布在 8 个包</text>
   </g>
 
   <!-- 单行状态栏示意 -->
@@ -56,7 +56,7 @@
   <g font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5">
     <text x="624" y="384" fill="#5fb3a1">ctx 18k/200k · 9%</text>
     <text x="784" y="384" fill="#3a3f48">│</text>
-    <text x="806" y="384" fill="#9aa4b2">model · read-only</text>
+    <text x="806" y="384" fill="#9aa4b2">model · 普通 · read-only</text>
     <text x="950" y="384" fill="#3a3f48">│</text>
     <text x="1030" y="384" fill="#58c98b">tps 41 · cache 97%</text>
   </g>

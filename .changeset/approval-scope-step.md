@@ -1,6 +1,5 @@
 ---
 '@nova-agent/plugins': minor
-'@nova-agent/tui-view': minor
 '@nova-agent/cli': patch
 ---
 
