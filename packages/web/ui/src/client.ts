@@ -6,6 +6,7 @@
  * next open catches it up.
  */
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { frameAction } from './frame-actions.js';
 import { reduce, initialState, type Action } from './state.js';
 import type { ClientFrame, ServerFrame } from './types.js';
 
@@ -34,6 +35,7 @@ export function useAgent(): AgentClient {
       ws.onopen = () => {
         retryMs = 500;
         setConnection('open');
+        dispatch({ type: 'connection', connected: true });
       };
       ws.onmessage = (msg: MessageEvent<string>) => {
         let frame: ServerFrame;
@@ -46,6 +48,9 @@ export function useAgent(): AgentClient {
       };
       ws.onclose = () => {
         setConnection('closed');
+        // The reducer's `connected` gates every control: a dropped socket must
+        // dark them all, not leave buttons that silently do nothing.
+        dispatch({ type: 'connection', connected: false });
         if (!closedByUs) {
           timer = setTimeout(open, retryMs);
           retryMs = Math.min(retryMs * 2, 5000);
@@ -62,37 +67,21 @@ export function useAgent(): AgentClient {
 
   const send = useCallback((frame: ClientFrame): void => {
     const ws = socketRef.current;
-    if (ws !== undefined && ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame));
+    if (ws === undefined || ws.readyState !== ws.OPEN) return;
+    ws.send(JSON.stringify(frame));
+    // Request-side bookkeeping (the pagination in-flight flag) belongs to the
+    // same reducer as the replies — one owner for client state.
+    dispatch({ type: 'sent', frame });
   }, []);
 
   return { state, dispatch, send, connection };
 }
 
+/**
+ * Route one inbound frame through the pure table (`frame-actions.ts`), so the
+ * socket carries no routing of its own.
+ */
 function handleFrame(frame: ServerFrame, dispatch: (a: Action) => void): void {
-  switch (frame.type) {
-    case 'ready':
-      dispatch({ type: 'ready', info: frame.info });
-      break;
-    case 'event':
-      // The host resolves render intent server-side; the reducer only carries it.
-      dispatch({
-        type: 'event',
-        event: frame.event,
-        ...(frame.view !== undefined ? { view: frame.view } : {}),
-        ...(frame.resultView !== undefined ? { resultView: frame.resultView } : {}),
-      });
-      break;
-    case 'state':
-      dispatch({ type: 'state', approvalMode: frame.approvalMode, codeMode: frame.codeMode });
-      break;
-    case 'sessions':
-      dispatch({ type: 'sessions', items: frame.items });
-      break;
-    case 'history_earlier':
-      dispatch({ type: 'history_earlier', blocks: frame.blocks, total: frame.total });
-      break;
-    case 'error':
-      dispatch({ type: 'error', message: frame.message });
-      break;
-  }
+  const action = frameAction(frame);
+  if (action !== null) dispatch(action);
 }

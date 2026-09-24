@@ -1,14 +1,16 @@
 /**
  * The tool card's decision logic, as a pure function (M11 批3): view + result
- * in, a render model out. `ToolCard.tsx` is then a dumb projection — all the
+ * in, a render model out. `tool/ToolRow.tsx` is then a dumb projection — all the
  * "which card, which headline, did it fail, what's the footnote" reasoning
  * lives here, where it can be tested without a DOM.
  *
  * This is the half of the presentation contract that belongs to the surface:
  * the host resolves *what the call means* (`view.card`), and this file decides
- * *how to say it* — Chinese labels, verdict glyphs, footnote wording. A card
- * this file has never seen still renders, because every branch either matches
- * a known card or falls through to the card's own fields.
+ * *how to say it* — Chinese labels, verdict glyphs, footnote wording. A call the
+ * host does not recognize still renders: `core/presentation.ts` resolves every
+ * tool to one of the six cards (undeclared tools fall back to `generic`), and
+ * the switches below cover that closed union, so a seventh card fails typecheck
+ * here instead of rendering a blank row.
  */
 import type { FileDiff, ToolCallView, ToolResultView } from './types.js';
 

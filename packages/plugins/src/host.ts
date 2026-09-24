@@ -1,186 +1,202 @@
-import type { AgentHooks, ToolCallVerdict, ToolDefinition } from '@nova-agent/core';
-import { validateToolCallVerdict } from '@nova-agent/core';
-import { PermissionService } from './permission.js';
-import type {
-  CommandDefinition,
-  HookEvent,
-  HookMap,
-  PermissionKind,
-  Plugin,
-  PluginContext,
-  ToolOptions,
-} from './types.js';
-
-export interface ToolEntry {
-  plugin: string;
-  tool: ToolDefinition;
-  permission: PermissionKind;
-}
-
-export interface CommandEntry {
-  plugin: string;
-  command: CommandDefinition;
-}
-
 /**
- * The plugin container: activation, registries, and hook composition.
- * Everything the agent can do (tools, commands, hooks) is registered through
- * PluginContext — built-in capabilities are just first-party plugins.
+ * `PluginHost` — the legacy plugin vocabulary, implemented on the container.
+ *
+ * Historically this class *was* the container: it owned the registries, the
+ * hook map and the composition. Now the container does (`Context` / fibers /
+ * effects / typed events) and this file is the compatibility facade, so the
+ * public plugin API — `PluginContext`, `registerTool`, `registerCommand`,
+ * `registerHook` — keeps working verbatim while every registration a plugin
+ * makes becomes a container effect. That last part is what makes teardown
+ * correct by construction instead of by discipline.
+ *
+ * One behavioural note, and it is deliberate: legacy hooks are wrapped into the
+ * new chains in *reverse registration order*, because a waterfall applies the
+ * outermost listener last. That reproduces the historical "each hook sees what
+ * the previous one produced" composition exactly, while new-style plugins use
+ * `next()` directly.
  */
+import {
+  afterToolResult as afterToolResultEvent,
+  beforeLlmCall as beforeLlmCallEvent,
+  beforeToolCall as beforeToolCallEvent,
+  commands as commandsKey,
+  tools as toolsKey,
+  Context,
+  type AgentHooks,
+  type CommandEntry,
+  type Fiber,
+  type Plugin as CorePlugin,
+  type ToolDefinition,
+  type ToolEntry,
+  type ToolPermissionKind,
+} from '@nova-agent/core';
+import { composeHooks } from './hooks.js';
+import { toolboxPlugin } from './toolbox.js';
+import type { HookEvent, HookMap, Plugin, PluginContext, ToolOptions } from './types.js';
+
+/** Legacy hook name → the container event that replaces it. */
+const HOOK_EVENTS = {
+  beforeLLMCall: beforeLlmCallEvent,
+  beforeToolCall: beforeToolCallEvent,
+  afterToolResult: afterToolResultEvent,
+} as const;
+
 export class PluginHost {
-  private readonly plugins: Plugin[] = [];
-  private readonly hooks = new Map<HookEvent, Array<HookMap[HookEvent]>>();
-  private activatedCount = 0;
-  readonly toolEntries: ToolEntry[] = [];
-  readonly commandEntries: CommandEntry[] = [];
-  /**
-   * Cached snapshot of {@link toolEntries} mapped to ToolDefinitions. Tools
-   * are registered at activation and rarely change afterwards, so callers
-   * (e.g. the agent loop's `host.tools()`) re-request the same list every
-   * turn — handing back a stable reference lets downstream caches (client
-   * wire-serialization) key on array identity instead of re-serializing the
-   * same content every request. Invalidated by registerTool.
-   */
-  private toolsCache: ToolDefinition[] | undefined;
+  /** The container this host speaks for — the kernel shares this root. */
+  readonly context: Context;
+  private readonly pending: Plugin[] = [];
+  private readonly fibers = new Set<Fiber>();
 
-  constructor(readonly rootDir: string) {}
+  constructor(
+    readonly rootDir: string,
+    context?: Context,
+  ) {
+    this.context = context ?? Context.createRoot();
+    // The registry every plugin registers into — one per host, unloaded with
+    // the host, so the next host on the same container can provide it again.
+    const toolbox = this.context.plugin(toolboxPlugin, {}, 'toolbox');
+    this.fibers.add(toolbox);
+    if (toolbox.state === 'failed') throw toolbox.error;
+  }
 
+  /** Queue a plugin; nothing runs until `activate()`. */
   use(plugin: Plugin): this {
-    this.plugins.push(plugin);
+    this.pending.push(plugin);
     return this;
   }
 
   /**
-   * Activates only plugins `use`d since the last call, so runners can attach
-   * lazily-loaded plugins after the initial boot activation without
-   * re-running the built-ins.
+   * Load every queued plugin, each as its own fiber. A plugin that throws
+   * rejects here with its own error and leaves nothing behind — the fiber
+   * unwinds whatever it had registered before the failure.
    */
   async activate(): Promise<void> {
-    for (const plugin of this.plugins.slice(this.activatedCount)) {
-      await plugin.activate(this.contextFor(plugin));
+    for (const plugin of this.pending.splice(0)) {
+      const fiber = this.context.plugin(adapter(plugin, this.rootDir));
+      this.fibers.add(fiber);
+      await fiber.ready;
     }
-    this.activatedCount = this.plugins.length;
   }
 
-  private contextFor(plugin: Plugin): PluginContext {
-    return {
-      pluginName: plugin.name,
-      rootDir: this.rootDir,
-      registerTool: (def: ToolDefinition, opts?: ToolOptions) => {
-        if (this.toolEntries.some((entry) => entry.tool.name === def.name)) {
-          throw new Error(`duplicate tool name "${def.name}" (plugin "${plugin.name}")`);
-        }
-        this.toolEntries.push({ plugin: plugin.name, tool: def, permission: opts?.permission ?? 'read' });
-        this.toolsCache = undefined;
-      },
-      registerCommand: (def: CommandDefinition) => {
-        if (this.commandEntries.some((entry) => entry.command.name === def.name)) {
-          throw new Error(`duplicate command "/${def.name}" (plugin "${plugin.name}")`);
-        }
-        this.commandEntries.push({ plugin: plugin.name, command: def });
-      },
-      registerHook: <K extends HookEvent>(event: K, fn: HookMap[K]) => {
-        const list = this.hooks.get(event) ?? [];
-        list.push(fn as HookMap[HookEvent]);
-        this.hooks.set(event, list);
-      },
-      tools: () => this.tools,
-    };
+  /** Unload every plugin this host loaded, newest first. */
+  async dispose(): Promise<void> {
+    this.pending.length = 0;
+    for (const fiber of [...this.fibers].reverse()) await fiber.dispose();
+    this.fibers.clear();
+  }
+
+  /**
+   * Unload the plugins but keep the registry. A workspace switch or a PTC-mode
+   * change re-rosters the same registry: the tool service stays provided (so
+   * consumers and the approval gate never see it vanish and reappear) while
+   * every tool the old roster registered is really gone.
+   */
+  async reset(): Promise<void> {
+    const all = [...this.fibers];
+    // The toolbox was loaded first, and it is the one nothing re-creates.
+    const [toolbox] = all;
+    for (const fiber of all.reverse()) {
+      if (fiber !== toolbox) await fiber.dispose();
+    }
+    this.pending.length = 0;
+    this.fibers.clear();
+    if (toolbox !== undefined) this.fibers.add(toolbox);
   }
 
   get tools(): ToolDefinition[] {
-    if (this.toolsCache === undefined) {
-      this.toolsCache = this.toolEntries.map((entry) => entry.tool);
-    }
-    return this.toolsCache;
+    // Deliberately the stable snapshot: the loop asks every turn and the ai
+    // client keys its wire cache on array identity.
+    return this.context.must(toolsKey).all() as ToolDefinition[];
+  }
+
+  get toolEntries(): readonly ToolEntry[] {
+    return this.context.must(toolsKey).entries();
+  }
+
+  get commandEntries(): readonly CommandEntry[] {
+    return this.context.must(commandsKey).entries();
+  }
+
+  permissionFor(toolName: string, args?: Record<string, unknown>): Promise<ToolPermissionKind | undefined> {
+    return this.context.must(toolsKey).permissionFor(toolName, args);
   }
 
   /**
-   * Effective permission kind for one call: the tool's `permissionFor(args)`
-   * classifier wins when present (e.g. fs reads escalate out-of-workspace
-   * paths to `read-external`), otherwise the static registered kind.
-   * Classifiers may be async (sandbox-aware classification resolves real
-   * paths before deciding).
+   * Compose the live chains into the `AgentHooks` the loop consumes. The
+   * approval gate is not passed in any more: it is a plugin
+   * (`permissionGatePlugin`) loaded by the roster, so it reloads with its
+   * providers instead of being re-wired by hand on every assembly.
    */
-  async permissionFor(toolName: string, args?: Record<string, unknown>): Promise<PermissionKind | undefined> {
-    const entry = this.toolEntries.find((item) => item.tool.name === toolName);
-    if (entry === undefined) return undefined;
-    if (args !== undefined && entry.tool.permissionFor !== undefined) {
-      try {
-        return await entry.tool.permissionFor(args);
-      } catch {
-        // Fail closed: a broken classifier must not fall back to the static
-        // kind (often `read`), which would auto-allow under read-only. The
-        // conservative `execute` always gates.
-        return 'execute';
-      }
-    }
-    return entry.permission;
+  agentHooks(): AgentHooks {
+    return composeHooks(this.context);
   }
 
-  /**
-   * Compose all plugin hooks (plus the optional permission gate) into the
-   * single AgentHooks implementation runAgent consumes.
-   */
-  agentHooks(permission?: PermissionService): AgentHooks {
-    return {
-      beforeLLMCall: async (req) => {
-        const before =
-          req.tools === undefined ? undefined : new Set(req.tools.map((tool) => tool.name));
-        for (const fn of this.hooks.get('beforeLLMCall') ?? []) {
-          req = await (fn as HookMap['beforeLLMCall'])(req);
-        }
-        // Prefix-cache guard: the tool array's wire order is dictionary-sorted
-        // (ai/client) and part of the cached prefix — a hook that swaps the
-        // tool SET would silently invalidate the cache AND change what the
-        // model may call without any approval record. Compared by SET (not by
-        // array identity) because compact/runner plumbing legitimately clones
-        // the array while keeping the set intact. Hooks may narrow the set
-        // (PTC projection does) or leave it alone, never widen it.
-        if (before !== undefined && req.tools !== undefined) {
-          const added = req.tools.filter((tool) => !before.has(tool.name));
-          if (added.length > 0) {
-            throw new Error(
-              `beforeLLMCall hook added tools without approval: ${added.map((tool) => tool.name).join(', ')}`,
-            );
-          }
-        }
-        return req;
-      },
-      beforeToolCall: async (call) => {
-        if (permission) {
-          const kind = await this.permissionFor(call.name, call.args);
-          if (kind) {
-            const decision = await permission.decideDetailed(call.name, kind, call);
-            if (decision !== 'allow') {
-              return { action: 'deny', reason: decision.reason !== undefined ? `by user: ${decision.reason}` : 'by user' };
-            }
-          }
-        }
-        let effective: ToolCallVerdict = { action: 'allow' };
-        for (const fn of this.hooks.get('beforeToolCall') ?? []) {
-          // Trust seam: a `rewrite` verdict replaces the call args AFTER the
-          // permission gate — the rewritten call does not pass approval again.
-          // Acceptable today because no built-in plugin rewrites; external
-          // hooks that do own the consequence (they run as the operator).
-          // Every verdict is structurally validated (fail-closed): a malformed
-          // verdict denies the call instead of executing on a guess.
-          const verdict = await (fn as HookMap['beforeToolCall'])(call);
-          const malformed = validateToolCallVerdict(verdict);
-          if (malformed !== undefined) {
-            return { action: 'deny', reason: `malformed hook verdict (${malformed})` };
-          }
-          if (verdict.action === 'deny') return verdict;
-          if (verdict.action === 'rewrite') effective = verdict;
-        }
-        return effective;
-      },
-      afterToolResult: async (call, result) => {
-        for (const fn of this.hooks.get('afterToolResult') ?? []) {
-          result = await (fn as HookMap['afterToolResult'])(call, result);
-        }
-        return result;
-      },
-    };
+  /** What is actually loaded — name, state, declared dependencies. */
+  roster(): ReturnType<Context['roster']> {
+    return this.context.roster();
   }
+}
+
+/** A legacy plugin as a container plugin: one fiber, effects, real teardown. */
+function adapter(plugin: Plugin, rootDir: string): CorePlugin {
+  const hooks: Record<HookEvent, Array<HookMap[HookEvent]>> = {
+    beforeLLMCall: [],
+    beforeToolCall: [],
+    afterToolResult: [],
+  };
+  return {
+    name: plugin.name,
+    inject: [toolsKey],
+    apply: (ctx) => {
+      plugin.activate(legacyContext(ctx, plugin, rootDir, hooks));
+    },
+  };
+}
+
+/**
+ * The legacy `PluginContext` over a container context. Hooks are registered as
+ * ONE listener per event per plugin (not one per hook) so the historical
+ * composition order inside a plugin is preserved verbatim.
+ */
+function legacyContext(
+  ctx: Context,
+  plugin: Plugin,
+  rootDir: string,
+  hooks: Record<HookEvent, Array<HookMap[HookEvent]>>,
+): PluginContext {
+  const registry = ctx.must(toolsKey);
+  const install = (event: HookEvent): void => {
+    ctx.on(
+      HOOK_EVENTS[event] as never,
+      (async (...raw: unknown[]): Promise<unknown> => {
+        const next = raw[raw.length - 1] as (() => Promise<unknown>) | undefined;
+        // Delegate first, then apply this plugin's hooks in their own order:
+        // the chain's final answer is this plugin's, and what it consumed was
+        // everything downstream.
+        const args = typeof next === 'function' ? raw.slice(0, -1) : raw;
+        let carried = typeof next === 'function' ? await next() : undefined;
+        for (const fn of hooks[event]) {
+          carried = await (fn as unknown as (...a: unknown[]) => Promise<unknown>)(...args, carried);
+        }
+        return carried;
+      }) as never,
+      // Reverse registration order: a waterfall applies the outermost last.
+      { prepend: true },
+    );
+  };
+  return {
+    pluginName: plugin.name,
+    rootDir,
+    registerTool: (def: ToolDefinition, opts?: ToolOptions) => {
+      ctx.effect(() => registry.register(def, { ...opts, owner: plugin.name }), `tool(${def.name})`);
+    },
+    registerCommand: (def) => {
+      ctx.effect(() => ctx.must(commandsKey).register(def), `command(/${def.name})`);
+    },
+    registerHook: <K extends HookEvent>(event: K, fn: HookMap[K]) => {
+      hooks[event].push(fn as HookMap[HookEvent]);
+      if (hooks[event].length === 1) install(event);
+    },
+    tools: () => registry.all() as ToolDefinition[],
+  };
 }

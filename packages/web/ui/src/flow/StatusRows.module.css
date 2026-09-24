@@ -1,0 +1,82 @@
+/* Live status rows (background job / nested subagent).
+ * Values carried over from the pre-port transcript sheet: the same 24px row
+ * family as a tool row, with the figures in the tail. */
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding-left: 2px;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The job's own handle: it is not the tool id and not prose. */
+.id {
+  flex: none;
+  font: var(--dsw-font-markdown-code);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dsw-font-markdown-code-block-small);
+  color: var(--dsw-alias-label-caption);
+}
+
+.meta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.row[data-state='failed'] .meta {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.progress {
+  flex-basis: 100%;
+  order: 9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  font: var(--dsw-font-markdown-code-block-small);
+  color: var(--dsw-alias-label-caption);
+}
+
+.stop {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  /* The upstream job-row stop control (`ui-jobs/JobListAction.module.css`)
+   * writes this border explicitly; there is no `--dsw-hairline` token upstream
+   * or here, so the value is spelled the way the other twelve hairline sites
+   * in this tree spell it. */
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.stop:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.stop:disabled {
+  opacity: 0.4;
+  cursor: default;
+}

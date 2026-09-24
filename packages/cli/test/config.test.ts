@@ -87,7 +87,7 @@ describe('loadConfig', () => {
     await expect(loadConfig(bad)).rejects.toThrow(/mode/);
   });
 
-  it('accepts provider.contextWindow (TUI bar denominator) and rejects junk', async () => {
+  it('accepts provider.contextWindow (context gauge denominator) and rejects junk', async () => {
     const home = await withConfig(
       JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-1', model: 'm', contextWindow: 200000 } }),
     );

@@ -6,7 +6,7 @@
  * seam. All three now defer here.
  *
  * Budget is in BYTES (what a wire/log size cap measures), not display cells;
- * width-aware clipping is a different concern and lives in tui-view.
+ * width-aware clipping is a different concern and lives in the surface that renders it.
  */
 
 const encoder = new TextEncoder();

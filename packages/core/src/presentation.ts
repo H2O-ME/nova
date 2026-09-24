@@ -1,6 +1,6 @@
 /**
  * Provider-neutral **presentation vocabulary**: the shape of what a tool call
- * means, so every surface (TUI, web, headless JSON, QQ) renders the same call
+ * means, so every surface (browser UI, REPL, headless JSON, QQ) renders the same call
  * from the same structured intent instead of special-casing tool names.
  *
  * This file owns *shape and semantics* only — no copy (no Chinese labels, no

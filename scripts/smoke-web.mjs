@@ -63,10 +63,11 @@ try {
   const asset = await fetch(`${base}${script}`, { headers: { cookie } });
   const js = await asset.text();
   check('前端 bundle 可取', asset.status === 200 && js.length > 10000, `${script} ${js.length}B`);
-  // Batch-3 markers: the card footnotes only exist in the new card-view module,
-  // and the sessions/pendingApprovals wire fields only exist in the new protocol.
-  // Batch-6 markers: the detail panel, the stats bar and the pagination cursor
-  // are strings no earlier bundle could contain.
+  // Batch-3 markers: the card footnotes only exist in the card-view module, and
+  // the sessions/pendingApprovals wire fields only exist in the protocol.
+  // Batch-6 markers: the detail panel, the stats panel and the pagination cursor.
+  // Batch-13 markers: the header corner's expand control and the model seat's
+  // own words — strings no earlier bundle could contain.
   const markers = [
     '退出码',
     '结果被截断',
@@ -74,14 +75,15 @@ try {
     '搜索文件名',
     'pendingApprovals',
     'list_sessions',
-    '关闭详情',
     '加载更早',
     '缓存命中',
-    '首 token 平均',
+    '首 token',
     'load_earlier',
+    '展开详情板',
+    '正在读取站点模型目录',
   ];
   const missing = markers.filter((m) => !js.includes(m));
-  check('bundle 携带六卡文案 + 批6 详情/统计/分页', missing.length === 0, missing.length > 0 ? `缺少 ${missing.join(', ')}` : markers.length + ' 个标记齐备');
+  check('bundle 携带六卡文案 + 批6/批13 详情/统计/分页/座位', missing.length === 0, missing.length > 0 ? `缺少 ${missing.join(', ')}` : markers.length + ' 个标记齐备');
 
   // Traversal is still refused on the static lane.
   const traversal = await fetch(`${base}/assets/..%2f..%2fpackage.json`, { headers: { cookie }, redirect: 'manual' });
@@ -100,6 +102,16 @@ try {
     check('ready.info 携带分页游标',
       typeof info.historyTotal === 'number' && info.historyTotal >= info.history.length,
       `history=${info.history.length}/${info.historyTotal}`);
+    // Background jobs are NOT in the log: a reattached surface rebuilds its
+    // live job rows from this snapshot or loses them with the old socket.
+    check('ready.info 携带后台任务快照',
+      Array.isArray(info.jobs),
+      `jobs=${info.jobs?.length ?? 'missing'}`);
+    // Batch 13: the `/` menu is fed from the frame, so the kernel's own command
+    // is in it without the browser knowing what a command is.
+    check('ready.info 携带命令目录',
+      Array.isArray(info.commands) && info.commands.some((c) => c.name === 'compact' && typeof c.description === 'string'),
+      `commands=[${(info.commands ?? []).map((c) => c.name).join(', ')}]`);
   }
 
   // A real turn that must call a tool: batch 3's claim is that the *host*
@@ -143,6 +155,14 @@ try {
   check('新建会话 → ready 且转录清空',
     fresh?.type === 'ready' && fresh.info.history.length === 0 && fresh.info.pendingApprovals.length === 0,
     `type=${fresh?.type ?? '无'} history=${fresh?.info?.history?.length ?? '?'}`);
+
+  // Batch 13: a command name the registry does not know still leaves a row —
+  // the frame is answered on the event stream, not with a socket error.
+  const cmdFrames = await wsSend(cookie, { type: 'command', name: 'teleport', args: '' }, 2);
+  const cmdEvent = cmdFrames.flatMap((f) => (f.type === 'event' ? [f.event] : [])).find((e) => e.type === 'command');
+  check('命令帧 → command 事件行（未知名字也留痕）',
+    cmdEvent !== undefined && cmdEvent.phase === 'done' && String(cmdEvent.text ?? '').includes('未知命令'),
+    cmdEvent === undefined ? '无 command 帧' : `${cmdEvent.name}/${cmdEvent.phase} ${String(cmdEvent.text ?? '').slice(0, 40)}`);
 
   const failed = results.filter((r) => !r.ok).length;
   console.log(`\n${results.length - failed}/${results.length} PASS`);

@@ -1,0 +1,129 @@
+/* The 轨迹 pane's own sheet. The reference paints its trajectory table with a
+   toolbar, grouped turns and a grid of themed cells; this pane reads the durable
+   log instead, so it keeps the reference's CHROME rules (one centered column on
+   the shared width axis, the secondary tier for meta text, hairlines, tabular
+   numerals, the same hover/hidden-button discipline) and its own simple row. */
+
+.root {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.scroller {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* Same column and side clearance as the transcript, so switching views does not
+   move the left edge the reader is anchored to. */
+.column {
+  box-sizing: border-box;
+  width: var(--dsh-chat-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 12px var(--dsh-composer-side-clearance) 24px;
+}
+
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 8px;
+  background: var(--dsw-alias-bg-base);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.count {
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.action,
+.more {
+  padding: 2px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  cursor: pointer;
+}
+
+.action:hover,
+.more:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.action:disabled,
+.more:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.more {
+  align-self: center;
+  margin: 12px 0 4px;
+}
+
+/* One event per line: clock, what it is, its body, its reading. The label column
+   is fixed so the bodies all start at one edge (the reference's grid rule). */
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 8px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.time {
+  flex: none;
+  min-width: 56px;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  flex: none;
+  min-width: 84px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trailing {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: 24px 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}

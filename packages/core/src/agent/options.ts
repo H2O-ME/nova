@@ -63,6 +63,17 @@ export const ABORT_GRACE_MS = 2_000;
 export const TURN_ABORTED_GUIDANCE =
   'The user interrupted the previous turn on purpose. It may have ended mid-task: tools or commands from that turn might have partially executed, so verify the current state before continuing.';
 
+/**
+ * True for the synthetic user message `finishAborted` logs. The marker is
+ * model-facing scaffolding, never something the user typed: a surface that
+ * replays the log must skip it (or say why it is there) instead of drawing it
+ * as a prompt bubble. Producer and recognizer live together so the literal
+ * cannot drift out from under its consumers.
+ */
+export function isAbortMarker(msg: { role: string; content: string }): boolean {
+  return msg.role === 'user' && msg.content === TURN_ABORTED_GUIDANCE;
+}
+
 export const SKIPPED_BY_ABORT = '[not executed: the user interrupted this turn]';
 
 /**

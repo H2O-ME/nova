@@ -13,6 +13,7 @@ export {
   NOT_EXECUTED_GUIDANCE,
   TURN_ABORTED_GUIDANCE,
   emptyStats,
+  isAbortMarker,
   type AgentOptions,
   type ToolDispatcher,
 } from './agent/options.js';

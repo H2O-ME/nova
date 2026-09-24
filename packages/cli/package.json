@@ -2,7 +2,7 @@
   "name": "@nova-agent/cli",
   "version": "0.4.0",
   "type": "module",
-  "description": "nova CLI: readline REPL over the core agent loop. Data lives in ~/.nova/ outside the working directory.",
+  "description": "nova CLI: assembles a surface (browser UI / readline REPL / headless exec / bot) over the core agent kernel. Data lives in ~/.nova/ outside the working directory.",
   "bin": {
     "nova": "./dist/index.mjs"
   },
@@ -24,8 +24,6 @@
     "@nova-agent/ai": "workspace:*",
     "@nova-agent/core": "workspace:*",
     "@nova-agent/plugins": "workspace:*",
-    "@nova-agent/tui": "workspace:*",
-    "@nova-agent/tui-app": "workspace:*",
     "zod": "^4.1.13",
     "@nova-agent/qqbot": "workspace:*",
     "@nova-agent/web": "workspace:*"

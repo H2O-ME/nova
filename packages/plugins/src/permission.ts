@@ -8,13 +8,16 @@ import type {
   DecideResult,
   ToolCall,
 } from '@nova-agent/core';
+import { alwaysScopeWords, parseAskResult } from '@nova-agent/core';
 import type { PermissionKind } from './types.js';
 
 /**
  * The approval vocabulary lives in core (the kernel event stream speaks it:
- * `approval_request` / `resolveApproval`); re-exported here unchanged so the
- * historical `@nova-agent/plugins` import sites keep working verbatim.
+ * `approval_request` / `resolveApproval`), including the rule that produces an
+ * "always" grant's scope options — re-exported here so the historical
+ * `@nova-agent/plugins` import sites keep working verbatim.
  */
+export { alwaysScopeWords };
 export type {
   ApprovalMode,
   AskAnswer,
@@ -33,33 +36,12 @@ function isCompoundCommand(command: string): boolean {
 }
 
 /**
- * The word list an execute command can scope an "always" grant over:
- * a bare (non-compound) command's tokens; [] for compound commands,
- * where only whole-command memory is safe (no meaningful word prefix).
+ * Fail-closed normalization for the asker seam: an asker is third-party code
+ * handing back `unknown`, so its answer goes through core's one answer parser
+ * (`parseAskResult`) and anything malformed denies the call.
  */
-export function alwaysScopeWords(command: unknown): string[] {
-  if (typeof command !== 'string') return [];
-  const trimmed = command.trim();
-  if (trimmed.length === 0 || isCompoundCommand(trimmed)) return [];
-  return trimmed.split(/\s+/);
-}
-
-/** Fail-closed normalization: anything malformed denies the call. */
 function normalizeAsk(raw: unknown): AskResult {
-  if (raw === 'allow' || raw === 'deny') return raw;
-  if (raw === 'always') return raw;
-  if (typeof raw === 'object' && raw !== null) {
-    const grant = raw as { answer?: unknown; scopeWords?: unknown; reason?: unknown };
-    if (grant.answer === 'always' && Number.isInteger(grant.scopeWords) && (grant.scopeWords as number) >= 1) {
-      return { answer: 'always', scopeWords: grant.scopeWords as number };
-    }
-    if (grant.answer === 'deny') {
-      if (typeof grant.reason !== 'string') return 'deny';
-      const reason = grant.reason.trim().slice(0, 400);
-      return reason.length > 0 ? { answer: 'deny', reason } : 'deny';
-    }
-  }
-  return 'deny';
+  return parseAskResult(raw) ?? 'deny';
 }
 
 /**
@@ -91,7 +73,7 @@ export class PermissionService {
   /**
    * Serialization point for the ask path: concurrent decide() calls dispatch
    * their asker ONE AT A TIME. Without this, PTC run_code's parallel sub-calls
-   * race for the TUI approval modal — each ask overwrites `store.approval`,
+   * race for the approval modal — each ask overwrites `store.approval`,
    * the displaced promise never resolves, and the run hangs forever. Verdict
    * short-circuits (remembered / auto-allow / 'never') bypass the chain.
    */

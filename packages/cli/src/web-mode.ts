@@ -9,6 +9,7 @@ import { launchWeb } from '@nova-agent/web';
 import type { ApprovalMode } from '@nova-agent/plugins';
 import type { Config } from './config.js';
 import { createProvider, toKernelConfig } from './kernel-boot.js';
+import { createModelCatalogPort } from './model-catalog.js';
 import { createModelMetaStore } from './model-meta.js';
 
 export interface WebModeOptions {
@@ -31,20 +32,24 @@ function webStaticDir(): string {
 export async function startWeb(opts: WebModeOptions): Promise<void> {
   const { rootDir, config } = opts;
   const client = createProvider(config);
-  // The context gauge needs a denominator: config override first, else the
-  // models.dev catalog (best-effort — an unknown model just renders without a
-  // percentage rather than guessing a window).
-  const contextWindow =
-    config.provider.contextWindow ??
-    (await createModelMetaStore().lookup(config.provider.model, config.provider.baseURL).catch(() => undefined))?.contextWindow;
+  // One metadata store for the whole process: the gauge's denominator and the
+  // model picker's labels both read it (cache, offline fallback, best-effort).
+  const meta = createModelMetaStore();
+  // One lookup at boot: the gauge's denominator (config override first, else
+  // the models.dev catalog — an unknown model renders without a percentage
+  // rather than guessing a window) and the picker's label for the model in
+  // force. Both are the surface's metadata half; best-effort either way.
+  const boot = await meta.lookup(config.provider.model, config.provider.baseURL).catch(() => undefined);
+  const contextWindow = config.provider.contextWindow ?? boot?.contextWindow;
   const handle = await launchWeb({
     rootDir,
     provider: client,
     config: toKernelConfig(config, opts.approvalOverride),
     providerModelLabel: config.provider.model,
+    ...(boot?.displayName !== undefined ? { providerModelName: boot.displayName } : {}),
+    modelCatalog: createModelCatalogPort(config, meta),
     ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
     staticDir: webStaticDir(),
-    bindSessionAffinity: (sessionId) => client.setSessionId(sessionId),
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     ...(opts.port !== undefined ? { port: opts.port } : {}),
   });

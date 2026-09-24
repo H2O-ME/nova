@@ -1,0 +1,158 @@
+/* The one menu card every anchored menu on this surface wears: the shell's
+   view options and the composer's model seat. Ported from deepseek-harness
+   `ui-model-selection` ModelSelect.module.css + `ui-primitives` Menu
+   (c) 2026 DeepSeek — MIT License.
+ *
+ * One sheet, because a dropdown is one material: two cards that drifted apart
+ * would read as two kinds of control. The card is portaled to body and placed
+ * from the trigger rect by `shell/anchored-popover.ts` (a menu rendered in
+ * place would be cropped by the sidebar's and the columns' overflow clips). */
+
+.card {
+  position: fixed;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  /* Let the visible pane's rows set the card width, but keep pathological ids
+     and narrow screens inside a bounded card where ellipsis remains. */
+  width: max-content;
+  min-width: min(240px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: min(360px, calc(100vh - 96px));
+  overflow: hidden;
+  padding: 4px;
+  /* Surface tokens match the sibling menu cards (conversation
+     PermissionSelect) so every dropdown reads as the same material. The
+     source uses `--dsw-specific-menu`; this token sheet has no such entry, so
+     the card rides the elevated l2 layer. */
+  border: 0;
+  border-radius: 20px;
+  background: var(--dsw-alias-bg-layer-2);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  color: var(--dsw-alias-label-primary);
+  /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
+     Declared here rather than on the scrolling `.groups` child so the elevation
+     choice sits with the surface; the custom properties inherit down to
+     whichever descendant actually scrolls. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.status,
+.empty {
+  padding: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.retry {
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.groups {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.group + .group {
+  margin-top: 4px;
+}
+
+.groupTitle {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 5px 8px 3px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+}
+
+.option {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  min-width: 100%;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 10px;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option:hover:not(:disabled),
+.option:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.option:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+/* The row's text column: a label, and for a model row a secondary line under
+   it. One column either way, so both menus share one row geometry. */
+.optionCopy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.optionLabel {
+  overflow: hidden;
+  color: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.optionHint {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Selection marker is the trailing check, not a fill. */
+.check {
+  display: grid;
+  place-items: center;
+  flex: 0 0 18px;
+  color: var(--dsw-alias-label-primary);
+}

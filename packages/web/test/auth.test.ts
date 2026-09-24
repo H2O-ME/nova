@@ -14,8 +14,11 @@ describe('launch auth cookie', () => {
     const value = cookieValue(auth, auth.token) as string;
     const header = `${AUTH_COOKIE}=${value}`;
     expect(verifyCookie(auth, header)).toBe(true);
-    // Flip the signature, swap the token, drop the cookie.
-    expect(verifyCookie(auth, header.slice(0, -2) + 'ff')).toBe(false);
+    // Flip the signature (deterministically: appending 'ff' is a no-op 1/256
+    // of the time, when the signature already ends in those two hex digits),
+    // swap the token, drop the cookie.
+    const flipped = header.slice(0, -1) + (header.endsWith('f') ? '0' : 'f');
+    expect(verifyCookie(auth, flipped)).toBe(false);
     expect(verifyCookie(auth, `${AUTH_COOKIE}=${auth.token}.${auth.token}`)).toBe(false);
     expect(verifyCookie(auth, 'other=x')).toBe(false);
     expect(verifyCookie(auth, undefined)).toBe(false);

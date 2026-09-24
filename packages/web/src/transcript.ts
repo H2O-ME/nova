@@ -1,12 +1,24 @@
 /**
- * Durable log → wire transcript (M11 批3). The `ready` frame's replay baseline
- * is computed **here, server-side**, from `Session.deriveMessages()` output:
- * which messages are user-visible, how tool calls pair with their results, and
- * what each call's render intent is. The browser therefore owns no log
- * semantics at all — it draws blocks it is handed (and a surface that renders
- * the same log elsewhere reuses this projection instead of re-guessing).
+ * Durable log → wire transcript (M11 批3): the WALK over the projected message
+ * surface, in order, deciding which messages a reader sees at all. The `ready`
+ * frame's replay baseline is computed **here, server-side**, so the browser owns
+ * no log semantics — it draws blocks it is handed.
+ *
+ * Three shapes it points at instead of building: the context fragment's section
+ * rows (`context-blocks.ts`), a tool call's render intent (`tool-block.ts`), and
+ * a run's measurement, anchored by `core`'s `anchoredRunStats`.
  */
-import { callViewOf, isContextFragment, resultViewOf, type AgentMessage, type ToolResultMessage, type ToolViewSource } from '@nova-agent/core';
+import {
+  anchoredRunStats,
+  isAbortMarker,
+  isContextFragment,
+  type AgentMessage,
+  type SessionEvent,
+  type ToolResultMessage,
+  type ToolViewSource,
+} from '@nova-agent/core';
+import { contextBlocks } from './context-blocks.js';
+import { toolBlock } from './tool-block.js';
 import type { WireBlock } from './protocol.js';
 
 /**
@@ -18,35 +30,53 @@ import type { WireBlock } from './protocol.js';
  * Each tool block also carries the result TEXT (the detail panel's content) and
  * a timestamp: the log is the only place a resumed session's rows can get
  * either, since the live stream's events are gone by then.
+ *
+ * @param events - the durable log, for the facts that are NOT messages: a
+ *   run's measurement anchors to the message it closed, so the per-turn line
+ *   survives a resume exactly where it was written.
  */
-export function projectTranscript(messages: readonly AgentMessage[], tools: readonly ToolViewSource[]): WireBlock[] {
+export function projectTranscript(
+  messages: readonly AgentMessage[],
+  tools: readonly ToolViewSource[],
+  events: readonly SessionEvent[] = [],
+): WireBlock[] {
   const results = new Map<string, ToolResultMessage>();
   for (const msg of messages) {
     if (msg.role === 'tool') results.set(msg.toolCallId, msg);
   }
+  const runs = anchoredRunStats(events);
   const blocks: WireBlock[] = [];
   for (const msg of messages) {
     if (msg.role === 'user') {
-      if (isContextFragment(msg)) continue; // seeded session-start fragment, never user-visible
-      blocks.push({ kind: 'user', text: msg.content });
+      // The seeded session-start fragment is not a user turn — it is context the
+      // kernel injected. It crosses the wire as ONE BLOCK PER SECTION (each
+      // section is what a producer contributed: the environment, the operator's
+      // directives, the AGENTS.md chain, the skills index), which is the shape
+      // the reference draws and the only shape that names a producer per row.
+      if (isContextFragment(msg)) {
+        blocks.push(...contextBlocks(msg));
+        continue;
+      }
+      // The abort marker is a message TO THE MODEL ("the user interrupted this
+      // turn"), not something the user said: drawing it as a prompt bubble
+      // fabricates a user turn on every replay of an interrupted session.
+      if (isAbortMarker(msg)) {
+        blocks.push({ kind: 'aborted' });
+        continue;
+      }
+      blocks.push({ kind: 'user', text: msg.content, ts: msg.ts });
       continue;
     }
-    if (msg.role !== 'assistant') continue;
-    if (msg.content.length > 0) blocks.push({ kind: 'text', text: msg.content });
-    for (const call of msg.toolCalls ?? []) {
-      const result = results.get(call.id);
-      blocks.push({
-        kind: 'tool',
-        callId: call.id,
-        name: call.name,
-        args: call.rawArgs,
-        view: callViewOf(tools, call),
-        ts: result?.ts ?? msg.ts,
-        ...(result !== undefined
-          ? { result: resultViewOf(tools, call, result.content), output: result.content }
-          : {}),
-      });
+    if (msg.role === 'assistant') {
+      if (msg.content.length > 0) blocks.push({ kind: 'text', text: msg.content, ts: msg.ts });
+      for (const call of msg.toolCalls ?? []) {
+        blocks.push(toolBlock(call, results.get(call.id), msg.ts, tools));
+      }
     }
+    // The run's line lands after everything this message drew: it measured the
+    // whole message, so it reads as that message's closing line.
+    const stats = runs.get(msg.id);
+    if (stats !== undefined) blocks.push({ kind: 'meta', stats, ts: stats.startedAt });
   }
   return blocks;
 }

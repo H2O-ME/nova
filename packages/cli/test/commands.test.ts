@@ -113,7 +113,7 @@ describe('command-core', () => {
     expect(modelListError('boom')).toBe('模型列表获取失败：boom');
   });
 
-  // 阶段 D 命令核下沉：以下正文单源被 repl 与 TUI 两个 switch 消费，
+  // 命令核下沉：以下正文单源被 command-runner 消费，
   // 漂移（如 repl /plugins 曾缺命令行）从此有红测试可钉。
   it('/approvals switch line names the tier via the shared label', () => {
     expect(approvalSwitchLine('auto-edit')).toContain('自动编辑');

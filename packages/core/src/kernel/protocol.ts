@@ -8,7 +8,7 @@
  * progress, background-job transitions, the running prompt queue, compaction
  * progress and operational notices. A surface that only switches on
  * `event.type` can drive the whole product; nothing outside this protocol is
- * observable, which is what makes surfaces replaceable (TUI, web, bot,
+ * observable, which is what makes surfaces replaceable (browser, bot,
  * headless) and testable against one reducer.
  *
  * Shape and semantics live here; copy, colors and layout never do — a
@@ -43,7 +43,9 @@ export type NoticeCode =
   /** An automatic compaction attempt threw (run continues uncompressed). */
   | 'compact_failed'
   /** A surface's event consumer fell behind MAX_LAG and its window was reset. */
-  | 'surface_lagged';
+  | 'surface_lagged'
+  /** A subscribed event listener threw. Reported instead of crashing the run. */
+  | 'listener_failed';
 
 /** A compaction pass, start → done|error, with the outcome bits a surface renders. */
 export interface CompactionProgress {
@@ -87,6 +89,27 @@ export type KernelEvent =
   | { type: 'job_update'; job: JobSnapshot }
   /** The pending prompt queue changed (enqueue / flush). */
   | { type: 'queue_update'; items: readonly string[] }
+  /**
+   * The model in force changed (a picker switched it, or the surface
+   * re-pointed the client). Published so every consumer of this kernel
+   * renders the same model — a browser switch moves the TUI's status bar too —
+   * instead of each surface keeping its own copy of a boot-time label.
+   */
+  | {
+      type: 'model';
+      /** The id the client now holds — what the next request leaves with. */
+      model: string;
+      /** The endpoint's id is not a label: the surface's metadata names it. */
+      name?: string;
+      contextWindow?: number;
+    }
+  /**
+   * A slash command the user ran (not a model turn). `run` opens the command's
+   * row, `done` closes it with whatever it had to say — a command that fails is
+   * still a settled command, so the reason rides here rather than killing a run.
+   * Commands never enter the model's history.
+   */
+  | { type: 'command'; name: string; phase: 'run' | 'done'; text?: string }
   /** An automatic compaction pass made progress. */
   | { type: 'compaction'; progress: CompactionProgress }
   /**

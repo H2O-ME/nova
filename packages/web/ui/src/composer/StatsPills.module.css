@@ -1,0 +1,153 @@
+/* Session stats under the composer: two icon pills side by side, 13/20
+   tertiary text with a hover-pill affordance, each opening its own panel.
+   Ported from deepseek-harness ui-chat `StatsPills.module.css` +
+   `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License. The panel rides
+   the l2 elevated surface rather than the source's `--dsw-specific-menu`,
+   which this token sheet does not carry (the same substitution the context
+   meter's panel makes). */
+
+.root {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  max-width: var(--dsh-chat-content-width);
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 4px calc(var(--dsh-composer-side-clearance) + 16px) 0;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+/* Dialog anchor: shrink-wraps its pill so the panel hangs off the pill, and
+   hosts the absolutely-positioned panel. */
+.anchor {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 1px 8px;
+  border: none;
+  border-radius: 24px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  line-height: inherit;
+  white-space: nowrap;
+}
+
+.pill svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* Only the button form (a pill with a dialog to open) invites interaction;
+   the static span form keeps the resting tertiary reading. */
+button.pill {
+  cursor: pointer;
+}
+
+button.pill:hover,
+button.pill[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The panel: fixed above the pill it belongs to, clamped away from the window
+   edge by the anchor's own position, menu material (r12, elevation-prominent)
+   with the dialog's own heading rule. */
+.panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: min(240px, calc(100vw - 24px));
+  max-width: min(440px, calc(100vw - 24px));
+  padding: 16px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: default;
+  text-align: left;
+}
+
+/* Dialog heading row: the section name left, at the primary weight, with the
+   section's glyph seated beside it. */
+.panelTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+.panelTitleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.panelTitleLabel svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+/* Rule under the heading, above its rows. */
+.panelRule {
+  margin-bottom: 10px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+/* One label/value line: the label keeps its own column so every value starts
+   at the same edge, and the values stay tabular. */
+.detail {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.detailKey {
+  flex: none;
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.detailValue {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,4 +1,4 @@
-/** 斜杠命令目录：TUI 命令面板、/help 与 readline 模式共用。 */
+/** 斜杠命令目录：面板、/help 与 readline 模式共用。 */
 
 import type { PtcMode } from '@nova-agent/core';
 import { CODE_MODE_HINT, codeModeLabel, padDisplay } from './lines.js';
@@ -14,7 +14,7 @@ export interface CommandSpec {
 export const COMMAND_SPECS: CommandSpec[] = [
   { name: '/help', usage: '/help', description: '显示可用命令' },
   { name: '/init', usage: '/init', description: '扫描工作区并生成 AGENTS.md' },
-  { name: '/model', usage: '/model', description: '打开模型选择面板（从站点目录切换模型）' },
+  { name: '/model', usage: '/model [name]', description: '打开模型选择面板（从站点目录切换模型）；带参数时直接切换/回退到指定模型' },
   { name: '/approvals', usage: '/approvals', description: '循环切换审批档位（只读 → 自动编辑 → 全部放行）' },
   { name: '/mode', usage: '/mode', description: '查看三种执行模式的区别与当前模式（新会话按 Tab 切换）' },
   { name: '/theme', usage: '/theme [name]', description: '查看或切换界面主题：dark（默认）/ light（亮背景）/ plain（无色）' },
@@ -34,7 +34,7 @@ export function filterCommands(input: string): CommandSpec[] {
   return COMMAND_SPECS.filter((spec) => spec.name.startsWith(trimmed));
 }
 
-/** /mode 的单行：current 标记决定调用方（repl/TUI）如何上色。 */
+/** /mode 的单行：current 标记决定调用方如何上色。 */
 export interface ModeOverviewRow {
   current: boolean;
   text: string;

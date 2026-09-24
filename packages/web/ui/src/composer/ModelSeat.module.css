@@ -1,0 +1,98 @@
+/* Ported from deepseek-harness ui-model-selection ModelSelect.module.css
+   (c) 2026 DeepSeek — MIT License. */
+
+.root {
+  position: relative;
+  min-width: 0;
+}
+
+/* Figma 313:14108 ToggleButton: 13/20 medium secondary label, 4px gap,
+   12px caption chevron; 28px chip height matches the sibling Plan /
+   Read-only selects in the same tool row. */
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  /* Legacy fallback, then a row-relative cap that grants long names more
+     room without letting this trailing control consume the composer. */
+  max-width: 220px;
+  max-width: min(360px, 45cqw);
+  height: 28px;
+  padding: 0 4px 0 8px;
+  border: none;
+  /* Rounded chip chrome, matching the sibling permission trigger. */
+  border-radius: 24px;
+  outline: none;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* The interactive states are kept whole for the day the seat gets a catalog to
+   open (`ModelSelect`'s trigger is a button with a menu); the seat below
+   neutralizes them. */
+.trigger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+}
+
+.trigger:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+/* Read-only seat: no hover fill (an unclickable chip must not light up) and no
+   pointer cursor. Written as `.trigger.readonly` so it outranks the ported
+   hover rule above. */
+.trigger.readonly,
+.trigger.readonly:hover {
+  cursor: default;
+  background: transparent;
+}
+
+.triggerLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* Stand-in for the whole text below the icon-only cut: the settings page's
+   Models glyph (IconDataOutline16), hidden while any text fits. */
+.triggerIcon {
+  display: none;
+  flex: 0 0 auto;
+}
+
+/* Icon-only floor: past continuous shrink, a 360px composer row leaves the
+   45cqw cap too little for a legible name, so the text yields to the Models
+   glyph. Same anonymous container as PermissionSelect's 460px cut (InputBar
+   .row); the full name stays reachable through the seat's title. (The harness
+   also drops an effort level here first — this surface has no effort axis, so
+   only the name yields.) */
+@container (max-width: 360px) {
+  .triggerIcon {
+    display: block;
+  }
+
+  .triggerLabel {
+    display: none;
+  }
+}

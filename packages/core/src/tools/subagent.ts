@@ -50,7 +50,7 @@ export interface SubagentToolOptions {
   /** Root the subagent's file/bash tools resolve against. */
   rootDir: () => string;
   /**
-   * Best-effort visibility feed: the caller (TUI/REPL runner) renders these
+   * Best-effort visibility feed: the owning surface renders these
    * as live subagent rows. Core owns the SCHEMA; tools must never depend on
    * it existing. Not called for the background mode's start — the job id
    * line covers that.

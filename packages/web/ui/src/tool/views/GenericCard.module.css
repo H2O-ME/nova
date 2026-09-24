@@ -1,0 +1,73 @@
+/* Ported from deepseek-harness ui-tool (c) 2026 DeepSeek — MIT License. */
+/* The IN/OUT card, verbatim from ToolRow.module.css's `.ioCard` block (the
+   harness states its shape once and repeats it per registrant sheet). */
+
+/* Expanded input/output card (figma 1249:35657): the code-block surface and
+   radius from the TerminalBlock/CodeBlock family. The card itself is a plain
+   column — the padding and the IN/OUT gutter-label grid live on each section
+   so the divider spans the full card width and each section scrolls alone.
+   The margin is the row flow's own (the harness's row indent). */
+.ioCard {
+  display: flex;
+  flex-direction: column;
+  margin: 4px 0 4px 4px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: 12px;
+  background: var(--dsw-alias-markdown-code-block);
+  font: var(--dsw-font-markdown-code-block-small);
+}
+
+/* One card section (IN or OUT): the gutter-label grid, capped and scrolling
+   independently so a long input never buries a short output (and vice versa). */
+.ioSection {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 14px;
+  align-items: baseline;
+  padding: 12px 16px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+/* Card-internal scrollbar: a 2px transparent border clips the thumb inward so
+   it floats off the rounded card edge instead of hugging it. */
+.ioSection::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 6px;
+}
+
+/* Track end-margins keep the thumb's travel out of the rounded corners. */
+.ioSection::-webkit-scrollbar-track {
+  margin: 6px 0;
+}
+
+/* Caption (not tertiary): one step dimmer than the payload text so the
+   gutter labels read as labels, not as part of the content. Sticky against
+   the section's own scroll so the label stays readable while its payload
+   scrolls underneath. */
+.ioLabel {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* l2 hairline between the IN and OUT sections, spanning the full card width. */
+.ioDivider {
+  flex: none;
+  height: 0.5px;
+  background: var(--dsw-alias-border-l2);
+}
+
+.ioText {
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* A failed call's OUT text shares the collapsed summary's error color. */
+.ioText[data-error] {
+  color: var(--dsw-alias-state-error-primary);
+}

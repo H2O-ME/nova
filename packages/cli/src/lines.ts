@@ -1,13 +1,12 @@
 /**
- * CLI 本地极简行渲染（M11 批1c）：旧 tui-view 全包删除后的过渡性呈现层——
- * 只服务 readline REPL 与 exec 的人读输出。观感归 surface：这一层的全部
- * 职责是「把内核事件变成终端上可读的行」，批4 的 tui-app 会按 grok 设计
- * 语言整体重做交互形态；届时本文件只保留 palette/裁剪这类终端原语胶水。
+ * CLI 行渲染：内核事件 → 终端上可读的一行，只服务 readline REPL 与 exec 的
+ * 人读输出。观感归 surface——这一层是 REPL 的全部呈现，浏览器面的呈现是
+ * `web/ui`（同一内核事件流的另一家消费者）。
  *
- * 宽度测量走 @nova-agent/tui（CJK 计 2 列）；文案/颜色/标签在这里定义
+ * 宽度测量走 ./term-text.js（CJK 计 2 列）；文案/颜色/标签在这里定义
  * （core 只拥有 presentation 形状——见 core/presentation.ts）。
  */
-import { detectCaps, stringWidth } from '@nova-agent/tui';
+import { detectCaps, stringWidth } from './term-text.js';
 import {
   DEFAULT_MAX_TURNS,
   isFailureContent,
@@ -76,7 +75,7 @@ export function resolvePaint(theme: 'dark' | 'light' | 'plain' | undefined): Pai
 
 export const plainPaint: Paint = ansiPaint(false);
 
-/** 工具的中文标签（surface 文案；与历史 TUI 标签一致的精简表）。 */
+/** 工具的中文标签（surface 文案；精简表）。 */
 const TOOL_LABELS: Record<string, string> = {
   bash: '命令',
   read_file: '读取',
@@ -139,8 +138,7 @@ export function toolDoneLines(
 }
 
 // ------------------------------------------------------------------ 文案表
-// 原 tui-view 的 labels/text 属主（观感归 surface）：这里只留 readline/exec
-// 需要的最小集，批4 tui-app 会按 grok 设计语言重做自己的一套。
+// labels/text 的属主（观感归 surface）：只留 readline/exec 需要的最小集。
 
 /** /approvals 的固定循环序。 */
 export const APPROVAL_ORDER = ['read-only', 'auto-edit', 'full'] as const;
@@ -167,7 +165,7 @@ export function permissionLabel(kind: string): string {
   return PERMISSION_LABELS[kind] ?? kind;
 }
 
-/** 执行模式标签与 /mode 一行语义（与旧 TUI 同文案）。 */
+/** 执行模式标签与 /mode 一行语义。 */
 export function codeModeLabel(m: PtcMode): string {
   return m === 'native' ? '普通' : m === 'ptc' ? 'PTC' : '混合';
 }
@@ -201,7 +199,7 @@ export function fitTail(text: string, maxCols: number): string {
   return chars.slice(start).join('');
 }
 
-/** 转轮帧与动词（90ms 帧周期；批4 的单时钟归一后由 tui-app 重定）。 */
+/** 转轮帧与动词（90ms 帧周期）。 */
 export const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 export const SPINNER_VERBS = ['思考中', '推敲中', '酝酿中', '翻找中', '梳理中', '盘算中'];
 export const SPINNER_TICK_MS = 90;
@@ -259,7 +257,7 @@ export function humanTokens(n: number): string {
   return `${trim((n / 1_000_000).toFixed(2))}M`;
 }
 
-/** Minimal brand header (REPL; 批4 的 tui-app 会做自己那套开屏卡). */
+/** Minimal brand header (REPL；浏览器界面有自己的开屏页). */
 export function banner(
   p: Paint,
   info: { model: string; approval: string; plugins: string; sessionFile: string; rootDir: string; version: string },

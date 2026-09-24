@@ -1,0 +1,16 @@
+/* Ported from deepseek-harness ui-chat (c) 2026 DeepSeek — MIT License. */
+/* The turn's closing chrome (the harness `TurnTailNodeView`): the assistant
+   tail row — actions with the clock at the end, after any usage content. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.actions {
+  /* With tail content, this adds to the root gap; without it, the Chat flow's
+     preceding-item offset supplies the other 16px. */
+  margin-top: 4px;
+  margin-left: -6px;
+}

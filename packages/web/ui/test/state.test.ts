@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ApprovalRequest, KernelEvent, ToolCallView, ToolResultView } from '@nova-agent/core';
-import type { ReadyInfo, WireBlock } from '../../src/protocol.js';
+import type { ReadyInfo, WireBlock, WireTraceRow } from '../../src/protocol.js';
+import { emptyTotals } from '../../src/totals.js';
 import { initialState, reduce, type Block, type UiState } from '../src/state.js';
 
 /**
@@ -54,14 +55,24 @@ function readyInfo(over: Partial<ReadyInfo> = {}): ReadyInfo {
     codeMode: 'native',
     history: [],
     historyTotal: 0,
+    traceTotal: 0,
     pendingApprovals: [],
+    jobs: [],
     usedTokens: 0,
+    modelSwitching: false,
+    commands: [],
+    runTotals: emptyTotals,
     ...over,
   };
 }
 
 function approvalRequest(id: string): ApprovalRequest {
   return { id, call: CALL, kind: 'read' };
+}
+
+/** A state that has seen one `ready` — the precondition every seat test has. */
+function baselined(over: Partial<ReadyInfo> = {}): UiState {
+  return reduce(initialState, { type: 'ready', info: readyInfo({ modelSwitching: true, ...over }) });
 }
 
 function texts(blocks: Block[]): string[] {
@@ -99,21 +110,141 @@ describe('reduce / ready replay', () => {
     expect(state.contextWindow).toBe(200_000);
   });
 
-  it('adopts the reported modes, clears the session list and restores a pending approval', () => {
+  it('carries a replayed context section through as its own block', () => {
+    // The host decides the form (core read it off the section's syntax); the
+    // reducer only carries it, so a form this build has never seen still lands.
+    const history: WireBlock[] = [
+      { kind: 'context', tag: 'environment', form: 'snapshot', sections: [{ name: 'cwd', text: '/w' }], text: 'cwd=/w' },
+      { kind: 'user', text: '问一句' },
+    ];
+    const state = reduce(initialState, { type: 'ready', info: readyInfo({ history }) });
+    expect(state.blocks.map((b) => b.kind)).toEqual(['context', 'user']);
+    expect(state.blocks[0]).toMatchObject({
+      kind: 'context',
+      tag: 'environment',
+      form: 'snapshot',
+      sections: [{ name: 'cwd', text: '/w' }],
+      text: 'cwd=/w',
+    });
+    // Absent optionals stay absent rather than arriving as undefined keys.
+    expect(state.blocks[0]).not.toHaveProperty('entries');
+    expect(state.blocks[0]).not.toHaveProperty('note');
+  });
+
+  it('adopts the reported modes, keeps the session list and restores a pending approval', () => {
     const opened = reduce(fold([], initialState), { type: 'sessions', items: [{ file: 'f.jsonl', title: 't', mtime: 1 }] });
     expect(opened.sessions).toHaveLength(1);
     const state = reduce(opened, {
       type: 'ready',
       info: readyInfo({ approvalMode: 'full', codeMode: 'both', pendingApprovals: [approvalRequest('ap1')] }),
     });
-    expect(state).toMatchObject({ approvalMode: 'full', codeMode: 'both', sessions: null });
+    // An attach re-states the transcript, not the sidebar: the rows the user is
+    // looking at stay put, and the list only ASKS again (stale, not empty) —
+    // otherwise every switch blinks the panel into "loading" and back.
+    expect(state).toMatchObject({ approvalMode: 'full', codeMode: 'both', sessionsStale: true });
+    expect(state.sessions).toHaveLength(1);
     expect(state.pendingApproval?.id).toBe('ap1');
+  });
+
+  it('holds one list request in flight at a time (the answer settles it)', () => {
+    const asked = reduce(initialState, { type: 'sent', frame: { type: 'list_sessions' } });
+    expect(asked).toMatchObject({ sessionsPending: true, sessionsStale: false });
+    const answered = reduce(asked, { type: 'sessions', items: [{ file: 'f.jsonl', title: 't', mtime: 1 }] });
+    expect(answered).toMatchObject({ sessionsPending: false, sessionsStale: false });
+    // A failed ask settles the flag too: a stuck in-flight flag would block
+    // every later re-ask (the error frame IS the reply).
+    const failed = reduce(asked, { type: 'error', message: 'nope' });
+    expect(failed.sessionsPending).toBe(false);
+  });
+
+  it('replays a run measurement from the baseline and takes the host totals', () => {
+    const stats = {
+      startedAt: 1_700_000_000_000,
+      durationMs: 4_000,
+      firstTokenMs: 2_300,
+      llmMs: 3_000,
+      toolMs: 0,
+      requests: 2,
+      toolCalls: 0,
+      retries: 0,
+      promptTokens: 100,
+      completionTokens: 20,
+      cachedTokens: 40,
+    };
+    const state = reduce(initialState, {
+      type: 'ready',
+      info: readyInfo({
+        history: [
+          { kind: 'text', text: 'ok', ts: 1 },
+          { kind: 'meta', stats, ts: stats.startedAt },
+        ],
+        runTotals: { ...emptyTotals, runs: 3, completionTokens: 60 },
+      }),
+    });
+    expect(state.blocks.map((b) => b.kind)).toEqual(['text', 'meta']);
+    expect(state.blocks[1]).toMatchObject({ kind: 'meta', stats });
+    expect(state.totals).toMatchObject({ runs: 3, completionTokens: 60 });
   });
 
   it('a state frame updates the modes without touching the transcript', () => {
     const live = fold([{ event: { type: 'text_delta', messageId: 'm', text: 'x' } }]);
-    const switched = reduce(live, { type: 'state', approvalMode: 'auto-edit', codeMode: 'ptc' });
+    const switched = reduce(live, { type: 'state', approvalMode: 'auto-edit', codeMode: 'ptc', model: 'test-model' });
     expect(switched).toMatchObject({ approvalMode: 'auto-edit', codeMode: 'ptc' });
+    expect(texts(switched.blocks)).toEqual(['x']);
+  });
+});
+
+describe('reduce / trace view', () => {
+  const row = (ts: number): WireTraceRow => ({ kind: 'workspace', ts, path: `p${ts}` });
+  /** The pane's own sequence: opening the view sends `have: 0`, then a page sends the count. */
+  function opened(): UiState {
+    const sent = reduce(initialState, { type: 'sent', frame: { type: 'load_trace', have: 0 } });
+    return reduce(sent, { type: 'trace', rows: [row(3), row(4)], total: 5 });
+  }
+
+  it('keeps the in-flight read visible and settles it with the rows', () => {
+    const sent = reduce(initialState, { type: 'sent', frame: { type: 'load_trace', have: 0 } });
+    expect(sent.trace).toMatchObject({ pending: true, have: 0, rows: [], total: 0 });
+    const done = reduce(sent, { type: 'trace', rows: [row(1)], total: 1 });
+    expect(done.trace).toMatchObject({ pending: false, total: 1, have: 1 });
+    expect(done.trace?.rows.map((r) => (r.kind === 'workspace' ? r.ts : 0))).toEqual([1]);
+  });
+
+  it('folds an older page in FRONT, and a fresh read replaces the rows', () => {
+    const paged = reduce(reduce(opened(), { type: 'sent', frame: { type: 'load_trace', have: 2 } }), {
+      type: 'trace',
+      rows: [row(1), row(2)],
+      total: 5,
+    });
+    expect(paged.trace?.rows.map((r) => (r.kind === 'workspace' ? r.ts : 0))).toEqual([1, 2, 3, 4]);
+    expect(paged.trace?.have).toBe(4);
+    // Opening the view again (or its refresh) says "I hold nothing": the answer
+    // is the newest tail, so the old rows must not survive beside it.
+    const refreshed = reduce(reduce(paged, { type: 'sent', frame: { type: 'load_trace', have: 0 } }), {
+      type: 'trace',
+      rows: [row(5)],
+      total: 5,
+    });
+    expect(refreshed.trace?.rows.map((r) => (r.kind === 'workspace' ? r.ts : 0))).toEqual([5]);
+  });
+
+  it('drops the rows on a re-baseline: they belong to the session that closed', () => {
+    const rebased = reduce(opened(), { type: 'ready', info: readyInfo() });
+    expect(rebased.trace).toBeNull();
+    expect(rebased.meta?.traceTotal).toBe(0);
+  });
+
+  it('unblocks a page when the socket drops, and keeps the rows on screen', () => {
+    const sent = reduce(opened(), { type: 'sent', frame: { type: 'load_trace', have: 2 } });
+    const dropped = reduce(sent, { type: 'connection', connected: false });
+    expect(dropped.trace).toMatchObject({ pending: false, total: 5 });
+    expect(dropped.trace?.rows).toHaveLength(2);
+  });
+
+  it('selects a view locally, without touching the transcript', () => {
+    const live = fold([{ event: { type: 'text_delta', messageId: 'm', text: 'x' } }]);
+    const switched = reduce(live, { type: 'select_view', view: 'trace' });
+    expect(switched.view).toBe('trace');
     expect(texts(switched.blocks)).toEqual(['x']);
   });
 });
@@ -226,7 +357,7 @@ describe('reduce / hints', () => {
       { event: { type: 'compaction', progress: { state: 'done', trigger: 'auto', retained: 7 } } },
     ]);
     expect(state.blocks.map((b) => (b.kind === 'hint' ? b.tone : b.kind))).toEqual(['info', 'info']);
-    expect(state.blocks[1]).toMatchObject({ text: expect.stringContaining('保留 7') });
+    expect(state.blocks[1]).toMatchObject({ text: expect.stringContaining('7 条消息') });
   });
 
   it('maps the fuse notice to a warning and other notices to info', () => {
@@ -338,5 +469,157 @@ describe('reduce / history pagination', () => {
     );
     expect(state.blocks.map((b) => (b.kind === 'user' || b.kind === 'text' ? b.text : `<${b.kind}>`))).toEqual(['q1', 'a1', 'q3']);
     expect(state.historyLoaded).toBe(3);
+  });
+
+  it('marks an interrupted turn as a warning line, not as something the user said', () => {
+    const state = reduce(initialState, {
+      type: 'ready',
+      info: readyInfo({ history: [{ kind: 'user', text: '跑一下' }, { kind: 'aborted' }] }),
+    });
+    expect(state.blocks.map((b) => b.kind)).toEqual(['user', 'hint']);
+    expect(state.blocks[1]).toMatchObject({ tone: 'warn', text: expect.stringContaining('中断') });
+  });
+
+  it('rebuilds the job rows the kernel still tracks, and counts only log blocks as history', () => {
+    const jobs = [{ id: 'bash-1', kind: 'bash' as const, label: 'pnpm test', status: 'running' as const }];
+    const state = reduce(initialState, {
+      type: 'ready',
+      info: readyInfo({ history: [{ kind: 'user', text: 'q1' }], historyTotal: 1, jobs }),
+    });
+    expect(state.blocks.map((b) => b.kind)).toEqual(['user', 'job']);
+    expect(state.historyLoaded).toBe(1);
+    // The pagination cursor counts baseline blocks, so a job row must not move it.
+    expect(state.historyTotal - state.historyLoaded).toBe(0);
+  });
+});
+
+describe('reduce / feed fidelity', () => {
+  it('gives an unidentified progress line to the last running call, not to every one', () => {
+    const state = fold([
+      { event: { type: 'tool_call_start', turn: 1, call: CALL }, view: TERMINAL_CALL },
+      { event: { type: 'tool_call_start', turn: 1, call: { ...CALL, id: 'c2' } }, view: TERMINAL_CALL },
+      { event: { type: 'tool_progress', callId: undefined, text: 'half done' } },
+    ]);
+    expect(state.blocks[0]).not.toHaveProperty('tail');
+    expect(state.blocks[1]).toMatchObject({ callId: 'c2', tail: 'half done' });
+  });
+
+  it('discards the partial output a re-request replaces, instead of appending to it', () => {
+    const state = fold([
+      { event: { type: 'text_delta', messageId: 'm', text: 'half of an answer' } },
+      { event: { type: 'llm_retry', attempt: 1, maxRetries: 3, error: 'stream ended', stats: EMPTY_STATS } },
+      { event: { type: 'text_delta', messageId: 'm', text: 'the whole answer' } },
+    ]);
+    expect(state.blocks.map((b) => b.kind)).toEqual(['hint', 'text']);
+    expect(state.blocks[1]).toMatchObject({ text: 'the whole answer', streaming: true });
+  });
+
+  it('says why an unanswered approval went away, and stays quiet when the user answered', () => {
+    const pending = fold([{ event: { type: 'approval_request', request: approvalRequest('ap1') } }]);
+    const aborted = fold([{ event: { type: 'approval_resolved', id: 'ap1', resolution: { source: 'aborted' } } }], pending);
+    expect(aborted.pendingApproval).toBeNull();
+    expect(aborted.blocks.at(-1)).toMatchObject({ kind: 'hint', tone: 'warn', text: expect.stringContaining('拒绝') });
+
+    const answered = fold(
+      [{ event: { type: 'approval_resolved', id: 'ap1', resolution: { source: 'user', answer: 'allow' } } }],
+      pending,
+    );
+    expect(answered.pendingApproval).toBeNull();
+    expect(answered.blocks.some((b) => b.kind === 'hint')).toBe(false);
+  });
+
+  it('labels a compaction with who asked for it and reports a failure as one', () => {
+    expect(fold([{ event: { type: 'compaction', progress: { state: 'done', trigger: 'manual', retained: 3 } } }]).blocks[0]).toMatchObject({
+      text: expect.stringContaining('手动'),
+    });
+    expect(fold([{ event: { type: 'compaction', progress: { state: 'done', trigger: 'auto', retained: 3 } } }]).blocks[0]).toMatchObject({
+      text: expect.stringContaining('自动'),
+    });
+    const failed = fold([{ event: { type: 'compaction', progress: { state: 'error', trigger: 'auto', error: 'provider 500' } } }]);
+    expect(failed.blocks[0]).toMatchObject({ kind: 'hint', tone: 'warn', text: expect.stringContaining('provider 500') });
+  });
+
+  it('names the notice before quoting the kernel, and warns about the ones that hurt', () => {
+    const fused = fold([{ event: { type: 'notice', code: 'compact_fused', text: '已停用自动压缩' } }]).blocks[0];
+    expect(fused).toMatchObject({ tone: 'warn', text: expect.stringContaining('压缩熔断') });
+    const lagged = fold([{ event: { type: 'notice', code: 'surface_lagged', text: '窗口已重置' } }]).blocks[0];
+    expect(lagged).toMatchObject({ tone: 'warn' });
+    const compacted = fold([{ event: { type: 'notice', code: 'compacted', text: '已自动压缩' } }]).blocks[0];
+    expect(compacted).toMatchObject({ tone: 'info' });
+  });
+
+  it('gives a nested subagent one row that grows in place, then reports its own totals', () => {
+    const usage = { elapsedMs: 21_400, turns: 3, toolCalls: 2, promptTokens: 12_000, completionTokens: 800 };
+    const state = fold([
+      { event: { type: 'subagent_update', progress: { type: 'start', label: '探索 auth' } } },
+      { event: { type: 'subagent_update', progress: { type: 'tool_call', label: '探索 auth', call: CALL } } },
+      { event: { type: 'subagent_update', progress: { type: 'tool_call', label: '探索 auth', call: { ...CALL, id: 'c2' } } } },
+      { event: { type: 'subagent_update', progress: { type: 'usage', label: '探索 auth', stats: EMPTY_STATS } } },
+      { event: { type: 'subagent_update', progress: { type: 'done', label: '探索 auth', usage, status: 'completed' } } },
+    ]);
+    expect(state.blocks).toHaveLength(1);
+    expect(state.blocks[0]).toMatchObject({ kind: 'sub', sub: { label: '探索 auth', status: 'completed', calls: 2, usage } });
+  });
+
+  it('keeps two concurrent delegations apart', () => {
+    const state = fold([
+      { event: { type: 'subagent_update', progress: { type: 'start', label: 'A' } } },
+      { event: { type: 'subagent_update', progress: { type: 'start', label: 'B' } } },
+      { event: { type: 'subagent_update', progress: { type: 'tool_call', label: 'A', call: CALL } } },
+    ]);
+    expect(state.blocks).toHaveLength(2);
+    expect(state.blocks[0]).toMatchObject({ id: 'sub:A', sub: { calls: 1 } });
+    expect(state.blocks[1]).toMatchObject({ id: 'sub:B', sub: { calls: 0, status: 'running' } });
+  });
+});
+
+describe('reduce / model seat', () => {
+  it('shows the catalog the host just sent, current model included', () => {
+    const listed = reduce(baselined(), {
+      type: 'models',
+      groups: [{ id: 'endpoint', name: 'api.test', models: [{ id: 'm1', name: 'm1' }, { id: 'm2', name: 'Model Two', contextWindow: 4096 }] }],
+      current: 'm2',
+    });
+    expect(listed.model).toBe('m2');
+    expect(listed.modelSwitching).toBe(true);
+    expect(listed.catalog).toMatchObject({ loading: false });
+    expect(listed.catalog?.groups[0]?.models).toHaveLength(2);
+  });
+
+  it('marks the fetch in flight when the menu opens, and remembers a failure beside the rows', () => {
+    const opened = reduce(baselined(), { type: 'sent', frame: { type: 'list_models' } });
+    expect(opened.catalog).toMatchObject({ loading: true });
+    const failed = reduce(opened, { type: 'models', groups: [], current: 'test-model', error: '站点未响应' });
+    // The error is a state of the menu (it renders a retry), never a hint row
+    // in the transcript — the transcript is the conversation, not the chrome.
+    expect(failed.catalog).toMatchObject({ loading: false, error: '站点未响应' });
+    expect(failed.blocks).toHaveLength(0);
+  });
+
+  it('lets the kernel event, not the pick, move the label and the gauge denominator', () => {
+    const switched = fold([{ event: { type: 'model', model: 'm2', name: 'Model Two', contextWindow: 4096 } }], baselined());
+    expect(switched.model).toBe('m2');
+    expect(switched.modelName).toBe('Model Two');
+    expect(switched.contextWindow).toBe(4096);
+    // A model whose window nobody knows clears the denominator: an old model's
+    // number would print a percentage that belongs to a model no longer in use.
+    const unknown = fold([{ event: { type: 'model', model: 'm3' } }], switched);
+    expect(unknown.model).toBe('m3');
+    expect(unknown.modelName).toBeNull(); // no stale "Model Two" over m3
+    expect(unknown.contextWindow).toBeNull();
+  });
+
+  it('re-baselines the seat on a session switch: ready is the authority, the catalog is stale', () => {
+    const listed = reduce(baselined(), {
+      type: 'models',
+      groups: [{ id: 'endpoint', name: 'api.test', models: [{ id: 'm1', name: 'm1' }] }],
+      current: 'm1',
+    });
+    const next = reduce(listed, { type: 'ready', info: readyInfo({ model: 'other-model', modelSwitching: false }) });
+    expect(next.model).toBe('other-model');
+    expect(next.modelSwitching).toBe(false);
+    // Another session may sit behind another endpoint; the old list must not
+    // survive to offer models this one cannot reach.
+    expect(next.catalog).toBeNull();
   });
 });

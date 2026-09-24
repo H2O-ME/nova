@@ -1,7 +1,8 @@
 /**
- * The transcript reducer (M11 批2/批3): frames in, UI state out — pure
- * function, no React, no timers. This is the browser's only reducer; every
- * component below is a projection of its state.
+ * The UI state: frames in, state out. Pure function, no React, no timers, no
+ * module globals — same state plus same action always yields the same state
+ * (block ids are minted from `seq` inside the state, so two runs of the same
+ * frame sequence produce identical output).
  *
  * Two contracts it lives by:
  *  - **The durable log is the truth.** A (re)`ready` frame REPLACES the
@@ -11,14 +12,19 @@
  *  - **Views come from the vocabulary.** Tool rows render `switch (view.card)`;
  *    a card this bundle has never seen still renders from its own fields,
  *    because `generic` is always available as the fallback.
+ *
+ * Frame-level bookkeeping (attach, sessions, pagination, host errors) lives in
+ * this file; one case per kernel event lives next door in `state-events.ts`.
  */
 import type {
-  ApprovalMode, ApprovalRequest, JobSnapshot, KernelEvent, PtcMode, ReadyInfo, RunStats, SessionListItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
+  ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, JobSnapshot, KernelEvent, ModelGroup, PtcMode, ReadyInfo,
+  RunStats, SessionListItem, SubagentUsage, ToolCallView, ToolResultView, TurnPhase, WireBlock, WireTraceRow,
 } from './types.js';
+import { reduceEvent } from './state-events.js';
 
 export type Block =
-  | { id: string; kind: 'user'; text: string }
-  | { id: string; kind: 'text'; text: string; streaming: boolean }
+  | { id: string; kind: 'user'; text: string; /** The log's timestamp (the row's clock). */ ts?: number }
+  | { id: string; kind: 'text'; text: string; streaming: boolean; /** The message's timestamp. */ ts?: number }
   | { id: string; kind: 'reasoning'; text: string; streaming: boolean }
   | {
       id: string;
@@ -37,47 +43,90 @@ export type Block =
       tail?: string;
     }
   | { id: string; kind: 'hint'; text: string; tone: 'info' | 'warn' }
+  /**
+   * One section of the seeded session-start context fragment: what the kernel
+   * injected before the first turn, drawn as a disclosure row. Log-only —
+   * nothing about it is live, so it arrives with the `ready` baseline and its
+   * body is the model-facing bytes.
+   */
+  | {
+      id: string;
+      kind: 'context';
+      tag: string;
+      form: 'snapshot' | 'catalog' | 'text';
+      sections?: readonly { name: string; text: string }[];
+      entries?: readonly { name: string; description: string }[];
+      /** The catalog form's non-entry lines, when any. */
+      note?: string;
+      text: string;
+    }
   /** A finished run's numbers, rendered as the turn's meta row. */
   | { id: string; kind: 'meta'; stats: RunStats }
+  /**
+   * One slash command's lifecycle row: opened by `command/run`, rewritten in
+   * place by the matching `command/done` (the `jobs` recipe). It exists because
+   * a command is something the *user* did to the session, so it leaves a line in
+   * the transcript the way a prompt does.
+   */
+  | { id: string; kind: 'command'; name: string; running: boolean; text?: string }
   /** One background job, updated in place by id for the life of the job. */
-  | { id: string; kind: 'job'; job: JobSnapshot };
+  | { id: string; kind: 'job'; job: JobSnapshot }
+  /** One nested subagent, updated in place by label for the life of the run. */
+  | { id: string; kind: 'sub'; sub: SubRow };
 
-/** Session-cumulative numbers (the stats bar). Sums of the `run_stats` stream. */
-export interface SessionTotals {
-  runs: number;
-  requests: number;
-  toolCalls: number;
-  retries: number;
-  llmMs: number;
-  toolMs: number;
-  /** Summed over runs that reported a first token — the average's numerator. */
-  firstTokenMs: number;
-  firstTokenRuns: number;
-  promptTokens: number;
-  completionTokens: number;
-  cachedTokens: number;
+/** A nested run's live row; `state-events.ts` owns how it fills in. */
+export interface SubRow {
+  label: string;
+  status: 'running' | 'completed' | 'aborted' | 'ended';
+  /** Tool calls the nested loop has dispatched so far. */
+  calls: number;
+  /** The nested call it is on right now, one line. */
+  detail?: string;
+  /** The nested run's totals, once it reports `done`. */
+  usage?: SubagentUsage;
 }
 
-export const emptyTotals: SessionTotals = {
-  runs: 0,
-  requests: 0,
-  toolCalls: 0,
-  retries: 0,
-  llmMs: 0,
-  toolMs: 0,
-  firstTokenMs: 0,
-  firstTokenRuns: 0,
-  promptTokens: 0,
-  completionTokens: 0,
-  cachedTokens: 0,
-};
+/** A block without its identity — ids are minted by the reducer, never by callers. */
+export type Draft = Block extends infer B ? (B extends { id: string } ? Omit<B, 'id'> : never) : never;
+
+/** One fetch of the model catalog (`list_models` in flight, or its answer). */
+export interface ModelCatalog {
+  groups: readonly ModelGroup[];
+  loading: boolean;
+  /** Why the endpoint could not be asked (the menu shows it beside a Retry). */
+  error?: string;
+}
 
 export interface UiState {
   connected: boolean;
   meta: ReadyInfo | null;
   approvalMode: ApprovalMode;
   codeMode: PtcMode;
+  /** The model in force (`ready`/`state`, and the kernel's `model` event). */
+  model: string;
+  /**
+   * The catalog's display name for it, when the host has metadata (an endpoint
+   * publishes ids, never labels). Null → the seat shows `model`.
+   */
+  modelName: string | null;
+  /** Whether this kernel can switch models at all (the seat's render gate). */
+  modelSwitching: boolean;
+  /**
+   * The picker's catalog: null until the menu is first opened (the list is
+   * fetched on demand, never at attach), then rows or the reason there are
+   * none — "no models" and "could not ask" are different answers and the menu
+   * words them differently.
+   */
+  catalog: ModelCatalog | null;
+  /**
+   * The kernel's command catalog (what `/` can run), as `ready` published it.
+   * It is not fetched on demand like the model list: the kernel answers from its
+   * own registry, so it is always available and always current at attach.
+   */
+  commands: readonly CommandSummary[];
   blocks: Block[];
+  /** The block-id counter (see the header: ids are state, not a global). */
+  seq: number;
   phase: TurnPhase | 'disconnected';
   pendingApproval: ApprovalRequest | null;
   queued: readonly string[];
@@ -85,14 +134,73 @@ export interface UiState {
   /** Prompt tokens of the last request (the context gauge's numerator). */
   usedTokens: number;
   contextWindow: number | null;
-  /** Session switcher contents; null = not fetched (panel closed). */
+  /**
+   * Session switcher contents; null = never fetched in this browser session.
+   * The list OUTLIVES a `ready`: every attach re-states the transcript, but the
+   * list is not part of it — blanking it would show "loading" on every switch
+   * and re-ask for what the sidebar is already holding.
+   */
   sessions: readonly SessionListItem[] | null;
+  /**
+   * The list is worth re-asking (an attach landed, or a switch may have added
+   * a session). The host's answer settles it; a stale list keeps rendering
+   * meanwhile, which is why this is not "sessions = null".
+   */
+  sessionsStale: boolean;
+  /** A `list_sessions` request is in flight (single-flight, same rule as paging). */
+  sessionsPending: boolean;
   /** Baseline blocks the browser holds (from `ready` plus `load_earlier`). */
   historyLoaded: number;
   /** Blocks the baseline has in all — anything above `historyLoaded` is older. */
   historyTotal: number;
+  /**
+   * A `load_earlier` page is in flight. Owned here because the reply is the
+   * only thing that can settle it: the reducer sees both the request going out
+   * and every frame coming back, so a double click cannot queue two pages and a
+   * dropped socket cannot leave the button loading forever.
+   */
+  historyPending: boolean;
+  /**
+   * Which view the session pane shows. A view switch is browser state, not
+   * session state: it is not logged, not sent anywhere, and resets with the
+   * baseline like every other per-attach choice.
+   */
+  view: SessionViewId;
+  /**
+   * The trace view: rows as of its last read, plus how many the log holds. Null
+   * until the view is first opened — the log is read on demand, because most
+   * visits never leave the conversation.
+   */
+  trace: TraceState | null;
   /** Cumulative run numbers for the stats bar (session-scoped, like the kernel's). */
   totals: SessionTotals;
+}
+
+/** The session pane's view ids (the header's tabs, ported from the source's ledger). */
+export type SessionViewId = 'chat' | 'trace';
+
+/**
+ * Session-cumulative numbers and their zero are the web package's (`totals.ts`,
+ * shared with the host, which folds the whole log for `ready`).
+ */
+import { emptyTotals, type SessionTotals } from '../../src/totals';
+
+export type { SessionTotals };
+
+/** The trace view's fetched state. */
+export interface TraceState {
+  /** Rows held, oldest first (the newest page arrives as the tail). */
+  rows: readonly WireTraceRow[];
+  /** Rows the durable log holds in all — above `rows.length` are older. */
+  total: number;
+  /** A `load_trace` page is in flight (the same one-owner rule as `historyPending`). */
+  pending: boolean;
+  /**
+   * The cursor the in-flight (or last) request carried: 0 means a fresh read,
+   * which is how its answer is folded in (`state` owns that rule, not the
+   * payload's shape).
+   */
+  have: number;
 }
 
 export const initialState: UiState = {
@@ -100,7 +208,13 @@ export const initialState: UiState = {
   meta: null,
   approvalMode: 'read-only',
   codeMode: 'native',
+  model: '',
+  modelName: null,
+  modelSwitching: false,
+  catalog: null,
+  commands: [],
   blocks: [],
+  seq: 0,
   phase: 'idle',
   pendingApproval: null,
   queued: [],
@@ -108,21 +222,33 @@ export const initialState: UiState = {
   usedTokens: 0,
   contextWindow: null,
   sessions: null,
+  sessionsStale: false,
+  sessionsPending: false,
   historyLoaded: 0,
   historyTotal: 0,
+  historyPending: false,
+  view: 'chat',
+  trace: null,
   totals: emptyTotals,
 };
 
-let blockSeq = 0;
-const nextId = (): string => `b${(blockSeq += 1)}`;
-
 export type Action =
   | { type: 'connection'; connected: boolean }
+  /** A frame the client just put on the socket — request-side state the
+   *  server's replies alone cannot account for (the pagination in-flight flag). */
+  | { type: 'sent'; frame: ClientFrame }
   | { type: 'ready'; info: ReadyInfo }
   | { type: 'event'; event: KernelEvent; view?: ToolCallView; resultView?: ToolResultView }
-  | { type: 'state'; approvalMode: ApprovalMode; codeMode: PtcMode }
+  | { type: 'state'; approvalMode: ApprovalMode; codeMode: PtcMode; model: string; modelName?: string }
+  | { type: 'models'; groups: readonly ModelGroup[]; current: string; error?: string }
   | { type: 'sessions'; items: readonly SessionListItem[] }
   | { type: 'history_earlier'; blocks: readonly WireBlock[]; total: number }
+  | { type: 'trace'; rows: readonly WireTraceRow[]; total: number }
+  /**
+   * The user picked a view. A local action, not a frame: the host has no
+   * opinion about which pane is on screen, and nothing about it is durable.
+   */
+  | { type: 'select_view'; view: SessionViewId }
   | { type: 'error'; message: string };
 
 export function reduce(state: UiState, action: Action): UiState {
@@ -134,311 +260,205 @@ export function reduce(state: UiState, action: Action): UiState {
         // 'disconnected' is synthetic (not a kernel TurnPhase): a reconnect must
         // clear it, or the badge outlives the disconnect until the next event.
         phase: action.connected ? (state.phase === 'disconnected' ? 'idle' : state.phase) : 'disconnected',
+        // A dropped socket means the reply cannot arrive: unblock the button
+        // rather than leave it spinning until the reconnect re-baselines.
+        historyPending: action.connected ? state.historyPending : false,
+        // Same rule for the trace page: a dropped socket cannot deliver it.
+        trace: state.trace !== null && !action.connected ? { ...state.trace, pending: false } : state.trace,
       };
+    case 'sent':
+      if (action.frame.type === 'load_earlier') return { ...state, historyPending: true };
+      // A trace read going out marks its own page in flight; rows already held
+      // stay on screen (the pane shows them under the refresh).
+      if (action.frame.type === 'load_trace') {
+        return {
+          ...state,
+          trace: {
+            rows: state.trace?.rows ?? [],
+            total: state.trace?.total ?? 0,
+            pending: true,
+            have: action.frame.have,
+          },
+        };
+      }
+      if (action.frame.type === 'list_sessions') {
+        // Same rule as the catalog: the request went out, so the answer is
+        // what settles it — and the list stays on screen until it does.
+        return { ...state, sessionsStale: false, sessionsPending: true };
+      }
+      // Opening the catalog marks the fetch in flight HERE, not in the menu:
+      // the reducer sees the request go out and the reply come back, so a menu
+      // closed and reopened cannot show a stale answer as fresh.
+      if (action.frame.type === 'list_models') {
+        return { ...state, catalog: { groups: state.catalog?.groups ?? [], loading: true } };
+      }
+      return state;
     case 'ready':
-      return {
-        ...state,
-        connected: true,
-        meta: action.info,
-        approvalMode: action.info.approvalMode,
-        codeMode: action.info.codeMode,
-        phase: 'idle',
-        pendingApproval: action.info.pendingApprovals[0] ?? null,
-        queued: [],
-        // A session switch re-baselines everything session-scoped; the session
-        // list is cleared so the panel refetches against the new transcript.
-        sessions: null,
-        usedTokens: action.info.usedTokens,
-        contextWindow: action.info.contextWindow ?? null,
-        blocks: action.info.history.map(replayBlock),
-        historyLoaded: action.info.history.length,
-        historyTotal: action.info.historyTotal,
-        // Totals count runs the kernel measured in THIS process; a resume does
-        // not inherit the old process's numbers (nor invent any).
-        totals: emptyTotals,
-      };
+      return applyReady(state, action.info);
     case 'event':
       return reduceEvent(state, action.event, action.view, action.resultView);
     case 'state':
-      return { ...state, approvalMode: action.approvalMode, codeMode: action.codeMode };
-    case 'sessions':
-      return { ...state, sessions: action.items };
-    case 'history_earlier':
-      // Older blocks go in FRONT; the cursor is what the browser now holds.
       return {
         ...state,
-        blocks: [...action.blocks.map(replayBlock), ...state.blocks],
+        approvalMode: action.approvalMode,
+        codeMode: action.codeMode,
+        model: action.model,
+        // No name in the frame means the host has none for this model: keeping
+        // the previous model's would label the new one with the old one's name.
+        modelName: action.modelName ?? null,
+      };
+    case 'models':
+      return {
+        ...state,
+        model: action.current,
+        catalog: {
+          groups: action.groups,
+          loading: false,
+          ...(action.error !== undefined ? { error: action.error } : {}),
+        },
+      };
+    case 'sessions':
+      return { ...state, sessions: action.items, sessionsStale: false, sessionsPending: false };
+    case 'history_earlier': {
+      // Older blocks go in FRONT; the cursor is what the browser now holds.
+      let seq = state.seq;
+      const older = action.blocks.map((entry) => replayBlock(entry, `b${(seq += 1)}`));
+      return {
+        ...state,
+        blocks: [...older, ...state.blocks],
+        seq,
         historyLoaded: state.historyLoaded + action.blocks.length,
         historyTotal: action.total,
+        historyPending: false,
       };
+    }
+    case 'trace':
+      // Which request this answers is decided by the cursor it was sent with,
+      // not by guessing from the payload: `have: 0` asked for a fresh read (the
+      // page IS the newest tail and replaces what was held), any other cursor
+      // asked for the rows immediately older than those (they go in FRONT).
+      return {
+        ...state,
+        trace: {
+          rows: state.trace !== null && state.trace.have > 0
+            ? [...action.rows, ...state.trace.rows]
+            : action.rows,
+          total: action.total,
+          pending: false,
+          have: state.trace !== null && state.trace.have > 0 ? state.trace.have + action.rows.length : action.rows.length,
+        },
+      };
+    case 'select_view':
+      return { ...state, view: action.view };
     case 'error':
-      return hint(state, `宿主提示：${action.message}`, 'warn');
+      // A host error IS the reply to whatever was in flight: it settles too.
+      return {
+        ...hint(state, `宿主提示：${action.message}`, 'warn'),
+        historyPending: false,
+        sessionsPending: false,
+        trace: state.trace !== null ? { ...state.trace, pending: false } : null,
+      };
   }
+}
+
+/** A (re)attach: rebuild the transcript from the baseline and reset run state. */
+function applyReady(state: UiState, info: ReadyInfo): UiState {
+  let seq = 0;
+  const history = (info.history ?? []).map((entry: WireBlock) => replayBlock(entry, `b${(seq += 1)}`));
+  // Background jobs are not in the log (nothing about them is model-visible
+  // until they report), so a reconnect takes the kernel's live snapshots —
+  // without this, a reattached surface silently loses its running-job rows.
+  const jobs: Block[] = (info.jobs ?? []).map((job) => ({ id: `job:${job.id}`, kind: 'job', job }));
+  return {
+    ...state,
+    connected: true,
+    meta: info,
+    approvalMode: info.approvalMode,
+    codeMode: info.codeMode,
+    model: info.model,
+    modelName: info.modelName ?? null,
+    modelSwitching: info.modelSwitching,
+    // A session switch re-fetches the catalog: the endpoint may be a different
+    // one now, and a stale list would offer models this session cannot reach.
+    catalog: null,
+    // Commands are the kernel's, not the session's: the frame re-states them on
+    // every attach (a plugin registered after boot is in this list, not the
+    // previous one).
+    commands: info.commands ?? [],
+    // A baseline that arrives with an outstanding ask is a suspended run, not
+    // an idle session: the phase must say so before the first live event.
+    phase: info.pendingApprovals.length > 0 ? 'waiting_approval' : 'idle',
+    pendingApproval: info.pendingApprovals[0] ?? null,
+    queued: [],
+    // A session switch re-baselines everything session-scoped EXCEPT the
+    // sidebar's list: a switch can add a session (the one just created) or
+    // change the current row's highlight, so the list is re-asked — but the
+    // rows already on screen stay, because re-asking is not a reason to blink.
+    // A request that was in flight died with the socket that carried it, so
+    // the flag resets with the attach rather than waiting for a reply that
+    // will never come (which would block every later re-ask).
+    sessionsStale: true,
+    sessionsPending: false,
+    usedTokens: info.usedTokens,
+    contextWindow: info.contextWindow ?? null,
+    blocks: [...history, ...jobs],
+    seq,
+    historyLoaded: history.length,
+    historyTotal: info.historyTotal,
+    historyPending: false,
+    // The trace window is re-cut on the same attach, so whatever rows the pane
+    // held belong to a session that is no longer open: drop them and let an
+    // open pane re-read (`traceTotal` says how many there are to read).
+    trace: null,
+    // The session's numbers come from the HOST's fold over the whole log
+    // (this frame carried it), so a resumed session shows the totals of every
+    // run it ever had — the live stream then adds each new one.
+    totals: info.runTotals,
+  };
 }
 
 /** One replayed log entry → one block (the host already did the interpretation). */
-function replayBlock(entry: WireBlock): Block {
-  if (entry.kind === 'tool') {
-    return {
-      id: nextId(),
-      kind: 'tool',
-      callId: entry.callId,
-      name: entry.name,
-      args: entry.args,
-      view: entry.view,
-      ...(entry.ts !== undefined ? { ts: entry.ts } : {}),
-      ...(entry.result !== undefined ? { result: entry.result } : {}),
-      ...(entry.output !== undefined ? { output: entry.output } : {}),
-    };
-  }
-  return entry.kind === 'user'
-    ? { id: nextId(), kind: 'user', text: entry.text }
-    : { id: nextId(), kind: 'text', text: entry.text, streaming: false };
-}
-
-/** Events that only touch the transcript (block list). */
-type TranscriptEvent = Extract<
-  KernelEvent,
-  {
-    type:
-      | 'user_message'
-      | 'text_delta'
-      | 'reasoning_delta'
-      | 'tool_call_start'
-      | 'tool_call_result'
-      | 'tool_progress'
-      | 'job_update'
-      | 'llm_retry'
-      | 'empty_completion'
-      | 'done';
-  }
->;
-
-/** Events that only touch run state (phase, approvals, queue, notices, usage, totals). */
-type RunStateEvent = Extract<
-  KernelEvent,
-  {
-    type:
-      | 'turn_start'
-      | 'phase'
-      | 'approval_request'
-      | 'approval_resolved'
-      | 'queue_update'
-      | 'compaction'
-      | 'notice'
-      | 'run_failed'
-      | 'usage'
-      | 'run_stats';
-  }
->;
-
-function reduceEvent(
-  state: UiState,
-  event: KernelEvent,
-  view: ToolCallView | undefined,
-  resultView: ToolResultView | undefined,
-): UiState {
-  if (isTranscriptEvent(event)) return reduceTranscript(state, event, view, resultView);
-  if (isRunStateEvent(event)) return reduceRunState(state, event);
-  return state;
-}
-
-function isTranscriptEvent(event: KernelEvent): event is TranscriptEvent {
-  switch (event.type) {
-    case 'user_message':
-    case 'text_delta':
-    case 'reasoning_delta':
-    case 'tool_call_start':
-    case 'tool_call_result':
-    case 'tool_progress':
-    case 'job_update':
-    case 'llm_retry':
-    case 'empty_completion':
-    case 'done':
-      return true;
-    default:
-      return false;
-  }
-}
-
-function isRunStateEvent(event: KernelEvent): event is RunStateEvent {
-  switch (event.type) {
-    case 'turn_start':
-    case 'phase':
-    case 'approval_request':
-    case 'approval_resolved':
-    case 'queue_update':
-    case 'compaction':
-    case 'notice':
-    case 'run_failed':
-    case 'usage':
-    case 'run_stats':
-      return true;
-    default:
-      return false;
-  }
-}
-
-function reduceTranscript(
-  state: UiState,
-  event: TranscriptEvent,
-  view: ToolCallView | undefined,
-  resultView: ToolResultView | undefined,
-): UiState {
-  switch (event.type) {
-    case 'user_message':
-      return appendBlock(state, { id: nextId(), kind: 'user', text: event.message.content });
-    case 'text_delta':
-      return streamBlock(state, 'text', event.text);
-    case 'reasoning_delta':
-      return streamBlock(state, 'reasoning', event.text);
-    case 'tool_call_start':
-      return appendBlock(state, {
-        id: nextId(),
-        kind: 'tool',
-        callId: event.call.id,
-        name: event.call.name,
-        args: event.call.rawArgs,
-        ts: Date.now(),
-        // The host resolves this from the LIVE tool registry; a client that
-        // somehow got no view still renders (generic card from name+args).
-        view: view ?? { card: 'generic', kind: 'other', title: event.call.name },
-      });
-    case 'tool_call_result':
-      return markToolResult(state, event.call.id, resultView, event.result.content);
-    case 'tool_progress': {
-      const tail = lastLine(event.text);
-      return { ...state, blocks: mapTool(state, undefined, (b) => (b.result === undefined ? { ...b, tail } : b)) };
-    }
-    case 'job_update':
-      return upsertJob(state, event.job);
-    case 'llm_retry':
-      // The in-flight answer is being re-requested: say so in the transcript,
-      // where the gap in the output otherwise looks like a stall.
-      return hint(state, `已重新请求模型（${event.attempt}/${event.maxRetries}）· ${event.error}`, 'warn');
-    case 'empty_completion':
-      return hint(state, `空补全（${event.finishReason}），正在重发同一请求（${event.attempt}/${event.maxRetries}）`, 'warn');
-    case 'done':
-      return { ...state, blocks: closeStreaming(state.blocks) };
-  }
-}
-
-function reduceRunState(state: UiState, event: RunStateEvent): UiState {
-  switch (event.type) {
-    case 'turn_start':
-      return { ...state, turnCount: state.turnCount + 1 };
-    case 'phase':
-      return { ...state, phase: event.phase };
-    case 'usage':
-      // The gauge's numerator is CONSUMPTION (prompt tokens of the last
-      // request), not the cumulative session total.
-      return { ...state, usedTokens: event.usage.promptTokens };
-    case 'approval_request':
-      return { ...state, pendingApproval: event.request };
-    case 'approval_resolved':
-      return state.pendingApproval?.id === event.id ? { ...state, pendingApproval: null } : state;
-    case 'queue_update':
-      return { ...state, queued: event.items };
-    case 'compaction':
-      if (event.progress.state === 'start') return hint(state, '上下文压缩中…', 'info');
-      if (event.progress.state === 'done') return hint(state, `已自动压缩 — 保留 ${event.progress.retained ?? 0} 条最近消息`, 'info');
-      return state; // error rides the notice channel
-    case 'notice':
-      return hint(state, event.text, event.code === 'compact_fused' ? 'warn' : 'info');
-    case 'run_failed': {
-      // The turn is over either way: a still-open stream would leave the typing
-      // cursor blinking on partial text that will never grow.
-      const settled = { ...state, blocks: closeStreaming(state.blocks) };
-      return hint(settled, event.aborted ? '已中断' : `出错：${event.message}`, 'warn');
-    }
-    case 'run_stats':
-      // Two records of the same numbers: the turn's own meta row (where it
-      // happened) and the running session totals (the stats bar).
+function replayBlock(entry: WireBlock, id: string): Block {
+  switch (entry.kind) {
+    case 'tool':
       return {
-        ...state,
-        blocks: [...state.blocks, { id: nextId(), kind: 'meta', stats: event.stats }],
-        totals: addRun(state.totals, event.stats),
+        id,
+        kind: 'tool',
+        callId: entry.callId,
+        name: entry.name,
+        args: entry.args,
+        view: entry.view,
+        ...(entry.ts !== undefined ? { ts: entry.ts } : {}),
+        ...(entry.result !== undefined ? { result: entry.result } : {}),
+        ...(entry.output !== undefined ? { output: entry.output } : {}),
       };
+    case 'aborted':
+      // The log's abort marker is model-facing; the user reads a line about it.
+      return { id, kind: 'hint', text: '本轮已中断', tone: 'warn' };
+    case 'context':
+      return {
+        id,
+        kind: 'context',
+        tag: entry.tag,
+        form: entry.form,
+        ...(entry.sections !== undefined ? { sections: entry.sections } : {}),
+        ...(entry.entries !== undefined ? { entries: entry.entries } : {}),
+        ...(entry.note !== undefined ? { note: entry.note } : {}),
+        text: entry.text,
+      };
+    case 'meta':
+      // A finished run's line, replayed from the log: the same row the live
+      // `run_stats` event built, so a resumed session reads exactly like the
+      // session that was running (its clock, duration and throughput intact).
+      return { id, kind: 'meta', stats: entry.stats };
+    case 'user':
+      return { id, kind: 'user', text: entry.text, ...(entry.ts !== undefined ? { ts: entry.ts } : {}) };
+    case 'text':
+      return { id, kind: 'text', text: entry.text, streaming: false, ...(entry.ts !== undefined ? { ts: entry.ts } : {}) };
   }
-}
-
-/** Close whatever stream is open, then append — a new block ends the previous one. */
-function appendBlock(state: UiState, block: Block): UiState {
-  return { ...state, blocks: [...closeStreaming(state.blocks), block] };
-}
-
-/** Append a delta to the open stream of the same kind, else open a new one. */
-function streamBlock(state: UiState, kind: 'text' | 'reasoning', text: string): UiState {
-  const last = state.blocks.at(-1);
-  if (last?.kind === kind && last.streaming) {
-    return { ...state, blocks: replaceLast(state.blocks, { ...last, text: last.text + text }) };
-  }
-  return appendBlock(state, { id: nextId(), kind, text, streaming: true });
-}
-
-/** Rewrite tool rows by call id (all unfinished rows when the id is unknown). */
-function mapTool(state: UiState, callId: string | undefined, fn: (block: Extract<Block, { kind: 'tool' }>) => Block): Block[] {
-  return state.blocks.map((b) => (b.kind === 'tool' && (callId === undefined || b.callId === callId) ? fn(b) : b));
-}
-
-function markToolResult(state: UiState, callId: string, result: ToolResultView | undefined, output: string): UiState {
-  return {
-    ...state,
-    blocks: mapTool(state, callId, (b) => ({
-      ...b,
-      // Without a view from the host the row keeps its call card and stays
-      // in-flight rather than inventing a verdict from the raw text.
-      result: result ?? b.result,
-      output,
-    })),
-  };
-}
-
-/**
- * Background jobs live as ONE transcript row each, injected where they started
- * and rewritten in place as they progress — the same "one place, later updates
- * replace the first" rule the terminal's live rows follow. A job that outlives
- * its run stays visible until it settles.
- */
-function upsertJob(state: UiState, job: JobSnapshot): UiState {
-  const id = `job:${job.id}`;
-  const block: Block = { id, kind: 'job', job };
-  const at = state.blocks.findIndex((b) => b.id === id);
-  if (at < 0) return { ...state, blocks: [...state.blocks, block] };
-  const blocks = [...state.blocks];
-  blocks[at] = block;
-  return { ...state, blocks };
-}
-
-function addRun(totals: SessionTotals, stats: RunStats): SessionTotals {
-  return {
-    runs: totals.runs + 1,
-    requests: totals.requests + stats.requests,
-    toolCalls: totals.toolCalls + stats.toolCalls,
-    retries: totals.retries + stats.retries,
-    llmMs: totals.llmMs + stats.llmMs,
-    toolMs: totals.toolMs + stats.toolMs,
-    firstTokenMs: totals.firstTokenMs + (stats.firstTokenMs ?? 0),
-    firstTokenRuns: totals.firstTokenRuns + (stats.firstTokenMs === undefined ? 0 : 1),
-    promptTokens: totals.promptTokens + stats.promptTokens,
-    completionTokens: totals.completionTokens + stats.completionTokens,
-    cachedTokens: totals.cachedTokens + stats.cachedTokens,
-  };
 }
 
 function hint(state: UiState, text: string, tone: 'info' | 'warn'): UiState {
-  return { ...state, blocks: [...state.blocks, { id: nextId(), kind: 'hint', text, tone }] };
-}
-
-function closeStreaming(blocks: Block[]): Block[] {
-  return blocks.map((b) => (b.kind === 'text' || b.kind === 'reasoning' ? (b.streaming ? { ...b, streaming: false } : b) : b));
-}
-
-function replaceLast(blocks: Block[], block: Block): Block[] {
-  return [...blocks.slice(0, -1), block];
-}
-
-function lastLine(text: string): string {
-  const trimmed = text.replace(/\s+$/, '');
-  return trimmed.slice(trimmed.lastIndexOf('\n') + 1);
+  const seq = state.seq + 1;
+  return { ...state, seq, blocks: [...state.blocks, { id: `b${seq}`, kind: 'hint', text, tone }] };
 }

@@ -1,0 +1,145 @@
+/* Ported from deepseek-harness ui-workspace
+   `src/client/rows/Rows.module.css` (c) 2026 DeepSeek — MIT License.
+   Classes for the row menus (rename/fork/archive), the session hover card, the
+   drag insert markers, and the schedule indicator are not ported: this app's
+   session list carries titles, times, and a selection, and nothing else. */
+
+.projectRow,
+.sessionRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 0 8px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--dsw-alias-label-primary);
+}
+
+.projectRow:hover,
+.sessionRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.sessionRow.selected {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Both rows are role=treeitem elements rather than buttons (the reference
+   renders divs with click handlers); the ring keeps them reachable by
+   keyboard, which the reference leaves to its tree owner. */
+.projectRow:focus-visible,
+.sessionRow:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-tertiary);
+  outline-offset: -2px;
+}
+
+/* Compact one-line Workspace row after removing the session-count subtitle. */
+.projectRow {
+  height: 34px;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+/* Session cell (figma): pad 8, a 16px status slot, then a 4px title gap. */
+.sessionRow {
+  height: 32px;
+  gap: 0;
+  /* Mount fade: session rows appear by unfolding a group (or the list
+     mounting). Stable row keys keep already-visible rows from replaying it. */
+  animation: row-in 150ms var(--ds-ease-in-out);
+}
+
+.sessionRow .title {
+  margin: 0 6px 0 4px;
+}
+
+@keyframes row-in {
+  from { opacity: 0; }
+}
+
+.slot {
+  flex: none;
+  width: 16px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The folder rides the business blue while the open group holds the current
+   session (the reference's `containsCurrent` fact). */
+.folderActive {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+/* Project leading slot: folder by default, expand arrow on row hover. */
+.projectRow .chevron { display: none; }
+.projectRow:hover .chevron { display: inline-flex; }
+.projectRow:hover .folder { display: none; }
+
+/* Expand arrow (filled triangle): points right closed, rotates to point down open. */
+.arrow {
+  transition: transform 150ms var(--ds-ease-in-out);
+}
+
+.arrowOpen {
+  transform: rotate(90deg);
+}
+
+.projectText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.sessionRow .title {
+  flex: 1;
+}
+
+.time {
+  flex: none;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Chevrons ride the caption ink; the folder glyph stays one step darker (the
+   tertiary label ink) per the cell spec. */
+.chevron {
+  color: var(--dsw-alias-label-caption);
+}
+
+/* The tree glyphs are CSS-sized like every icon in this bundle: the folder
+   pair fills the 16px slot, the arrow is the reference's 14px glyph. */
+.folderIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.arrowIcon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sessionRow,
+  .arrow {
+    animation: none;
+    transition: none;
+  }
+}

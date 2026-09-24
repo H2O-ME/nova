@@ -4,7 +4,7 @@
  * This is where the old per-runner assembly contract converges into one
  * owner: the event pump, the durable log ("model-visible means logged" is
  * enforced HERE, not by each shell's bookkeeping), the running-prompt queue
- * (the TUI's queue lane generalized into kernel semantics), phase derivation
+ * (the queue lane every surface renders, generalized into kernel semantics), phase derivation
  * (surfaces stopped guessing "is it thinking" from delta sequences),
  * approvals as request/response events over the broker, compaction with
  * in-place surface splice + anchor reset, auto-compact pre/post gates, and
@@ -12,18 +12,17 @@
  *
  * A surface never writes `messages` or the `Session` log itself; it drives
  * the handle and renders the event stream. That is the seam that makes the
- * TUI / WebUI / bot channels interchangeable plugins of the same kernel.
+ * browser / REPL / bot channels interchangeable consumers of the same kernel.
  */
 import { runAgent } from '../agent/loop.js';
 import {
   emptyStats,
-  NOT_EXECUTED_GUIDANCE,
   type AgentOptions,
 } from '../agent/options.js';
 import { errMessage } from '../errors.js';
 import { newId } from '../ids.js';
 import { shouldCompactBefore } from '../auto-compact.js';
-import { compactSession, type CompactedSession } from '../compact.js';
+import { compactSession, type CompactedSession, type CompactSessionOptions } from '../compact.js';
 import type {
   ApprovalBroker,
   ApprovalMode,
@@ -33,14 +32,14 @@ import type {
   PermissionPort,
 } from '../approval.js';
 import type { JobRegistry, JobSnapshot } from '../jobs.js';
-import type { Session } from '../session.js';
+import type { Session, SessionEvent } from '../session.js';
+import { persistMissingToolResults } from '../session-repair.js';
 import type { SubagentProgress } from '../tools/subagent.js';
 import type {
   AgentHooks,
   AgentMessage,
   ChatProvider,
   ToolDefinition,
-  ToolResultMessage,
   Usage,
   UsageStats,
   UserMessage,
@@ -96,54 +95,15 @@ export interface AgentSessionDeps {
    * down so nobody double-compacts.
    */
   perRequestCompact?: boolean;
+  /**
+   * The compaction strategy. Defaults to the shipped summarizer; the assembly
+   * passes in whatever the `compaction` service provides, which is what makes
+   * summarization replaceable — it is where the token bill is decided.
+   */
+  compact?: (options: CompactSessionOptions) => Promise<CompactedSession>;
 }
 
 export type AgentStatus = 'idle' | 'running' | 'compacting';
-
-/**
- * Repair an abandoned turn's log (assistant tool_calls without results):
- * synthesize NOT_EXECUTED_GUIDANCE results into the log and fill any hole in
- * the live surface. Idempotent (scans the log), so it is safe to run even
- * when core's own abandonment cleanup already fired.
- */
-export async function persistMissingToolResults(
-  session: Session,
-  messages: AgentMessage[],
-): Promise<number> {
-  const logged = session.allMessages();
-  const loggedResults = new Set<string>();
-  for (const msg of logged) {
-    if (msg.role === 'tool') loggedResults.add(msg.toolCallId);
-  }
-  const surfaceResults = new Set<string>();
-  for (const msg of messages) {
-    if (msg.role === 'tool') surfaceResults.add(msg.toolCallId);
-  }
-  const missing: ToolResultMessage[] = [];
-  for (const msg of logged) {
-    if (msg.role !== 'assistant' || msg.toolCalls === undefined) continue;
-    for (const call of msg.toolCalls) {
-      if (loggedResults.has(call.id)) continue;
-      loggedResults.add(call.id);
-      missing.push({
-        id: newId('msg'),
-        ts: Date.now(),
-        role: 'tool',
-        toolCallId: call.id,
-        name: call.name,
-        content: NOT_EXECUTED_GUIDANCE,
-      });
-    }
-  }
-  for (const result of missing) {
-    await session.append(result);
-    if (!surfaceResults.has(result.toolCallId)) {
-      surfaceResults.add(result.toolCallId);
-      messages.push(result);
-    }
-  }
-  return missing.length;
-}
 
 export class AgentSession {
   /** The event pump: `subscribe` for callbacks, `events()` for iteration. */
@@ -159,11 +119,21 @@ export class AgentSession {
   private compacting = false;
   private phase: TurnPhase = 'idle';
   private lastToolCallId: string | undefined;
+  /** The last message this run appended (the durable stats row's anchor). */
+  private lastMessageId: string | undefined;
   private closed = false;
 
   constructor(deps: AgentSessionDeps) {
     this.deps = deps;
-    this.events = new EventPump();
+    // A throwing surface listener is reported onto the same stream instead of
+    // escaping from inside the run loop (which crashed the process).
+    this.events = new EventPump((err) => {
+      this.publish({
+        type: 'notice',
+        code: 'listener_failed',
+        text: `事件订阅者抛错（已忽略）：${errMessage(err)}`,
+      });
+    });
     deps.approvals.attach(
       (request) => {
         this.setPhase('waiting_approval');
@@ -247,6 +217,35 @@ export class AgentSession {
     this.publish({ type: 'notice', code, text });
   }
 
+  /**
+   * Announce a slash command's lifecycle. Published (rather than answered to
+   * the caller alone) so every attached view shows the same command row, and so
+   * a command that runs long keeps its row until it settles.
+   */
+  announceCommand(name: string, phase: 'run' | 'done', text?: string): void {
+    this.publish({ type: 'command', name, phase, ...(text !== undefined && text !== '' ? { text } : {}) });
+  }
+
+  /**
+   * Announce a model change on the event stream. The swap itself is the
+   * provider's (`ChatProvider.setModel` — one client instance serves the whole
+   * kernel), so the session publishes the fact instead of owning it: a switch
+   * made from any surface reaches every other consumer without a reload, which
+   * is what keeps two attached views from disagreeing about the model.
+   *
+   * `name`/`contextWindow` ride along because the surface that switched holds
+   * the metadata for its choice: an id is what the wire needs, a display name
+   * and a window are what a reader does.
+   */
+  announceModel(model: string, detail: { name?: string; contextWindow?: number } = {}): void {
+    this.publish({
+      type: 'model',
+      model,
+      ...(detail.name !== undefined ? { name: detail.name } : {}),
+      ...(detail.contextWindow !== undefined ? { contextWindow: detail.contextWindow } : {}),
+    });
+  }
+
   /** Relay a nested subagent lifecycle moment (wired by the assembly factory). */
   observeSubagent(progress: SubagentProgress): void {
     this.publish({ type: 'subagent_update', progress });
@@ -255,6 +254,22 @@ export class AgentSession {
   /** Relay a background-job transition (wired via JobRegistry.setListener). */
   observeJob(job: JobSnapshot): void {
     this.publish({ type: 'job_update', job });
+  }
+
+  /** Known background jobs — a reconnecting surface rebuilds its rows from these. */
+  jobSnapshots(): JobSnapshot[] {
+    return this.deps.jobs.list();
+  }
+
+  /**
+   * Ask a background job to stop (a surface's stop control; the model's route
+   * is the `jobs` tool). Returns whether the registry knew the id. The outcome
+   * arrives as a `job_update` like every other transition, so no caller has to
+   * await this to stay in sync — and stopping an already-settled job is a
+   * no-op rather than an error.
+   */
+  async stopJob(id: string): Promise<boolean> {
+    return (await this.deps.jobs.stop(id)) !== undefined;
   }
 
   /**
@@ -266,8 +281,12 @@ export class AgentSession {
   async prompt(text: string): Promise<void> {
     if (this.closed) throw new Error('agent session is closed');
     const userMsg: UserMessage = { id: newId('msg'), ts: Date.now(), role: 'user', content: text };
-    this.deps.messages.push(userMsg);
+    // Log FIRST, then the live surface (the same write-then-memory order
+    // `appendEvent` follows): if the append fails, the transcript must not show
+    // a message the durable log never received — a divergence that survives
+    // every later resume.
     await this.deps.session.append(userMsg);
+    this.deps.messages.push(userMsg);
     this.publish({ type: 'user_message', message: userMsg });
     if (this.running) {
       this.pending.push(text);
@@ -298,16 +317,34 @@ export class AgentSession {
     return this.deps.approvals.resolve(id, answer);
   }
 
-  /** Compact now. Rejects while a run is active. */
+  /**
+   * Compact now, from OUTSIDE a run. Rejects while a run is active: an external
+   * caller (a `/compact` command, a surface button) must not splice the message
+   * array out from under a live request.
+   */
   async compact(trigger: 'auto' | 'manual' = 'manual'): Promise<CompactedSession> {
     if (this.running) throw new Error('cannot compact while a run is active');
+    return this.compactNow(trigger);
+  }
+
+  /**
+   * The compaction itself. The run-boundary gates (pre/post) call THIS rather
+   * than `compact()`: they fire from inside the run loop, where `running` is
+   * true by definition, so the public guard rejected *every* automatic
+   * compaction with "cannot compact while a run is active" — surfacing as a
+   * `compact_failed` notice on every over-limit turn. Boundaries are quiescent
+   * points: the previous turn's stream is fully consumed and the next request
+   * has not been assembled yet.
+   */
+  private async compactNow(trigger: 'auto' | 'manual'): Promise<CompactedSession> {
     if (this.compacting) throw new Error('a compaction is already running');
     this.compacting = true;
     this.compactAbort = new AbortController();
     this.setPhase('compacting');
     this.publish({ type: 'compaction', progress: { state: 'start', trigger } });
     try {
-      const outcome = await compactSession({
+      const strategy = this.deps.compact ?? compactSession;
+      const outcome = await strategy({
         client: this.deps.provider,
         session: this.deps.session,
         messages: this.deps.messages,
@@ -385,6 +422,7 @@ export class AgentSession {
 
   private async startRun(signal: AbortSignal): Promise<void> {
     this.meter.start();
+    this.lastMessageId = undefined;
     try {
       await this.preflightCompact();
       const options = this.agentOptions(signal);
@@ -397,7 +435,7 @@ export class AgentSession {
       await persistMissingToolResults(this.deps.session, this.deps.messages).catch(() => undefined);
       // A failed run still has numbers worth showing (how far it got, what it
       // spent); they precede `run_failed`, the terminator, like `done`'s do.
-      this.publishRunStats();
+      await this.publishRunStats();
       this.publish({ type: 'run_failed', message: errMessage(err), aborted: signal.aborted });
     } finally {
       // Outstanding asks must not outlive the run that made them.
@@ -452,9 +490,11 @@ export class AgentSession {
         break;
       case 'message':
         await this.deps.session.append(event.message);
+        this.lastMessageId = event.message.id;
         break;
       case 'turn_aborted':
         await this.deps.session.append(event.message);
+        this.lastMessageId = event.message.id;
         break;
       case 'usage': {
         Object.assign(this.stats, event.stats);
@@ -474,12 +514,27 @@ export class AgentSession {
     }
     // A run's numbers go out BEFORE its terminator: `done` is the last frame a
     // consumer waits for, so stats after it would be missed (the smoke did once).
-    if (event.type === 'done') this.publishRunStats();
+    if (event.type === 'done') await this.publishRunStats();
     this.publish(event);
   }
 
-  private publishRunStats(): void {
-    this.publish({ type: 'run_stats', stats: this.meter.finish() });
+  /**
+   * The run's numbers go onto the live stream AND into the log: the event is
+   * the surface's, the log record is what makes the row survive a resume (the
+   * numbers are measured here, so a resumed reader can neither re-derive them
+   * nor ask again). A failed append must not turn a finished run into a failed
+   * one — the stats are observability, the run's outcome is already settled.
+   */
+  private async publishRunStats(): Promise<void> {
+    const stats = this.meter.finish();
+    const evt: Extract<SessionEvent, { type: 'run/stats' }> = {
+      type: 'run/stats',
+      stats,
+      ...(this.lastMessageId !== undefined ? { afterMessageId: this.lastMessageId } : {}),
+      at: Date.now(),
+    };
+    await this.deps.session.appendEvent(evt).catch(() => undefined);
+    this.publish({ type: 'run_stats', stats });
   }
 
   private approvalsBusy(): boolean {
@@ -523,7 +578,7 @@ export class AgentSession {
       if (this.anchors.lastPromptTokens <= limit) return;
     }
     try {
-      await this.compact('auto');
+      await this.compactNow('auto');
     } catch (err) {
       // A failed compaction must never kill the turn; report and continue.
       this.notice('compact_failed', `自动压缩失败（继续运行）：${errMessage(err)}`);

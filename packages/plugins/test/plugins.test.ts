@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import {
   POWERSHELL_UTF8_PREFIX,
   PluginHost,
+  approvalProvider,
   builtinPlugins,
+  permissionGatePlugin,
   powershellInvocation,
   PermissionService,
   type AskFn,
@@ -274,28 +276,54 @@ describe('PermissionService', () => {
   });
 });
 
-describe('permission gate in agentHooks (M10 组件7)', () => {
-  it('agentHooks surfaces a DenyGrant reason to the model as "by user: <text>"', async () => {
+describe('the approval gate is a plugin', () => {
+  /** A host with the gate loaded the way the kernel loads it: publish the
+   * approval service, then let the gate find it (and the tool registry). */
+  async function hostWithGate(permission: PermissionService): Promise<PluginHost> {
     const host = new PluginHost('.');
     host.use({
       name: 'gatee',
       activate(ctx) {
-        ctx.registerTool({
-          name: 'boom',
-          description: '',
-          parameters: { type: 'object' },
-          execute: async () => 'ran',
-        }, { permission: 'execute' });
+        ctx.registerTool(
+          {
+            name: 'boom',
+            description: '',
+            parameters: { type: 'object' },
+            execute: async () => 'ran',
+          },
+          { permission: 'execute' },
+        );
       },
     });
     await host.activate();
-    const permission = new PermissionService('read-only', async () => ({ answer: 'deny', reason: '别碰 CI' }));
-    const verdict = await host.agentHooks(permission).beforeToolCall!({ id: 'c', name: 'boom', args: {}, rawArgs: '{}' });
-    expect(verdict).toEqual({ action: 'deny', reason: 'by user: 别碰 CI' });
+    host.context.plugin(approvalProvider(permission), {}, 'approval');
+    host.context.plugin(permissionGatePlugin, {}, 'approval-gate');
+    return host;
+  }
+  const call = (name: string, id = 'c') => ({ id, name, args: {}, rawArgs: '{}' });
+
+  it('surfaces a DenyGrant reason to the model as "by user: <text>"', async () => {
+    const denied = await hostWithGate(
+      new PermissionService('read-only', async () => ({ answer: 'deny', reason: '别碰 CI' })),
+    );
+    expect(await denied.agentHooks().beforeToolCall!(call('boom'))).toEqual({
+      action: 'deny',
+      reason: 'by user: 别碰 CI',
+    });
     // 无理由的普通 deny 保持旧文案。
-    const plain = new PermissionService('read-only', async () => 'deny');
-    const v2 = await host.agentHooks(plain).beforeToolCall!({ id: 'c2', name: 'boom', args: {}, rawArgs: '{}' });
-    expect(v2).toEqual({ action: 'deny', reason: 'by user' });
+    const plain = await hostWithGate(new PermissionService('read-only', async () => 'deny'));
+    expect(await plain.agentHooks().beforeToolCall!(call('boom', 'c2'))).toEqual({
+      action: 'deny',
+      reason: 'by user',
+    });
+  });
+
+  it('allows an auto-allowed call and leaves unknown tools alone', async () => {
+    const host = await hostWithGate(new PermissionService('full', async () => 'deny'));
+    expect(await host.agentHooks().beforeToolCall!(call('boom'))).toEqual({ action: 'allow' });
+    // An unregistered name has no kind to gate on; the loop's own dispatcher
+    // answers for it, not the gate.
+    expect(await host.agentHooks().beforeToolCall!(call('nope', 'c2'))).toEqual({ action: 'allow' });
   });
 });
 

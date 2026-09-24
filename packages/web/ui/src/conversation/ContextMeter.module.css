@@ -1,0 +1,156 @@
+/* Ported from deepseek-harness ui-conversation (c) 2026 DeepSeek — MIT License.
+ * Source: ContextMeter.module.css, values and comments verbatim except: the
+ * breakdown legend rows (system/tools/messages tints) are not ported — this
+ * surface has no breakdown data — and `--dsw-specific-menu` has no token in
+ * our sheet, so the panel rides the l2 elevated surface (the same substitution
+ * the product's other popovers use). */
+
+/* Context-occupancy ring beside the send button plus its click-open breakdown
+   panel (menu surface: r12, elevation-prominent). */
+
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Same 28px circular hit target family as the composer's attach button. */
+.trigger {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.trigger:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-tertiary);
+  outline-offset: -2px;
+}
+
+.track {
+  fill: none;
+  stroke: var(--dsw-alias-border-l3);
+  stroke-width: 2;
+}
+
+/* Severity is not a stylesheet decision: the component paints the stroke from
+ * the theme's one severity ladder (severityForUsage), so a 70%/90% band change
+ * happens in theme.ts alone. */
+.fill {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  box-sizing: border-box;
+  width: 264px;
+  padding: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: default;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.figures {
+  margin-left: auto;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.percent {
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.headline {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The headline brackets the reading, so the side a locale leaves empty must
+   drop out of the flex row rather than spend a gap. */
+.headline:empty {
+  display: none;
+}
+
+.bar {
+  display: flex;
+  gap: 1px;
+  margin: 10px 0 12px;
+  height: 4px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-hover);
+  overflow: hidden;
+}
+
+.segment {
+  flex: none;
+  min-width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+}
+
+/* Pinned action below the figures, on the menu surface's hairline-and-pad
+   rhythm (Menu .footer / .item geometry: 4px pads, 34px dense row). */
+.footer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

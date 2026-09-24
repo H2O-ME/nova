@@ -1,0 +1,94 @@
+/* Surface-local sheet, NOT a harness port: deepseek-harness has no expanded card
+   for a plan update (its todo row shows the counts and falls back to the generic
+   IN/OUT body). This card keeps the row's plan visible, and borrows the card
+   family's values from ui-primitives SearchBlock.module.css (banner, rows, fold)
+   so it reads as one of them. Tokens only. */
+
+.block {
+  --dsl-plan-radius: 12px;
+  --dsl-plan-line-height: 22px;
+
+  position: relative;
+  /* 4px indent: the flow's row rhythm, matching the other cards. */
+  margin: 4px 0 4px 4px;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-markdown-code-block);
+  border-radius: var(--dsl-plan-radius);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px;
+  background: var(--dsw-alias-markdown-code-block-banner);
+  border-top-left-radius: var(--dsl-plan-radius);
+  border-top-right-radius: var(--dsl-plan-radius);
+}
+
+.summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.body {
+  padding: 8px 14px 12px;
+  font: var(--dsw-font-markdown-code-block);
+}
+
+/* One item: the status mark in a fixed column, then the text (which wraps —
+   a task name is prose, not aligned payload). */
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: var(--dsl-plan-line-height);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mark {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.line[data-status='completed'] {
+  color: var(--dsw-alias-label-tertiary);
+  text-decoration: line-through;
+  text-decoration-color: var(--dsw-alias-label-caption);
+}
+
+.line[data-status='completed'] .mark {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.line[data-status='in_progress'] .mark {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.line[data-status='in_progress'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.expand {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.expand:hover {
+  color: var(--dsw-alias-label-secondary);
+}

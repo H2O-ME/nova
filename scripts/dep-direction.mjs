@@ -1,5 +1,5 @@
 // 包间依赖方向门禁（AGENTS.md §4 的机械化）。
-// 违规即失败：core/tui 不得有上游；其余只允许白名单内的下行依赖。
+// 违规即失败：core 不得有上游；其余只允许白名单内的下行依赖。
 // 白名单是架构事实，改动它=改架构，应在 diff 里显眼地被审阅。
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -8,16 +8,20 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const packagesDir = join(repoRoot, 'packages');
 
-/** 每个包允许直接 import 的下行包（空数组=零上游内核）。 */
+/** 每个包允许直接 import 的下行包（空数组=零上游内核）。
+ *
+ * 六个包：内核 `core` 与 `plugins`（容器 + 工具 + 内核装配）、`ai`（provider
+ * 客户端）、`web`（WebUI surface 后端，含前端子包 `web/ui`）、`qqbot`（渠道
+ * 插件示范）、`cli`（surface 装配壳）。surface = 任何消费内核事件流的进程形态，
+ * 官方 surface 与第三方同地位、只依赖 core/plugins 公共 API。
+ */
 const ALLOW = {
   core: [],
-  tui: [],
   ai: ['core'],
   plugins: ['core'],
   qqbot: ['core', 'plugins'],
   web: ['core', 'plugins'],
-  'tui-app': ['tui', 'core', 'plugins'],
-  cli: ['tui', 'tui-app', 'plugins', 'ai', 'core', 'qqbot', 'web'],
+  cli: ['plugins', 'ai', 'core', 'qqbot', 'web'],
 };
 
 /** 递归收集 .ts 源文件。 */

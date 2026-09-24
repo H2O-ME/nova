@@ -44,8 +44,7 @@ export function isInsideRoot(rootDir: string, resolved: string): boolean {
  * ancestor plus the not-yet-existing remainder (write targets usually do not
  * exist). Pure string prefix checks are fooled by a symlink planted inside
  * the workspace pointing outside it — write_file would silently follow it and
- * escape the workspace. The real sandbox boundary is canonical, exactly like
- * codex/pi sandbox resolutions.
+ * escape the workspace.
  */
 export async function resolveReal(rootDir: string, raw: unknown): Promise<string> {
   return canonicalize(resolveAnywhere(rootDir, raw));
@@ -85,8 +84,8 @@ function isCanonicalInside(canonicalRoot: string, canonicalTarget: string): bool
  *
  * `trustedReadRoots` are additional auto-readable roots OUTSIDE the
  * workspace — the tool-output spill directory under ~/.nova: its files are
- * truncated tool results the model already saw, so reading them back (the
- * truncation hint tells it to) must not trip the approval gate every turn.
+ * truncated tool results the model already saw, so reading them back must
+ * not trip the approval gate every turn.
  */
 export async function rootPermissionKind(
   rootDir: string,
@@ -136,8 +135,7 @@ export function looksBinary(text: string, sampleChars = 8192): boolean {
  *
  * The replacement is handed to RegExp#replace as a **function**, never as a
  * string: a string replacer would expand `$&`/`$1`/`` $` ``/`$'`/`$$` inside
- * newString, silently garbling the file (e.g. editing in a price like
- * `$&10`). A function replacer returns the literal characters verbatim.
+ * newString, silently garbling the file (editing in a price like `$&10`).
  */
 function tolerantReplace(
   text: string,
@@ -165,11 +163,9 @@ function tolerantReplace(
 /**
  * The shared edit core: exact-match first, newline-tolerant CRLF fallback
  * second. Used by both edit_file's execution and its approval preview, so
- * the preview always reflects what the edit really does.
- *
- * Exact replacements use **function replacers** (see tolerantReplace) so
- * `$`-sequences in newString are insertable verbatim instead of being
- * interpreted as RegExp replacement tokens.
+ * the preview always reflects what the edit really does. Both replacements
+ * use function replacers (see tolerantReplace), so `$`-sequences in
+ * newString are inserted verbatim.
  */
 function applyEdit(
   text: string,
@@ -338,6 +334,10 @@ function diffResultView(call: DiffCallView | undefined, content: string): DiffRe
   return { card: 'diff', ok: !isFailureContent(content), diffs: call.diffs };
 }
 
+/** Lines shown; a trailing newline terminates rather than starting one. */
+const countLines = (text: string): number =>
+  text === '' ? 0 : text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+
 /**
  * read_file result: the `[lines A-B of N]` header `executeReadFile` emits is the
  * only window marker, so partiality reads off it (a `limit` that never bound
@@ -348,7 +348,7 @@ function readResultView(args: Record<string, unknown>, content: string): ReadRes
   if (target === undefined || isFailureContent(content)) return undefined;
   const header = /^\[lines (\d+)-(\d+) of (\d+)\]/.exec(content);
   if (header === null) {
-    return { card: 'read', path: target, lineCount: content.split('\n').length, truncated: false };
+    return { card: 'read', path: target, lineCount: countLines(content), truncated: false };
   }
   const from = Number(header[1]);
   const to = Number(header[2]);
@@ -363,7 +363,7 @@ function listViewResultView(args: Record<string, unknown>, content: string): Rea
   return {
     card: 'read',
     path: strArg(args, 'path') ?? '.',
-    lineCount: body === '(empty directory)' ? 0 : body.split('\n').length,
+    lineCount: body === '(empty directory)' ? 0 : countLines(body),
     truncated: more !== null,
   };
 }

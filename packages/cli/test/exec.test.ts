@@ -60,23 +60,28 @@ describe('runExec', () => {
   it('auto-denies execute tools in non-interactive mode and streams human output', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
     const out: string[] = [];
-    await runExec({
-      rootDir: root,
-      config,
-      prompt: 'run echo for me',
-      json: false,
-      provider: scriptedProvider([
-        [
-          { type: 'tool_call_delta', index: 0, id: 'c1', name: 'bash', argsDelta: '{"command":"echo hi"}' },
-          { type: 'finish', finishReason: 'tool_calls' },
-        ],
-        [
-          { type: 'usage', usage: { promptTokens: 30, completionTokens: 5, cachedTokens: 24 } },
-          { type: 'text_delta', text: 'cannot run commands here' },
-          { type: 'finish', finishReason: 'stop' },
-        ],
-      ]),
-      out: (text) => out.push(text),
+    // Isolated home like its siblings: a runExec writes a session log, and the
+    // sessions root is global — without this the run lands in the real ~/.nova
+    // and shows up in the user's own session list as a `nova-exec-…` workspace.
+    await withFakeHome(async () => {
+      await runExec({
+        rootDir: root,
+        config,
+        prompt: 'run echo for me',
+        json: false,
+        provider: scriptedProvider([
+          [
+            { type: 'tool_call_delta', index: 0, id: 'c1', name: 'bash', argsDelta: '{"command":"echo hi"}' },
+            { type: 'finish', finishReason: 'tool_calls' },
+          ],
+          [
+            { type: 'usage', usage: { promptTokens: 30, completionTokens: 5, cachedTokens: 24 } },
+            { type: 'text_delta', text: 'cannot run commands here' },
+            { type: 'finish', finishReason: 'stop' },
+          ],
+        ]),
+        out: (text) => out.push(text),
+      });
     });
     const text = out.join('');
     expect(text).toContain('run echo for me');

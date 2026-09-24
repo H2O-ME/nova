@@ -1,0 +1,266 @@
+/* Ported from deepseek-harness ui-tool (c) 2026 DeepSeek — MIT License. */
+/* Row chrome (`.root`, the sweep, `.sep`, `.summary`, `.summarySuffix`,
+   `.diffStat`, `.errorSummary`, `.bodyWrap`, `.inspectButton`, `.visuallyHidden`)
+   is ToolRow.module.css; `.row`, `.leading`, `.iconIdle`, `.chevronHover` and
+   `.title` are the shared 24px disclosure chrome from ui-primitives
+   DisclosureRow.module.css (same license), inlined here because this frontend has
+   no primitive package. Values, comments and class names kept verbatim. */
+
+/* Tool summary row (figma 122:9479): 24px single line at the default size —
+   [16 leading] gap6 [title 13/24] gap8 [2x2 dot] gap8 [summary FILL truncate].
+   The Settings font-size preference rides the body-published axis: the shared
+   DisclosureRow chrome scales the row height and leading glyph by the body px
+   delta; the title and the summary texts here read the secondary tier
+   (--dsh-content-font-size-secondary: one step under the body — setting −1 at
+   ≤14, setting −2 above), matching think text. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.row {
+  position: relative; /* sweep-glare overlay anchor */
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  height: calc(24px + var(--dsh-content-font-delta, 0px));
+  min-width: 0;
+}
+
+.row[data-expandable] {
+  cursor: pointer;
+}
+
+/* Running sweep (deepsuite ShimmerText pattern): a fixed-width glare band —
+   theme background at 60% — glides over the row content from off-left to
+   off-right, washing glyphs and icon toward the background as it passes.
+   ease-out with a 10% end hold gives each pass a beat before the next. */
+.root[data-state='running'] .row::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 300px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
+    transparent 100%
+  );
+  animation: dsh-tool-row-sweep 2.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes dsh-tool-row-sweep {
+  0% { left: -300px; }
+  90%, 100% { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .root[data-state='running'] .row::after {
+    animation: none;
+  }
+}
+
+.leading {
+  position: relative; /* .chevronHover overlay anchor */
+  flex: none;
+  width: calc(16px + var(--dsh-content-font-delta, 0px));
+  height: calc(16px + var(--dsh-content-font-delta, 0px));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Flow-row glyphs render at 14px inside the 16px box; the CSS edge overrides
+   each svg's own width/height attributes so every registered icon scales
+   without a per-callsite size prop. StateDot (its svg carries data-state)
+   stays at its fixed figma size — it is a status mark, not text furniture. */
+.leading svg:not([data-state]) {
+  width: calc(14px + var(--dsh-content-font-delta, 0px));
+  height: calc(14px + var(--dsh-content-font-delta, 0px));
+}
+
+/* The idle icon crossfades (100ms) into a down chevron while the row is
+   hovered, before it is opened. */
+.iconIdle {
+  display: inline-flex;
+  opacity: 1;
+  transition: opacity 100ms ease;
+}
+
+.chevronHover {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.row:hover .iconIdle {
+  opacity: 0;
+}
+
+.row:hover .chevronHover {
+  opacity: 1;
+}
+
+.chevron {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.title {
+  flex: none;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 400;
+}
+
+.sep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  margin: 0 8px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Commands, queries and paths read as code (the row's own mono flag). */
+.summary[data-mono] {
+  font-family: var(--ds-font-family-code);
+}
+
+/* Trailing summary fragment kept out of .summary's ellipsis, for a count whose
+   whole value is that it survives a narrow row (the todo row's parallel-active
+   `+n`). Repeats .summary's type because it sits beside that text, and its
+   `nowrap` too: `flex: none` stops the box shrinking but not the text wrapping,
+   which would break the one-line row in the narrow case the slot exists for. */
+.summarySuffix {
+  flex: none;
+  margin-left: 4px;
+  white-space: nowrap;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Diff-row +/- totals: the code font, matching the diff body the numbers
+   summarize; a wider gap keeps the digits from reading as part of the path.
+   Two px under the secondary tier (still riding the axis): mono digits read
+   optically larger than the sans path at the same size. Caption, one step
+   dimmer than the suffix's tertiary, so the digits stay behind the path. The
+   half-pixel nudge closes the baseline gap the size difference leaves under
+   the row's box-centering (a transform, so flex layout is untouched). */
+.diffStat {
+  margin-left: 10px;
+  font-family: var(--ds-font-family-code);
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 2px);
+  color: var(--dsw-alias-label-caption);
+  transform: translateY(0.5px);
+}
+
+/* A failure's own line, in the error color: it replaces the summary/verdict
+   rather than sitting beside them. */
+.errorSummary {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* Expanded body + Inspect pill wrapper (sibling of .row: clicks never toggle). */
+.bodyWrap {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Hover-revealed jump to the call's details: a small pill in real flow under
+   the expanded body's bottom-left corner (it reserves its line, so revealing
+   never shifts layout); revealed by hovering anywhere on the tool call — title
+   row included — or by keyboard focus. */
+.inspectButton {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 2px 4px;
+  padding: 2px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: 999px;
+  corner-shape: round;
+  /* Base background, not bg-overlay: the overlay token is a raised dark
+     surface and reads too heavy for a quiet in-flow affordance. */
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.root:hover .inspectButton,
+.inspectButton:focus-visible {
+  opacity: 1;
+}
+
+/* The pill's glyph is the harness's 12px asset (`IconInspectOutline12`) — the
+   one place in this sheet a 16px icon is drawn a step smaller. */
+.inspectButton svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+/* The open call's own row keeps its pill visible, so the transcript says which
+   call the panel is showing. */
+.inspectButton[data-selected] {
+  opacity: 1;
+  color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+/* Solid hover fill (a translucent token would let content bleed through). */
+.inspectButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Visually hidden run-state label for assistive technology: the StateDot and
+   the running sweep are aria-hidden / colour-only, so the text carries the
+   running/failed/interrupted state to a screen reader. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Surface-local, not a harness rule: the live tail of a running call (our
+   kernel streams bash output as a line the row can show). Reads as one muted
+   code line under the title row, indented to the summary column. */
+.liveTail {
+  margin: 0 0 2px 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  font: var(--dsw-font-markdown-code-block-small);
+  color: var(--dsw-alias-label-tertiary);
+}

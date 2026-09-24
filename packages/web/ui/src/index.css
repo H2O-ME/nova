@@ -1,6 +1,69 @@
-@import "tailwindcss";
+/* Global sheets, in the order upstream `ui-theme/src/client/styles.ts` mounts
+ * them (base → corner-shape → design-platform → focus → scrollbar →
+ * gradient-shadow-text → shiki) so the two cascades stay comparable. No sheet
+ * declares a property another already declares for the same selector, so the
+ * order is not load-bearing today — it is kept aligned so that a future sheet
+ * that does overlap lands where upstream would put it. `onboarding.css` is
+ * deliberately absent: NovaAgent has no onboarding surface, so its seven tokens
+ * would have no consumer (§8 "不引入其 UI 框架，只搬 token 与组件配方").
+ * Everything a component paints lives in a CSS module beside that component —
+ * a rule here is either a token or a mount default, never a surface. */
+@import "./styles/base.css";
+@import "./styles/corner-shape.css";
+@import "./styles/design-platform.css";
+@import "./styles/focus.css";
+@import "./styles/scrollbar.css";
+@import "./styles/gradient-shadow-text.css";
+@import "./styles/shiki.css";
 
-html, body, #root { height: 100%; }
-body { margin: 0; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; }
-* { scrollbar-width: thin; scrollbar-color: #3a3a44 transparent; }
-::selection { background: #1abc9c44; }
+/* Mount defaults: the frame fills the viewport, and the page's own text colors
+ * come from the alias layer so the pre-paint theme script's choice (body
+ * [data-ds-dark-theme]) is the only thing that has to change. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(
+    --dsw-font-family,
+    -apple-system, BlinkMacSystemFont,
+    'Segoe UI',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Helvetica Neue',
+    Helvetica,
+    Arial,
+    sans-serif
+  );
+  /* Grayscale antialiasing over subpixel rendering: WebKit/Blink and the
+   * Firefox macOS equivalent; other engines ignore both lines. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--ds-font-family-code);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 24%, transparent);
+}
+
+/* Form controls do not inherit the page font by default; the composer's chips
+ * and the panels' buttons all measure against the body stack. */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}

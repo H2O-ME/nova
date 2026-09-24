@@ -10,7 +10,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Duplex } from 'node:stream';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { parseClientFrame, type FrameRejection } from './protocol.js';
+import { parseClientFrame, type FrameRejection } from './client-frame.js';
 import { cookieHeader, cookieValue, verifyCookie, type LaunchAuth } from './auth.js';
 import type { WebController } from './controller.js';
 import { upgrade, type WsConnection } from './ws.js';
@@ -107,11 +107,28 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
   try {
     const data = await readFile(abs);
     const ext = path.extname(abs).toLowerCase();
-    res.writeHead(200, { 'content-type': MIME[ext] ?? 'application/octet-stream' });
+    res.writeHead(200, {
+      'content-type': MIME[ext] ?? 'application/octet-stream',
+      'cache-control': cachePolicy(relPath),
+    });
     res.end(data);
   } catch {
     deny(res, 404, 'not found');
   }
+}
+
+/**
+ * The one cache policy for the bundle, per path. Vite writes `/assets/<name>-<hash>.<ext>`
+ * (content-hashed, so a rebuild changes the URL) and `index.html` (NOT hashed,
+ * and the only file that names the current hashes). Answering `index.html` out
+ * of a keep-alive browser cache hands the page a script URL the last build
+ * deleted — a reload that shows yesterday's UI, or nothing at all — so the
+ * document must revalidate while the assets never need to.
+ * @param relPath - the request path as served (`/index.html`, `/assets/x.js`).
+ * @returns the `cache-control` value for that path.
+ */
+export function cachePolicy(relPath: string): string {
+  return relPath.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
 }
 
 function deny(res: ServerResponse, status: number, message: string): void {

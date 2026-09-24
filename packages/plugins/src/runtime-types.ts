@@ -8,11 +8,15 @@ import type {
   AgentSession,
   ChatProvider,
   JobRegistry,
+  LlmService,
+  ModelCatalogPort,
+  ModelControl,
   PtcMode,
   SessionEnvInfo,
   SubagentProgress,
 } from '@nova-agent/core';
 import type { BuiltinOptions } from './builtin/index.js';
+import type { CommandSummary } from './kernel-commands.js';
 import type { ApprovalMode, PermissionService } from './permission.js';
 import type { SkillMetadata } from './skills.js';
 import type { PluginHost } from './host.js';
@@ -29,12 +33,34 @@ export interface KernelConfig {
   bash?: false | { timeoutMs?: number; shellPath?: string };
   /** PTC config (mirrors config.tools.code); mode drives the tool projection. */
   code?: BuiltinOptions['code'];
+  /**
+   * Which plugins load. `disable` names built-ins to leave out (the name is the
+   * plugin's own, as `/plugins` prints it); `extra` lists modules to load
+   * instead, by absolute path, path relative to the working directory, or bare
+   * package name — each must export a plugin as `default` (or `plugin`).
+   *
+   * This is the config-level extension point: an operator changes what the
+   * product does without editing source, and a typo fails the boot loudly
+   * instead of silently doing nothing.
+   */
+  plugins?: { disable?: readonly string[]; extra?: readonly string[] };
 }
 
 export interface CreateKernelOptions {
   rootDir: string;
   provider: ChatProvider;
   config: KernelConfig;
+  /** Model id as the endpoint knows it — published on the `llm` service. */
+  model?: string;
+  /**
+   * Model metadata for the picker (display names + context windows). Omitting
+   * it means "no picker": the kernel then offers no `models` control, and a
+   * surface that would render a model seat simply does not. The model IDS are
+   * not part of this port — they come from the endpoint itself
+   * (`ChatProvider.listModels`), so a gateway that adds a model needs no
+   * release from this product.
+   */
+  modelCatalog?: ModelCatalogPort;
   /** Resume an existing JSONL log for the FIRST session handle. */
   resumeFile?: string;
   /** Plugins the owning surface contributes (e.g. the qqbot send tool). */
@@ -61,9 +87,31 @@ export interface CreateKernelOptions {
 export interface Kernel {
   /** The CURRENT AgentSession handle (audit/job fan-out/per-request compact target). */
   readonly agent: AgentSession;
-  /** The composed hook chain of the current host (subagent nesting shares it). */
+  /** The composed hook chain of the current roster (subagent nesting shares it). */
   readonly hooks: AgentHooks;
   readonly host: PluginHost;
+  /** The model end: provider + model id + cache affinity (a capability seam). */
+  readonly llm: LlmService;
+  /**
+   * The model picker's handle — present only when the assembly was given a
+   * `modelCatalog` AND the provider can retarget (`ChatProvider.setModel`).
+   * Absent means the seat should not render at all, rather than render dead.
+   */
+  readonly models?: ModelControl;
+  /**
+   * Every slash command the kernel can run **on itself**, live from the
+   * registry — first-party and third-party alike, so a surface renders one menu
+   * instead of keeping a catalog of its own. Commands that need a surface
+   * affordance (a theme switch, an exit, the model picker) are NOT here: they
+   * belong to the surface that can carry them out.
+   */
+  readonly commands: readonly CommandSummary[];
+  /**
+   * Run one by name. Reporting happens in the command's own transcript row
+   * (`command` events), and an unknown name reports there too — the caller is
+   * never left with a silent no-op or a thrown error to render.
+   */
+  runCommand(name: string, args: string): Promise<void>;
   readonly permission: PermissionService;
   readonly jobs: JobRegistry;
   readonly skills: SkillMetadata[];
@@ -74,6 +122,12 @@ export interface Kernel {
   buildFragment(): string;
   /** Current effective PTC mode (config default unless setCodeMode ran). */
   codeMode(): PtcMode;
+  /**
+   * What is actually loaded right now: every plugin's name, state and declared
+   * dependencies. This is the traceability surface — `/plugins` prints it, and
+   * a boot that lost a capability is visible here instead of at the first call.
+   */
+  roster(): readonly PluginRosterEntry[];
   /**
    * Create another AgentSession on this kernel's wiring (its own log + live
    * surface; shared host/permission/jobs) and make it current — `/new`,
@@ -86,4 +140,13 @@ export interface Kernel {
   setWorkspace(dir: string): Promise<SkillMetadata[]>;
   /** Rebuild the host with another PTC mode (approval grants persist). */
   setCodeMode(mode: PtcMode): Promise<void>;
+  /** Unload every plugin (a clean shutdown; process exit is the usual path). */
+  dispose(): Promise<void>;
+}
+
+/** One live plugin, as `/plugins` reports it. */
+export interface PluginRosterEntry {
+  name: string;
+  state: string;
+  inject: readonly string[];
 }

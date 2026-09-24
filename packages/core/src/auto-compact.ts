@@ -2,7 +2,7 @@ import type { AgentHooks, AgentMessage, ChatRequest, ToolDefinition, Usage } fro
 import { estimateMessageTokens } from './estimate.js';
 
 /**
- * Unified auto-compaction gate shared by all three runners (repl / tui / exec).
+ * Unified auto-compaction gate shared by every runner (repl / exec / bot).
  *
  * Two interceptions, one contract:
  * - **Pre-flight** (`shouldCompactBefore`): decide whether to compact BEFORE

@@ -1,0 +1,97 @@
+/* Ported from deepseek-harness ui-settings-general
+   `src/client/SettingsRoot.module.css` (c) 2026 DeepSeek — MIT License: the
+   trigger row that holds the settings seat, which is where the reference's
+   foot puts its connection indicator too. The panel, overlay, and dialog
+   classes are not ported (no settings panel in this app). */
+
+.triggerRow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% + 4px);
+  margin: 4px -2px;
+}
+
+.triggerRow.railRow {
+  width: 36px;
+  margin: 8px 0 10px;
+}
+
+.trigger {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  height: 42px;
+  margin: 0;
+  padding: 0 10px 0 8px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.trigger:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--dsw-alias-label-tertiary);
+  outline-offset: -2px;
+}
+
+/* Rail trigger: the same 36x36 circle box as the other rail controls. */
+.trigger.rail {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  border-radius: 50%;
+  corner-shape: round;
+}
+
+/* The trigger's own glyph: 16px, 18px in the rail (the reference's occupant
+   passes the size; our icons are CSS-sized). */
+.triggerIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.railRow .triggerIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.triggerLabel {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* Wide-only content fades back in on expand remount (the shell's rule, for
+   the seat the shell does not animate). */
+.wide {
+  animation: wide-in 200ms var(--ds-ease-in-out);
+}
+
+@keyframes wide-in {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wide {
+    animation: none;
+  }
+}

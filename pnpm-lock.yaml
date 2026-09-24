@@ -51,12 +51,6 @@ importers:
       '@nova-agent/qqbot':
         specifier: workspace:*
         version: link:../qqbot
-      '@nova-agent/tui':
-        specifier: workspace:*
-        version: link:../tui
-      '@nova-agent/tui-app':
-        specifier: workspace:*
-        version: link:../tui-app
       '@nova-agent/web':
         specifier: workspace:*
         version: link:../web
@@ -95,28 +89,6 @@ importers:
       '@nova-agent/plugins':
         specifier: workspace:*
         version: link:../plugins
-    devDependencies:
-      '@types/node':
-        specifier: ^26.4.0
-        version: 26.4.0
-
-  packages/tui:
-    devDependencies:
-      '@types/node':
-        specifier: ^26.4.0
-        version: 26.4.0
-
-  packages/tui-app:
-    dependencies:
-      '@nova-agent/core':
-        specifier: workspace:*
-        version: link:../core
-      '@nova-agent/plugins':
-        specifier: workspace:*
-        version: link:../plugins
-      '@nova-agent/tui':
-        specifier: workspace:*
-        version: link:../tui
     devDependencies:
       '@types/node':
         specifier: ^26.4.0

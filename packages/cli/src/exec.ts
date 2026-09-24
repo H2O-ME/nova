@@ -1,12 +1,11 @@
-import { OpenAICompatClient } from '@nova-agent/ai';
-import { createAgentKernel, type ApprovalMode } from '@nova-agent/plugins';
+import type { ApprovalMode } from '@nova-agent/plugins';
 import {
   type AgentSession,
   type ChatProvider,
   type KernelEvent,
 } from '@nova-agent/core';
 import { createNotifier } from './notify.js';
-import { createProvider, toKernelConfig } from './kernel-boot.js';
+import { bootKernel, createProvider } from './kernel-boot.js';
 import {
   emptyCompletionNotice,
   plainPaint,
@@ -61,21 +60,20 @@ export async function runExec(opts: ExecOptions): Promise<void> {
   // NO_COLOR/TERM=dumb；注入 sink（测试）恒无色。
   const paint: Paint = opts.out === undefined ? resolvePaint(config.ui?.theme ?? 'dark') : plainPaint;
 
-  // Test-injected provider takes precedence; the config-built client gets the
-  // cache-affinity session id rebound once the kernel has created its session.
-  let ownedClient: OpenAICompatClient | undefined;
-  const provider: ChatProvider = opts.provider ?? (ownedClient = createProvider(config));
-  const kernel = await createAgentKernel({
-    rootDir,
-    provider,
-    config: toKernelConfig(config, opts.approvalOverride),
-    ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
-    perRequestCompact: true,
-  });
-  ownedClient?.setSessionId(kernel.agent.session.id);
+  // Test-injected provider takes precedence. The cache-affinity session id is
+  // bound inside the kernel (its `llm` service), so nothing to rebind here.
+  const provider: ChatProvider = opts.provider ?? createProvider(config);
   // Non-interactive: nobody can answer an approval prompt, so requests are
   // denied without dispatching an asker (fail-closed; no ask-path audit exists).
-  kernel.permission.setPolicy('never');
+  const kernel = await bootKernel({
+    rootDir,
+    config,
+    provider,
+    policy: 'never',
+    perRequestCompact: true,
+    ...(opts.approvalOverride !== undefined ? { approvalOverride: opts.approvalOverride } : {}),
+    ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
+  });
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
   const notify = createNotifier({ enabled: opts.out === undefined && config.notify !== false });

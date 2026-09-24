@@ -1,0 +1,75 @@
+/* Ported from deepseek-harness ui-primitives (c) 2026 DeepSeek — MIT License. */
+/* The approval card's effect preview: the same diff body the transcript draws
+ * (DiffBlock.module.css), so an approval shows the change exactly as the
+ * applied result will. Two deltas from the source sheet, both because this
+ * block is not the transcript's: the 16px flow margin is dropped (the card
+ * body's own 6px gap owns spacing here) and `.path`'s 56px right reserve is
+ * dropped with it — nothing floats over this block, there is no copy button
+ * inside an approval. */
+.block {
+  --dsl-diff-radius: 12px;
+  --dsl-diff-line-height: 22px;
+
+  position: relative;
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-markdown-code-block);
+  border-radius: var(--dsl-diff-radius);
+}
+
+.body {
+  padding: 12px 14px;
+  font: var(--dsw-font-markdown-code-block);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* No wrapping, no word-break: a diff is read by its indentation. */
+.line {
+  min-height: var(--dsl-diff-line-height);
+  white-space: pre;
+}
+
+/* A file header: the path in the primary tone, set apart by weight. */
+.path {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+/* Everything that is neither header nor change: the tool's metadata lines
+   (`首行: …`) and its truncation markers. The source sheet's `.gap` tone, under
+   a name that says what it is (this block has no second-hunk separators). */
+.dim {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The diff's own meaning-carrying colors: removed on the error token, added on
+   the success token. A `- `/`+ ` prefix is drawn here so a copied line and the
+   shown line agree, and so the sign reads without relying on color alone. The
+   model strips the tool's own prefix before these rules re-add it. */
+.del::before {
+  content: '- ';
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.del {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.add::before {
+  content: '+ ';
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.add {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+/* The change summary, dim under the body: `└ +A -R`, the same footer the
+   transcript's diff card draws (the source appends `· N file(s)`; a preview
+   covers exactly one path, named by the header row). */
+.footer {
+  padding: 0 14px 12px;
+  font: var(--dsw-font-markdown-code-block);
+  color: var(--dsw-alias-label-tertiary);
+}

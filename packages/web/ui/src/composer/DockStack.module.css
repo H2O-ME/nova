@@ -1,0 +1,23 @@
+/* Ported from deepseek-harness ui-conversation ConversationRoot.module.css
+   (c) 2026 DeepSeek — MIT License. */
+
+/* Composer context stack (Figma 9:937): standalone dock cards share one rhythm
+   above the input card.
+
+   The harness declares the horizontal axis on the conversation root and the
+   text cap on the seat (`.composerSeat`), never here — so this wrapper is the
+   gap and nothing else. The conversation group's own `ConversationRoot` already
+   renders a `.composerStack` around its `composer` slot, which makes this
+   wrapper a same-gap nest when the composer is mounted there; it exists for
+   compositions that bring the cards without that stack, and it relies on an
+   ancestor for `--dsh-composer-card-max-width` / `--dsh-composer-side-clearance`
+   / `--dsh-composer-dock-inset` exactly as the harness does. */
+.stack {
+  /* Horizontal geometry (card width, clearance, dock inset) rides the shared
+     .root variables above so takeover siblings match the stack. */
+  --dsh-composer-stack-gap: 6px;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-composer-stack-gap);
+}

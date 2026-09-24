@@ -15,18 +15,18 @@ import {
   DEFAULT_MAX_TOOL_RESULT_BYTES,
   DEFAULT_MAX_TURNS,
   LENGTH_CUTOFF_TOOL_GUIDANCE,
-  NOT_EXECUTED_GUIDANCE,
   emptyStats,
   type AgentOptions,
 } from './options.js';
 import { STALE_TODO_TURNS, requeueUnaccounted, type NoticeState } from './notices.js';
+import { missingToolResults } from '../session-repair.js';
 import { assembleRequest } from './request.js';
 import { finishAborted, streamCompletion } from './stream.js';
 import { makeDispatcher, parseArgs, runToolCalls } from './tools.js';
 
 /**
  * The agent loop as an async generator of standardized events.
- * REPL, TUI and non-interactive runners all consume the same stream.
+ * REPL, browser and non-interactive runners all consume the same stream.
  */
 export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> {
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
@@ -207,25 +207,5 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
 
 /** Fill in a NOT_EXECUTED_GUIDANCE result for every callId missing one. */
 function synthesizeMissingToolResults(messages: AgentMessage[]): void {
-  const answered = new Set<string>();
-  for (const msg of messages) {
-    if (msg.role === 'tool') answered.add(msg.toolCallId);
-  }
-  const missing: ToolResultMessage[] = [];
-  for (const msg of messages) {
-    if (msg.role !== 'assistant' || msg.toolCalls === undefined) continue;
-    for (const call of msg.toolCalls) {
-      if (answered.has(call.id)) continue;
-      answered.add(call.id);
-      missing.push({
-        id: newId('msg'),
-        ts: Date.now(),
-        role: 'tool',
-        toolCallId: call.id,
-        name: call.name,
-        content: NOT_EXECUTED_GUIDANCE,
-      });
-    }
-  }
-  messages.push(...missing);
+  messages.push(...missingToolResults(messages));
 }

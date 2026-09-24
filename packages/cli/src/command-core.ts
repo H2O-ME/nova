@@ -54,7 +54,7 @@ export function agentsMdWrittenLine(file: string): string {
   return `已写入 ${path.basename(file)}`;
 }
 
-/** 未知命令：正文与提示拆两段（TUI 两段异色；repl 连排即整句）。 */
+/** 未知命令：正文与提示拆两段（连排即整句）。 */
 export function unknownCommandParts(cmd: string): { head: string; hint: string } {
   return { head: `未知命令：${cmd}`, hint: '（输入 /help 查看命令）' };
 }
@@ -83,13 +83,13 @@ export function pluginCommandLine(plugin: string, name: string, description: str
 
 /** /model 的空目录与失败文案（两壳同串）。 */
 export const MODEL_LIST_EMPTY = '站点未返回任何模型';
-/** /model 清单行：当前模型带 ❯ 箭头与（当前）标（repl 形态；TUI 是面板另一面）。 */
+/** /model 清单行：当前模型带 ❯ 箭头与（当前）标（repl 形态）。 */
 export function modelListRows(current: string, models: string[]): string[] {
   return models.map(
     (model, i) => `  ${model === current ? '❯' : ' '} ${i + 1}. ${model}${model === current ? '（当前）' : ''}`,
   );
 }
-/** /session 报告体（repl 形态的平铺行；TUI 的 /session 是切换器、不同面不并）。 */
+/** /session 报告体（repl 形态的平铺行）。 */
 export function sessionReportLines(opts: {
   file: string;
   messageCount: number;
@@ -110,19 +110,42 @@ export function sessionReportLines(opts: {
     `自动压缩：${compact}`,
   ];
 }
-/** /plugins 报告体（repl 形态；TUI 的带 bold 头与暗色包裹，不并面）。 */
+/** /plugins 报告体（repl 形态）。 */
 export function pluginReportLines(opts: {
   approvalMode: ApprovalMode;
   override: boolean;
   tools: { plugin: string; name: string; permission: string }[];
   commands: { plugin: string; name: string; description: string }[];
+  /**
+   * The live roster (name / state / declared deps) — what actually loaded.
+   * Without it `/plugins` could only show registered tools, so a plugin that
+   * failed to activate (or one whose provider is missing) was invisible: the
+   * exact thing you open this command to find out.
+   */
+  roster?: readonly { name: string; state: string; inject: readonly string[] }[];
 }): string[] {
   return [
     `审批档位：${approvalLabel(opts.approvalMode)}${opts.override ? '（来自 --approval）' : ''}`,
+    ...(opts.roster === undefined || opts.roster.length === 0
+      ? []
+      : [
+          `已加载插件（${opts.roster.length}）：`,
+          ...opts.roster.map((entry) => `  ${pluginRosterLine(entry)}`),
+        ]),
     ...(opts.tools.length === 0 ? ['（没有已注册的工具）'] : []),
     ...opts.tools.map((t) => `  ${pluginToolLine(t.plugin, t.name, t.permission)}`),
     ...opts.commands.map((c) => `  ${pluginCommandLine(c.plugin, c.name, c.description)}`),
   ];
+}
+
+/** One roster row: name, state, and what it declared it needs. */
+export function pluginRosterLine(entry: {
+  name: string;
+  state: string;
+  inject: readonly string[];
+}): string {
+  const deps = entry.inject.length > 0 ? ` ◂ ${entry.inject.join(', ')}` : '';
+  return `${padDisplay(entry.name, 18)}${entry.state}${deps}`;
 }
 export function modelListError(err: unknown): string {
   return `模型列表获取失败：${errMessage(err)}`;

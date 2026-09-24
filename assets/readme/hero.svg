@@ -1,10 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="480" viewBox="0 0 1280 480" role="img">
-  <title>NovaAgent —— 自研、插件化、轻量化的跨平台本地智能体框架</title>
+  <title>NovaAgent —— 自研、插件化、轻量化的跨平台本地智能体框架；默认形态是本机浏览器界面，--repl 回落终端 REPL</title>
   <defs>
     <radialGradient id="glow" cx="50%" cy="50%" r="50%">
       <stop offset="0%" stop-color="#f2b13f" stop-opacity="0.20"/>
       <stop offset="100%" stop-color="#f2b13f" stop-opacity="0"/>
     </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6aa3f0" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#6aa3f0" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#6aa3f0" stop-opacity="0"/>
+    </linearGradient>
   </defs>
 
   <rect width="1280" height="480" fill="#ffffff"/>
@@ -17,7 +22,7 @@
   <!-- 左侧文字 -->
   <text x="72" y="236" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="54" font-weight="700" fill="#1b1d21">NovaAgent</text>
   <text x="72" y="274" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="17" fill="#5f6772">自研、插件化、轻量化的跨平台本地智能体框架</text>
-  <text x="72" y="301" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="14" fill="#8a919c">在当前工作目录运行的 agent CLI / TUI / WebUI · 内核 + 可插拔 Surface · 工作区零写入</text>
+  <text x="72" y="301" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="14" fill="#8a919c">内核 + 可互换 surface（浏览器 UI / 终端 REPL）· 一切皆插件 · 工作区零写入</text>
 
   <!-- 技术 chips -->
   <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" fill="#3f4650">
@@ -33,31 +38,57 @@
     <text x="266" y="398" text-anchor="middle">v0.4.0</text>
   </g>
 
-  <!-- 终端窗口示意 -->
+  <!-- 浏览器窗口示意（nova 的默认形态） -->
   <rect x="600" y="64" width="612" height="340" rx="14" fill="#16181d"/>
   <rect x="601" y="65" width="610" height="40" rx="13" fill="#1f2229"/>
   <circle cx="624" cy="85" r="5.5" fill="#ff5f56"/>
   <circle cx="643" cy="85" r="5.5" fill="#ffbd2e"/>
   <circle cx="662" cy="85" r="5.5" fill="#27c93f"/>
-  <text x="684" y="90" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5" fill="#8b93a1">nova — TUI（tui-app surface）</text>
+  <rect x="684" y="72" width="286" height="26" rx="13" fill="#262a33"/>
+  <text x="700" y="90" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5" fill="#8b93a1">127.0.0.1:3717/?t=launch-token</text>
+  <text x="1180" y="90" text-anchor="end" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="12" fill="#5f6772">仅本机可达</text>
   <line x1="601" y1="105" x2="1211" y2="105" stroke="#2a2e36"/>
 
-  <g font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="15">
-    <text x="628" y="140" fill="#8b93a1">$ <tspan fill="#d7dbe0">nova · ~/code/app</tspan></text>
-    <text x="628" y="176" fill="#e8c07a">› 数一下 packages 里有多少个测试文件</text>
-    <text x="628" y="216" fill="#b6bec9">  ◈ 读取 2 个文件, 搜索 1 个模式 ▸ · 1.4s</text>
-    <text x="628" y="240" fill="#b6bec9">  ▌ hello.test.ts · 3 行      <tspan fill="#3a3f48">（点击展开三态折叠）</tspan></text>
-    <text x="628" y="280" fill="#58c98b">• 64 个测试文件 · 分布在 8 个包</text>
+  <!-- 侧栏轨道（56px） -->
+  <path d="M601 105 H661 V404 H601 Z" fill="#1a1d23"/>
+  <line x1="661" y1="105" x2="661" y2="404" stroke="#2a2e36"/>
+  <circle cx="631" cy="130" r="9" fill="#e8a13c" opacity="0.85"/>
+  <rect x="613" y="162" width="36" height="9" rx="4.5" fill="#3a3f48"/>
+  <rect x="613" y="182" width="36" height="9" rx="4.5" fill="#2a2e36"/>
+  <rect x="613" y="202" width="36" height="9" rx="4.5" fill="#2a2e36"/>
+  <rect x="613" y="222" width="36" height="9" rx="4.5" fill="#2a2e36"/>
+  <rect x="613" y="380" width="36" height="9" rx="4.5" fill="#2a2e36"/>
+
+  <!-- 转录：用户胶囊气泡（右对齐）-->
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13">
+    <rect x="877" y="126" width="320" height="34" rx="17" fill="#2b2f38" stroke="#383d48"/>
+    <text x="1197" y="148" text-anchor="end" fill="#e6e9ee">数一下 packages 里有多少个测试文件</text>
   </g>
 
-  <!-- 单行状态栏示意 -->
-  <rect x="601" y="356" width="610" height="47" rx="12" fill="#1a1d23"/>
-  <line x1="601" y1="356" x2="1211" y2="356" stroke="#2a2e36"/>
-  <g font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5">
-    <text x="624" y="384" fill="#5fb3a1">ctx 18k/200k · 9%</text>
-    <text x="784" y="384" fill="#3a3f48">│</text>
-    <text x="806" y="384" fill="#9aa4b2">model · 普通 · read-only</text>
-    <text x="950" y="384" fill="#3a3f48">│</text>
-    <text x="1030" y="384" fill="#58c98b">tps 41 · cache 97%</text>
+  <!-- 工具行（24px 密度 + 状态光晕 + 运行中光泽带）-->
+  <circle cx="686" cy="188" r="4" fill="#58c98b"/>
+  <text x="700" y="192" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="13" fill="#b6bec9">read_file · packages/*/package.json</text>
+  <text x="1197" y="192" text-anchor="end" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5" fill="#6f7784">0.3s</text>
+  <rect x="680" y="200" width="200" height="2" rx="1" fill="url(#sheen)"/>
+  <circle cx="686" cy="218" r="4" fill="#58c98b"/>
+  <text x="700" y="222" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="13" fill="#b6bec9">search_files · name_glob *.test.ts</text>
+  <text x="1197" y="222" text-anchor="end" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12.5" fill="#6f7784">0.9s</text>
+
+  <!-- assistant 正文 + 每轮元数据行 -->
+  <g font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif">
+    <text x="680" y="264" font-size="13.5" fill="#d7dbe0">6 个包 · 58 个测试文件 / 599 个用例，全绿。</text>
+    <text x="680" y="286" font-size="12" fill="#6f7784">9月23日 23:46 · 用时 5.7s · 首 token 1.6s · 23 tok/s</text>
   </g>
+
+  <!-- composer 胶囊（22px 圆角 + 圆形发送钮）-->
+  <rect x="678" y="306" width="519" height="44" rx="22" fill="#1f2229" stroke="#333945"/>
+  <rect x="702" y="318" width="2" height="20" fill="#6aa3f0"/>
+  <text x="714" y="333" font-family="-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif" font-size="13" fill="#6f7784">给 nova 派个活…</text>
+  <circle cx="1172" cy="328" r="17" fill="#2f6fd0"/>
+  <path d="M1172 320 L1177 330 H1167 Z" fill="#dfe8f7"/>
+
+  <!-- 统计条（读数全部来自内核 run_stats）-->
+  <text x="680" y="376" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12" fill="#5fb3a1">轮数 2 · 步数 5 · 工具 1.2s</text>
+  <text x="1000" y="376" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12" fill="#3a3f48">│</text>
+  <text x="1030" y="376" font-family="'Cascadia Code',Consolas,'SFMono-Regular',Menlo,monospace" font-size="12" fill="#58c98b">in 25k · out 166 · cache 97%</text>
 </svg>

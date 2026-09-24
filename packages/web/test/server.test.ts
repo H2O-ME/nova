@@ -5,7 +5,7 @@
  * + controller fanout are wired end-to-end. No external ws library — the
  * client side doubles as a second opinion on the server codec.
  */
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -30,6 +30,8 @@ beforeAll(async () => {
   process.env['HOME'] = home;
   staticDir = await mkdtemp(path.join(tmpdir(), 'nova-web-static-'));
   await writeFile(path.join(staticDir, 'index.html'), '<!doctype html><title>Nova</title>', 'utf8');
+  await mkdir(path.join(staticDir, 'assets'), { recursive: true });
+  await writeFile(path.join(staticDir, 'assets', 'index-abc123.js'), '/* bundle */', 'utf8');
   const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-web-root-'));
   const scripts: StreamEvent[][] = [[
     { type: 'text_delta', text: 'ok' },
@@ -98,6 +100,16 @@ describe('http surface', () => {
     const sneak = await http('/%2e%2e%2f%2e%2e%2f%2e%2e%2fwindows%2fwin.ini', cookie);
     expect([400, 404]).toContain(sneak.status);
     expect(sneak.body).not.toContain('[fonts]');
+  });
+  it('the document revalidates and the hashed assets do not', async () => {
+    // A cached `index.html` names the previous build's asset URLs: a reload
+    // would ask for a file the rebuild deleted. Hashed assets are the one thing
+    // that can be cached forever, because their URL changes with their bytes.
+    const cookie = cookieFor(await http(`/?t=${auth.token}`));
+    const doc = await http('/', cookie);
+    expect(doc.headers['cache-control']).toBe('no-cache');
+    const asset = await http('/assets/index-abc123.js', cookie);
+    expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
   });
 });
 

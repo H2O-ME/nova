@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { parseClientFrame } from '../src/client-frame.js';
 import {
   MAX_CLIENT_FRAME_BYTES,
+  MAX_COMMAND_ARGS_CHARS,
+  MAX_COMMAND_NAME_CHARS,
   MAX_HISTORY_BLOCKS,
+  MAX_MODEL_CHARS,
   MAX_PROMPT_CHARS,
-  parseClientFrame,
   serializeServerFrame,
-  toAskResult,
   type ClientFrame,
 } from '../src/protocol.js';
 
@@ -23,6 +25,13 @@ describe('parseClientFrame', () => {
     expect(frame({ type: 'set_approval_mode', mode: 'auto-edit' })).toMatchObject({ mode: 'auto-edit' });
     expect(frame({ type: 'set_code_mode', mode: 'ptc' })).toMatchObject({ mode: 'ptc' });
     expect(frame({ type: 'load_earlier', have: 0 })).toEqual({ type: 'load_earlier', have: 0 });
+    expect(frame({ type: 'load_trace', have: 0 })).toEqual({ type: 'load_trace', have: 0 });
+    expect(frame({ type: 'stop_job', id: 'bash-1' })).toEqual({ type: 'stop_job', id: 'bash-1' });
+  });
+
+  it('stop_job takes a job id and nothing else', () => {
+    expect(frame({ type: 'stop_job', id: 'bash-1; rm -rf /' })).toMatchObject({ ok: false });
+    expect(frame({ type: 'stop_job' })).toMatchObject({ ok: false });
   });
 
   it('rejects a pagination cursor that is not a count', () => {
@@ -33,6 +42,9 @@ describe('parseClientFrame', () => {
     expect(frame({ type: 'load_earlier', have: 1.5 })).toMatchObject({ ok: false });
     expect(frame({ type: 'load_earlier', have: '40' })).toMatchObject({ ok: false });
     expect(frame({ type: 'load_earlier', have: MAX_HISTORY_BLOCKS + 1 })).toMatchObject({ ok: false });
+    // The trace pages the same way over the event log: one cursor rule, two reads.
+    expect(frame({ type: 'load_trace' })).toMatchObject({ ok: false, reason: expect.stringContaining('have') });
+    expect(frame({ type: 'load_trace', have: '30' })).toMatchObject({ ok: false });
   });
 
   it('rejects non-JSON, non-objects, unknown types and empty prompts', () => {
@@ -54,14 +66,30 @@ describe('parseClientFrame', () => {
     expect(frame({ type: 'resolve_approval', id: "apr\"x", answer: 'allow' })).toMatchObject({ ok: false });
   });
 
-  it('normalizes answers; malformed scopes and long reasons are rejected', () => {
+  it('normalizes answers into kernel grants; malformed shapes are rejected', () => {
     expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: 'always' })).toMatchObject({ answer: 'always' });
-    expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { scopeWords: 3 } })).toMatchObject({ answer: { scopeWords: 3 } });
-    expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { reason: '别跑 rm' } })).toMatchObject({ answer: { reason: '别跑 rm' } });
+    // The wire's bare grants become the kernel's typed ones (core's parser).
+    expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { scopeWords: 3 } })).toEqual({
+      type: 'resolve_approval',
+      id: 'apr_1',
+      answer: { answer: 'always', scopeWords: 3 },
+    });
+    expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { reason: ' 别跑 rm ' } })).toEqual({
+      type: 'resolve_approval',
+      id: 'apr_1',
+      answer: { answer: 'deny', reason: '别跑 rm' },
+    });
     expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { scopeWords: 0 } })).toMatchObject({ ok: false });
     expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { scopeWords: 33 } })).toMatchObject({ ok: false });
-    expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { reason: 'x'.repeat(501) } })).toMatchObject({ ok: false });
     expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: 'maybe' })).toMatchObject({ ok: false });
+    expect(frame({ type: 'resolve_approval', id: 'apr_1', answer: { reason: 'a\u001b[2Jb' } })).toMatchObject({ ok: false });
+  });
+
+  it('clamps a long denial reason instead of rejecting the answer', () => {
+    // A reason is an instruction to the model, not a transcript; rejecting the
+    // frame would strand the user at a modal whose only escape is a bare deny.
+    const parsed = frame({ type: 'resolve_approval', id: 'apr_1', answer: { reason: 'x'.repeat(501) } });
+    expect(parsed.type === 'resolve_approval' && parsed.answer).toEqual({ answer: 'deny', reason: 'x'.repeat(400) });
   });
 
   it('resume.file refuses control chars and non-jsonl', () => {
@@ -73,15 +101,40 @@ describe('parseClientFrame', () => {
     expect(frame({ type: 'set_approval_mode', mode: 'yolo' })).toMatchObject({ ok: false });
     expect(frame({ type: 'set_code_mode', mode: 'quantum' })).toMatchObject({ ok: false });
   });
-});
 
-describe('toAskResult', () => {
-  it('maps wire answers onto kernel AskResult shapes', () => {
-    expect(toAskResult('allow')).toBe('allow');
-    expect(toAskResult('deny')).toBe('deny');
-    expect(toAskResult('always')).toBe('always');
-    expect(toAskResult({ scopeWords: 2 })).toEqual({ answer: 'always', scopeWords: 2 });
-    expect(toAskResult({ reason: 'nope' })).toEqual({ answer: 'deny', reason: 'nope' });
+  it('model frames take an id and refuse junk ids', () => {
+    expect(frame({ type: 'list_models' })).toEqual({ type: 'list_models' });
+    expect(frame({ type: 'set_model', model: 'deepseek-v3' })).toEqual({ type: 'set_model', model: 'deepseek-v3' });
+    // An id becomes `setModel` on the wire client, so it is validated like one:
+    // empty, oversized and control-bearing ids never reach it.
+    expect(frame({ type: 'set_model' })).toMatchObject({ ok: false, reason: expect.stringContaining('model') });
+    expect(frame({ type: 'set_model', model: '  ' })).toMatchObject({ ok: false });
+    expect(frame({ type: 'set_model', model: 'm'.repeat(MAX_MODEL_CHARS + 1) })).toMatchObject({ ok: false });
+    expect(frame({ type: 'set_model', model: 'm\u001b[2J' })).toMatchObject({ ok: false, reason: expect.stringContaining('control') });
+  });
+
+  it('command frames take a registry word and an optional argument line', () => {
+    expect(frame({ type: 'command', name: 'compact', args: '' })).toEqual({ type: 'command', name: 'compact', args: '' });
+    // The argument is optional: a bare `/compact` is the common case, and the
+    // parser supplies the empty string rather than making the client send one.
+    expect(frame({ type: 'command', name: 'skill' })).toEqual({ type: 'command', name: 'skill', args: '' });
+    expect(frame({ type: 'command', name: 'skill', args: 'pdf-tools' })).toEqual({ type: 'command', name: 'skill', args: 'pdf-tools' });
+  });
+
+  it('command names must look like registry names (the registry is not a shell)', () => {
+    // Anything that is not a lowercase command word never reaches the registry:
+    // a name with a slash, a space, an uppercase letter or a path separator is
+    // rejected here rather than looked up.
+    for (const name of ['', '/compact', 'Compact', 'two words', 'co/mpact', 'x'.repeat(MAX_COMMAND_NAME_CHARS + 1), 'co\u001bmpact']) {
+      expect(frame({ type: 'command', name, args: '' })).toMatchObject({ ok: false });
+    }
+    expect(frame({ type: 'command' })).toMatchObject({ ok: false, reason: expect.stringContaining('name') });
+  });
+
+  it('a command argument cannot carry control junk or a document', () => {
+    expect(frame({ type: 'command', name: 'skill', args: 'a\u001b[31mb' })).toMatchObject({ ok: false, reason: expect.stringContaining('control') });
+    expect(frame({ type: 'command', name: 'skill', args: 'x'.repeat(MAX_COMMAND_ARGS_CHARS + 1) })).toMatchObject({ ok: false });
+    expect(frame({ type: 'command', name: 'skill', args: 42 })).toMatchObject({ ok: false });
   });
 });
 

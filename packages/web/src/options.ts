@@ -4,7 +4,7 @@
  * config) — the same seam that keeps `createAgentKernel` surface-agnostic
  * keeps the whole web surface testable with a scripted provider.
  */
-import type { ChatProvider } from '@nova-agent/core';
+import type { ChatProvider, ModelCatalogPort } from '@nova-agent/core';
 import type { KernelConfig } from '@nova-agent/plugins';
 
 export interface ControllerOptions {
@@ -16,18 +16,24 @@ export interface ControllerOptions {
   /** Display label for the active model (from config; the surface shows it). */
   providerModelLabel: string;
   /**
-   * Cache-affinity rebind: called with the session id after the initial
-   * session is created and on every session switch. Only the provider's
-   * builder knows how (the ChatProvider contract has no setSessionId), so
-   * the owning surface injects it — exec/repl/qqbot do the same by hand.
+   * The catalog's display name for that model, when the shell's metadata store
+   * knows one (an id is not a label: `deepseek-v4.1-flash` reads better as
+   * "DeepSeek V4.1 Flash"). Omitted → the id is the label.
    */
-  bindSessionAffinity?: (sessionId: string) => void;
+  providerModelName?: string;
   /**
    * Model context window, when the owning shell knows it (config override or
    * model metadata). The surface only needs the denominator to draw the
    * context gauge; resolving it is the shell's business.
    */
   contextWindow?: number;
+  /**
+   * Metadata for the model picker (display names + context windows). Omitting
+   * it leaves the seat inert: the ids themselves come from the endpoint
+   * (`ChatProvider.listModels`), so this port never becomes a second catalog
+   * that could disagree with the one actually being served.
+   */
+  modelCatalog?: ModelCatalogPort;
 }
 
 export interface LaunchWebOptions extends ControllerOptions {

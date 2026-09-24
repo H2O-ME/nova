@@ -4,8 +4,8 @@
  * directly instead of being verified through a rendered row.
  */
 import { describe, expect, it } from 'vitest';
-import { averageFirstToken, cacheHitRate, formatClock, formatDuration, formatTokens, modelThroughput, runMetaText, sessionStatsText, throughput } from '../src/format.js';
-import { emptyTotals, type SessionTotals } from '../src/state.js';
+import { averageFirstToken, cacheHitText, formatClock, formatDuration, formatTokens, modelThroughput, runMetaText, scopedGrant, stampLabel, subagentTotals, throughput } from '../src/format.js';
+import { emptyTotals, type SessionTotals } from '../../src/totals.js';
 
 describe('formatDuration', () => {
   it('grows through the units without ever printing a bare float', () => {
@@ -23,7 +23,17 @@ describe('formatTokens', () => {
     expect(formatTokens(0)).toBe('0');
     expect(formatTokens(820)).toBe('820');
     expect(formatTokens(4_100)).toBe('4.1K');
+    expect(formatTokens(200_000)).toBe('200K');
     expect(formatTokens(4_100_000)).toBe('4.1M');
+  });
+});
+
+describe('stampLabel', () => {
+  it('shows the time of day for today, the date for anything older', () => {
+    const now = new Date(2026, 8, 21, 15, 0, 0).getTime();
+    expect(stampLabel(new Date(2026, 8, 21, 9, 5).getTime(), now)).toBe('09:05');
+    expect(stampLabel(new Date(2026, 8, 3, 9, 5).getTime(), now)).toBe('9月3日');
+    expect(stampLabel(new Date(2025, 11, 30, 9, 5).getTime(), now)).toBe('2025-12-30');
   });
 });
 
@@ -42,8 +52,19 @@ describe('rates', () => {
   });
 
   it('ignores a cache report that never arrived', () => {
-    expect(cacheHitRate({ promptTokens: 0, cachedTokens: 0 })).toBeUndefined();
-    expect(cacheHitRate({ promptTokens: 200, cachedTokens: 120 })).toBe(60);
+    expect(cacheHitText(0, 0)).toBeUndefined();
+    expect(cacheHitText(0, 1_000)).toBeUndefined();
+    expect(cacheHitText(120, 200)).toBe('60');
+  });
+
+  it('never rounds a partial cache hit up to a full one', () => {
+    expect(cacheHitText(1_000, 1_000)).toBe('100');
+    // 99.96% would read as a complete hit at integer precision: the text keeps
+    // as much precision as it takes to stay short of 100 (the harness's rule).
+    expect(cacheHitText(999, 1_000)).toBe('99.9');
+    expect(cacheHitText(9_996, 10_000)).toBe('99.96');
+    expect(cacheHitText(9_999, 10_000)).toBe('99.99');
+    expect(cacheHitText(99_999, 100_000)).toBe('99.999');
   });
 
   it('averages first-token latency over the runs that reported one', () => {
@@ -55,39 +76,46 @@ describe('rates', () => {
 
 describe('runMetaText', () => {
   it('says when, how long, how long the wait was, and how fast', () => {
-    const text = runMetaText({ startedAt: 1_700_000_000_000, durationMs: 30_000, firstTokenMs: 5_600, completionTokens: 1_260 });
+    const text = runMetaText({
+      startedAt: 1_700_000_000_000,
+      durationMs: 30_000,
+      firstTokenMs: 5_600,
+      toolCalls: 0,
+      toolMs: 0,
+      retries: 0,
+      completionTokens: 1_260,
+    });
     expect(text).toBe('用时 30.0s · 首 token 5.6s · 42 tok/s');
   });
 
   it('omits the pieces the provider never reported', () => {
-    expect(runMetaText({ startedAt: 0, durationMs: 2_000, completionTokens: 0 })).toBe('用时 2.0s');
+    expect(
+      runMetaText({ startedAt: 0, durationMs: 2_000, toolCalls: 0, toolMs: 0, retries: 0, completionTokens: 0 }),
+    ).toBe('用时 2.0s');
+  });
+
+  it('explains a slow or unlucky run with tool time and re-requests', () => {
+    const text = runMetaText({
+      startedAt: 0,
+      durationMs: 12_000,
+      toolCalls: 4,
+      toolMs: 9_400,
+      retries: 1,
+      completionTokens: 120,
+    });
+    expect(text).toBe('用时 12.0s · 10 tok/s · 工具 4 次 9.4s · 重试 1');
   });
 });
 
-describe('sessionStatsText', () => {
-  it('reads as one line of session facts', () => {
-    const totals: SessionTotals = {
-      runs: 5,
-      requests: 82,
-      toolCalls: 82,
-      retries: 2,
-      llmMs: 1_871_000,
-      toolMs: 1_255_000,
-      firstTokenMs: 56_000,
-      firstTokenRuns: 5,
-      promptTokens: 4_100_000,
-      completionTokens: 42_300,
-      cachedTokens: 2_460_000,
-    };
-    expect(sessionStatsText(totals)).toBe(
-      '5 轮 | 82 步 | LLM 31m11s · 工具 20m55s | 首 token 平均 11.2s · 23 tok/s | 缓存命中 60% | 输入 4.1M tok · 输出 42.3K tok | 重试 2',
+describe('subagentTotals', () => {
+  it('reports the nested loop’s own rounds, wall time and tokens', () => {
+    expect(subagentTotals({ elapsedMs: 21_400, turns: 3, promptTokens: 12_000, completionTokens: 800 })).toBe(
+      '3 轮 · 21.4s · 12.8K tok',
     );
   });
 
-  it('leaves out what never happened', () => {
-    expect(sessionStatsText({ ...emptyTotals, runs: 1, requests: 1, toolCalls: 0, llmMs: 900, promptTokens: 10, completionTokens: 2, cachedTokens: 0 })).toBe(
-      '1 轮 | 0 步 | LLM 900ms | 2 tok/s | 输入 10 tok · 输出 2 tok',
-    );
+  it('drops the token segment when the nested loop reported none', () => {
+    expect(subagentTotals({ elapsedMs: 900, turns: 1, promptTokens: 0, completionTokens: 0 })).toBe('1 轮 · 900ms');
   });
 });
 
@@ -95,5 +123,25 @@ describe('formatClock', () => {
   it('prints a local wall-clock stamp', () => {
     const ts = new Date(2026, 7, 28, 23, 43).getTime();
     expect(formatClock(ts)).toBe('8月28日 23:43');
+  });
+});
+
+describe('scopedGrant', () => {
+  it('shows the word prefix an "always" grant would pin', () => {
+    const words = ['git', 'status', '-sb'];
+    expect(scopedGrant(words, 1)).toBe('git …');
+    expect(scopedGrant(words, 2)).toBe('git status …');
+  });
+
+  it('drops the ellipsis when the scope covers the whole command', () => {
+    expect(scopedGrant(['git', 'status'], 2)).toBe('git status');
+  });
+
+  it('clamps a scope the caller got wrong instead of rendering nothing', () => {
+    expect(scopedGrant(['git', 'status'], 99)).toBe('git status');
+    expect(scopedGrant(['git', 'status'], 0)).toBe('git …');
+    // No words at all (a non-execute call, or a compound command): the surface
+    // shows nothing rather than a dangling ellipsis.
+    expect(scopedGrant([], 3)).toBe('');
   });
 });

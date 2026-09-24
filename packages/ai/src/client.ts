@@ -410,65 +410,64 @@ function toProviderTool(tool: ToolDefinition): Record<string, unknown> {
   };
 }
 
+/** Chain-of-thought text of one delta, under any of the three field names
+ * gateways use — or undefined when this chunk carries none. */
+function reasoningText(raw: Record<string, unknown> | undefined): string | undefined {
+  for (const key of ['reasoning_content', 'reasoning', 'thought']) {
+    const value = raw?.[key];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  return undefined;
+}
+
+/** Tool-call deltas of one chunk. Empty/null members count as absent (some
+ * gateways repeat entries with empty id/name and null arguments), and `index`
+ * is coerced to 0 unless it is a non-negative integer — the accumulator keys
+ * by it, so a NaN-shaped index must not open a second accumulator. */
+function toolCallDeltas(deltas: ProviderToolCallDelta[]): StreamEvent[] {
+  const out: StreamEvent[] = [];
+  for (const tc of deltas) {
+    const id = typeof tc.id === 'string' && tc.id.length > 0 ? tc.id : undefined;
+    const name =
+      typeof tc.function?.name === 'string' && tc.function.name.length > 0 ? tc.function.name : undefined;
+    const argsDelta =
+      typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0
+        ? tc.function.arguments
+        : undefined;
+    if (id === undefined && name === undefined && argsDelta === undefined) continue;
+    const index = typeof tc.index === 'number' && Number.isInteger(tc.index) && tc.index >= 0 ? tc.index : 0;
+    out.push({
+      type: 'tool_call_delta',
+      index,
+      ...(id !== undefined ? { id } : {}),
+      ...(name !== undefined ? { name } : {}),
+      ...(argsDelta !== undefined ? { argsDelta } : {}),
+    });
+  }
+  return out;
+}
+
+/** The chunk's usage, normalised across the two cache-reporting shapes. */
+function usageFrom(raw: NonNullable<ProviderChunk['usage']>): Usage {
+  return {
+    promptTokens: raw.prompt_tokens ?? 0,
+    completionTokens: raw.completion_tokens ?? 0,
+    cachedTokens: raw.prompt_tokens_details?.cached_tokens ?? raw.prompt_cache_hit_tokens ?? 0,
+  };
+}
+
+/** One provider chunk → the events it carries, in wire order. */
 function* translateChunk(chunk: ProviderChunk): Generator<StreamEvent> {
   const choice = chunk.choices?.[0];
   if (choice) {
     const delta = choice.delta;
-    const raw = delta as Record<string, unknown> | undefined;
-    const reasoning =
-      (typeof raw?.['reasoning_content'] === 'string' && raw['reasoning_content'].length > 0
-        ? raw['reasoning_content']
-        : undefined) ??
-      (typeof raw?.['reasoning'] === 'string' && raw['reasoning'].length > 0
-        ? raw['reasoning']
-        : undefined) ??
-      (typeof raw?.['thought'] === 'string' && raw['thought'].length > 0
-        ? raw['thought']
-        : undefined);
+    const reasoning = reasoningText(delta as Record<string, unknown> | undefined);
     if (reasoning !== undefined) yield { type: 'reasoning_delta', text: reasoning };
     if (delta?.content) yield { type: 'text_delta', text: delta.content };
-    if (delta?.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        // Some gateways repeat tool-call entries with empty strings for
-        // id/name on argument-delta chunks, and null arguments; treat
-        // empty and null as absent.
-        const id = typeof tc.id === 'string' && tc.id.length > 0 ? tc.id : undefined;
-        const name =
-          typeof tc.function?.name === 'string' && tc.function.name.length > 0
-            ? tc.function.name
-            : undefined;
-        const argsDelta =
-          typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0
-            ? tc.function.arguments
-            : undefined;
-        if (id === undefined && name === undefined && argsDelta === undefined) continue;
-        // Gateways disagree on `index` (missing, string, even NaN-shaped);
-        // the accumulator keys deltas by it, so coerce anything non-integral
-        // to 0 (OpenAI SDK convention) instead of letting Map keys diverge.
-        const index =
-          typeof tc.index === 'number' && Number.isInteger(tc.index) && tc.index >= 0 ? tc.index : 0;
-        yield {
-          type: 'tool_call_delta',
-          index,
-          ...(id !== undefined ? { id } : {}),
-          ...(name !== undefined ? { name } : {}),
-          ...(argsDelta !== undefined ? { argsDelta } : {}),
-        };
-      }
-    }
+    if (delta?.tool_calls) yield* toolCallDeltas(delta.tool_calls);
     if (choice.finish_reason) yield { type: 'finish', finishReason: choice.finish_reason };
   }
-  if (chunk.usage) {
-    const usage: Usage = {
-      promptTokens: chunk.usage.prompt_tokens ?? 0,
-      completionTokens: chunk.usage.completion_tokens ?? 0,
-      cachedTokens:
-        chunk.usage.prompt_tokens_details?.cached_tokens ??
-        chunk.usage.prompt_cache_hit_tokens ??
-        0,
-    };
-    yield { type: 'usage', usage };
-  }
+  if (chunk.usage) yield { type: 'usage', usage: usageFrom(chunk.usage) };
 }
 
 function isRetryableStatus(status: number): boolean {

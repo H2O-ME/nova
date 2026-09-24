@@ -1,6 +1,6 @@
 /**
  * Every built-in tool must speak the presentation vocabulary — this is what
- * makes the vocabulary real rather than decorative: a web/TUI surface renders
+ * makes the vocabulary real rather than decorative: a browser surface renders
  * these calls by switching on `card`, and a tool that silently stops declaring
  * its view would otherwise degrade in one UI with no test noticing.
  *
@@ -179,6 +179,23 @@ describe('read_file / list_dir', () => {
       truncated: true,
     });
     expect(tools.get('read_file')?.presentResult?.({ path: 'a.ts' }, 'Error: file not found: a.ts')).toBeUndefined();
+  });
+
+  it('does not count the trailing newline as a line', async () => {
+    // `split('\n').length` is one too many for any text ending in a newline —
+    // the tail split yields an empty last element. The count is what the row
+    // reports against the window's own total, so an inflated number showed a
+    // whole-file read as partial.
+    const read = (await builtins()).get('read_file');
+    expect(read?.presentResult?.({ path: 'a.ts' }, 'one\ntwo\n')).toMatchObject({ lineCount: 2 });
+    expect(read?.presentResult?.({ path: 'a.ts' }, 'one\ntwo')).toMatchObject({ lineCount: 2 });
+    expect(read?.presentResult?.({ path: 'a.ts' }, 'one\n')).toMatchObject({ lineCount: 1 });
+    expect(read?.presentResult?.({ path: 'a.ts' }, 'one')).toMatchObject({ lineCount: 1 });
+    // An empty body is zero lines, not one.
+    expect(read?.presentResult?.({ path: 'a.ts' }, '')).toMatchObject({ lineCount: 0 });
+    const list = (await builtins()).get('list_dir');
+    expect(list?.presentResult?.({}, 'd src\nf 12 index.ts\n')).toMatchObject({ lineCount: 2 });
+    expect(list?.presentResult?.({}, 'd src\n(... 7 more)')).toMatchObject({ lineCount: 1 });
   });
 
   it('a directory listing counts entries and honors the overflow marker', async () => {

@@ -3,7 +3,7 @@
  *
  * The slash commands were written twice — once per shell — and the copies had
  * already drifted: repl's `/skill <name>` answered "未知命令" (the skill
- * expansion ran only for non-slash input) while the TUI's loaded the skill.
+ * expansion ran only for non-slash input) while the other shell loaded the skill.
  * This file owns the part that must not differ: what a command does to the
  * kernel (new session, approvals, mode, compact), how its arguments are
  * parsed (theme names, skill names) and what it reports (the `command-core`
@@ -36,11 +36,14 @@ import { codeModeLabel, permissionLabel } from './lines.js';
 
 export interface CommandPorts {
   kernel: Kernel;
-  /** Provider handle: model + session affinity are the shell's to rebind. */
+  /**
+   * Provider handle for `/model`. Session affinity is NOT here: the kernel's
+   * `llm` service binds it when a session becomes current, so no shell can
+   * forget to.
+   */
   client: {
     readonly model: string;
     setModel(model: string): void;
-    setSessionId(id: string): void;
   };
   config: Config;
   approvalOverride: ApprovalMode | undefined;
@@ -113,6 +116,7 @@ export async function runAgentCommand(input: string, ports: CommandPorts): Promi
             name: entry.command.name,
             description: entry.command.description,
           })),
+          roster: ports.kernel.roster(),
         }).join('\n'),
       );
       return 'handled';
@@ -153,8 +157,9 @@ export async function runAgentCommand(input: string, ports: CommandPorts): Promi
 
 /** `/new`: the kernel builds the log and re-points current; the shell follows. */
 async function newSession(ports: CommandPorts): Promise<CommandResult> {
+  // The kernel's sessions service re-points current AND re-binds the provider
+  // affinity; the shell only follows with its own rendering state.
   const next = await ports.kernel.newAgentSession();
-  ports.client.setSessionId(next.session.id);
   ports.bindSession(next);
   ports.note(newSessionLine(next.session.file));
   return 'handled';

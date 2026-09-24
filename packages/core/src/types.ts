@@ -187,8 +187,8 @@ export type ToolPermissionKind = 'read' | 'read-external' | 'write' | 'execute' 
 /**
  * Execution mode for the code (PTC) runtime: native tool calls only, run_code
  * only, or both. Lives here because the config schema, the plugin host and
- * the pure view layer (tui-view status/splash) all speak it — defining it in
- * plugins would make tui-view depend on a package two tiers above it.
+ * every surface all speak it — defining it in plugins would make a view-only
+ * consumer depend on a package two tiers above it.
  */
 export type PtcMode = 'native' | 'ptc' | 'both';
 
@@ -215,9 +215,27 @@ export interface ChatRequest {
   signal?: AbortSignal;
 }
 
-/** Provider contract implemented by packages/ai. */
+/**
+ * Provider contract implemented by packages/ai.
+ *
+ * The three model-end members are OPTIONAL capabilities, not part of the loop:
+ * the loop only ever calls `stream`, and a surface's model picker is the sole
+ * reader of the rest. Making them optional is what keeps a scripted test
+ * provider (or a third-party gateway shim) a valid `ChatProvider` while still
+ * letting the kernel offer a real picker whenever the client can answer.
+ */
 export interface ChatProvider {
   stream(req: ChatRequest): AsyncIterable<StreamEvent>;
+  /** Model id in force, when the client owns one (display + metadata lookups). */
+  readonly model?: string;
+  /**
+   * Retarget THIS client at another model. In-place on purpose: the kernel,
+   * the session handles and the roster all hold the same instance, so a
+   * rebuilt client would strand the cache-affinity binding.
+   */
+  setModel?(model: string): void;
+  /** The endpoint's own catalog (`GET /models`), for the picker. */
+  listModels?(): Promise<string[]>;
 }
 
 /**
@@ -297,7 +315,7 @@ export interface AgentHooks {
   afterToolResult?(call: ToolCall, result: string): Promise<string>;
 }
 
-/** Events yielded by the agent loop for consumers (REPL, TUI, CI runner). */
+/** Events yielded by the agent loop for consumers (REPL, browser UI, CI runner). */
 export type AgentEvent =
   | { type: 'turn_start'; turn: number }
   | { type: 'text_delta'; messageId: string; text: string }

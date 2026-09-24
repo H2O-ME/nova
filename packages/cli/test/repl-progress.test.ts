@@ -4,7 +4,7 @@
  * Palette 的开态控制原语经 fake palette 注入可读占位符，断契约不断字节。
  */
 import { describe, expect, it } from 'vitest';
-import { styledWidth } from '@nova-agent/tui';
+import { styledWidth } from '../src/term-text.js';
 import type { SubagentProgress } from '@nova-agent/core';
 import { ReplProgress } from '../src/repl-progress.js';
 import type { Paint } from '../src/lines.js';

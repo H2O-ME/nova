@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { AgentMessage, ChatProvider, ChatRequest, UserMessage } from './types.js';
 import type { Session, SessionEvent } from './session.js';
 import { COMPACT_SUMMARY_PREFIX, compactionSurface } from './session.js';
-import { TURN_ABORTED_GUIDANCE } from './agent/options.js';
+import { isAbortMarker } from './agent/options.js';
 import { errMessage } from './errors.js';
 import { estimateMessageTokens } from './estimate.js';
 import { newId } from './ids.js';
@@ -177,7 +177,7 @@ export function selectRecentMessages(messages: AgentMessage[], budgetChars: numb
     const msg = messages[i];
     if (msg === undefined) continue;
     if (msg.role === 'user') {
-      if (isContextFragment(msg) || isCompactSummary(msg) || msg.content === TURN_ABORTED_GUIDANCE) continue;
+      if (isContextFragment(msg) || isCompactSummary(msg) || isAbortMarker(msg)) continue;
     } else if (msg.role === 'assistant') {
       // Pure text only: tool-call messages must keep their result messages,
       // and pulling the whole subtree through the char budget is not worth it.
@@ -210,7 +210,7 @@ export interface CompactSessionOptions {
    * can read_file the archive without an approval prompt.
    */
   cacheDir?: string;
-  /** Stream tap on the summarizer's output (TUI tps sampling). */
+  /** Stream tap on the summarizer's output (surface tps sampling). */
   onDelta?: (text: string) => void;
 }
 

@@ -1,8 +1,8 @@
 import path from 'node:path';
-import { createAgentKernel } from '@nova-agent/plugins';
+
 import type { AgentSession, KernelEvent } from '@nova-agent/core';
 import { createQqBotChannel, type Peer, type QqBotChannel } from '@nova-agent/qqbot';
-import { createProvider, toKernelConfig } from './kernel-boot.js';
+import { bootKernel, createProvider } from './kernel-boot.js';
 import type { Config } from './config.js';
 import { sessionsRoot } from './config.js';
 import { resolvePaint, type Paint } from './lines.js';
@@ -41,17 +41,17 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
     log,
   });
 
-  const kernel = await createAgentKernel({
+  const kernel = await bootKernel({
     rootDir,
+    config,
     provider: client,
-    config: toKernelConfig(config),
     extraPlugins: [channel.plugin],
     // 对端会话与启动期的初始会话同归档在 qqbot 子目录（与交互会话隔离）。
     sessionDir: path.join(sessionsRoot(), 'qqbot'),
     perRequestCompact: true,
+    // 无人值守：'never' 策略确定性拒绝（连询问器都不派发，exec 同款）。
+    policy: 'never',
   });
-  // 无人值守：'never' 策略确定性拒绝（连询问器都不派发，exec 同款）。
-  kernel.permission.setPolicy('never');
 
   async function runPeerTurn(text: string, peer: Peer): Promise<string> {
     let agent = peerAgents.get(peer.peerId);
@@ -59,9 +59,9 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
       agent = await kernel.newAgentSession({ sessionDir: path.join(sessionsRoot(), 'qqbot') });
       peerAgents.set(peer.peerId, agent);
     }
-    // 全局串行调用（通道契约）：current 重绑让审计/job/压缩目标跟随本轮对端。
+    // 全局串行调用（通道契约）：current 重绑让审计/job/压缩目标跟随本轮对端；
+    // provider 的缓存亲和由 sessions 服务在 activate 时一并重绑。
     kernel.activateSession(agent);
-    client.setSessionId(agent.session.id);
 
     let reply = '';
     let failure: string | undefined;

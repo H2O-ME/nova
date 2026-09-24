@@ -1,13 +1,13 @@
 import { createInterface } from 'node:readline/promises';
 import type { OpenAICompatClient } from '@nova-agent/ai';
-import { createAgentKernel, type ApprovalMode, type Kernel } from '@nova-agent/plugins';
+import type { ApprovalMode, Kernel } from '@nova-agent/plugins';
 import {
   type AgentSession,
   type AskResult,
   type KernelEvent,
 } from '@nova-agent/core';
-import { detectCaps } from '@nova-agent/tui';
-import { awaitIdle, createProvider, toKernelConfig } from './kernel-boot.js';
+import { detectCaps } from './term-text.js';
+import { awaitIdle, bootKernel, createProvider } from './kernel-boot.js';
 import { type Config } from './config.js';
 import { createModelListCache } from './commands.js';
 import { modelListRows, type ThemeName } from './command-core.js';
@@ -101,7 +101,7 @@ export class LineSource {
 
 /**
  * 行内审批答案解析：y/a 前缀=允许/总是，否定词（n/no/nope/nah）后跟的整句
- * 作为拒绝理由回流给模型（与 TUI 弹窗同一 AskResult 形态）；其余输入一律
+ * 作为拒绝理由回流给模型（与 WebUI 同一 AskResult 形态）；其余输入一律
  * fail-closed 拒绝。
  */
 export function parseApprovalAnswer(raw: string): AskResult {
@@ -143,14 +143,14 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     console.log(paint.dim(`  ✓ 工作区已切换到 ${dir}`));
   }
 
-  kernel = await createAgentKernel({
+  kernel = await bootKernel({
     rootDir,
+    config,
     provider: client,
-    config: toKernelConfig(config, opts.approvalOverride),
+    ...(opts.approvalOverride !== undefined ? { approvalOverride: opts.approvalOverride } : {}),
     ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
     workspace: { onChange: (dir: string) => applyWorkspace(dir) },
   });
-  client.setSessionId(kernel.agent.session.id);
   agent = kernel.agent;
 
   if (opts.resumeFile) {
@@ -324,7 +324,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   }
 
   /**
-   * 斜杠命令：语义全在 `command-runner`（与 TUI 共用一份），这里只出端口——
+   * 斜杠命令：语义全在 `command-runner`（与 WebUI 共用一份），这里只出端口——
    * note 走 stdout、模型选择走序号提问、清屏是 `console.clear()`。
    * 返回 false = 退出主循环。
    */

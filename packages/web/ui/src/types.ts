@@ -8,31 +8,48 @@
 import type {
   ApprovalMode,
   ApprovalRequest,
+  AskResult,
   FileDiff,
   JobSnapshot,
   KernelEvent,
+  ModelGroup,
+  ModelOption,
   PtcMode,
   RunStats,
+  SubagentProgress,
+  SubagentUsage,
   ToolCallView,
   ToolResultView,
   TurnPhase,
 } from '@nova-agent/core';
-import type { ClientFrame, ReadyInfo, ServerFrame, SessionListItem, WireBlock } from '../../src/protocol';
+import type { ClientFrame, ReadyInfo, ServerFrame, SessionListItem, WireBlock, WireTraceRow } from '../../src/protocol';
+
+/**
+ * One row of the kernel's command catalog, derived from the frame that carries
+ * it — the assembly's own shape (`Kernel.commands`), not a copy of it.
+ */
+export type CommandSummary = ReadyInfo['commands'][number];
 
 export type {
   ApprovalMode,
   ApprovalRequest,
+  AskResult,
   ClientFrame,
   FileDiff,
   JobSnapshot,
   KernelEvent,
+  ModelGroup,
+  ModelOption,
   PtcMode,
   ReadyInfo,
   RunStats,
   ServerFrame,
   SessionListItem,
+  SubagentProgress,
+  SubagentUsage,
   ToolCallView,
   ToolResultView,
   TurnPhase,
   WireBlock,
+  WireTraceRow,
 };

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Session } from '@nova-agent/core';
-import { listRecentSessions, recordSessionWorkspace, sessionWorkspace } from '@nova-agent/core';
+import { listRecentSessions, recordSessionWorkspace, sessionLogPath, sessionWorkspace } from '@nova-agent/core';
 
 const writeSession = async (
   file: string,
@@ -84,5 +84,22 @@ describe('listRecentSessions', () => {
       content: '<environment>\nplatform=win32\ncwd=D:\\web\\agent\nshell=bash\ntoday=2026-09-06\n</environment>',
     });
     expect(sessionWorkspace(legacy)).toBe('D:\\web\\agent');
+  });
+});
+
+describe('sessionLogPath', () => {
+  it('resolves a log inside the sessions root and refuses everything else', () => {
+    const root = path.join(path.sep, 'home', 'u', '.nova', 'sessions');
+    const ok = path.join(root, '2026', '09', '20', 'sess_a.jsonl');
+    expect(sessionLogPath(ok, root)).toBe(path.resolve(ok));
+
+    // The store's rule, not the surface's: a resume target is a .jsonl UNDER
+    // the sessions root — traversal, the root itself and other file types are
+    // all refused, whatever the caller believed it had.
+    const outside = path.join(path.sep, 'home', 'u', '.nova', 'config.json');
+    expect(() => sessionLogPath(outside, root)).toThrow(/sessions/);
+    expect(() => sessionLogPath(root, root)).toThrow(/sessions/);
+    expect(() => sessionLogPath(path.join(root, '..', '..', 'secret.jsonl'), root)).toThrow(/sessions/);
+    expect(() => sessionLogPath(path.join(root, '2026', '09', '20', 'notes.txt'), root)).toThrow(/sessions/);
   });
 });

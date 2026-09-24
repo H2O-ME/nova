@@ -5,8 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nova</title>
   </head>
-  <body class="bg-[#16161d] text-[#d4d4d8]">
+  <body>
     <div id="root"></div>
+    <script>
+      // 主题引导（对齐 harness ui-theme/boot-theme.ts）：首帧前解析偏好与正文字号。
+      // 只有 system 询问浏览器；之后由 src/theme.ts 接管同一批 DOM 字段。
+      // 与 shell/boot-theme.ts 的 bootThemeScript 同源，theme.test.ts 断言二者一致。
+      (() => {
+        let preference = 'system';
+        let fontSize = 14;
+        try {
+          const stored = localStorage.getItem('nova.theme');
+          if (stored === 'light' || stored === 'dark' || stored === 'system') preference = stored;
+          const raw = localStorage.getItem('nova.fontSize');
+          if (raw !== null) {
+            const size = Number(raw);
+            if (Number.isFinite(size)) {
+              fontSize = Math.min(17, Math.max(12, Math.round(size)));
+            }
+          }
+        } catch {}
+        const systemDark =
+          preference === 'system' &&
+          typeof matchMedia !== 'undefined' &&
+          matchMedia('(prefers-color-scheme: dark)').matches;
+        const dark = preference === 'dark' || systemDark;
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        document.body.toggleAttribute('data-ds-dark-theme', dark);
+        document.body.style.setProperty('--dsh-content-font-size', fontSize + 'px');
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

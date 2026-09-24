@@ -10,18 +10,18 @@
  * never persist, never bookkeep, never guess phases.
  */
 export * from './kernel/protocol.js';
+export * from './kernel/model.js';
 export { EventPump } from './kernel/pump.js';
 export { RunMeter, type RunStats } from './kernel/metrics.js';
 export {
   AgentSession,
-  persistMissingToolResults,
   type AgentSessionDeps,
   type AgentStatus,
   type UsageAnchorState,
 } from './kernel/session.js';
 
 /**
- * A pluggable surface: the TUI, the WebUI's launch mode, the bot channel and
+ * A pluggable surface: the browser UI, the readline REPL, the bot channel and
  * the headless runners are all just implementations of this. The cli picks
  * one per invocation and hands it the assembled session; a third-party
  * surface package depends on nothing above `core`/`plugins` — the same

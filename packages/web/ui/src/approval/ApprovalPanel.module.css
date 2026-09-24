@@ -1,0 +1,265 @@
+/* Ported from deepseek-harness ui-approval (c) 2026 DeepSeek — MIT License. */
+/* The approval card, value for value: warn strip, 20px card, scroll body,
+ * action row whose reject capsule turns danger on hover. The reference's
+ * Button/Input/Pager recipes (ui-primitives, ui-user-questions) are ported
+ * locally where this card needs them — nothing here imports another package's
+ * component, and every class below is rendered by ApprovalPanel.tsx,
+ * ReasonInput.tsx or PreviewBlock.tsx.
+ *
+ * Two structural deltas from the source sheet, both because of where this card
+ * sits in our shell rather than what it looks like:
+ *  - `.root` keeps the source's 8px/12px vertical insets but gives up its
+ *    horizontal `clearance + 16px`: the dock seat already carries that
+ *    clearance on a content-width + 32px track, and the card's own
+ *    `--dsh-chat-content-width` cap keeps the reference's relation (the card
+ *    lands exactly 32px narrower than the composer capsule beside it).
+ *  - `.actionRow` aligns its children to the end rather than stretching them,
+ *    because this card's action row leads with a field that grows (the
+ *    reference's action row holds fixed-height buttons only). */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0 12px;
+}
+
+.card {
+  overflow: hidden;
+  width: 100%;
+  /* The two axis tokens are declared by the conversation root and the dock seat
+     this card is rendered in; the fallbacks are the same values the composer's
+     own card uses, so a card drawn outside that seat still has an axis. */
+  max-width: var(--dsh-chat-content-width, 100%);
+  border: 1px solid var(--dsw-alias-state-warn-secondary);
+  border-radius: 20px;
+  background: var(--dsw-specific-input-major);
+  box-shadow: var(--dsw-shadow-lv2);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The card-wide box sizing the question card declares (QuestionComposer): the
+   body's scroll cap, the preview block's padding and the reason field's mirror
+   all count boxes in border-box. */
+.card,
+.card * {
+  box-sizing: border-box;
+}
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--dsw-alias-state-warn-tertiary);
+  color: var(--dsw-alias-state-warn-primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-state-warn-primary);
+}
+
+/* The permission kind as a chip on the warn band. The source sheet has no such
+   chip (its strip carries only the waiting label); the geometry is the option
+   badge from QuestionComposer.module.css, and the color pair is our token
+   layer's blue tertiary/primary instead of the source's sidebar accent — the
+   one tinted capsule we have in both themes, on the accent that always means
+   "the surface's own blue" here. */
+.badge {
+  padding: 0 4px;
+  border-radius: 6px;
+  background: var(--dsw-alias-state-business-tertiary);
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  max-height: var(--dsh-composer-text-max-height, 336px);
+  overflow-y: auto;
+  padding: 12px 16px 0;
+  /* The card is the elevated surface; its scroll region takes the l2 thumb pair
+     rebound by .card (see the scrollbar sheet's rebinding contract). */
+  overscroll-behavior: contain;
+}
+
+.headline {
+  color: var(--dsw-alias-label-primary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.command {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code);
+  font-size: 13px;
+  line-height: 20px;
+  word-break: break-all;
+}
+
+/* The "always" scope chooser: the reference's pager (QuestionComposer's
+   `.pager` + `.progress` + 24px `.iconButton` grid) applied to the word prefix
+   the grant would cover. The value keeps the source readout's metrics but takes
+   the code font — it is a command fragment, not a step counter. */
+.scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.scopeLabel {
+  flex: none;
+}
+
+.progress {
+  padding: 0 4px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-markdown-code);
+  white-space: nowrap;
+  /* Narrow the plain spaces around the slash without touching glyph tracking.
+     Kept from the source readout: a word prefix reads the same way. */
+  word-spacing: -2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.iconButton:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+/* The icons are 16px boxes whose size CSS owns (the surface's icon
+   discipline); the source passes a size prop to its icon set instead. */
+.iconButton > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.actionRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+/* Ported from ui-primitives Button.module.css: the capsule geometry (h36,
+   padding 14, gap 4, r18) and the three variants this card uses. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 18px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+  background: transparent;
+  flex: none;
+  transition: background-color 120ms ease;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* The affirmative answer: the reference's `variant="primary"` capsule. */
+.primary {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Dialog Cancel (figma 451:18655): bordered capsule on transparent fill. */
+.outline {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  background: transparent;
+}
+
+.outline:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.reject:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--dsw-alias-state-error-primary);
+  border-color: transparent;
+}
+
+/* The key hint inside a capsule: quiet, code-set, and gone from the accessible
+   name (the button's name is its verb). Metrics from the surface's key-hint
+   recipe (ui-input-trigger `.drillHint`); the color is inherited so the hint
+   rides whatever the capsule's own tone is. */
+.kbd {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  line-height: 18px;
+  opacity: 0.7;
+}
+
+@media (max-width: 720px) {
+  .card {
+    border-radius: 16px;
+  }
+
+  .actionRow {
+    padding: 12px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition: none;
+  }
+}

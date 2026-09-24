@@ -2,10 +2,16 @@
  * One producer, N consumers, in-order. The kernel's `AgentSession` publishes
  * `KernelEvent`s here; surfaces subscribe (callback) or iterate (`events()`).
  * Publishing inside the run loop never blocks on a consumer: callback
- * listeners run inline (a throwing listener is re-thrown async so it is loud
- * but cannot kill the pump), and async consumers get their own queue — a
- * stalled past-cap consumer drops its window with a `surface_lagged` notice
- * instead of backpressuring the agent.
+ * listeners run inline, and async consumers get their own queue — a stalled
+ * past-cap consumer drops its window with a `surface_lagged` notice instead of
+ * backpressuring the agent.
+ *
+ * A throwing listener is *reported*, never re-thrown: this pump is fed from
+ * inside the run loop and from the approval bridge, so an exception escaping
+ * here (the old `queueMicrotask(() => { throw err })`) takes the whole process
+ * down — a crash the agent cannot survive and the operator cannot attribute to
+ * anything. The owner installs `onListenerError`, which publishes a notice onto
+ * the same stream, so a surface sees "that handler failed" as data.
  */
 import type { KernelEvent, NoticeCode } from './protocol.js';
 
@@ -17,15 +23,22 @@ export class EventPump {
   private readonly listeners = new Set<(event: KernelEvent) => void>();
   private closed = false;
 
+  constructor(private readonly onListenerError?: (err: unknown) => void) {}
+
   publish(event: KernelEvent): void {
     if (this.closed) return;
     for (const listener of Array.from(this.listeners)) {
       try {
         listener(event);
       } catch (err) {
-        queueMicrotask(() => {
-          throw err;
-        });
+        // Nothing may escape publish(): a broken listener must not be able to
+        // strand the run loop or the approval bridge that is publishing here.
+        try {
+          this.onListenerError?.(err);
+        } catch {
+          // A failing reporter is the end of the chain; the notice below is a
+          // best-effort channel, not a guarantee.
+        }
       }
     }
     for (const consumer of Array.from(this.consumers)) {

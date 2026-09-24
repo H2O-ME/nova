@@ -1,10 +1,7 @@
-import { errMessage } from '@nova-agent/core';
+import { errMessage, novaHome, sessionDateBucket, sessionsRoot, userConfigPath } from '@nova-agent/core';
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
-import path from 'node:path';
 import { z } from 'zod';
-
-export const NOVA_DIR = '.nova';
 
 const configSchema = z.object({
   provider: z.object({
@@ -18,7 +15,7 @@ const configSchema = z.object({
     /**
      * Context window size (prompt tokens). Normally resolved from
      * https://models.dev/api.json by model id; set this to override/兜底 for
-     * self-hosted or unlisted models so the TUI context bar has a denominator.
+     * self-hosted or unlisted models so the surface's context gauge has a denominator.
      */
     contextWindow: z.number().int().positive().max(200_000_000).optional(),
   }),
@@ -37,7 +34,7 @@ const configSchema = z.object({
    */
   autoCompactTokenLimit: z.number().int().positive().max(2_000_000).optional(),
   /**
-   * 界面外观（TUI/REPL 呈现层）。theme：dark（默认，配色与引入主题层前
+   * 界面外观（REPL 呈现层）。theme：dark（默认，配色与引入主题层前
    * 逐字节一致）/ light（亮背景高对比）/ plain（无色）。NO_COLOR 与
    * 非 TTY 恒定无色，主题不生效。
    */
@@ -74,6 +71,20 @@ const configSchema = z.object({
     })
     .optional(),
   /**
+   * 插件 roster（M11 批10）：disable 列出**不加载**的内置插件（名字即
+   * `/plugins` 打印的那个），extra 列出额外加载的插件模块（绝对路径、
+   * 相对工作目录的路径，或包名）——模块须以 default（或 plugin）导出
+   * `{ name, activate }` 形态的插件。这是配置层扩展点：不改源码就能选择、
+   * 替换或扩展能力；拼错的 disable 名会告警，加载失败的 extra 直接让启动
+   * 失败（静默忽略的扩展比坏掉的启动更糟）。
+   */
+  plugins: z
+    .object({
+      disable: z.array(z.string().min(1)).optional(),
+      extra: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  /**
    * QQ 机器人模式（nova qqbot）：腾讯机器人开放平台 WebSocket 通道。凭据在
    * q.qq.com 管理端获取；clientSecret 支持 {env:NAME} 引用避免明文入库。
    */
@@ -91,40 +102,11 @@ const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>;
 
 /**
- * nova 的家：~/.nova/。配置、技能、会话与缓存全部集中在这里 ——
- * 项目（工作区）永远零写入，也不会出现 .nova/ 目录；工作区只是 nova
- * 运行时所在的当前目录。
+ * 路径布局的单一来源是 core 的 `paths.ts`（会话落盘、压缩存档、工具输出都按它解析）——
+ * 这里只把 CLI 侧历史导入点转出去，绝不留第二份定义：两份 `novaHome` 漂移过一次，
+ * 症状是配置读得到、会话写去别处。
  */
-export function novaHome(homedir: string = os.homedir()): string {
-  return path.join(homedir, NOVA_DIR);
-}
-
-export function userConfigPath(homedir: string = os.homedir()): string {
-  return path.join(novaHome(homedir), 'config.json');
-}
-
-/** 会话根目录（codex 式按日期归档）：~/.nova/sessions/YYYY/MM/DD/sess_<id>.jsonl。 */
-export function sessionsRoot(homedir: string = os.homedir()): string {
-  return path.join(novaHome(homedir), 'sessions');
-}
-
-/** 新会话落盘的日期桶（创建时取当天，跨天启动自动换目录）。 */
-export function sessionDateBucket(now: Date = new Date()): string {
-  return localDateKey(now).join('/');
-}
-
-/** 当天会话目录（启动装配与交互 runner 的 /new 同一来源，跨天自动换桶）。 */
-export function newSessionDir(): string {
-  return path.join(sessionsRoot(), sessionDateBucket());
-}
-
-/** 本地时区的 YYYY/MM/DD 分量（context 片段的 today 与日期桶共用同源）。 */
-export function localDateKey(now: Date = new Date()): [string, string, string] {
-  const yyyy = String(now.getFullYear());
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  return [yyyy, mm, dd];
-}
+export { novaHome, sessionsRoot, sessionDateBucket, userConfigPath };
 
 /**
  * Expands `{env:NAME}` references. Throws when a referenced variable is

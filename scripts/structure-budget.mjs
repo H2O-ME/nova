@@ -16,13 +16,13 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const budgetPath = join(repoRoot, 'scripts', 'structure-budget.json');
 
-/** 递归收集包 src 下全部 .ts。 */
+/** 递归收集包 `src/` 下全部 `.ts`（含嵌套目录）。 */
 function sources(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
     if (statSync(full).isDirectory()) out.push(...sources(full));
-    else if (name.endsWith('.ts')) out.push(full);
+    else if (name.endsWith('.ts') || name.endsWith('.tsx')) out.push(full);
   }
   return out;
 }

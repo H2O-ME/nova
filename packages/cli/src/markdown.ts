@@ -1,6 +1,6 @@
 import type { Paint } from './lines.js';
 
-/** 渲染器只借色彩的三个开态（M11：tui-view 已退役，Palette 名沿用于本地闭包）。 */
+/** 渲染器只借色彩的三个开态（Palette 名沿用于本地闭包）。 */
 type Palette = Pick<Paint, 'cyan' | 'dim' | 'bold'>;
 
 /**

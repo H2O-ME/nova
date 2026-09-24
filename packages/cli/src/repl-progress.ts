@@ -8,7 +8,7 @@
  * 类本身不碰定时器也不碰 process.*（spinner/write/writeln/cols/paint 全
  * 注入），行契约可用假 writer 直接测试。
  */
-import { stringWidth } from '@nova-agent/tui';
+import { stringWidth } from './term-text.js';
 import type { SubagentProgress } from '@nova-agent/core';
 import { fitTail, TOOL_TAIL_KEEP_CHARS, type Paint } from './lines.js';
 

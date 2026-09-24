@@ -84,7 +84,7 @@ describe('PermissionService fail-closed branches', () => {
 
   it('denies when the asker throws instead of opening the gate', async () => {
     const ask: AskFn = async () => {
-      throw new Error('TUI died');
+      throw new Error('asker died');
     };
     const svc = new PermissionService('read-only', ask);
     await expect(svc.decide('bash', EXECUTE, call('bash'))).resolves.toBe('deny');
@@ -284,7 +284,7 @@ describe('PermissionService deny with reason (M10 组件7)', () => {
 });
 
 describe('PermissionService ask serialization', () => {
-  it('concurrent ask-path decides dispatch the asker one at a time (TUI modal contract)', async () => {
+  it('concurrent ask-path decides dispatch the asker one at a time (modal contract)', async () => {
     // PTC run_code fires parallel sub-calls through the same PermissionService.
     // Without serialization both asks race for the single approval modal —
     // the displaced one never resolves and the run hangs.

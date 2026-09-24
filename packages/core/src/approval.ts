@@ -10,6 +10,7 @@
  * remote or local surface and wait for its answer as an event on the stream.
  */
 import { newId } from './ids.js';
+import { hasControlChars } from './text.js';
 import type { ToolCall, ToolPermissionKind } from './types.js';
 import type { ToolCallView } from './presentation.js';
 
@@ -35,6 +36,75 @@ export interface DenyGrant {
 }
 export type AskResult = AskAnswer | AlwaysGrant | DenyGrant;
 export type AskFn = (call: ToolCall, kind: ToolPermissionKind) => Promise<AskResult>;
+/** Cap on a scope-pinned "always" grant's word count (untrusted input lands here). */
+export const MAX_ALWAYS_SCOPE_WORDS = 32;
+/** Cap on a user-typed denial reason — an instruction to the model, not a transcript. */
+export const MAX_DENY_REASON_CHARS = 400;
+
+/** Chaining/substitution markers — a command containing them grants whole-command memory only. */
+function isCompoundCommand(command: string): boolean {
+  return /[&;|\n\r]/.test(command) || command.includes('$(') || command.includes('`');
+}
+
+/**
+ * The word list an execute command can scope an "always" grant over: a bare
+ * (non-compound) command's tokens; [] for compound commands, where only
+ * whole-command memory is safe (no meaningful word prefix).
+ *
+ * Lives here, beside `MAX_ALWAYS_SCOPE_WORDS`: the rule that produces the
+ * options and the cap that validates them must not drift apart, and every
+ * surface asks the same question — "what can the user pin?" — when it draws the
+ * scope chooser. The permission engine (which owns the memory) reads the same
+ * list to key what it remembers.
+ */
+export function alwaysScopeWords(command: unknown): string[] {
+  if (typeof command !== 'string') return [];
+  const trimmed = command.trim();
+  if (trimmed.length === 0 || isCompoundCommand(trimmed)) return [];
+  return trimmed.split(/\s+/);
+}
+
+/**
+ * Parse an UNTRUSTED approval answer — a WebUI frame, a Rust-bridge message, a
+ * third-party asker's return value — into the kernel's `AskResult`.
+ *
+ * One parser, because three copies used to guard this seam with three different
+ * notions of valid (`scopeWords ≤ 32` on one wire, any positive integer on the
+ * plugin seam, reject-vs-truncate on a long reason). Both wire shapes are
+ * accepted: the bare grant (`{scopeWords}` / `{reason}`, what a browser sends)
+ * and the tagged one (`{answer:'always'|'deny', …}`, what a plugin asker
+ * returns). Fail-closed: malformed input comes back `undefined` and the caller
+ * decides — the WebUI rejects the frame with a reason, the permission engine
+ * denies the call. Never an executable grant by guess.
+ */
+export function parseAskResult(value: unknown): AskResult | undefined {
+  if (value === 'allow' || value === 'deny' || value === 'always') return value;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const declared = raw['answer'];
+  // An explicit `answer` tag wins over shape-sniffing; an absent one means the
+  // input came off a wire that only carries the grant itself.
+  if (declared === 'always' || declared === undefined) {
+    const scope = raw['scopeWords'];
+    if (Number.isInteger(scope) && (scope as number) >= 1 && (scope as number) <= MAX_ALWAYS_SCOPE_WORDS) {
+      return { answer: 'always', scopeWords: scope as number };
+    }
+  }
+  if (declared === 'deny' || declared === undefined) {
+    const reason = denialReason(raw['reason']);
+    if (reason !== undefined) return { answer: 'deny', reason };
+    // A tagged denial with no usable reason is still a denial.
+    if (declared === 'deny') return 'deny';
+  }
+  return undefined;
+}
+
+/** Trim and clamp a typed denial reason; control bytes (newlines excepted) kill it. */
+function denialReason(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || hasControlChars(raw, { multiline: true })) return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length === 0 ? undefined : trimmed.slice(0, MAX_DENY_REASON_CHARS);
+}
 /** decideDetailed's verdict: deny may carry the user-typed reason. */
 export type DecideResult = 'allow' | { decision: 'deny'; reason?: string };
 /**
@@ -72,6 +142,13 @@ export interface ApprovalRequest {
   view?: ToolCallView;
   /** Post-args effect preview lines (e.g. edit_file's diff), best-effort. */
   preview?: string[];
+  /**
+   * The word list an "always" answer may be pinned to, for an execute call with
+   * word-prefix semantics (see `alwaysScopeWords`). Empty/absent means the
+   * surface offers only the default grant (the program prefix); the engine
+   * validates whatever comes back either way.
+   */
+  scopeWords?: readonly string[];
 }
 
 /** Where a pending approval's wait ended. */
@@ -120,11 +197,15 @@ export class ApprovalBroker {
   readonly asker: AskFn = async (call, kind) => {
     if (this.closed) return 'deny';
     const view = this.viewFor(call);
+    const words = alwaysScopeWords(call.args['command']);
     const request: ApprovalRequest = {
       id: newId('apr'),
       call,
       kind,
       ...(view !== undefined ? { view } : {}),
+      // Only an execute call with more than a program name has anything to
+      // choose: with one word the default grant IS the whole command.
+      ...(kind === 'execute' && words.length > 1 ? { scopeWords: words } : {}),
     };
     // Effect preview is best-effort and rides BEFORE the prompt surfaces, so
     // an approval modal can show what the call WILL do, not just its args.
@@ -137,14 +218,25 @@ export class ApprovalBroker {
       }
     }
     if (this.closed) return 'deny';
-    this.pending.set(request.id, () => undefined);
-    this.requests.set(request.id, request);
-    this.publish?.(request);
+    // Register the waiter BEFORE publishing. A surface may answer inside the
+    // publish call — a scripted client, a bot channel replying in the same
+    // tick, any listener that already knows the verdict — and an answer landing
+    // before the resolver existed used to be swallowed by a placeholder
+    // (`pending.set(id, () => undefined)`), which also removed the request from
+    // `outstanding()`. The ask then never settled: the run hung on it with
+    // nothing left to answer.
     return new Promise<AskResult>((resolve) => {
-      this.pending.set(
-        request.id,
-        (answer) => resolve(answer),
-      );
+      this.pending.set(request.id, resolve);
+      this.requests.set(request.id, request);
+      try {
+        this.publish?.(request);
+      } catch (err) {
+        // A throwing publisher must not strand the ask either (fail closed).
+        this.pending.delete(request.id);
+        this.requests.delete(request.id);
+        resolve('deny');
+        throw err;
+      }
     });
   };
 
