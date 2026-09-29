@@ -98,6 +98,30 @@ describe('QqApi', () => {
     expect(tokenCalls).toBe(2);
     expect(sends).toBe(2);
   });
+
+  it('reads the bot\'s own username from /users/@me, caches it, and never invents one', async () => {
+    // The settings page shows this as 「BOT 名称」, so the only two answers allowed
+    // are the gateway's own username and an honest null — the page says 「取不到」
+    // rather than printing something plausible.
+    const urls: string[] = [];
+    let username: unknown = 'nova 助手';
+    const token = new AccessTokenManager('app', 'secret', async () => jsonResponse(200, { access_token: 't', expires_in: 7200 }));
+    const api = new QqApi(token, async (url) => {
+      urls.push(url);
+      return jsonResponse(200, { id: '1024', username });
+    });
+
+    expect(await api.botName()).toBe('nova 助手');
+    expect(urls).toEqual(['https://api.sgroup.qq.com/users/@me']);
+    // Cached per appId: the page asks on every open, the gateway is asked once.
+    expect(await api.botName()).toBe('nova 助手');
+    expect(urls).toHaveLength(1);
+
+    // An answer without a username is not a name.
+    username = undefined;
+    const other = new QqApi(token, async () => jsonResponse(200, { id: '1024' }));
+    expect(await other.botName()).toBeNull();
+  });
 });
 
 describe('parseInbound', () => {

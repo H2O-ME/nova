@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PluginHost } from '@nova-agent/plugins';
 import { createQqBotChannel } from '../src/runtime.js';
 import type { GatewaySocket } from '../src/protocol.js';
 
@@ -43,6 +44,11 @@ function makeChannel(
       }
       if (String(url).includes('/gateway/bot')) {
         return jsonResponse(200, { url: 'wss://gateway.test' });
+      }
+      if (String(url).includes('/users/@me')) {
+        // 机器人自己的身份：设置页的「BOT 名称」就是这一条的 username。
+        sends.push({ url: String(url), body: {} });
+        return jsonResponse(200, { id: 'bot1', username: 'nova 助手' });
       }
       sends.push({ url: String(url), body: JSON.parse(init?.body ?? '{}') as Record<string, unknown> });
       return jsonResponse(200, { id: `out-${sends.length}` });
@@ -114,13 +120,12 @@ describe('createQqBotChannel', () => {
     });
     await new Promise((r) => setTimeout(r, 10));
 
-    // Mount the plugin like the host would and drive the tool.
-    const host = { tools: [] as Array<{ execute: (args: Record<string, unknown>) => Promise<string> }> };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (channel.plugin as any).activate({
-      registerTool: (tool: { execute: (args: Record<string, unknown>) => Promise<string> }) => host.tools.push(tool),
-    });
-    const sendTool = host.tools[0]!;
+    // Mount the plugin the way the host does (Core `{ name, inject, apply }`
+    // registry) and read the tool back from the live container.
+    const host = new PluginHost('.');
+    host.use(channel.plugin);
+    await host.activate();
+    const sendTool = host.tools.find((tool) => tool.name === 'qqbot_send')!;
 
     // No recent traffic for an unknown peer → honest failure.
     expect(await sendTool.execute({ peer: 'group:GHOST', content: 'x' })).toContain('passive-reply window');
@@ -133,6 +138,33 @@ describe('createQqBotChannel', () => {
     expect(last.body['msg_seq']).toBeGreaterThanOrEqual(1);
     // Bad peer shape → rejected up front.
     expect(await sendTool.execute({ peer: 'bogus', content: 'x' })).toContain('must start with');
+    channel.stop();
+  });
+
+  it('reports who the bot is and what this run has carried, without inventing either', async () => {
+    const sends: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const { channel, socket } = makeChannel(async () => 'reply', sends);
+
+    // Not started: nobody asked the gateway who this bot is, so there is no name
+    // to show — and no request was made with credentials nobody is using yet.
+    expect(await channel.reading()).toEqual({ received: 0, replied: 0 });
+
+    await channel.start();
+    socket.emit(HELLO);
+    socket.emit({
+      op: 0,
+      t: 'GROUP_AT_MESSAGE_CREATE',
+      s: 1,
+      d: { id: 'IN1', author: {}, content: 'hi', group_openid: 'G1' },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    // The basis is THIS RUN: the counters live in the process and a restart
+    // starts over, which is why the page must say 本次运行 rather than 共.
+    expect(await channel.reading()).toMatchObject({ received: 1, replied: 1, botName: 'nova 助手' });
+    // The name comes from the gateway and is cached: the page asks on every open.
+    await channel.reading();
+    expect(sends.filter((entry) => entry.url.endsWith('/users/@me'))).toHaveLength(1);
     channel.stop();
   });
 });

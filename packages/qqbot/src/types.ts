@@ -19,6 +19,16 @@ export interface QqMessagePayload {
   timestamp?: string;
 }
 
+/** 通道的收发计数：口径是**本次运行**（进程内存，重启归零），不是持久累计。 */
+export interface QqBotChannelStats {
+  /** 去重后处理过的入站消息数（同一 msg_id 的重复推送只算一条）。 */
+  received: number;
+  /** 成功发出的回复数（含遥控指令的答复；空答复与发送失败不计）。 */
+  replied: number;
+  /** 最近一条入站消息的墙钟毫秒时间；一条都没收到就是 undefined。 */
+  lastReceivedAt?: number;
+}
+
 export type PeerKind = 'group' | 'c2c';
 
 export interface Peer {

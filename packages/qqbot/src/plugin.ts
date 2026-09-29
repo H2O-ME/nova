@@ -1,4 +1,5 @@
-import type { Plugin } from '@nova-agent/plugins';
+import { tools as toolsKey, type Plugin } from '@nova-agent/core';
+import { registerTool } from '@nova-agent/plugins';
 
 /**
  * QQ 机器人插件（第三方插件编写示范）：在宿主的插件容器上注册
@@ -21,8 +22,10 @@ export function qqbotPlugin(options: QqBotToolOptions): Plugin {
   return {
     name: 'qqbot',
     description: 'QQ bot channel: send messages into groups and direct chats.',
-    activate(ctx) {
-      ctx.registerTool(
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(
+        ctx,
         {
           name: 'qqbot_send',
           description:
@@ -56,7 +59,7 @@ export function qqbotPlugin(options: QqBotToolOptions): Plugin {
           },
         },
         // 对外发送消息 = 对外网络副作用，与 bash 同级审批。
-        { permission: 'execute' },
+        'execute',
       );
     },
   };

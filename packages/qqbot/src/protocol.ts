@@ -1,78 +1,12 @@
 import { errMessage } from '@nova-agent/core';
-/**
- * QQ 机器人开放平台接入层 — 三个可独立测试的协议组件：
- * - AccessTokenManager：access_token 获取与缓存（官方 /app/getAppAccessToken，
- *   appId/clientSecret 字段，expires_in 为字符串秒；过期前 120s 主动刷新，
- *   单飞合并并发请求）。
- * - QqGateway：WebSocket 网关状态机（op10 Hello → op2 Identify / op6 Resume
- *   → op1/op11 心跳 → op0 Dispatch；op7 重连、op9 会话失效回退 Identify、
- *   心跳超时自愈，断线指数退避重连）。
- * - QqApi：REST 发消息（v2/groups|users/{openid}/messages，msg_id 被动回复
- *   + msg_seq 递增去重，超长文本分片）。
- *
- * 依赖全部注入（fetch / WebSocket 工厂 / 时钟），测试不发真实网络请求。
- */
-
-export interface HttpClientResponse {
-  ok: boolean;
-  status: number;
-  json: () => Promise<unknown>;
-}
-
-export type FetchLike = (
-  url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string },
-) => Promise<HttpClientResponse>;
-
-const TOKEN_ENDPOINT = 'https://api.bot.qq.com/app/getAppAccessToken';
-/** Token 生命周期 7200s；余量低于该值即刷新（官方建议余量 <120s 主动换新）。 */
-const TOKEN_REFRESH_MARGIN_MS = 120_000;
-
-/** access_token 获取与缓存；单飞：并发 get() 共享同一次刷新请求。 */
-export class AccessTokenManager {
-  private token: string | undefined;
-  private expiresAt = 0;
-  private inflight: Promise<string> | undefined;
-
-  constructor(
-    private readonly appId: string,
-    private readonly clientSecret: string,
-    private readonly fetchFn: FetchLike,
-    private readonly now: () => number = Date.now,
-  ) {}
-
-  async get(): Promise<string> {
-    if (this.token !== undefined && this.now() < this.expiresAt - TOKEN_REFRESH_MARGIN_MS) return this.token;
-    if (this.inflight !== undefined) return this.inflight;
-    this.inflight = this.request().finally(() => {
-      this.inflight = undefined;
-    });
-    return this.inflight;
-  }
-
-  /** 401/鉴权失败时强制下次重新获取。 */
-  invalidate(): void {
-    this.token = undefined;
-    this.expiresAt = 0;
-  }
-
-  private async request(): Promise<string> {
-    const res = await this.fetchFn(TOKEN_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appId: this.appId, clientSecret: this.clientSecret }),
-    });
-    const body = (await res.json()) as { access_token?: unknown; expires_in?: unknown };
-    if (!res.ok || typeof body.access_token !== 'string' || body.access_token.length === 0) {
-      throw new Error(`qqbot: access token request failed (${res.status})`);
-    }
-    const seconds = typeof body.expires_in === 'string' ? Number(body.expires_in) : typeof body.expires_in === 'number' ? body.expires_in : 7200;
-    this.token = body.access_token;
-    this.expiresAt = this.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds : 7200) * 1000;
-    return this.token;
-  }
-}
-
+// The credential/token layer lives in `token.ts` (see that file for why it is split).
+// Imported for local use by the gateway below, and re-exported so `protocol.ts` keeps
+// answering the same questions it always did: every existing importer (`runtime.ts`,
+// `qqbot-probe.ts`, the protocol tests) reads the token manager and the fetch types
+// from this module, and the package's public surface is a flat `export *` over these
+// files — dropping the re-export would silently shrink that surface.
+import { AccessTokenManager, TOKEN_ENDPOINT, type CredentialSource, type FetchLike, type HttpClientResponse } from './token.js';
+export { AccessTokenManager, TOKEN_ENDPOINT, type CredentialSource, type FetchLike, type HttpClientResponse };
 // ------------------------------------------------------------------ gateway
 
 /** op codes（官方 event-emit 协议）。 */
@@ -110,7 +44,8 @@ export interface GatewaySocket {
 export type SocketFactory = (url: string) => Promise<GatewaySocket>;
 
 export interface QqGatewayOptions {
-  appId: string;
+  /** 与 `AccessTokenManager` 同源；网关本身只用 token，保留供调用方标注。 */
+  appId: CredentialSource;
   token: AccessTokenManager;
   /** GET /gateway/bot 的替代（测试注入）。 */
   resolveGatewayUrl: () => Promise<string>;
@@ -298,6 +233,9 @@ export interface SendOptions {
   baseUrl?: string;
 }
 
+/** BOT 身份读取的墙钟上限：一次**显示用**的读取，绝不能把设置页挂在「正在读取」上。 */
+const IDENTITY_TIMEOUT_MS = 3_000;
+
 /**
  * REST 发消息客户端：群聊 `POST /v2/groups/{group_openid}/messages`、
  * 单聊 `POST /v2/users/{user_openid}/messages`。msg_seq 按 msg_id 自增
@@ -319,6 +257,33 @@ export class QqApi {
 
   async sendC2CMessage(userOpenid: string, opts: SendOptions): Promise<SentMessage[]> {
     return this.send(`/v2/users/${userOpenid}/messages`, opts);
+  }
+
+  /** BOT 名称缓存：键是换来 token 的那对凭据的 appId（凭据换了自然重取）。 */
+  private identity: { appId: string; name: string | null } | undefined;
+
+  /**
+   * 机器人自己在 QQ 网关里的用户名（`GET /users/@me`）：取不到就给 null，调用方如实显示
+   * 「取不到」，绝不编名字。按 appId 缓存（一次运行最多问一次），并带墙钟上限——显示用的
+   * 读取不能把设置页挂住，而超时、网络失败、端点未开放都只是 null。
+   */
+  async botName(): Promise<string | null> {
+    const appId = this.token.currentAppId();
+    if (appId.length === 0) return null;
+    if (this.identity?.appId === appId) return this.identity.name;
+    const read = async (): Promise<string | null> => {
+      const token = await this.token.get();
+      const res = await this.fetchFn(`${this.baseUrl}/users/@me`, { headers: { Authorization: `QQBot ${token}` } });
+      if (res.status === 401) this.token.invalidate();
+      const body = (await res.json().catch(() => undefined)) as { username?: unknown } | undefined;
+      return res.ok && typeof body?.username === 'string' && body.username.length > 0 ? body.username : null;
+    };
+    const name = await Promise.race([
+      read().catch(() => null),
+      new Promise<null>((resolve) => { setTimeout(() => { resolve(null); }, IDENTITY_TIMEOUT_MS); }),
+    ]);
+    this.identity = { appId, name };
+    return name;
   }
 
   private nextSeq(msgId: string): number {
