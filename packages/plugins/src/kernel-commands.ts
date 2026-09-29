@@ -11,13 +11,14 @@
  * needs the picker) — those stay with their surface, and a surface may offer
  * them beside this catalog without a second registry.
  *
- * Registration goes through `ctx.registerCommand`, the same public plugin API a
- * third party would use (`ctx.effect` ties it to this plugin's fiber, so a
- * re-roster unregisters cleanly).
+ * Registration goes through `registerCommand` (the public plugin API a third
+ * party would use), which ties the entry to this plugin's fiber — so a
+ * re-roster unregisters cleanly.
  */
-import { commands as commandsKey, sessions as sessionsKey, type CommandDefinition } from '@nova-agent/core';
+import { commands as commandsKey, sessions as sessionsKey, type CommandDefinition, type Plugin } from '@nova-agent/core';
+import { goalCommand } from './goal-command.js';
+import { registerCommand } from './toolbox.js';
 import type { Environment } from './runtime-env.js';
-import type { Plugin } from './types.js';
 
 /** One row a surface offers: what to type and what it does. */
 export interface CommandSummary {
@@ -75,7 +76,8 @@ function errText(err: unknown): string {
 export function kernelCommandsPlugin(env: Environment): Plugin {
   return {
     name: 'commands',
-    activate(ctx) {
+    inject: [commandsKey],
+    apply: (ctx) => {
       const commands: CommandDefinition[] = [
         {
           name: 'compact',
@@ -92,8 +94,12 @@ export function kernelCommandsPlugin(env: Environment): Plugin {
             await agent.compact('manual');
           },
         },
+        // `/goal` owns its own grammar and its state-dependent command list, so
+        // it lives in its own module; this catalog only needs the row, and the
+        // session it acts on is read at run time (a command outlives a switch).
+        goalCommand(() => env.root.get(sessionsKey)?.current()),
       ];
-      for (const command of commands) ctx.registerCommand(command);
+      for (const command of commands) registerCommand(ctx, command);
     },
   };
 }

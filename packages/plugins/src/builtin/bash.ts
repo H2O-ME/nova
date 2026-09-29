@@ -1,10 +1,17 @@
-import { errMessage } from '@nova-agent/core';
+import { errMessage, tools as toolsKey } from '@nova-agent/core';
 import { existsSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import type { TerminalCallView, TerminalResultView, ToolExecuteContext } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
+import type {
+  JobRegistry,
+  JobSnapshot,
+  Plugin,
+  TerminalCallView,
+  TerminalResultView,
+  ToolExecuteContext,
+} from '@nova-agent/core';
+import { registerTool } from '../toolbox.js';
 
 export interface BashPluginOptions {
   /** Hard cap per command in ms; the model may request less. Default 60000. */
@@ -453,6 +460,65 @@ function startBackground(
   };
 }
 
+/** One command to run as a background job: the shell, the cwd and the owner. */
+export interface BashJobRequest {
+  /** The command line, verbatim (the shell it lands in decides what it means). */
+  command: string;
+  /** Working directory the command runs in (the bash tool's root rule). */
+  rootDir: string;
+  /** The registry that owns the job; the job outlives the turn that asked. */
+  jobs: JobRegistry;
+  /**
+   * The session that owns the job. REQUIRED at this boundary (the registry's
+   * `JobStart` normalizes a missing owner to `''`): an unowned job is listed and
+   * announced everywhere, and this is the surface most likely to spawn one.
+   */
+  sessionId: string;
+  /** Retention cap for the live output ring; defaults to the bash tool's. */
+  outputLimitBytes?: number;
+  /** The configured shell binary; absent = `bash` with the PowerShell fallback. */
+  shellPath?: string;
+}
+
+/**
+ * Spawn one shell command as a background job, resolving the shell exactly as
+ * the bash tool does.
+ *
+ * Exported because a caller that is NOT the model's tool call still wants a
+ * shell command with the same shell resolution, the same process-tree kill and
+ * the same byte-capped output ring — the web surface's terminal panel is that
+ * caller. A second spawn implementation would drift from the tool's Windows
+ * fallback and its tree-kill, which are the two things that took the longest to
+ * get right here; this is the same code path, one entry point further out.
+ *
+ * @param req - the command, its working directory, its owning registry/session.
+ * @returns the started job's snapshot, or a `Error: …` string the caller shows
+ *   verbatim (the bash tool's own result convention).
+ */
+export function startBashJob(req: BashJobRequest): JobSnapshot | string {
+  const command = req.command;
+  if (command.trim().length === 0) return 'Error: command is required';
+  const outputLimitBytes = req.outputLimitBytes ?? DEFAULT_BASH_OUTPUT_BYTES;
+  // Pre-check with the SAME resolution `declaredShell` reports: a missing
+  // bash.exe surfaces as an async ENOENT event, too late for a fallback — so
+  // pick PowerShell up front.
+  const inv =
+    process.platform === 'win32' && req.shellPath === undefined && !bashOnPath()
+      ? powershellInvocation(command)
+      : invocation(command, req.shellPath);
+  const handle = startBackground(inv, req.rootDir, outputLimitBytes);
+  if (typeof handle === 'string') return `Error: cannot spawn shell (${inv.cmd}): ${handle}`;
+  return req.jobs.start({
+    kind: 'bash',
+    label: command,
+    sessionId: req.sessionId,
+    outputLimitBytes,
+    cancel: handle.cancel,
+    done: handle.done,
+    readOutput: handle.readOutput,
+  });
+}
+
 /**
  * Run a foreground bash command or start a detached job (run_in_background).
  * Shared by every caller that drives the bash tool — extracted so the plugin
@@ -472,24 +538,19 @@ async function executeBash(
 
   if (args['run_in_background'] === true) {
     if (c.jobs === undefined) return 'Error: background jobs are not available in this context';
-    // Pre-check with the SAME resolution declaredShell reports: a
-    // missing bash.exe surfaces as an async ENOENT event, too late
-    // for a fallback — so pick PowerShell up front.
-    let inv =
-      process.platform === 'win32' && shellPath === undefined && !bashOnPath()
-        ? powershellInvocation(command)
-        : invocation(command, shellPath);
-    const handle = startBackground(inv, c.rootDir, maxOutputBytes);
-    if (typeof handle === 'string') return `Error: cannot spawn shell (${inv.cmd}): ${handle}`;
-    const snapshot = c.jobs.start({
-      kind: 'bash',
-      label: command,
+    // One spawn path with the web terminal: both go through `startBashJob`, so
+    // the Windows PowerShell fallback and the tree kill cannot differ between
+    // the model's command and the operator's.
+    const started = startBashJob({
+      command,
+      rootDir: c.rootDir,
+      jobs: c.jobs,
+      sessionId: c.sessionId ?? '',
       outputLimitBytes: maxOutputBytes,
-      cancel: handle.cancel,
-      done: handle.done,
-      readOutput: handle.readOutput,
+      ...(shellPath !== undefined ? { shellPath } : {}),
     });
-    return `Started background job ${snapshot.id}: ${command}\nYou will be notified automatically when it finishes — do not poll. When notified, read its output once with the jobs tool (action=output, id=${snapshot.id}); use action=stop to terminate it early.`;
+    if (typeof started === 'string') return started;
+    return `Started background job ${started.id}: ${command}\nYou will be notified automatically when it finishes — do not poll. When notified, read its output once with the jobs tool (action=output, id=${started.id}); use action=stop to terminate it early.`;
   }
 
   // Long-running commands stream their raw output to the UI as it
@@ -554,8 +615,9 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
   return {
     name: 'bash',
     description: 'Run shell commands in the workspace root (POSIX shell on Windows via Git Bash, PowerShell fallback).',
-    activate(ctx) {
-      ctx.registerTool({
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(ctx, {
         name: 'bash',
         description:
           'Runs a shell command in the workspace root. Args: command (required), timeout_ms (optional, capped by configuration), run_in_background (optional boolean; returns a job handle instead of waiting). Returns exit code plus captured stdout/stderr. Use for git, pnpm, tests, etc.',
@@ -580,7 +642,7 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
         presentResult(_args, content) {
           return bashResultView(content);
         },
-      }, { permission: 'execute' });
+      }, 'execute');
     },
   };
 }

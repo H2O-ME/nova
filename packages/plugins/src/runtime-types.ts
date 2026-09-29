@@ -1,88 +1,28 @@
 /**
- * Kernel assembly types (M11): the config slice, the factory options and the
- * `Kernel` bundle every surface consumes. Split from `runtime.ts` so the
- * factory body stays under the structure budget and the contract reads alone.
+ * The `Kernel` handle a surface CONSUMES (and the roster rows it reports).
+ *
+ * Split from the assembly INPUT (`runtime-assembly.ts`: `KernelConfig` +
+ * `CreateKernelOptions`) because the two are read by different code — the input
+ * by whoever calls `createAgentKernel`, this by every caller of the handle —
+ * and the file had outgrown the structure budget holding both. The input types
+ * are re-exported below so `runtime-types.js` stays the one seam importers use.
  */
 import type {
   AgentHooks,
   AgentSession,
-  ChatProvider,
   JobRegistry,
   LlmService,
-  ModelCatalogPort,
   ModelControl,
   PtcMode,
   SessionEnvInfo,
-  SubagentProgress,
 } from '@nova-agent/core';
-import type { BuiltinOptions } from './builtin/index.js';
 import type { CommandSummary } from './kernel-commands.js';
-import type { ApprovalMode, PermissionService } from './permission.js';
+import type { PermissionService } from './permission.js';
+import type { PluginTier } from './plugin-tier.js';
 import type { SkillMetadata } from './skills.js';
 import type { PluginHost } from './host.js';
-import type { Plugin } from './types.js';
 
-/** The surface-independent slice of `~/.nova/config.json` the kernel needs. */
-export interface KernelConfig {
-  approval: ApprovalMode;
-  /** config.systemPrompt — appended session directives, not the persona. */
-  userInstructions?: string;
-  maxTurns?: number;
-  autoCompactTokenLimit?: number;
-  /** false disables bash; object tunes it (mirrors config.tools.bash). */
-  bash?: false | { timeoutMs?: number; shellPath?: string };
-  /** PTC config (mirrors config.tools.code); mode drives the tool projection. */
-  code?: BuiltinOptions['code'];
-  /**
-   * Which plugins load. `disable` names built-ins to leave out (the name is the
-   * plugin's own, as `/plugins` prints it); `extra` lists modules to load
-   * instead, by absolute path, path relative to the working directory, or bare
-   * package name — each must export a plugin as `default` (or `plugin`).
-   *
-   * This is the config-level extension point: an operator changes what the
-   * product does without editing source, and a typo fails the boot loudly
-   * instead of silently doing nothing.
-   */
-  plugins?: { disable?: readonly string[]; extra?: readonly string[] };
-}
-
-export interface CreateKernelOptions {
-  rootDir: string;
-  provider: ChatProvider;
-  config: KernelConfig;
-  /** Model id as the endpoint knows it — published on the `llm` service. */
-  model?: string;
-  /**
-   * Model metadata for the picker (display names + context windows). Omitting
-   * it means "no picker": the kernel then offers no `models` control, and a
-   * surface that would render a model seat simply does not. The model IDS are
-   * not part of this port — they come from the endpoint itself
-   * (`ChatProvider.listModels`), so a gateway that adds a model needs no
-   * release from this product.
-   */
-  modelCatalog?: ModelCatalogPort;
-  /** Resume an existing JSONL log for the FIRST session handle. */
-  resumeFile?: string;
-  /** Plugins the owning surface contributes (e.g. the qqbot send tool). */
-  extraPlugins?: Plugin[];
-  /**
-   * Wires the model-facing `switch_workspace` tool. Provide the runner-side
-   * callback (which typically calls `kernel.setWorkspace` plus its own
-   * feedback); omit to leave the tool unregistered (headless exec).
-   */
-  workspace?: { onChange: (dir: string) => void | Promise<void> };
-  /** Nested-subagent visibility feed (live rows). Best-effort, may be unset. */
-  onSubagentProgress?: (progress: SubagentProgress) => void;
-  /**
-   * Headless single-run mode: one run spans the whole task, so auto-compact
-   * gates inside every request (wrapAutoCompact) instead of at boundaries.
-   */
-  perRequestCompact?: boolean;
-  /** Persona override; defaults to the shipped static prompt. */
-  systemPrompt?: string;
-  /** Session-file bucket override (qqbot archives under sessionsRoot()/qqbot). */
-  sessionDir?: string;
-}
+export type { CreateKernelOptions, KernelConfig } from './runtime-assembly.js';
 
 export interface Kernel {
   /** The CURRENT AgentSession handle (audit/job fan-out/per-request compact target). */
@@ -114,7 +54,18 @@ export interface Kernel {
   runCommand(name: string, args: string): Promise<void>;
   readonly permission: PermissionService;
   readonly jobs: JobRegistry;
+  /**
+   * The skills in force (discovery minus `skillsDisable`). This is the list the
+   * `<available_skills>` fragment and the `skill` tool are built from.
+   */
   readonly skills: SkillMetadata[];
+  /**
+   * Every DISCOVERED skill, switched-off ones included. A management surface
+   * reads this, never `skills`: a disabled skill is absent from `skills` by
+   * definition, so listing from there would let a reader switch a skill off and
+   * then lose the row that switches it back on.
+   */
+  readonly allSkills: SkillMetadata[];
   readonly systemPrompt: string;
   rootDir(): string;
   sessionEnv(): SessionEnvInfo;
@@ -128,6 +79,25 @@ export interface Kernel {
    * a boot that lost a capability is visible here instead of at the first call.
    */
   roster(): readonly PluginRosterEntry[];
+  /**
+   * Flip one plugin's switch: rewrites the durable `plugins.disable` list (via
+   * the surface's persister) and re-rosters in place. Returns the names now
+   * disabled. Throws for unknown names and for names the roster cannot safely
+   * drop (see `NON_DISABLABLE_PLUGINS`).
+   */
+  setPluginEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
+  /**
+   * Flip one skill's switch: rewrites the durable `skills.disable` list and
+   * reloads the skill index in place. Returns the names now disabled. Throws
+   * for unknown skill names.
+   */
+  setSkillEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
+  /**
+   * The names currently switched off, as a management surface lists them.
+   * Read-only: the switch methods above are the only writers and they return the
+   * same list, so a panel never has to derive switch state from its own rows.
+   */
+  readonly disabled: { readonly plugins: readonly string[]; readonly skills: readonly string[] };
   /**
    * Create another AgentSession on this kernel's wiring (its own log + live
    * surface; shared host/permission/jobs) and make it current — `/new`,
@@ -149,4 +119,50 @@ export interface PluginRosterEntry {
   name: string;
   state: string;
   inject: readonly string[];
+  /**
+   * Whether the plugin is currently loaded (`plugins.disable` subtracts it).
+   * Always true for rows the container knows — a disabled plugin leaves no
+   * fiber, so its row comes from the manifest instead (see `describePlugins`).
+   */
+  enabled: boolean;
+  /**
+   * Where the plugin came from: a built-in (`builtin`), a third-party module
+   * (`extra`), a capability provider (`capability`), or the surface's own
+   * assembly (`surface`). The settings panel groups rows by this.
+   */
+  origin: PluginOrigin;
+  /**
+   * Which layer this plugin belongs to — the manager's grouping axis and the
+   * switch's ceiling. `core` rows get no switch at all (see `plugin-tier.ts`);
+   * `advanced` rows are off until `plugins.enable` names them.
+   */
+  tier: PluginTier;
+  /** The Chinese display name (`fs-read` → 「读取文件」); never the identifier. */
+  title: string;
+  /**
+   * The row's one-line description: the Chinese label when this build has one,
+   * else the plugin's own MODEL-facing description. Optional because a
+   * third-party plugin with no label and no description has neither.
+   */
+  description?: string;
+}
+
+/** Where a roster row came from (the plugin manager's grouping axis). */
+export type PluginOrigin = 'builtin' | 'surface' | 'extra' | 'capability';
+
+/**
+ * One known plugin, loaded or not: the row the plugin manager draws. Loaded
+ * plugins are reported by the container; disabled ones have no fiber, so the
+ * assembly keeps their names + origins to report them anyway — otherwise a
+ * turned-off plugin would vanish from the very page that turns it back on.
+ */
+export interface PluginDescriptor {
+  name: string;
+  origin: PluginOrigin;
+  /** Which layer the plugin belongs to — see `PluginRosterEntry.tier`. */
+  tier: PluginTier;
+  /** The Chinese display name; see `PluginRosterEntry.title`. */
+  title: string;
+  /** The row's one-line description; see `PluginRosterEntry.description`. */
+  description?: string;
 }

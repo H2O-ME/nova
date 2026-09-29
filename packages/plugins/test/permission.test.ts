@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PermissionService, alwaysScopeWords, type AskAnswer, type AskFn, type AskResult } from '../src/permission.js';
-import type { PermissionKind } from '../src/types.js';
+import { PermissionService, alwaysScopeWords, type AskAnswer, type AskFn, type AskResult, type PermissionKind } from '../src/permission.js';
 import type { ToolCall } from '@nova-agent/core';
 
 const call = (name: string, args: Record<string, unknown> = {}): ToolCall => ({

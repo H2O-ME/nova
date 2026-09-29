@@ -8,6 +8,7 @@
  * to load is visible there instead of at the first tool call.
  */
 import {
+  jobs as jobsKey,
   llm as llmKey,
   sessions as sessionsKey,
   type AgentHooks,
@@ -17,8 +18,10 @@ import {
 import type { PluginHost } from './host.js';
 import type { SkillMetadata } from './skills.js';
 import type { Environment } from './runtime-env.js';
+import { jobListener } from './job-listener.js';
 import { commandRunner } from './kernel-commands.js';
 import { modelControl } from './runtime-models.js';
+import { setWorkspace } from './runtime-workspace.js';
 import type { Kernel } from './runtime-types.js';
 
 export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kernel {
@@ -52,9 +55,17 @@ export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kerne
     },
     runCommand: commands.run,
     permission: env.permission,
-    jobs: env.jobs,
+    get jobs() {
+      return env.root.must(jobsKey);
+    },
     get skills(): SkillMetadata[] {
       return env.state.skills;
+    },
+    get allSkills(): SkillMetadata[] {
+      return env.state.allSkills;
+    },
+    get disabled(): { plugins: readonly string[]; skills: readonly string[] } {
+      return { plugins: env.state.pluginsDisable, skills: env.state.skillsDisable };
     },
     systemPrompt: env.systemPrompt,
     rootDir: () => env.state.rootDir,
@@ -64,15 +75,21 @@ export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kerne
     newAgentSession: (sessionOpts) => env.openCurrent(sessionOpts),
     activateSession: (agent) => {
       env.root.must(sessionsKey).activate(agent);
-      env.jobs.setListener((job) => agent.observeJob(job));
+      env.root.must(jobsKey).setListener(jobListener(env));
     },
-    roster: () => env.root.roster(),
-    setWorkspace: async (dir) => {
-      env.state.rootDir = dir;
-      await env.reroster();
-      return env.state.skills;
-    },
+    roster: () => env.describePlugins(),
+    setPluginEnabled: (name, enabled) => env.setPluginEnabled(name, enabled),
+    setSkillEnabled: (name, enabled) => env.setSkillEnabled(name, enabled),
+    setWorkspace: (dir) => setWorkspace(env, dir),
     setCodeMode: async (mode) => {
+      // The ptc row's switch and the mode chip are two doors onto ONE
+      // question, and an explicit close must win through both: the switch
+      // writes `disable` (dual-write in `runtime-switch.ts`), the roster
+      // derivation yields to it, and a mode that ignored it would run a mode
+      // whose plugin never loaded — the switch "flipping itself on".
+      if (mode !== 'native' && env.state.pluginsDisable.includes('ptc')) {
+        throw new Error('PTC 插件已在「插件管理」中关闭，请先开启它的开关再切换代码模式');
+      }
       env.state.codeMode = mode;
       await env.reroster();
     },

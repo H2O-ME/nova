@@ -12,14 +12,14 @@ async function activatedHost(): Promise<{ host: PluginHost; jobs: JobRegistry; e
   const host = new PluginHost('.');
   const jobs = new JobRegistry();
   const emitted: unknown[] = [];
-  for (const plugin of builtinPlugins()) host.use(plugin);
+  for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
   await host.activate();
   return { host, jobs, emitted };
 }
 
 async function fsHostAt(root: string): Promise<PluginHost> {
   const host = new PluginHost(root);
-  for (const plugin of builtinPlugins()) host.use(plugin);
+  for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
   await host.activate();
   return host;
 }
@@ -56,7 +56,7 @@ describe('jobs plugin', () => {
     const tool = host.tools.find((t) => t.name === 'jobs')!;
 
     jobs.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'tail -f log',
       cancel: () => {},
       done: new Promise(() => {}),
@@ -131,7 +131,7 @@ describe('bash plugin', () => {
   it.runIf(bashOnPath())('foreground runOnce keeps the most recent output past the cap', async () => {
     const host = new PluginHost('.');
     // Tiny cap so a 500-line seq overflows: head 60% + tail 40% ring.
-    for (const plugin of builtinPlugins({ bash: { maxOutputBytes: 200 } })) host.use(plugin);
+    for (const plugin of builtinPlugins({ bash: { maxOutputBytes: 200 }, rootDir: () => host.rootDir })) host.use(plugin);
     await host.activate();
     const tool = host.tools.find((t) => t.name === 'bash')!;
 
@@ -143,7 +143,7 @@ describe('bash plugin', () => {
   // Requires a POSIX shell (Git Bash on Windows); PowerShell has no `sleep`.
   it.runIf(bashOnPath())('kills a command past the timeout and settles deterministically', async () => {
     const host = new PluginHost('.');
-    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 } })) host.use(plugin);
+    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 }, rootDir: () => host.rootDir })) host.use(plugin);
     await host.activate();
     const tool = host.tools.find((t) => t.name === 'bash')!;
 
@@ -162,7 +162,7 @@ describe('bash plugin', () => {
     // leave the stdio pipes held by grandchildren, and a done promise waiting
     // on `close` alone would hang `jobs.dispose()` at teardown forever.
     const host = new PluginHost('.');
-    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 } })) host.use(plugin);
+    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 }, rootDir: () => host.rootDir })) host.use(plugin);
     await host.activate();
     const tool = host.tools.find((t) => t.name === 'bash')!;
     const jobs = new JobRegistry();
@@ -226,7 +226,7 @@ describe('fs sandbox', () => {
     const spill = await mkdtemp(path.join(tmpdir(), 'nova-spill-'));
     await writeFile(path.join(spill, 'full.txt'), 'the full spill', 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins({ spillReadRoot: spill })) host.use(plugin);
+    for (const plugin of builtinPlugins({ spillReadRoot: spill, rootDir: () => host.rootDir })) host.use(plugin);
     await host.activate();
     const read = host.tools.find((t) => t.name === 'read_file')!;
     expect(await read.permissionFor?.({ path: path.join(spill, 'full.txt') })).toBe('read');
@@ -393,7 +393,7 @@ describe('search_files', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-search-'));
     await writeFile(path.join(root, 'a.txt'), `${'a'.repeat(40)}b\n`, 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins()) host.use(plugin);
+    for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
     await host.activate();
     const search = host.tools.find((t) => t.name === 'search_files')!;
     // (a+)+b — quantifier inside a quantified group: the textbook shape.
@@ -416,7 +416,7 @@ describe('search_files', () => {
     // no match, so every split path is explored.
     await writeFile(path.join(root, 'bomb.txt'), `${'a'.repeat(28)}x\n`, 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins({ search: { wallMs: 800 } })) host.use(plugin);
+    for (const plugin of builtinPlugins({ search: { wallMs: 800 }, rootDir: () => host.rootDir })) host.use(plugin);
     await host.activate();
     const search = host.tools.find((t) => t.name === 'search_files')!;
 
@@ -433,7 +433,7 @@ describe('search_files', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-search-abort-'));
     await writeFile(path.join(root, 'slow.txt'), `${'a'.repeat(28)}x\n`, 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins({ search: { wallMs: 30_000 } })) host.use(plugin);
+    for (const plugin of builtinPlugins({ search: { wallMs: 30_000 }, rootDir: () => host.rootDir })) host.use(plugin);
     await host.activate();
     const search = host.tools.find((t) => t.name === 'search_files')!;
 

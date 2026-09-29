@@ -2,13 +2,15 @@ import { chmod, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile 
 import path from 'node:path';
 import {
   isFailureContent,
+  tools as toolsKey,
   type DiffCallView,
   type DiffResultView,
+  type Plugin,
   type ReadResultView,
   type ToolExecuteContext,
   type ToolPermissionKind,
 } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
+import { registerTool } from '../toolbox.js';
 import { intArg, strArg } from './args.js';
 
 /**
@@ -368,14 +370,27 @@ function listViewResultView(args: Record<string, unknown>, content: string): Rea
   };
 }
 
-export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin {
-  const trustedReadRoots = options?.trustedReadRoots ?? [];
+export interface FsReadPluginOptions {
+  /** Roots outside the workspace that are read without an approval prompt. */
+  trustedReadRoots?: string[];
+  /**
+   * The LIVE workspace root. A thunk, not a string: the approval classifier runs
+   * before every call and `switch_workspace` re-points the root underneath it,
+   * so a value captured at load time would keep grading paths against the
+   * workspace the session has already left.
+   */
+  rootDir: () => string;
+}
+
+export function fsReadPlugin(options: FsReadPluginOptions): Plugin {
+  const trustedReadRoots = options.trustedReadRoots ?? [];
+  const rootDir = options.rootDir;
   return {
     name: 'fs-read',
     description: 'Read files and list directories inside the workspace.',
-    activate(ctx) {
-      const rootDir = ctx.rootDir;
-      ctx.registerTool({
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(ctx, {
         name: 'read_file',
         description:
           'Reads a text file — use this instead of shell cat/head/tail. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (required, absolute or workspace-relative), offset (1-based start line, optional), limit (max lines, default 400).',
@@ -391,7 +406,7 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
         },
         /** In-root reads are free; out-of-root reads cross the sandbox boundary. */
         permissionFor(args) {
-          return rootPermissionKind(rootDir, args['path'], trustedReadRoots);
+          return rootPermissionKind(rootDir(), args['path'], trustedReadRoots);
         },
         async execute(args, c: ToolExecuteContext) {
           return executeReadFile(args, c);
@@ -403,9 +418,9 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
         isConcurrencySafe() {
           return true;
         },
-      });
+      }, 'read');
 
-      ctx.registerTool({
+      registerTool(ctx, {
         name: 'list_dir',
         description:
           "Lists a directory's entries (directories first, files with their size in bytes) — use this instead of shell ls. Paths inside the workspace are read freely; paths outside it require user approval. Args: path (optional, defaults to the workspace root).",
@@ -417,7 +432,7 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
           additionalProperties: false,
         },
         permissionFor(args) {
-          return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.', trustedReadRoots);
+          return rootPermissionKind(rootDir(), strArg(args, 'path') ?? '.', trustedReadRoots);
         },
         async execute(args, c: ToolExecuteContext) {
           return executeListDir(args, c);
@@ -429,7 +444,7 @@ export function fsReadPlugin(options?: { trustedReadRoots?: string[] }): Plugin 
         isConcurrencySafe() {
           return true;
         },
-      });
+      }, 'read');
     },
   };
 }
@@ -498,13 +513,14 @@ async function atomicWrite(file: string, content: string): Promise<void> {
   }
 }
 
-export function fsWritePlugin(): Plugin {
+export function fsWritePlugin(options: { rootDir: () => string }): Plugin {
+  const rootDir = options.rootDir;
   return {
     name: 'fs-write',
     description: 'Create, overwrite and edit files inside the workspace.',
-    activate(ctx) {
-      const rootDir = ctx.rootDir;
-      ctx.registerTool({
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(ctx, {
         name: 'write_file',
         description:
           'Creates or overwrites a text file inside the workspace (parent directories are created). Args: path (required), content (required).',
@@ -520,9 +536,9 @@ export function fsWritePlugin(): Plugin {
         /** Show what an approval would actually write (read-only). */
         async preview(args) {
           try {
-            const file = await resolveInRoot(rootDir, args['path']);
+            const file = await resolveInRoot(rootDir(), args['path']);
             const content = typeof args['content'] === 'string' ? args['content'] : '';
-            const rel = path.relative(rootDir, file) || file;
+            const rel = path.relative(rootDir(), file) || file;
             const firstLine = (content.split('\n', 1)[0] ?? '').slice(0, 80);
             return `写入 ${rel}（${content.length} 字符）${content.length > 0 ? `\n首行: ${firstLine}` : '（空文件）'}`;
           } catch {
@@ -538,9 +554,9 @@ export function fsWritePlugin(): Plugin {
         presentResult(args, content) {
           return diffResultView(writeCallView(args), content);
         },
-      }, { permission: 'write' });
+      }, 'write');
 
-      ctx.registerTool({
+      registerTool(ctx, {
         name: 'edit_file',
         description:
           'Replaces an exact substring in a workspace text file. Args: path (required), old_string (required), new_string (required), replace_all (optional boolean). Fails if old_string is not found or appears multiple times without replace_all.',
@@ -561,7 +577,7 @@ export function fsWritePlugin(): Plugin {
           let oldString: string;
           let newString: string;
           try {
-            file = await resolveInRoot(rootDir, args['path']);
+            file = await resolveInRoot(rootDir(), args['path']);
             oldString = strArg(args, 'old_string') ?? '';
             newString = strArg(args, 'new_string') ?? '';
             if (oldString.length === 0) return '';
@@ -575,7 +591,7 @@ export function fsWritePlugin(): Plugin {
             return '';
           }
           const played = applyEdit(text, oldString, newString, args['replace_all'] === true);
-          const rel = path.relative(rootDir, file) || file;
+          const rel = path.relative(rootDir(), file) || file;
           if (played === undefined) return `编辑 ${rel}：old_string 未命中（预览不可用）`;
           // execute() rejects count>1 WITHOUT replace_all (it only replaces
           // the first), so the honest preview names the error up front instead
@@ -607,7 +623,7 @@ export function fsWritePlugin(): Plugin {
         presentResult(args, content) {
           return diffResultView(editCallView(args), content);
         },
-      }, { permission: 'write' });
+      }, 'write');
     },
   };
 }

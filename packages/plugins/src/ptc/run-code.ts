@@ -16,9 +16,15 @@
  */
 
 import { errMessage } from '@nova-agent/core';
-import type { ChatRequest, ToolDefinition, ToolDispatchResult, ToolExecuteContext } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
-import type { PluginContext } from '../types.js';
+import {
+  beforeLlmCall,
+  tools as toolsKey,
+  type Plugin,
+  type ToolDefinition,
+  type ToolDispatchResult,
+  type ToolExecuteContext,
+} from '@nova-agent/core';
+import { registerTool } from '../toolbox.js';
 import { snapshotJson } from './json.js';
 import type { JsonValue } from './json.js';
 import { codeRuntimeAvailable, resolveCodeRuntimeConfig, runCode } from './code-runtime.js';
@@ -311,14 +317,16 @@ export function ptcPlugin(options?: PtcPluginOptions): Plugin {
   return {
     name: 'ptc',
     description: 'PTC mode (Code Mode): run_code programs the tool registry in TypeScript under a contained worker runtime.',
-    activate(ctx: PluginContext) {
+    inject: [toolsKey],
+    apply: (ctx) => {
       if (mode === 'native') return; // guarded by the loader; never silent-half-loaded
       if (!codeRuntimeAvailable()) {
         throw new Error(
           'PTC mode requires Node.js >= 22.19 (node:module stripTypeScriptTypes); upgrade Node or set tools.code.mode to "native"',
         );
       }
-      ctx.registerTool(
+      registerTool(
+        ctx,
         {
           name: RUN_CODE_NAME,
           description: RUN_CODE_DESCRIPTION,
@@ -341,22 +349,22 @@ export function ptcPlugin(options?: PtcPluginOptions): Plugin {
             const more = lines.length > shown.length ? [`// … ${lines.length - shown.length} more lines`] : [];
             return [`run_code: ${description}`, '```ts', ...shown, ...more, '```'].join('\n');
           },
-          execute: (args, c) => runCodeProgram(() => ctx.tools(), runtimeConfig, maxParallel, args, c),
+          execute: (args, c) => runCodeProgram(() => [...ctx.must(toolsKey).all()], runtimeConfig, maxParallel, args, c),
         },
         // The trust posture is deliberately bash-equal: the worker contains
         // runaway programs but is NOT a security boundary, so the program
         // itself goes through the execute gate, and every sub-call through
         // its own tool's gate via ctx.dispatch.
-        { permission: 'execute' },
+        'execute',
       );
 
       let sdkSection: string | undefined;
       let sdkFingerprint = '';
-      ctx.registerHook('beforeLLMCall', async (req: ChatRequest): Promise<ChatRequest> => {
+      ctx.on(beforeLlmCall, async (req, next) => {
         const all = req.tools ?? [];
         // No run_code in the outgoing request (e.g. a summarizer call without
-        // tools): nothing to project onto — pass through untouched.
-        if (!all.some((tool) => tool.name === RUN_CODE_NAME)) return req;
+        // tools): nothing to project onto — delegate untouched.
+        if (!all.some((tool) => tool.name === RUN_CODE_NAME)) return next();
         // Fingerprint the toolset by name: a plugin activating AFTER the first
         // request (skills loading, host rebuild) changes the set, and a
         // one-shot cache would silently serve an SDK that omits the newcomers.
@@ -370,7 +378,10 @@ export function ptcPlugin(options?: PtcPluginOptions): Plugin {
           sdkFingerprint = fingerprint;
         }
         const tools = mode === 'ptc' ? all.filter((tool) => tool.name === RUN_CODE_NAME) : all;
-        return { ...req, tools, systemPrompt: `${req.systemPrompt ?? ''}\n\n${sdkSection}` };
+        // `next(rewritten)`: the projection composes instead of winning the
+        // chain outright — a later hook still sees (and may adjust) the
+        // projected request, and its answer is what returns.
+        return next({ ...req, tools, systemPrompt: `${req.systemPrompt ?? ''}\n\n${sdkSection}` });
       });
     },
   };

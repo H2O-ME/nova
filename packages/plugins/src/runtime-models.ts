@@ -19,6 +19,7 @@
  */
 import {
   canSwitchModels,
+  catalogIds,
   llm as llmKey,
   sessions as sessionsKey,
   type ModelCatalogPort,
@@ -38,27 +39,50 @@ export function modelControl(env: Environment, port: ModelCatalogPort): ModelCon
   if (!canSwitchModels(provider)) return undefined;
   const current = (): string => env.root.must(llmKey).model;
 
-  /** One row: the port's display metadata, falling back to the raw id. */
+  /**
+   * One row: the port's metadata, falling back to the raw id.
+   *
+   * `capabilities` rides along so a settings page can SHOW and EDIT each field
+   * without a second lookup — a second lookup would be a second implementation
+   * of the override → models.dev → unknown precedence, and the page could then
+   * display a window the request would not use.
+   */
   const option = async (id: string): Promise<ModelOption> => {
     const meta = await port.describe(id).catch(() => undefined);
+    const capabilities = await port.capabilities?.(id).catch(() => undefined);
     return {
       id,
       name: meta?.name ?? id,
       ...(meta?.contextWindow !== undefined ? { contextWindow: meta.contextWindow } : {}),
+      ...(capabilities !== undefined ? { capabilities } : {}),
     };
   };
 
   return {
     current,
+    published: async () =>
+      provider.listModels === undefined ? [] : await provider.listModels().catch(() => []),
+    automatic: async (model) => await port.automatic?.(model).catch(() => undefined),
     list: async () => {
-      const listed = provider.listModels === undefined ? [] : await provider.listModels();
-      // The model in force is always a row: it is the picker's check mark, and
-      // an endpoint that stopped advertising a model it still serves must not
-      // leave the menu with no answer to "what am I talking to".
-      const inForce = current();
-      const ids = listed.length === 0 || inForce === '' || listed.includes(inForce)
-        ? listed
-        : [inForce, ...listed];
+      const configured = (await port.configured?.()) ?? [];
+      // A failure to ask the endpoint is only a failure when its answer was
+      // NEEDED. With the operator's own `models[]` in force the menu is already
+      // decided, so a dead or unauthorized endpoint must not blank a list the
+      // operator wrote — that is exactly the self-hosted case the list exists
+      // for. Without one, the endpoint IS the menu, and swallowing its error
+      // would render "this site publishes nothing" for what is really "could not
+      // ask" — opposite facts, and only one of them is worth a Retry.
+      let published: readonly string[] = [];
+      if (provider.listModels !== undefined) {
+        published = configured.length > 0
+          ? await provider.listModels().catch(() => [] as string[])
+          : await provider.listModels();
+      }
+      // The operator's list wins when they wrote one: it is then the WHOLE menu,
+      // so a self-hosted or alias id the endpoint does not publish is still
+      // selectable and a model they removed is not. The in-force model is always
+      // included, because the menu must answer "what am I talking to".
+      const ids = catalogIds(configured, published, current());
       if (ids.length === 0) return [];
       return [{ id: 'endpoint', name: port.label, models: await Promise.all(ids.map(option)) }];
     },

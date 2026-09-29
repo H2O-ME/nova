@@ -1,45 +1,35 @@
 /**
- * `PluginHost` — the legacy plugin vocabulary, implemented on the container.
+ * `PluginHost` — the kernel's plugin host, on top of the container.
  *
- * Historically this class *was* the container: it owned the registries, the
- * hook map and the composition. Now the container does (`Context` / fibers /
- * effects / typed events) and this file is the compatibility facade, so the
- * public plugin API — `PluginContext`, `registerTool`, `registerCommand`,
- * `registerHook` — keeps working verbatim while every registration a plugin
- * makes becomes a container effect. That last part is what makes teardown
- * correct by construction instead of by discipline.
+ * There is ONE plugin protocol: core's `Plugin` (`{ name, inject?, apply(ctx) }`),
+ * the same shape the container loads and the same shape a third-party module
+ * exports. Historically a second, Nova-specific vocabulary (`{ name,
+ * activate(ctx) }` over a `PluginContext` with `registerTool` / `registerCommand`
+ * / `registerHook`) lived here and this file adapted it onto the container. That
+ * facade is gone: it was a second way to say the same thing, its hook
+ * composition silently dropped every hook but the last one, and it kept
+ * capability keys from being declared in `inject` (so a plugin could not be
+ * reloaded when its provider was replaced).
  *
- * One behavioural note, and it is deliberate: legacy hooks are wrapped into the
- * new chains in *reverse registration order*, because a waterfall applies the
- * outermost listener last. That reproduces the historical "each hook sees what
- * the previous one produced" composition exactly, while new-style plugins use
- * `next()` directly.
+ * What remains is a thin, useful wrapper: it owns the shared root `Context`,
+ * keeps the toolbox registry alive across re-rosters, and projects the
+ * container's registries into the handful of read shapes the loop and the
+ * surfaces consume.
  */
 import {
-  afterToolResult as afterToolResultEvent,
-  beforeLlmCall as beforeLlmCallEvent,
-  beforeToolCall as beforeToolCallEvent,
   commands as commandsKey,
   tools as toolsKey,
   Context,
   type AgentHooks,
   type CommandEntry,
   type Fiber,
-  type Plugin as CorePlugin,
+  type Plugin,
   type ToolDefinition,
   type ToolEntry,
   type ToolPermissionKind,
 } from '@nova-agent/core';
 import { composeHooks } from './hooks.js';
 import { toolboxPlugin } from './toolbox.js';
-import type { HookEvent, HookMap, Plugin, PluginContext, ToolOptions } from './types.js';
-
-/** Legacy hook name → the container event that replaces it. */
-const HOOK_EVENTS = {
-  beforeLLMCall: beforeLlmCallEvent,
-  beforeToolCall: beforeToolCallEvent,
-  afterToolResult: afterToolResultEvent,
-} as const;
 
 export class PluginHost {
   /** The container this host speaks for — the kernel shares this root. */
@@ -72,7 +62,7 @@ export class PluginHost {
    */
   async activate(): Promise<void> {
     for (const plugin of this.pending.splice(0)) {
-      const fiber = this.context.plugin(adapter(plugin, this.rootDir));
+      const fiber = this.context.plugin(plugin);
       this.fibers.add(fiber);
       await fiber.ready;
     }
@@ -123,9 +113,9 @@ export class PluginHost {
 
   /**
    * Compose the live chains into the `AgentHooks` the loop consumes. The
-   * approval gate is not passed in any more: it is a plugin
-   * (`permissionGatePlugin`) loaded by the roster, so it reloads with its
-   * providers instead of being re-wired by hand on every assembly.
+   * approval gate is not passed in: it is a plugin (`permissionGatePlugin`)
+   * loaded by the roster, so it reloads with its providers instead of being
+   * re-wired by hand on every assembly.
    */
   agentHooks(): AgentHooks {
     return composeHooks(this.context);
@@ -135,68 +125,4 @@ export class PluginHost {
   roster(): ReturnType<Context['roster']> {
     return this.context.roster();
   }
-}
-
-/** A legacy plugin as a container plugin: one fiber, effects, real teardown. */
-function adapter(plugin: Plugin, rootDir: string): CorePlugin {
-  const hooks: Record<HookEvent, Array<HookMap[HookEvent]>> = {
-    beforeLLMCall: [],
-    beforeToolCall: [],
-    afterToolResult: [],
-  };
-  return {
-    name: plugin.name,
-    inject: [toolsKey],
-    apply: (ctx) => {
-      plugin.activate(legacyContext(ctx, plugin, rootDir, hooks));
-    },
-  };
-}
-
-/**
- * The legacy `PluginContext` over a container context. Hooks are registered as
- * ONE listener per event per plugin (not one per hook) so the historical
- * composition order inside a plugin is preserved verbatim.
- */
-function legacyContext(
-  ctx: Context,
-  plugin: Plugin,
-  rootDir: string,
-  hooks: Record<HookEvent, Array<HookMap[HookEvent]>>,
-): PluginContext {
-  const registry = ctx.must(toolsKey);
-  const install = (event: HookEvent): void => {
-    ctx.on(
-      HOOK_EVENTS[event] as never,
-      (async (...raw: unknown[]): Promise<unknown> => {
-        const next = raw[raw.length - 1] as (() => Promise<unknown>) | undefined;
-        // Delegate first, then apply this plugin's hooks in their own order:
-        // the chain's final answer is this plugin's, and what it consumed was
-        // everything downstream.
-        const args = typeof next === 'function' ? raw.slice(0, -1) : raw;
-        let carried = typeof next === 'function' ? await next() : undefined;
-        for (const fn of hooks[event]) {
-          carried = await (fn as unknown as (...a: unknown[]) => Promise<unknown>)(...args, carried);
-        }
-        return carried;
-      }) as never,
-      // Reverse registration order: a waterfall applies the outermost last.
-      { prepend: true },
-    );
-  };
-  return {
-    pluginName: plugin.name,
-    rootDir,
-    registerTool: (def: ToolDefinition, opts?: ToolOptions) => {
-      ctx.effect(() => registry.register(def, { ...opts, owner: plugin.name }), `tool(${def.name})`);
-    },
-    registerCommand: (def) => {
-      ctx.effect(() => ctx.must(commandsKey).register(def), `command(/${def.name})`);
-    },
-    registerHook: <K extends HookEvent>(event: K, fn: HookMap[K]) => {
-      hooks[event].push(fn as HookMap[HookEvent]);
-      if (hooks[event].length === 1) install(event);
-    },
-    tools: () => registry.all() as ToolDefinition[],
-  };
 }

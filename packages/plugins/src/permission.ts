@@ -7,9 +7,9 @@ import type {
   AskResult,
   DecideResult,
   ToolCall,
+  ToolPermissionKind as PermissionKind,
 } from '@nova-agent/core';
 import { alwaysScopeWords, parseAskResult } from '@nova-agent/core';
-import type { PermissionKind } from './types.js';
 
 /**
  * The approval vocabulary lives in core (the kernel event stream speaks it:

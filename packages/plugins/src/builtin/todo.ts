@@ -1,6 +1,6 @@
-import { isFailureContent } from '@nova-agent/core';
-import type { TodoItem, ToolExecuteContext } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
+import { isFailureContent, tools as toolsKey } from '@nova-agent/core';
+import type { Plugin, TodoItem, ToolExecuteContext } from '@nova-agent/core';
+import { registerTool } from '../toolbox.js';
 
 const STATUSES = ['pending', 'in_progress', 'completed'] as const;
 
@@ -32,8 +32,9 @@ export function todoPlugin(): Plugin {
   return {
     name: 'todo',
     description: 'Maintain a durable task checklist for the current session.',
-    activate(ctx) {
-      ctx.registerTool({
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(ctx, {
         name: 'todo_write',
         description:
           'Replaces the whole session todo list. Args: todos (required) — array of { content: string, status: "pending" | "in_progress" | "completed" }. Write the complete list every time; mark exactly one task in_progress while working on it.',
@@ -83,7 +84,7 @@ export function todoPlugin(): Plugin {
         isConcurrencySafe() {
           return true;
         },
-      }, { permission: 'read' });
+      }, 'read');
     },
   };
 }

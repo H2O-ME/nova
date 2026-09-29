@@ -6,14 +6,16 @@
  * owns only the registry semantics (uniqueness, ownership, live views); what a
  * tool *does* stays in the plugin that registered it.
  *
- * Ownership comes from the caller (the loading adapter passes the plugin's own
- * name), because this provider's context belongs to the toolbox, not to
- * whoever is registering into it.
+ * Ownership is read from the registering plugin's own fiber — the `Context` a
+ * plugin body receives carries that fiber, so `ctx.fiber.name` IS the plugin's
+ * name. It used to be threaded in by a loading adapter, which meant a plugin
+ * loaded by any other route registered its tools under `'assembly'`.
  */
-import type { Context, Plugin, ToolDefinition } from '@nova-agent/core';
+import type { Context, Plugin, ToolDefinition, ToolPermissionKind } from '@nova-agent/core';
 import {
   commands as commandsKey,
   tools as toolsKey,
+  type CommandDefinition,
   type CommandEntry,
   type CommandRegistry,
   type ToolEntry,
@@ -84,3 +86,29 @@ export const toolboxPlugin: Plugin = {
     ctx.provide(commandsKey, commandRegistry);
   },
 };
+
+/**
+ * Register one tool under the calling plugin's own name, with its undo tied to
+ * that plugin's fiber.
+ *
+ * This is the ONE registration idiom for first-party tools — the same two lines
+ * (`ctx.effect` + `registry.register`) every plugin would otherwise retype, and
+ * therefore the same two lines that used to drift (some plugins passed `owner`,
+ * some did not, and the loading adapter had to paper over it). A plugin that
+ * registers a tool should also list `tools` in its `inject`, which is what makes
+ * a replaced registry re-point it rather than strand it.
+ * @param ctx - the registering plugin's context.
+ * @param tool - the tool definition the model will see.
+ * @param permission - highest-impact kind this tool needs; drives the approval gate.
+ */
+export function registerTool(ctx: Context, tool: ToolDefinition, permission: ToolPermissionKind): void {
+  const registry = ctx.must(toolsKey);
+  const owner = ctx.fiber?.name ?? 'assembly';
+  ctx.effect(() => registry.register(tool, { permission, owner }), `tool(${tool.name})`);
+}
+
+/** Register one slash command, owned by the calling plugin's fiber. */
+export function registerCommand(ctx: Context, command: CommandDefinition): void {
+  const registry = ctx.must(commandsKey);
+  ctx.effect(() => registry.register(command), `command(/${command.name})`);
+}

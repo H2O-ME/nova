@@ -1,12 +1,16 @@
 import { readFile, readdir } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import path from 'node:path';
-import type { Plugin } from './types.js';
+import { tools as toolsKey, type Plugin } from '@nova-agent/core';
+import { registerTool } from './toolbox.js';
+import { parseSkillFrontmatter } from './skill-frontmatter.js';
 
 /**
- * Skills (AGENTS.md §5): `.nova/skills/<name>/SKILL.md` with a tiny YAML
- * frontmatter (name, description). Only name+description are loaded at
- * startup; the body is read on demand — via the `skill` agent tool or the
- * `/skill <name>` command — so the system prompt never bloats.
+ * Skills (AGENTS.md §5): a tiny YAML frontmatter (name, description) in either
+ * the directory-package form `<name>/SKILL.md` or the flat form `<name>.md`.
+ * Only name+description load at startup; the body is read on demand, so the
+ * system prompt never bloats. `runtime-env.ts` orders the roots, and
+ * `skill-frontmatter.ts` owns the header grammar.
  */
 
 export interface SkillRoot {
@@ -18,71 +22,48 @@ export interface SkillRoot {
 export interface SkillMetadata {
   name: string;
   description: string;
-  /** Absolute path of the SKILL.md file; the body is read on demand. */
+  /** Absolute path of the skill file (SKILL.md or a flat `<name>.md`). */
   file: string;
   level: 'project' | 'user';
 }
 
-const FRONTMATTER_RE = /^---\n([\s\S]*?)\n---(?:\n|$)/;
 /** Body cap: a skill is progressive-loading guidance, not a data dump. */
 export const SKILL_BODY_MAX_BYTES = 256 * 1024;
 
 /**
- * Strip a UTF-8 BOM before parsing: an editor-saved BOM makes the file start
- * with U+FEFF, which silently defeats the `^---` frontmatter match.
+ * The frontmatter grammar lives in `skill-frontmatter.ts`; re-exported so callers
+ * of this module (and its tests) need one import for the whole skill surface.
  */
-function stripBom(text: string): string {
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-}
-
-/** Parse `name`/`description` frontmatter; the body is the rest of the file. */
-export function parseSkillFrontmatter(raw: string): { name?: string; description?: string; body: string } {
-  const normalized = stripBom(raw).replace(/\r\n/g, '\n');
-  const match = FRONTMATTER_RE.exec(normalized);
-  if (!match) return { body: normalized.trim() };
-  let name: string | undefined;
-  let description: string | undefined;
-  for (const line of (match[1] ?? '').split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0 || trimmed.startsWith('#')) continue;
-    const colon = trimmed.indexOf(':');
-    if (colon <= 0) continue;
-    const key = trimmed.slice(0, colon).trim();
-    let value = trimmed.slice(colon + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (key === 'name' && value.length > 0) name = value;
-    if (key === 'description' && value.length > 0) description = value;
-  }
-  return { name, description, body: normalized.slice(match[0].length).trim() };
-}
+export { parseSkillFrontmatter, type SkillFrontmatter } from './skill-frontmatter.js';
 
 /**
  * Collect skills from the given roots (in order; first root listing a name
- * owns it). Roots that do not exist or contain no SKILL.md are skipped, so
- * an optional user-level directory costs nothing.
+ * owns it). Roots that do not exist are skipped, so an optional user-level
+ * directory costs nothing.
+ *
+ * Two entry shapes are recognized, matching the shared `.agents` convention:
+ * a directory holding `SKILL.md`, and a flat `<name>.md`. A name falls back to
+ * the frontmatter, then to the directory name / the file name minus `.md`.
  */
 export async function loadSkills(roots: SkillRoot[]): Promise<SkillMetadata[]> {
   const byName = new Map<string, SkillMetadata>();
   for (const root of roots) {
     const entries = await readdir(root.dir, { withFileTypes: true }).catch(() => undefined);
     if (entries === undefined) continue;
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const file = path.join(root.dir, entry.name, 'SKILL.md');
-      const raw = await readFile(file, 'utf8').catch(() => undefined);
+    // Sorted so a flat `foo.md` and a `foo/` package in the SAME root resolve
+    // the same way on every run: readdir order is the filesystem's, not ours.
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const locator = locateSkillFile(root.dir, entry);
+      if (locator === undefined) continue;
+      const raw = await readFile(locator.file, 'utf8').catch(() => undefined);
       if (raw === undefined) continue;
       const parsed = parseSkillFrontmatter(raw);
-      const name = parsed.name ?? entry.name;
-      if (byName.has(name)) continue;
+      const name = parsed.name ?? locator.fallbackName;
+      if (name.length === 0 || byName.has(name)) continue;
       byName.set(name, {
         name,
         description: parsed.description ?? '',
-        file,
+        file: locator.file,
         level: root.level,
       });
     }
@@ -90,11 +71,18 @@ export async function loadSkills(roots: SkillRoot[]): Promise<SkillMetadata[]> {
   return [...byName.values()];
 }
 
-/** Full instructions of a skill: the SKILL.md content minus frontmatter. */
+/** The two recognized entry shapes; `undefined` for anything else. */
+function locateSkillFile(rootDir: string, entry: Dirent): { file: string; fallbackName: string } | undefined {
+  if (entry.isDirectory()) return { file: path.join(rootDir, entry.name, 'SKILL.md'), fallbackName: entry.name };
+  if (!entry.isFile() || !entry.name.endsWith('.md')) return undefined;
+  return { file: path.join(rootDir, entry.name), fallbackName: entry.name.slice(0, -'.md'.length) };
+}
+
+/** Full instructions of a skill: the skill file content minus frontmatter. */
 export async function readSkillBody(skill: SkillMetadata): Promise<string> {
   const raw = await readFile(skill.file, 'utf8');
   const body = parseSkillFrontmatter(raw).body;
-  // Hard cap on what enters the context: an oversized SKILL.md is almost
+  // Hard cap on what enters the context: an oversized skill file is almost
   // certainly misplaced data, not instructions.
   if (Buffer.byteLength(body, 'utf8') > SKILL_BODY_MAX_BYTES) {
     return `Error: skill "${skill.name}" body exceeds ${SKILL_BODY_MAX_BYTES} bytes and was not loaded`;
@@ -110,8 +98,9 @@ export function skillsPlugin(skills: SkillMetadata[]): Plugin {
   return {
     name: 'skills',
     description: 'On-demand loading of project/user skills (SKILL.md instructions).',
-    activate(ctx) {
-      ctx.registerTool({
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(ctx, {
         name: 'skill',
         description:
           'Loads the full instructions of a skill by name. Available skills are listed in the <available_skills> block of the first user message; call this tool before following a skill. Args: name (required).',
@@ -132,7 +121,7 @@ export function skillsPlugin(skills: SkillMetadata[]): Plugin {
           }
           return readSkillBody(skill);
         },
-      }, { permission: 'read' });
+      }, 'read');
     },
   };
 }

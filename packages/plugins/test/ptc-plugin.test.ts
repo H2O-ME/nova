@@ -5,14 +5,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import type {
-  ChatRequest,
+  Context,
   SessionEvent,
   ToolDefinition,
   ToolDispatchCall,
   ToolDispatchResult,
   ToolExecuteContext,
 } from '@nova-agent/core';
-import { builtinPlugins, PluginHost, ptcPlugin, RUN_CODE_NAME } from '../src/index.js';
+import { builtinPlugins, PluginHost, ptcPlugin, registerTool, RUN_CODE_NAME } from '../src/index.js';
 import type { PtcMode } from '../src/index.js';
 
 function fakeTool(name: string, opts: { parallel?: boolean } = {}): ToolDefinition {
@@ -34,7 +34,8 @@ async function hostWith(mode: PtcMode, tools: ToolDefinition[]): Promise<PluginH
   for (const tool of tools) {
     host.use({
       name: `t-${tool.name}`,
-      activate: (ctx) => ctx.registerTool(tool, { permission: 'read' }),
+      inject: ['tools'],
+      apply: (ctx: Context) => registerTool(ctx, tool, 'read'),
     });
   }
   host.use(ptcPlugin({ mode }));
@@ -97,10 +98,10 @@ describe('ptc presentation', () => {
   });
 
   it('builtinPlugins loads ptc only when the code config selects a non-native mode', async () => {
-    expect(builtinPlugins().some((plugin) => plugin.name === 'ptc')).toBe(false);
-    expect(builtinPlugins({ code: { mode: 'native' } }).some((plugin) => plugin.name === 'ptc')).toBe(false);
-    expect(builtinPlugins({ code: { mode: 'ptc' } }).some((plugin) => plugin.name === 'ptc')).toBe(true);
-    expect(builtinPlugins({ code: {} }).some((plugin) => plugin.name === 'ptc')).toBe(true);
+    expect(builtinPlugins({ rootDir: () => '.' }).some((plugin) => plugin.name === 'ptc')).toBe(false);
+    expect(builtinPlugins({ rootDir: () => '.', code: { mode: 'native' } }).some((plugin) => plugin.name === 'ptc')).toBe(false);
+    expect(builtinPlugins({ rootDir: () => '.', code: { mode: 'ptc' } }).some((plugin) => plugin.name === 'ptc')).toBe(true);
+    expect(builtinPlugins({ rootDir: () => '.', code: {} }).some((plugin) => plugin.name === 'ptc')).toBe(true);
   });
 });
 

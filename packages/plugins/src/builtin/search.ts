@@ -1,15 +1,16 @@
-import { errMessage, isFailureContent } from '@nova-agent/core';
+import { errMessage, isFailureContent, tools as toolsKey } from '@nova-agent/core';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import type {
   FileLocation,
+  Plugin,
   SearchCallView,
   SearchResultView,
   ToolExecuteContext,
 } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
 import { codeRuntimeAvailable } from '../ptc/code-runtime.js';
+import { registerTool } from '../toolbox.js';
 import { looksBinary, resolveAnywhere, rootPermissionKind } from './fs.js';
 import { intArg, strArg } from './args.js';
 
@@ -51,6 +52,12 @@ export interface SearchPluginOptions {
   worker?: boolean;
   /** Extra auto-readable roots outside the workspace (spill directory). */
   trustedReadRoots?: string[];
+  /**
+   * The LIVE workspace root. A thunk, not a string: the approval classifier
+   * grades every call against the root in force, and `switch_workspace`
+   * re-points it mid-session.
+   */
+  rootDir: () => string;
 }
 
 /**
@@ -357,19 +364,20 @@ function searchResultView(args: Record<string, unknown>, content: string): Searc
   };
 }
 
-export function searchPlugin(options?: SearchPluginOptions): Plugin {
-  const wallMs = options?.wallMs ?? 30_000;
-  const trustedReadRoots = options?.trustedReadRoots ?? [];
+export function searchPlugin(options: SearchPluginOptions): Plugin {
+  const wallMs = options.wallMs ?? 30_000;
+  const trustedReadRoots = options.trustedReadRoots ?? [];
+  const rootDir = options.rootDir;
   // The source world runs this file through native type stripping, so the
   // .ts worker entry only loads on runtimes that support it; without it the
   // in-process path stays available (pre-flight screen still applies).
-  const wantWorker = options?.worker !== false && codeRuntimeAvailable();
+  const wantWorker = options.worker !== false && codeRuntimeAvailable();
   return {
     name: 'search',
     description: 'Recursive file/content search inside the workspace.',
-    activate(ctx) {
-      const rootDir = ctx.rootDir;
-      ctx.registerTool({
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(ctx, {
         name: 'search_files',
         description:
           'Searches the workspace tree — use this instead of shell grep/rg/find. Provide name_glob (find files whose workspace-relative path matches a glob like "**/*.test.ts" or "*.ts") OR content_regex (find files whose text matches a regex, returning matching lines as path:line: text). path: starting directory (default workspace root). Skips .git, node_modules, dist and dot-directories; symlinks are never followed. Returns at most max_results hits (default 200).',
@@ -386,7 +394,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
         },
         /** Same sandbox classification as the read tools. */
         permissionFor(args) {
-          return rootPermissionKind(rootDir, strArg(args, 'path') ?? '.', trustedReadRoots);
+          return rootPermissionKind(rootDir(), strArg(args, 'path') ?? '.', trustedReadRoots);
         },
         execute: (args, c) => executeSearch(args, c, wallMs, wantWorker),
         presentCall(args) {
@@ -402,7 +410,7 @@ export function searchPlugin(options?: SearchPluginOptions): Plugin {
         // Cooperates with the loop's per-tool timeout as a second ceiling on
         // the worker route (the wall clock terminates the worker first).
         timeoutMs: wallMs + 5_000,
-      }, { permission: 'read' });
+      }, 'read');
     },
   };
 }

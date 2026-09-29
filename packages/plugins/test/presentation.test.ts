@@ -14,7 +14,7 @@ import { PluginHost, builtinPlugins } from '../src/index.js';
 
 async function builtins(): Promise<Map<string, ToolDefinition>> {
   const host = new PluginHost('.');
-  for (const plugin of builtinPlugins()) host.use(plugin);
+  for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
   await host.activate();
   return new Map(host.tools.map((tool) => [tool.name, tool]));
 }

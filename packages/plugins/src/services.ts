@@ -17,9 +17,12 @@ import {
   sessions as sessionsKey,
   skills as skillsKey,
   spill as spillKey,
+  surfaces as surfacesKey,
   toolOutputsDir,
+  userQuestions as userQuestionsKey,
   type AgentSession,
   type ApprovalService,
+  type AskQuestionsFn,
   type ChatProvider,
   type CompactedSession,
   type CompactSessionOptions,
@@ -27,6 +30,7 @@ import {
   type JobRegistry,
   type Plugin,
   type SkillInfo,
+  type SurfaceRegistry,
 } from '@nova-agent/core';
 import type { SkillMetadata } from './skills.js';
 
@@ -63,10 +67,19 @@ export function llmProvider(p: {
   };
 }
 
-/** Background work: the same registry instance the whole kernel shares. */
+/**
+ * Background work: the same registry instance the whole kernel shares.
+ *
+ * The fiber is named `jobs-service`, NOT `jobs`: the model-facing `jobs` tool
+ * plugin (`builtin/jobs.ts`) already owns that name, and two fibers sharing it
+ * made "core names are load-bearing" lock the tool's switch as well — clicking
+ * it threw instead of turning the tool off. The service KEY is unchanged
+ * (`jobs as jobsKey`), so every `ctx.get(jobsKey)` reader is unaffected; only
+ * the diagnostics/manifest name differs.
+ */
 export function jobsProvider(registry: JobRegistry): Plugin {
   return {
-    name: 'jobs',
+    name: 'jobs-service',
     apply: (ctx: Context): void => {
       ctx.provide(jobsKey, registry);
     },
@@ -165,4 +178,43 @@ export function skillsProvider(
 
 function toInfo(skill: SkillMetadata): SkillInfo {
   return { name: skill.name, description: skill.description, source: skill.level };
+}
+
+/**
+ * "Can this surface ask a human?" — the answerer seam the `ask_user_question`
+ * tool reads at call time. Mirrors dsh's root-level `user-questions` row: the
+ * service is what the tool depends on, so the tool is no longer handed an
+ * answerer (or nothing) as an assembly option, and the per-assembly-site
+ * booleans are gone.
+ *
+ * `answers` is a thunk, not a boolean, because the answer must be read PER CALL:
+ * a surface that only becomes known once it claims the invocation (the registry
+ * is resolved after the kernel exists) must still be able to say yes. Reading it
+ * eagerly at assembly time is exactly the bug that made the TUI's first restore
+ * silently never ask.
+ */
+export function userQuestionsProvider(asker: AskQuestionsFn, answers: () => boolean): Plugin {
+  return {
+    name: 'user-questions',
+    apply: (ctx: Context): void => {
+      ctx.provide(userQuestionsKey, { answerer: () => (answers() ? asker : undefined) });
+    },
+  };
+}
+
+/**
+ * The surface registry as a container service. The INSTANCE is built by the
+ * caller (it must exist before the kernel so the roster can load surface
+ * plugins into the same registry the resolver reads), but providing it here is
+ * what makes a surface an ordinary plugin row instead of something living
+ * outside the container: `/plugins` lists it, and its provider is replaceable
+ * by key like every other capability.
+ */
+export function surfaceRegistryProvider(registry: SurfaceRegistry): Plugin {
+  return {
+    name: 'surfaces',
+    apply: (ctx: Context): void => {
+      ctx.provide(surfacesKey, registry);
+    },
+  };
 }

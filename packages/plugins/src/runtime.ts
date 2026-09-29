@@ -10,8 +10,8 @@
  *     compaction, skills) as provider plugins, each replaceable by key;
  *  3. build the tool host on that same root and load the roster — built-ins,
  *     the surface's plugins and `plugins.extra` from config, minus
- *     `plugins.disable` — then the approval gate, which reads the live registry
- *     and gate (`runtime-roster`);
+ *     `plugins.disable` and `skills.disable` — then the approval gate, which
+ *     reads the live registry and gate (`runtime-roster`);
  *  4. open the first session handle through the `sessions` service.
  *
  * The provider is injected (core defines `ChatProvider`; only the shells build
@@ -27,7 +27,7 @@ import { permissionGatePlugin } from './hooks.js';
 import { createEnvironment } from './runtime-env.js';
 import { facade } from './runtime-facade.js';
 import type { CreateKernelOptions, Kernel } from './runtime-types.js';
-export type { CreateKernelOptions, Kernel, KernelConfig, PluginRosterEntry } from './runtime-types.js';
+export type { CreateKernelOptions, Kernel, KernelConfig, PluginDescriptor, PluginOrigin, PluginRosterEntry } from './runtime-types.js';
 
 export async function createAgentKernel(opts: CreateKernelOptions): Promise<Kernel> {
   const env = createEnvironment(opts);

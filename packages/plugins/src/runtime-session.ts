@@ -12,6 +12,7 @@ import {
   CONTEXT_FRAGMENT_ID_PREFIX,
   newId,
   newSessionDir,
+  QuestionBroker,
   recordSessionWorkspace,
   Session,
   type AgentHooks,
@@ -29,6 +30,16 @@ import { PermissionService, type ApprovalMode } from './permission.js';
 import type { KernelConfig } from './runtime-types.js';
 
 export type { PermissionService };
+
+/**
+ * The question bridge for one kernel: unlike approvals there is nothing to render
+ * from the registry (a question carries no tool call), so this is the bare broker
+ * the session publishes `question_request` from and the `ask_user_question` tool
+ * waits inside.
+ */
+export function makeQuestionBridge(): QuestionBroker {
+  return new QuestionBroker();
+}
 
 /**
  * The approval wiring for one kernel: the broker renders asks from the LIVE
@@ -79,6 +90,7 @@ export interface OpenSessionDeps {
   systemPrompt: string;
   provider: ChatProvider;
   bridge: ApprovalBroker;
+  questions: QuestionBroker;
   permission: PermissionService;
   rootDir: () => string;
   tools: () => readonly import('@nova-agent/core').ToolDefinition[];
@@ -90,6 +102,12 @@ export interface OpenSessionDeps {
   /** The compaction strategy (the `compaction` service). */
   compact: (options: CompactSessionOptions) => Promise<CompactedSession>;
   perRequestCompact: boolean;
+  /**
+   * Input modalities of the model in force, read per request (see
+   * `AgentSessionDeps.inputModalities`). Async because the answer comes from the
+   * model catalog, and consulted only when a message actually carries an image.
+   */
+  inputModalities?: () => Promise<readonly string[] | undefined>;
 }
 
 /**
@@ -112,6 +130,7 @@ export async function openAgentSession(
     hooks: p.hooks,
     jobs: p.jobs,
     approvals: p.bridge,
+    questions: p.questions,
     permission: p.permission,
     systemPrompt: p.systemPrompt,
     maxTurns: p.config.maxTurns,
@@ -121,6 +140,7 @@ export async function openAgentSession(
       ? { autoCompactLimit: p.config.autoCompactTokenLimit }
       : {}),
     ...(p.perRequestCompact ? { perRequestCompact: true } : {}),
+    ...(p.inputModalities === undefined ? {} : { inputModalities: p.inputModalities }),
   });
 }
 

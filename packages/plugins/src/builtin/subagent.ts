@@ -1,15 +1,8 @@
-import { createSubagentTool, type SubagentProgress } from '@nova-agent/core';
-import type { AgentHooks, ChatProvider, ToolDefinition } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
+import { createSubagentTool, tools as toolsKey, type SubagentProgress } from '@nova-agent/core';
+import type { AgentHooks, ChatProvider, Plugin, ToolDefinition } from '@nova-agent/core';
+import { registerTool } from '../toolbox.js';
 
-/**
- * Registers the `subagent` tool (implementation in core: createSubagentTool).
- * Opt-in like the PTC plugin: the runner supplies its provider + live tool
- * list; the nested loop reuses the parent's hook chain, so subagent tool
- * calls pass the same approval gate. Gated 'execute' like other capability
- * tools — a subagent run can invoke execute-class tools itself.
- */
-
+/** Registers `subagent` (implementation in core): opt-in, and the nested loop reuses the parent's hooks. */
 export interface SubagentPluginOptions {
   provider: ChatProvider;
   /** Live parent tool list (accessor — the subagent tool itself is filtered out). */
@@ -27,7 +20,8 @@ export function subagentPlugin(options: SubagentPluginOptions): Plugin {
   return {
     name: 'subagent',
     description: 'Isolated subagent runs for self-contained subtasks.',
-    activate(ctx) {
+    inject: [toolsKey],
+    apply: (ctx) => {
       const tool = createSubagentTool({
         provider: options.provider,
         tools: options.tools,
@@ -37,7 +31,14 @@ export function subagentPlugin(options: SubagentPluginOptions): Plugin {
         rootDir: options.rootDir,
         ...(options.onProgress !== undefined ? { onProgress: options.onProgress } : {}),
       });
-      ctx.registerTool(tool, { permission: 'execute' });
+      // 'read', not 'execute': a delegation is not itself the side effect. Every
+      // consequence is a nested tool call, and those pass this same gate one by
+      // one (the nested loop reuses the parent's `hooks` chain). Gating the call
+      // asked the wrong question — "run subagent?" instead of the concrete
+      // `bash` inside it — and made the read-only recon fan-out, the tool's main
+      // use, unstartable by default. The reference declares no permission on its
+      // subagent tool either; it pins the CHILD policy to 'never' instead.
+      registerTool(ctx, tool, 'read');
     },
   };
 }

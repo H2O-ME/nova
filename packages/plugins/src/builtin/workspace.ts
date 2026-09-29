@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { stat, realpath } from 'node:fs/promises';
-import type { ToolExecuteContext } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
+import type { Plugin, ToolExecuteContext } from '@nova-agent/core';
+import { tools as toolsKey } from '@nova-agent/core';
+import { registerTool } from '../toolbox.js';
 
 /**
  * `switch_workspace` — the model's own way to move the working root when the
@@ -26,8 +27,10 @@ export function workspacePlugin(options: WorkspacePluginOptions): Plugin {
   return {
     name: 'workspace',
     description: 'Switch the workspace root the tools operate on.',
-    activate(ctx) {
-      ctx.registerTool(
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(
+        ctx,
         {
           name: 'switch_workspace',
           description:
@@ -58,7 +61,7 @@ export function workspacePlugin(options: WorkspacePluginOptions): Plugin {
         },
         // Moving the operating root is a user-visible change of scope — same
         // gate class as executing a command (asks in read-only/auto-edit).
-        { permission: 'execute' },
+        'execute',
       );
     },
   };

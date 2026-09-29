@@ -1,23 +1,27 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { truncateUtf8Head } from '@nova-agent/core';
+import { estimateTextTokens, truncateUtf8Head } from '@nova-agent/core';
 
 /**
- * Total byte budget shared by every AGENTS.md collected for one session
- * (mirrors codex `project_doc_max_bytes`).
+ * Total token budget shared by every AGENTS.md collected for one session.
+ *
+ * Denominated in TOKENS, not bytes: the estimator charges ~1 token per CJK
+ * character and ~1 per 4 others, so a byte cap silently prices a Chinese doc
+ * several times over an English one of equal size — the old 32,000-byte cap
+ * bought ~9,400 tokens here while discarding 47% of the file.
  */
-export const PROJECT_DOC_MAX_BYTES = 32_000;
+export const PROJECT_DOC_MAX_TOKENS = 8_000;
 
 /**
- * Project-doc discovery chain (codex agents_md.rs, simplified): collect the
- * AGENTS.md of every directory from the workspace root down to the current
- * working directory (inclusive), root first. Nothing outside the workspace
- * is ever read, and the shared byte budget stops collection once spent.
+ * Project-doc discovery chain (codex agents_md.rs, simplified): the AGENTS.md of
+ * every directory from the workspace root down to the working directory, root
+ * first, within one shared budget. `cwd` defaults to `rootDir`, never
+ * `process.cwd()` — the docs follow the session's workspace, not the launch dir.
  */
 export async function collectProjectDocs(
   rootDir: string,
-  cwd: string,
-  maxBytes = PROJECT_DOC_MAX_BYTES,
+  cwd: string = rootDir,
+  maxTokens = PROJECT_DOC_MAX_TOKENS,
 ): Promise<string[]> {
   const root = path.resolve(rootDir);
   const dirs: string[] = [root];
@@ -33,7 +37,7 @@ export async function collectProjectDocs(
   }
 
   const docs: string[] = [];
-  let remaining = maxBytes;
+  let remaining = maxTokens;
   for (const dir of dirs) {
     if (remaining <= 0) break;
     const text = await readFile(path.join(dir, 'AGENTS.md'), 'utf8').catch(() => undefined);
@@ -43,41 +47,36 @@ export async function collectProjectDocs(
     // whole — one bloated AGENTS.md must not starve the deeper directories'
     // docs that follow it, and the total budget stays a hard bound.
     const trimmed = text.trim();
-    const bytes = Buffer.byteLength(trimmed, 'utf8');
-    if (bytes > remaining) {
-      docs.push(`${truncateUtf8Head(trimmed, remaining)}…[truncated]`);
+    const priced = estimateTextTokens(trimmed);
+    if (priced > remaining) {
+      docs.push(`${truncateToTokens(trimmed, remaining)}…[truncated]`);
       remaining = 0;
     } else {
       docs.push(trimmed);
-      remaining -= bytes;
+      remaining -= priced;
     }
   }
   return docs;
 }
 
 /**
- * Generate a starter AGENTS.md at the workspace root (the /init command).
- * The file summarizes package.json so agents get basic orientation; users
- * are expected to edit it afterwards.
+ * Longest head of `text` the estimator prices at or below `maxTokens`.
+ *
+ * The price is not linear in bytes (CJK costs ~1 token per character against
+ * ~1 per 4 others), so scaling a byte count would misprice exactly the
+ * documents a token budget exists to protect. Bisecting over the head's byte
+ * length keeps the seam on a character boundary.
+ * @param text - the doc to cut.
+ * @param maxTokens - the tokens this doc may spend.
+ * @returns the longest prefix within budget.
  */
-export async function writeAgentsMd(root: string): Promise<string> {
-  const file = path.join(root, 'AGENTS.md');
-  const parts: string[] = ['# AGENTS.md', '', 'Instructions for Nova agents working in this workspace.', '', '## Workspace'];
-  try {
-    const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as {
-      name?: string;
-      scripts?: Record<string, string>;
-    };
-    if (pkg.name) parts.push(`- package: ${pkg.name}`);
-    if (pkg.scripts) {
-      parts.push('- scripts:');
-      for (const [name, script] of Object.entries(pkg.scripts)) {
-        parts.push(`  - \`${name}\`: \`${script}\``);
-      }
-    }
-  } catch {
-    parts.push('- no package.json at the workspace root');
+function truncateToTokens(text: string, maxTokens: number): string {
+  let low = 0;
+  let high = Buffer.byteLength(text, 'utf8');
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (estimateTextTokens(truncateUtf8Head(text, middle)) <= maxTokens) low = middle;
+    else high = middle - 1;
   }
-  await writeFile(file, `${parts.join('\n')}\n`, 'utf8');
-  return file;
+  return truncateUtf8Head(text, low);
 }

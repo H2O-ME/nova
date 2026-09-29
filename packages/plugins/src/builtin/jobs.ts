@@ -1,5 +1,5 @@
-import type { ToolExecuteContext } from '@nova-agent/core';
-import type { Plugin } from '../types.js';
+import { tools as toolsKey, type Plugin, type ToolExecuteContext } from '@nova-agent/core';
+import { registerTool } from '../toolbox.js';
 
 /**
  * Model-facing control surface for background jobs started via
@@ -12,8 +12,9 @@ export function jobsPlugin(): Plugin {
   return {
     name: 'jobs',
     description: 'Inspect and control background jobs started with the bash tool.',
-    activate(ctx) {
-      ctx.registerTool({
+    inject: [toolsKey],
+    apply: (ctx) => {
+      registerTool(ctx, {
         name: 'jobs',
         description:
           'Lists, reads output of, or stops background jobs. Args: action ("list" | "output" | "stop", required), id (required for output/stop). A background job that finishes is announced to you automatically — do not poll in a loop; when notified, read its output once with action=output.',
@@ -33,9 +34,13 @@ export function jobsPlugin(): Plugin {
         async execute(args, c: ToolExecuteContext) {
           if (c.jobs === undefined) return 'No background jobs available in this context.';
           const action = typeof args['action'] === 'string' ? args['action'] : 'list';
+          // Scoped to the calling session: the registry is per-process, so an
+          // unscoped read would let one conversation list, read or kill another
+          // conversation's work.
+          const sessionId = c.sessionId;
 
           if (action === 'list') {
-            const jobs = c.jobs.list();
+            const jobs = c.jobs.list(sessionId);
             if (jobs.length === 0) return 'No background jobs.';
             return jobs
               .map((job) => `- ${job.id} [${job.status}] ${job.label}${job.detail !== undefined ? ` (${job.detail})` : ''}`)
@@ -46,16 +51,16 @@ export function jobsPlugin(): Plugin {
           if (id.length === 0) return 'Error: id is required for output and stop actions';
 
           if (action === 'output') {
-            const job = c.jobs.get(id);
+            const job = c.jobs.get(id, sessionId);
             if (job === undefined) return `Error: unknown job "${id}"`;
-            const output = c.jobs.readOutput(id);
+            const output = c.jobs.readOutput(id, undefined, sessionId);
             const lines = [`${job.id} [${job.status}] ${job.label}${job.detail !== undefined ? ` (${job.detail})` : ''}`];
             lines.push(output !== undefined && output.length > 0 ? output : '(no new output since last read)');
             return lines.join('\n');
           }
 
           // action === 'stop'
-          const stopped = await c.jobs.stop(id, 'stopped by model');
+          const stopped = await c.jobs.stop(id, 'stopped by model', sessionId);
           if (stopped === undefined) return `Error: unknown job "${id}"`;
           return `Stop requested for ${stopped.id}. Current status: ${stopped.status}.`;
         },
@@ -64,7 +69,7 @@ export function jobsPlugin(): Plugin {
         isConcurrencySafe() {
           return true;
         },
-      }, { permission: 'read' });
+      }, 'read');
     },
   };
 }

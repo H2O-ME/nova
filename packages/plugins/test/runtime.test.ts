@@ -3,17 +3,20 @@
  * real PermissionService over the ApprovalBroker event flow, headless never
  * policy, PTC mode rebuild. Scripted provider, tmp dirs, zero network.
  */
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   isContextFragment,
+  jobs as jobsKey,
+  sessionWorkspace,
   type ChatProvider,
+  type ChatRequest,
   type KernelEvent,
   type StreamEvent,
 } from '@nova-agent/core';
-import { createAgentKernel, type Plugin } from '../src/index.js';
+import { createAgentKernel, registerCommand, registerTool, type Plugin } from '../src/index.js';
 
 function provider(scripts: StreamEvent[][]): ChatProvider {
   let call = 0;
@@ -22,6 +25,20 @@ function provider(scripts: StreamEvent[][]): ChatProvider {
       const events = scripts[call] ?? [];
       call += 1;
       for (const ev of events) yield ev;
+    },
+  };
+}
+
+/**
+ * A provider that records every request and always answers with one short text.
+ * Used to assert what the model actually RECEIVED (the seeded fragment), which
+ * a projection-level assertion cannot prove.
+ */
+function capturingProvider(requests: ChatRequest[]): ChatProvider {
+  return {
+    async *stream(req: ChatRequest) {
+      requests.push(req);
+      yield { type: 'text_delta', text: 'ok' };
     },
   };
 }
@@ -37,11 +54,29 @@ const askToolScript: StreamEvent[] = [
 ];
 const answerScript: StreamEvent[] = [{ type: 'text_delta', text: 'final answer' }];
 
+/** One `todo_write` call carrying a two-item plan. */
+const todoToolScript: StreamEvent[] = [
+  {
+    type: 'tool_call_delta',
+    index: 0,
+    id: 'call_todo',
+    name: 'todo_write',
+    argsDelta: JSON.stringify({
+      todos: [
+        { content: '读代码', status: 'in_progress' },
+        { content: '写补丁', status: 'pending' },
+      ],
+    }),
+  },
+];
+
 function probePlugin(log: string[]): Plugin {
   return {
     name: 'probe',
-    activate(ctx) {
-      ctx.registerTool(
+    inject: ['tools'],
+    apply(ctx) {
+      registerTool(
+        ctx,
         {
           name: 'probe',
           description: 'test probe',
@@ -56,7 +91,7 @@ function probePlugin(log: string[]): Plugin {
             title: `probe:${String(args['q'] ?? '')}`,
           }),
         },
-        { permission: 'execute' },
+        'execute',
       );
     },
   };
@@ -91,6 +126,175 @@ describe('createAgentKernel', () => {
     expect(logged.map((m) => m.role)).toEqual(['user', 'user', 'assistant']);
   });
 
+  it('kernel.jobs is the container-provided registry — the service seam, not a copy', async () => {
+    const seen: { jobs?: unknown } = {};
+    const probe: Plugin = {
+      name: 'jobs-probe',
+      inject: [jobsKey],
+      apply(ctx) {
+        seen.jobs = ctx.must(jobsKey);
+      },
+    };
+    const kernel = await createAgentKernel({
+      rootDir: await tmp(),
+      provider: provider([answerScript]),
+      config: baseConfig,
+      sessionDir: await tmp(),
+      extraPlugins: [probe],
+    });
+    // The probe reads through the container; the facade must hand back the
+    // SAME instance — a second registry would fork background-job state.
+    expect(seen.jobs).toBeDefined();
+    expect(kernel.jobs).toBe(seen.jobs);
+  });
+
+  it('moves the current session\'s workspace marker when the workspace moves', async () => {
+    const first = await tmp();
+    const second = await tmp();
+    const kernel = await createAgentKernel({
+      rootDir: first,
+      provider: provider([answerScript]),
+      config: baseConfig,
+      sessionDir: await tmp(),
+    });
+    // The listing files a session by the NEWEST marker in its log, so the one
+    // written at creation is only correct while the session stays put.
+    expect(sessionWorkspace(kernel.agent.session)).toBe(first);
+    await kernel.setWorkspace(second);
+    expect(kernel.rootDir()).toBe(second);
+    expect(sessionWorkspace(kernel.agent.session)).toBe(second);
+
+    // Re-pointing at the directory the marker already names must not append a
+    // line: resuming a session restores its own workspace, which is the common
+    // path and would otherwise grow every log by one event per switch.
+    const before = kernel.agent.session.events.filter((e) => e.type === 'workspace').length;
+    await kernel.setWorkspace(second);
+    expect(kernel.agent.session.events.filter((e) => e.type === 'workspace')).toHaveLength(before);
+  });
+
+  it('re-seeds a still-blank session so the NEW workspace\'s context is sent', async () => {
+    const first = await tmp();
+    const second = await tmp();
+    await writeFile(path.join(first, 'AGENTS.md'), 'DOC-FIRST', 'utf8');
+    await writeFile(path.join(second, 'AGENTS.md'), 'DOC-SECOND', 'utf8');
+    const requests: ChatRequest[] = [];
+    const kernel = await createAgentKernel({
+      rootDir: first,
+      provider: capturingProvider(requests),
+      config: baseConfig,
+      sessionDir: await tmp(),
+    });
+    const fragment = (): string => kernel.buildFragment();
+    expect(fragment()).toContain('DOC-FIRST');
+    const before = kernel.agent.session.file;
+
+    await kernel.setWorkspace(second);
+
+    // A session nobody has spoken to yet follows the workspace: its fragment is
+    // built at creation, so leaving it alone would send the old project's docs
+    // on the first prompt. The log is replaced, not rewritten.
+    expect(kernel.agent.session.file).not.toBe(before);
+    expect(fragment()).toContain('DOC-SECOND');
+    await kernel.agent.prompt('hi');
+    // `prompt()` starts the run and returns; the request reaches the provider on
+    // the next tick, so poll rather than assuming it already arrived.
+    while (requests.length === 0) await new Promise((r) => setTimeout(r, 1));
+    const sent = requests[0]?.messages.map((m) => String(m.content)).join('\n') ?? '';
+    expect(sent).toContain('DOC-SECOND');
+    expect(sent).not.toContain('DOC-FIRST');
+
+    // Re-pointing at the directory already in force must NOT mint another log:
+    // resuming restores a session's own workspace, so this is the common path.
+    const settled = kernel.agent.session.file;
+    await kernel.setWorkspace(second);
+    expect(kernel.agent.session.file).toBe(settled);
+    await kernel.dispose();
+  });
+
+  it('leaves a session that has already spoken alone when the workspace moves', async () => {
+    const first = await tmp();
+    const second = await tmp();
+    const kernel = await createAgentKernel({
+      rootDir: first,
+      provider: provider([answerScript]),
+      config: baseConfig,
+      sessionDir: await tmp(),
+    });
+    await kernel.agent.prompt('first turn');
+    const spoken = kernel.agent.session.file;
+
+    await kernel.setWorkspace(second);
+
+    // Its fragment is the truthful record of the workspace those turns ran in;
+    // rewriting it is what append-only forbids.
+    expect(kernel.agent.session.file).toBe(spoken);
+    expect(kernel.rootDir()).toBe(second);
+    await kernel.dispose();
+  });
+
+  it('never replaces a RESUMED blank session when the workspace moves', async () => {
+    const first = await tmp();
+    const second = await tmp();
+    // A blank log created in `second`, then resumed while the kernel is rooted
+    // at `first` — the shape `/resume` produces for a session nobody has used.
+    const origin = await createAgentKernel({
+      rootDir: second,
+      provider: provider([answerScript]),
+      config: baseConfig,
+      sessionDir: await tmp(),
+    });
+    const resumedFile = origin.agent.session.file;
+    await origin.dispose();
+
+    const requests: ChatRequest[] = [];
+    const kernel = await createAgentKernel({
+      rootDir: first,
+      provider: capturingProvider(requests),
+      config: baseConfig,
+      sessionDir: await tmp(),
+    });
+    await kernel.newAgentSession({ resumeFile: resumedFile });
+    expect(kernel.agent.session.file).toBe(resumedFile);
+
+    await kernel.setWorkspace(second);
+
+    // The log is a durable artifact the reader chose to open: replacing it would
+    // discard that choice and leave their `ready` naming a log they never asked
+    // for. The marker step already corrected it for every future reader.
+    expect(kernel.agent.session.file).toBe(resumedFile);
+    await kernel.dispose();
+  });
+
+  it('publishes a todo event when the model writes a plan', async () => {
+    const dir = await tmp();
+    // The chain this pins: `todo_write` → log-only `todo/write` session event →
+    // a `todo` KernelEvent → the surface's plan panel. The event was declared in
+    // `protocol.ts` with no producer, which is why this asserts the LIVE event
+    // and not just the logged one.
+    const kernel = await createAgentKernel({
+      rootDir: dir,
+      provider: provider([todoToolScript, answerScript]),
+      config: baseConfig,
+      sessionDir: await tmp(),
+    });
+    const events: KernelEvent[] = [];
+    kernel.agent.subscribe((event) => events.push(event));
+
+    await kernel.agent.prompt('plan it');
+    while (!events.some((event) => event.type === 'done')) await new Promise((r) => setTimeout(r, 1));
+
+    const published = events.filter((event) => event.type === 'todo');
+    expect(published).toHaveLength(1);
+    const todos = published[0]?.type === 'todo' ? published[0].todos : [];
+    expect(todos).toEqual([
+      { content: '读代码', status: 'in_progress' },
+      { content: '写补丁', status: 'pending' },
+    ]);
+    // Durable too: a resumed reader restores the panel from the log.
+    expect(kernel.agent.session.latestTodos()).toEqual(todos);
+    await kernel.dispose();
+  });
+
   it('routes the approval gate through the broker: request event → resolve → execution', async () => {
     const log: string[] = [];
     const dir = await tmp();
@@ -117,6 +321,27 @@ describe('createAgentKernel', () => {
     expect(
       kernel.agent.session.events.filter((e) => e.type === 'approval').map((e) => (e as { outcome: string }).outcome),
     ).toEqual(['allow']);
+  });
+
+  it('publishes subagent lifecycle on the session with no surface wiring', async () => {
+    // The kernel owns this, like jobs: `subagent_update` had no producer at all
+    // because the progress callback was left to the caller and no surface ever
+    // supplied one, so the UI row built for it was unreachable. An assembly
+    // with no `onSubagentProgress` must still produce the event.
+    const kernel = await createAgentKernel({
+      rootDir: await tmp(),
+      provider: provider([answerScript]),
+      config: baseConfig,
+      sessionDir: await tmp(),
+    });
+    const events: KernelEvent[] = [];
+    kernel.agent.subscribe((e) => events.push(e));
+    // The tool's own callback is what the assembly wires; calling it through the
+    // published session is the same path a real delegation takes.
+    kernel.agent.observeSubagent({ type: 'start', label: 'scout' });
+    const published = events.find((e) => e.type === 'subagent_update');
+    expect(published).toBeDefined();
+    expect(published?.type === 'subagent_update' ? published.progress.label : '').toBe('scout');
   });
 
   it('the never policy denies headless asks without dispatching the broker', async () => {
@@ -154,6 +379,27 @@ describe('createAgentKernel', () => {
     expect(kernel.codeMode()).toBe('ptc');
     // rebuild rebinds the composed hooks the agent and subagent share
     expect(kernel.hooks.beforeLLMCall).toBeTypeOf('function');
+  });
+
+  it('setCodeMode refuses a mode whose plugin the operator switched off', async () => {
+    // Two doors onto one question: the ptc row's switch and the mode chip. An
+    // explicit close lives in `plugins.disable` and the roster derivation
+    // yields to it — so the mode door must refuse too, or the kernel would
+    // run a mode whose plugin never loaded ("the switch flips itself on").
+    const kernel = await createAgentKernel({
+      rootDir: await tmp(),
+      provider: provider([answerScript]),
+      config: { ...baseConfig, code: { mode: 'native' }, plugins: { disable: ['ptc'] } },
+      sessionDir: await tmp(),
+    });
+    expect(kernel.host.tools.some((t) => t.name === 'run_code')).toBe(false);
+    await expect(kernel.setCodeMode('ptc')).rejects.toThrowError(/PTC/u);
+    await expect(kernel.setCodeMode('both')).rejects.toThrowError(/PTC/u);
+    // A refused pick changes nothing: the mode stays where it was.
+    expect(kernel.codeMode()).toBe('native');
+    // The one mode that needs no plugin is still accepted.
+    await kernel.setCodeMode('native');
+    expect(kernel.codeMode()).toBe('native');
   });
 });
 
@@ -246,8 +492,9 @@ describe('createAgentKernel · commands', () => {
   /** A third-party command: the registry is a plugin seam, not a built-in list. */
   const echoPlugin: Plugin = {
     name: 'echo-command',
-    activate(ctx) {
-      ctx.registerCommand({
+    inject: ['commands'],
+    apply(ctx) {
+      registerCommand(ctx, {
         name: 'echo',
         description: '测试命令',
         run: (args, out) => {
@@ -298,8 +545,9 @@ describe('createAgentKernel · commands', () => {
   it('a command that throws reports the reason in the same row (the run survives)', async () => {
     const failing: Plugin = {
       name: 'failing-command',
-      activate(ctx) {
-        ctx.registerCommand({
+      inject: ['commands'],
+      apply(ctx) {
+        registerCommand(ctx, {
           name: 'boom',
           description: '总是失败',
           run: () => {
