@@ -1,7 +1,7 @@
 {
   "name": "nova-web-ui",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "description": "WebUI 前端（M11 批2）：React 18 + Vite + Tailwind，构建产物落在 packages/web/public，由同进程 node http 托管。",
   "scripts": {
