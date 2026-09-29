@@ -1,0 +1,156 @@
+/* Ported from deepseek-harness ui-chat `TurnUsagePanel.module.css` +
+   `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License; the trigger rides
+   the IconActions row's own metric styling and the panel is the shared stat
+   dialog's skin, so this panel and the session stats pills are one family. */
+
+.root {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+/* Adjacent stat pills (usage then time) rebate part of their combined internal
+   padding so the pair reads as one cluster inside the row's 8px flex gap,
+   while keeping 2px clear between their hover backgrounds. */
+.root + .root {
+  margin-left: -6px;
+}
+
+/* The trigger wears the action icons' own geometry: a 28px-tall pill at the
+   secondary tier minus one, so it lines up with the copy/branch controls
+   beside it. */
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  min-width: 0;
+  height: calc(28px + var(--dsh-content-font-delta, 0px));
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.trigger svg {
+  width: calc(15px + var(--dsh-content-font-delta, 0px));
+  height: calc(15px + var(--dsh-content-font-delta, 0px));
+  flex: none;
+}
+
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Narrow viewport: the pill collapses to a bare icon with the sibling action's
+   geometry (28px box, 6px padding, centered glyph); the pair keeps the row's
+   plain 8px rhythm. The panel keeps the words. */
+@media (max-width: 480px) {
+  .trigger {
+    justify-content: center;
+    width: calc(28px + var(--dsh-content-font-delta, 0px));
+    padding: 6px;
+  }
+
+  .trigger .label {
+    display: none;
+  }
+
+  .root + .root {
+    margin-left: 0;
+  }
+}
+
+/* The panel is portaled to body and placed by `shell/anchored-popover.ts`
+   (fixed position, above the pill), so only its skin lives here. This is the
+   stats dialog's own skin (the reference shares one sheet between this panel
+   and the session stats pills), so the two stat surfaces read as one family. */
+.panel {
+  position: fixed;
+  /* Portaled panels layer above modal overlays; the reference's 1100 sits
+     above this repo's 1000 drop overlay and beside the 1100 menu/tooltip tier. */
+  z-index: 1100;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: min(300px, calc(100vw - 24px));
+  max-width: min(440px, calc(100vw - 24px));
+  padding: 16px;
+  border: 0;
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: default;
+  text-align: left;
+}
+
+.panelTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}
+
+.panelTitleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.panelTitleLabel svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.panelTitleValue {
+  font-variant-numeric: tabular-nums;
+}
+
+.panelRule {
+  margin-bottom: 10px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* Two columns so every value lands on one right-aligned edge: the keys size to
+   the widest label, the values take the rest. */
+.details {
+  display: grid;
+  grid-template-columns: minmax(76px, auto) minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.details dt,
+.details dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.details dd {
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

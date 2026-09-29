@@ -37,7 +37,9 @@ export type RowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'others
 const VARIANT_TITLES: Record<RowVariant, string> = {
   search: '搜索',
   read: '读取',
-  bash: 'Bash',
+  // The harness's zh reading of `tool.title.bash`; its en table says `Bash`,
+  // which is the one string this surface must not copy (this UI is zh-only).
+  bash: '运行命令',
   write: '写入',
   edit: '编辑',
   others: '工具调用',
@@ -51,6 +53,7 @@ const KIND_TITLES: Record<Extract<ToolCallView, { card: 'generic' }>['kind'], st
   write: '写入',
   execute: '执行',
   job: '后台任务',
+  subagents: '创建代理',
   plan: '更新计划',
   other: '工具调用',
 };

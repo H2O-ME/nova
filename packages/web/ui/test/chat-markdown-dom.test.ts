@@ -17,7 +17,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { MarkdownText } from '../src/chat/markdown/MarkdownText.js';
-import { AssistantMessage, MetaRow, UserMessageRow } from '../src/chat/MessageItem.js';
+import { AssistantMessage, UserMessageRow } from '../src/chat/MessageItem.js';
+import { TurnHeader } from '../src/chat/TurnHeader.js';
+import { TurnUsagePill, TurnUsageTrigger } from '../src/chat/TurnUsagePill.js';
 import { ReasoningRow } from '../src/chat/ReasoningRow.js';
 import { ChatView } from '../src/chat/ChatView.js';
 import type { RunStats } from '../src/types.js';
@@ -54,16 +56,46 @@ describe('fences', () => {
     const out = html('```ts\nconst a = 1;\n```');
     expect(out).toContain('md-code-block');
     expect(out).toContain('data-code-block-banner');
-    expect(out).toContain('ts</div>');
-    expect(out).toContain('复制');
+    // The supported language id is the label; the controls carry accessible
+    // names instead of visible text (the harness's icon toolbar).
+    expect(out).toContain('>ts</span>');
+    expect(out).toContain('aria-label="复制"');
     // Highlighted runs ride the css-variables theme's own custom properties.
     expect(out).toContain('--shiki-token-keyword');
+  });
+
+  it('names the wrap control and publishes the wrapping state', () => {
+    // Wrapped is the resting state; `data-code-wrap` is the hook every
+    // owner rule keys on, and `aria-pressed` states it for assistive tech.
+    const wrapped = html('```ts\nconst a = 1;\n```');
+    expect(wrapped).toContain('data-code-wrap="true"');
+    expect(wrapped).toContain('aria-pressed="true"');
+    expect(wrapped).toContain('aria-label="取消自动换行"');
+    // An unreadable language keeps the toolbar and falls back to its label.
+    const unknown = html('```brainfuck\n+++\n```');
+    expect(unknown).toContain('data-code-block-banner');
+    expect(unknown).toContain('代码块');
   });
 
   it('keeps an empty fence as the plain pre the reference pipeline produced', () => {
     const out = html('```py\n```');
     expect(out).toContain('language-py');
     expect(out).not.toContain('md-code-block');
+  });
+});
+
+describe('compact markdown', () => {
+  it('publishes the variant and keeps every block shape', () => {
+    const compact = (text: string): string =>
+      renderToStaticMarkup(createElement(MarkdownText, { text, variant: 'compact' }));
+    const out = compact('# h\n\npara **b**\n\n- a\n\n> q');
+    expect(out).toContain('data-markdown-variant="compact"');
+    expect(out).toContain('<h1');
+    expect(out).toContain('<strong>b</strong>');
+    expect(out).toContain('<ul');
+    expect(out).toContain('<blockquote');
+    // The default variant stays bare so the two are distinguishable.
+    expect(html('# h')).not.toContain('data-markdown-variant');
   });
 });
 
@@ -130,14 +162,75 @@ describe('message rows', () => {
     expect(out).toContain('本轮已中断');
   });
 
-  it('renders a reasoning row collapsed to its line, expanded on request', () => {
-    const out = renderToStaticMarkup(createElement(ReasoningRow, { text: 'line one\nline two', running: true }));
-    expect(out).toContain('思考');
-    expect(out).toContain('line two');
-    expect(out).not.toContain('data-expanded');
+  it('renders a reasoning row in the step-process vocabulary: paragraph preview, settled label', () => {
+    // While streaming the preview is the FIRST LINE OF THE LAST COMPLETED
+    // PARAGRAPH — a paragraph still being typed is not a summary. Here the
+    // second paragraph has no newline of its own yet, so the first stands.
+    const live = renderToStaticMarkup(createElement(ReasoningRow, {
+      text: 'first thought\n\nsecond thought\nstill typing',
+      running: true,
+    }));
+    expect(live).toContain('正在分析请求');
+    expect(live).toContain('second thought');
+    expect(live).not.toContain('still typing');
+    expect(live).toContain('data-preview');
+    expect(live).toContain('data-streaming');
+    expect(live).not.toContain('data-expanded');
+    // Settled: the work is named, and the preview is the text's own first line
+    // (the harness's `firstLine`); the whole body is one click away.
+    const settled = renderToStaticMarkup(createElement(ReasoningRow, {
+      text: 'first thought\n\nsecond thought',
+      running: false,
+    }));
+    expect(settled).toContain('已完成分析');
+    expect(settled).toContain('first thought');
+    expect(settled).not.toContain('data-streaming');
+    // The row's title is only the settled label — the reasoning text never
+    // stands in as the title (that is the pending chevron's job).
+    expect(settled).not.toContain('data-state="running"');
   });
 
-  it('formats the run meta line through format.ts', () => {
+  it('keeps the collapsed preview slot mounted and hides it through the row hook', () => {
+    // The harness passes `collapsedContent` UNCONDITIONALLY and lets the sheet
+    // hide the separator + summary from `.root:not([data-preview])`. A row
+    // without a summary therefore still renders the slot, and the visual
+    // hiding is exactly the `data-preview` hook.
+    const bare = renderToStaticMarkup(createElement(ReasoningRow, { text: '', running: false }));
+    expect(bare).not.toContain('data-preview');
+    expect(bare).toContain('data-state="ok"');
+    // With a summary the same slot is present and the hook is on.
+    const summarised = renderToStaticMarkup(createElement(ReasoningRow, {
+      text: 'a **bold** thought',
+      running: false,
+    }));
+    expect(summarised).toContain('data-preview');
+    // The preview strips emphasis markers but never renders them as elements:
+    // the row's summary is text, and the markdown body (a compact variant of
+    // the same source) is what expansion reveals.
+    expect(summarised).toContain('a bold thought');
+    expect(summarised).not.toContain('**bold**');
+  });
+
+  it('renders the turn header settled with duration, running with a collapsible-free row', () => {
+    const settled = renderToStaticMarkup(createElement(TurnHeader, {
+      label: '用时 5秒',
+      collapsible: true,
+      open: false,
+    }));
+    expect(settled).toContain('用时 5秒');
+    expect(settled).toContain('aria-expanded="false"');
+    const open = renderToStaticMarkup(createElement(TurnHeader, {
+      label: '用时 5秒',
+      collapsible: true,
+      open: true,
+    }));
+    expect(open).toContain('data-open');
+    const running = renderToStaticMarkup(createElement(TurnHeader, { label: '生成中', running: true }));
+    expect(running).toContain('data-running');
+    expect(running).toContain('disabled');
+  });
+
+  it('renders the usage pill with its panel rows and hides it without tokens', () => {
     const stats: RunStats = {
       startedAt: 0,
       durationMs: 5_600,
@@ -147,13 +240,19 @@ describe('message rows', () => {
       requests: 1,
       toolCalls: 0,
       retries: 0,
-      promptTokens: 10,
-      completionTokens: 40,
-      cachedTokens: 0,
+      promptTokens: 24_000,
+      completionTokens: 209,
+      cachedTokens: 8,
     };
-    const out = renderToStaticMarkup(createElement(MetaRow, { stats }));
-    expect(out).toContain('用时 5.6s');
-    expect(out).toContain('首 token 900ms');
+    const pill = renderToStaticMarkup(createElement(TurnUsagePill, { stats, modelName: 'DeepSeek V4 Flash' }));
+    expect(pill).toContain('用量 24.2K tok');
+    expect(pill).not.toContain('23,992');
+    const open = renderToStaticMarkup(createElement(TurnUsageTrigger, { stats, modelName: null, open: true, onToggle: () => {} }));
+    expect(open).toContain('本轮用量');
+    expect(open).toContain('23,992');
+    expect(open).not.toContain('模型');
+    const empty = renderToStaticMarkup(createElement(TurnUsageTrigger, { stats: { ...stats, promptTokens: 0, completionTokens: 0, cachedTokens: 0 }, modelName: null, open: false, onToggle: () => {} }));
+    expect(empty).toBe('');
   });
 });
 
@@ -166,15 +265,35 @@ describe('chat view', () => {
         { key: 'b3', kind: 'assistant', node: 'answer' },
         { key: 'b4', kind: 'tool', node: 'call' },
       ],
-      status: { label: '生成中' },
       empty: 'welcome',
     }));
     expect(out).toContain('data-chat-anchor-key="b1"');
     expect(out).toContain('data-chat-flow-kind="assistant"');
     // A closed process reads as one summary followed by its answer.
     expect(out).toContain('data-turn-process-answer');
-    expect(out).toContain('生成中');
     expect(out).not.toContain('welcome');
+  });
+
+  it('tightens only a closed process answer, not one inside an expanded group', () => {
+    const closed = renderToStaticMarkup(createElement(ChatView, {
+      rows: [
+        { key: 'b1', kind: 'process', node: 'header' },
+        { key: 'b2', kind: 'assistant', node: 'answer' },
+      ],
+    }));
+    expect(closed).toContain('data-turn-process-answer');
+
+    // An expanded turn emits its process rows as group members (the answer stays
+    // ungrouped, exactly as `flowRows` builds it): the group body owns the 16px
+    // rhythm, so the answer must not carry the collapsed 8px override.
+    const expanded = renderToStaticMarkup(createElement(ChatView, {
+      rows: [
+        { key: 'b1', kind: 'process', node: 'header' },
+        { key: 'b2', kind: 'process', node: 'step', group: { id: 'g1', live: false } },
+        { key: 'b3', kind: 'assistant', node: 'answer' },
+      ],
+    }));
+    expect(expanded).not.toContain('data-turn-process-answer');
   });
 
   it('offers the load-older row only while older blocks exist', () => {

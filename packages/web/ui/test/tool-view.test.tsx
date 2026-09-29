@@ -68,7 +68,9 @@ describe('row render', () => {
   it('draws the 24px line: title, summary and the running state flag', () => {
     const html = row({ view: { card: 'terminal', command: 'pnpm test' }, tail: 'running 3 tests' });
     expect(html).toContain('data-state="running"');
-    expect(html).toContain('Bash');
+    // dsh's zh dictionary (`tool.title.bash`) is the source of truth for this
+    // surface's copy; the English dictionary is a translation, not the original.
+    expect(html).toContain('运行命令');
     expect(html).toContain('$ pnpm test');
     expect(html).toContain('running 3 tests');
     // The collapsed row is a real disclosure control, not a div with a click.

@@ -1,0 +1,79 @@
+/* Ported from deepseek-harness ui-attachment DropOverlay.module.css
+   (c) 2026 DeepSeek — MIT License: the fixed, blurred, click-through mask and
+   the centered stack inside it. The card marks take this sheet's tokens in
+   place of the reference's own illustration colours. */
+
+/* Drag events must keep reaching the page so the owner's enter/leave count
+   stays balanced. */
+.mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background-color: var(--dsw-alias-bg-mask-drop);
+  backdrop-filter: blur(10px);
+  animation: drop-overlay-in 160ms ease-out;
+}
+
+@keyframes drop-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mask {
+    animation: none;
+  }
+}
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: -3%;
+  padding: 0 40px;
+  color: var(--dsw-alias-label-primary);
+  text-align: center;
+}
+
+.illustration {
+  width: 115px;
+  height: 84px;
+}
+
+/* Refused drop: the same mark, drained of colour — the shape still says
+   "files land here", the ink says "not now". */
+.illustrationDisabled {
+  opacity: 0.4;
+}
+
+.cardBack {
+  fill: var(--dsw-alias-state-business-tertiary);
+}
+
+.cardFront {
+  fill: var(--dsw-alias-state-business-primary);
+}
+
+.arrow {
+  stroke: var(--dsw-alias-label-primary-foreground);
+  fill: none;
+}
+
+.title {
+  margin-top: 16px;
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 500;
+}
+
+.desc {
+  margin-top: 16px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: pre-wrap;
+}

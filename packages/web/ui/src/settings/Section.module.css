@@ -1,0 +1,12 @@
+/* Section column sheet: the reference's GeneralSection root — a plain stack
+ * whose last row loses its hairline (c) 2026 DeepSeek — MIT License. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.section > :last-child {
+  border-bottom: none;
+}

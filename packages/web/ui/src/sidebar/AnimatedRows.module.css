@@ -1,0 +1,12 @@
+/* The overlay that holds rows fading out. It is the list's own box (the parent
+   supplies `position: relative`), so a clone can be placed at the exact spot the
+   real row occupied. `contain: strict` keeps the clones from affecting layout or
+   scrolling of the list beneath, and `pointer-events: none` keeps a fading row
+   from swallowing a click on whatever took its place. */
+.exits {
+  position: absolute;
+  inset: 0;
+  contain: strict;
+  overflow: clip;
+  pointer-events: none;
+}

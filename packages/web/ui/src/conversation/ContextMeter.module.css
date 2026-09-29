@@ -1,35 +1,43 @@
 /* Ported from deepseek-harness ui-conversation (c) 2026 DeepSeek — MIT License.
- * Source: ContextMeter.module.css, values and comments verbatim except: the
- * breakdown legend rows (system/tools/messages tints) are not ported — this
- * surface has no breakdown data — and `--dsw-specific-menu` has no token in
- * our sheet, so the panel rides the l2 elevated surface (the same substitution
- * the product's other popovers use). */
+ * Source: ContextMeter.module.css, values and comments verbatim except the
+ * breakdown legend rows (system/tools/messages tints), which are not ported —
+ * this surface has no breakdown data, and the source itself renders header plus
+ * bar alone when its own breakdown is absent. No compact action is ported
+ * either: the source panel has none, and `/compact` is the command path. */
 
-/* Context-occupancy ring beside the send button plus its click-open breakdown
-   panel (menu surface: r12, elevation-prominent). */
+/* Context-occupancy pill in the composer's dock row (beside the stats pills)
+   plus its click-open breakdown panel (menu surface: r12, elevation-prominent). */
 
 .root {
   position: relative;
   display: inline-flex;
+  flex: none;
 }
 
-/* Same 28px circular hit target family as the composer's attach button. */
+/* The source's pill: ring and reading in one tertiary-label target, not a
+   bare icon button — the number IS the reading. */
 .trigger {
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: none;
-  width: 28px;
-  height: 28px;
+  padding: 1px 8px;
   border: none;
-  border-radius: 999px;
-  corner-shape: round;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-tertiary);
+  font-family: inherit;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-variant-numeric: tabular-nums;
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.trigger:hover {
+.trigger:hover,
+.trigger[aria-expanded='true'] {
   background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
 }
 
 .trigger:focus-visible {
@@ -43,11 +51,12 @@
   stroke-width: 2;
 }
 
-/* Severity is not a stylesheet decision: the component paints the stroke from
- * the theme's one severity ladder (severityForUsage), so a 70%/90% band change
- * happens in theme.ts alone. */
+/* The ring reads neutral, exactly as the sheet paints it — occupancy severity
+   is the PANEL bar's job (the component tints it from the theme ladder), so
+   the dock row stays calm at every fill level. */
 .fill {
   fill: none;
+  stroke: var(--dsw-alias-label-tertiary);
   stroke-width: 2;
   stroke-linecap: round;
 }
@@ -56,13 +65,14 @@
   position: absolute;
   bottom: calc(100% + 8px);
   right: 0;
-  z-index: 100;
+  z-index: 1100;
   box-sizing: border-box;
   width: 264px;
   padding: 12px;
   border: 0;
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   box-shadow: var(--dsw-elevation-prominent);
   font-size: 12px;
@@ -116,41 +126,4 @@
   height: 100%;
   border-radius: 1px;
   background: var(--meter-tint, var(--dsw-alias-label-tertiary));
-}
-
-/* Pinned action below the figures, on the menu surface's hairline-and-pad
-   rhythm (Menu .footer / .item geometry: 4px pads, 34px dense row). */
-.footer {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
-}
-
-.action {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 34px;
-  padding: 5px 10px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font-size: 13px;
-  line-height: 20px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.action:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.action:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }

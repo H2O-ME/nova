@@ -1,0 +1,31 @@
+/* Ported from deepseek-harness ui-primitives/MenuSurface.module.css
+   (c) 2026 DeepSeek — MIT License. Value for value except the macOS `.backing`
+   rules, dropped because a browser tab has no native vibrancy to blur (see the
+   module doc) and the compact variant, which no menu here uses. Standard menus
+   are outer R16 with 4px padding and R12 items (docs/ui-radius.md, "Nested
+   geometry and hover"). */
+
+/* Zero specificity: the fallback positioning must never outrank the consumer's
+   own placement class (`position: fixed` on both cards here). */
+:where(.surface) {
+  position: relative;
+}
+
+.surface {
+  border-radius: var(--dsw-radius-lg);
+  /* Contain the material's `z-index: -1`: without its own stacking context the
+     layer would paint behind the card's own background instead of over it. */
+  isolation: isolate;
+}
+
+/* Filtering only the background keeps nested menus and fixed overlays free of
+   an ancestor backdrop root or a new fixed-position containing block. */
+.material {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--dsw-menu-surface-fill);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  pointer-events: none;
+}

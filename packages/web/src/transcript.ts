@@ -10,7 +10,9 @@
  */
 import {
   anchoredRunStats,
+  COMPACT_SUMMARY_PREFIX,
   isAbortMarker,
+  isCompactSummary,
   isContextFragment,
   type AgentMessage,
   type SessionEvent,
@@ -64,7 +66,26 @@ export function projectTranscript(
         blocks.push({ kind: 'aborted' });
         continue;
       }
-      blocks.push({ kind: 'user', text: msg.content, ts: msg.ts });
+      // The compaction summary is core-written `user` text FOR the model, never
+      // a prompt. `WireBlock` has no compaction variant, so it takes the context
+      // row shape; the tag is core's own marker, so the row reads Chinese.
+      if (isCompactSummary(msg)) {
+        const body = msg.content.slice(COMPACT_SUMMARY_PREFIX.length).trimStart();
+        blocks.push({ kind: 'context', tag: COMPACT_SUMMARY_PREFIX, form: 'text', text: body });
+        continue;
+      }
+      blocks.push({
+        kind: 'user',
+        text: msg.content,
+        ts: msg.ts,
+        // The refs travel so a reload can re-fetch the pixels from the
+        // id-addressed route. Only the id and media type are needed: the bytes
+        // are fetched lazily by the browser, so a transcript with images costs
+        // the wire nothing until they are actually drawn.
+        ...(msg.images !== undefined && msg.images.length > 0
+          ? { images: msg.images.map((image) => ({ id: image.id, mediaType: image.mediaType })) }
+          : {}),
+      });
       continue;
     }
     if (msg.role === 'assistant') {

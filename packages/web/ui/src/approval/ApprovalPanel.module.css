@@ -32,7 +32,7 @@
      own card uses, so a card drawn outside that seat still has an axis. */
   max-width: var(--dsh-chat-content-width, 100%);
   border: 1px solid var(--dsw-alias-state-warn-secondary);
-  border-radius: 20px;
+  border-radius: var(--dsw-radius-xl);
   background: var(--dsw-specific-input-major);
   box-shadow: var(--dsw-shadow-lv2);
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
@@ -74,7 +74,7 @@
    "the surface's own blue" here. */
 .badge {
   padding: 0 4px;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-xs);
   background: var(--dsw-alias-state-business-tertiary);
   color: var(--dsw-alias-state-business-primary);
   font-size: 11px;
@@ -179,8 +179,13 @@
   padding: 14px 16px;
 }
 
-/* Ported from ui-primitives Button.module.css: the capsule geometry (h36,
-   padding 14, gap 4, r18) and the three variants this card uses. */
+/* Ported from ui-primitives Button.module.css: the H36 geometry (padding 14,
+   gap 4) and the three variants this card uses. The reference Button is R12;
+   this card's row has always been a full capsule, and at H36 that is a
+   deliberate pill rather than a scale rung — so it is written as one
+   (`999px` + the `corner-shape: round` every full-round declaration pairs
+   with, docs/ui-radius.md "Reuse tokens and preserve deliberate shapes")
+   instead of as the off-scale 18px literal that only happened to be h/2. */
 .button {
   display: inline-flex;
   align-items: center;
@@ -189,7 +194,8 @@
   height: 36px;
   padding: 0 14px;
   border: none;
-  border-radius: 18px;
+  border-radius: 999px;
+  corner-shape: round;
   cursor: pointer;
   font-size: 14px;
   line-height: 22px;
@@ -240,7 +246,7 @@
    rides whatever the capsule's own tone is. */
 .kbd {
   padding: 0 5px;
-  border-radius: 4px;
+  border-radius: var(--dsw-radius-xs);
   background: var(--dsw-alias-interactive-bg-hover);
   font-family: var(--ds-font-family-code);
   font-size: 11px;
@@ -250,7 +256,7 @@
 
 @media (max-width: 720px) {
   .card {
-    border-radius: 16px;
+    border-radius: var(--dsw-radius-lg);
   }
 
   .actionRow {

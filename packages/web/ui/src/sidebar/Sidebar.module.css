@@ -96,7 +96,7 @@
   gap: 8px;
   height: 60px;
   padding: 8px 0 8px 4px;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -106,6 +106,10 @@
   padding: 0;
   margin-bottom: 12px;
   justify-content: flex-start;
+  /* The settled rail's 36px toggle is wider than this 35px row, so the base
+     row's clip would cut the control's right edge: the rail stops clipping once
+     the slide has settled (the reference's own note). */
+  overflow: visible;
 }
 
 /* Brand group (figma I133:7632): the full wordmark rides the text ink (figma
@@ -163,8 +167,7 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 50%;
-  corner-shape: round;
+  border-radius: var(--dsw-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
@@ -178,12 +181,24 @@
 .collapsed .iconButton {
   width: 36px;
   height: 36px;
+  /* Rail hovers share the panel rows' and New Session's 12px rounding. */
+  border-radius: var(--dsw-radius-md);
 }
 
 /* Rail icons ride the primary ink (figma rail spec); expanded keeps the
    secondary icon-button ink. */
 .collapsed .iconButton {
   color: var(--dsw-alias-label-primary);
+}
+
+/* An AUTO-collapse (the frame is narrower than the breakpoint) is not the
+   reader's own choice, so the rail's way back keeps the accent instead of
+   looking like one more glyph in a column of glyphs: the sidebar "just
+   disappearing" was a rail whose only control said nothing about why it was
+   there. */
+.collapsed .iconButton[data-auto-collapsed] {
+  background: var(--dsw-specific-sidebar-nav-item-active);
+  color: var(--dsw-alias-brand-primary);
 }
 
 /* The toggle's own glyph: 16px expanded, 18px in the rail (figma rail spec
@@ -201,7 +216,9 @@
 }
 
 /* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
-   corners); collapsed it renders as the rail's plain icon control. */
+   corners); collapsed it renders as the rail's plain icon control. The 12px
+   bottom margin is the reference's own: it is the gap down to the browsing
+   region, and at 8px the bar reads as welded to the first group row. */
 .newSession {
   flex: none;
   display: flex;
@@ -209,11 +226,15 @@
   justify-content: center;
   gap: 6px;
   height: 38px;
-  padding: 8px 16px;
-  margin: 0 2px 8px;
+  padding: 8px 12px;
+  margin: 0 2px 12px;
   box-sizing: border-box;
   border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: 12px;
+  /* The token, not its 12px value: the reference states `--dsw-radius-md` here,
+     and this button must round with every other 12px control if the scale ever
+     moves. (`gap: 6px` above stays on this element because the reference splits
+     it into a `.newSessionContent` wrapper — same 6px, one fewer element.) */
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-button-elevated-fill);
   color: var(--dsw-alias-label-primary);
   font-size: 14px;

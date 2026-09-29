@@ -1,0 +1,69 @@
+/* Ported from deepseek-harness ui-attachment AttachmentRail.module.css
+   (c) 2026 DeepSeek — MIT License: the scrollbar-less horizontal rail and its
+   two paging arrows. The reference's `.rail` carries only `min-width: 0;
+   padding: 2px 10px 0; margin-bottom: -6px`; that box belongs to its owner
+   (`ComposerAttachments`), and here it is `InputBar.module.css`'s `.chips` —
+   the rail itself is the scroller, exactly as in the source. */
+
+.root {
+  position: relative;
+  min-width: 0;
+}
+
+.rail {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Edge arrows page the overflow; the scrollbar stays hidden (both engines). */
+  scrollbar-width: none;
+  /* The rail scrolls on the composer's elevated input surface: bind the l2
+     pair (styles/scrollbar.css rebinding contract) so anything that does draw
+     a thumb here matches the surface. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* A card is fixed-size; the seat only fixes the rail's cross axis so cards of
+   different kinds (a FileCard, an image thumbnail) share one line. */
+.item {
+  flex: none;
+  height: 64px;
+}
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-secondary);
+  box-shadow: var(--dsw-elevation-panel);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.arrow:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.arrowLeft {
+  left: 4px;
+}
+
+.arrowRight {
+  right: 4px;
+}

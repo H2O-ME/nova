@@ -14,25 +14,41 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { ApprovalPanel } from './approval/ApprovalPanel.js';
+import { QuestionPanel } from './question/QuestionPanel.js';
 import { ChatView } from './chat/ChatView.js';
 import { DockStack } from './composer/DockStack.js';
 import { InputBar } from './composer/InputBar.js';
 import { QueueDock } from './composer/QueueDock.js';
+import { TodoPanel } from './conversation/TodoPanel.js';
+import { GoalPanel } from './conversation/GoalPanel.js';
 import { ContextMeter } from './conversation/ContextMeter.js';
 import { ConversationRoot } from './conversation/ConversationRoot.js';
 import { PanelExpandButton } from './conversation/PanelExpandButton.js';
-import { HeroShell } from './conversation/EmptyHero.js';
+import { HeroShell, WorkspaceRow } from './conversation/EmptyHero.js';
+import { DirectoryBrowser } from './conversation/DirectoryBrowser.js';
 import { SessionHeader } from './conversation/SessionHeader.js';
 import { StatsPills } from './composer/StatsPills.js';
-import { conversationPhase } from './conversation/phase.js';
+import { conversationPhase, awaitingFirstTurn } from './conversation/phase.js';
 import { useAgent } from './client.js';
-import { chromeView, composerDisabled } from './chrome-view.js';
+import { approvalControlLocked, chromeView, composerDisabled, modeControlsLocked } from './chrome-view.js';
 import { flowRows, turnStatus } from './flow.js';
+import { GeneralSection } from './settings/GeneralSection.js';
+import { ModelSection } from './settings/ModelSection.js';
+import { ModelConfigEditor } from './settings/ModelConfigEditor.js';
+import { ProviderSection } from './settings/ProviderSection.js';
+import { PluginsSection } from './settings/PluginsSection.js';
+import { SkillsSection } from './settings/SkillsSection.js';
+import { QqbotSection } from './settings/QqbotSection.js';
+import { SettingsPanel } from './settings/SettingsPanel.js';
+import { SETTINGS_COPY } from './settings/copy.js';
 import { Sidebar } from './sidebar/Sidebar.js';
 import { AppFrame } from './shell/AppFrame.js';
 import { DocumentTitle } from './shell/DocumentTitle.js';
+import { readRecentWorkspaces, rememberWorkspace } from './shell/workspaces.js';
 import { useEscapeToClose } from './shell/use-escape.js';
 import { useLayout } from './shell/use-layout.js';
+import { BookIcon, ChatBotIcon, PluginIcon, SettingsIcon } from './icons.js';
+import { DataOutline16 } from './composer/Icons.js';
 import { ToolPanel } from './tool/ToolPanel.js';
 import { TraceView } from './trace/TraceView.js';
 import { useTheme } from './theme.js';
@@ -48,11 +64,29 @@ const SESSION_TABS = [
 ] as const;
 
 export function App(): JSX.Element {
-  const { state, dispatch, send, connection } = useAgent();
+  const { state, dispatch, send, connection, reconnect } = useAgent();
   const [openCallId, setOpenCallId] = useState<string | null>(null);
+  /** Turn headers the reader opened; a settled turn starts collapsed without one. */
+  const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
+  /** The settings dialog: the shell owns the panel, the sidebar foot the seat. */
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const layout = useLayout();
   const theme = useTheme();
   const { openRightbar, closeRightbar } = layout;
+
+  // Collapse state is per session, and the block ids the turns are keyed by
+  // are minted fresh by every baseline (`b1…`): carrying the old set across a
+  // switch would open the new session's turns by coincidence of numbering.
+  const sessionFile = state.meta?.sessionFile ?? '';
+  useEffect(() => { setOpenTurns(new Set()); }, [sessionFile]);
+  const toggleTurn = useCallback((id: string): void => {
+    setOpenTurns((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   // The session list is a sidebar concern, and asking for it is ONE decision
   // with one place to make it: whenever the reducer says the list is stale
@@ -67,6 +101,31 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (connection === 'open' && state.sessionsStale) requestSessions();
   }, [connection, state.sessionsStale, requestSessions]);
+
+  // The workspace shortlist the picker offers: what this browser has been in,
+  // newest first. The live root is recorded as it arrives, so the menu always
+  // contains the workspace in force even on a first visit (a local list would
+  // otherwise start empty and offer nothing until a second switch).
+  const [recentWorkspaces, setRecentWorkspaces] = useState<readonly string[]>(() => readRecentWorkspaces());
+  const rootDir = state.meta?.rootDir ?? '';
+  useEffect(() => {
+    if (rootDir === '') return;
+    setRecentWorkspaces((current) => (current[0] === rootDir ? current : rememberWorkspace(rootDir, current)));
+  }, [rootDir]);
+  const pickWorkspace = useCallback((dir: string): void => {
+    send({ type: 'set_workspace', dir });
+  }, [send]);
+
+  // A file picked in the HOST's picker, on its way into the composer's rail.
+  // Lifted here because the picker and the rail are different components: the
+  // dialog's answer belongs to whoever opened it, and the `+` menu that opens it
+  // lives inside `InputBar`. The counter makes the same path pickable twice
+  // (naming one file, removing it, naming it again) — a bare string would be
+  // identical on the second pick and the consumer's effect would not re-run.
+  const [pickedFile, setPickedFile] = useState<{ path: string; name: string; seq: number } | null>(null);
+  const pickFile = useCallback((path: string, name: string): void => {
+    setPickedFile((current) => ({ path, name, seq: (current?.seq ?? 0) + 1 }));
+  }, []);
 
   const closePanel = useCallback((): void => setOpenCallId(null), []);
   // Escape closes one layer per press, topmost first: the detail panel, then
@@ -90,7 +149,6 @@ export function App(): JSX.Element {
     [],
   );
   const stopJob = useCallback((id: string): void => send({ type: 'stop_job', id }), [send]);
-  const onCompact = useCallback((): void => send({ type: 'compact' }), [send]);
   const onLoadEarlier = useCallback(
     (): void => send({ type: 'load_earlier', have: state.historyLoaded }),
     [send, state.historyLoaded],
@@ -112,11 +170,15 @@ export function App(): JSX.Element {
   const view = chromeView(state, openCallId);
   const phase = conversationPhase({
     bound: state.meta !== null,
-    blank: state.blocks.length === 0,
+    // The harness's awaiting-first-turn semantic, not a row count: the seeded
+    // context fragments are pre-turn chrome, so a fresh session still takes
+    // the centered hero until the first prompt lands.
+    blank: awaitingFirstTurn(state.blocks),
     replaying: state.historyPending,
   });
 
   return (
+    <>
     <AppFrame
       layout={layout.layout}
       dragging={layout.dragging}
@@ -131,13 +193,13 @@ export function App(): JSX.Element {
           collapsed={collapsed}
           width={width}
           connection={connection}
-          preference={theme.preference}
-          fontSize={theme.fontSize}
+          onReconnect={reconnect}
           send={send}
+          settingsOpen={settingsOpen}
+          onOpenSettings={() => { setSettingsOpen(true); }}
+          onDeleteSession={(file) => { send({ type: 'delete_session', file }); }}
           onReloadSessions={requestSessions}
           onToggleCollapsed={layout.toggleSidebar}
-          onPickPreference={theme.setPreference}
-          onPickFontSize={theme.setFontSize}
         />
       )}
       center={
@@ -164,7 +226,25 @@ export function App(): JSX.Element {
                   : undefined}
               />
             )}
-            hero={<HeroShell />}
+            hero={
+              <HeroShell
+                version={state.meta?.version}
+              />
+            }
+            heroWorkspaceRow={
+              <WorkspaceRow
+                workspace={view.workspace}
+                workspacePath={state.meta?.rootDir}
+                recentWorkspaces={recentWorkspaces}
+                onPickWorkspace={pickWorkspace}
+                // No `list_directory` here: the dialog's own opening effect owns
+                // the first ask (it gates on "no level, nothing pending"), so
+                // sending one here put TWO identical frames on the socket for one
+                // 打开文件夹 click and let the two answers race. One gesture, one
+                // request, one owner.
+                onBrowse={() => { dispatch({ type: 'directory_open', open: true, mode: 'directory' }); }}
+              />
+            }
             session={
               // The scroller mounts only with a transcript to scroll: the hero
               // and settling phases keep the seat (it must survive the landing)
@@ -186,11 +266,14 @@ export function App(): JSX.Element {
                     onOpenTool: openTool,
                     onStopJob: stopJob,
                     cwd: view.rootDir,
+                    runningStatus: turnStatus(view.phase, view.running),
+                    openTurns,
+                    onToggleTurn: toggleTurn,
+                    modelName: state.modelName,
                   })}
                   hiddenOlder={view.hidden}
                   loadingOlder={state.historyPending}
                   onLoadEarlier={onLoadEarlier}
-                  status={turnStatus(view.phase, view.running)}
                 />
               ) : undefined
             }
@@ -208,7 +291,26 @@ export function App(): JSX.Element {
                     connected={state.connected}
                   />
                 )}
+                {state.pendingQuestion !== null && (
+                  /* Keyed by request id, same rule as the approval card: two
+                     questions in a row are two cards, and without the key React
+                     would reuse the instance — carrying the pager index, the
+                     drafts and the answer lock over from the previous batch. */
+                  <QuestionPanel
+                    key={state.pendingQuestion.id}
+                    request={state.pendingQuestion}
+                    send={send}
+                    connected={state.connected}
+                  />
+                )}
                 <QueueDock items={state.queued} />
+                {/* The plan rides the dock ABOVE the input bar (dsh's
+                    `conversation.input.dock` seat), so it widens the composer
+                    stack rather than covering the transcript. */}
+                {/* The goal sits ABOVE the plan: it is the longer-lived
+                    intention, and the plan is its current step. */}
+                <GoalPanel goal={state.goal} />
+                <TodoPanel todos={state.todos} />
                 <InputBar
                   send={send}
                   disabled={composerDisabled(state)}
@@ -220,18 +322,34 @@ export function App(): JSX.Element {
                   modelSwitching={state.modelSwitching}
                   catalog={state.catalog}
                   commands={state.commands}
+                  // The `/goal` hint disambiguates on whether a goal is already
+                  // stored (dsh's `hint.goal.active` rule): a complete one counts.
+                  hasGoal={state.goal !== null}
+                  fileItems={state.files?.items ?? []}
+                  filesTruncated={state.files?.truncated ?? false}
+                  filesPending={state.files?.pending ?? false}
+                  // The `+` menu's 引用本地文件 opens the HOST's file picker: a
+                  // browser `File` carries no real path, so only the host's own
+                  // enumeration can yield an `@`-referenceable one.
+                  onReferenceFile={() => { dispatch({ type: 'directory_open', open: true, mode: 'file' }); }}
+                  pickedFile={pickedFile}
+                  onPickedFileConsumed={() => { setPickedFile(null); }}
                   variant={phase === 'hero' ? 'hero' : 'composer'}
-                  /* The stats row rides the composer's own dock slot (inside
-                     the bar's root): that is where the harness mounts it, and
-                     where `.root:has([data-composer-stats])` can see it. */
-                  dock={<StatsPills totals={state.totals} />}
-                  meter={
-                    <ContextMeter
-                      usedTokens={state.usedTokens}
-                      contextWindow={state.contextWindow}
-                      onCompact={onCompact}
-                      compactDisabled={!view.canCompact || view.compactBusy}
-                    />
+                  /* The dock row rides the composer's own dock slot (inside
+                     the bar's root): that is where the harness mounts both
+                     readings — the stats pills and the context meter share
+                     one centered line under the card. The meter renders
+                     nothing before the first usage lands, and the pills
+                     nothing before the first billed run, so a fresh session's
+                     dock is empty and hides itself. */
+                  dock={
+                    <>
+                      <StatsPills totals={state.totals} />
+                      <ContextMeter
+                        usedTokens={state.usedTokens}
+                        contextWindow={state.contextWindow}
+                      />
+                    </>
                   }
                 />
               </DockStack>
@@ -254,5 +372,169 @@ export function App(): JSX.Element {
         )
       }
     />
+    {/* The settings dialog the sidebar foot's seat opens. The shell registers
+       the sections this product really has — 通用设置 (permission, execution
+       mode, appearance, font size), 模型 (the catalog behind the composer's
+       seat), 插件管理 (the kernel's roster as grouped switch rows + the config
+       file's path), Skill 中心 (the discovered skills with per-name switches),
+       QQ 机器人 (the third-party channel's connection page) — and the writes
+       go through the same frames the composer's seats use, so a pick here and
+       a pick there are one fact. */}
+    {settingsOpen && (
+      <SettingsPanel
+        title="设置"
+        closeLabel={SETTINGS_COPY['settings.close']}
+        onClose={() => { setSettingsOpen(false); }}
+        sections={(() => {
+          // Which pages this product HAS is derived from the LIVE plugin roster,
+          // never from a fixed list: a page whose plugin the operator switched off
+          // must leave the nav, or the page itself claims the plugin is still
+          // there (the reported 「关掉 QQ BOT 后它仍在设置页显示」). `plugins` is a
+          // flip's answer and `roster` the first-paint snapshot; both are absent
+          // until one lands, and an unknown row must not hide a page — so only an
+          // explicit `enabled: false` counts as off (the same `?? true` reading
+          // `PluginRow` draws its switch from).
+          const rows = state.plugins?.entries ?? state.roster?.entries ?? [];
+          const off = (name: string): boolean =>
+            rows.some((row) => row.name === name && row.enabled === false);
+          // A switched-off plugin leaves no fiber, but it keeps its ROW in 插件管理
+          // (from the kernel's manifest), so the switch that closed it is also the
+          // way back on — one door, and never a one-way one.
+          return [
+            {
+              id: 'general',
+              label: SETTINGS_COPY['general.nav'],
+              icon: <SettingsIcon />,
+              content: (
+                <GeneralSection
+                  approvalMode={state.approvalMode}
+                  preference={theme.preference}
+                  fontSize={theme.fontSize}
+                  // Only "no session at all" blocks the tier here: the tier is
+                  // read fresh at the NEXT approval, so it stays adjustable
+                  // mid-run — that was a real defect once (`!isIdle` froze it
+                  // exactly when the operator needed it).
+                  disabled={approvalControlLocked(state)}
+                  onPickApproval={(mode) => { send({ type: 'set_approval_mode', mode }); }}
+                  onPickPreference={theme.setPreference}
+                  onPickFontSize={theme.setFontSize}
+                />
+              ),
+            },
+            {
+              id: 'models',
+              label: SETTINGS_COPY['models.nav'],
+              icon: <DataOutline16 />,
+              content: (
+                <>
+                  {/* The BYOK half first, then the catalog it produces: an operator
+                      with no endpoint configures one here, and the model list below
+                      only becomes meaningful afterwards. */}
+                  <ProviderSection
+                    providers={state.providers}
+                    probe={state.providerProbe}
+                    send={send}
+                  />
+                  <ModelSection
+                    model={state.model}
+                    switching={state.modelSwitching}
+                    catalog={state.catalog}
+                    send={send}
+                  />
+                  <ModelConfigEditor
+                    config={state.modelConfig}
+                    writable={state.modelSwitching}
+                    send={send}
+                  />
+                </>
+              ),
+            },
+            {
+              id: 'plugins',
+              label: SETTINGS_COPY['plugins.nav'],
+              icon: <PluginIcon />,
+              content: (
+                <PluginsSection
+                  roster={state.roster}
+                  plugins={state.plugins}
+                  disabled={modeControlsLocked(state)}
+                  manageError={state.manageError}
+                  send={send}
+                  onClose={() => { setSettingsOpen(false); }}
+                />
+              ),
+            },
+            {
+              id: 'skills',
+              label: SETTINGS_COPY['skills.nav'],
+              icon: <BookIcon />,
+              content: (
+                <SkillsSection
+                  skills={state.skills}
+                  disabled={modeControlsLocked(state)}
+                  manageError={state.manageError}
+                  send={send}
+                  onClose={() => { setSettingsOpen(false); }}
+                />
+              ),
+            },
+            // The QQ channel's own page, and the one section a plugin OWNS: with the
+            // plugin switched off it is gone rather than merely locked, and the way
+            // back on is its row's switch in 插件管理 (which is where it was closed).
+            ...(off('qqbot')
+              ? []
+              : [{
+                  id: 'qqbot',
+                  label: SETTINGS_COPY['qqbot.nav'],
+                  icon: <ChatBotIcon />,
+                  content: (
+                    <QqbotSection
+                      snapshot={state.qqbot}
+                      test={state.qqbotTest}
+                      disabled={!state.connected}
+                      manageError={state.manageError}
+                      send={send}
+                      onClearTest={() => { dispatch({ type: 'qqbot_test_clear' }); }}
+                    />
+                  ),
+                }]),
+          ];
+        })()}
+      />
+    )}
+    {/* The workspace picker's directory browser. A browser tab has no folder
+       chooser, so picking a workspace means asking the host to enumerate: the
+       dialog sends `list_directory` / `create_directory` and draws whatever
+       level comes back. It opens over the hero chip's "打开文件夹…" row. */}
+    {state.directory !== null && (
+      <DirectoryBrowser
+        level={state.directory.level}
+        error={state.directory.error}
+        pending={state.directory.pending}
+        mode={state.directory.mode}
+        onList={(dir, files) => {
+          dispatch({ type: 'directory_ask' });
+          send({
+            type: 'list_directory',
+            ...(dir === undefined ? {} : { dir }),
+            ...(files === true ? { files: true } : {}),
+          });
+        }}
+        onCreate={(dir, name) => {
+          dispatch({ type: 'directory_ask' });
+          send({ type: 'create_directory', dir, name });
+        }}
+        onOpen={(dir) => {
+          dispatch({ type: 'directory_open', open: false });
+          pickWorkspace(dir);
+        }}
+        onPickFile={(path, name) => {
+          dispatch({ type: 'directory_open', open: false });
+          pickFile(path, name);
+        }}
+        onClose={() => { dispatch({ type: 'directory_open', open: false }); }}
+      />
+    )}
+    </>
   );
 }

@@ -34,6 +34,7 @@ describe('frameAction', () => {
         historyTotal: 0,
         traceTotal: 2,
         pendingApprovals: [],
+        pendingQuestions: [],
         jobs: [],
         usedTokens: 0,
         modelSwitching: false,
@@ -65,5 +66,63 @@ describe('frameAction', () => {
       model: 'm',
     });
     expect(frameAction({ type: 'error', message: 'boom' })).toEqual({ type: 'error', message: 'boom' });
+  });
+
+  it('routes a listed directory level whole, optional parent preserved', () => {
+    const frame: ServerFrame = {
+      type: 'directory',
+      path: 'D:/home/proj',
+      home: 'D:/home',
+      parent: 'D:/home',
+      crumbs: [
+        { name: 'home', path: 'D:/home' },
+        { name: 'proj', path: 'D:/home/proj' },
+      ],
+      roots: [{ name: 'C:\\', path: 'C:\\' }, { name: 'D:\\', path: 'D:\\' }],
+      entries: [{ name: 'src', path: 'D:/home/proj/src', hidden: false }],
+      truncated: false,
+    };
+    expect(frameAction(frame)).toEqual({
+      type: 'directory',
+      level: {
+        path: 'D:/home/proj',
+        home: 'D:/home',
+        parent: 'D:/home',
+        crumbs: frame.crumbs,
+        roots: frame.roots,
+        entries: frame.entries,
+        truncated: false,
+      },
+    });
+  });
+
+  it('routes a directory refusal as the error action', () => {
+    expect(frameAction({ type: 'directory_error', message: '目录不存在：D:/nope' })).toEqual({
+      type: 'directory_error',
+      message: '目录不存在：D:/nope',
+    });
+  });
+
+  it('ignores a frame whose type is an inherited member name', () => {
+    // The regression this pins: the lookup was a bare `MAPPERS[frame.type]`, and
+    // nothing validates the discriminant between `JSON.parse` and here
+    // (`client.ts` casts the socket payload). For a `type` naming an
+    // `Object.prototype` member the lookup returned a FUNCTION and called it as a
+    // mapper: `valueOf` / `hasOwnProperty` threw `TypeError: Cannot convert
+    // undefined or null to object` from inside the socket's `onmessage`, and
+    // `constructor` returned a bogus action that fell off the reducer's `switch`,
+    // leaving state `undefined`. An unrecognized frame must be ignored.
+    for (const hostile of ['constructor', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'toString', '__proto__']) {
+      const frame = { type: hostile } as unknown as ServerFrame;
+      expect(() => frameAction(frame), hostile).not.toThrow();
+      expect(frameAction(frame), hostile).toBeNull();
+    }
+  });
+
+  it('still routes recognized frames and ignores merely unknown ones', () => {
+    // The guard must not over-reject: a real frame and a plain unknown string
+    // both behave as before (route / ignore).
+    expect(frameAction({ type: 'error', message: 'boom' })).toEqual({ type: 'error', message: 'boom' });
+    expect(frameAction({ type: 'not_a_real_frame' } as unknown as ServerFrame)).toBeNull();
   });
 });

@@ -106,8 +106,7 @@ function renderCode(lang: string | undefined, code: string, key: number, context
       code={`${code}\n`}
       lang={lang}
       streaming={context.streaming}
-      copyLabel={context.labels.code.copyLabel}
-      copiedLabel={context.labels.code.copiedLabel}
+      labels={context.labels.code}
     />
   );
 }

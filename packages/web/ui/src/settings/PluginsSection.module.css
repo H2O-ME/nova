@@ -1,0 +1,288 @@
+/* 插件管理 section sheet: tier-grouped rows with switches, in the settings cell
+ * rhythm. The page head (`.heading` / `.intro`) is the reference's pair, at
+ * this section column's scale. The switch is the Skill 中心's own pill (see
+ * `SkillsSection.module.css`): one control, two pages, no second style.
+ *
+ * The row is a disclosure: `.rowToggle` is the button that owns the whole
+ * leading area and the chevron-free affordance of expanding, so the switch sits
+ * outside it as a sibling. Nesting a button inside a button is invalid HTML and
+ * browsers disagree about which one a click reaches — hence two siblings in a
+ * flex row rather than one wrapper. */
+
+.heading {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.intro {
+  margin: 0;
+  padding-top: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.searchIcon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.searchInput:focus {
+  outline: none;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 16px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* The group label aligns with the page head and the search box above it: the
+   list is the page's content, not a card inset from it. It used to carry a 12px
+   side inset, which left the whole list — label and every row — stepped in from
+   the heading, the reported 「ui 错位」. */
+.groupTitle {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The per-group failure count: the one figure up here that asks for action. */
+.failed {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The confirmation that a flip landed. `role="status"` in the markup: the
+   sentence appears as the answer to a press, so it is announced. */
+.applied {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Why the switches are locked, said once for the page. A greyed control with no
+   stated reason reads as a broken row, which is what the report described. */
+.lockNote {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* A count over the whole page, for the case where the failures are spread
+   across groups and the reader has scrolled past one of them. */
+.failureBanner {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The row is a WRAPPING flex line: `.rowToggle` and the switch share the first
+   line, and the expanded `.detail` starts a second one. Without `wrap` the three
+   children were laid out side by side, so unfolding a row put its description in
+   a column beside the name instead of under it. */
+.plugin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 -8px;
+  padding: 9px 8px;
+  border-radius: var(--dsw-radius-md);
+}
+
+.plugin:hover {
+  background: var(--dsw-specific-sidebar-nav-item-hover);
+}
+
+.pluginDisabled {
+  opacity: 0.55;
+}
+
+/* The disclosure control: everything left of the switch, as one button. */
+.rowToggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+/* The leading state mark's slot: the TITLE's line box, with the mark centred in
+   it. The row is two lines tall, so `flex-start` alone put the 10px mark against
+   the 22px title line's top edge — its centre landed 6px above the name it
+   describes, which reads as a dot floating beside the row rather than marking
+   it. Sizing the slot to the title's `line-height` and centring inside puts the
+   mark and the name on the same optical line. */
+.rowDot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 22px;
+}
+
+.pluginText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pluginName {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pluginMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The identifier: the name `/plugins` prints and the config file uses. Kept
+   beside the Chinese title rather than replacing it — a reader needs both. */
+.pluginId {
+  font-family: var(--ds-font-family-code);
+}
+
+/* The 默认关闭 mark on an 扩展能力 row. */
+.tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The expanded area: prose, indented to the title's left edge so it reads as
+   belonging to the row above it rather than to the group. `flex-basis: 100%`
+   forces it onto its own line — the row wraps, and without this the block shares
+   the first line with the toggle and the switch. The 18px inset is the leading
+   state dot's width (10px) plus the row's 8px gap: the text lines up under the
+   row's TITLE, not under the dot, in both the open and closed states. */
+.detail {
+  flex-basis: 100%;
+  padding: 0 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detailLine {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* A failed row: the mark and the state word already say so, so this only
+   carries the weight, never a second sentence of explanation. */
+.plugin[data-failed="true"] .pluginName {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.status {
+  padding: 16px 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.path {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl; /* clip the middle, keep the file's end visible */
+  text-align: left;
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.copy {
+  flex: none;
+  padding: 5px 12px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.copy:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}

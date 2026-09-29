@@ -6,7 +6,7 @@
   min-width: 0;
 }
 
-/* Figma 313:14108 ToggleButton: 13/20 medium secondary label, 4px gap,
+/* Figma 313:14108 ToggleButton: 13/20 regular secondary label, 4px gap,
    12px caption chevron; 28px chip height matches the sibling Plan /
    Read-only selects in the same tool row. */
 .trigger {
@@ -22,13 +22,16 @@
   padding: 0 4px 0 8px;
   border: none;
   /* Rounded chip chrome, matching the sibling permission trigger. */
-  border-radius: 24px;
+  border-radius: var(--dsw-radius-sm);
   outline: none;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   font-size: 13px;
   line-height: 20px;
-  font-weight: 500;
+  /* Regular, not medium: the reference's Figma note reads "13/20 regular
+     secondary label". The sibling permission chips ARE medium (500), so this
+     one weight apart is the reference's own asymmetry, not an oversight. */
+  font-weight: 400;
   cursor: pointer;
 }
 
@@ -40,7 +43,7 @@
 }
 
 .trigger:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-alias-border-l3);
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
 }
 
 .trigger:disabled {

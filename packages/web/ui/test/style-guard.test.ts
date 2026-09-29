@@ -87,27 +87,91 @@ describe('token ownership', () => {
   });
 
   /**
-   * Every class a module styles must appear in a source file of that module's
-   * own subtree — the component beside it, or a nested piece of the same
-   * surface (`chat/markdown/` renders `chat/`'s table hook). Scoped per subtree
-   * on purpose: a name that only appears three folders away is a coincidence,
-   * not a consumer.
+   * Every class a module styles must be read through THAT module's own binding.
+   *
+   * The earlier form asked only whether the class name appeared anywhere in the
+   * surface's source text, which a neighbouring sheet's `tailCss.actions`
+   * satisfies for `AssistantMessage.module.css`'s `.actions` — so the dead
+   * footer rule (inherited verbatim from the reference, where nothing consumes
+   * it either) outlived the element it was written for, and the guard that was
+   * supposed to catch exactly that stayed green. Names are now matched as
+   * `<binding>.<class>`, where the binding must come from importing the very
+   * sheet that defines the class; a binding used with an index access
+   * (`css[kind]`) consumes that sheet wholesale.
    */
-  it('every class a CSS module styles is written literally by its own surface', () => {
+  it('every class a CSS module styles is read through that module\'s own binding', () => {
+    const sources = listSources(/\.(ts|tsx)$/).filter(
+      (file) => !file.rel.endsWith('.test.ts') && !file.rel.endsWith('.test.tsx'),
+    );
+    const dead = deadClasses(listSources(/\.module\.css$/, true), sources);
+    expect(dead.sort()).toEqual([]);
+  });
+
+  it('catches a class whose name only appears as another sheet\'s property', () => {
+    // The blind spot this guard was widened for, as a fixture: `actions` is
+    // defined by A and read by B, and the old substring check accepted both.
+    const sheets: Entry[] = [
+      { rel: 'chat/A.module.css', text: '.actions {\n  margin-top: 16px;\n}\n' },
+      { rel: 'chat/B.module.css', text: '.actions {\n  margin-top: 4px;\n}\n' },
+    ];
+    const consumers: Entry[] = [
+      { rel: 'chat/B.tsx', text: "import tailCss from './B.module.css';\nexport const x = tailCss.actions;\n" },
+    ];
+    expect(deadClasses(sheets, consumers)).toEqual(['chat/A.module.css: .actions']);
+  });
+
+  it('accepts a dynamic binding and rejects a class read from an unrelated sheet', () => {
+    const sheets: Entry[] = [
+      { rel: 'composer/C.module.css', text: '.icon {\n  color: red;\n}\n.ts {\n  color: red;\n}\n' },
+      { rel: 'composer/D.module.css', text: '.icon {\n  color: red;\n}\n' },
+    ];
+    const consumers: Entry[] = [
+      { rel: 'composer/C.tsx', text: "import css from './C.module.css';\nexport const x = css.icon + css[kind];\n" },
+      { rel: 'composer/D.tsx', text: "import css from './C.module.css';\nexport const y = css.icon;\n" },
+    ];
+    // `C.ts`'s own name is a table key, so the index access covers it; `D` is
+    // read only through C's binding, which leaves `D.icon` unread.
+    expect(deadClasses(sheets, consumers)).toEqual(['composer/D.module.css: .icon']);
+  });
+
+  /**
+   * The other direction: every `css.<name>` a component writes must exist in a
+   * sheet that module imports.
+   *
+   * The check above only walks CSS → consumer, so a component referring to a
+   * class that no longer exists passes silently: `cx()` drops `undefined`, and a
+   * bare `className={css.gone}` renders as no class at all. That is how
+   * `ImageCard` kept `css.pending` after the class was renamed to `.spinner` —
+   * the rendering was right and nothing reported the dead reference. A name is
+   * accepted if ANY sheet in the module's own subtree defines it, since a
+   * component may legitimately reach across sibling sheets of its surface.
+   */
+  it('every css.<name> a component references is defined by a sheet in its subtree', () => {
     const modules = listSources(/\.module\.css$/, true);
     const sources = listSources(/\.(ts|tsx)$/).filter(
       (file) => !file.rel.endsWith('.test.ts') && !file.rel.endsWith('.test.tsx'),
     );
+    /** Every class name defined anywhere in the module's own subtree. */
+    const definedBySubtree = (rel: string): Set<string> => {
+      const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+      const names = new Set<string>();
+      for (const sheet of modules) {
+        if (dir !== '' && !sheet.rel.startsWith(`${dir}/`)) continue;
+        for (const name of classesOf(sheet.text)) names.add(name);
+      }
+      return names;
+    };
     const dead: string[] = [];
-    for (const sheet of modules) {
-      const dir = sheet.rel.includes('/') ? sheet.rel.slice(0, sheet.rel.lastIndexOf('/')) : '';
-      const owned = sources.filter((file) => dir === '' || file.rel.startsWith(`${dir}/`));
-      const text = owned.map((file) => file.text).join('\n');
-      for (const name of classesOf(sheet.text)) {
-        if (!text.includes(name)) dead.push(`${sheet.rel}: .${name}`);
+    for (const file of sources) {
+      // `css.foo` / `styles.foo` — the two conventions the sheets are bound with.
+      const refs = file.text.matchAll(/\b(?:css|styles)\.([A-Za-z_$][\w$]*)/g);
+      const names = definedBySubtree(file.rel);
+      for (const match of refs) {
+        const name = match[1] as string;
+        if (!names.has(name)) dead.push(`${file.rel}: css.${name}`);
       }
     }
-    expect(dead.sort()).toEqual([]);
+    expect([...new Set(dead)].sort()).toEqual([]);
   });
 
   /**
@@ -129,6 +193,39 @@ describe('token ownership', () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  /**
+   * Every `--dsw-*` a component consumes must be DECLARED somewhere.
+   *
+   * `var(--dsw-alias-text-1)` looks exactly like a real token and resolves to
+   * nothing: the declaration is dropped and the property falls back to whatever
+   * it would have been anyway, so the rule silently styles nothing. It survived
+   * review in the ported plan panel and was copied into the question card from
+   * there — a typo that propagates by being plausible.
+   *
+   * Only the `--dsw-*` layer is checked, and only against CSS declarations: the
+   * `--dsh-*` component-local family is published at RUNTIME for several of them
+   * (`--dsh-chat-user-width` from the width observer, `--dsh-text-shimmer-spread`
+   * from the shimmer), so requiring a static declaration would fail correct code.
+   * The `--dsw-*` palette is static by contrast — a name that is not in the
+   * stylesheet is not a palette entry at all.
+   */
+  it('every --dsw-* token a component consumes is declared in the token layer', () => {
+    // Declared anywhere in the tree, and also by inline `style` maps that set a
+    // token as a typed key (kept in the net so a future dynamic token passes).
+    const declared = new Set<string>();
+    for (const file of [...listSources(/\.css$/, true), ...listSources(/\.(ts|tsx)$/, true)]) {
+      for (const match of file.text.matchAll(/(--dsw-[a-z0-9-]+)\s*:/g)) declared.add(match[1] ?? '');
+    }
+    const offenders: string[] = [];
+    for (const file of listSources(/\.(css|ts|tsx)$/)) {
+      for (const match of file.text.matchAll(/var\(\s*(--dsw-[a-z0-9-]+)/g)) {
+        const name = match[1] ?? '';
+        if (!declared.has(name)) offenders.push(`${file.rel}: ${name}`);
+      }
+    }
+    expect([...new Set(offenders)].sort()).toEqual([]);
+  });
 });
 
 /** Each `<svg …>` opening tag in a source file, up to its closing bracket. */
@@ -147,8 +244,138 @@ function htmlEntries(): Entry[] {
   return [{ rel: 'index.html', text: readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8') }];
 }
 
-/** Class names a sheet defines (comments stripped: ported names are prose). */
+/**
+ * Class names a sheet defines. Comments are stripped (ported names are prose)
+ * and `:global(...)` spans are dropped: those name the outside world — the
+ * markdown renderer's own `md-table-wide` hook, the conversation host's scroll
+ * attribute — and are read as literal strings by code that never imports this
+ * sheet, so binding-matched consumption cannot see them.
+ */
 function classesOf(css: string): string[] {
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const stripped = css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/:global\([^)]*\)/g, ' ');
   return [...new Set([...stripped.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((match) => match[1] ?? ''))];
 }
+
+/** The sheet a relative import specifier names, as a path relative to `src`. */
+function resolveSheet(importerRel: string, specifier: string): string | null {
+  if (!specifier.endsWith('.module.css')) return null;
+  const dir = importerRel.includes('/') ? importerRel.slice(0, importerRel.lastIndexOf('/')) : '';
+  const parts = dir === '' ? [] : dir.split('/');
+  for (const segment of specifier.split('/')) {
+    if (segment === '.' || segment === '') continue;
+    if (segment === '..') parts.pop();
+    else parts.push(segment);
+  }
+  return parts.join('/');
+}
+
+/**
+ * Each sheet a source file imports, with the local names it binds that sheet to.
+ * @param text - the source file's text.
+ * @param importerRel - that file's path relative to `src`.
+ * @returns sheet path → binding names (default and namespace imports).
+ */
+function cssBindings(text: string, importerRel: string): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const match of text.matchAll(/import\s+([^'"]*?)\s*from\s*['"]([^'"]+)['"]/g)) {
+    const clause = match[1] ?? '';
+    const sheet = resolveSheet(importerRel, match[2] ?? '');
+    if (sheet === null) continue;
+    const names: string[] = [];
+    const defaultName = /^\s*([A-Za-z_$][\w$]*)/.exec(clause)?.[1];
+    if (defaultName !== undefined) names.push(defaultName);
+    const namespace = /\*\s+as\s+([A-Za-z_$][\w$]*)/.exec(clause)?.[1];
+    if (namespace !== undefined) names.push(namespace);
+    out.set(sheet, [...(out.get(sheet) ?? []), ...names]);
+  }
+  return out;
+}
+
+/**
+ * Find stylesheets whose classes no component reads.
+ *
+ * A class counts as read when a source file that imports its sheet writes
+ * `<name>.<class>`, where `<name>` is either that sheet's binding or something
+ * the file did not bind to a DIFFERENT sheet — a helper that takes the sheet as
+ * a parameter (`renderFlowRows(rows, styles: typeof css)`) reads real classes
+ * through it, while `tailCss.actions` in a file that binds `tailCss` to another
+ * sheet is the coincidence this check exists to reject. A binding used with an
+ * index access (`css[kind]`) or quoted in a string literal (`'shiki
+ * css-variables'`, markdown hooks) reads every class that sheet defines.
+ * @param sheets - the `*.module.css` entries.
+ * @param sources - the `.ts`/`.tsx` entries that may consume them.
+ * @returns one `"<sheet>: .<class>"` line per unread class, in sheet order.
+ */
+function deadClasses(sheets: readonly Entry[], sources: readonly Entry[]): string[] {
+  const read = new Map<string, { classes: Set<string>; whole: boolean }>();
+  const entryFor = (sheet: string): { classes: Set<string>; whole: boolean } => {
+    let found = read.get(sheet);
+    if (found === undefined) {
+      found = { classes: new Set(), whole: false };
+      read.set(sheet, found);
+    }
+    return found;
+  };
+  const known = new Map(sheets.map((sheet) => [sheet.rel, classesOf(sheet.text)]));
+  for (const file of sources) {
+    const bindings = cssBindings(file.text, file.rel);
+    // Prose is not a consumer: a comment that mentions `.body` or a backticked
+    // class name must not read the class it names.
+    const code = stripComments(file.text);
+    /** Every identifier this file references as `<ident>.<class>`. */
+    const refs = [...code.matchAll(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)/g)]
+      .map((match) => ({ ident: match[1] ?? '', name: match[2] ?? '' }));
+    /** Every word that appears inside a quoted run (JSX attributes included). */
+    const quoted = new Set<string>();
+    for (const match of code.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+      for (const word of (match[2] ?? '').matchAll(/[\w-]+/g)) quoted.add(word[0]);
+    }
+    for (const [sheet, names] of bindings) {
+      const defined = known.get(sheet);
+      if (defined === undefined) continue;
+      const usage = entryFor(sheet);
+      for (const binding of names) {
+        if (new RegExp(`\\b${binding}\\s*\\[`).test(code)) usage.whole = true;
+      }
+      for (const name of defined) {
+        if (quoted.has(name)) usage.classes.add(name);
+        const hit = refs.some((ref) => ref.name === name && !foreignBinding(bindings, sheet, ref.ident));
+        if (hit) usage.classes.add(name);
+      }
+    }
+  }
+  const dead: string[] = [];
+  for (const sheet of sheets) {
+    const usage = read.get(sheet.rel);
+    if (usage?.whole === true) continue;
+    for (const name of classesOf(sheet.text)) {
+      if (usage?.classes.has(name) !== true) dead.push(`${sheet.rel}: .${name}`);
+    }
+  }
+  return dead;
+}
+
+/**
+ * Does this file bind `ident` to some sheet other than `sheet`? A positive
+ * answer makes `<ident>.<class>` a reference to another module's class, which
+ * is exactly the property that must not satisfy this sheet's own class.
+ */
+function foreignBinding(bindings: Map<string, string[]>, sheet: string, ident: string): boolean {
+  for (const [other, names] of bindings) {
+    if (other !== sheet && names.includes(ident)) return true;
+  }
+  return false;
+}
+
+/**
+ * Drop comments so prose cannot read a class. The `//` form skips a preceding
+ * colon, which keeps a `https://…` inside a string literal intact.
+ * @param text - a source file's text.
+ * @returns the same text with comments blanked.
+ */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+}
+

@@ -15,6 +15,7 @@ import type { ReactNode } from 'react';
 import { writeClipboard } from '../clipboard.js';
 import { BranchGlyph, CheckGlyph, CopyGlyph } from './glyphs.js';
 import { formatClock } from '../format.js';
+import { useCalendarDay } from './use-calendar-day.js';
 import css from './MessageIconActions.module.css';
 
 export interface MessageIconActionsProps {
@@ -46,6 +47,9 @@ export function MessageIconActions({
   extraActions,
   usageAction,
 }: MessageIconActionsProps): JSX.Element {
+  // The clock label adds a date once the message is no longer from today, so
+  // the row subscribes to the local day instead of freezing at mount.
+  const day = useCalendarDay();
   const reasonId = useId();
   // Same success chrome as CodeBlock: a short check swap after the write,
   // gated so re-clicks during the window neither re-copy nor stack timers.
@@ -76,11 +80,27 @@ export function MessageIconActions({
 
   const clockEl = time === undefined
     ? null
-    : <span className={clock === 'start' ? css.timeStart : css.timeEnd}>{formatClock(time)}</span>;
-  const copyLabel = copied ? '已复制' : '复制';
+    : <span className={clock === 'start' ? css.timeStart : css.timeEnd}>{formatClock(time, day)}</span>;
+  const copyLabel = copied ? '复制成功' : '复制';
+  // The clock and the usage trigger share a trailing cluster, but only in the
+  // `end` seat: there they are one group with its own gap and margin, because as
+  // bare siblings they would take the row's 8px gap and lose the reference's
+  // extra 8px lead-in. In the `start` seat the clock leads the row instead, so
+  // the usage trigger stands alone — it must still RENDER, though (dsh's tail
+  // does exactly this). Computing `endInfo` for the `end` branch only and then
+  // rendering that alone dropped `usageAction` entirely whenever a caller chose
+  // `clock="start"`: a prop accepted, threaded, and silently discarded.
+  const endInfo = clock === 'end'
+    ? (usageAction === undefined && clockEl === null
+      ? null
+      : <span className={css.endInfo}>{usageAction}{clockEl}</span>)
+    : usageAction;
 
   return (
-    <div className={className === undefined ? css.actions : `${css.actions} ${className}`}>
+    <div
+      className={className === undefined ? css.actions : `${css.actions} ${className}`}
+      data-clock={clock}
+    >
       {clock === 'start' ? clockEl : null}
       <button type="button" className={css.action} aria-label={copyLabel} title={copyLabel} onClick={onCopy}>
         {copied ? <CheckGlyph /> : <CopyGlyph />}
@@ -90,8 +110,8 @@ export function MessageIconActions({
         <button
           type="button"
           className={css.action}
-          aria-label="在此外叉出会话"
-          title={branchUnavailable ? '此消息不能作为分叉点' : '在此外叉出会话'}
+          aria-label="在新对话中分支"
+          title={branchUnavailable ? '仅可从已完成轮次的最后一条消息分支' : '在新对话中分支'}
           aria-disabled={branchUnavailable || undefined}
           aria-describedby={branchUnavailable ? reasonId : undefined}
           data-unavailable={branchUnavailable || undefined}
@@ -101,10 +121,9 @@ export function MessageIconActions({
         </button>
       )}
       {onBranch !== undefined && branchUnavailable && (
-        <span id={reasonId} className={css.visuallyHidden}>此消息不能作为分叉点</span>
+        <span id={reasonId} className={css.visuallyHidden}>仅可从已完成轮次的最后一条消息分支</span>
       )}
-      {usageAction}
-      {clock === 'end' ? clockEl : null}
+      {endInfo}
     </div>
   );
 }

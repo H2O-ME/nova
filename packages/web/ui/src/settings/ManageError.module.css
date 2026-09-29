@@ -1,0 +1,29 @@
+/* The refusal banner (`ManageError.tsx`).
+
+ * It is a status, not a red alarm: the product is working, the write was
+ * simply declined. So it wears the module surface and a warn-coloured title
+ * rather than an error fill, matching the qqbot page's own "this plugin is
+ * unavailable" card. */
+
+.error {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.title {
+  font-weight: 600;
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.detail {
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}

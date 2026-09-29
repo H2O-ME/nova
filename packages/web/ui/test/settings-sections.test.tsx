@@ -1,0 +1,373 @@
+/**
+ * A server-render pass over the settings sections: no DOM, no browser —
+ * `renderToStaticMarkup` walks the real JSX with real props. Pinned here: the
+ * 通用设置 rows' copy and controls, the 模型 catalog's rows with the check on
+ * the model in force, and the 内置插件 roster's rows with the config path's
+ * copy control. Effects (the fetch-on-open asks) live in the browser by
+ * design; the static lane pins what renders once the data is here.
+ */
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+import { GeneralSection } from '../src/settings/GeneralSection.js';
+import { ModelSection } from '../src/settings/ModelSection.js';
+import { PluginsSection } from '../src/settings/PluginsSection.js';
+import { QqbotSection } from '../src/settings/QqbotSection.js';
+import { SETTINGS_COPY } from '../src/settings/copy.js';
+
+const general = (): string =>
+  renderToStaticMarkup(
+    <GeneralSection
+      approvalMode="read-only"
+      preference="dark"
+      fontSize={14}
+      disabled={false}
+      onPickApproval={() => undefined}
+      onPickPreference={() => undefined}
+      onPickFontSize={() => undefined}
+    />,
+  );
+
+describe('general section', () => {
+  it('renders the permission row with its control, and NO execution-mode row', () => {
+    const html = general();
+    expect(html).toContain(SETTINGS_COPY['permission.title']);
+    expect(html).toContain(SETTINGS_COPY['permission.description']);
+    expect(html).toContain('aria-label="访问模式，当前：只读"');
+    // The execution mode is a per-SESSION choice made on the hero's composer
+    // chip, not a standing preference: as a settings row it could only promise a
+    // default it did not keep (it re-rostered the live kernel), and "next boot's
+    // default" would write the PTC plugin's own second opt-in door.
+    expect(html).not.toContain('执行模式');
+  });
+
+  it('renders the appearance cubes and the font stepper after the mode rows', () => {
+    const html = general();
+    expect(html).toContain(SETTINGS_COPY['appearance.title']);
+    expect(html).toContain(SETTINGS_COPY['fontSize.title']);
+    expect(html).toContain('>14</span>');
+    // The reference's order: 权限 first, appearance, then the font axis.
+    const at = (needle: string): number => html.indexOf(needle);
+    expect(at(SETTINGS_COPY['permission.title'])).toBeLessThan(at(SETTINGS_COPY['appearance.title']));
+    expect(at(SETTINGS_COPY['appearance.title'])).toBeLessThan(at(SETTINGS_COPY['fontSize.title']));
+  });
+});
+
+describe('model section', () => {
+  it('lists the catalog with the check on the model in force', () => {
+    const html = renderToStaticMarkup(
+      <ModelSection
+        model="m2"
+        switching
+        catalog={{
+          groups: [{
+            id: 'g1',
+            name: '测试网关',
+            models: [
+              { id: 'm1', name: 'Model One' },
+              { id: 'm2', name: 'Model Two' },
+            ],
+          }],
+          loading: false,
+        }}
+        send={() => undefined}
+      />,
+    );
+    expect(html).toContain('测试网关');
+    expect(html).toContain('Model One');
+    expect(html.match(/aria-current="true"/g)).toHaveLength(1);
+    const rows = html.split('<button');
+    expect(rows[2]).toContain('aria-current="true"');
+  });
+
+  it('renders the catalog title and intro above the catalog rows', () => {
+    const html = renderToStaticMarkup(
+      <ModelSection model="m1" switching catalog={null} send={() => undefined} />,
+    );
+    const at = (needle: string): number => html.indexOf(needle);
+    expect(at(SETTINGS_COPY['models.catalogTitle'])).toBeGreaterThan(-1);
+    expect(at(SETTINGS_COPY['models.catalogIntro'])).toBeGreaterThan(-1);
+    expect(at(SETTINGS_COPY['models.catalogTitle'])).toBeLessThan(at(SETTINGS_COPY['models.catalogIntro']));
+  });
+
+  it('renders the loading and empty readings from the copy table', () => {
+    const loading = renderToStaticMarkup(
+      <ModelSection model="m1" switching catalog={{ groups: [], loading: true }} send={() => undefined} />,
+    );
+    expect(loading).toContain(SETTINGS_COPY['models.loading']);
+    const empty = renderToStaticMarkup(
+      <ModelSection model="m1" switching catalog={{ groups: [], loading: false }} send={() => undefined} />,
+    );
+    expect(empty).toContain(SETTINGS_COPY['models.empty']);
+  });
+});
+
+describe('plugins section', () => {
+  const pluginsProps = { plugins: null, disabled: false, manageError: null, onClose: () => undefined } as const;
+  it('renders roster rows with the localized state and the tier group', () => {
+    const html = renderToStaticMarkup(
+      <PluginsSection
+        roster={{
+          entries: [
+            { name: 'fs', state: 'active', inject: ['tools'] },
+            { name: 'todo', state: 'active', inject: [] },
+          ],
+          configPath: 'C:\\Users\\someone\\.nova\\config.json',
+        }}
+        send={() => undefined}
+        {...pluginsProps}
+      />,
+    );
+    // An old host sends no `title`/`tier`: the row falls back to the identifier
+    // and to the switchable `standard` group rather than inventing either.
+    expect(html).toContain('>fs</span>');
+    // The wire carries the container's own `FiberState`; the row reads the
+    // dictionary's word for it, never the mechanical name.
+    expect(html).toContain(SETTINGS_COPY['pluginState.active']);
+    expect(html).not.toContain('>active ·');
+    expect(html).toContain('>todo</span>');
+    expect(html).toContain(SETTINGS_COPY['config.title']);
+    expect(html).toContain(SETTINGS_COPY['config.copy']);
+    expect(html).toContain('.nova\\config.json');
+    // Injected services live in the EXPANDED area, so the collapsed row stays
+    // scannable: the collapsed markup must not carry the service name.
+    expect(html).not.toContain('tools');
+  });
+
+  it('gives a core row no switch, and an advanced row the default-off tag', () => {
+    // Defect B's user-visible half: a core name used to render a switch that
+    // threw on every click. The page must not offer a control the kernel refuses.
+    const html = renderToStaticMarkup(
+      <PluginsSection
+        roster={{
+          entries: [
+            { name: 'fs-read', state: 'active', inject: [], tier: 'core', title: '读取文件' },
+            { name: 'subagent', state: 'disabled', inject: [], enabled: false, tier: 'advanced', title: '子代理', description: '为自包含的子任务启动隔离子代理。' },
+          ],
+          configPath: 'C:\\cfg.json',
+        }}
+        send={() => undefined}
+        {...pluginsProps}
+      />,
+    );
+    // The Chinese titles are what the reader sees…
+    expect(html).toContain('读取文件');
+    expect(html).toContain('子代理');
+    // …the tier groups are the page's structure…
+    expect(html).toContain(SETTINGS_COPY['plugins.coreGroup']);
+    expect(html).toContain(SETTINGS_COPY['plugins.advancedGroup']);
+    // …a core row has exactly ONE switch-less row, and the advanced row has one
+    // switch, so the count of `role="switch"` is 1 for these two rows.
+    expect(html.match(/role="switch"/gu)?.length).toBe(1);
+    expect(html).toContain(SETTINGS_COPY['plugins.defaultOff']);
+    // The row is a disclosure: `aria-expanded` is what the expanded area keys off.
+    expect(html).toContain('aria-expanded="false"');
+  });
+
+  it('renders the page head above the roster', () => {
+    const html = renderToStaticMarkup(
+      <PluginsSection roster={{ entries: [], configPath: 'C:\\cfg.json' }} send={() => undefined} {...pluginsProps} />,
+    );
+    const at = (needle: string): number => html.indexOf(needle);
+    expect(at(SETTINGS_COPY['plugins.title'])).toBeGreaterThan(-1);
+    expect(at(SETTINGS_COPY['plugins.intro'])).toBeGreaterThan(-1);
+    // Reference order: heading, then intro.
+    expect(at(SETTINGS_COPY['plugins.title'])).toBeLessThan(at(SETTINGS_COPY['plugins.intro']));
+  });
+
+  it('renders the loading reading before the first answer lands', () => {
+    const html = renderToStaticMarkup(<PluginsSection roster={null} send={() => undefined} {...pluginsProps} />);
+    expect(html).toContain(SETTINGS_COPY['plugins.loading']);
+    // The config-path row needs a roster to name a path, so it is absent here.
+    // Asserting its TITLE is not enough: the intro sentence legitimately ends
+    // with 配置文件, so the bare phrase appears either way. The copy control is
+    // the unambiguous marker of the loaded row.
+    expect(html).not.toContain(SETTINGS_COPY['config.copy']);
+  });
+
+  it('offers the search box only once there is a roster to filter', () => {
+    // Nothing to filter is not a search box: an empty deployment shows the
+    // empty reading instead.
+    const empty = renderToStaticMarkup(
+      <PluginsSection roster={{ entries: [], configPath: 'C:\\cfg.json' }} send={() => undefined} {...pluginsProps} />,
+    );
+    expect(empty).toContain(SETTINGS_COPY['plugins.empty']);
+    expect(empty).not.toContain(SETTINGS_COPY['plugins.search']);
+
+    const loaded = renderToStaticMarkup(
+      <PluginsSection
+        roster={{ entries: [{ name: 'fs', state: 'active', inject: ['tools'] }], configPath: 'C:\\cfg.json' }}
+        send={() => undefined}
+        {...pluginsProps}
+      />,
+    );
+    expect(loaded).toContain(SETTINGS_COPY['plugins.search']);
+    expect(loaded).not.toContain(SETTINGS_COPY['plugins.empty']);
+  });
+
+  it('distinguishes a search with no hits from an empty roster', () => {
+    // The filter is real state, so the "no match" reading is only reachable by
+    // driving it; its copy must not be the empty-roster reading.
+    expect(SETTINGS_COPY['plugins.emptySearch']).not.toBe(SETTINGS_COPY['plugins.empty']);
+  });
+
+  it('marks the search field as the owner of Escape while it has focus', () => {
+    // `shell/modal-layer.ts` yields Escape to a focused text field ("inside one,
+    // Escape belongs to that field, never to the chrome"). That yield is only
+    // sound while the field DOES something with the key: a box that swallows it
+    // leaves Escape dead and the reader with no way out but the mouse. The
+    // attribute is what makes the yield auditable from the markup.
+    const loaded = renderToStaticMarkup(
+      <PluginsSection
+        roster={{ entries: [{ name: 'fs', state: 'active', inject: ['tools'] }], configPath: 'C:\\cfg.json' }}
+        plugins={null}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+      />,
+    );
+    expect(loaded).toContain('data-modal-escape-owner');
+    // And it is only present alongside the field itself.
+    const empty = renderToStaticMarkup(
+      <PluginsSection roster={{ entries: [], configPath: 'C:\\cfg.json' }} plugins={null} disabled={false} manageError={null} send={() => undefined} />,
+    );
+    expect(empty).not.toContain('data-modal-escape-owner');
+  });
+});
+
+describe('qqbot section', () => {
+  it('never renders the stored secret, only how it was stored', () => {
+    // The section's own promise (copy.ts: 密钥永不回显). The wire type has no
+    // secret field for a leak to travel in, so this pins the other half: that
+    // the page reports the REFERENCE or a bare "configured", never a value.
+    const referenced = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{ appId: '1024', hasClientSecret: true, clientSecretRef: 'QQ_SECRET' }}
+        test={null}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    expect(referenced).toContain('QQ_SECRET');
+    expect(referenced).toContain(SETTINGS_COPY['qqbot.secretRef']);
+    // A ref is not a stored value: the input must start EMPTY even when a
+    // secret exists, or the field would be a second place a secret lives.
+    expect(referenced).toContain(SETTINGS_COPY['qqbot.appIdPlaceholder']);
+    expect(referenced).not.toMatch(/value="[^"]{8,}"/u);
+  });
+
+  it('says 已配置 without naming a variable when the secret is a literal', () => {
+    const literal = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{ appId: '1024', hasClientSecret: true }}
+        test={null}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    expect(literal).toContain(SETTINGS_COPY['qqbot.secretSet']);
+    expect(literal).not.toContain(SETTINGS_COPY['qqbot.secretRef']);
+  });
+
+  it('reads 未配置 before anything is stored', () => {
+    const fresh = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{ hasClientSecret: false }}
+        test={null}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    expect(fresh).toContain(SETTINGS_COPY['qqbot.secretUnset']);
+    expect(fresh).toContain(SETTINGS_COPY['qqbot.statusOff']);
+  });
+
+  it('shows the probe verdict beside the button that asked for it', () => {
+    const failed = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{ appId: '1', hasClientSecret: true }}
+        test={{ ok: false, message: 'invalid appid or secret' }}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    expect(failed).toContain(SETTINGS_COPY['qqbot.testFail']);
+    // The host's own words, so the operator sees WHY rather than just "failed".
+    expect(failed).toContain('invalid appid or secret');
+
+    const ok = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{ appId: '1', hasClientSecret: true }}
+        test={{ ok: true, gateway: 'wss://api.sgroup.qq.com/websocket' }}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    expect(ok).toContain(SETTINGS_COPY['qqbot.testOk']);
+    // A success is NOT presented as proof that messages flow — the note says so.
+    expect(ok).toContain(SETTINGS_COPY['qqbot.liveNote']);
+  });
+
+  it('reports the plugin\'s own config problem instead of hiding it', () => {
+    const broken = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{
+          appId: '1024',
+          hasClientSecret: true,
+          clientSecretRef: 'QQ_SECRET',
+          error: 'qqbot.clientSecret 引用了环境变量 {env:QQ_SECRET}，但它未设置；请在 shell 里设置它',
+        }}
+        test={null}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    expect(broken).toContain(SETTINGS_COPY['qqbot.configError']);
+    // The host's sentence verbatim: it names the field AND the variable, which
+    // is exactly what the reader has to act on.
+    expect(broken).toContain('{env:QQ_SECRET}');
+    // A healthy page says nothing — the status must not be decorative.
+    const healthy = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{ appId: '1024', hasClientSecret: true }}
+        test={null}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    expect(healthy).not.toContain(SETTINGS_COPY['qqbot.configError']);
+  });
+
+  it('leaves Escape to the chrome rather than claiming a key it cannot use', () => {
+    const loaded = renderToStaticMarkup(
+      <QqbotSection
+        snapshot={{ appId: '1', hasClientSecret: true }}
+        test={null}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+        onClearTest={() => undefined}
+      />,
+    );
+    // `data-modal-escape-owner` makes the shell YIELD Escape to the field, which
+    // is only sound while the field then acts on the key (the plugins search box
+    // clears itself; DirectoryBrowser's path box navigates). These two fields do
+    // nothing with Escape, so claiming it would swallow the key and leave the
+    // reader with no way out but the mouse. Absent is the correct contract — the
+    // first press closes the panel.
+    expect(loaded).not.toContain('data-modal-escape-owner');
+  });
+});

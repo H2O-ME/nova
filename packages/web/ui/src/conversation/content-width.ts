@@ -24,10 +24,9 @@ export const WIDTH_PREF_KEY = 'nova.conversation.contentWidth';
 /** Floor for a dragged content width; matches the layout center-column minimum. */
 export const CONTENT_MIN = 640;
 
-/** Column budget the content must leave free: 88px per side keeps the width
- * handles fully placeable (24px inset + 40px strip + 24px safe zone) — a
- * larger dragged width would push its own handles off the column and leave no
- * way to drag back. */
+/** Horizontal room reserved for both handles and their safe edge zones
+ * (the reference's own constant: it does not track the strip's width, because
+ * the budget also carries the 24px insets and safe zones on both sides). */
 export const CONTENT_EDGE_BUDGET = 176;
 
 /** Which strip beside the transcript a drag gesture belongs to. */

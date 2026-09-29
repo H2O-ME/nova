@@ -12,11 +12,13 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { KernelEvent, StreamEvent } from '@nova-agent/core';
+import { admitImage } from '@nova-agent/core';
 import { createLaunchAuth, type LaunchAuth } from '../src/auth.js';
 import { WebController } from '../src/controller.js';
 import { startWebServer, type WebServerHandle } from '../src/server.js';
 import { acceptKey } from '../src/ws.js';
 import type { ServerFrame } from '../src/protocol.js';
+import { pngBytes } from './helpers/png.js';
 
 let staticDir: string;
 let home: string;
@@ -110,6 +112,36 @@ describe('http surface', () => {
     expect(doc.headers['cache-control']).toBe('no-cache');
     const asset = await http('/assets/index-abc123.js', cookie);
     expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+  });
+
+  it('serves a stored image back to the browser, behind the same auth', async () => {
+    // The END-TO-END shape of the reload path: a real HTTP request, through the
+    // real router, past the real auth gate. The unit test proves the handler
+    // resolves an id; this proves the request actually REACHES it — the route
+    // sits inside the cookie gate, and `handleHttp` must try it before static
+    // serving (which would 404 the path as a missing file).
+    const cake = await admitImage(pngBytes('served-back'), 'shot.png');
+    expect(cake.ok).toBe(true);
+    if (!cake.ok) return;
+
+    const cookie = cookieFor(await http(`/?t=${auth.token}`));
+    const res = await http(`/api/image/${encodeURIComponent(cake.ref.id)}`, cookie);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['cache-control']).toContain('immutable');
+    // The length is asserted from the HEADER, not the decoded body: `http()`
+    // reads the response as UTF-8, which is lossy for PNG bytes.
+    expect(res.headers['content-length']).toBe(String(cake.ref.bytes));
+  });
+
+  it('refuses the image route without a cookie, like every other path', async () => {
+    // A content-addressed URL is still a private read: the digest is unguessable,
+    // but "unguessable" is not an access control.
+    const cake = await admitImage(pngBytes('gated'), 'gated.png');
+    if (!cake.ok) throw new Error('admit failed');
+    const res = await http(`/api/image/${encodeURIComponent(cake.ref.id)}`);
+    expect(res.status).toBe(401);
   });
 });
 

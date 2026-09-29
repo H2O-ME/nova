@@ -1,0 +1,224 @@
+/* Ported from deepseek-harness ui-attachment FileCard.module.css
+   (c) 2026 DeepSeek — MIT License, with the same geometry: a fixed 240 × 64
+   card on the input surface, the glyph in a 28px box, the name at 14/22 weight
+   500 and its meta line at 12/15. Two token substitutions, noted at the rules
+   that carry them: the reference's literal colour fallbacks are dropped for this
+   sheet's alias tokens, and the file-type colours come from the shared static
+   scale instead of `ui-primitives`' own sheet. */
+
+.card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: 240px;
+  height: 64px;
+  padding: 0 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-input-major);
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.failed {
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  corner-shape: round;
+  color: var(--dsw-alias-label-tertiary);
+  animation: file-card-spin 0.8s linear infinite;
+}
+
+@keyframes file-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* File-type glyphs (the ported ui-primitives FileTypeIcon): the sheet body
+   takes the category colour, the folded corner and the mark stay neutral, so
+   the mark reads on top of any category. */
+.iconFold {
+  fill: var(--dsw-alias-label-primary-inverted);
+  fill-opacity: 0.7;
+}
+
+.iconMark {
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+/* A stroked mark (code, excel, folder) takes its ink from the surrounding
+   group's colour, not from `fill`. */
+.iconStroke {
+  stroke: currentColor;
+  fill: none;
+}
+
+.code { color: var(--dsw-static-deepseek-500); }
+.excel { color: var(--dsw-static-green-500); }
+.folder { color: var(--dsw-static-amber-400); }
+.html { color: var(--dsw-static-deepseek-500); }
+/* The reference's image/video violet has no rung in this token sheet; the
+   nearest static that stays legible on the fold in both themes is the blue. */
+.image { color: var(--dsw-static-blue-450); }
+.markdown { color: var(--dsw-static-deepseek-500); }
+.other { color: var(--dsw-static-neutral-bluish-300); }
+.pdf { color: var(--dsw-static-red-600); }
+.ppt { color: var(--dsw-static-amber-500); }
+.video { color: var(--dsw-static-blue-450); }
+.word { color: var(--dsw-static-deepseek-450); }
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  padding: 8px 0;
+}
+
+.retry {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.meta {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.metaFailed {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-button-contrast-fill);
+  color: var(--dsw-alias-label-primary-inverted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.card:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
+}
+
+/* Touch surfaces have no hover to reveal the control. */
+@media (pointer: coarse) {
+  .remove {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remove {
+    transition: none;
+  }
+  .spinner {
+    animation: none;
+  }
+}
+
+/* The remove control uncovers from the corner the name extends into; giving
+   the name that room on hover keeps the two from overlapping. */
+.card:hover .name,
+.card:focus-within .name {
+  padding-right: 18px;
+}
+
+.removeFailed {
+  background: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+  opacity: 1;
+}
+
+.progressTrack {
+  position: absolute;
+  right: 12px;
+  bottom: 5px;
+  left: 12px;
+  overflow: hidden;
+  height: 2px;
+  border-radius: 1px;
+  /* Substitution 1 of 2: the reference draws the track with
+     `--dsw-alias-fill-tertiary` (which IT never defines — only this one rule
+     reads it there, so it always fell back to its literal). This sheet's border
+     ladder is defined in both themes, which is what a 2px track wants. */
+  background: var(--dsw-alias-border-l2);
+}
+
+.progressBar {
+  display: block;
+  width: 35%;
+  height: 100%;
+  border-radius: inherit;
+  /* Substitution 2 of 2: the reference uses `--dsw-alias-brand-primary`, but in
+     this port that alias resolves to INK, not blue (`styles/design-platform.css`
+     says so at the top: brand-primary is neutral, and every blue accent rides
+     `state-business-primary`). Copying the reference verbatim here would draw a
+     neutral bar where the reference's own literal fallback was blue. */
+  background: var(--dsw-alias-state-business-primary);
+  animation: file-card-progress 1.2s ease-in-out infinite alternate;
+}
+
+/* A reported fraction is a real position, not a sweep: the inline width wins
+   and the indeterminate animation stands down. */
+.progressBar[style] {
+  animation: none;
+}
+
+@keyframes file-card-progress {
+  from { transform: translateX(-70%); }
+  to { transform: translateX(220%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressBar {
+    animation: none;
+  }
+}

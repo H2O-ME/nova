@@ -92,7 +92,7 @@
 }
 
 .markdown a:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
 }
 
 /* Leading link-category glyph inside anchors and URL-promoted inline code:
@@ -178,7 +178,7 @@
   font-size: 0.875em !important;
   background-color: var(--dsw-alias-markdown-inline-code);
   border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   padding: 0 5px;
 }
 
@@ -209,12 +209,12 @@
    already the hover that re-enables `auto`. */
 .tableScroll:global(.md-table-wide) {
   overflow-x: hidden;
-  padding-bottom: var(--dsh-scrollbar-width, 8px);
+  padding-bottom: var(--dsh-scrollbar-width, 5px);
 }
 
 .tableScroll:global(.md-table-wide):hover,
 .tableScroll:global(.md-table-wide):focus-visible {
-  overflow-x: auto;
+  overflow-x: scroll;
   padding-bottom: 0;
 }
 
@@ -222,7 +222,7 @@
    the sheet's link focus color. */
 .tableScroll:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
 }
 
 /* Many-column tables (the renderer's `md-table-wide` hook) keep their
@@ -297,7 +297,109 @@
   max-width: 100%;
   height: auto;
   margin: 0;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-base);
   object-fit: contain;
+}
+
+/* Compact variant: the tight secondary-tier document a folded reasoning body
+   reads as. Sizes, colors and block spacing all come from here, so a compact
+   host (`.thinkBody`) supplies only its own indentation. Rules whose DOM this
+   renderer does not produce (KaTeX, file mentions, the image preview button)
+   are omitted with the rest of that vocabulary. */
+.compact {
+  max-width: 100%;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.compact :is(h1, h2, h3, h4, h5, h6) {
+  margin: 8px 0 4px;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+}
+
+.compact :is(p, ul, ol, blockquote) {
+  margin: 4px 0;
+}
+
+.compact li:not(:first-child) {
+  margin-top: 2px;
+}
+
+.compact li > p {
+  margin: 4px 0;
+}
+
+.compact li::marker {
+  line-height: inherit;
+  color: inherit;
+}
+
+.compact blockquote {
+  padding-left: 8px;
+}
+
+.compact hr {
+  margin: 8px 0;
+}
+
+.compact a {
+  font-weight: inherit;
+  color: inherit;
+  text-decoration: underline dotted;
+}
+
+.compact a:hover,
+.compact a:focus {
+  text-decoration-color: currentColor;
+}
+
+.compact :not(pre) > code {
+  display: inline;
+  font: inherit;
+  font-family: var(--ds-font-family-code);
+  font-size: 1em !important;
+  border-radius: var(--dsw-radius-xs);
+  padding: 0 3px;
+  box-decoration-break: clone;
+}
+
+.markdown.compact :global(.md-code-block) {
+  margin: 4px 0;
+  color: inherit;
+}
+
+/* The bannerWrap is what carries the sticky banner; compact prose flows instead. */
+.compact :global(.md-code-block) > :has(> [data-code-block-banner]) {
+  position: static;
+  z-index: auto;
+}
+
+/* The highlighter writes token colors inline; compact code reads as prose. */
+.compact pre,
+.compact pre :is(code, span) {
+  color: inherit !important;
+}
+
+.markdown.compact .tableScroll {
+  width: 100%;
+  max-width: 100%;
+  margin: 4px 0;
+  padding-left: 0;
+}
+
+.markdown.compact .tableScroll > table {
+  z-index: auto;
+}
+
+.compact :is(th, td) {
+  padding: 4px 8px;
+  font: inherit;
+}
+
+.compact th {
+  font-weight: 600;
 }

@@ -48,23 +48,26 @@ export function modelThroughput(totals: SessionTotals): number | undefined {
 }
 
 /**
- * Prompt-cache hit text (cached / prompt), or undefined when the provider never
- * reported caching at all — a backend without prefix caching must not read as a
- * permanent 0% miss (the same guard core's waste audit applies).
+ * Prompt-cache hit text (cached / prompt), or undefined when nothing was ever
+ * billed — with no input there is no hit or miss to speak of.
  *
  * Ported from deepseek-harness `ui-chat/src/client/chat/token-format.ts`
- * (`formatCacheHitPercent`, MIT): a partial hit is NEVER rounded up to `100`,
- * because "缓存命中 100%" is a claim about the whole prompt that a 99.9% share
- * does not support. A ratio that would round to full precision instead reports
- * as many nines as it takes to stay under it (`99.999`); a true full hit is
- * `100`. The exact-arithmetic search is the reference's: it keeps the unit
- * boundaries exact for token counts far beyond double precision's comfort.
+ * (`formatCacheHitPercent`, MIT): billed input with zero cache reads reads
+ * `0` — the reference's rule, and an honest one for the providers this
+ * surface targets (DeepSeek reports cache on every request; a gateway that
+ * strips the field shows a 0% that says "check your endpoint"). A partial hit
+ * is NEVER rounded up to `100`, because "缓存命中 100%" is a claim about the
+ * whole prompt that a 99.9% share does not support. A ratio that would round
+ * to full precision instead reports as many nines as it takes to stay under
+ * it (`99.999`); a true full hit is `100`. The exact-arithmetic search is the
+ * reference's: it keeps the unit boundaries exact for token counts far beyond
+ * double precision's comfort.
  * @param cachedTokens - exact prompt tokens served from cache.
  * @param promptTokens - exact aggregate prompt tokens.
- * @returns the percentage text, or undefined when there was no cache read.
+ * @returns the percentage text, or undefined when there was no billed input.
  */
 export function cacheHitText(cachedTokens: number, promptTokens: number): string | undefined {
-  if (promptTokens <= 0 || cachedTokens <= 0) return undefined;
+  if (promptTokens <= 0) return undefined;
   const missed = promptTokens - cachedTokens;
   if (missed <= 0) return '100';
 
@@ -158,10 +161,50 @@ export function subagentTotals(usage: {
   return parts.join(' · ');
 }
 
-/** `8月28日 23:43` — the transcript's clock, local time. */
-export function formatClock(ts: number): string {
+/**
+ * `23:43` for today, `8月28日 23:43` within the year, the full stamp otherwise —
+ * the transcript's clock, local time. Ported from deepseek-harness
+ * `message-chrome.ts` `formatMessageClock` (MIT): a message written today
+ * reads as a wall clock; only age earns the date back.
+ */
+export function formatClock(ts: number, now: number = Date.now()): string {
   const date = new Date(ts);
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const clock = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const day = new Date(now);
+  if (date.getFullYear() === day.getFullYear() && date.getMonth() === day.getMonth() && date.getDate() === day.getDate()) {
+    return clock;
+  }
+  const md = `${date.getMonth() + 1}月${date.getDate()}日`;
+  return date.getFullYear() === day.getFullYear() ? `${md} ${clock}` : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${clock}`;
+}
+
+/**
+ * A settled turn's duration as the turn header reads it: whole units that grow
+ * (`4秒`, `2分30秒`, `1小时02分30秒`), never a bare float — the harness
+ * `formatRunDuration` ladder (MIT), which reads calmer on a disclosure label
+ * than the meter's `5.6s`.
+ */
+export function runDurationText(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor(total / 60) % 60;
+  const seconds = total % 60;
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  if (hours > 0) return `${hours}小时${pad(minutes)}分${pad(seconds)}秒`;
+  return minutes > 0 ? `${minutes}分${pad(seconds)}秒` : `${seconds}秒`;
+}
+
+/** Live elapsed as the running header ticks it: whole units, no zero pad. */
+export function liveDurationText(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+}
+
+/** Exact token count with thousands separators (the usage panel's column). */
+export function formatExactTokens(count: number): string {
+  return count.toLocaleString('en-US');
 }
 
 /**

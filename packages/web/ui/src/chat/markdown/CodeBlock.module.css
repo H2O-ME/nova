@@ -7,11 +7,12 @@
    port keeps no dead rule. The harness's zero-alpha white copy-button fill
    became `transparent` for the same reason as MarkdownText.module.css (no
    literal color functions in component sheets; nothing is painted either
-   way). */
+   way). The toolbar below is the card arm of the harness `CodeCard.module.css`,
+   folded into this sheet because both arms share one banner wrapper. */
 
 .block {
   --dsl-code-block-banner-background-color: var(--dsw-alias-markdown-code-block-banner);
-  --dsl-code-block-border-radius: 12px;
+  --dsl-code-block-border-radius: var(--dsw-radius-lg);
   /* Local 11/18 instead of the shared --dsw-font-xs-13: the banner scales
      with the markdown 0.875 ladder without shrinking every other xs-13 use. */
   --dsl-code-block-banner-font: 11px/18px var(--dsw-font-family);
@@ -110,4 +111,77 @@
 
 .plain {
   color: var(--dsw-alias-label-primary);
+}
+
+/* The card toolbar (the harness `CodeCard.module.css`): a language label on the
+   left, 24px icon actions on the right, on the banner band the plain arm uses. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px 8px 22px;
+  background: var(--dsl-code-block-background);
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  color: var(--dsw-alias-label-secondary);
+  font: 11px/18px var(--dsw-font-family);
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.language {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-family: var(--ds-font-family-code);
+}
+
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+}
+
+.toolbarAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.toolbarAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.toolbarAction:focus-visible {
+  outline: 1px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+/* With the toolbar the source sits tighter under the banner than the plain
+   arm's 16px box. `data-code-wrap` is present exactly when the toolbar renders. */
+.block[data-code-wrap] :where(pre) {
+  padding: 6px 22px 20px;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Wrapped is the resting state: source columns collapse into the card width.
+   Unwrapped keeps the authored line breaks and scrolls horizontally. */
+.block[data-code-wrap='false'] :where(pre) {
+  white-space: pre;
+  overflow-wrap: normal;
 }

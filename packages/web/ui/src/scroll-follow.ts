@@ -17,6 +17,23 @@
  */
 export const FOLLOW_THRESHOLD = 24;
 
+/**
+ * The element that actually scrolls for a transcript box.
+ *
+ * Under the conversation host the chat's own `.scroll` stands down to
+ * `overflow: visible` and the enclosing `[data-conversation-scroll]` body owns
+ * scrolling (the reference's `ChatViewport.attach`). Writing `scrollTop` to the
+ * transcript box then moves nothing and emits no scroll event — the follow
+ * rule silently stops applying while every predicate above still computes on a
+ * box that can never move. Resolving the owner first is what keeps "pinned"
+ * meaning the tail of the box the reader is actually scrolling.
+ * @param list - the transcript box (a standalone Chat, or the host's occupant).
+ * @returns the enclosing conversation scrollport, or the box itself.
+ */
+export function scrollportOf<T extends { closest(selector: string): T | null }>(list: T): T {
+  return list.closest('[data-conversation-scroll]') ?? list;
+}
+
 /** The browser clamps scrollTop here when the content shrinks under it. */
 export function floorTop(scrollHeight: number, clientHeight: number): number {
   return Math.max(0, scrollHeight - clientHeight);

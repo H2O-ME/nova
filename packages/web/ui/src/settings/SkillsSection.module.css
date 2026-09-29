@@ -1,0 +1,176 @@
+/* Skill 中心 sheet: skill rows in the settings cell rhythm. The page head
+ * (`.heading` / `.intro`) is the reference's pair, at this section column's
+ * scale (see `PluginsSection.module.css`). */
+
+.heading {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.intro {
+  margin: 0;
+  padding-top: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.hint {
+  margin: 0;
+  padding: 12px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The reference inventory's search box (same rhythm as the plugins section):
+ * a plain field row above the list. */
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.searchIcon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.searchInput:focus {
+  outline: none;
+}
+
+/* One source group: label + rows (the model section's `group` recipe). */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 16px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+/* The source group's header: the level name, the discovery ROOT, and the count.
+   The root is monospaced because it is a path the reader types or pastes; the
+   title alone would leave "我该放哪" unanswered. */
+/* The group label aligns with the page head and the search box above it: the
+   list is the page's content, not a card inset from it (see
+   `PluginsSection.module.css`, where the same 12px inset was the 「ui 错位」). */
+.groupTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rootPath {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--ds-font-family-code);
+}
+
+/* Pushed to the row's end: the count is a reading, not a second label. */
+.rootCount {
+  margin-left: auto;
+  flex: none;
+}
+
+/* Row geometry follows the reference's card recipe (see
+   `PluginsSection.module.css`): the hover surface reaches 8px past the content
+   while the row's text stays aligned with the page head and the group label. */
+.skill {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 -8px;
+  padding: 9px 8px;
+  border-radius: var(--dsw-radius-md);
+}
+
+.skill:hover {
+  background: var(--dsw-specific-sidebar-nav-item-hover);
+}
+
+.skillText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skillName {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.skillDesc {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.skillDescEmpty {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+  opacity: 0.6;
+}
+
+/* The confirmation that a flip landed, and why the switches are locked. Both
+   mirror the plugin manager's pair so the two pages read alike. */
+.applied {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.lockNote {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.status {
+  padding: 16px 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}

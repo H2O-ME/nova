@@ -1,0 +1,89 @@
+/* Font-size stepper sheet, ported from deepseek-harness
+ * `ui-theme/src/client/FontSizeRow.module.css` (c) 2026 DeepSeek — MIT
+ * License. The row chrome (title + description + separator) is the shared
+ * `SettingsRow`; only the stepper lives here. */
+
+/* Standard-size stepper with an arrow column revealed on hover/focus-within
+ * and an external unit label. */
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepper {
+  position: relative; /* the arrow column anchors to the pill's right edge */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  height: 36px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.value {
+  min-width: 18px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsw-alias-label-primary);
+}
+
+.unit {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Arrow column: anchored right so the value stays pill-centered whether or
+   not the arrows are showing; revealed on hover/focus-within. Hidden with
+   opacity, not visibility: the buttons stay in tab order and in the
+   accessibility tree, so keyboard focus itself triggers the reveal. */
+.arrows {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+}
+
+.stepper:hover .arrows,
+.stepper:focus-within .arrows {
+  opacity: 1;
+}
+
+/* Arrow buttons: small chips carrying a translucent wash of the layer-1
+   surface (white in light, the elevated layer in dark) over the module fill;
+   hover raises the full layer-1 chip. */
+.arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 75%, transparent);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.arrow:hover:not(:disabled) {
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.arrow:disabled {
+  color: var(--dsw-alias-label-caption);
+  cursor: default;
+}
+
+/* The arrows render at 9px in the reference; the attribute box is the floor,
+   the sheet is the exception (icons.tsx's contract). */
+.arrow svg {
+  width: 9px;
+  height: 9px;
+}

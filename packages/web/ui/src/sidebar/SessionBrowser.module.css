@@ -5,7 +5,7 @@
 
 .root {
   --dsh-session-list-edge-inset: var(--dsh-sidebar-inline-padding);
-  --dsh-session-list-scrollbar-width: 8px;
+  --dsh-session-list-scrollbar-width: 5px;
   --dsh-session-list-scrollbar-offset: 2px;
   flex: 1;
   min-height: 0;
@@ -27,21 +27,24 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 50%;
-  corner-shape: round;
+  border-radius: var(--dsw-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
   color: var(--dsw-alias-label-secondary);
 }
 
-.iconButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+/* The action cluster animates its width and the search pill rounds its corners,
+ * so both clip an outer ring; these controls keep theirs inside instead. */
+.iconButton:focus-visible,
+.searchButton:focus-visible,
+.clearButton:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
 }
 
-.iconButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-label-tertiary);
-  outline-offset: -2px;
+.iconButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 /* Section header: the section word, the inline search that takes the row when
@@ -58,7 +61,7 @@
   padding-left: 4px;
   margin-bottom: 4px;
   box-sizing: border-box;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-md);
   overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -151,8 +154,7 @@
   padding: 0;
   box-sizing: border-box;
   border: none;
-  border-radius: 50%;
-  corner-shape: round;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   cursor: text;
   color: var(--dsw-alias-label-secondary);
@@ -171,7 +173,7 @@
   margin-inline: -2px;
   padding: 0 4px 0 0;
   border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   background: transparent;
   color: var(--dsw-alias-label-caption);
 }
@@ -184,8 +186,7 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 50%;
-  corner-shape: round;
+  border-radius: var(--dsw-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
@@ -251,8 +252,7 @@
   width: 24px;
   height: 24px;
   border: none;
-  border-radius: 50%;
-  corner-shape: round;
+  border-radius: var(--dsw-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
@@ -327,7 +327,7 @@
 }
 
 /* List: the only scrolling region. Block children keep their design heights
-   under content overflow. The 2px edge offset, stable 8px themed scrollbar,
+   under content overflow. The 2px edge offset, stable 5px themed scrollbar,
    and remaining padding equal the shell's right inset, with or without
    overflow, so moving the bar does not move the rows. */
 .list {
@@ -352,6 +352,16 @@
   margin-top: 2px;
 }
 
+/* A flat run has no group wrapper to space its rows, so it carries the same 2px
+   rhythm itself: the rows are direct children of the scroller here (`.list`),
+   where the grouped shape nests them inside `.groupSection`. Without this the
+   single-list mode and every search result list sat at 0px and read as a tighter
+   block than the grouped tree beside it — the reference splits the same two
+   shapes into `.flatList` / `.searchTree`. */
+.wide[data-flat] .list > * + * {
+  margin-top: 2px;
+}
+
 /* One workspace section: header row + a compact expanded session run. */
 .groupSection {
   position: relative;
@@ -365,7 +375,7 @@
   width: 100%;
   height: 28px;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   padding: 0 12px 0 28px;
   background: transparent;
   cursor: pointer;
@@ -389,6 +399,37 @@
   font-size: 13px;
 }
 
+/* An empty LIST is not the same reading as a search with no hits, and the
+   reference draws them differently (`WorkspaceBrowser.module.css`): the search
+   answer is a plain line where the results would be (`.empty`, above), while a
+   list with nothing in it yet is a centered placeholder set well below the
+   header. Our placeholder carries only its line — the reference pairs it with a
+   24px queue glyph, and this icon set has no list mark; a wrong mark reads worse
+   than none. It also carries `data-row-key="empty"`, matching the reference's
+   own key for this row, so the animation treats it as one row like any other. */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 80px;
+  padding: 0 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* The placeholder's mark, one step above the text it sits over (the reference
+   pairs its line with a 24px queue glyph; `QueueOutline14` is scaled up here
+   rather than duplicated at a second design box). */
+.emptyGlyph {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--dsw-alias-label-caption);
+}
+
 /* Rail control seats: the reference stacks its search and add controls as
    36x36 circles here (`.rail .search` / `.rail .iconButton`, 12px rhythm);
    this app's rail carries the same pair — open the search, ask for the list
@@ -405,6 +446,9 @@
 .rail .iconButton {
   width: 36px;
   height: 36px;
+  /* Rail hovers share the shell rail's 12px rounding (the reference's own
+     comment): the wide header's 8px controls round up in the collapsed rail. */
+  border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-primary);
 }
 

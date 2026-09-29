@@ -19,6 +19,15 @@ describe('contextLabel', () => {
     expect(contextLabel('memory')).toBe('memory');
   });
 
+  it('never returns an Object.prototype member for a hostile tag', () => {
+    // The table is an object literal and the tag is wire data, so a bare index
+    // resolves `constructor` to an inherited function — which React then renders
+    // as a child. The fallback must be the tag itself, as for any unknown tag.
+    for (const tag of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty']) {
+      expect(contextLabel(tag)).toBe(tag);
+    }
+  });
+
   it('keeps one title for every section row (the disclosure chrome is shared)', () => {
     expect(CONTEXT_ROW_TITLE).toBe('上下文注入');
   });

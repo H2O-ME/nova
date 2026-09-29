@@ -1,5 +1,10 @@
 /* Ported from deepseek-harness ui-input-trigger MenuView.module.css
-   (c) 2026 DeepSeek — MIT License. */
+   (c) 2026 DeepSeek — MIT License: the menu's own geometry, the scrolling
+   viewport, the row, the two heading rungs, the drill seat, the pending
+   skeleton and the overflow hint. The container's material is the reference's
+   shared one (`ui-primitives/MenuSurface`), applied here as `.menu::before`,
+   which is why `--dsw-specific-menu` — a token this sheet really carries — is
+   the surface fill. */
 
 .menu {
   position: absolute;
@@ -15,25 +20,38 @@
   max-height: 400px;
   overflow: hidden;
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens
-     (see ui-theme styles/scrollbar.css for the rebinding contract). */
+     (see styles/scrollbar.css for the rebinding contract). */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
-  /* A 10px draggable rail carries a quiet 4px thumb, inset from the card's
-     rounded ends. ui-theme's global scrollbar sheet renders these values. */
-  --dsh-scrollbar-width: 10px;
-  --dsh-scrollbar-thumb-border: 3px;
+  /* The shared menu material's rail: 6px wide, a quiet 2px thumb, inset from
+     the card's rounded ends (the reference's own values). */
+  --dsh-scrollbar-width: 6px;
+  --dsh-scrollbar-thumb-border: 2px;
   --dsh-scrollbar-track-margin: 12px;
   padding: 4px;
   display: flex;
   flex-direction: column;
   border: 0;
-  border-radius: 20px;
-  /* The harness names `--dsw-specific-menu` here; our token layer carries no
-     menu rung, so the card takes `bg-layer-3` — the fill the harness's own
-     dockkit menu draws for the same "menu material". */
-  background: var(--dsw-alias-bg-layer-3);
+  border-radius: var(--dsw-radius-lg);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   box-shadow: var(--dsw-elevation-prominent);
+  /* Contain the material layer below without letting its negative z-index
+     escape the menu (the reference's `isolation: isolate`). */
+  isolation: isolate;
+}
+
+/* The translucent menu material on its own layer: filtering only the
+   background keeps this menu free of an ancestor backdrop root, and free of a
+   new fixed-position containing block for anything it holds. */
+.menu::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  pointer-events: none;
 }
 
 /* The hint covers content, not the scrollbar rail, and disappears once the
@@ -45,7 +63,7 @@
   bottom: 4px;
   left: 4px;
   height: 16px;
-  background: linear-gradient(to bottom, transparent, var(--dsw-alias-bg-layer-3));
+  background: linear-gradient(to bottom, transparent, var(--dsw-specific-menu));
   pointer-events: none;
 }
 
@@ -59,16 +77,16 @@
 .item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  min-height: 40px;
-  padding: 8px 10px;
+  min-height: 34px;
+  padding: 6px 8px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   background: transparent;
   cursor: pointer;
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--dsw-alias-label-primary);
   text-align: left;
 }
@@ -81,26 +99,26 @@
 
 .sectionTitle {
   flex: none;
-  min-height: 26px;
-  padding: 6px 10px 2px;
+  min-height: 23px;
+  padding: 5px 8px 2px;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  line-height: 18px;
+  line-height: 16px;
 }
 
 .sectionTitle:not(:first-child) {
-  margin-top: 4px;
+  margin-top: 3px;
 }
 
 .itemIcon {
   display: inline-flex;
   flex: none;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   align-items: center;
   justify-content: center;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-menu-icon);
 }
 
 .itemName {
@@ -120,6 +138,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 /* Right-aligned so every description ends at the same edge and the titles
@@ -132,6 +152,8 @@
   white-space: nowrap;
   text-align: right;
   color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 /* Trailing seat on drillable rows (directories): the Tab keycap hint plus the
@@ -140,7 +162,7 @@
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   margin-left: auto;
 }
 
@@ -150,20 +172,20 @@
 .drillHintText {
   display: none;
   color: var(--dsw-alias-label-caption);
-  font-size: 11px;
-  line-height: 18px;
+  font-size: 10px;
+  line-height: 16px;
   white-space: nowrap;
 }
 
 .drillHint {
   display: none;
-  padding: 0 5px;
-  border-radius: 4px;
+  padding: 0 4px;
+  border-radius: var(--dsw-radius-xs);
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-caption);
   font-family: inherit;
-  font-size: 11px;
-  line-height: 18px;
+  font-size: 10px;
+  line-height: 16px;
 }
 
 .item.active .drillHintText,
@@ -177,11 +199,10 @@
   flex: none;
   display: inline-grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  /* label-caption, the quiet tint the composer's access-mode chevron uses. */
-  color: var(--dsw-alias-label-caption);
+  width: 18px;
+  height: 18px;
+  border-radius: var(--dsw-radius-xs);
+  color: var(--dsw-alias-menu-icon);
 }
 
 .drill:hover {
@@ -189,11 +210,42 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* Heading row above a source group: non-interactive small grey text,
- * padding aligned with items (mirrors ui-primitives Menu .label). */
+/* Heading row above a source group: non-interactive small grey text, padding
+ * aligned with items (mirrors the reference's own menu label). */
 .groupTitle {
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 16px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 15px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* Pending-source skeleton: two item-cell rows around a breathing bar (the
+   reference's text skeleton — a 2s pulse; here the single bg-skeleton token
+   pulses through opacity, so no second colour is invented). */
+.skeletonRow {
+  display: flex;
+  align-items: center;
+  /* border-box keeps the skeleton row aligned with the compact item buttons. */
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.skeletonBar {
+  height: 18px;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-bg-skeleton);
+  animation: composer-menu-skeleton 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
+}
+
+@keyframes composer-menu-skeleton {
+  0% { opacity: 1; }
+  40% { opacity: 0.6; }
+  80%, 100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonBar {
+    animation: none;
+  }
 }

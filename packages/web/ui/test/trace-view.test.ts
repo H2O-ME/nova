@@ -73,4 +73,27 @@ describe('traceRowText', () => {
     expect(traceRowText({ kind: 'dispatch', ts: 0, tool: 'read_file', isError: true }))
       .toEqual({ label: 'PTC 子调用', detail: 'read_file', trailing: '失败' });
   });
+
+  it('never prints an inherited Object member as a word', () => {
+    // The regression this pins: the three label tables were read as
+    // `TABLE[value]`, and every value here is a discriminant of a `trace` frame
+    // — i.e. whatever the host's log said. A value naming an `Object.prototype`
+    // member returned the inherited FUNCTION, which the pane then printed as the
+    // row's label (`typeof label === 'function'`, proven by calling this before
+    // the guard existed). `Object.hasOwn` confines the read to the table.
+    const hostile = ['constructor', 'toString', 'valueOf', 'hasOwnProperty'] as const;
+    for (const value of hostile) {
+      const message = traceRowText({ kind: 'message', ts: 0, role: value, preview: '', tools: 0 } as never);
+      expect(typeof message.label, `role ${value}`).toBe('string');
+      expect(message.label, `role ${value}`).not.toContain('native code');
+
+      const compaction = traceRowText({ kind: 'compaction', ts: 0, phase: value } as never);
+      expect(typeof compaction.label, `phase ${value}`).toBe('string');
+      expect(compaction.label, `phase ${value}`).not.toContain('native code');
+
+      const approval = traceRowText({ kind: 'approval', ts: 0, tool: 't', request: 'r', outcome: value } as never);
+      expect(typeof approval.trailing, `outcome ${value}`).toBe('string');
+      expect(String(approval.trailing), `outcome ${value}`).not.toContain('native code');
+    }
+  });
 });

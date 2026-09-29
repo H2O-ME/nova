@@ -28,6 +28,31 @@ export const DRILL_HINT = '进入目录';
 export const DRILL_ARIA = '进入目录';
 /** `drill.key`: the Tab keycap beside the hint. */
 export const DRILL_KEY = 'Tab';
+/** `slash.menu`'s `loading`: the pending candidate list's accessible name. */
+export const MENU_LOADING = '正在加载…';
+
+/**
+ * The attachment rail's copy, verbatim from the reference's `conversation`
+ * dictionary (`attachment.*`, `file.*`, `image.*`).
+ */
+export const ATTACHMENT_GROUP = '待发送附件';
+export const ATTACHMENT_SCROLL_LEFT = '向左滚动附件';
+export const ATTACHMENT_SCROLL_RIGHT = '向右滚动附件';
+export const DROP_TITLE = '文件或图片拖动到此处即可添加';
+export const DROP_BLOCKED = '当前无法添加文件或图片';
+export const FILE_PENDING = '待发送文件';
+export const FILE_UPLOADING = '上传中…';
+export const FILE_UPLOAD_FAILED = '上传失败，点击重试';
+
+/** `file.remove`: `移除文件 {name}`. */
+export function fileRemoveLabel(name: string): string {
+  return `移除文件 ${name}`;
+}
+
+/** `file.retry`: `重试上传 {name}`. */
+export function fileRetryLabel(name: string): string {
+  return `重试上传 ${name}`;
+}
 
 /**
  * The draft's placeholder: the owner prop wins, then the bar's own states.
@@ -69,22 +94,34 @@ export interface PrimarySeat {
   label: string;
 }
 
+/** `file.stillUploading`: the primary refuses while a body is in flight. */
+export const STILL_UPLOADING = '文件还在上传，请等待上传完成后发送';
+
 /**
  * The primary seat (harness InputBar `primaryStops` / `primaryLabel`, minus
  * the seats our kernel has no transport for: steering and continuable
  * children).
  *
- * Two rules carry the design: a running turn with an EMPTY draft turns the
+ * Three rules carry the design: a running turn with an EMPTY draft turns the
  * seat into Stop — the abort control must stay reachable while the loop is in
- * flight, and an empty draft would send nothing — and a draft delivered into a
+ * flight, and an empty draft would send nothing; a draft delivered into a
  * running turn is named for what it does (the kernel queues it) rather than
- * promising an immediate send.
+ * promising an immediate send; and a draft whose attachments are still
+ * uploading is REFUSED, because the prompt would name a file that does not
+ * exist on disk yet (dsh `view-binding.ts:128` refuses for the same reason).
  * @param state - the bar's live facts.
  * @returns the seat's kind, enabled state, and label.
  */
-export function primarySeat(state: { running: boolean; disabled: boolean; draft: string }): PrimarySeat {
+export function primarySeat(
+  state: { running: boolean; disabled: boolean; draft: string; uploading?: boolean },
+): PrimarySeat {
   const empty = state.draft.trim() === '';
   if (state.running && empty) return { kind: 'stop', disabled: false, label: STOP_LABEL };
+  // Refusing beats sending a prompt that silently omits the file: the reader
+  // gets the reason as the control's own name rather than as a later failure.
+  if (state.uploading === true && !empty) {
+    return { kind: 'send', disabled: true, label: STILL_UPLOADING };
+  }
   return {
     kind: 'send',
     disabled: state.disabled || empty,
@@ -131,4 +168,9 @@ export function queueHeaderVisible(count: number): boolean {
  */
 export function queueListVisible(count: number, collapsed: boolean): boolean {
   return count === 1 || !collapsed;
+}
+
+/** `image.remove`: `移除图片 {name}`. */
+export function imageRemoveLabel(name: string): string {
+  return `移除图片 ${name}`;
 }

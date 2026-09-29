@@ -3,9 +3,17 @@
    with the markdown token ladder), block gap 16. The Settings font-size
    preference rides the body-published axis: size follows
    --dsh-content-font-size and the line height keeps the 10px leading via the
-   shared px delta. IconActions sit below the body with an explicit 16px top
-   margin (figma 43:32997) — separate from the body's internal gap so the
-   footer spacing stays fixed when the body is a single block. */
+   shared px delta.
+ *
+ * The footer's IconActions are NOT here: they are the turn's own `turn-tail`
+ * flow row (`AssistantTail.module.css`), which the harness renders as a
+ * sibling of the answer — that is what gives the closing chrome the column's
+ * 16px rhythm plus its own 4px lead-in. The source sheet still carries a
+ * leftover `.actions { margin-top: 16px }` from when the footer lived inside
+ * this body; it is deliberately not ported, because nothing consumes it (the
+ * footer is composed as `tailCss.actions`), and a rule whose only reader is a
+ * stylesheet browser is a rule that will be believed by the next reader.
+ */
 
 .root {
   display: flex;
@@ -43,22 +51,30 @@
   padding-left: var(--dsh-table-lead);
 }
 
+/* Only the painted table outranks Conversation's z-index 0 width handle. The
+   full-width scroll wrapper and its transparent alignment padding stay below,
+   so a fitting four-column table does not disable the surrounding gutter. */
+.body :global(.md-table-wide) > table {
+  position: relative;
+  z-index: 1;
+}
+
+/* hidden="until-found" keeps a zero-height reasoning box in flex layout.
+   Cancel the one gap that box would otherwise leave before the visible reply;
+   visible Assistant blocks retain the ordinary 16px rhythm. */
+.body > [data-turn-process-inline][hidden] {
+  margin-bottom: -16px;
+}
+
 /* Interrupted-turn terminal marker: quiet inline tag, no animation. Fixed
    size like the small/code token variants — 11px is dense secondary text
    that would fall to an illegible 9px at the 12px floor. */
 .stopped {
   align-self: flex-start;
   padding: 0 6px;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
   line-height: 18px;
-}
-
-/* Finalized footer offset (figma 43:32997); chrome lives in MessageIconActions. */
-.actions {
-  margin-top: 16px;
-  /* Optical align with 28px icon hit targets that pad 6px past the glyph. */
-  margin-left: -6px;
 }

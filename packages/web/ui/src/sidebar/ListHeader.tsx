@@ -17,6 +17,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { CloseIcon, RefreshIcon, SearchIcon } from '../icons.js';
+import { Tooltip } from '../shell/Tooltip.js';
 import { LIST_COPY, sectionLabel, type GroupMode } from './list-view.js';
 import { SIDEBAR_COPY, cls } from './view.js';
 import { ViewOptions } from './ViewOptions.js';
@@ -63,29 +64,37 @@ export function ListHeader({
   }, [searchOpen]);
 
   if (rail) {
+    // The rail's two controls are bare glyphs with no label anywhere on screen,
+    // so each carries a real tooltip: `title` never appears for a keyboard user,
+    // and the reference wraps these seats in its Tooltip primitive for exactly
+    // that reason.
     return (
       <div className={cls(css.railControls)}>
-        <button
-          type="button"
-          className={css.iconButton}
-          aria-label={LIST_COPY['search.sessions.aria']}
-          title={LIST_COPY['search.sessions.aria']}
-          onClick={() => {
-            onExpand();
-            onSearchOpen(true);
-          }}
-        >
-          <SearchIcon className={css.actionIcon} />
-        </button>
-        <button
-          type="button"
-          className={css.iconButton}
-          aria-label={SIDEBAR_COPY['list.reload']}
-          title={SIDEBAR_COPY['list.reload']}
-          onClick={onReload}
-        >
-          <RefreshIcon className={css.actionIcon} />
-        </button>
+        <Tooltip label={LIST_COPY['search.sessions.aria']} side="right" delayMs={500}>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={LIST_COPY['search.sessions.aria']}
+            title={LIST_COPY['search.sessions.aria']}
+            onClick={() => {
+              onExpand();
+              onSearchOpen(true);
+            }}
+          >
+            <SearchIcon className={css.actionIcon} />
+          </button>
+        </Tooltip>
+        <Tooltip label={SIDEBAR_COPY['list.reload']} side="right" delayMs={500}>
+          <button
+            type="button"
+            className={css.iconButton}
+            aria-label={SIDEBAR_COPY['list.reload']}
+            title={SIDEBAR_COPY['list.reload']}
+            onClick={onReload}
+          >
+            <RefreshIcon className={css.actionIcon} />
+          </button>
+        </Tooltip>
       </div>
     );
   }

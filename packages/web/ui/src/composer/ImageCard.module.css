@@ -1,0 +1,100 @@
+/* One staged image in the composer's rail: the thumbnail IS the card.
+   The file card next to it is a 240x64 rectangle of text because a path is all
+   a referenced file has to show; an image has pixels, and showing them is the
+   only way the user can confirm THE image they meant went up — two screenshots
+   in a session are not distinguishable by name. Geometry follows the reference
+   rail's item height (64px) so the two card kinds sit on one baseline. */
+
+.card {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 0.5px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-specific-input-major);
+  box-sizing: border-box;
+}
+
+.failed {
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+.thumb {
+  width: 100%;
+  height: 100%;
+  /* `contain`, not `cover`: a cropped thumbnail can hide the very part of the
+     image the user is checking for, which defeats the point of showing it. */
+  object-fit: contain;
+  display: block;
+}
+
+/* The upload is a local read, so it is usually instant; this covers the gap
+   rather than announcing progress it cannot measure. */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  corner-shape: round;
+  animation: image-card-spin 0.8s linear infinite;
+}
+
+@keyframes image-card-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* The failure text replaces the picture: there is nothing to show, and the
+   reason is what the reader needs. */
+.error {
+  padding: 4px 6px;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 10px;
+  line-height: 12px;
+  text-align: center;
+}
+
+.remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-button-contrast-fill);
+  color: var(--dsw-alias-label-primary-inverted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.card:hover .remove,
+.remove:focus-visible {
+  opacity: 1;
+}
+
+/* Touch surfaces have no hover to reveal the control. */
+@media (pointer: coarse) {
+  .remove {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remove {
+    transition: none;
+  }
+  .spinner {
+    animation: none;
+  }
+}

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ApprovalRequest, KernelEvent, ToolCallView, ToolResultView } from '@nova-agent/core';
+import type { ApprovalRequest, KernelEvent, QuestionRequest, ToolCallView, ToolResultView } from '@nova-agent/core';
 import type { ReadyInfo, WireBlock, WireTraceRow } from '../../src/protocol.js';
 import { emptyTotals } from '../../src/totals.js';
 import { initialState, reduce, type Block, type UiState } from '../src/state.js';
+import { isIgnoredEvent } from '../src/state-events.js';
 
 /**
  * The reducer is the browser's whole brain: frames in, blocks out. These tests
@@ -57,6 +58,7 @@ function readyInfo(over: Partial<ReadyInfo> = {}): ReadyInfo {
     historyTotal: 0,
     traceTotal: 0,
     pendingApprovals: [],
+    pendingQuestions: [],
     jobs: [],
     usedTokens: 0,
     modelSwitching: false,
@@ -68,6 +70,11 @@ function readyInfo(over: Partial<ReadyInfo> = {}): ReadyInfo {
 
 function approvalRequest(id: string): ApprovalRequest {
   return { id, call: CALL, kind: 'read' };
+}
+
+/** A one-question batch, the shape the browser renders from `question_request`. */
+function questionRequest(id: string): QuestionRequest {
+  return { id, questions: [{ id: 'mode', question: '哪条路？', options: [{ label: '快' }, { label: '稳' }] }] };
 }
 
 /** A state that has seen one `ready` — the precondition every seat test has. */
@@ -144,6 +151,23 @@ describe('reduce / ready replay', () => {
     expect(state).toMatchObject({ approvalMode: 'full', codeMode: 'both', sessionsStale: true });
     expect(state.sessions).toHaveLength(1);
     expect(state.pendingApproval?.id).toBe('ap1');
+  });
+
+  it('restores a suspended question from the baseline, not an idle session', () => {
+    // The load-bearing case for a reattach: the run is parked INSIDE the ask, so
+    // a baseline that dropped `pendingQuestions` would show an idle session whose
+    // run can never be released from the browser.
+    const state = reduce(initialState, {
+      type: 'ready',
+      info: readyInfo({ pendingQuestions: [questionRequest('q1')] }),
+    });
+    expect(state.pendingQuestion?.id).toBe('q1');
+    expect(state.phase).toBe('waiting_question');
+    // And the baseline is authoritative the other way too: a plain attach must
+    // clear a card the client was holding when its socket dropped.
+    const cleared = reduce(state, { type: 'ready', info: readyInfo() });
+    expect(cleared.pendingQuestion).toBeNull();
+    expect(cleared.phase).toBe('idle');
   });
 
   it('holds one list request in flight at a time (the answer settles it)', () => {
@@ -241,6 +265,27 @@ describe('reduce / trace view', () => {
     expect(dropped.trace?.rows).toHaveLength(2);
   });
 
+  it('unblocks the directory picker when the socket drops', () => {
+    // The regression this pins: `historyPending` and `trace.pending` were both
+    // cleared here but `directory.pending` was not, and that flag is
+    // load-bearing — the dialog gates its own opening ask on `!pending` and
+    // disables both 新建文件夹 and 打开 while it is set. A disconnect during a
+    // listing therefore left a dead end that only closing and reopening could
+    // escape, with no frame able to arrive and clear it.
+    const asked = reduce(opened(), { type: 'directory_ask' });
+    expect(asked.directory).toMatchObject({ pending: true });
+    const dropped = reduce(asked, { type: 'connection', connected: false });
+    expect(dropped.directory).toMatchObject({ pending: false });
+    // A level already drawn stays on screen: only the in-flight flag is dropped.
+    const listed = reduce(asked, {
+      type: 'directory',
+      level: { path: '/w', home: '/h', crumbs: [], roots: [], entries: [], truncated: false },
+    });
+    const droppedAfterList = reduce(listed, { type: 'connection', connected: false });
+    expect(droppedAfterList.directory?.level?.path).toBe('/w');
+    expect(droppedAfterList.directory).toMatchObject({ pending: false });
+  });
+
   it('selects a view locally, without touching the transcript', () => {
     const live = fold([{ event: { type: 'text_delta', messageId: 'm', text: 'x' } }]);
     const switched = reduce(live, { type: 'select_view', view: 'trace' });
@@ -334,6 +379,42 @@ describe('reduce / approvals, queue, phases', () => {
     ]);
     expect(state.queued).toEqual(['second', 'third']);
     expect(state.phase).toBe('tool');
+  });
+
+  it('holds the pending question and clears only the one that was resolved', () => {
+    const pending = fold([{ event: { type: 'question_request', request: questionRequest('q1') } }]);
+    expect(pending.pendingQuestion?.id).toBe('q1');
+    expect(pending.pendingQuestion?.questions[0]?.question).toBe('哪条路？');
+    // A late resolution for a batch the user already moved past must not clear
+    // the card currently on screen.
+    const other = fold(
+      [{ event: { type: 'question_resolved', id: 'other', resolution: { source: 'aborted' } } }],
+      pending,
+    );
+    expect(other.pendingQuestion?.id).toBe('q1');
+    const answered = fold(
+      [{ event: { type: 'question_resolved', id: 'q1', resolution: { source: 'user', answer: { answers: [] } } } }],
+      pending,
+    );
+    expect(answered.pendingQuestion).toBeNull();
+    // The user's own answer needs no hint: the tool row carries it.
+    expect(answered.blocks.some((b) => b.kind === 'hint')).toBe(false);
+  });
+
+  it('says why a question went away when it was not the user who closed it', () => {
+    const pending = fold([{ event: { type: 'question_request', request: questionRequest('q1') } }]);
+    const aborted = fold(
+      [{ event: { type: 'question_resolved', id: 'q1', resolution: { source: 'aborted' } } }],
+      pending,
+    );
+    expect(aborted.pendingQuestion).toBeNull();
+    expect(aborted.blocks.at(-1)).toMatchObject({ kind: 'hint', tone: 'warn', text: expect.stringContaining('取消') });
+    const cancelled = fold(
+      [{ event: { type: 'question_resolved', id: 'q1', resolution: { source: 'cancelled' } } }],
+      pending,
+    );
+    expect(cancelled.pendingQuestion).toBeNull();
+    expect(cancelled.blocks.at(-1)).toMatchObject({ kind: 'hint', tone: 'info' });
   });
 
   it('feeds the gauge from the last request consumption, not the cumulative total', () => {
@@ -440,7 +521,7 @@ describe('reduce / tool detail and jobs', () => {
   it('upserts a background job in place instead of appending a row per update', () => {
     const job = (status: 'running' | 'completed', progress?: string): KernelEvent => ({
       type: 'job_update',
-      job: { id: 'bash-1', kind: 'bash', label: 'pnpm build', status, ...(progress !== undefined ? { progress } : {}) },
+      job: { id: 'bash-1', kind: 'bash', label: 'pnpm build', status, sessionId: 'sess_test', ...(progress !== undefined ? { progress } : {}) },
     });
     const started = fold([{ event: job('running', 'starting') }]);
     expect(started.blocks).toHaveLength(1);
@@ -481,7 +562,7 @@ describe('reduce / history pagination', () => {
   });
 
   it('rebuilds the job rows the kernel still tracks, and counts only log blocks as history', () => {
-    const jobs = [{ id: 'bash-1', kind: 'bash' as const, label: 'pnpm test', status: 'running' as const }];
+    const jobs = [{ id: 'bash-1', kind: 'bash' as const, label: 'pnpm test', status: 'running' as const, sessionId: 'sess_test' }];
     const state = reduce(initialState, {
       type: 'ready',
       info: readyInfo({ history: [{ kind: 'user', text: 'q1' }], historyTotal: 1, jobs }),
@@ -621,5 +702,105 @@ describe('reduce / model seat', () => {
     // Another session may sit behind another endpoint; the old list must not
     // survive to offer models this one cannot reach.
     expect(next.catalog).toBeNull();
+  });
+});
+
+describe('reduce / directory browser', () => {
+  const LEVEL = {
+    path: 'D:/home/proj',
+    home: 'D:/home',
+    parent: 'D:/home',
+    crumbs: [
+      { name: 'home', path: 'D:/home' },
+      { name: 'proj', path: 'D:/home/proj' },
+    ],
+    roots: [{ name: 'C:\\', path: 'C:\\' }, { name: 'D:\\', path: 'D:\\' }],
+    entries: [{ name: 'src', path: 'D:/home/proj/src', hidden: false }],
+    truncated: false,
+  };
+
+  it('opens an empty sheet: open alone asks for nothing yet', () => {
+    const opened = reduce(initialState, { type: 'directory_open', open: true });
+    // The dialog mounts into a placeholder and the component sends the first
+    // `list_directory` itself; until that lands there is no level and nothing
+    // is in flight.
+    expect(opened.directory).toMatchObject({ level: null, error: null, pending: false });
+  });
+
+  it('marks the navigation in flight and lands the level whole', () => {
+    const asked = reduce(
+      reduce(initialState, { type: 'directory_open', open: true }),
+      { type: 'directory_ask' },
+    );
+    expect(asked.directory).toMatchObject({ pending: true, error: null });
+    const listed = reduce(asked, { type: 'directory', level: LEVEL });
+    expect(listed.directory).toMatchObject({ pending: false, error: null });
+    expect(listed.directory?.level?.path).toBe('D:/home/proj');
+    expect(listed.directory?.level?.entries).toHaveLength(1);
+  });
+
+  it('keeps the previous level on a refusal and states the reason beside it', () => {
+    // "Cannot look" and "nothing here" are different facts, so a failed
+    // navigation returns the user to where they were with the reason shown,
+    // never to a blank sheet.
+    const listed = reduce(reduce(initialState, { type: 'directory_open', open: true }), {
+      type: 'directory',
+      level: LEVEL,
+    });
+    const refused = reduce(listed, { type: 'directory_error', message: '目录不存在：D:/nope' });
+    expect(refused.directory?.level?.path).toBe('D:/home/proj');
+    expect(refused.directory?.error).toBe('目录不存在：D:/nope');
+    expect(refused.directory?.pending).toBe(false);
+  });
+
+  it('drops everything on close: the next open re-asks instead of showing a stale tree', () => {
+    // The host may have changed underneath while the dialog was closed (another
+    // tool created a folder); a tree shown as current when it is not is worse
+    // than one re-asked for.
+    const listed = reduce(reduce(initialState, { type: 'directory_open', open: true }), {
+      type: 'directory',
+      level: LEVEL,
+    });
+    const closed = reduce(listed, { type: 'directory_open', open: false });
+    expect(closed.directory).toBeNull();
+  });
+});
+
+describe('event classification is total', () => {
+  it('names every KernelEvent variant exactly once', () => {
+    // This list is the contract `classifyEvent` enforces at the type level: the
+    // reducer must decide what each channel does, and a variant nobody classified
+    // would be a feature the user cannot see. `assertNever` in state-events.ts
+    // makes an omission a COMPILE error; this test makes the same fact visible
+    // here, and fails if a variant is added and this list is not updated.
+    const everyVariant = [
+      // AgentEvent (the 11 passthroughs)
+      'turn_start', 'text_delta', 'reasoning_delta', 'message', 'tool_call_start',
+      'tool_call_result', 'usage', 'turn_aborted', 'llm_retry', 'empty_completion', 'done',
+      // kernel additions
+      'user_message', 'phase', 'approval_request', 'approval_resolved', 'question_request',
+      'question_resolved', 'tool_progress', 'subagent_update', 'job_update', 'queue_update',
+      'todo', 'model', 'command', 'compaction', 'run_failed', 'run_stats', 'notice',
+    ] as const;
+    expect(everyVariant.length).toBe(28);
+    // `message` and `turn_aborted` are the only two the reducer does not draw, and
+    // each has a stated reason rather than an accidental gap.
+    const ignored = everyVariant.filter((type) => isIgnoredEvent({ type } as KernelEvent));
+    expect([...ignored].sort()).toEqual(['message', 'turn_aborted']);
+  });
+
+  it('labels only real notice codes, never an inherited object member', () => {
+    // `NOTICE_LABELS['constructor']` returns `Object` from the prototype chain, so
+    // a bare lookup guarded by an `undefined` check would pass and render
+    // "undefined · <text>". A code that is not a key must fall back to the
+    // kernel's own text with no label prepended.
+    for (const code of ['constructor', 'toString', 'valueOf', '__proto__']) {
+      const block = fold([{ event: { type: 'notice', code, text: '正文' } as KernelEvent }]).blocks.at(-1);
+      expect(block).toMatchObject({ kind: 'hint' });
+      expect(block?.kind === 'hint' ? block.text : '').toBe('正文');
+    }
+    // A real code still gets its label.
+    const known = fold([{ event: { type: 'notice', code: 'compacted', text: '正文' } as KernelEvent }]).blocks.at(-1);
+    expect(known?.kind === 'hint' ? known.text : '').toBe('压缩 · 正文');
   });
 });

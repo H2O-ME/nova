@@ -20,7 +20,7 @@ import css from './DiffCard.module.css';
 type DiffShell = Extract<BodyShell, { card: 'diff' }>;
 
 /** Rows shown before the height cap collapses the middle (harness `CHAT_DIFF_MAX_LINES`). */
-export const CHAT_DIFF_MAX_LINES = 8;
+export const CHAT_DIFF_MAX_LINES = 9;
 
 const ROW_CLASS: Record<string, string | undefined> = {
   ctx: css.ctx,

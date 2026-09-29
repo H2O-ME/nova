@@ -17,6 +17,18 @@
   border-bottom: 0.5px solid var(--dsw-alias-border-l3);
 }
 
+/* A session with one view renders no tab strip, so the header is the title row
+   plus its insets. The reference drops the 76px floor and spends 10px as bottom
+   padding instead (`.header:where(:not(:has(.tabs)))` in ConversationRoot.module
+   .css) — otherwise every single-view session reserves the 26px the strip would
+   have taken, as dead space above the transcript. The 76px figure exists to
+   align this rule with the sidebar's own rules, so it belongs to the tabbed
+   layout only. */
+.header:where(:not(:has(.tabs))) {
+  min-height: 0;
+  padding-bottom: 10px;
+}
+
 /* Blank hero/settling: keep the strict Session header mounted without taking
    column space; the root-owned scrollport and composer remain below it. */
 .headerHidden {
@@ -59,7 +71,9 @@
   overflow: hidden;
   padding: 4px 8px;
   border: none;
-  border-radius: 12px;
+  /* The token, not its 12px value: the reference states `--dsw-radius-md`, so
+     this crumb rounds with every other 12px control if the scale moves. */
+  border-radius: var(--dsw-radius-md);
   background: transparent;
   font-size: 14px;
   line-height: 20px;

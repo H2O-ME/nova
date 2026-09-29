@@ -1,0 +1,68 @@
+/* Ported from deepseek-harness ui-chat `ChatGroupSeat.module.css`
+   (c) 2026 DeepSeek — MIT License. The reference's group is
+   `.root > [title button] + .body > .content > members`; this port folds the
+   members under the turn's own header, so the header half is not here — the
+   bounded body, its inner scroll container, the reserved gutter and the edge
+   fades are, because those are what a reader sees while a long group scrolls. */
+
+.root {
+  min-width: 0;
+}
+
+/* A long process group scrolls inside this box rather than growing the
+   transcript without bound: the cap keeps a 40-step turn from burying the
+   answer it belongs to. `overscroll-behavior` stops the inner scroller from
+   chaining into the transcript, and the reserved gutter keeps the transcript
+   from reflowing when the scrollbar appears. */
+.body {
+  --dsh-chat-flow-gap: 8px;
+  max-height: min(400px, 50vh);
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* Gradient fades over an end that can still scroll: without them a clipped
+   row reads as a rendering fault rather than as more content below. `black` is
+   the mask's opaque stop, not a paint color (same as ReasoningRow's fade). */
+.fadeTop {
+  mask-image: linear-gradient(to bottom, transparent 0, black 24px, black 100%);
+}
+
+.fadeBottom {
+  mask-image: linear-gradient(to bottom, black 0, black calc(100% - 24px), transparent 100%);
+}
+
+.fadeTop.fadeBottom {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    black 24px,
+    black calc(100% - 24px),
+    transparent 100%
+  );
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+}
+
+.content > * {
+  flex-shrink: 0;
+}
+
+/* The group's own rhythm is 8px (one step under the transcript's 16px): the
+   members are one act, not separate contributions to the conversation. */
+.content > :not([hidden]):not(:empty) ~ :not([hidden]):not(:empty) {
+  margin-top: var(--dsh-chat-flow-gap, 8px);
+}
+
+/* A settled turn read with its process open keeps the wider rhythm: the
+   reader asked for the detail, so it reads as ordinary progression. */
+.expandedBody {
+  --dsh-chat-flow-gap: 16px;
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
+}

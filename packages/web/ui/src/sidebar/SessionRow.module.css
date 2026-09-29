@@ -2,14 +2,17 @@
    `src/client/rows/Rows.module.css` (c) 2026 DeepSeek — MIT License.
    Classes for the row menus (rename/fork/archive), the session hover card, the
    drag insert markers, and the schedule indicator are not ported: this app's
-   session list carries titles, times, and a selection, and nothing else. */
+   session list carries titles, times, and a selection, and nothing else. The
+   reference's `--dsh-workspace-indent` is dropped for the same reason — it
+   exists to express nested workspaces, which this list does not have, so the
+   token would only ever resolve to its 0px fallback. */
 
 .projectRow,
 .sessionRow {
   display: flex;
   align-items: center;
   gap: 6px;
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-md);
   padding: 0 8px;
   cursor: pointer;
   user-select: none;
@@ -109,11 +112,99 @@
   flex: 1;
 }
 
+/* While the marquee travels, both clipping edges fade in over 12px instead of
+   hard-cutting a character: the left once the title has moved off its start
+   (`data-scrolled`), the right while text still remains beyond the cell
+   (`data-clipped`) — at the far edge the right fade lifts so the final
+   character reads at full strength. The hook that publishes these lives in
+   `use-title-marquee.ts`. The stops are `currentColor` rather than the
+   reference's opaque black: a mask gradient is read in alpha mode, so the
+   title's own ink is both the token-correct stop and the one that follows the
+   theme. */
+.sessionRow .title[data-scrolled] {
+  mask-image: linear-gradient(to right, transparent, currentColor 12px);
+}
+
+.sessionRow .title[data-clipped] {
+  mask-image: linear-gradient(to left, transparent, currentColor 12px);
+}
+
+.sessionRow .title[data-scrolled][data-clipped] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    currentColor 12px,
+    currentColor calc(100% - 12px),
+    transparent
+  );
+}
+
+/* The unclipped hover state drops the ellipsis, which would otherwise cover
+   the characters the marquee reached. Guarded because a touch tap latches
+   `:hover` on the row after the title has already returned: an unguarded rule
+   would strand that row without its ellipsis. */
+@media (hover: hover) {
+  .sessionRow:hover .title {
+    text-overflow: clip;
+  }
+}
+
 .time {
   flex: none;
-  font-size: 12px;
-  line-height: 20px;
+  font-size: 10px;
+  line-height: 16px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* Trailing action buttons surface on hover only (the reference's rule): the
+   stamp's cell is what they take, so the row's layout does not move when they
+   appear. */
+.rowActions {
+  flex: none;
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+
+.sessionRow:hover .rowActions,
+.sessionRow:focus-within .rowActions {
+  display: inline-flex;
+}
+
+/* Hover swaps the trailing cell to the action buttons, which already carry the
+   glyph — hiding the stamp keeps them from doubling up. */
+.sessionRow:hover .time,
+.sessionRow:focus-within .time {
+  display: none;
+}
+
+/* A bare 16px glyph, tertiary: revealed by hover, primary ink on its own hover.
+   The reference's rule for a row's trailing action button — the destructive
+   reading belongs to the confirm dialog that the click opens, not to a 16px
+   glyph that is also where the stamp sat. */
+.iconButton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.iconButton:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.actionIcon {
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 
 /* Chevrons ride the caption ink; the folder glyph stays one step darker (the

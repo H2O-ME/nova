@@ -5,7 +5,14 @@
  * (with the generic fallback) rather than from name-keyed guessing.
  */
 import { describe, expect, it } from 'vitest';
-import { TURN_ABORTED_GUIDANCE, type AgentMessage, type ToolCall, type ToolViewSource } from '@nova-agent/core';
+import {
+  COMPACT_SUMMARY_PREFIX,
+  compactionSummaryMessage,
+  TURN_ABORTED_GUIDANCE,
+  type AgentMessage,
+  type ToolCall,
+  type ToolViewSource,
+} from '@nova-agent/core';
 import { projectTranscript } from '../src/transcript.js';
 
 function call(over: Partial<ToolCall> & { id: string; name: string }): ToolCall {
@@ -168,5 +175,24 @@ describe('projectTranscript', () => {
     const marker = user('msg_abort', TURN_ABORTED_GUIDANCE);
     const blocks = projectTranscript([user('u1', '跑测试'), marker, assistant('a1', '')], TOOLS);
     expect(blocks).toEqual([{ kind: 'user', text: '跑测试', ts: 0 }, { kind: 'aborted' }]);
+  });
+
+  it('never replays the compaction summary as a user bubble', () => {
+    // Core synthesizes the summary as a `user` message carrying a bracketed
+    // system prefix (`compactionSummaryMessage`) so the model reads it as
+    // history. Drawing it through the user branch printed that prefix as if the
+    // operator had typed it — the reported defect. The invariant: NO user block
+    // may carry the marker.
+    const summary = compactionSummaryMessage('之前的进展摘要', 1, 7);
+    const blocks = projectTranscript([user('u1', 'hi'), summary, assistant('a1', 'ok')], TOOLS);
+    const leaked = blocks.filter((b) => b.kind === 'user' && b.text.includes(COMPACT_SUMMARY_PREFIX));
+    expect(leaked).toEqual([]);
+    // ...and the body itself still reaches the reader, as its own shape.
+    expect(blocks).toContainEqual({
+      kind: 'context',
+      tag: COMPACT_SUMMARY_PREFIX,
+      form: 'text',
+      text: '之前的进展摘要',
+    });
   });
 });

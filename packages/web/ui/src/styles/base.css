@@ -34,19 +34,14 @@
    * --dsh-content-font-delta in gradient-shadow-text.css. Defaults to 14; the
    * reducer may rebind per user preference. */
   --dsh-content-font-size: 14px;
-  /* Stacking order in one place: every floating layer names the layer it
-   * belongs to instead of racing its neighbours with a bare number. Read
-   * bottom-up — banners live inside the transcript, the dock seat and the
-   * back-to-bottom pill sit above it, the frame's own panels hang over the
-   * centre, and the composer's popovers float above everything. */
-  --dsh-layer-banner: 6;
-  --dsh-layer-dock: 7;
-  --dsh-layer-float: 8;
+  /* The two frame-level layers that must stay ordered against each other: the
+   * docked tool-detail panel is a column of the page (it sits under the frame's
+   * resize handle at 11), and its fullscreen variant covers the frame but stays
+   * under the dialogs. Each dialog owns its own 1200 in its own sheet, so it is
+   * deliberately not named here. Everything else states its z-index where it is
+   * used, because the value is scoped to that one stacking context. */
   --dsh-layer-panel: 10;
-  --dsh-layer-scrim: 11;
-  --dsh-layer-overlay: 12;
-  --dsh-layer-modal: 60;
-  --dsh-layer-popover: 61;
+  --dsh-layer-panel-fullscreen: 60;
 }
 
 body {

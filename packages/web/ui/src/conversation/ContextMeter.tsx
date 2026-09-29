@@ -1,26 +1,32 @@
 /**
  * Composer context-occupancy meter, ported from deepseek-harness
  * `ui-conversation` ContextMeter.tsx / ContextMeter.module.css (c) 2026
- * DeepSeek — MIT License: a 14px ring in a 28px circular target beside the
- * other composer controls, with a click-open panel carrying the reading, the
- * used/window figures, the occupancy bar and the compact action.
+ * DeepSeek — MIT License: a 14px ring and its percentage reading in the
+ * composer's dock row — the same seat the source mounts it in (beside the
+ * stats pills, under the card) — with a click-open panel carrying the
+ * reading, the used/window figures and the occupancy bar.
  *
  * Data honesty: the source panel splits the reading from provider pressure and
  * a heuristic `contextBreakdown` (system/tools/messages). This surface has no
  * breakdown — only the last request's prompt tokens and the window — so the
  * legend rows are not ported (they would be invented numbers) and the figures
- * carry no `~` prefix (ours is a reported count, not a projection). Severity
- * coloring is not a stylesheet decision either: both the ring and the bar paint
- * from `severityForUsage`, the theme's one ladder.
+ * carry no `~` prefix (ours is a reported count, not a projection). The panel
+ * therefore stops where the source stops when its own breakdown is absent:
+ * header plus bar, no `dl`.
  *
- * One deliberate difference: the trigger is ALWAYS mounted. The source can
- * assume a window (its session controller always has one); ours comes from
- * config or models.dev and may be unknown at first paint, and a meter that
- * vanished mid-session would take the compact action down with it. With no
- * window the ring reads empty and the panel says so in words instead of
- * inventing a denominator. The session's own numbers are NOT in this panel:
- * they ride the composer dock's stats pills (the harness's seat for them), so
- * there is one place that answers "what has this session cost".
+ * There is no compact action in this panel, in the source or here: compaction
+ * is the `/compact` command, which the kernel's command directory already
+ * publishes and the composer's `/` menu already reaches. A second entry point
+ * living inside a readout was an invention of this port and is gone.
+ *
+ * The source's render gate is ported too: nothing renders until a request has
+ * reported usage (the source waits for the `contextPressure` projection; ours
+ * waits for a non-zero numerator), so a fresh session's dock carries no
+ * 「0%」 noise. One deliberate difference remains: the trigger stays mounted
+ * once usage exists even if the window is unknown (the panel says so in words
+ * instead of inventing a denominator), and the panel's bar paints from
+ * `severityForUsage` — the trigger's ring stays the sheet's neutral tertiary,
+ * but a 70%/90% band change on the bar happens in theme.ts alone.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useDismissOutside } from '../shell/anchored-popover.js';
@@ -64,21 +70,22 @@ export interface ContextMeterProps {
   usedTokens: number;
   /** The model's window in tokens; null/0 = unknown (the panel says so). */
   contextWindow: number | null;
-  /** The compact action the panel offers (the kernel's `compact` frame). */
-  onCompact: () => void;
-  /** A compact request is in flight, or no socket is open (the action echoes it). */
+  /**
+   * @deprecated The panel carries no action; compaction is `/compact`, and the
+   * kernel command directory plus the composer's `/` menu are its only doors.
+   * Retained so existing call sites compile until their prop is deleted.
+   */
+  onCompact?: (() => void) | undefined;
+  /** @deprecated Companion of {@link ContextMeterProps.onCompact}. */
   compactDisabled?: boolean;
 }
 
 export function ContextMeter({
   usedTokens,
   contextWindow,
-  onCompact,
-  compactDisabled = false,
-}: ContextMeterProps): JSX.Element {
+}: ContextMeterProps): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLSpanElement | null>(null);
-  const available = contextWindow !== null && contextWindow > 0;
 
   // Outside click / Escape close: the shared dismissal rule plus this panel's
   // own Escape binding (it is not in the shell's layer stack: it lives in the
@@ -92,6 +99,13 @@ export function ContextMeter({
     document.addEventListener('keydown', onKeyDown);
     return () => { document.removeEventListener('keydown', onKeyDown); };
   }, [open]);
+
+  // The source's gate: no reported pressure, no meter — a fresh session's
+  // dock stays clean instead of reading a meaningless 0%. It sits after the
+  // hooks: a session's first usage would otherwise change the hook count
+  // between renders.
+  if (usedTokens <= 0) return null;
+  const available = contextWindow !== null && contextWindow > 0;
 
   const percent = available
     ? Math.round(Math.min(1, Math.max(0, usedTokens / contextWindow)) * 100)
@@ -128,11 +142,11 @@ export function ContextMeter({
             cx="7"
             cy="7"
             r={RADIUS}
-            stroke={severityForUsage(percent / 100)}
             strokeDasharray={`${(CIRCUMFERENCE * percent) / 100} ${CIRCUMFERENCE}`}
             transform="rotate(-90 7 7)"
           />
         </svg>
+        <span>{reading}</span>
       </button>
       {open && (
         <div className={css.panel} role="dialog" aria-label="上下文已用">
@@ -166,20 +180,6 @@ export function ContextMeter({
               ))}
             </div>
           )}
-          <div className={css.footer}>
-            <button
-              type="button"
-              className={css.action}
-              disabled={compactDisabled}
-              title="压缩上下文（把历史摘要化，原文存档可回查）"
-              onClick={() => {
-                setOpen(false);
-                onCompact();
-              }}
-            >
-              压缩上下文
-            </button>
-          </div>
         </div>
       )}
     </span>

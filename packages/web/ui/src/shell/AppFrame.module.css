@@ -6,8 +6,15 @@
   height: 100%;
   overflow: hidden;
   background: var(--dsw-alias-bg-base);
-  /* Collapse/expand animates the tracks on the deepsuite sider curve
-     (--ds-ease-in-out / --ds-transition-duration-slow, ui-theme base.css). */
+}
+
+/* Only a discrete collapse/expand toggle eases the tracks (the TSX holds
+   data-animating across the toggle on the deepsuite sider curve —
+   --ds-ease-in-out / --ds-transition-duration-slow). Steady-state tracks move
+   only with the viewport, and those updates must land instantly: an eased
+   track chases the live window edge and the centre column visibly
+   rubber-bands while the user resizes the window. */
+.frame[data-animating] {
   transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 }
 
@@ -18,7 +25,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .frame {
+  .frame[data-animating] {
     transition: none;
   }
 }
@@ -52,8 +59,12 @@
   cursor: col-resize;
   z-index: 11;
   touch-action: none;
-  /* Rides the same curve as the tracks so the pill stays on the moving
-     border during collapse/expand; paused while dragging (frame rule). */
+}
+
+/* Rides the same curve as the tracks so the pill stays on the moving border
+   during collapse/expand; instant at steady state (viewport-driven moves) and
+   while dragging. */
+.frame[data-animating] .handle {
   transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 }
 
@@ -70,7 +81,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .handle {
+  .frame[data-animating] .handle {
     transition: none;
   }
 }

@@ -7,7 +7,7 @@
  * return undefined, which is what routes the caller to the plain `<pre>` arm.
  */
 import { describe, expect, it } from 'vitest';
-import { TOKEN_VAR, highlightLines } from '../src/chat/markdown/highlight.js';
+import { TOKEN_VAR, highlightLines, supportsHighlighting } from '../src/chat/markdown/highlight.js';
 import type { HlKind } from '../src/chat/markdown/highlight.js';
 
 /** The source a run list represents back, line for line. */
@@ -77,6 +77,23 @@ describe('grammar table', () => {
     expect(highlightLines('x', undefined)).toBeUndefined();
     expect(highlightLines('x', 'brainfuck')).toBeUndefined();
     expect(highlightLines('x', 'markdown')).toBeUndefined();
+  });
+
+  // The table is an object literal, so a bare index would hand back an inherited
+  // member: `constructor` resolves to a function and reaches the scanner as a
+  // non-spec, throwing during render. Both entry points must refuse it, and the
+  // fence info string reaches them straight from model output (parse.ts).
+  it('refuses Object.prototype member names instead of scanning a non-spec', () => {
+    for (const name of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty']) {
+      expect(highlightLines('const a = 1;', name)).toBeUndefined();
+      expect(supportsHighlighting(name)).toBe(false);
+    }
+  });
+
+  it('agrees with the label test for every real grammar and a few impostors', () => {
+    for (const name of [...Object.keys(TOKEN_VAR), 'ts', 'TS', ' ts', 'python', '', 'nope', 'constructor']) {
+      expect(supportsHighlighting(name)).toBe(highlightLines('x', name) !== undefined);
+    }
   });
 
   it('every emitted kind resolves to a shiki variable from the vendored sheet', () => {

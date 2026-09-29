@@ -6,23 +6,54 @@
   grid-template-columns: 14px max-content;
   align-items: center;
   column-gap: 4px;
-  height: 32px;
-  padding: 0 10px;
+  /* 28px, not 32: the reference's height, and the same as the settings trigger
+     it sits beside — a taller pill made the foot row grow on an outage. */
+  height: 28px;
+  padding: 0 8px;
   box-sizing: border-box;
-  border: none;
-  border-radius: 8px;
+  /* A transparent border keeps the box the same size in every state; the
+     warning/success rules then colour it instead of adding it. */
+  border: 1px solid transparent;
+  border-radius: var(--dsw-radius-sm);
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
   white-space: nowrap;
-  transition: background-color 160ms ease-out, color 160ms ease-out;
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out,
+    border-color 160ms ease-out,
+    opacity 150ms ease-out;
+  /* Enter from transparent; the exit is the `.leaving` class below. */
+  animation: indicator-enter 150ms ease-out;
+}
+
+/* Fade-out state: the component keeps rendering the last state for EXIT_MS
+   (ConnectionIndicator.tsx) while this drives it to transparent. */
+.leaving {
+  opacity: 0;
+}
+
+@keyframes indicator-enter {
+  from {
+    opacity: 0;
+  }
 }
 
 .warning {
   background: var(--dsw-alias-state-warn-tertiary);
   color: var(--dsw-alias-state-warn-label);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-label) 20%, transparent);
   cursor: pointer;
+}
+
+.warning:hover {
+  background: color-mix(
+    in srgb,
+    var(--dsw-alias-state-warn-tertiary),
+    var(--dsw-alias-state-warn-primary) 6%
+  );
 }
 
 .warning:active {
@@ -34,13 +65,18 @@
 }
 
 .warning:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-warn-label);
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 2px;
 }
 
 .success {
   background: var(--dsw-alias-state-success-tertiary);
   color: var(--dsw-alias-state-success-primary);
+  /* The success ring mirrors the warning ring's construction: the same 20%
+     tint of the state color over the transparent 1px border the base rule
+     reserves. Without it the recovered pill kept a bare transparent border and
+     read as a flat filled chip instead of the reference's outlined one. */
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 20%, transparent);
 }
 
 .icon {
@@ -50,11 +86,15 @@
   height: 14px;
 }
 
-/* The glyphs are CSS-sized like every icon in this bundle (the reference
-   passes `size={14}` to the primitive instead). */
+/* The glyphs are CSS-sized like every icon in this bundle (the reference passes
+   `size={14}` to the primitive instead). `color: inherit` keeps the glyph on the
+   pill's own state color: the warning rule sets it on the container, and the
+   ongoing `StateDot` paints `currentColor`, so an explicit color here would pin
+   both icons to one tier and drop the state coloring. */
 .icon > svg {
   width: 14px;
   height: 14px;
+  color: inherit;
 }
 
 .label {
@@ -84,9 +124,13 @@
   visibility: visible;
 }
 
+/* The reference's 1em: the three periods of the connecting label advance less
+   than one em in this font, so the extra half-em the port carried only widened
+   the pill. The label's width is decided by the hidden size probes above, not by
+   this box, so the state changes still cannot resize the pill. */
 .dots {
   display: inline-block;
-  width: 1.5em;
+  width: 1em;
   text-align: left;
 }
 
@@ -116,8 +160,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .indicator,
   .secondDot,
   .thirdDot {
     animation: none;
+  }
+
+  .indicator {
+    transition: none;
   }
 }

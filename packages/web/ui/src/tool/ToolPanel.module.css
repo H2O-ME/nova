@@ -46,7 +46,7 @@
 .panel[data-tool-panel='fullscreen'] {
   position: fixed;
   inset: 0;
-  z-index: var(--dsh-layer-modal);
+  z-index: var(--dsh-layer-panel-fullscreen);
   border: none;
 }
 

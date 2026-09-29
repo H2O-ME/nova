@@ -17,7 +17,6 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ClientFrame, SessionListItem } from '../types.js';
-import type { ThemePreference } from '../theme.js';
 import { NewSessionButton } from './NewSessionButton.js';
 import { SessionBrowser } from './SessionBrowser.js';
 import { SidebarFoot } from './SidebarFoot.js';
@@ -43,15 +42,31 @@ export interface SidebarProps {
   currentFile: string;
   collapsed: boolean;
   connection: 'connecting' | 'open' | 'closed';
-  /** The appearance preference and the content font size (the foot's axes). */
-  preference: ThemePreference;
-  fontSize: number;
+  /**
+   * Request an immediate reconnect attempt from the foot's indicator. Optional
+   * in the type but ALWAYS passed by the shell: the indicator renders its
+   * retry-as-a-button branch only when this arrives, so leaving it out silently
+   * degrades the outage readout to an inert label (which is what happened —
+   * declared, documented, and unreachable until it was wired).
+   */
+  onReconnect?: (() => void) | undefined;
   send: (frame: ClientFrame) => void;
+  /** Whether the settings dialog this column's seat opens is on screen. */
+  settingsOpen: boolean;
+  /** Open the settings dialog (the shell owns the panel and its sections). */
+  onOpenSettings: () => void;
+  /** Delete one session log (the shell owns the frame; the dialog is local). */
+  onDeleteSession: (file: string) => void;
   /** Re-ask the host for the session list (the shell's single-flight policy). */
   onReloadSessions: () => void;
   onToggleCollapsed: () => void;
-  onPickPreference: (preference: ThemePreference) => void;
-  onPickFontSize: (size: number) => void;
+  /**
+   * The column is collapsed because the FRAME is narrower than
+   * `SIDEBAR_AUTO_COLLAPSE` — not because the reader closed it. Passed down from
+   * the frame (`AppFrame`'s sidebar slot params) so the rail's one control can
+   * name the reason instead of reading like the reader's own choice.
+   */
+  autoCollapsed?: boolean;
   /**
    * The column's expanded width, for the collapse freeze: content holds this
    * width while it fades and the sliding track clips it. Optional — without it
@@ -72,13 +87,14 @@ export function Sidebar({
   currentFile,
   collapsed,
   connection,
-  preference,
-  fontSize,
+  onReconnect,
   send,
+  settingsOpen,
+  onOpenSettings,
+  onDeleteSession,
   onReloadSessions,
   onToggleCollapsed,
-  onPickPreference,
-  onPickFontSize,
+  autoCollapsed,
   width,
 }: SidebarProps): JSX.Element {
   // Wide content stays mounted while the collapse animates (fading via
@@ -155,6 +171,7 @@ export function Sidebar({
       <SidebarLogoRow
         wide={wide}
         collapsed={collapsed}
+        autoCollapsed={autoCollapsed ?? false}
         onToggleCollapsed={onToggleCollapsed}
         onStartSession={startSession}
       />
@@ -168,6 +185,7 @@ export function Sidebar({
           currentFile={currentFile}
           rail={!wide}
           onOpen={openSession}
+          onDelete={onDeleteSession}
           onReload={onReloadSessions}
           onExpand={() => { if (collapsed) onToggleCollapsed(); }}
         />
@@ -177,11 +195,10 @@ export function Sidebar({
         <div className={css.settingsArea}>
           <SidebarFoot
             rail={!wide}
-            preference={preference}
-            fontSize={fontSize}
             connection={connection}
-            onPickPreference={onPickPreference}
-            onPickFontSize={onPickFontSize}
+            onReconnect={onReconnect}
+            settingsOpen={settingsOpen}
+            onOpenSettings={onOpenSettings}
           />
         </div>
       </div>

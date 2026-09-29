@@ -7,9 +7,14 @@
  * `expandOnRowClick` makes the whole title row the disclosure target (role
  * button, keyboard toggling); otherwise only the leading control expands, and
  * `previewChevron` swaps its glyph for a chevron while the row is hovered.
+ *
+ * The title is a {@link TextShimmer}: while the owning operation runs, the
+ * highlight sweeps through the glyphs. That IS the running state — the harness
+ * paints no overlay band anywhere, so no sheet here should either.
  */
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
-import { ChevronDownGlyph14 } from './glyphs.js';
+import { ChevronDownGlyph14, ChevronUpGlyph14 } from './glyphs.js';
+import { TextShimmer } from '../shell/TextShimmer.js';
 import css from './DisclosureRow.module.css';
 
 export interface DisclosureRowProps {
@@ -18,6 +23,8 @@ export interface DisclosureRowProps {
   open: boolean;
   expandable: boolean;
   onToggle: () => void;
+  /** Animate the title while its owning operation is running. */
+  running?: boolean | undefined;
   /** Makes the complete title row the disclosure target. */
   expandOnRowClick?: boolean | undefined;
   /** Replaces the collapsed icon with a chevron while the row is hovered. */
@@ -33,12 +40,14 @@ export interface DisclosureRowProps {
   titleClassName?: string | undefined;
 }
 
+/** Render one disclosure header and its controlled expanded content. */
 export function DisclosureRow({
   icon,
   title,
   open,
   expandable,
   onToggle,
+  running = false,
   expandOnRowClick = false,
   previewChevron = expandable,
   keepContentWhenOpen = false,
@@ -68,7 +77,7 @@ export function DisclosureRow({
       </>
     )
     : icon;
-  const leading = open ? <ChevronDownGlyph14 className={chevronClassName} /> : collapsedLeading;
+  const leading = open ? <ChevronUpGlyph14 className={chevronClassName} /> : collapsedLeading;
 
   return (
     <div className={join(css.root, className)} data-open={open || undefined}>
@@ -94,7 +103,7 @@ export function DisclosureRow({
             </button>
           )
           : <span className={join(css.leading, leadingClassName)}>{leading}</span>}
-        <span className={join(css.title, titleClassName)}>{title}</span>
+        <TextShimmer active={running} className={join(css.title, titleClassName)}>{title}</TextShimmer>
         {(keepContentWhenOpen || !open) && collapsedContent}
       </div>
       {open && children}

@@ -66,6 +66,13 @@ export const ChevronDownGlyph14 = (p: P): JSX.Element => (
   </Svg>
 );
 
+/** The open disclosure's leading glyph (the harness `chevron-up` asset). */
+export const ChevronUpGlyph14 = (p: P): JSX.Element => (
+  <Svg {...p} box={14}>
+    <path d="M3.75 8.5 7 5.25l3.25 3.25" />
+  </Svg>
+);
+
 export const ChevronRightGlyph14 = (p: P): JSX.Element => (
   <Svg {...p} box={14}>
     <path d="M5.5 3.75 8.75 7 5.5 10.25" />
@@ -86,6 +93,25 @@ export const ContextGlyph14 = (p: P): JSX.Element => (
     <rect x="1.75" y="2.5" width="10.5" height="9" rx="2" />
     <path d="M4.25 5.75 6 7.5 4.25 9.25" />
     <path d="M7.5 9.5h2.25" />
+  </Svg>
+);
+
+/** Enable wrapping (the harness `wrap` asset): lines turning back at the edge. */
+export const WrapGlyph14 = (p: P): JSX.Element => (
+  <Svg {...p} box={14}>
+    <path d="M1.75 3.5h10.5" />
+    <path d="M1.75 7h7.25a2.25 2.25 0 0 1 0 4.5H6.5" />
+    <path d="M8.25 9.75 6.25 11.5l2 1.75" />
+  </Svg>
+);
+
+/** Preserve source columns with horizontal scrolling (the harness `nowrap` asset). */
+export const NoWrapGlyph14 = (p: P): JSX.Element => (
+  <Svg {...p} box={14}>
+    <path d="M1.75 3.5h10.5" />
+    <path d="M1.75 7h10.5" />
+    <path d="M1.75 10.5h6.5" />
+    <path d="M10.25 9.5l2.25 2.25-2.25 2.25" />
   </Svg>
 );
 

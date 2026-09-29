@@ -1,0 +1,213 @@
+/* Settings modal sheet, ported from deepseek-harness
+ * `ui-settings-general/src/client/SettingsRoot.module.css`
+ * (c) 2026 DeepSeek — MIT License. Figma anchors kept in the comments. */
+
+/* Full-viewport layer (figma Mask 501:29946, black @ 24%): mask tokens match
+   the Modal primitive (--dsw-alias-bg-mask-1 + --dsw-mask-blur). */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mask {
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+/* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
+   fade in together over the same duration and easing. Without it the sheet
+   appears between one frame and the next, which reads as a flash rather than as
+   a panel arriving — the tool side panel has always animated and the dialogs
+   did not. */
+@keyframes modal-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mask,
+  .panel {
+    animation: none;
+  }
+}
+
+/* Settings uses a shared 800×800 panel; longer sections scroll inside the
+   options column; the navigation scrolls independently. One height for every
+   section, taken from the viewport rather than the content, because a
+   content-sized panel would resize under the pointer on every nav click. The
+   viewport height leaves 24px of air above and below. */
+.panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 800px;
+  height: min(800px, calc(100vh - 2 * max(24px, var(--dsh-frame-top-clearance, 24px))));
+  max-width: calc(100vw - 48px);
+  border-radius: var(--dsw-radius-panel);
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-prominent);
+  /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
+     Declared on the panel rather than the scrolling `.options` child so the
+     elevation choice sits with the surface; the custom properties inherit
+     down to whichever descendant scrolls. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.panel:focus {
+  outline: none;
+}
+
+/* Nav rail (figma .Setting-nav 501:29958): 188 wide, pad (12,22,12,0),
+   gap 18, no own fill — the panel fill shows through. */
+.nav {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 188px;
+  padding: 22px 12px 0;
+  box-sizing: border-box;
+}
+
+/* Title row (figma 501:29959): 16/500 lh24, 12px side padding. */
+.navTitle {
+  padding: 0 12px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.navTitle:focus {
+  outline: none;
+}
+
+/* Cell stack (figma 501:29961): gap 4. */
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+/* Nav cell (figma .Setting-nav-cell 501:29962): 164x40, r12, pad
+   (12,9,16,9), gap 8; label 14/400 lh22; selected fill = the sidebar's own
+   active step. */
+.navCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 9px 16px 9px 12px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+}
+
+.navCell:hover {
+  background: var(--dsw-specific-sidebar-nav-item-hover);
+}
+
+.navCell.active {
+  background: var(--dsw-specific-sidebar-nav-item-active);
+}
+
+.navCell svg {
+  flex: none;
+}
+
+.navLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Content column (figma Content 501:29980): header + options. */
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header (figma .Header 501:29981): h54, pad (10,20,14,8), close right. The
+   actions seat is the reference's; this surface has no section actions, so
+   only the close control rides it. */
+.header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  height: 54px;
+  padding: 20px 14px 8px 10px;
+  box-sizing: border-box;
+}
+
+/* The actions seat. It is what actually pins the close control to the right
+   edge: `.header` is `space-between`, and with a single child that leaves the
+   child at the START edge — the `margin-left: auto` here is the whole reason
+   the reference's close button sits top-right. The seat is ported even though
+   this surface registers no section actions, because it is load-bearing for
+   the one control that does ride it (and a later section action then joins it
+   instead of re-introducing the defect). */
+.actions {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Compact close control (the reference's 28×28 box, 14px glyph). */
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+}
+
+.close:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.close svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Options area (figma Options 501:29983): pad (24,0,24,24), scrolls. */
+.options {
+  flex: 1;
+  min-height: 0;
+  padding: 0 24px 24px;
+  overflow-y: auto;
+}

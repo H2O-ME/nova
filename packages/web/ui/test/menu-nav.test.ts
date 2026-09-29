@@ -1,10 +1,10 @@
 /**
  * Direct lane for the select menu's index walking (the component lane has no
- * DOM): wrap-around stepping, the open-focus target, and the guard that keeps
- * a stale index from being focused.
+ * DOM): wrap-around stepping and the guard that keeps a stale index from being
+ * focused. The walk itself lives in `shell/Menu.tsx`, which calls these.
  */
 import { describe, expect, it } from 'vitest';
-import { initialOptionIndex, isOptionIndex, stepOptionIndex } from '../src/conversation/menu-nav.js';
+import { isOptionIndex, stepOptionIndex } from '../src/shell/menu-nav.js';
 
 describe('stepOptionIndex', () => {
   it('wraps in both directions', () => {
@@ -23,18 +23,6 @@ describe('stepOptionIndex', () => {
   it('has no target in an empty menu', () => {
     expect(stepOptionIndex(0, 0, 1)).toBe(-1);
     expect(stepOptionIndex(-1, 0, -1)).toBe(-1);
-  });
-});
-
-describe('initialOptionIndex', () => {
-  it('focuses the selected row when the menu has one', () => {
-    expect(initialOptionIndex(3, 2)).toBe(2);
-  });
-
-  it('falls back to the first row for no/foreign selection', () => {
-    expect(initialOptionIndex(3, -1)).toBe(0);
-    expect(initialOptionIndex(3, 7)).toBe(0);
-    expect(initialOptionIndex(0, 0)).toBe(-1);
   });
 });
 

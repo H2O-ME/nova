@@ -1,9 +1,11 @@
 /**
  * The composer's two mode selectors, ported from deepseek-harness
- * `ui-conversation` PermissionSelect.tsx / PermissionSelect.module.css plus the
- * `ui-primitives` Menu card it opens over (c) 2026 DeepSeek — MIT License:
- * a 28px chip trigger (glyph + label + chevron) opening a 4px-inset card of
- * min-h-40 rows with a trailing check on the chosen one.
+ * `ui-permission-presets` PermissionSelect.tsx + PermissionSelect.module.css
+ * (c) 2026 DeepSeek — MIT License: a 28px chip trigger (glyph + label +
+ * chevron) opening the shared `shell/Menu.tsx` card — a trailing check on the
+ * row in force, and the reference's whole interaction contract (focus stays on
+ * the trigger, the arrow keys walk, Escape closes and hands the keyboard
+ * back) owned once by the primitive.
  *
  * Two product differences, both deliberate:
  *  - the tier vocabulary is ours (`read-only` / `auto-edit` / `full` and
@@ -12,13 +14,12 @@
  *  - the source's `danger-full-access` acknowledge dialog is not ported — the
  *    pick applies straight away, as this product's mode controls always have.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useDismissOutside } from '../shell/anchored-popover.js';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { Menu } from '../shell/Menu.js';
 import { APPROVAL_MODES, CODE_MODES } from './mode-options.js';
-import { CheckIcon, ChevronDownIcon } from '../icons.js';
+import { ChevronDownIcon } from '../icons.js';
 import type { ApprovalMode, PtcMode } from '../types.js';
-import { initialOptionIndex, isOptionIndex, stepOptionIndex } from './menu-nav.js';
 import css from './PermissionSelect.module.css';
 
 /* Shield contour and the glyphs drawn over it (design set 1556 over the
@@ -72,198 +73,79 @@ interface ModeSelectProps<T extends string> {
   /** What the accessible name calls the choice ("access mode", "run mode"). */
   name: string;
   onPick: (code: T) => void;
+  /** Preferred side of the trigger (flips when that side cannot fit). */
+  side?: 'below' | 'above';
+  /** Which trigger edge the card aligns to (the settings rows align end). */
+  align?: 'start' | 'end';
   /** Leading row glyph; triggers without one keep their label at every width. */
   glyphOf?: (code: string) => ReactNode;
   /** The kernel holds no session (or an ask is pending): the trigger refuses. */
   disabled?: boolean;
 }
 
-/** One option row: glyph, label, and the source's trailing check on the row
- *  in force (Menu's default check selection). */
-function ModeRow<T extends string>({
-  option,
-  selected,
-  glyph,
-  buttonRef,
-  onSelect,
-}: {
-  option: ModeOption<T>;
-  selected: boolean;
-  glyph: ReactNode | undefined;
-  buttonRef: (element: HTMLButtonElement | null) => void;
-  onSelect: () => void;
-}): JSX.Element {
-  return (
-    <button
-      ref={buttonRef}
-      type="button"
-      role="menuitem"
-      aria-current={selected ? 'true' : undefined}
-      className={selected ? `${css.item} ${css.selected}` : css.item}
-      title={option.hint}
-      onClick={onSelect}
-    >
-      {glyph !== undefined && (
-        <span className={css.itemIcon} aria-hidden>
-          {glyph}
-        </span>
-      )}
-      <span className={css.itemLabel}>{option.label}</span>
-      {selected && (
-        <span className={css.check} aria-hidden>
-          <CheckIcon />
-        </span>
-      )}
-    </button>
-  );
-}
-
-/** The open card: rows plus the arrow-key walk that keeps a keyboard user on
- *  the rows (Home/End jump to the ends; the walk wraps through menu-nav). */
-function ModeList<T extends string>({
-  value,
-  options,
-  name,
-  glyphOf,
-  itemRefs,
-  onPick,
-}: {
-  value: T;
-  options: readonly ModeOption<T>[];
-  name: string;
-  glyphOf?: (code: string) => ReactNode;
-  itemRefs: React.MutableRefObject<(HTMLButtonElement | null)[]>;
-  onPick: (code: T) => void;
-}): JSX.Element {
-  const moveFocus = (target: number): void => {
-    if (!isOptionIndex(target, options.length)) return;
-    itemRefs.current[target]?.focus();
-  };
-  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
-    const count = options.length;
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const from = itemRefs.current.findIndex((item) => item === document.activeElement);
-      moveFocus(stepOptionIndex(from, count, e.key === 'ArrowDown' ? 1 : -1));
-    } else if (e.key === 'Home') {
-      e.preventDefault();
-      moveFocus(0);
-    } else if (e.key === 'End') {
-      e.preventDefault();
-      moveFocus(count - 1);
-    }
-  };
-  return (
-    <div className={`${css.list} ${css.sideTop}`} role="menu" aria-label={name} onKeyDown={onKeyDown}>
-      {options.map((option, index) => (
-        <ModeRow
-          key={option.code}
-          option={option}
-          selected={option.code === value}
-          glyph={glyphOf?.(option.code)}
-          buttonRef={(element) => {
-            itemRefs.current[index] = element;
-          }}
-          onSelect={() => {
-            onPick(option.code);
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/** The chip trigger and its card, shared by both selectors. */
+/** The chip trigger and its card, shared by both selectors. The card is the
+ *  shell's Menu primitive: portaled beside the page and placed from the
+ *  trigger rect, flipping to whichever side fits — at the composer's foot that
+ *  is always upward; in the settings panel the rows sit high enough to open
+ *  downward. A pick lands only when it differs from the echo. */
 function ModeSelect<T extends string>({
   value,
   options,
   name,
   onPick,
+  side = 'below',
+  align = 'start',
   glyphOf,
   disabled = false,
 }: ModeSelectProps<T>): JSX.Element {
   const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLSpanElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  const close = useCallback((returnFocus: boolean): void => {
-    setOpen(false);
-    if (returnFocus) triggerRef.current?.focus();
-  }, []);
-
-  // Outside click / Escape close: the shared dismissal rule, plus this menu's
-  // own Escape binding, which also hands focus back to the trigger.
-  useDismissOutside(open, [rootRef], () => { close(false); });
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') close(true);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => { document.removeEventListener('keydown', onKeyDown); };
-  }, [open, close]);
-
-  // Opening focuses the row in force, so a keyboard walk starts where the
-  // choice already is. Pinned to `open` on purpose: re-focusing on the host's
-  // mode echo would yank the user's arrow-key position back mid-walk.
-  useEffect(() => {
-    if (!open) return;
-    const index = initialOptionIndex(options.length, options.findIndex((option) => option.code === value));
-    itemRefs.current[index]?.focus();
-  }, [open]);
-
-  const onTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>): void => {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    setOpen(true);
-  };
-
   const current = options.find((option) => option.code === value);
   const currentLabel = current?.label ?? value;
   const glyph = glyphOf?.(value);
-  const choose = (code: T): void => {
-    close(true);
-    if (code !== value) onPick(code);
-  };
-
   return (
-    <span ref={rootRef} className={css.root}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={css.trigger}
-        aria-label={`${name}，当前：${currentLabel}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        disabled={disabled}
-        title={current?.hint}
-        onClick={() => {
-          setOpen(!open);
-        }}
-        onKeyDown={onTriggerKeyDown}
-      >
-        {glyph !== undefined && (
-          <span className={css.triggerIcon} aria-hidden>
-            {glyph}
+    <Menu
+      open={open}
+      label={name}
+      side={side}
+      align={align}
+      items={options.map((option) => ({
+        id: option.code,
+        label: option.label,
+        icon: glyphOf?.(option.code),
+        title: option.hint,
+      }))}
+      selectedId={value}
+      onSelect={(id) => {
+        const picked = options.find((option) => option.code === id);
+        if (picked === undefined) return;
+        setOpen(false);
+        if (picked.code !== value) onPick(picked.code);
+      }}
+      onClose={() => { setOpen(false); }}
+      listClassName={css.modeList}
+      anchor={
+        <button
+          type="button"
+          className={css.trigger}
+          aria-label={`${name}，当前：${currentLabel}`}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          disabled={disabled}
+          title={current?.hint}
+          onClick={() => { setOpen(!open); }}
+        >
+          {glyph !== undefined && (
+            <span className={css.triggerIcon} aria-hidden>
+              {glyph}
+            </span>
+          )}
+          <span className={css.triggerLabel}>{currentLabel}</span>
+          <span className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} aria-hidden>
+            <ChevronDownIcon />
           </span>
-        )}
-        <span className={css.triggerLabel}>{currentLabel}</span>
-        <span className={open ? `${css.chevron} ${css.chevronOpen}` : css.chevron} aria-hidden>
-          <ChevronDownIcon />
-        </span>
-      </button>
-      {open && (
-        <ModeList
-          value={value}
-          options={options}
-          name={name}
-          glyphOf={glyphOf}
-          itemRefs={itemRefs}
-          onPick={choose}
-        />
-      )}
-    </span>
+        </button>
+      }
+    />
   );
 }
 
@@ -272,11 +154,15 @@ export interface PermissionSelectProps {
   value: ApprovalMode;
   /** The pick lands as the `set_approval_mode` frame. */
   onPick: (mode: ApprovalMode) => void;
+  /** Preferred side of the trigger (the settings rows open upward). */
+  side?: 'below' | 'above';
+  /** Which trigger edge the card aligns to (the settings rows align end). */
+  align?: 'start' | 'end';
   disabled?: boolean;
 }
 
 /** Access-tier selector (read-only / auto-edit / full). */
-export function PermissionSelect({ value, onPick, disabled }: PermissionSelectProps): JSX.Element {
+export function PermissionSelect({ value, onPick, side, align, disabled }: PermissionSelectProps): JSX.Element {
   return (
     <ModeSelect
       value={value}
@@ -284,6 +170,8 @@ export function PermissionSelect({ value, onPick, disabled }: PermissionSelectPr
       name="访问模式"
       onPick={onPick}
       glyphOf={(code) => permissionGlyphs.get(code)}
+      side={side}
+      align={align}
       disabled={disabled}
     />
   );
@@ -294,19 +182,25 @@ export interface CodeModeSelectProps {
   value: PtcMode;
   /** The pick lands as the `set_code_mode` frame. */
   onPick: (mode: PtcMode) => void;
+  /** Preferred side of the trigger (the settings rows open upward). */
+  side?: 'below' | 'above';
+  /** Which trigger edge the card aligns to (the settings rows align end). */
+  align?: 'start' | 'end';
   disabled?: boolean;
 }
 
 /** Execution-mode selector (native / ptc / both): no glyph, so its label stays
  *  visible at every width (the trigger recipe only collapses glyph-carrying
  *  triggers). */
-export function CodeModeSelect({ value, onPick, disabled }: CodeModeSelectProps): JSX.Element {
+export function CodeModeSelect({ value, onPick, side, align, disabled }: CodeModeSelectProps): JSX.Element {
   return (
     <ModeSelect
       value={value}
       options={CODE_MODES}
       name="执行模式"
       onPick={onPick}
+      side={side}
+      align={align}
       disabled={disabled}
     />
   );

@@ -136,6 +136,36 @@ describe('parseClientFrame', () => {
     expect(frame({ type: 'command', name: 'skill', args: 'x'.repeat(MAX_COMMAND_ARGS_CHARS + 1) })).toMatchObject({ ok: false });
     expect(frame({ type: 'command', name: 'skill', args: 42 })).toMatchObject({ ok: false });
   });
+
+  it('list_directory accepts an absent dir (the picker start) and a bounded path', () => {
+    // The picker opens by asking for home, so the frame is valid with no path
+    // at all; an explicit path is bounded like a workspace path.
+    expect(frame({ type: 'list_directory' })).toEqual({ type: 'list_directory' });
+    expect(frame({ type: 'list_directory', dir: 'D:/home/proj' })).toEqual({ type: 'list_directory', dir: 'D:/home/proj' });
+    expect(frame({ type: 'list_directory', dir: '' })).toEqual({ type: 'list_directory', dir: '' });
+  });
+
+  it('list_directory refuses junk paths', () => {
+    expect(frame({ type: 'list_directory', dir: 42 })).toMatchObject({ ok: false, reason: expect.stringContaining('string') });
+    expect(frame({ type: 'list_directory', dir: 'D:/a\u001b[2Jb' })).toMatchObject({ ok: false, reason: expect.stringContaining('control') });
+    expect(frame({ type: 'list_directory', dir: 'D:/' + 'x'.repeat(5000) })).toMatchObject({ ok: false, reason: expect.stringContaining('chars') });
+  });
+
+  it('create_directory takes a parent dir and a single name', () => {
+    expect(frame({ type: 'create_directory', dir: 'D:/home/proj', name: 'fresh' })).toEqual({
+      type: 'create_directory',
+      dir: 'D:/home/proj',
+      name: 'fresh',
+    });
+    // The dir is validated like a workspace path (it becomes a real host path),
+    // and the name is bounded: the host's `isSafeDirectoryName` owns the rule,
+    // this only guarantees the shape it can read.
+    expect(frame({ type: 'create_directory', name: 'x' })).toMatchObject({ ok: false, reason: expect.stringContaining('dir') });
+    expect(frame({ type: 'create_directory', dir: '', name: 'x' })).toMatchObject({ ok: false });
+    expect(frame({ type: 'create_directory', dir: 'D:/p', name: 42 })).toMatchObject({ ok: false, reason: expect.stringContaining('name') });
+    expect(frame({ type: 'create_directory', dir: 'D:/p', name: 'x'.repeat(65) })).toMatchObject({ ok: false, reason: expect.stringContaining('chars') });
+    expect(frame({ type: 'create_directory', dir: 'D:/a\u001b[2Jb', name: 'x' })).toMatchObject({ ok: false, reason: expect.stringContaining('control') });
+  });
 });
 
 describe('serializeServerFrame', () => {

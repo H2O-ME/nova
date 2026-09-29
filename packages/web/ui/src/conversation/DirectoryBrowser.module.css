@@ -1,0 +1,462 @@
+/* The workspace picker's directory browser. The overlay and mask match the
+   shared modal family (SettingsPanel, DeleteSessionDialog) so every dialog on
+   this surface reads as one material; the panel is a browsing sheet rather than
+   a small confirm, because it holds a scrollable list and a footer readout. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mask {
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+/* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
+   fade in together over the same duration and easing, so the sheet arrives
+   rather than flashing between frames. */
+@keyframes modal-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mask,
+  .panel {
+    animation: none;
+  }
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 560px;
+  max-width: calc(100vw - 48px);
+  /* Short viewports clamp the sheet, and the list is what gives: the header,
+     the crumbs and the footer must all stay reachable. */
+  max-height: min(520px, calc(100vh - 48px));
+  padding: 16px;
+  gap: 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-prominent);
+  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.panel:focus {
+  outline: none;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+}
+
+.title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.status {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The chain the host reported. It scrolls sideways instead of wrapping: a deep
+   path must never push the list down, and a crumb is always a click away. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+
+.crumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.crumbSeg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.crumb {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.crumb:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.crumbCurrent {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+  cursor: default;
+}
+
+.crumbSep {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.crumbSep svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* The path-edit affordance. It sits at the trailing edge of the crumb bar: the
+   crumbs alone can never express a location off the home subtree, so this is
+   the general way to type one. It is the bar's whole remainder rather than a
+   glyph-sized button — dsh's `.crumbEditZone` — because a reader looking for a
+   14px pencil at the far right is how the entry point went unnoticed. `margin-left:
+   auto` plus `flex: 1` makes the empty stretch past the last crumb the target,
+   with the glyph pinned where the typed text will begin. */
+.crumbEdit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1 0 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: text;
+}
+
+.crumbEdit:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.crumbEdit svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The path box replaces the chain while editing, so it takes the row's width. */
+.pathInput {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* The host's volumes. A drive row is the only route to another volume on
+   Windows — the crumb chain cannot contain one, and `..` stops at the root.
+   The word beside them is what turns a run of `C:\` chips into a disk list. */
+.rootsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-width: 0;
+}
+
+.rootsLabel {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.roots {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.root {
+  flex: none;
+  padding: 2px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.root:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.root[aria-current='true'] {
+  border-color: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-label-primary);
+}
+
+.error {
+  flex: none;
+  padding: 8px 10px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+/* The level's rows. It is the only scrolling region in the sheet. */
+.body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 4px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowIcon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rowIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.rowLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty,
+.note {
+  padding: 12px 8px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* File mode's one-line rule, pinned at the top of the list region: it explains
+   what a row does, so it must not scroll away with the rows. */
+.modeNote {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  padding: 6px 8px;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* "The list holds nothing" is a fact about the folder and reads as a quiet
+   caption. "Nothing could be listed" is a fact about the request: it is muted
+   further and centered in the empty region, so the two never look like the
+   same answer with different words (which is what they were). */
+.empty[data-body-state='unavailable'] {
+  margin: auto;
+  padding: 24px 8px;
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+}
+
+.empty[data-body-state='loading'] {
+  margin: auto;
+  padding: 24px 8px;
+  text-align: center;
+}
+
+.note {
+  padding: 8px;
+}
+
+/* The "new folder" draft: the name field and its confirm, above the footer so
+   the dialog's own controls never move while a draft is open. */
+.draftRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.draftInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-3);
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.draftInput:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+}
+
+.draftConfirm {
+  flex: none;
+  min-width: 72px;
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: none;
+}
+
+/* Where Open will land, stated in full and truncated rather than wrapped. */
+.target {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-left: auto;
+}
+
+.secondary,
+.primary {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--dsw-radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.secondary {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.primary {
+  border: none;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.secondary:disabled,
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.secondary:focus-visible,
+.primary:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}

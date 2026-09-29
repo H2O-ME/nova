@@ -11,10 +11,13 @@
  *
  * Placement is NOT here: the caller owns where the card goes (this surface uses
  * `shell/anchored-popover.ts` for the portaled cards), and passes the ref and
- * inline style in.
+ * inline style in. The fill and the blur are not here either — the card renders
+ * through `shell/MenuSurface`, so the theme keeps owning the material and this
+ * component only lays rows out on it.
  */
 import type { CSSProperties, MutableRefObject, ReactNode } from 'react';
 import { CheckIcon } from '../icons.js';
+import { MenuSurface } from './MenuSurface.js';
 import css from './MenuCard.module.css';
 
 export interface MenuCardProps {
@@ -36,7 +39,7 @@ export interface MenuCardProps {
  */
 export function MenuCard({ label, busy, cardRef, style, data, children }: MenuCardProps): JSX.Element {
   return (
-    <div
+    <MenuSurface
       ref={cardRef}
       className={css.card}
       style={style}
@@ -46,7 +49,7 @@ export function MenuCard({ label, busy, cardRef, style, data, children }: MenuCa
       {...data}
     >
       <div className={css.groups}>{children}</div>
-    </div>
+    </MenuSurface>
   );
 }
 

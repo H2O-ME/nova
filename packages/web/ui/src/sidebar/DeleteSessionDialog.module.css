@@ -1,0 +1,119 @@
+/* The session-delete confirmation. Overlay and mask match the shared modal
+   family (SettingsPanel) so the two dialogs read as one surface; the panel is
+   a small content-sized card rather than the settings shell's 800×800 box,
+   because a two-sentence confirm sized like a settings page reads as a page. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mask {
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+/* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
+   fade in together over the same duration and easing, so a dialog arrives
+   rather than flashing between frames. */
+@keyframes modal-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mask,
+  .panel {
+    animation: none;
+  }
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 400px;
+  max-width: calc(100vw - 48px);
+  padding: 20px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-prominent);
+  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.panel:focus {
+  outline: none;
+}
+
+.title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cancel,
+.danger {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--dsw-radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.cancel {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.cancel:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* The destructive action is the primary fill, not a red one: the reference's
+   own dialog uses `deleteAction` for the label's colour over the ordinary
+   button, and a solid danger fill reads as the recommended choice. */
+.danger {
+  border: none;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.danger:hover {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.cancel:focus-visible,
+.danger:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}

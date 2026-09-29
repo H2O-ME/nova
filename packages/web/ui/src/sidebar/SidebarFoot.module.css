@@ -30,7 +30,9 @@
   padding: 0 10px 0 8px;
   box-sizing: border-box;
   border: none;
-  border-radius: 12px;
+  /* The reference states `--dsw-radius-md` here, not a literal: this row must
+     round with every other 12px control if the scale ever moves. */
+  border-radius: var(--dsw-radius-md);
   background: transparent;
   cursor: pointer;
   overflow: hidden;
@@ -49,7 +51,10 @@
   outline-offset: -2px;
 }
 
-/* Rail trigger: the same 36x36 circle box as the other rail controls. */
+/* Rail trigger: the same 36x36 box AND the same 12px rounding as every other
+   rail control (the reference's `.trigger.rail` overrides only the geometry).
+   A lone circle here read as a different control family from the 12px squares
+   stacked above it — the rail is one grid. */
 .trigger.rail {
   flex: none;
   width: 36px;
@@ -58,8 +63,6 @@
   justify-content: center;
   gap: 0;
   padding: 0;
-  border-radius: 50%;
-  corner-shape: round;
 }
 
 /* The trigger's own glyph: 16px, 18px in the rail (the reference's occupant

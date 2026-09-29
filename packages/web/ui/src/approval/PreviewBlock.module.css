@@ -7,18 +7,29 @@
  * dropped with it — nothing floats over this block, there is no copy button
  * inside an approval. */
 .block {
-  --dsl-diff-radius: 12px;
+  /* Family-specific, referring to a shared token: the diff radius is a
+     consumer-owned property (`DiffBlock.module.css` declares no corner of its
+     own), so the approval preview names the ladder rung instead of a literal
+     and stays pixel-identical to the transcript's diff card. */
+  --dsl-diff-radius: var(--dsw-radius-md);
   --dsl-diff-line-height: 22px;
 
   position: relative;
   margin: 0;
+  /* The source's own `.block { overflow: hidden }`, now load-bearing: a change
+     row's wash reaches the block's edges, so the corner has to clip it. */
+  overflow: hidden;
   color: var(--dsw-alias-label-primary);
   background: var(--dsw-alias-markdown-code-block);
   border-radius: var(--dsl-diff-radius);
 }
 
 .body {
-  padding: 12px 14px;
+  /* Horizontal padding lives on the row, not here: an added/removed row paints
+     a wash and a left bar (below), and both must reach the block's own edges
+     the way the transcript's diff draws them. Padding the scrollport instead
+     would inset every band by 14px on each side. */
+  padding: 12px 0;
   font: var(--dsw-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
@@ -26,7 +37,9 @@
 
 /* No wrapping, no word-break: a diff is read by its indentation. */
 .line {
+  box-sizing: border-box;
   min-height: var(--dsl-diff-line-height);
+  padding: 0 14px;
   white-space: pre;
 }
 
@@ -44,9 +57,12 @@
 }
 
 /* The diff's own meaning-carrying colors: removed on the error token, added on
-   the success token. A `- `/`+ ` prefix is drawn here so a copied line and the
-   shown line agree, and so the sign reads without relying on color alone. The
-   model strips the tool's own prefix before these rules re-add it. */
+   the success token, each over the matching wash and behind the source's 3px
+   inset bar. A `- `/`+ ` prefix is drawn here so a copied line and the shown
+   line agree, and so the sign reads without relying on color alone; the wash
+   and the bar are what make a change row findable when scanning a long hunk,
+   and both are the same tokens the transcript's diff card uses. The model
+   strips the tool's own prefix before these rules re-add it. */
 .del::before {
   content: '- ';
   color: var(--dsw-alias-state-error-primary);
@@ -54,6 +70,8 @@
 
 .del {
   color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-code-diff-deleted);
+  box-shadow: inset 3px 0 0 var(--dsw-alias-state-error-primary);
 }
 
 .add::before {
@@ -63,6 +81,8 @@
 
 .add {
   color: var(--dsw-alias-state-success-primary);
+  background: var(--dsw-alias-code-diff-added);
+  box-shadow: inset 3px 0 0 var(--dsw-alias-state-success-primary);
 }
 
 /* The change summary, dim under the body: `└ +A -R`, the same footer the

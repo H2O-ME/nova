@@ -21,18 +21,6 @@ export function stepOptionIndex(current: number, count: number, delta: number): 
   return (current + delta + count) % count;
 }
 
-/**
- * The index a menu focuses when it opens: the selected option when it has one,
- * the first row otherwise (never a focused-but-off-list index).
- * @param count - how many options the menu holds.
- * @param selected - the selected option's index, or -1.
- * @returns the index to focus, or -1 for an empty menu.
- */
-export function initialOptionIndex(count: number, selected: number): number {
-  if (count <= 0) return NONE;
-  return selected >= 0 && selected < count ? selected : 0;
-}
-
 /** Whether an index points at an option (guards DOM focus walks). */
 export function isOptionIndex(index: number, count: number): boolean {
   return index >= 0 && index < count;

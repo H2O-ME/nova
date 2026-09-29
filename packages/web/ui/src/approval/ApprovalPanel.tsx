@@ -36,6 +36,7 @@ import { toolCardModel } from '../card-view.js';
 import { COMPOSING_GRACE_MS, composing } from '../composer-keys.js';
 import { scopedGrant } from '../format.js';
 import { ChevronLeftIcon, ChevronRightIcon } from '../icons.js';
+import { Tooltip } from '../shell/Tooltip.js';
 import { hasPreview } from './preview-model.js';
 import type { ApprovalRequest, AskResult, ClientFrame } from '../types.js';
 import css from './ApprovalPanel.module.css';
@@ -48,6 +49,11 @@ const KIND_LABELS: Record<string, string> = {
   execute: '执行',
   network: '网络',
 };
+
+/** `Object.hasOwn` for the same reason as the other label tables: a bare index resolves inherited members. */
+function kindLabelOf(kind: string): string {
+  return Object.hasOwn(KIND_LABELS, kind) ? KIND_LABELS[kind] as string : kind;
+}
 
 /**
  * How long an answered card stays locked before it unlocks itself. The lock
@@ -153,7 +159,7 @@ export function ApprovalPanel({
           preview={request.preview}
           args={request.call.rawArgs}
           toolName={request.call.name}
-          kindLabel={KIND_LABELS[request.kind] ?? request.kind}
+          kindLabel={kindLabelOf(request.kind)}
           headline={headline}
           words={words}
           scope={scope}
@@ -210,7 +216,22 @@ function ApprovalDetail({
       <div className={css.strip}>
         <span className={css.dot} />
         等待审批
-        <span className={css.badge} title={toolName}>{kindLabel}</span>
+        {/* The chip names the permission kind; the raw tool name is what the
+            chip cannot fit, so it is the tooltip's label rather than a `title`
+            attribute. `tabIndex` is what makes that label reachable without a
+            pointer — an unfocusable span never fires the focus trigger, and the
+            whole point of replacing `title` was that a keyboard reader gets it
+            too. No `role`: this is a description seat, not a control, so it
+            takes focus only to read out.
+
+            `portal` is required, not cosmetic: this card sits in the composer
+            seat, a `position: sticky; z-index: 7` stacking context, so an
+            in-place bubble's own z-index would be confined to 7 and paint under
+            the back-to-bottom control (8) — the same cap the seat's
+            `:has([data-trigger-menu])` rule exists to lift for the @ menu. */}
+        <Tooltip label={toolName} align="end" portal>
+          <span className={css.badge} tabIndex={0}>{kindLabel}</span>
+        </Tooltip>
       </div>
       <div
         className={css.body}

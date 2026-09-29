@@ -1,10 +1,11 @@
 /* Ported from deepseek-harness ui-tool (c) 2026 DeepSeek — MIT License. */
 /* Row chrome (`.root`, the sweep, `.sep`, `.summary`, `.summarySuffix`,
-   `.diffStat`, `.errorSummary`, `.bodyWrap`, `.inspectButton`, `.visuallyHidden`)
-   is ToolRow.module.css; `.row`, `.leading`, `.iconIdle`, `.chevronHover` and
-   `.title` are the shared 24px disclosure chrome from ui-primitives
-   DisclosureRow.module.css (same license), inlined here because this frontend has
-   no primitive package. Values, comments and class names kept verbatim. */
+   `.diffStat`, `.errorSummary`, `.stoppedSummary`, the `.row:hover` lift,
+   `.bodyWrap`, `.inspectButton`, `.visuallyHidden`) is ToolRow.module.css;
+   `.row`, `.leading`, `.iconIdle`, `.chevronHover` and `.title` are the shared
+   24px disclosure chrome from ui-primitives DisclosureRow.module.css (same
+   license), inlined here because this frontend has no primitive package.
+   Values, comments and class names kept verbatim. */
 
 /* Tool summary row (figma 122:9479): 24px single line at the default size —
    [16 leading] gap6 [title 13/24] gap8 [2x2 dot] gap8 [summary FILL truncate].
@@ -22,7 +23,7 @@
 }
 
 .row {
-  position: relative; /* sweep-glare overlay anchor */
+  position: relative;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -32,38 +33,6 @@
 
 .row[data-expandable] {
   cursor: pointer;
-}
-
-/* Running sweep (deepsuite ShimmerText pattern): a fixed-width glare band —
-   theme background at 60% — glides over the row content from off-left to
-   off-right, washing glyphs and icon toward the background as it passes.
-   ease-out with a 10% end hold gives each pass a beat before the next. */
-.root[data-state='running'] .row::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 300px;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in srgb, var(--dsw-alias-bg-base) 60%, transparent) 55%,
-    transparent 100%
-  );
-  animation: dsh-tool-row-sweep 2.6s ease-out infinite;
-  pointer-events: none;
-}
-
-@keyframes dsh-tool-row-sweep {
-  0% { left: -300px; }
-  90%, 100% { left: 100%; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .root[data-state='running'] .row::after {
-    animation: none;
-  }
 }
 
 .leading {
@@ -121,6 +90,8 @@
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-secondary);
   font-weight: 400;
+  /* The hover lift below animates this like the summary's (harness `.title`). */
+  transition: color 100ms ease;
 }
 
 .sep {
@@ -132,19 +103,28 @@
   background: var(--dsw-alias-label-caption);
 }
 
-.summary {
+/* The summary's flex box lives on a wrapper because the text itself is a
+   TextShimmer span (the running sweep paints through the glyphs). The wrapper
+   takes the row's fill/truncation role the harness puts on `.summary`. */
+.summaryWrap {
   flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
+}
+
+.summary {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-tertiary);
+  transition: color 100ms ease;
 }
 
 /* Commands, queries and paths read as code (the row's own mono flag). */
-.summary[data-mono] {
+.summaryWrap[data-mono] .summary {
   font-family: var(--ds-font-family-code);
 }
 
@@ -160,6 +140,7 @@
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-tertiary);
+  transition: color 100ms ease;
 }
 
 /* Diff-row +/- totals: the code font, matching the diff body the numbers
@@ -177,10 +158,26 @@
   transform: translateY(0.5px);
 }
 
+/* Hover lifts the row's own text to the primary tone (harness `.row:hover`
+   rule). The two settled-with-cue tones are excluded: a failure and an
+   interruption keep the color that carries their verdict. */
+.row:hover .title,
+.row:hover .summary:not(.errorSummary):not(.stoppedSummary),
+.row:hover .summarySuffix {
+  color: var(--dsw-alias-label-primary);
+}
+
 /* A failure's own line, in the error color: it replaces the summary/verdict
    rather than sitting beside them. */
 .errorSummary {
   color: var(--dsw-alias-state-error-primary);
+}
+
+/* An interrupted row keeps its business glyph and turns the summary amber
+   (harness `.stoppedSummary`). Amber, not the idle grey: the call did not
+   finish, and that is a thing the reader has to notice. */
+.stoppedSummary {
+  color: var(--dsw-alias-state-warn-label);
 }
 
 /* Expanded body + Inspect pill wrapper (sibling of .row: clicks never toggle). */

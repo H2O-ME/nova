@@ -105,6 +105,20 @@ const LANGUAGES: Record<string, LangSpec> = {
 };
 
 /**
+ * The scanner for a fence info string, or undefined when no scanner reads it.
+ * `Object.hasOwn` and not a bare index: the table is an object literal, so an
+ * info string like `constructor` or `__proto__` would otherwise resolve to an
+ * inherited member and reach `scan()` as a non-spec.
+ * @param lang - the fence's grammar id (already truncated to `[\w-]+`).
+ * @returns the scanner, or undefined.
+ */
+function specFor(lang: string | undefined): LangSpec | undefined {
+  if (lang === undefined) return undefined;
+  const key = lang.toLowerCase();
+  return Object.hasOwn(LANGUAGES, key) ? LANGUAGES[key] : undefined;
+}
+
+/**
  * Highlight one fence into per-line runs, or return undefined for a language
  * without a scanner (the caller then renders the plain `<pre>`).
  * @param code - the fence body exactly as authored.
@@ -112,10 +126,21 @@ const LANGUAGES: Record<string, LangSpec> = {
  * @returns one run list per line, or undefined.
  */
 export function highlightLines(code: string, lang: string | undefined): HlLine[] | undefined {
-  if (lang === undefined) return undefined;
-  const spec = LANGUAGES[lang.toLowerCase()];
+  const spec = specFor(lang);
   if (spec === undefined) return undefined;
   return toLines(scan(code, spec));
+}
+
+/**
+ * Whether a fence's info string resolves to a scanner. The code toolbar reads
+ * this to decide between the authored language id and its own generic label —
+ * the same test the highlighter itself applies, so a label never names a
+ * language whose body renders plain.
+ * @param lang - the fence's grammar id.
+ * @returns whether `highlightLines` would read it.
+ */
+export function supportsHighlighting(lang: string | undefined): boolean {
+  return specFor(lang) !== undefined;
 }
 
 /** Split the flat run list into lines, keeping the lossless invariant. */

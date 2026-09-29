@@ -1,0 +1,145 @@
+/*
+ * The plan panel: a collapsed-by-default card above the input bar.
+ *
+ * Ported from deepseek-harness ui-conversation `TodoPanel.module.css`
+ * (c) 2026 DeepSeek — MIT License, value for value.
+ *
+ * The card's horizontal geometry is COMPUTED, not `100%`: the harness takes the
+ * full width minus the composer's two side clearances and four dock insets, caps
+ * it at the composer card's own max-width minus the same four insets, and
+ * centres the result. Written as a bare `width: 100%` the panel instead spans the
+ * whole viewport and reads wider than the input card it sits on — the "太宽"
+ * defect. `QueueDock` already carries this same formula; the two cards share one
+ * dock, so they must share one width.
+ */
+
+.root {
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  margin: 0 auto;
+  width: calc(
+    100% -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  max-width: calc(
+    var(--dsh-composer-card-max-width) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  box-shadow: var(--dsw-elevation-panel);
+  /* The menu surface and the scrolling `.list` use the l2 scrollbar colors.
+     Declared here because the custom properties inherit into `.list`. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The card's own inset: 6px vertical is what makes the collapsed card 36px
+   (24px title line + 2×6), matching the queue dock's header. The 12px sides put
+   this header's chevron on the same vertical line as the queue dock's. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lead {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.title {
+  flex: none;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The counts sit next to the title and never push the chevron off the row. */
+.progress {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* The status lives in the DOT alone — the row's ink stays the secondary label
+   for every state. There is deliberately no per-status row styling: an earlier
+   revision struck completed rows through, which read as a list of deletions
+   rather than a plan. */
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+/* Figma strip is single-line; long items ellipsize with no inline expand. */
+.content {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

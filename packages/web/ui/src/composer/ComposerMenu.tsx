@@ -16,17 +16,45 @@
  * list can still move down.
  *
  * Not ported, because they belong to the multi-source directory pipeline this
- * surface has no analogue for: the breadcrumb header of a drilled source, the
- * pending-source skeleton rows, and the combobox keyboard arbitration (arrow
- * keys / Tab / Escape, which live on the harness's editor command layer and
- * would be the composer keymap's business here).
+ * surface has no analogue for: the breadcrumb header of a drilled source and the
+ * pending-source skeleton rows. (The keyboard arbitration is NOT missing — the
+ * composer bar owns it, and this view exposes the highlight through
+ * `aria-activedescendant` so the listbox stays legible without owning focus.)
  */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { DRILL_ARIA, DRILL_HINT, DRILL_KEY } from './composer-text.js';
+import { DRILL_ARIA, DRILL_HINT, DRILL_KEY, MENU_LOADING } from './composer-text.js';
 import { MENU_MAX_HEIGHT, menuMaxHeight, menuOverflowBelow } from './composer-measure.js';
 import { cx } from './cx.js';
 import css from './ComposerMenu.module.css';
+
+/**
+ * One row's DOM id, derived from its listbox id and ordinal.
+ *
+ * `aria-activedescendant` points at a row by id, so the pair (listbox, row) has
+ * to be expressible; deriving both from one value keeps them from drifting.
+ * @param listboxId - the listbox element's id.
+ * @param index - the row's ordinal in the list.
+ * @returns the row's id.
+ */
+export function rowId(listboxId: string, index: number): string {
+  return `${listboxId}-row-${String(index)}`;
+}
+
+/**
+ * The id of the row the highlight is on, or undefined when none is.
+ *
+ * Undefined (rather than a dangling id) is deliberate: `aria-activedescendant`
+ * naming an element that is not in the DOM is a worse answer than naming
+ * nothing, and an empty or skeleton list has no row to point at.
+ * @param listboxId - the listbox element's id.
+ * @param items - the rows, in render order.
+ * @returns the active row's id, or undefined.
+ */
+export function activeRowId(listboxId: string, items: readonly ComposerMenuItem[]): string | undefined {
+  const index = items.findIndex((item) => item.active === true);
+  return index < 0 ? undefined : rowId(listboxId, index);
+}
 
 /** One row of the trigger menu: a candidate the composer would insert. */
 export interface ComposerMenuItem {
@@ -49,19 +77,38 @@ export function ComposerMenu({
   items,
   groupTitle,
   ariaLabel,
+  pending = false,
+  listboxId,
   onPick,
   onDrill,
   onHover,
+  onDismiss,
 }: {
   items: readonly ComposerMenuItem[];
   /** A heading for the whole group (skipped when rows carry sections). */
   groupTitle?: string;
   /** The listbox's accessible name. */
   ariaLabel: string;
+  /**
+   * The listing is still being fetched and no rows have arrived: the
+   * reference's pending group renders two skeleton rows and NO empty-state
+   * copy, because "nothing matched" and "not asked yet" are different answers.
+   */
+  pending?: boolean;
+  /**
+   * This listbox's DOM id. The textarea OWNS focus while the menu is open (the
+   * combobox pattern — the draft keeps being typed), so the row the arrows have
+   * parked on is invisible to assistive technology unless the control that holds
+   * focus points at it. That pointer is `aria-activedescendant`, and it needs
+   * this id plus one per row (see {@link rowId}).
+   */
+  listboxId?: string;
   onPick?: (item: ComposerMenuItem) => void;
   onDrill?: (item: ComposerMenuItem) => void;
   /** Pointer motion moved onto a row: park the shared highlight there. */
   onHover?: (item: ComposerMenuItem) => void;
+  /** A pointer pressed outside the menu and outside the composer card. */
+  onDismiss?: () => void;
 }): JSX.Element {
   const listRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -81,7 +128,7 @@ export function ComposerMenu({
       window.removeEventListener('resize', fit);
       window.removeEventListener('scroll', fit, true);
     };
-  }, [items]);
+  }, [items, pending]);
   const updateOverflow = useCallback(() => {
     const viewport = viewportRef.current;
     setOverflowBelow(viewport !== null
@@ -89,12 +136,28 @@ export function ComposerMenu({
   }, []);
   useLayoutEffect(() => {
     updateOverflow();
-  }, [items, maxHeight, updateOverflow]);
+  }, [items, pending, maxHeight, updateOverflow]);
+  // Dismiss on a pointer outside the menu AND outside the composer card:
+  // clicking the textarea or the bottom bar must not close the menu (the
+  // reference's own rule). Captured on the document, because the card's own
+  // controls stop propagation at pointerdown.
+  useEffect(() => {
+    if (onDismiss === undefined) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!(event.target instanceof Node)) return;
+      if (listRef.current?.contains(event.target) === true) return;
+      if (listRef.current?.closest('[data-composer-card]')?.contains(event.target) === true) return;
+      onDismiss();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => { document.removeEventListener('pointerdown', onPointerDown, true); };
+  }, [onDismiss]);
   const sections = items.some((item) => item.section !== undefined);
   useEffect(() => {
     if (listRef.current === null) return;
     listRef.current.querySelector('[data-menu-active]')?.scrollIntoView({ block: 'nearest' });
   }, [items]);
+  const skeleton = pending && items.length === 0;
   return (
     <div
       ref={listRef}
@@ -105,74 +168,91 @@ export function ComposerMenu({
     >
       <div
         ref={viewportRef}
+        id={listboxId}
         className={css.viewport}
         role="listbox"
         aria-label={ariaLabel}
+        // The highlight the arrows parked on, as a reference to the row's own id.
+        // Focus never leaves the textarea (the combobox pattern below), so
+        // without this the active option exists only as a CSS class and an
+        // assistive-technology user hears the list but not which row is armed —
+        // `aria-selected` is not announced for a row that does not hold focus.
+        aria-activedescendant={
+          listboxId === undefined ? undefined : activeRowId(listboxId, items)
+        }
         onScroll={updateOverflow}
       >
-        {items.length === 0
-          ? null
-          : (
-            <>
-              {groupTitle !== undefined && !sections && (
-                <div className={css.groupTitle} role="presentation">{groupTitle}</div>
-              )}
-              {items.map((item, index) => (
-                <Fragment key={item.id}>
-                  {item.section !== undefined && item.section !== items[index - 1]?.section
-                    ? <div className={css.sectionTitle} role="presentation">{item.section}</div>
-                    : null}
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={item.active === true}
-                    data-menu-active={item.active === true ? '' : undefined}
-                    className={cx(css.item, item.active === true && css.active)}
-                    // mousedown, not click: the textarea keeps focus (combobox
-                    // pattern) — preventing default stops the focus steal, and the
-                    // pick runs before any blur-driven teardown.
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      onPick?.(item);
-                    }}
-                    // mousemove, not mouseenter: real pointer motion moves the
-                    // shared highlight; keyboard scrolling rows under a resting
-                    // pointer must not steal it back.
-                    onMouseMove={item.active === true ? undefined : () => { onHover?.(item) }}
-                  >
-                    {item.icon !== undefined && (
-                      <span className={css.itemIcon} aria-hidden="true">{item.icon}</span>
-                    )}
-                    <span className={css.itemName}>{item.label}</span>
-                    {item.alias !== undefined && <span className={css.itemAlias}>{item.alias}</span>}
-                    {item.description !== undefined && <span className={css.itemDescription}>{item.description}</span>}
-                    {item.drill === true && (
-                      <span className={css.trailing}>
-                        {/* Visual hint only: Tab drills the highlighted row (the
-                            keyboard twin of the chevron, which owns the aria label). */}
-                        <span className={css.drillHintText} aria-hidden="true">{DRILL_HINT}</span>
-                        <kbd className={css.drillHint} aria-hidden="true">{DRILL_KEY}</kbd>
-                        <span
-                          role="button"
-                          aria-label={DRILL_ARIA}
-                          className={css.drill}
-                          // mousedown so the composer keeps focus, same as the row;
-                          // stopPropagation keeps the row's settling pick out of it.
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            onDrill?.(item);
-                          }}
-                        >
-                          <ChevronRight />
+        {skeleton
+          ? (
+            <div role="status" aria-label={MENU_LOADING}>
+              <div className={css.skeletonRow}><span className={css.skeletonBar} style={{ width: '32%' }} /></div>
+              <div className={css.skeletonRow}><span className={css.skeletonBar} style={{ width: '48%' }} /></div>
+            </div>
+          )
+          : items.length === 0
+            ? null
+            : (
+              <>
+                {groupTitle !== undefined && !sections && (
+                  <div className={css.groupTitle} role="presentation">{groupTitle}</div>
+                )}
+                {items.map((item, index) => (
+                  <Fragment key={item.id}>
+                    {item.section !== undefined && item.section !== items[index - 1]?.section
+                      ? <div className={css.sectionTitle} role="presentation">{item.section}</div>
+                      : null}
+                    <button
+                      type="button"
+                      role="option"
+                      id={listboxId === undefined ? undefined : rowId(listboxId, index)}
+                      aria-selected={item.active === true}
+                      data-menu-active={item.active === true ? '' : undefined}
+                      className={cx(css.item, item.active === true && css.active)}
+                      // mousedown, not click: the textarea keeps focus (combobox
+                      // pattern) — preventing default stops the focus steal, and the
+                      // pick runs before any blur-driven teardown.
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        onPick?.(item);
+                      }}
+                      // mousemove, not mouseenter: real pointer motion moves the
+                      // shared highlight; keyboard scrolling rows under a resting
+                      // pointer must not steal it back.
+                      onMouseMove={item.active === true ? undefined : () => { onHover?.(item) }}
+                    >
+                      {item.icon !== undefined && (
+                        <span className={css.itemIcon} aria-hidden="true">{item.icon}</span>
+                      )}
+                      <span className={css.itemName}>{item.label}</span>
+                      {item.alias !== undefined && <span className={css.itemAlias}>{item.alias}</span>}
+                      {item.description !== undefined && <span className={css.itemDescription}>{item.description}</span>}
+                      {item.drill === true && (
+                        <span className={css.trailing}>
+                          {/* Visual hint only: Tab drills the highlighted row (the
+                              keyboard twin of the chevron, which owns the aria label). */}
+                          <span className={css.drillHintText} aria-hidden="true">{DRILL_HINT}</span>
+                          <kbd className={css.drillHint} aria-hidden="true">{DRILL_KEY}</kbd>
+                          <span
+                            role="button"
+                            aria-label={DRILL_ARIA}
+                            className={css.drill}
+                            // mousedown so the composer keeps focus, same as the row;
+                            // stopPropagation keeps the row's settling pick out of it.
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onDrill?.(item);
+                            }}
+                          >
+                            <ChevronRight />
+                          </span>
                         </span>
-                      </span>
-                    )}
-                  </button>
-                </Fragment>
-              ))}
-            </>
-          )}
+                      )}
+                    </button>
+                  </Fragment>
+                ))}
+              </>
+            )}
       </div>
     </div>
   );

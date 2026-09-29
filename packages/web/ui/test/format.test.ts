@@ -4,7 +4,7 @@
  * directly instead of being verified through a rendered row.
  */
 import { describe, expect, it } from 'vitest';
-import { averageFirstToken, cacheHitText, formatClock, formatDuration, formatTokens, modelThroughput, runMetaText, scopedGrant, stampLabel, subagentTotals, throughput } from '../src/format.js';
+import { averageFirstToken, cacheHitText, formatClock, formatDuration, formatExactTokens, formatTokens, liveDurationText, modelThroughput, runDurationText, runMetaText, scopedGrant, stampLabel, subagentTotals, throughput } from '../src/format.js';
 import { emptyTotals, type SessionTotals } from '../../src/totals.js';
 
 describe('formatDuration', () => {
@@ -51,9 +51,12 @@ describe('rates', () => {
     expect(modelThroughput(emptyTotals)).toBeUndefined();
   });
 
-  it('ignores a cache report that never arrived', () => {
+  it('reads 0 when input was billed but nothing was served from cache', () => {
     expect(cacheHitText(0, 0)).toBeUndefined();
-    expect(cacheHitText(0, 1_000)).toBeUndefined();
+    // Billed input with no cache reads is an honest 0% (the reference's rule):
+    // the endpoints this surface targets report cache on every request, so a
+    // standing 0% says "check your gateway", not "caching is invisible".
+    expect(cacheHitText(0, 1_000)).toBe('0');
     expect(cacheHitText(120, 200)).toBe('60');
   });
 
@@ -123,6 +126,35 @@ describe('formatClock', () => {
   it('prints a local wall-clock stamp', () => {
     const ts = new Date(2026, 7, 28, 23, 43).getTime();
     expect(formatClock(ts)).toBe('8月28日 23:43');
+  });
+
+  it('shortens to the wall clock for today (the harness formatMessageClock rule)', () => {
+    const now = new Date(2026, 8, 25, 10, 0).getTime();
+    expect(formatClock(new Date(2026, 8, 25, 1, 54).getTime(), now)).toBe('01:54');
+    expect(formatClock(new Date(2026, 8, 24, 1, 54).getTime(), now)).toBe('9月24日 01:54');
+    expect(formatClock(new Date(2025, 8, 24, 1, 54).getTime(), now)).toBe('2025-09-24 01:54');
+  });
+});
+
+describe('runDurationText', () => {
+  it('grows whole units, never a bare float', () => {
+    expect(runDurationText(4_000)).toBe('4秒');
+    expect(runDurationText(2 * 60_000 + 30_000)).toBe('2分30秒');
+    expect(runDurationText(3_600_000 + 2 * 60_000 + 5_000)).toBe('1小时02分05秒');
+  });
+});
+
+describe('liveDurationText', () => {
+  it('ticks whole seconds without zero padding', () => {
+    expect(liveDurationText(59_400)).toBe('59秒');
+    expect(liveDurationText(61_000)).toBe('1分1秒');
+  });
+});
+
+describe('formatExactTokens', () => {
+  it('groups thousands for the usage panel', () => {
+    expect(formatExactTokens(23992)).toBe('23,992');
+    expect(formatExactTokens(217)).toBe('217');
   });
 });
 

@@ -8,8 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   COMMANDS_LABEL, PLACEHOLDER_DEFAULT, PLACEHOLDER_HERO, PLACEHOLDER_UNAVAILABLE, QUEUE_SEND_LABEL,
-  SEND_LABEL, STOP_LABEL, placeholderFor, plainDraft, primarySeat, queueCountLabel, queueHeaderVisible,
-  queueListVisible, queuePreview,
+  SEND_LABEL, STILL_UPLOADING, STOP_LABEL, placeholderFor, plainDraft, primarySeat, queueCountLabel,
+  queueHeaderVisible, queueListVisible, queuePreview,
 } from '../src/composer/composer-text.js';
 
 describe('placeholderFor', () => {
@@ -77,6 +77,26 @@ describe('primarySeat', () => {
     expect(primarySeat({ running: true, disabled: true, draft: '再跑一次' })).toEqual({
       kind: 'send', disabled: true, label: SEND_LABEL,
     });
+  });
+
+  it('refuses to send while an attachment is still uploading, and says why', () => {
+    // The regression this pins: `submit()` sent unconditionally, so Enter during
+    // an upload delivered a prompt that named a file not yet on disk. dsh refuses
+    // for exactly this reason (`view-binding.ts:128`).
+    expect(primarySeat({ running: false, disabled: false, draft: '看看这个', uploading: true })).toEqual({
+      kind: 'send', disabled: true, label: STILL_UPLOADING,
+    });
+    // Stop still wins over the upload guard when the draft is empty: a run in
+    // flight must stay interruptible regardless of what the rail is doing.
+    expect(primarySeat({ running: true, disabled: false, draft: '', uploading: true }).kind).toBe('stop');
+  });
+
+  it('sends normally again once the upload settles', () => {
+    expect(primarySeat({ running: false, disabled: false, draft: '看看这个', uploading: false })).toEqual({
+      kind: 'send', disabled: false, label: SEND_LABEL,
+    });
+    // Absent is the same as false, so existing callers are unaffected.
+    expect(primarySeat({ running: false, disabled: false, draft: '看看这个' }).disabled).toBe(false);
   });
 });
 

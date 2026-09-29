@@ -1,0 +1,356 @@
+/* 模型参数 sheet：一行一个模型，展开后是逐字段的能力覆盖。
+ *
+ * 几何与 token 全部照搬 deepseek-harness `ui-settings-models` 的
+ * `ModelsSection.module.css`（MIT，(c) 2026 DeepSeek）：卡片圆角 `--dsw-radius-lg`
+ * 与 `--dsw-alias-border-l4` 描边、输入框 32px 高 / `--dsw-radius-md` /
+ * `--dsw-alias-bg-layer-1`、行内图标按钮 28px 见方、删除悬停用
+ * `--dsw-alias-interactive-bg-hover-danger`、占位符 `--dsw-alias-label-dimmed`。
+ * 页头由 `StepHeading` 提供，本表不再自带。 */
+
+.notice {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-lg);
+}
+
+/* The row's own line: id | display name | disclosure | remove. A GRID rather
+ * than a flex row, so the two fields keep proportional widths (1.4 : 1) and
+ * every card's columns line up with the card above it — as a flex row the
+ * widths depended on each field's content, so typing a long id visibly shoved
+ * the neighbouring input (the reference's `modelRow` recipe). */
+.cardHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.input::placeholder {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.input:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.input:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* A select keeps the input's box, loses the OS arrow (which sits flush against
+ * the right edge and cannot take the label colour), and gains our own chevron in
+ * the cell the arrow vacated. */
+.selectWrap {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.select {
+  appearance: none;
+  padding-right: 30px;
+  cursor: pointer;
+}
+
+.selectIcon {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  color: var(--dsw-alias-label-tertiary);
+  pointer-events: none;
+}
+
+/* Square, label-free affordances: the row's own fields carry the meaning, so
+ * the actions stay glyphs and announce themselves through aria-label. */
+.iconButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.iconButtonDanger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* The capability fields: two columns inside the card. No horizontal padding —
+ * that would push every label a few pixels right of the id input above it, which
+ * is exactly the kind of misalignment this page is being fixed for. */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  padding: 2px 0 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The label line carries the READOUT: 「当前生效 手动 256K」 / 「当前生效 自动」.
+ * The pair (current, automatic) is what the page must show side by side —
+ * the gap between them is what the operator is departing from. */
+.fieldHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  flex: none;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.effective {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The modality choices span both columns: a checkbox group is one field, not two. */
+.modalities {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.modalities legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 22px;
+  align-items: center;
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--dsw-alias-state-business-primary);
+  cursor: pointer;
+}
+
+/* The automatic value under a choice group: the placeholder the single-line
+ * fields carry in their `placeholder` attribute. */
+.autoLine {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-dimmed);
+}
+
+.addBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.addRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.button,
+.primary {
+  box-sizing: border-box;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.button {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.primary {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.button:disabled,
+.primary:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pool {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.poolTitle {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.poolRows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+/* Candidate id: a capsule, so it reads as a token to add rather than a field.
+ * `corner-shape: round` because the universal superellipse would square the
+ * capsule's ends off (see `styles/corner-shape.css`). */
+.poolRow {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 3px 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: 999px;
+  corner-shape: round;
+  background: transparent;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.poolRow:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.poolRow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* A refused field: the message names the rule, so the field only has to mark
+ * itself rather than repeat it. */
+.problem {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.readOnly {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}

@@ -21,13 +21,13 @@
   max-height: min(360px, calc(100vh - 96px));
   overflow: hidden;
   padding: 4px;
-  /* Surface tokens match the sibling menu cards (conversation
-     PermissionSelect) so every dropdown reads as the same material. The
-     source uses `--dsw-specific-menu`; this token sheet has no such entry, so
-     the card rides the elevated l2 layer. */
+  /* The material is the shared `shell/MenuSurface` layer — the theme-owned
+     `--dsw-menu-surface-fill` + `--dsw-menu-backdrop-filter`, exactly what the
+     reference's `MenuSurface` paints and what `docs/web-styling.md` makes the
+     one legal way for a dropdown to get its fill. This sheet supplies geometry,
+     elevation and ink only; it never redeclares either token. */
   border: 0;
-  border-radius: 20px;
-  background: var(--dsw-alias-bg-layer-2);
+  background: transparent;
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   box-shadow: var(--dsw-elevation-prominent);
   color: var(--dsw-alias-label-primary);
@@ -41,24 +41,24 @@
 
 .status,
 .empty {
-  padding: 10px;
+  padding: 8px;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .error {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
-  padding: 7px 8px;
-  border-radius: 8px;
+  gap: 6px;
+  margin-bottom: 3px;
+  padding: 6px 7px;
+  border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-interactive-bg-hover-danger);
   color: var(--dsw-alias-state-error-primary);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 16px;
 }
 
 .retry {
@@ -78,18 +78,22 @@
 }
 
 .group + .group {
-  margin-top: 4px;
+  margin-top: 3px;
 }
 
 .groupTitle {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 5px 8px 3px;
-  background: var(--dsw-alias-bg-layer-2);
+  padding: 4px 7px 2px;
+  /* The sticky heading covers rows scrolling under it, so it needs the
+     overlay fill rather than the card's own transparent background: the
+     reference's ModelSelect does the same (`--dsw-specific-menu`, the
+     near-opaque macOS variant of the menu fill). */
+  background: var(--dsw-specific-menu);
   color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 11px;
+  line-height: 16px;
   font-weight: 500;
 }
 
@@ -97,13 +101,13 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: auto;
   min-width: 100%;
-  min-height: 38px;
-  padding: 6px 8px;
+  min-height: 34px;
+  padding: 5px 7px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--dsw-radius-md);
   outline: none;
   background: transparent;
   color: inherit;
@@ -133,8 +137,8 @@
 .optionLabel {
   overflow: hidden;
   color: inherit;
-  font-size: 14px;
-  line-height: 20px;
+  font-size: 13px;
+  line-height: 18px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -149,10 +153,17 @@
   white-space: nowrap;
 }
 
-/* Selection marker is the trailing check, not a fill. */
+/* Selection marker is the trailing check, not a fill. Both it and the icon
+   glyph are set to the row's 14px asset size (the shared set draws a 16px box
+   and the sheet steps it down, the same way the two triggers do). */
 .check {
   display: grid;
   place-items: center;
-  flex: 0 0 18px;
+  flex: 0 0 14px;
   color: var(--dsw-alias-label-primary);
+}
+
+.check svg {
+  width: 14px;
+  height: 14px;
 }

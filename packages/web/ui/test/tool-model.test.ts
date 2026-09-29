@@ -58,10 +58,10 @@ function slots(input: Partial<CardInput> & Pick<CardInput, 'view'>): ReturnType<
 }
 
 describe('row slots', () => {
-  it('a shell call: Bash title, the command as a mono summary, the exit note trailing', () => {
+  it('a shell call: the 运行命令 title, the command as a mono summary, the exit note trailing', () => {
     const view = { card: 'terminal' as const, command: 'pnpm test' };
     const row = slots({ view, args: '{"command":"pnpm test"}', result: { card: 'terminal', output: 'ok', exitCode: 0 } });
-    expect(row.title).toBe('Bash');
+    expect(row.title).toBe('运行命令');
     expect(row.summary).toBe('$ pnpm test');
     expect(row.mono).toBe(true);
     expect(row.suffix).toBe('退出码 0');

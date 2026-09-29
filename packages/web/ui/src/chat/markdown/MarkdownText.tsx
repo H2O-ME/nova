@@ -24,7 +24,7 @@ import type { MarkdownLabels } from './labels.js';
 import { parseMarkdown } from './parse.js';
 import css from './MarkdownText.module.css';
 
-export type { MarkdownCodeLabels, MarkdownLabels } from './labels.js';
+export type { MarkdownCodeLabels, MarkdownCodeToolbarLabels, MarkdownLabels } from './labels.js';
 export { defaultMarkdownLabels } from './labels.js';
 
 export interface MarkdownTextProps {
@@ -37,19 +37,31 @@ export interface MarkdownTextProps {
    * memoized per-locale value): a new identity discards the memo mid-message.
    */
   labels?: MarkdownLabels | undefined;
+  /**
+   * `body` keeps the full document typography; `compact` drops to the
+   * secondary text tier with uniform bold headings and tight block spacing
+   * (the folded reasoning body).
+   */
+  variant?: 'body' | 'compact' | undefined;
 }
 
 export const MarkdownText = memo(function MarkdownText({
   text,
   streaming = false,
   labels = defaultMarkdownLabels,
+  variant = 'body',
 }: MarkdownTextProps): JSX.Element {
   const children = useMemo<ReactNode[]>(
     () => renderMarkdownBlocks(parseMarkdown(text), { labels, streaming }),
     [text, streaming, labels],
   );
+  const compact = variant === 'compact';
   return (
-    <div className={css.markdown} data-streaming={streaming ? '' : undefined}>
+    <div
+      className={compact ? `${css.markdown} ${css.compact}` : css.markdown}
+      data-markdown-variant={compact ? variant : undefined}
+      data-streaming={streaming ? '' : undefined}
+    >
       {children}
     </div>
   );

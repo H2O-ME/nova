@@ -63,11 +63,47 @@ export function chainsWheelToConversation(state: {
   return atEnd;
 }
 
+/** Wheel deltaMode: the delta counts lines (Firefox's default). */
+export const WHEEL_DELTA_LINE = 1;
+/** Wheel deltaMode: the delta counts pages. */
+export const WHEEL_DELTA_PAGE = 2;
+/** Line height assumed when the scrollport reports no usable one. */
+export const FALLBACK_WHEEL_LINE_PX = 16;
+
+/**
+ * One wheel event's vertical delta in scrollport pixels. A wheel delta arrives
+ * in the event's own unit — pixels, lines (Firefox) or pages — so forwarding a
+ * gesture to another scroller has to convert first; passing a line count
+ * straight to `scrollBy` would move a whole 3px instead of ~48px. The caller
+ * reads the two measurements off the target (a pure function cannot).
+ * @param event - the wheel's delta and its unit.
+ * @param metrics - the target's resolved line height and visible height, in px.
+ * @returns the delta in pixels.
+ */
+export function wheelDeltaY(
+  event: { deltaY: number; deltaMode: number },
+  metrics: { lineHeight: number; clientHeight: number },
+): number {
+  if (event.deltaMode === WHEEL_DELTA_LINE) {
+    return event.deltaY * (Number.isFinite(metrics.lineHeight) && metrics.lineHeight > 0 ? metrics.lineHeight : FALLBACK_WHEEL_LINE_PX);
+  }
+  if (event.deltaMode === WHEEL_DELTA_PAGE) return event.deltaY * metrics.clientHeight;
+  return event.deltaY;
+}
+
 /** Height cap that fits the two headings and eight built-in command rows. */
 export const MENU_MAX_HEIGHT = 400;
-/** Safe distance kept between a bottom-anchored overlay and the viewport top
- *  edge (mirrors the harness Menu portal's margin). */
-export const MENU_MARGIN = 12;
+
+/**
+ * The gap a bottom-anchored trigger menu keeps to the viewport top edge.
+ *
+ * 84px = the conversation header's own 76px block (`conversation/
+ * SessionHeader.module.css`) plus 8px of air, which is the harness's
+ * `MenuView` `TOP_MARGIN` for this exact seat. The primitive `Menu`'s 12px
+ * would let a long `@` listing grow UP over the header and cover it, because
+ * the menu is `position: absolute` — the header does not push it down.
+ */
+export const MENU_MARGIN = 84;
 
 /**
  * Clamp a bottom-anchored overlay's height to the viewport (harness

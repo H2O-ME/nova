@@ -1,6 +1,9 @@
 /* Live status rows (background job / nested subagent).
  * Values carried over from the pre-port transcript sheet: the same 24px row
- * family as a tool row, with the figures in the tail. */
+ * family as a tool row, with the figures in the tail. The subagent row's
+ * two-line body matches the harness `ui-subagent` catalog row
+ * (`SubagentHeaderLineage.module.css`): 14x17 activity slot, a stacked
+ * label/summary content box, and a right-aligned two-row metrics grid. */
 .row {
   display: flex;
   align-items: center;
@@ -20,10 +23,15 @@
 
 .label {
   min-width: 0;
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Only the job row puts the label in the row itself; the subagent row's label
+   lives inside `.content`, where the column box owns the width. */
+.row > .label {
+  flex: 1;
 }
 
 .detail {
@@ -40,6 +48,89 @@
   flex: none;
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* The subagent's own state mark, on the harness's fixed 14x17 leading slot so a
+   row's label starts at the same edge whether or not a dot is drawn. */
+.activitySlot {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 17px;
+}
+
+/* The harness catalog row is a two-line block: top-aligned, and taller than the
+   24px one-line job row because the content box stacks label over clause. Its
+   own 12px/17px type and 6px gap come from that catalog row rather than the
+   shared `.row` above, which carries the tool-row family the job and command
+   rows share. */
+.subRow {
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 7px 6px 9px;
+  border-radius: var(--dsw-radius-lg);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+/* Label over clause: the harness row's stacked content box. */
+.content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.content > .label {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* `title · mode · activity` in the harness; here the lead fact plus the
+   activity word, one step down from the label's own color. The tier is 10px
+   because that is the harness's `.summary` size in this catalog row — the
+   token named `--dsw-font-xxs-12` is a `font` SHORTHAND, so it could not serve
+   as `font-size` and the row inherited 13px instead. */
+.summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 15px;
+}
+
+/* Total tokens over the active duration, right-aligned: the harness metrics
+   grid. The two rows keep their own heights so the pair lines up with the
+   label/summary pair beside it. The rows are sized by line-height rather than
+   the harness's `grid-template-rows: 17px 15px` because this port renders the
+   token row conditionally: a fixed track would reserve 17px for a row that is
+   not there, while the auto tracks collapse with it. */
+.metrics {
+  display: grid;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  /* The harness's `.summary, .metrics` tier. `--dsw-font-xxs-12` is a `font`
+     SHORTHAND and cannot supply the size — writing it as `font-size` dropped
+     the declaration and left both rows at the inherited 13px. */
+  font-size: 10px;
+  line-height: 15px;
+}
+
+.metricToken {
+  line-height: 17px;
+}
+
+/* The duration sits under the token count. The grid already sets the 15px base
+   line-height, so this row only has to claim its own, which is what keeps the
+   pair aligned with the label/summary pair beside it. */
+.metricDuration {
+  line-height: 15px;
 }
 
 .row[data-state='failed'] .meta {
@@ -79,4 +170,78 @@
 .stop:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* Command rows (`/compact` and friends) wear the tool-row family: the shared
+   24px DisclosureRow chrome, a separator, and the command's own output as the
+   shimmering summary. Values follow GenericCommandCard.module.css. */
+.commandRoot {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+/* The command icon stays a step under the row's text, like every flow-row
+   leading slot. */
+.leading svg {
+  width: calc(14px + var(--dsh-content-font-delta, 0px));
+  height: calc(14px + var(--dsh-content-font-delta, 0px));
+}
+
+.title {
+  flex: none;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-secondary);
+}
+
+.chevron {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.sep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 8px;
+  border-radius: 1px;
+  background: var(--dsw-alias-label-caption);
+}
+
+.commandSummary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.commandRoot[data-state='error'] .commandSummary {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* The command's multiline output, revealed in place under its row. */
+.commandBody {
+  margin: 0;
+  padding: 8px 0 8px 22px;
+  overflow-x: auto;
+  font: var(--dsw-font-markdown-code-block-small);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.commandBody[data-error] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }

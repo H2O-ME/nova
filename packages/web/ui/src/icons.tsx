@@ -58,6 +58,14 @@ export const MoonIcon = (p: P): JSX.Element => (
   </Svg>
 );
 
+/** A display on a stand: the "follow the system" theme choice. */
+export const FollowSystemIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <rect x="1.75" y="2.75" width="12.5" height="9.5" rx="2.25" />
+    <path d="M5.25 14.25h5.5" />
+  </Svg>
+);
+
 export const RefreshIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <path d="M13.25 8a5.25 5.25 0 1 1-1.55-3.72" />
@@ -74,6 +82,16 @@ export const ArrowDownIcon = (p: P): JSX.Element => (
 export const CloseIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <path d="M4 4l8 8M12 4l-8 8" />
+  </Svg>
+);
+
+/** Three tiles and a plus: one plugin among a roster (the plugin list row). */
+export const PluginIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <rect x="2.25" y="2.25" width="4.9" height="4.9" rx="1.4" />
+    <rect x="8.85" y="2.25" width="4.9" height="4.9" rx="1.4" />
+    <rect x="2.25" y="8.85" width="4.9" height="4.9" rx="1.4" />
+    <path d="M11.3 8.85v4.9M8.85 11.3h4.9" />
   </Svg>
 );
 
@@ -106,6 +124,12 @@ export const SettingsIcon = (p: P): JSX.Element => (
 export const ChevronDownIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <path d="M4 6l4 4 4-4" />
+  </Svg>
+);
+
+export const ChevronUpIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M4 10l4-4 4 4" />
   </Svg>
 );
 
@@ -142,6 +166,16 @@ export const CheckIcon = (p: P): JSX.Element => (
 export const CircleIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <circle cx="8" cy="8" r="4.5" />
+  </Svg>
+);
+
+/** The plan panel's lead: a clipboard with two ticks (harness `IconChecklist`). */
+export const ChecklistIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M6 2.5h4v2H6z" />
+    <path d="M6 3.5H3.5v10h9v-10H10" />
+    <path d="M5.5 8.2l1.6 1.6 3.4-3.4" />
+    <path d="M5.5 11.6h5" />
   </Svg>
 );
 
@@ -213,4 +247,38 @@ export const AlertIcon = (p: P): JSX.Element => (
       fill="currentColor"
     />
   </svg>
+);
+
+/** Pencil (ic_ds edit_16): the path-edit affordance in the directory picker. */
+export const PencilIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M11.31 1.22a1.99 1.99 0 0 1 2.81 2.82l-1.1 1.1-2.81-2.81 1.1-1.11Z" />
+    <path d="M9.23 3.3 3.54 9a2.4 2.4 0 0 0-.59 1l-.9 3.11a.7.7 0 0 0 .86.87l3.12-.9a2.4 2.4 0 0 0 .99-.59l5.7-5.7L9.23 3.3Z" />
+  </Svg>
+);
+
+/** Trash can: the session row's destructive hover action. */
+export const TrashIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M2.5 4h11" />
+    <path d="M6 4V2.8a.8.8 0 0 1 .8-.8h2.4a.8.8 0 0 1 .8.8V4" />
+    <path d="M4 4l.7 8.3a1 1 0 0 0 1 .7h4.6a1 1 0 0 0 1-.7L12 4" />
+    <path d="M6.6 6.6v4M9.4 6.6v4" />
+  </Svg>
+);
+
+/** Open book: the Skill 中心 nav row (skills are progressive-loading docs). */
+export const BookIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M8 3.5C6.4 2.6 4.7 2.4 2.75 2.75v9.7c1.95-.35 3.65-.15 5.25.75 1.6-.9 3.3-1.1 5.25-.75v-9.7C11.3 2.4 9.6 2.6 8 3.5Z" />
+    <path d="M8 3.5v9.7" />
+  </Svg>
+);
+
+/** Chat bubble with signal arcs: the QQ 机器人 channel nav row. */
+export const ChatBotIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M2.75 3.5h10.5v7H8.5l-2.6 2.4v-2.4H2.75v-7Z" />
+    <path d="M6 6.25h4M6 8.5h2.5" />
+  </Svg>
 );

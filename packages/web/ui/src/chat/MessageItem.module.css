@@ -7,6 +7,30 @@
    omitted — this surface's message blocks carry none of them (a retry or a
    host error arrives as a hint line, which ChatView.module.css styles). */
 
+/* Attachments sit ABOVE the bubble, right-aligned with it, so the bubble keeps
+   its own edge whether or not anything is attached (the reference's arrangement).
+   The pixels are fetched by URL from the content-addressed route, so this row is
+   what makes a pasted image survive a reload. */
+.attachmentRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 100%;
+  gap: 8px;
+}
+
+.attachmentImage {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-specific-input-major);
+}
+
 .userRow {
   display: flex;
   flex-direction: column;
@@ -32,7 +56,7 @@
      keeps narrow windows sane. */
   max-width: 100%;
   background: var(--dsw-specific-bubble);
-  border-radius: 22px;
+  border-radius: var(--dsw-radius-xl);
   /* 42px single-line bubble at the default size: 22 line + 10 vertical
      padding each side; the Settings font-size preference moves size and line
      height together through the body-published axis. */
@@ -50,6 +74,10 @@
    hover/focus disclosure for the summary body. Dimmed title (not
    label-primary) — the row is a boundary notice, not conversation content. */
 .compactionRow {
+  /* The toggle's line, and the band a pinned toggle occupies. The button's
+     height and the offset that holds a summary's code banner below that band
+     are the same measurement, so both read it from here. */
+  --dsh-compaction-header-height: calc(24px + var(--dsh-content-font-delta, 0px));
   padding: 2px 0;
 }
 
@@ -57,15 +85,47 @@
   display: flex;
   align-items: center;
   width: 100%;
-  height: calc(24px + var(--dsh-content-font-delta, 0px));
+  height: var(--dsh-compaction-header-height);
   min-width: 0;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
   background: none;
   color: inherit;
   font: inherit;
   text-align: left;
+}
+
+/* The summary body flows uncapped with the page, so a long checkpoint summary
+   carries this toggle off the top of the viewport. Pin it to the conversation
+   scroll container's top while the row is open (the body is a sibling rendered
+   only when expanded); the base background masks the prose scrolling under it.
+   The square corners apply for as long as the row is open, pinned or not: the
+   fill is what masks the prose, and rounded corners would leave that prose
+   visible in the corners. z-index outranks the markdown code block's own
+   sticky banner; that banner itself stops below this toggle (rule below), so a
+   summary's fenced code block never puts a control inside the toggle's band. */
+.compactionRow:has(.compactionBody) .compactionButton {
+  position: sticky;
+  top: 0;
+  z-index: 7;
+  border-radius: 0;
+  background: var(--dsw-alias-bg-base);
+}
+
+/* A fenced code block in the summary pins its banner at the scrollport top,
+   where this pinned toggle already sits, and the toggle's band covers the
+   banner's Copy control. Stop the banner below the toggle instead, on the same
+   measurement the toggle's own height uses. */
+.compactionBody :has(> [data-code-block-banner]) {
+  top: var(--dsh-compaction-header-height);
+}
+
+/* Pinned, the toggle needs an opaque hover fill: the default translucent hover
+   token below would let the scrolling prose show through the moment the pointer
+   lands on the toggle to collapse it. */
+.compactionRow:has(.compactionBody) .compactionButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
 }
 
 .compactionButton:not(:disabled) {
@@ -119,10 +179,7 @@
   flex: none;
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
-  /* The harness reads --dsw-alias-label-primary-dimmed here; this token sheet
-     has no dimmed variant, so the ported fallback chain resolves to the
-     secondary tier. */
-  color: var(--dsw-alias-label-primary-dimmed, var(--dsw-alias-label-secondary));
+  color: var(--dsw-alias-label-primary-dimmed);
 }
 
 .compactionSep {
@@ -153,17 +210,3 @@
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
 }
 
-/* The finished run's meta line (`用时 … · 首 token … · tok/s · 工具 …`). This
-   is ours, not a harness rule: the harness splits these numbers between its
-   IconActions clock and the TurnUsagePanel pills, while this surface prints
-   them as one row from the kernel's `run_stats`. Values follow the same
-   secondary tier as the row chrome beside it. */
-.metaRow {
-  display: flex;
-  align-items: center;
-  padding: 2px 0;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta-secondary, 0px));
-  white-space: nowrap;
-}

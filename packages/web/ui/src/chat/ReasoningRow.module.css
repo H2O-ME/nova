@@ -14,6 +14,15 @@
   overflow: hidden;
 }
 
+/* The uncapped body scrolls with the conversation; keep its collapse toggle
+   reachable. Compact Markdown code banners stay in flow below this header. */
+.root[data-expanded] [data-open] [data-disclosure-row] {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dsw-alias-bg-base);
+}
+
 .root[data-state='running'] .row::after {
   content: '';
   position: absolute;
@@ -75,28 +84,29 @@
   text-overflow: ellipsis;
 }
 
-.summary[data-follow-end] {
-  display: flex;
-  justify-content: flex-end;
+/* Streaming preview fades out at the right edge instead of ellipsising: the
+   reader is watching the thought arrive, and a `…` would read as an ending. */
+.summary[data-streaming] {
+  mask-image: linear-gradient(to right, black calc(100% - 48px), transparent);
 }
 
-.summary[data-follow-end] .summaryText {
-  flex: 0 0 auto;
-  width: max-content;
-  min-width: 100%;
+.summary[data-streaming] .summaryText {
   overflow: visible;
-  text-align: start;
   text-overflow: clip;
 }
 
+/* No preview, no separator and no summary: the row is just its title. */
+.root:not([data-preview]) .separator,
+.root:not([data-preview]) .summary {
+  display: none;
+}
+
+/* The compact document inside carries its own type scale and color; this rule
+   only indents it under the title and gives the flex row a shrinkable box. */
 .thinkBody {
   /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
   padding: 4px 0 4px calc(22px + var(--dsh-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
-  white-space: pre-wrap;
-  word-break: break-word;
+  min-width: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

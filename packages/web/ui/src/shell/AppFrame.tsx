@@ -11,8 +11,15 @@
  * track only decides whether the centre makes room for it. The occupant
  * reports shown/track/fullscreen back through `layout-store`; fullscreen keeps
  * the reported track but hides the outer resize handle.
+ *
+ * Track easing is scoped to a discrete collapse/expand toggle, never to a
+ * steady-state viewport update: an eased track would chase the live window edge
+ * and visibly rubber-band the centre column while the user resizes. The
+ * `data-animating` attribute the stylesheet gates on is held across the toggle
+ * and released at `transitionend`, so the CSS and this component stay one
+ * mechanism rather than two.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   computeColumns,
@@ -27,6 +34,15 @@ import css from './AppFrame.module.css';
 export interface SidebarSlotParams {
   collapsed: boolean;
   width: number;
+  /**
+   * The collapse is the NARROW-FRAME auto-collapse rather than the reader's own
+   * choice. The two look identical in a 56px rail, and they mean different
+   * things: one is a state the reader chose, the other is a state the window
+   * imposed on them. The occupant needs the difference to make the way back
+   * discoverable (its toggle names the reason and keeps the accent), which is the
+   * defect the rail-only affordance left: a sidebar that "just disappeared".
+   */
+  auto: boolean;
 }
 
 /** What the right column occupant needs to know about its own column. */
@@ -202,6 +218,10 @@ export function AppFrame({
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE;
   const collapsed = sidebarCollapsed(layout);
   const preference = sidebarPreference(layout);
+  // The auto-collapse is a fact about WHY the rail is drawn, and it is only true
+  // while the frame is narrow AND the rail is closed (a reader who expanded it
+  // below the breakpoint has already answered the question).
+  const autoCollapsed = narrow && collapsed;
   const rightbarPreference = layout.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO;
   // Opening on a narrow frame collapses the left sidebar. Eligibility must
   // include that space before the occupant's first shown report arrives.
@@ -211,6 +231,42 @@ export function AppFrame({
   colsRef.current = cols;
   const rightbarWidth = useRef(normal.rightbar);
   rightbarWidth.current = normal.rightbar;
+
+  // Track easing is scoped to a discrete open/close toggle, never to a
+  // steady-state viewport update: an eased track would chase the live window
+  // edge and visibly rubber-band the centre column while the user resizes.
+  // The counter goes up on a toggle, comes down at `transitionend` (with a
+  // 600ms timeout as the reduced-motion and covered-frame fallback), and
+  // restarts when a re-toggle interrupts a running transition.
+  const [animating, setAnimating] = useState(0);
+  const toggle = `${collapsed}:${layout.rightbarTrack}`;
+  const previousToggle = useRef(toggle);
+  const previousViewport = useRef(viewport);
+  useLayoutEffect(() => {
+    const viewportChanged = previousViewport.current !== viewport;
+    previousViewport.current = viewport;
+    if (previousToggle.current === toggle) return;
+    previousToggle.current = toggle;
+    // A toggle arriving together with a viewport change is the responsive
+    // auto-collapse firing mid window-resize; that one stays instant.
+    if (viewportChanged) return;
+    setAnimating((token) => token + 1);
+  }, [toggle, viewport]);
+  useEffect(() => {
+    if (animating === 0) return;
+    const frame = frameRef.current;
+    if (frame === null) return;
+    const settle = (): void => setAnimating(0);
+    const onTransitionEnd = (event: TransitionEvent): void => {
+      if (event.target === frame && event.propertyName === 'grid-template-columns') settle();
+    };
+    frame.addEventListener('transitionend', onTransitionEnd);
+    const timer = setTimeout(settle, 600);
+    return () => {
+      frame.removeEventListener('transitionend', onTransitionEnd);
+      clearTimeout(timer);
+    };
+  }, [animating]);
 
   // The drag base is the rendered width captured at drag start (grabbing a
   // concession-clamped panel must not jump back to the stored preference);
@@ -236,8 +292,8 @@ export function AppFrame({
   );
 
   const sidebarNode = useMemo(
-    () => sidebar({ collapsed, width: cols.sidebar }),
-    [sidebar, collapsed, cols.sidebar],
+    () => sidebar({ collapsed, width: cols.sidebar, auto: autoCollapsed }),
+    [sidebar, collapsed, cols.sidebar, autoCollapsed],
   );
   const rightbarNode = useMemo(
     () =>
@@ -251,10 +307,12 @@ export function AppFrame({
       className={css.frame}
       style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px` }}
       {...(collapsed ? { 'data-sidebar-collapsed': '' } : {})}
+      {...(autoCollapsed ? { 'data-sidebar-auto-collapsed': '' } : {})}
       {...(cols.rightbar === 0 ? { 'data-rightbar-collapsed': '' } : {})}
       {...(layout.rightbarFullscreen ? { 'data-rightbar-fullscreen': '' } : {})}
       {...(layout.rightbarInstant ? { 'data-rightbar-instant': '' } : {})}
       {...(dragging ? { 'data-dragging': '' } : {})}
+      {...(animating > 0 ? { 'data-animating': '' } : {})}
     >
       <div className={css.sidebarCol}>{sidebarNode}</div>
       <>

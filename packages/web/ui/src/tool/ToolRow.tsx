@@ -9,7 +9,8 @@
  * still renders — it falls to the IN/OUT body.
  *
  * Shape (harness ToolRow): one 24px row, collapsed by default; the running
- * state is a glare band sweeping the row, not a spinner. Expanding draws the
+ * state shimmers the row's own text through {@link TextShimmer} — the harness
+ * paints no overlay band, so neither does this row. Expanding draws the
  * card's own body — a terminal banner, a real diff, numbered read lines, a
  * grouped search, a plan list — or the IN/OUT card for a card-less call. The
  * 详情 pill is a SIBLING of the row (harness discipline: no nested interactive
@@ -17,10 +18,11 @@
  */
 import { memo, useMemo, useState, type KeyboardEvent } from 'react';
 import { toolCardModel, type CardModel } from '../card-view.js';
-import { ChevronDownIcon } from '../icons.js';
+import { ChevronDownIcon, ChevronUpIcon } from '../icons.js';
 import { BashIcon, BrowseIcon, ChecklistIcon, EditIcon, InspectIcon, SearchToolIcon, ToolIcon } from './icons.js';
 import { bodyShell, rowDot, rowSlots, rowStatusLabel, rowVariant, type RowSlots, type RowVariant } from './model.js';
 import { StateDot } from './StateDot.js';
+import { TextShimmer } from '../shell/TextShimmer.js';
 import { CardBody } from './views/CardBody.js';
 import type { ToolCallView, ToolResultView } from '../types.js';
 import css from './ToolRow.module.css';
@@ -133,7 +135,7 @@ function RowHead({
   const dot = rowDot(state);
   const glyph = dot === null ? cardGlyph(variant, plan) : <StateDot state={dot} />;
   const leading = open
-    ? <ChevronDownIcon className={css.chevron} />
+    ? <ChevronUpIcon className={css.chevron} />
     : expandable
       ? (
         <>
@@ -147,6 +149,10 @@ function RowHead({
     event.preventDefault();
     onToggle();
   };
+  // The running treatment is the harness's own: the title and the summary
+  // sweep through their glyphs (TextShimmer), so the row never grows an
+  // overlay band. `state === 'running'` is the same fact the sweep used.
+  const running = state === 'running';
   return (
     <div
       className={css.row}
@@ -158,15 +164,17 @@ function RowHead({
       onKeyDown={expandable ? toggleFromKeyboard : undefined}
     >
       <span className={css.leading}>{leading}</span>
-      <span className={css.title}>{slots.title}</span>
+      <TextShimmer active={running} className={css.title}>{slots.title}</TextShimmer>
       {slots.summary !== '' && (
         <>
           <span className={css.sep} aria-hidden />
-          <span className={css.summary} data-mono={slots.mono || undefined}>
-            {slots.summary}
+          {/* The mono flag rides the wrapper: TextShimmer owns the inner span,
+              so the row's code-font rule reads the attribute here. */}
+          <span className={css.summaryWrap} data-mono={slots.mono || undefined}>
+            <TextShimmer active={running} className={summaryClass(state)}>{slots.summary}</TextShimmer>
           </span>
           {slots.suffix !== null && (
-            <span className={suffixClass(slots)}>{slots.suffix}</span>
+            <TextShimmer active={running} className={suffixClass(slots)}>{slots.suffix}</TextShimmer>
           )}
         </>
       )}
@@ -178,6 +186,18 @@ function RowHead({
 function suffixClass(slots: RowSlots): string {
   const base = css.summarySuffix ?? '';
   const extra = slots.suffixTone === 'diff' ? css.diffStat : slots.suffixTone === 'fail' ? css.errorSummary : undefined;
+  return extra === undefined ? base : `${base} ${extra}`;
+}
+
+/**
+ * The summary's class set: a failure's own line takes the error tone and an
+ * interrupted call the warning tone (harness `.errorSummary` / `.stoppedSummary`).
+ * Both are excluded from the row's hover lift, so the verdict color survives the
+ * pointer passing over.
+ */
+function summaryClass(state: CardModel['state']): string {
+  const base = css.summary ?? '';
+  const extra = state === 'fail' ? css.errorSummary : state === 'stale' ? css.stoppedSummary : undefined;
   return extra === undefined ? base : `${base} ${extra}`;
 }
 

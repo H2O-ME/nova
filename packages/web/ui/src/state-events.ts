@@ -32,6 +32,49 @@ export const NOTICE_LABELS: Record<NoticeCode, { label: string; tone: 'info' | '
   listener_failed: { label: '监听异常', tone: 'warn' },
 };
 
+/**
+ * Events the reducer deliberately does NOT draw. Keeping them as a named union
+ * (rather than letting a `default:` arm swallow them) is what makes the split
+ * exhaustive: the two predicates below plus this guard must cover every
+ * `KernelEvent`, and `classifyEvent` ends in `assertNever`, so a new variant is a
+ * compile error until it is either reduced or listed here with a reason. A bare
+ * `default: return false` would instead drop it silently — the surface would look
+ * complete while one channel went unrendered.
+ */
+type IgnoredEvent = Extract<KernelEvent, { type: 'message' | 'turn_aborted' }>;
+
+/**
+ * Why each ignored event is safe to drop, as an exhaustive record so a newly
+ * ignored variant cannot be added without stating the reason.
+ */
+export const IGNORED_REASONS: Record<IgnoredEvent['type'], string> = {
+  // The assistant turn's content already arrived as `text_delta` and was committed
+  // to a block; re-drawing the committed message would double it. (Its LOG role
+  // still matters — transcript replay reads it from the log, not from this live
+  // channel.)
+  message: '内容已随 text_delta 落地，重画会重复',
+  // The kernel's marker message is model-facing scaffolding; the "已中断" line the
+  // user reads comes from `run_failed` with `aborted: true`.
+  turn_aborted: '面向用户的「已中断」由 run_failed 给出',
+};
+
+/**
+ * Is this one of the channels the reducer deliberately does not draw? Exported so
+ * `test/state.test.ts` can assert the ignored set is exactly the two events that
+ * carry a stated reason, rather than an accidental gap.
+ * @param event - any kernel event.
+ * @returns whether this event is intentionally not reduced.
+ */
+export function isIgnoredEvent(event: KernelEvent): event is IgnoredEvent {
+  switch (event.type) {
+    case 'message':
+    case 'turn_aborted':
+      return true;
+    default:
+      return false;
+  }
+}
+
 /** Events that only touch the transcript (block list). */
 type TranscriptEvent = Extract<
   KernelEvent,
@@ -61,8 +104,12 @@ type RunStateEvent = Extract<
       | 'phase'
       | 'approval_request'
       | 'approval_resolved'
+      | 'question_request'
+      | 'question_resolved'
       | 'queue_update'
       | 'model'
+      | 'todo'
+      | 'goal'
       | 'compaction'
       | 'notice'
       | 'run_failed'
@@ -82,6 +129,17 @@ export function reduceEvent(
   return state;
 }
 
+/**
+ * Compile-time exhaustiveness: reaching this with a value means a union member
+ * was not handled. The `never` parameter is the whole mechanism — adding a
+ * variant to `KernelEvent` breaks the build at each unhandled switch.
+ * @param value - the value that should have been impossible.
+ * @returns never; it throws if the type system was bypassed at runtime.
+ */
+function assertNever(value: never): never {
+  throw new Error(`unhandled kernel event: ${JSON.stringify(value)}`);
+}
+
 function isTranscriptEvent(event: KernelEvent): event is TranscriptEvent {
   switch (event.type) {
     case 'user_message':
@@ -98,9 +156,8 @@ function isTranscriptEvent(event: KernelEvent): event is TranscriptEvent {
     case 'done':
       return true;
     default:
-      // `turn_aborted` lands here: the kernel's marker message is model-facing
-      // scaffolding, and the "已中断" line the user reads comes from
-      // `run_failed` with `aborted: true`.
+      // Everything else is either reduced as run state or explicitly ignored;
+      // `assertNever` in the two checks below pins which.
       return false;
   }
 }
@@ -111,8 +168,12 @@ function isRunStateEvent(event: KernelEvent): event is RunStateEvent {
     case 'phase':
     case 'approval_request':
     case 'approval_resolved':
+    case 'question_request':
+    case 'question_resolved':
     case 'queue_update':
     case 'model':
+    case 'todo':
+    case 'goal':
     case 'compaction':
     case 'notice':
     case 'run_failed':
@@ -124,6 +185,23 @@ function isRunStateEvent(event: KernelEvent): event is RunStateEvent {
   }
 }
 
+/**
+ * The partition, asserted exhaustively. Every `KernelEvent` must be classified
+ * exactly once as transcript, run state, or deliberately ignored — this is the
+ * only place that guarantee is checked, and it runs at module load so a gap fails
+ * loudly instead of dropping an event on the floor.
+ * @param event - any kernel event.
+ * @returns the channel that owns it.
+ */
+export function classifyEvent(event: KernelEvent): 'transcript' | 'run-state' | 'ignored' {
+  if (isTranscriptEvent(event)) return 'transcript';
+  if (isRunStateEvent(event)) return 'run-state';
+  if (isIgnoredEvent(event)) return 'ignored';
+  // Unreachable while the union and the three switches agree; a value getting
+  // here means a variant was added to `KernelEvent` without a decision.
+  return assertNever(event);
+}
+
 function reduceTranscript(
   state: UiState,
   event: TranscriptEvent,
@@ -131,10 +209,23 @@ function reduceTranscript(
   resultView: ToolResultView | undefined,
 ): UiState {
   switch (event.type) {
-    case 'user_message':
+    case 'user_message': {
       // The message's own timestamp: the row's clock reads the same here as it
       // does on replay (the log carries it, so neither path invents one).
-      return push(state, { kind: 'user', text: event.message.content, ts: event.message.ts });
+      //
+      // The image refs travel the same way, so a prompt that just went out draws
+      // its attachment from the identical source the replay will use — the live
+      // row and the reloaded row cannot disagree about what was attached.
+      const images = event.message.images;
+      return push(state, {
+        kind: 'user',
+        text: event.message.content,
+        ts: event.message.ts,
+        ...(images !== undefined && images.length > 0
+          ? { images: images.map((image) => ({ id: image.id, mediaType: image.mediaType })) }
+          : {}),
+      });
+    }
     case 'text_delta':
       return streamBlock(state, 'text', event.text);
     case 'reasoning_delta':
@@ -191,6 +282,10 @@ function reduceRunState(state: UiState, event: RunStateEvent): UiState {
       return { ...state, pendingApproval: event.request };
     case 'approval_resolved':
       return resolveApproval(state, event.id, event.resolution);
+    case 'question_request':
+      return { ...state, pendingQuestion: event.request };
+    case 'question_resolved':
+      return resolveQuestion(state, event.id, event.resolution);
     case 'queue_update':
       return { ...state, queued: event.items };
     case 'model':
@@ -206,6 +301,15 @@ function reduceRunState(state: UiState, event: RunStateEvent): UiState {
         modelName: event.name ?? null,
         contextWindow: event.contextWindow ?? null,
       };
+    case 'todo':
+      // Wholesale replacement, never a merge: `todo_write` is last-write-wins,
+      // so accumulating would keep items the model has already dropped.
+      return { ...state, todos: event.todos };
+    case 'goal':
+      // Same rule as `todo` above: the event carries the WHOLE goal (or null when
+      // cleared), so the surface replaces rather than merges. There is no
+      // "unchanged" case to preserve.
+      return { ...state, goal: event.goal };
     case 'compaction': {
       const { state: step, trigger, retained, error } = event.progress;
       const how = trigger === 'manual' ? '手动' : '自动';
@@ -214,7 +318,14 @@ function reduceRunState(state: UiState, event: RunStateEvent): UiState {
       return hint(state, `${how}压缩失败：${error ?? '未知原因'}`, 'warn');
     }
     case 'notice': {
-      const meta = NOTICE_LABELS[event.code] as { label: string; tone: 'info' | 'warn' } | undefined;
+      // `Object.hasOwn`, not a bare lookup: `NOTICE_LABELS['constructor']` would
+      // return `Object` from the prototype chain, so the `undefined` check below
+      // would pass and the hint would render "undefined · <text>". Only a code
+      // that is genuinely a key of this table gets a label; everything else falls
+      // back to the kernel's own text.
+      const meta = Object.hasOwn(NOTICE_LABELS, event.code)
+        ? NOTICE_LABELS[event.code]
+        : undefined;
       return meta === undefined ? hint(state, event.text, 'info') : hint(state, `${meta.label} · ${event.text}`, meta.tone);
     }
     case 'run_failed': {
@@ -242,6 +353,26 @@ function resolveApproval(state: UiState, id: string, resolution: { source: 'user
   if (!wasOpen || resolution.source === 'user') return cleared;
   const cause = resolution.source === 'aborted' ? '本轮中断' : '会话关闭';
   return hint(cleared, `${cause}，未回答的审批按拒绝处理`, 'warn');
+}
+
+/**
+ * The question card's counterpart to {@link resolveApproval}: the card only
+ * closes for the request it is actually showing (a late resolution for an ask
+ * the user already replaced must not clear the current one), and the three
+ * ends that are NOT the user's own answer have to say so — the run continues
+ * either way, and a card that vanished silently reads like a lost click.
+ */
+function resolveQuestion(
+  state: UiState,
+  id: string,
+  resolution: { source: 'user' | 'cancelled' | 'aborted' | 'closed' },
+): UiState {
+  const wasOpen = state.pendingQuestion?.id === id;
+  const cleared = wasOpen ? { ...state, pendingQuestion: null } : state;
+  if (!wasOpen || resolution.source === 'user') return cleared;
+  if (resolution.source === 'cancelled') return hint(cleared, '已放弃这组问题，模型会收到取消结果', 'info');
+  const cause = resolution.source === 'aborted' ? '本轮中断' : '会话关闭';
+  return hint(cleared, `${cause}，未回答的问题已取消`, 'warn');
 }
 
 /**

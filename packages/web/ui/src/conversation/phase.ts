@@ -20,6 +20,18 @@
 /** Which of the three layouts the column is in. */
 export type ConversationPhase = 'hero' | 'settling' | 'active';
 
+/**
+ * The transcript blocks a session carries before its first turn: the seeded
+ * context fragments are pre-turn chrome (the harness logs them too, but its
+ * phase reads `awaitingFirstTurn`, not a row count), so they must not keep a
+ * fresh session out of the hero.
+ * @param blocks - the session's blocks in order.
+ * @returns true while no turn content has landed.
+ */
+export function awaitingFirstTurn(blocks: readonly { kind: string }[]): boolean {
+  return !blocks.some((block) => block.kind !== 'context');
+}
+
 /** What the phase decision needs to know (all of it host-reported). */
 export interface ConversationPhaseInput {
   /** A session is bound (the host answered `ready` for it). */

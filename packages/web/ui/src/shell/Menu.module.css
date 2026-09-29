@@ -1,0 +1,127 @@
+/* The dropdown menu primitive, ported from deepseek-harness `ui-primitives`
+ * Menu.module.css (c) 2026 DeepSeek — MIT License. Values verbatim except: the
+ * card's material is the shared `shell/MenuSurface` layer (the theme-owned
+ * `--dsw-menu-surface-fill` + `--dsw-menu-backdrop-filter`, which this sheet
+ * never redeclares), the row rhythm is `shell/MenuCard.module.css`'s (min-h 38,
+ * R12, 14/20 label weight 500) so every dropdown on this surface reads as one
+ * material, and the list is portal-only — the in-place offset rules have no
+ * consumer here. */
+
+.root {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Menu cell: compact text, icon, and selection spacing. */
+.list {
+  box-sizing: border-box;
+  /* min-widths below are the design's outer card widths — include the pad. */
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* Portaled lists must layer above modal overlays (the settings sheet's
+     1200) — an anchor inside a dialog still expects its menu on top. */
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  box-shadow: var(--dsw-elevation-prominent);
+  color: var(--dsw-alias-label-primary);
+  /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens. The
+     declaration sits on the card rather than on the viewport child because the
+     elevation is a property of this surface, and the custom properties inherit
+     down to whichever descendant actually scrolls. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  min-width: 144px;
+  max-width: min(360px, calc(100vw - 24px));
+  /* Viewport fit: the card stops 12px short of the viewport's edges and
+     taller content scrolls inside .viewport. */
+  max-height: calc(100vh - 24px);
+}
+
+.viewport {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.itemWrap {
+  position: relative;
+}
+
+.item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  min-width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Arrow navigation moves real focus, so the row the keyboard is on carries the
+   same fill the pointer gets: the fill is the row's focus indication, and the
+   browser's default ring would double it. */
+.item:focus-visible:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.item:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+.itemIcon {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-menu-icon);
+}
+
+.itemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Selection marker is the trailing check, not a fill. Both it and the icon
+   glyph are set to the row's 14px asset size (the shared set draws a 16px box
+   and the sheet steps it down, the same way the two triggers do). */
+.check {
+  display: grid;
+  place-items: center;
+  flex: 0 0 14px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.check svg,
+.itemIcon svg {
+  width: 14px;
+  height: 14px;
+}

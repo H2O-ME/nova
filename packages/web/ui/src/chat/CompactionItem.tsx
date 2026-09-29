@@ -36,8 +36,8 @@ export const CompactionItem = memo(function CompactionItem({
   const expandable = summary !== null;
   const open = expandable && expanded;
   const summaryLine = shadowed !== null
-    ? `已折叠 ${shadowed.items} 条 · ${shadowed.tokens} tok`
-    : fallbackSummary ?? (expandable ? '展开摘要' : '摘要未保留在当前窗口');
+    ? `已压缩 ${String(shadowed.items)} 条历史记录（约 ${String(shadowed.tokens)} tokens）`
+    : fallbackSummary ?? (expandable ? '点击查看压缩摘要' : '压缩摘要不可用');
 
   return (
     <div className={css.compactionRow}>
@@ -59,7 +59,7 @@ export const CompactionItem = memo(function CompactionItem({
             {open ? <ChevronDownGlyph14 /> : <ChevronRightGlyph14 />}
           </span>
         </span>
-        <span className={css.compactionTitle}>{title ?? '上下文压缩'}</span>
+        <span className={css.compactionTitle}>{title ?? '上下文已压缩'}</span>
         <span className={css.compactionSep} aria-hidden="true" />
         <span className={css.compactionSummary}>{summaryLine}</span>
       </button>

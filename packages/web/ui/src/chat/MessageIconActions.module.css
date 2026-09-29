@@ -21,13 +21,24 @@
   white-space: nowrap;
 }
 
-/* The assistant tail's clock sits at the row end after the stat pills; the
-   row's 8px flex gap spaces it, and it reads the secondary tier so it matches
-   the pill labels beside it. */
-.timeEnd {
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+/* The assistant tail's trailing cluster: the usage trigger and the clock share
+   one group with its own 8px gap and an 8px lead-in from the branch control.
+   The clock reads the tertiary tier like the pill labels beside it. */
+.endInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-left: 8px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* The tail's clock is one px under the secondary tier so it sits behind the
+   pill labels rather than beside them. */
+.timeEnd {
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  color: inherit;
   white-space: nowrap;
 }
 
@@ -63,7 +74,7 @@
   height: calc(28px + var(--dsh-content-font-delta, 0px));
   padding: 6px;
   border: none;
-  border-radius: 28px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
@@ -74,6 +85,13 @@
 .action svg {
   width: calc(15px + var(--dsh-content-font-delta, 0px));
   height: calc(15px + var(--dsh-content-font-delta, 0px));
+}
+
+/* The tail's trailing controls draw a step larger: they sit past the answers
+   and read as the row's closing affordances rather than inline icons. */
+.actions[data-clock='end'] .action svg {
+  width: calc(17px + var(--dsh-content-font-delta, 0px));
+  height: calc(17px + var(--dsh-content-font-delta, 0px));
 }
 
 .action:hover {

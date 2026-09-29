@@ -1,10 +1,8 @@
 /* Ported from deepseek-harness ui-conversation (c) 2026 DeepSeek — MIT License.
- * Source: HeroShell.module.css, values and comments verbatim except: the
- * workspace chip row, the agent-preset seat and the picker-dialog field
- * recipes are not ported (no workspace selector in this product), and
- * `.previewBadge`'s `--dsw-alias-label-primary-bluish` has no token in our
- * sheet — the business blue is the nearest semantic that stays blue in both
- * themes. */
+ * Source: skeleton/HeroShell.module.css, values and comments verbatim except:
+ * the agent-preset seat, the picker-dialog field recipes and `.previewBadge`
+ * are not ported (no preset roster and no preview badge in this product), and
+ * the workspace chip renders as a label (no workspace menu — see EmptyHero.tsx). */
 
 /* NEW SESSION hero (figma Input_Bottom 75:8208): fish + title, workspace chip
    above the shared InputBar card. The input itself is InputBar — only stack
@@ -126,17 +124,77 @@
   }
 }
 
-/* Workspace row sits 12px above the input card (figma y80 → y112). */
-.body {
-  position: relative;
+/* figma 75:8208 workspace row: the chip left-aligns with the card's inner
+   controls (left nudged +4 past the card's 16px pad), text baseline kept off
+   the card edge. `margin-top: 4px` restores the figma's 12px rhythm under the
+   hero chrome: this row is a SIBLING of `HeroShell` inside the composer hero
+   (whose gap is 8), exactly as the reference mounts it — nested inside the
+   shell instead, it inherits the shell's own 24px gutter and 12px gap and ends
+   up off the card's axis. */
+.workspaceRow {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
-  overflow: visible;
+  margin-top: 4px;
+  padding: 0 16px 0 20px;
 }
 
-.body > * {
-  position: relative;
-  z-index: 1;
+/* Folder + label + chevron — transparent at rest; fill only on hover / open.
+   Overflow-driven degradation, no breakpoint: the label shrinks with an
+   ellipsis down to nothing, so folder and chevron always sit snug against
+   whatever text remains — full text, ellipsized text, or none. */
+.workspace {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(100%, 360px);
+  min-height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.workspace:not(:disabled):hover,
+.workspace[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Locked form (no picker to open): a static echo — no hover feedback, no
+   pointer affordance; label keeps full contrast. */
+.workspace:disabled {
+  cursor: default;
+}
+
+.workspaceChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The picker's chevron reads as a quiet affordance, one step down from the
+   chip's own 16px glyph box. */
+.workspaceChevronIcon {
+  width: 12px;
+  height: 12px;
+}
+
+.folder {
+  flex: none;
+  color: var(--dsw-alias-label-primary);
+}
+
+.workspaceLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

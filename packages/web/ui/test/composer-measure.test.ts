@@ -79,9 +79,13 @@ describe('menuMaxHeight', () => {
     expect(MENU_MAX_HEIGHT).toBe(400);
   });
 
-  it('clamps to the space above the overlay, keeping the portal margin', () => {
-    expect(MENU_MARGIN).toBe(12);
-    expect(menuMaxHeight(300)).toBe(288);
+  it('clamps to the space above the overlay, keeping clearance for the header', () => {
+    // 84px = the conversation header's 76px block plus 8px of air, which is the
+    // harness `MenuView`'s `TOP_MARGIN` for this seat. The trigger menu is
+    // absolutely positioned, so a long list grows UP over the header rather than
+    // being pushed down by it — a 12px margin painted the rows on top of it.
+    expect(MENU_MARGIN).toBe(84);
+    expect(menuMaxHeight(300)).toBe(216);
     // A viewport with no room left yields zero, not a negative height.
     expect(menuMaxHeight(4)).toBe(0);
     expect(menuMaxHeight(-100)).toBe(0);

@@ -10,21 +10,58 @@ import { frameAction } from './frame-actions.js';
 import { reduce, initialState, type Action } from './state.js';
 import type { ClientFrame, ServerFrame } from './types.js';
 
+/** First reconnect delay: fast enough to feel automatic on a blip. */
+const RETRY_MIN_MS = 500;
+
+/** Largest reconnect delay: a long outage keeps trying, twice a minute. */
+const RETRY_MAX_MS = 5000;
+
+/**
+ * The backoff schedule, as a pure function.
+ *
+ * Split out because the socket effect cannot be asserted without a DOM, and this
+ * is the part with a rule in it: a normal drop waits `retryMs` and then doubles,
+ * capped at {@link RETRY_MAX_MS}; a MANUAL retry waits nothing and re-seeds the
+ * schedule rather than inheriting the grown delay — otherwise a reader pressing
+ * 重试 against a long outage would be pushed further away by their own click.
+ * @param previousMs - the delay used before this close.
+ * @param immediate - the close was caused by a manual retry.
+ * @returns the delay to wait, and the delay to use next time.
+ */
+export function nextRetry(previousMs: number, immediate: boolean): { delayMs: number; nextMs: number } {
+  if (immediate) return { delayMs: 0, nextMs: RETRY_MIN_MS };
+  return { delayMs: previousMs, nextMs: Math.min(previousMs * 2, RETRY_MAX_MS) };
+}
+
 export interface AgentClient {
   state: ReturnType<typeof reduce>;
   dispatch: (action: Action) => void;
   send: (frame: ClientFrame) => void;
   connection: 'connecting' | 'open' | 'closed';
+  /**
+   * Drop the current socket and dial again at once, skipping the backoff.
+   *
+   * The backoff is capped at 5s, so without this the indicator's retry is only
+   * a promise: a reader watching a dead socket waits up to five seconds with no
+   * way to hurry it. Reconnecting instead of merely re-dialling matters when the
+   * socket is still OPEN but the peer is a zombie — `close()` runs the same
+   * `onclose` that re-arms the schedule, so there is exactly one reconnect path.
+   */
+  reconnect: () => void;
 }
 
 export function useAgent(): AgentClient {
   const [state, dispatch] = useReducer(reduce, initialState);
   const [connection, setConnection] = useState<AgentClient['connection']>('connecting');
   const socketRef = useRef<WebSocket | undefined>(undefined);
+  // Set by `reconnect()` to collapse the pending backoff the next time the
+  // socket closes, so a manual retry is immediate rather than "as soon as the
+  // timer happens to fire".
+  const retryNowRef = useRef(false);
 
   useEffect(() => {
     let closedByUs = false;
-    let retryMs = 500;
+    let retryMs = RETRY_MIN_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const open = (): void => {
@@ -33,7 +70,7 @@ export function useAgent(): AgentClient {
       const ws = new WebSocket(`${proto}://${location.host}/ws`);
       socketRef.current = ws;
       ws.onopen = () => {
-        retryMs = 500;
+        retryMs = RETRY_MIN_MS;
         setConnection('open');
         dispatch({ type: 'connection', connected: true });
       };
@@ -51,10 +88,14 @@ export function useAgent(): AgentClient {
         // The reducer's `connected` gates every control: a dropped socket must
         // dark them all, not leave buttons that silently do nothing.
         dispatch({ type: 'connection', connected: false });
-        if (!closedByUs) {
-          timer = setTimeout(open, retryMs);
-          retryMs = Math.min(retryMs * 2, 5000);
-        }
+        if (closedByUs) return;
+        if (timer !== undefined) clearTimeout(timer);
+        // A manual retry collapses the wait and re-seeds the backoff, so a
+        // reader who keeps pressing 重试 is not left on an ever-growing delay.
+        const step = nextRetry(retryMs, retryNowRef.current);
+        retryNowRef.current = false;
+        timer = setTimeout(open, step.delayMs);
+        retryMs = step.nextMs;
       };
     };
     open();
@@ -74,7 +115,16 @@ export function useAgent(): AgentClient {
     dispatch({ type: 'sent', frame });
   }, []);
 
-  return { state, dispatch, send, connection };
+  const reconnect = useCallback((): void => {
+    retryNowRef.current = true;
+    const ws = socketRef.current;
+    if (ws === undefined) return;
+    // A CONNECTING socket cannot be re-dialled usefully yet; `close()` on it
+    // still fires `onclose`, which is what re-arms the schedule.
+    ws.close();
+  }, []);
+
+  return { state, dispatch, send, connection, reconnect };
 }
 
 /**

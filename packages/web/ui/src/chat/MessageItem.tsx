@@ -10,18 +10,17 @@
  *    marker;
  *  - `AssistantTailRow` — the turn's closing actions (copy after any usage
  *    slot), the row that reveals itself on hover for earlier turns;
- *  - `MetaRow` — the finished run's numbers, formatted only by `format.ts`.
  *
  * Tool rows are NOT here: they are their own card (`src/tool/`), and the
- * harness keeps them apart too.
+ * harness keeps them apart too. The finished run's numbers ride the turn
+ * header and the tail's usage pill (see `chat/TurnHeader.tsx`), not a row here.
  */
 import { memo } from 'react';
 import type { ReactNode } from 'react';
+import { imageRefUrl } from '../composer/image-draft.js';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import type { MarkdownLabels } from './markdown/labels.js';
-import { formatClock, runMetaText } from '../format.js';
 import { MessageIconActions } from './MessageIconActions.js';
-import type { RunStats } from '../types.js';
 import assistantCss from './AssistantMessage.module.css';
 import tailCss from './AssistantTail.module.css';
 import css from './MessageItem.module.css';
@@ -35,11 +34,17 @@ export interface UserMessageRowProps {
   pending?: boolean | undefined;
   /** Local submission echo: renders exactly like its durable replacement. */
   echo?: boolean | undefined;
+  /**
+   * Images this prompt attached, by reference. Fetched from the
+   * content-addressed route rather than carried in the frame, so a reload shows
+   * the attachment the conversation actually had.
+   */
+  images?: readonly { id: string; mediaType: string }[] | undefined;
   /** Fork the session at this message. */
   onBranch?: (() => void) | undefined;
 }
 
-export function UserMessageRow({ text, time, pending, echo, onBranch }: UserMessageRowProps): JSX.Element {
+export function UserMessageRow({ text, time, pending, echo, images, onBranch }: UserMessageRowProps): JSX.Element {
   return (
     <div
       className={css.userRow}
@@ -47,6 +52,22 @@ export function UserMessageRow({ text, time, pending, echo, onBranch }: UserMess
       data-submission-echo={echo ? '' : undefined}
     >
       <div className={css.userStack}>
+        {images !== undefined && images.length > 0 && (
+          <div className={css.attachmentRow} data-message-attachments>
+            {images.map((image) => (
+              <img
+                key={image.id}
+                className={css.attachmentImage}
+                src={imageRefUrl(image.id)}
+                alt="已附加的图片"
+                // Decorative to the model-facing text but meaningful to the
+                // reader, so it is a normal image with an alt rather than
+                // aria-hidden: a pasted screenshot IS the prompt.
+                loading="lazy"
+              />
+            ))}
+          </div>
+        )}
         <div className={css.bubble}>{text}</div>
       </div>
       <MessageIconActions
@@ -90,10 +111,12 @@ export interface AssistantTailRowProps {
   /** The turn's full assistant text (what copy writes). */
   text: string;
   /**
-   * No clock here, unlike the user row: the turn's line (the `MetaRow` under
-   * these controls) already opens with the run's own start time, and two clocks
-   * on one turn would be two readings of one thing.
+   * Unix epoch ms of the closing message: the wall-clock stamp after the
+   * usage slot (`TurnTailNodeView` passes `closing.time` the same way). The
+   * run's *duration* stays on the turn header — this is when the answer
+   * landed, not how long it took.
    */
+  time?: number | undefined;
   /** The latest turn reveals its actions always; earlier ones on hover. */
   reveal?: 'always' | 'hover' | undefined;
   onBranch?: (() => void) | undefined;
@@ -106,6 +129,7 @@ export interface AssistantTailRowProps {
 
 export function AssistantTailRow({
   text,
+  time,
   reveal = 'hover',
   onBranch,
   branchUnavailable,
@@ -116,6 +140,7 @@ export function AssistantTailRow({
     <div className={tailCss.root} data-actions-reveal={reveal}>
       <MessageIconActions
         text={text}
+        {...(time === undefined ? {} : { time })}
         clock="end"
         className={tailCss.actions}
         {...(onBranch === undefined ? {} : { onBranch })}
@@ -128,18 +153,10 @@ export function AssistantTailRow({
 }
 
 /**
- * One finished run's meta line. Numbers come from the kernel's `run_stats`
- * (the surface measures nothing) and their text comes from `format.ts` — the
- * single formatting place, so the clock and the duration ladder read the same
- * here as in every other row.
+ * One finished run's meta line was absorbed by the turn header
+ * (`chat/TurnHeader.tsx`) and the tail's usage pill (`chat/TurnUsagePill.tsx`):
+ * the header carries the duration, the tail the tokens and the clock.
  */
-export function MetaRow({ stats }: { stats: RunStats }): JSX.Element {
-  return (
-    <div className={css.metaRow}>
-      {formatClock(stats.startedAt)} · {runMetaText(stats)}
-    </div>
-  );
-}
 
 export { CompactionItem } from './CompactionItem.js';
 export type { CompactionItemProps } from './CompactionItem.js';

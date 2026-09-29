@@ -5,14 +5,16 @@
  * + `ConnectionIndicator.module.css` (c) 2026 DeepSeek — MIT License.
  *
  * One deliberate deviation: the reference's caller always has a reconnect
- * action, so its indicator is always a button. In this app the socket
- * reconnects itself (client.ts, capped backoff) and no frame asks for an
- * immediate retry, so `onReconnect` is optional and the indicator renders a
- * readout when it is absent — the badge never becomes a click that has nowhere
- * to go.
+ * action, so its indicator is always a button. Here `onReconnect` is passed by
+ * the shell (App → Sidebar → SidebarFoot → this) and the socket also reconnects
+ * itself (client.ts, capped backoff), so the prop is optional and the indicator
+ * degrades to a readout when a caller omits it — the badge then never becomes a
+ * click that has nowhere to go.
  */
+import { useEffect, useState } from 'react';
 import { AlertIcon, CheckIcon } from '../icons.js';
-import { cls } from './view.js';
+import { StateDot } from '../tool/StateDot.js';
+import { cls, indicatorTransition } from './view.js';
 import css from './ConnectionIndicator.module.css';
 
 /** Visual state rendered by {@link ConnectionIndicator}. */
@@ -20,6 +22,12 @@ export type ConnectionIndicatorState =
   | 'disconnected'
   | 'connecting'
   | 'recovered';
+
+/**
+ * Exit-transition length; keep equal to the `.leaving` transition duration in
+ * the stylesheet (the reference's `EXIT_MS`).
+ */
+const EXIT_MS = 150;
 
 /**
  * Render an inline connection-recovery control.
@@ -52,7 +60,27 @@ export function ConnectionIndicator({
   restartActionLabel: string;
   onReconnect?: (() => void) | undefined;
 }): JSX.Element | null {
-  if (state === undefined) return null;
+  // The badge fades out instead of vanishing. `state` going undefined is the
+  // signal to leave, so the last rendered state is kept until the fade ends —
+  // without this the pill disappears in the same frame the socket recovers,
+  // which reads as the badge being yanked rather than as the outage ending. The
+  // rule itself is pure (`indicatorTransition`); this only owns the timer.
+  const [rendered, setRendered] = useState(state);
+  const step = indicatorTransition(rendered, state);
+  const leaving = step.leaving;
+  useEffect(() => {
+    if (state !== undefined) {
+      setRendered(state);
+      return;
+    }
+    if (rendered === undefined) return;
+    const timer = window.setTimeout(() => { setRendered(undefined); }, EXIT_MS);
+    return () => { window.clearTimeout(timer); };
+  }, [state, rendered]);
+
+  if (step.rendered === undefined) return null;
+  const view = step.rendered;
+  const leavingClass = leaving ? ` ${css.leaving}` : '';
   const sizeLabels = (
     <>
       <span className={css.sizeLabel} aria-hidden="true">{disconnectedLabel}</span>
@@ -63,9 +91,9 @@ export function ConnectionIndicator({
       <span className={css.sizeLabel} aria-hidden="true">{recoveredLabel}</span>
     </>
   );
-  if (state === 'recovered') {
+  if (view === 'recovered') {
     return (
-      <div className={`${css.indicator} ${css.success}`} role="status" aria-label={recoveredLabel}>
+      <div className={`${css.indicator} ${css.success}${leavingClass}`} role="status" aria-label={recoveredLabel}>
         <span className={css.icon} aria-hidden="true"><CheckIcon /></span>
         <span className={css.label}>
           {sizeLabels}
@@ -75,7 +103,12 @@ export function ConnectionIndicator({
     );
   }
 
-  const connecting = state === 'connecting';
+  const connecting = view === 'connecting';
+  // The reference swaps the leading glyph with the phase: a live retry shows the
+  // ongoing spinner (the same ring the tool rows use), while a plain outage shows
+  // the alert. A static warning triangle during a retry reads as "broken", which
+  // is the opposite of what an in-flight attempt is reporting.
+  const glyph = connecting ? <StateDot state="ongoing" /> : <AlertIcon />;
   const stateText = connecting
     ? (
       <>
@@ -91,12 +124,12 @@ export function ConnectionIndicator({
   if (onReconnect === undefined) {
     return (
       <div
-        className={cls(css.indicator, css.warning, css.readout)}
+        className={cls(css.indicator, css.warning, css.readout) + leavingClass}
         role="status"
-        data-phase={state}
+        data-phase={view}
         aria-label={connecting ? connectingLabel : disconnectedLabel}
       >
-        <span className={css.icon} aria-hidden="true"><AlertIcon /></span>
+        <span className={css.icon} aria-hidden="true">{glyph}</span>
         <span className={css.label}>
           {sizeLabels}
           <span className={css.stateLabel}>{stateText}</span>
@@ -108,12 +141,12 @@ export function ConnectionIndicator({
   return (
     <button
       type="button"
-      className={cls(css.indicator, css.warning)}
-      data-phase={state}
+      className={`${cls(css.indicator, css.warning)}${leavingClass}`}
+      data-phase={view}
       aria-label={connecting ? restartActionLabel : reconnectActionLabel}
       onClick={onReconnect}
     >
-      <span className={css.icon} aria-hidden="true"><AlertIcon /></span>
+      <span className={css.icon} aria-hidden="true">{glyph}</span>
       <span className={css.label}>
         {sizeLabels}
         <span className={css.stateLabel}>{stateText}</span>

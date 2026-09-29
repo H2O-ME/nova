@@ -1,0 +1,42 @@
+/* Numbered step heading for the 模型 page (`StepHeading.tsx`).
+
+ * The geometry follows the section head the rest of the settings pages use
+ * (16/24 medium, secondary intro line), plus a step marker whose different
+ * weight is what makes the sequence visible at a glance. */
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The step marker: a small capsule, so the eye can count the steps without
+   reading the titles. */
+.mark {
+  flex: none;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.title {
+  min-width: 0;
+}
+
+.intro {
+  margin: 0;
+  padding-top: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}

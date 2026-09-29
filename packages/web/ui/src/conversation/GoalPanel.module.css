@@ -1,0 +1,148 @@
+/*
+ * The goal panel: a collapsed-by-default card above the input bar, sharing the
+ * plan panel's geometry (same computed card width, same 36px header line, same
+ * elevation) so the dock reads as one stack rather than two designs.
+ *
+ * The box is NOT `width: 100%`: a dock card spans the composer's own card minus
+ * the side clearances and dock insets, exactly as `TodoPanel` and `QueueDock`
+ * compute it. A bare 100% reads wider than the input card it sits on. dsh has no
+ * goal panel (its goal UI is a composer bar), so this card is ours — its box
+ * follows the ported sibling card rather than inventing a second geometry.
+ *
+ * The one addition is `.objective`: the goal's text takes the flexible middle of
+ * the header, because it is the single thing worth reading at a glance — the plan
+ * panel puts its counts there instead.
+ */
+
+.root {
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  margin: 0 auto;
+  width: calc(
+    100% -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-side-clearance) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  max-width: calc(
+    var(--dsh-composer-card-max-width) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset) -
+    var(--dsh-composer-dock-inset)
+  );
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  box-shadow: var(--dsw-elevation-panel);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* 6px vertical is what makes the collapsed card 36px (24px title line + 2×6),
+   matching the plan and queue cards on the same dock. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.title {
+  flex: none;
+  font-size: 13px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* The objective takes the row's slack and truncates; the round budget to its
+   right stays whole, because "how much longer" must never be the clipped part. */
+.objective {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.progress {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* Label/value rows: the label is a fixed gutter so the values line up down the
+   fold, which is what makes them scannable as facts rather than sentences. */
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.label {
+  flex: none;
+  width: 56px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

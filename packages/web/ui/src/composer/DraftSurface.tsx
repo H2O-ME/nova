@@ -23,6 +23,11 @@ export interface DraftSurfaceProps {
   disabled: boolean;
   /** The placeholder line (also the surface's accessible name). */
   placeholder: string;
+  /**
+   * The claim's ghost hint (what this command would do next), or null. The bar
+   * derives it (`claim-hint.ts`); this surface only draws it.
+   */
+  hint: string | null;
   /** A composition is open: the placeholder stays hidden under the candidate window. */
   composing: boolean;
   /** The textarea, shared with the bar (it hands focus back after a send). */
@@ -30,6 +35,12 @@ export interface DraftSurfaceProps {
   /** The scrollport around it (the bar chains its wheel gesture outward). */
   scrollRef: RefObject<HTMLDivElement>;
   onChange: (value: string) => void;
+  /**
+   * The caret moved (typing, an arrow key, a click). Trigger detection is
+   * caret-relative — a mention stops being live the moment the caret leaves it
+   * — so the bar has to see the selection, not only the text.
+   */
+  onCaret: (caret: number) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onCompositionStart: () => void;
   onCompositionEnd: () => void;
@@ -39,10 +50,12 @@ export function DraftSurface({
   value,
   disabled,
   placeholder,
+  hint,
   composing,
   boxRef,
   scrollRef,
   onChange,
+  onCaret,
   onKeyDown,
   onCompositionStart,
   onCompositionEnd,
@@ -66,7 +79,13 @@ export function DraftSurface({
           disabled={disabled}
           aria-label={placeholder}
           data-composer-composing={composing ? '' : undefined}
-          onChange={(event) => { onChange(event.target.value) }}
+          onChange={(event) => {
+            onChange(event.target.value);
+            onCaret(event.target.selectionStart);
+          }}
+          // `onSelect` covers every caret move the browser makes — arrows, a
+          // click, Home/End — without the bar having to enumerate the keys.
+          onSelect={(event) => { onCaret(event.currentTarget.selectionStart); }}
           onKeyDown={onKeyDown}
           onCompositionStart={onCompositionStart}
           onCompositionEnd={onCompositionEnd}
@@ -74,6 +93,18 @@ export function DraftSurface({
         {value === '' && (
           <div aria-hidden="true" className={css.placeholder} data-composer-placeholder="">
             {placeholder}
+          </div>
+        )}
+        {/* The claim's ghost hint. The harness draws it as generated content
+            after the last paragraph of its contenteditable — which a textarea
+            cannot carry — so here it is an overlay instead: an invisible spacer
+            holds the draft's own text in the surface's own font, and the hint
+            follows it, landing exactly where the caret sits. A composition
+            hides it, for the same reason the placeholder hides. */}
+        {hint !== null && !composing && (
+          <div aria-hidden="true" className={css.hint} data-composer-hint="">
+            <span className={css.hintSpacer}>{value}</span>
+            {hint}
           </div>
         )}
       </div>

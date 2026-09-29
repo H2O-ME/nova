@@ -20,7 +20,7 @@
  * attach), a loading row, an error strip with Retry, the sticky group heading,
  * the trailing check on the row in force, the portaled card placed above the
  * trigger with right edges aligned, Escape/arrow handling (the walk itself is
- * the shared `conversation/menu-nav.ts` arithmetic, not a local copy), and a
+ * the shared `shell/menu-nav.ts` arithmetic, not a local copy), and a
  * pick that lands only when the host says so (the trigger follows
  * `state.model`, not the click).
  */
@@ -30,7 +30,7 @@ import { createPortal } from 'react-dom';
 import type { ModelCatalog } from '../state.js';
 import type { ClientFrame, ModelOption } from '../types.js';
 import { modelLabel } from './composer-text.js';
-import { isOptionIndex, stepOptionIndex } from '../conversation/menu-nav.js';
+import { isOptionIndex, stepOptionIndex } from '../shell/menu-nav.js';
 import { useAnchoredPopover } from '../shell/anchored-popover.js';
 import { MenuCard, MenuEmpty, MenuError, MenuGroup, MenuOption, MenuStatus } from '../shell/MenuCard.js';
 import { ChevronDownOutline14, DataOutline16 } from './Icons.js';

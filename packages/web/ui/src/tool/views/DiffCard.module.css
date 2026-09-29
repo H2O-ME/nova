@@ -46,36 +46,40 @@
   white-space: pre;
 }
 
-/* A file header: the path in the primary tone, set apart by weight. The copy
-   button floats over this first row's top-right corner, so reserve space at the
-   line's end for it — a long path scrolls under the button otherwise, and the
-   button's hit area would eat clicks on the path's tail. */
+/* A file header: the path set apart by weight. The harness
+   (`DiffBlock.module.css` `.path`) uses the secondary tier at 500, not the
+   primary at 600: the header labels the block, it does not compete with the
+   change lines below it. The copy button floats over this first row's
+   top-right corner, so reserve space at the line's end for it — a long path
+   scrolls under the button otherwise, and the button's hit area would eat
+   clicks on the path's tail. */
 .path {
-  color: var(--dsw-alias-label-primary);
-  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 500;
   padding-right: 56px;
 }
 
-/* A same-file second hunk's separator (a scattered edit), in the dim tone. */
-.gap {
-  color: var(--dsw-alias-label-tertiary);
-}
-
-/* Unchanged context: dimmer than the change, so the two changed sides stay the
-   load-bearing color on the card. */
+/* Unchanged context. The harness (`DiffBlock.module.css` `.context`) keeps it at
+   the secondary tier — the same tone as the path header — because the row TINT on
+   `.add`/`.del` (not a dimmer context) is what separates changed from unchanged.
+   The collapsed unchanged run's own marker stays one step down, in the tertiary
+   tone, because it is an annotation about the diff rather than diff content. */
 .ctx {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsw-alias-label-secondary);
 }
 
-/* The collapsed unchanged run's marker, in the gap's own tone. */
+/* The collapsed unchanged run's marker, in the tertiary tone. */
 .skip {
   color: var(--dsw-alias-label-tertiary);
 }
 
 /* The diff's own meaning-carrying colors: removed on the error token, added on
-   the success token. A `- `/`+ ` prefix is drawn here so a copied line and the
-   shown line agree, and so the sign reads without relying on color alone. Two
-   spaces prefix a context row so all three columns line up. */
+   the success token, each over its row tint plus a 3px inset rule on the left
+   edge (the harness `DiffBlock.module.css` `.del`/`.add` pair — the tint is what
+   makes a long changed row readable at a glance, the rule what marks where the
+   row's content begins). A `- `/`+ ` prefix is drawn here so a copied line and
+   the shown line agree, and so the sign reads without relying on color alone.
+   Two spaces prefix a context row so all three columns line up. */
 .del::before {
   content: '- ';
   color: var(--dsw-alias-state-error-primary);
@@ -83,6 +87,8 @@
 
 .del {
   color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-code-diff-deleted);
+  box-shadow: inset 3px 0 0 var(--dsw-alias-state-error-primary);
 }
 
 .add::before {
@@ -92,6 +98,8 @@
 
 .add {
   color: var(--dsw-alias-state-success-primary);
+  background: var(--dsw-alias-code-diff-added);
+  box-shadow: inset 3px 0 0 var(--dsw-alias-state-success-primary);
 }
 
 .ctx::before {

@@ -20,3 +20,12 @@ html[data-input-modality='pointer'] body :focus-visible:not(:read-write) {
   --dsw-focus-ring-color: transparent;
   outline-color: transparent;
 }
+
+/* ui-primitives/focus publishes the attribute on automatic destinations (a
+ * dialog's entry focus, a menu's focus return). The move was not the user's
+ * navigation, so no ring paints; Tab and the arrow keys restore normal focus
+ * styling by removing it (shell/focus.ts). */
+[data-dsh-automatic-focus]:focus,
+[data-dsh-automatic-focus]:focus:focus-visible {
+  outline: none;
+}

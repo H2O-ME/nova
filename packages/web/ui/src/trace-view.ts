@@ -49,6 +49,23 @@ function tokens(count: number): string {
 }
 
 /**
+ * Read one word out of a closed table by a value that arrived on the wire.
+ *
+ * `TABLE[key]` is unsafe for every table below: the keys are discriminants of a
+ * `trace` frame, so a key naming an `Object.prototype` member (`constructor`,
+ * `toString`) yields the inherited FUNCTION instead of `undefined`, and the
+ * caller then prints that function's source text as a label. `Object.hasOwn`
+ * confines the read to the table's own keys.
+ * @param table - the closed label table.
+ * @param key - the value read off the wire.
+ * @param fallback - the word to use for a value this build does not know.
+ * @returns the localized word.
+ */
+function pick<K extends string>(table: Record<K, string>, key: K, fallback: string): string {
+  return Object.hasOwn(table, key) ? table[key] : fallback;
+}
+
+/**
  * Word one trace row.
  * @param row - a row from the `trace` frame.
  * @returns its label, body line and trailing reading.
@@ -58,7 +75,7 @@ export function traceRowText(row: WireTraceRow): TraceRowText {
     case 'message': {
       // The seeded fragment reads as what it is — an injection — rather than as
       // a user turn the reader never wrote.
-      const text: TraceRowText = { label: row.context === true ? '上下文注入' : ROLE_LABEL[row.role] };
+      const text: TraceRowText = { label: row.context === true ? '上下文注入' : pick(ROLE_LABEL, row.role, '消息') };
       if (row.preview.length > 0) text.detail = row.preview;
       // The tool-call count belongs to the assistant message that carried the
       // calls; a result message names the tool it came from instead.
@@ -67,7 +84,7 @@ export function traceRowText(row: WireTraceRow): TraceRowText {
       return text;
     }
     case 'compaction': {
-      const text: TraceRowText = { label: COMPACTION_LABEL[row.phase] };
+      const text: TraceRowText = { label: pick(COMPACTION_LABEL, row.phase, '压缩') };
       if (row.trigger !== undefined) text.detail = row.trigger === 'auto' ? '自动触发' : '手动触发';
       if (row.tokens !== undefined) text.trailing = `折叠 ${tokens(row.tokens)} tok`;
       if (row.error !== undefined) text.detail = `出错：${row.error}`;
@@ -83,7 +100,7 @@ export function traceRowText(row: WireTraceRow): TraceRowText {
       return {
         label: '审批',
         detail: `${row.tool} · ${row.request}`,
-        trailing: OUTCOME_LABEL[row.outcome],
+        trailing: pick(OUTCOME_LABEL, row.outcome, row.outcome),
       };
     case 'workspace':
       return { label: '工作区', detail: row.path };

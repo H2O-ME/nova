@@ -18,9 +18,13 @@ const LABELS: Record<string, string> = {
 
 /**
  * The producer name for one section tag.
+ *
+ * `Object.hasOwn` and not a bare index: the table is an object literal, so a
+ * tag like `constructor` would resolve to an inherited member and render a
+ * function into the row. The tag reaches here straight off the wire.
  * @param tag - the fragment's tag.
  * @returns the row's label; the tag itself when this build does not know it.
  */
 export function contextLabel(tag: string): string {
-  return LABELS[tag] ?? tag;
+  return Object.hasOwn(LABELS, tag) ? LABELS[tag] as string : tag;
 }

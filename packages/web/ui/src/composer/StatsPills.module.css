@@ -1,21 +1,24 @@
 /* Session stats under the composer: two icon pills side by side, 13/20
    tertiary text with a hover-pill affordance, each opening its own panel.
    Ported from deepseek-harness ui-chat `StatsPills.module.css` +
-   `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License. The panel rides
-   the l2 elevated surface rather than the source's `--dsw-specific-menu`,
-   which this token sheet does not carry (the same substitution the context
-   meter's panel makes). */
+   `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License. The panel takes the
+   source's `--dsw-specific-menu` material and its 1100 layer, exactly as
+   `chat/TurnUsagePill` does: both tokens are defined by this sheet
+   (`styles/design-platform.css`, `styles/gradient-shadow-text.css`), so the
+   earlier `--dsw-alias-bg-layer-2` substitution had no reason to exist. */
 
+/* The dock row owns the line's width, clearance and gap: this row is one
+   child of it (the context meter is the other), so it shrink-wraps its pills
+   rather than claiming the column. Its own 12px gap is therefore the pill
+   rhythm, distinct from the dock's gap between this row and the meter. */
 .root {
   display: flex;
   justify-content: center;
   gap: 12px;
-  max-width: var(--dsh-chat-content-width);
-  width: 100%;
-  margin: 0 auto;
+  min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
-  padding: 4px calc(var(--dsh-composer-side-clearance) + 16px) 0;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
   line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
 }
 
@@ -35,7 +38,11 @@
   max-width: 100%;
   padding: 1px 8px;
   border: none;
-  border-radius: 24px;
+  border-radius: 999px;
+  /* Uncapped radius: the pill's ends are a capsule, which a superellipse would
+     square off. Paired here because corner-shape does not inherit and the
+     universal rule in styles/corner-shape.css would otherwise deform them. */
+  corner-shape: round;
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   font: inherit;
@@ -76,15 +83,16 @@ button.pill[aria-expanded='true'] {
   bottom: calc(100% + 8px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 100;
+  z-index: 1100;
   box-sizing: border-box;
   width: max-content;
-  min-width: min(240px, calc(100vw - 24px));
+  min-width: min(300px, calc(100vw - 24px));
   max-width: min(440px, calc(100vw - 24px));
   padding: 16px;
   border: 0;
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-2);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
   box-shadow: var(--dsw-elevation-prominent);
   font-size: 12px;

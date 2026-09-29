@@ -1,18 +1,21 @@
 /**
  * Single-process HTTP + WebSocket server for the WebUI (M11 批2). One Node
- * process: `node:http` serves the built React bundle (static files) and the
- * kernel event stream (WS on `/ws`), both gated by a signed cookie from the
- * launch token. There is no separate API surface — the durable log is the
- * only state and the WS stream is the only channel, so a reconnect is just a
- * new socket that replays `ready` then follows events.
+ * process: `node:http` serves the built React bundle (static files) and the kernel
+ * event stream (WS on `/ws`), both gated by a signed cookie from the launch token.
+ * There is no separate API surface — the durable log is the only state and the WS
+ * stream is the only channel, so a reconnect is just a new socket that replays
+ * `ready` then follows events.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { parseClientFrame, type FrameRejection } from './client-frame.js';
+import { parseClientFrame } from './client-frame.js';
+import type { FrameRejection } from './reject.js';
 import { cookieHeader, cookieValue, verifyCookie, type LaunchAuth } from './auth.js';
 import type { WebController } from './controller.js';
+import { handleImageUpload } from './image-upload.js';
+import { handleImageBytes } from './image-bytes.js';
 import { upgrade, type WsConnection } from './ws.js';
 
 const MIME: Record<string, string> = {
@@ -46,7 +49,16 @@ export interface StartWebServerOptions {
 export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHandle> {
   const { controller, auth, staticDir, host } = opts;
   const server = createServer((req, res) => {
-    void handleHttp(req, res, { controller, auth, staticDir });
+    // `handleHttp` is async, so a throw inside it would surface as an unhandled
+    // rejection — and Node's default mode for those is to end the process. One
+    // unauthenticated malformed path (`/%`, whose `decodeURIComponent` throws
+    // URIError) would therefore kill the whole server, run and socket alike.
+    // The handler answers its own failures; this is the backstop for anything
+    // that escapes it, so a bad request can only ever fail that request.
+    handleHttp(req, res, { controller, auth, staticDir }).catch(() => {
+      if (!res.headersSent) deny(res, 500, 'internal error');
+      else res.end();
+    });
   });
   server.on('upgrade', (req, socket, head) => {
     handleUpgrade(req, socket, head, { controller, auth });
@@ -95,9 +107,28 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
     deny(res, 401, 'unauthorized');
     return;
   }
+  // Image upload: the only route that carries image BYTES. It must be handled
+  // before static serving, which would otherwise 404 the path. See
+  // `image-upload.ts` for why images need a route while files do not: a file
+  // has a path and crosses as `@path` text, but a pasted image exists only as
+  // clipboard bytes, and 8 MiB does not fit the 512 KiB client-frame channel.
+  if (await handleImageUpload(req, res, url)) return;
+  // Image bytes BACK to the browser: the transcript carries only the reference,
+  // so without this a reload would silently drop every pasted image.
+  if (await handleImageBytes(req, res, url)) return;
   // Static file serving. `/` → index.html; everything else resolved under
   // staticDir (traversal rejected). Unknown/missing → 404 (SPA single page).
-  let relPath = decodeURIComponent(url.pathname);
+  // A path that is not valid percent-encoding (`/%`, `/%zz`, a truncated UTF-8
+  // escape) is a 400: letting `decodeURIComponent` throw here would take the
+  // request — and, without the caller's catch, the process — down, and no
+  // legitimate client ever sends one.
+  let relPath: string;
+  try {
+    relPath = decodeURIComponent(url.pathname);
+  } catch {
+    deny(res, 400, 'bad path');
+    return;
+  }
   if (relPath === '/' || relPath === '') relPath = '/index.html';
   const abs = path.join(ctx.staticDir, path.normalize(relPath));
   if (!abs.startsWith(ctx.staticDir + path.sep) && abs !== ctx.staticDir) {

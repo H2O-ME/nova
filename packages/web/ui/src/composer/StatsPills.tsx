@@ -13,9 +13,10 @@
  * (the same shape as the context meter's panel, one dialog per pill, opened
  * exclusively), and the mode is one row of the composer's dock stack.
  *
- * `data-composer-stats` is load-bearing CSS: `InputBar`'s
- * `.root:has([data-composer-stats])` rule tightens the composer's bottom
- * clearance while this row renders, keeping the drawn 8px rhythm.
+ * `data-composer-stats` is a stable hook, not a style rule (the reference
+ * carries the same attribute and no CSS reads it there either): tests select
+ * this row by it. The dock's own emptiness is what hides the row — returning
+ * null above leaves the dock with no child nodes, so `:empty` matches.
  */
 import { useRef, useState } from 'react';
 import { DatabaseIcon, GaugeIcon } from './Icons.js';
