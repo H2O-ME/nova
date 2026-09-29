@@ -2,7 +2,8 @@
  * 单轮请求装配（M9.6 阶段 G 拆分）：hook 链 → 请求级修剪 → ephemeral 尾。
  */
 import { newId } from '../ids.js';
-import { formatJobNotices } from '../jobs.js';
+import { projectRequestImages } from '../image-projection.js';
+import { formatJobNotices } from '../job-types.js';
 import { trimRequestMessages } from '../request-trim.js';
 import type { ChatRequest, UserMessage } from '../types.js';
 import type { AgentOptions } from './options.js';
@@ -45,7 +46,13 @@ export async function assembleRequest(opts: AgentOptions, notices: NoticeState):
     signal: opts.signal,
   };
   if (opts.hooks?.beforeLLMCall) request = await opts.hooks.beforeLLMCall(request);
-  notices.unaccounted = opts.jobs?.drainFinished() ?? [];
+  // Images are projected after the hook chain (a hook may have rewritten the
+  // history) and before the trims, which then price the final text.
+  const projected = await projectRequestImages(request.messages, opts.inputModalities);
+  if (projected.messages !== request.messages) {
+    request = { ...request, messages: projected.messages as typeof request.messages };
+  }
+  notices.unaccounted = opts.jobs?.drainFinished(opts.sessionId) ?? [];
   notices.consumed = notices.unaccounted.length === 0;
   // Request-level middle compression on a fresh array: the hook chain above
   // saw (and possibly spliced) the true log; the wire snapshot trims from

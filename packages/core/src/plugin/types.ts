@@ -47,6 +47,16 @@ export type StandardResult<T> =
 export interface PluginBase<T = unknown> {
   /** Human-readable identity; used in logs and dependency errors. */
   name?: string;
+  /**
+   * One line about what the plugin is for, in the operator's language.
+   *
+   * It is metadata, never logic: the plugin manager shows it as a row's body and
+   * falls back to a built-in label table for names it knows. Part of the protocol
+   * (rather than a side channel the manager reaches for) because a third-party
+   * module has no other way to describe itself — the loader would otherwise have
+   * to know the field by convention.
+   */
+  description?: string;
   /** Validator applied to the config before the plugin body runs. */
   Config?: ConfigSchema<T>;
   /**
@@ -120,8 +130,14 @@ export function resolvePlugin(plugin: AnyPlugin, fallbackName: string): Resolved
  * own name, else the caller's fallback. An empty string is not a name — a bare
  * arrow function has one, and taking it would put nameless plugins in the
  * roster and in every error message.
+ *
+ * Exported because `name` is optional in the protocol while several consumers
+ * need it eagerly (the roster matches `plugins.disable` by name, the plugin
+ * manager builds a manifest row from it). Those callers must use THIS rule
+ * rather than re-deriving one, or the name a plugin is switched off under can
+ * drift from the name it is reported under.
  */
-function pluginName(plugin: AnyPlugin, fallback: string): string {
+export function pluginName(plugin: AnyPlugin, fallback: string): string {
   const declared = (plugin as PluginBase<unknown>).name;
   if (typeof declared === 'string' && declared !== '') return declared;
   const own = (plugin as { name?: unknown }).name;

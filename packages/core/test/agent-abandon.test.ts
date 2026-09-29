@@ -14,7 +14,7 @@ const TOOL_CALL_SCRIPT: StreamEvent[] = [
   { type: 'finish', finishReason: 'tool_calls' },
 ];
 
-function fakeJobs(drain: JobNotice[] = [{ id: 'bash-1', kind: 'bash', label: 'echo hi', status: 'completed' }]): {
+function fakeJobs(drain: JobNotice[] = [{ id: 'bash-1', kind: 'bash', sessionId: '', label: 'echo hi', status: 'completed' }]): {
   jobs: { drainFinished(): JobNotice[]; requeue(items: JobNotice[]): void };
   requeued: JobNotice[][];
 } {
@@ -79,7 +79,7 @@ describe('runAgent abandonment (consumer breaks early)', () => {
     await gen.return(undefined);
 
     expect(requeued).toHaveLength(1);
-    expect(requeued[0]).toEqual([{ id: 'bash-1', kind: 'bash', label: 'echo hi', status: 'completed' }]);
+    expect(requeued[0]).toEqual([{ id: 'bash-1', kind: 'bash', sessionId: '', label: 'echo hi', status: 'completed' }]);
   });
 
   it('does not requeue when the assistant reply committed before abandonment', async () => {

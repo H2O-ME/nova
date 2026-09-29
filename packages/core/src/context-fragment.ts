@@ -94,3 +94,12 @@ export function isContextFragment(msg: AgentMessage): boolean {
     (msg.id.startsWith(CONTEXT_FRAGMENT_ID_PREFIX) || msg.content.startsWith('<environment>'))
   );
 }
+
+/**
+ * True while no user prompt has been written: every user-role message is a
+ * runner-seeded fragment. Surfaces ask this to decide whether "new session"
+ * would create anything — a session's log exists before its first prompt.
+ */
+export function isBlankSession(messages: readonly AgentMessage[]): boolean {
+  return messages.every((msg) => msg.role !== 'user' || isContextFragment(msg));
+}

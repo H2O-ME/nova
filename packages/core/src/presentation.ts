@@ -13,8 +13,8 @@
  * new or third-party tool is never *un*renderable, only less specific.
  *
  * Every view is a `card`-tagged discriminated union: a surface switches on
- * `view.card`, and a surface that understands only `generic` can still render
- * any view by falling back to its `title`/`text`.
+ * `view.card`, and one that understands only `generic` can still render any
+ * view by falling back to its `title`/`text`.
  */
 
 /** Semantic class of one tool call — what it *does*, independent of any UI. */
@@ -25,6 +25,7 @@ export type ToolCallKind =
   | 'search'
   | 'execute'
   | 'job'
+  | 'subagents'
   | 'plan'
   | 'other';
 
@@ -120,11 +121,9 @@ export type ToolResultView =
 export const PATH_ARG_KINDS: readonly ToolCallKind[] = ['read', 'edit', 'write'];
 /** Kinds that mutate nothing, so a surface may group them into one live row. */
 export const READ_ONLY_KINDS: readonly ToolCallKind[] = ['read', 'search'];
-
 export function isPathArgKind(kind: ToolCallKind): boolean {
   return PATH_ARG_KINDS.includes(kind);
 }
-
 export function isReadOnlyKind(kind: ToolCallKind): boolean {
   return READ_ONLY_KINDS.includes(kind);
 }
@@ -132,10 +131,9 @@ export function isReadOnlyKind(kind: ToolCallKind): boolean {
 /**
  * Semantic class of the tools this framework ships, keyed by tool name. Purely
  * a **fallback** for surfaces that render a call before (or without) a
- * `presentCall` result; third-party tools get `'other'` and should declare
- * their own view. Kept here, not in a rendering package, because *which
- * category a built-in tool belongs to* is domain knowledge every surface needs
- * and none of them should re-derive by name.
+ * `presentCall` result; third-party tools get `'other'` and should declare their
+ * own view. Kept here, not in a rendering package: *which category a built-in
+ * tool belongs to* is domain knowledge no surface should re-derive.
  */
 export const BUILTIN_TOOL_KINDS: Record<string, ToolCallKind> = {
   bash: 'execute',
@@ -147,12 +145,13 @@ export const BUILTIN_TOOL_KINDS: Record<string, ToolCallKind> = {
   edit_file: 'edit',
   jobs: 'job',
   todo_write: 'plan',
-  subagent: 'other',
+  subagent: 'subagents',
   get_time: 'other',
 };
 
+/** Kind of a tool the registry did not declare; `Object.hasOwn` because a name from model output would otherwise resolve to an inherited member. */
 export function toolCallKind(name: string): ToolCallKind {
-  return BUILTIN_TOOL_KINDS[name] ?? 'other';
+  return Object.hasOwn(BUILTIN_TOOL_KINDS, name) ? BUILTIN_TOOL_KINDS[name] as ToolCallKind : 'other';
 }
 
 /**

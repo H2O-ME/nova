@@ -1,8 +1,19 @@
-import { mkdtemp, readFile, utimes, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Session, SessionListing, type AssistantMessage, type UserMessage } from '../src/index.js';
+import {
+  deleteSessionLog,
+  Session,
+  SessionListing,
+  sessionWorkspace,
+  type AssistantMessage,
+  type UserMessage,
+} from '../src/index.js';
+// `session-peek.ts` is deliberately outside the package barrel (AGENTS.md §8):
+// it is the head-scan implementation the listing uses, not a public API.
+import { peekSession } from '../src/session-peek.js';
 
 function user(id: string, content: string): UserMessage {
   return { id, ts: 1, role: 'user', content };
@@ -172,8 +183,7 @@ describe('SessionListing', () => {
     expect((await listing.list(10)).map((e) => e.file)).toEqual([first.file]);
 
     // The log grew, so the mtime moved and the head is read again. The order is
-    // the one the CLI writes: the workspace marker lands before the first prompt
-    // (the peek stops at that prompt).
+    // the one the CLI writes: the workspace marker lands before the first prompt.
     await first.appendEvent({ type: 'workspace', path: 'D:/proj', at: 2 });
     await first.append(userMessage('first title'));
     await utimes(first.file, new Date(2_000), new Date(2_000));
@@ -189,8 +199,125 @@ describe('SessionListing', () => {
     expect((await listing.list(10)).map((e) => e.title)).toContain('brand new');
   });
 
+  it('re-reads a log whose size moved even when the mtime did not', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-list-same-ms-'));
+    const bucket = path.join(root, '2026', '09', '24');
+    const log = await Session.create(bucket, 'sess_same');
+    // Pin a WHOLE-millisecond mtime so it can be restored exactly after the
+    // append (NTFS stores sub-millisecond precision that `utimes` cannot
+    // reproduce, which would otherwise let the mtime move on its own and hide
+    // whether the size is doing any work).
+    const pinned = new Date(1_700_000_000_000);
+    await utimes(log.file, pinned, pinned);
+    const listing = new SessionListing(root);
+    expect((await listing.list(10))[0]?.workspace).toBeUndefined();
+    const before = await stat(log.file);
+
+    // Append, then force the mtime back: ONLY the size reveals the change. This
+    // is the real situation, not a contrivance — NTFS stamps land on a ~15ms
+    // grid, so an append right after a listing commonly carries the same mtime,
+    // and an mtime-only cache key served the stale head forever. A session
+    // moved to another workspace then stayed filed under the directory it left.
+    await log.appendEvent({ type: 'workspace', path: 'D:/moved', at: 2 });
+    await utimes(log.file, pinned, pinned);
+    const after = await stat(log.file);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+    expect(after.size).toBeGreaterThan(before.size);
+
+    expect((await listing.list(10))[0]?.workspace).toBe('D:/moved');
+  });
+
   it('starts empty for a root that does not exist', async () => {
     const listing = new SessionListing(path.join(tmpdir(), 'nova-list-missing'));
     expect(await listing.list(5)).toEqual([]);
+  });
+});
+
+/**
+ * The head scan and the loaded session answer "which workspace" for the same
+ * log, and they must agree — the list is drawn from one and a switch re-points
+ * the tools with the other. They disagreed: the scan took the FIRST marker and
+ * stopped at the first prompt, so a session moved mid-life was listed under the
+ * directory it had left, while the session itself had already moved on.
+ */
+describe('workspace agreement between the head scan and the session', () => {
+  it('takes the newest marker on both sides, even when it lands after the first prompt', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-ws-agree-'));
+    const bucket = path.join(root, '2026', '09', '24');
+    const log = await Session.create(bucket, 'sess_moved');
+    await log.appendEvent({ type: 'workspace', path: 'D:/first', at: 2 });
+    await log.append(userMessage('修复登录'));
+    // The move happens mid-life: the second marker is written AFTER the prompt.
+    await log.appendEvent({ type: 'workspace', path: 'D:/second', at: 3 });
+
+    const peek = await peekSession(log.file);
+    const reopened = await Session.open(log.file);
+    expect(peek.workspace).toBe('D:/second');
+    expect(sessionWorkspace(reopened)).toBe('D:/second');
+    expect(peek.workspace).toBe(sessionWorkspace(reopened));
+    // The title is still the FIRST prompt: continuing the scan must not move it.
+    expect(peek.title).toBe('修复登录');
+    expect(peek.blank).toBe(false);
+  });
+
+  it('falls back to the fragment cwd only when no marker exists', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-ws-fallback-'));
+    const bucket = path.join(root, '2026', '09', '24');
+    const log = await Session.create(bucket, 'sess_old');
+    await log.append({
+      id: 'msg_ctx_old',
+      role: 'user',
+      content: '<environment>\ncwd=D:/legacy\n</environment>',
+    } as UserMessage);
+
+    const peek = await peekSession(log.file);
+    const reopened = await Session.open(log.file);
+    expect(peek.workspace).toBe('D:/legacy');
+    expect(sessionWorkspace(reopened)).toBe('D:/legacy');
+  });
+});
+
+/**
+ * Deleting a session log. The rule that matters is the same one resuming
+ * obeys: the path is validated against the sessions root first, so a hostile
+ * or mistaken path cannot unlink an arbitrary file.
+ */
+describe('deleteSessionLog', () => {
+  it('unlinks a log inside the sessions root and reports the path', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-del-'));
+    const bucket = path.join(root, '2026', '09', '24');
+    const session = await Session.create(bucket, 'sess_gone');
+    expect(existsSync(session.file)).toBe(true);
+
+    expect(await deleteSessionLog(session.file, root)).toBe(path.resolve(session.file));
+    expect(existsSync(session.file)).toBe(false);
+    // A gone log is gone from the listing too — the log IS the session.
+    expect(await new SessionListing(root).list(10)).toEqual([]);
+  });
+
+  it('treats an already-deleted log as nothing to do, not an error', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-del2-'));
+    const bucket = path.join(root, '2026', '09', '24');
+    const session = await Session.create(bucket, 'sess_twice');
+    await deleteSessionLog(session.file, root);
+    expect(await deleteSessionLog(session.file, root)).toBe(false);
+  });
+
+  it('refuses a path outside the sessions root and leaves the file alone', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-del3-'));
+    const outside = path.join(await mkdtemp(path.join(tmpdir(), 'nova-keep-')), 'precious.jsonl');
+    await writeFile(outside, 'do not delete');
+    await expect(deleteSessionLog(outside, root)).rejects.toThrow(/outside the sessions dir/);
+    expect(existsSync(outside)).toBe(true);
+  });
+
+  it('refuses a traversal out of the sessions root', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-del4-'));
+    await expect(deleteSessionLog(path.join(root, '..', 'escape.jsonl'), root)).rejects.toThrow(/outside the sessions dir/);
+  });
+
+  it('refuses the sessions root itself', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-del5-'));
+    await expect(deleteSessionLog(root, root)).rejects.toThrow(/outside the sessions dir/);
   });
 });

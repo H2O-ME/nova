@@ -1,88 +1,31 @@
 /**
- * Minimal background-job runtime (dsh jobs seam, reduced to one in-process
- * registry for a single session). Producers own execution resources; the
- * registry owns identity, lifecycle state and output cursors. The `subagent`
- * kind is reserved now so future delegation work reuses the same owner /
- * cancel / notification contract (dsh's JobKindMap pattern).
+ * The background-job REGISTRY: identity, lifecycle state, output cursors, and
+ * the completion-notice queue (dsh jobs seam, reduced to one in-process registry
+ * per process). Producers own execution resources.
+ *
+ * The job's SHAPES, the ownership rule and the notice text live in
+ * `job-types.ts` — data and pure functions, so a surface that only reads a
+ * snapshot does not have to import this runtime. The registry is one per
+ * KERNEL, not per session (a job must outlive the turn that spawned it and
+ * survives a session switch), which is exactly why every read here is scoped by
+ * `sessionId`: an unscoped read is the cross-talk bug.
  */
 import { errMessage } from './errors.js';
+import {
+  DEFAULT_JOB_OUTPUT_LIMIT,
+  jobBelongsTo,
+  snapshotOf,
+  type JobEntry,
+  type JobNotice,
+  type JobSnapshot,
+  type JobStart,
+} from './job-types.js';
 import { truncateUtf8Tail } from './utf8.js';
-
-export type JobKind = 'bash' | 'subagent';
-
-export type JobStatus = 'running' | 'stopping' | 'completed' | 'killed' | 'failed';
-
-export interface JobSnapshot {
-  id: string;
-  kind: JobKind;
-  /** One-line model-facing label (the command, the delegation description). */
-  label: string;
-  status: JobStatus;
-  /** Producer-specific detail rendered into status lines ('exit code: 3'). */
-  detail?: string;
-  /** Wall-clock start (ms epoch); UIs derive elapsed time from it. */
-  startedAt?: number;
-  /** Latest activity line sampled from the producer (UI live rows). */
-  progress?: string;
-}
-
-export interface JobOutcome {
-  status: 'completed' | 'killed' | 'failed';
-  detail?: string;
-}
-
-/**
- * A job that reached a natural terminal state and has not yet been announced.
- * `killed` is deliberately absent: that outcome only ever follows an explicit
- * `stop()`/dispose (the model already knows, or the session is over), so there
- * is nothing to announce. Consumers drain these and inject them into the next
- * LLM request, replacing the need for the model to poll `jobs output`.
- */
-export interface JobNotice {
-  id: string;
-  kind: JobKind;
-  label: string;
-  status: 'completed' | 'failed';
-  detail?: string;
-}
-
-export interface JobStart {
-  kind: JobKind;
-  label: string;
-  /** Hard cap on the bytes retained in the output ring per job. */
-  outputLimitBytes?: number;
-  /** Request termination. Must be synchronous and idempotent. */
-  cancel(reason?: string): void;
-  /**
-   * Resolves after the producer releases its resources (not merely when work
-   * finishes); the registry converts the settled outcome into final status.
-   */
-  done: Promise<JobOutcome>;
-  /** Consume output produced since the previous call; absence marks a final-output-only job. */
-  readOutput?(): string;
-  /**
-   * One-line latest-activity sample for UI live rows, read FRESH on every
-   * snapshot (list/get). Unlike readOutput this is a peek: it never drains
-   * the model-facing output cursor.
-   */
-  progress?(): string | undefined;
-}
-
-interface JobEntry extends Omit<JobSnapshot, 'progress'> {
-  outputLimitBytes?: number;
-  cancel: (reason?: string) => void;
-  readOutput?(): string;
-  /** Accessor form on the entry; snapshots carry the sampled string. */
-  progress?(): string | undefined;
-  done: Promise<JobOutcome>;
-}
-
-const DEFAULT_JOB_OUTPUT_LIMIT = 256 * 1024;
 
 export class JobRegistry {
   private readonly jobs = new Map<string, JobEntry>();
   /** Terminal jobs (completed/failed) awaiting announcement; drainFinished consumes. */
-  private readonly pendingNotices: JobNotice[] = [];
+  private pendingNotices: JobNotice[] = [];
   private counter = 0;
   /**
    * Live-transition listener (kernel `job_update` events). Fired on start,
@@ -114,6 +57,10 @@ export class JobRegistry {
       label: start.label,
       status: 'running',
       startedAt: Date.now(),
+      // Normalized at the boundary: a JavaScript caller that omits the owner
+      // gets the documented fail-open `''`, not `undefined` (which the scoped
+      // reads would treat as "belongs to nobody" and silently hide).
+      sessionId: start.sessionId ?? '',
       ...(start.outputLimitBytes !== undefined ? { outputLimitBytes: start.outputLimitBytes } : {}),
       cancel: start.cancel,
       ...(start.readOutput !== undefined ? { readOutput: start.readOutput } : {}),
@@ -134,6 +81,7 @@ export class JobRegistry {
               kind: entry.kind,
               label: entry.label,
               status: outcome.status,
+              sessionId: entry.sessionId,
               ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
             });
           }
@@ -153,6 +101,7 @@ export class JobRegistry {
           kind: entry.kind,
           label: entry.label,
           status: 'failed',
+          sessionId: entry.sessionId,
           detail: entry.detail,
         });
         this.announce(entry);
@@ -160,13 +109,45 @@ export class JobRegistry {
     return snapshotOf(entry);
   }
 
-  list(): JobSnapshot[] {
-    return [...this.jobs.values()].map(snapshotOf);
+  /**
+   * Whether a job belongs to the asking session.
+   *
+   * The ONE ownership rule's local entry point, shared by `list` / `get` /
+   * `readOutput` / `stop` / `drainFinished`; the exported `jobBelongsTo` is the
+   * same function for callers outside the registry (the kernel's live listener).
+   * @param entry - the registry entry (or notice) to test.
+   * @param sessionId - the asking session, or undefined for a process-wide read.
+   */
+  private owns(entry: { sessionId: string }, sessionId: string | undefined): boolean {
+    return jobBelongsTo(entry, sessionId);
   }
 
-  get(id: string): JobSnapshot | undefined {
+  /**
+   * Every known job, or only one session's.
+   *
+   * `sessionId` is optional rather than required so the registry stays usable
+   * for a process-wide audit; every SESSION-SCOPED caller (the handle's
+   * `jobSnapshots`, the model's `jobs` tool) passes it, because a job list that
+   * spans sessions is the cross-talk bug.
+   * @param sessionId - restrict to the jobs this session owns.
+   */
+  list(sessionId?: string): JobSnapshot[] {
+    const all = [...this.jobs.values()].filter((entry) => this.owns(entry, sessionId));
+    return all.map(snapshotOf);
+  }
+
+  /**
+   * One job by id, or `undefined` when it is unknown OR owned by another
+   * session. Folding "not yours" into "not found" is deliberate: the caller is
+   * always a session-scoped path, and distinguishing the two would let one
+   * conversation probe another's job ids.
+   * @param id - the job id.
+   * @param sessionId - the asking session, or undefined for a process-wide read.
+   */
+  get(id: string, sessionId?: string): JobSnapshot | undefined {
     const entry = this.jobs.get(id);
-    return entry === undefined ? undefined : snapshotOf(entry);
+    if (entry === undefined || !this.owns(entry, sessionId)) return undefined;
+    return snapshotOf(entry);
   }
 
   /**
@@ -175,11 +156,22 @@ export class JobRegistry {
    * before the model acknowledges it (the runner requeues, making delivery
    * at-least-once). The runner calls this right before each LLM request and
    * injects the result.
+   *
+   * Notices for OTHER sessions stay queued: this registry is per-process, and
+   * draining a foreign notice here would announce another conversation's job
+   * into this one's model request.
+   * @param sessionId - drain only the notices this session owns.
    */
-  drainFinished(): JobNotice[] {
+  drainFinished(sessionId?: string): JobNotice[] {
     if (this.pendingNotices.length === 0) return [];
-    const drained = this.pendingNotices.splice(0);
-    return drained;
+    if (sessionId === undefined) return this.pendingNotices.splice(0);
+    const mine: JobNotice[] = [];
+    const rest: JobNotice[] = [];
+    for (const notice of this.pendingNotices) {
+      (this.owns(notice, sessionId) ? mine : rest).push(notice);
+    }
+    this.pendingNotices = rest;
+    return mine;
   }
 
   /**
@@ -194,20 +186,31 @@ export class JobRegistry {
     this.pendingNotices.unshift(...notices);
   }
 
-  /** Consume output produced since the previous call, with a per-read cap. */
-  readOutput(id: string, maxBytes = DEFAULT_JOB_OUTPUT_LIMIT): string | undefined {
+  /**
+   * Consume output produced since the previous call, with a per-read cap.
+   * @param id - the job id.
+   * @param maxBytes - retention cap for one read.
+   * @param sessionId - the asking session; a foreign job reads as unknown.
+   */
+  readOutput(id: string, maxBytes = DEFAULT_JOB_OUTPUT_LIMIT, sessionId?: string): string | undefined {
     const entry = this.jobs.get(id);
-    if (entry?.readOutput === undefined) return undefined;
+    if (entry === undefined || !this.owns(entry, sessionId)) return undefined;
+    if (entry.readOutput === undefined) return undefined;
     const text = entry.readOutput();
     // Tail-keep like the loop's truncation: recent output matters most.
     if (new TextEncoder().encode(text).length <= maxBytes) return text;
     return `…[earlier output dropped]\n${truncateUtf8Tail(text, maxBytes)}`;
   }
 
-  /** Request termination and wait for the producer to release its resources. */
-  async stop(id: string, reason?: string): Promise<JobSnapshot | undefined> {
+  /**
+   * Request termination and wait for the producer to release its resources.
+   * @param id - the job id.
+   * @param reason - recorded cancellation reason.
+   * @param sessionId - the asking session; a foreign job cannot be stopped here.
+   */
+  async stop(id: string, reason?: string, sessionId?: string): Promise<JobSnapshot | undefined> {
     const entry = this.jobs.get(id);
-    if (entry === undefined) return undefined;
+    if (entry === undefined || !this.owns(entry, sessionId)) return undefined;
     if (entry.status === 'running') {
       entry.status = 'stopping';
       this.announce(entry);
@@ -216,51 +219,38 @@ export class JobRegistry {
     return snapshotOf(entry);
   }
 
-  /** Cancel everything and wait for all producers to settle (session teardown). */
+  /**
+   * Cancel only the jobs one session still owns and wait for their producers.
+   *
+   * Session teardown must not stop ANOTHER session's work: the registry is
+   * per-process, and `dispose()` (everything) is the kernel's shutdown, not a
+   * session's. This is what the handle calls when a session is closed.
+   * @param sessionId - the session whose running jobs are cancelled.
+   */
+  async disposeSession(sessionId: string): Promise<void> {
+    await this.cancelAll([...this.jobs.values()].filter((entry) => this.owns(entry, sessionId)));
+  }
+
+  /** Cancel everything and wait for all producers to settle (process teardown). */
   async dispose(): Promise<void> {
-    for (const entry of this.jobs.values()) {
+    await this.cancelAll([...this.jobs.values()]);
+  }
+
+  /**
+   * Mark each running entry stopped and wait for its producer to let go.
+   *
+   * One implementation for `dispose` and `disposeSession`: the two differ only in
+   * WHICH entries they select, and a second copy of the cancel-and-await loop is
+   * where the two would drift (one forgetting to await, the other to announce).
+   * @param entries - the entries to cancel.
+   */
+  private async cancelAll(entries: JobEntry[]): Promise<void> {
+    for (const entry of entries) {
       if (entry.status === 'running') {
         entry.status = 'stopping';
         entry.cancel('session ended');
       }
     }
-    await Promise.allSettled([...this.jobs.values()].map((entry) => entry.done));
+    await Promise.allSettled(entries.map((entry) => entry.done));
   }
-}
-
-function snapshotOf(entry: JobEntry): JobSnapshot {
-  return {
-    id: entry.id,
-    kind: entry.kind,
-    label: entry.label,
-    status: entry.status,
-    startedAt: entry.startedAt,
-    ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
-    ...(entry.progress !== undefined ? { progress: entry.progress() } : {}),
-  };
-}
-
-/** Cap for a job label inside a notice: the raw command can be very long. */
-const JOB_NOTICE_LABEL_MAX = 80;
-
-/**
- * One model-facing body per drain: a line per finished job in the same shape
- * as the `jobs` tool's list rows (`- bash-1 [completed] sleep 10 (exit code:
- * 0)`), so the injected notice reads like tool output the model already knows.
- * Output itself stays behind the `jobs output` cursor — the notice only says
- * a job is done, keeping the context lean.
- */
-export function formatJobNotices(notices: JobNotice[]): string {
-  const body = notices
-    .map((n) => {
-      const label = n.label.length > JOB_NOTICE_LABEL_MAX ? `${n.label.slice(0, JOB_NOTICE_LABEL_MAX - 1)}…` : n.label;
-      const detail = n.detail !== undefined ? ` (${n.detail})` : '';
-      return `- ${n.id} [${n.status}] ${label}${detail}`;
-    })
-    .join('\n');
-  return [
-    `Background job${notices.length === 1 ? '' : 's'} finished:`,
-    body,
-    'Read the output with the jobs tool (action=output, id=<id>) as needed.',
-  ].join('\n');
 }

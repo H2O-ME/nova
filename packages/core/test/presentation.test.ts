@@ -16,6 +16,10 @@ import {
   resultViewOf,
   toolCallKind,
 } from '../src/index.js';
+// The subagent view is internal (not re-exported from the package barrel), and
+// the packaging rule is explicit: tests import internals directly rather than
+// widening the public API to make a test compile.
+import { presentSubagentCall, presentSubagentResult } from '../src/tools/subagent-view.js';
 
 describe('isFailureContent', () => {
   // Cases pinned to the pre-move terminal implementation, byte for byte: the
@@ -40,7 +44,10 @@ describe('isFailureContent', () => {
 
 describe('tool call kinds', () => {
   it('every built-in kind is a member of the vocabulary', () => {
-    const known = new Set(['read', 'edit', 'write', 'search', 'execute', 'job', 'plan', 'other']);
+    // Kept as a literal list rather than derived from the union: the point is
+    // that ADDING a kind to the union without deciding the surfaces' copy for it
+    // fails here, which a `keyof`-derived set could not catch.
+    const known = new Set(['read', 'edit', 'write', 'search', 'execute', 'job', 'subagents', 'plan', 'other']);
     for (const kind of Object.values(BUILTIN_TOOL_KINDS)) {
       expect(known.has(kind)).toBe(true);
     }
@@ -50,6 +57,15 @@ describe('tool call kinds', () => {
     expect(toolCallKind('some_third_party_tool')).toBe('other');
     expect(isReadOnlyKind(toolCallKind('nope'))).toBe(false);
     expect(isPathArgKind(toolCallKind('nope'))).toBe(false);
+  });
+
+  it('a tool named after an Object.prototype member still classifies as other', () => {
+    // The kind table is an object literal and the name is model output, so a
+    // bare index would hand back `Object.prototype.constructor` — a function,
+    // not a ToolCallKind — and every `switch (kind)` downstream would miss.
+    for (const name of ['constructor', '__proto__', 'toString', 'valueOf', 'hasOwnProperty']) {
+      expect(toolCallKind(name)).toBe('other');
+    }
   });
 
   /**
@@ -123,6 +139,43 @@ describe('view resolution from a tool registry', () => {
       text: 'Error: nope',
     });
     expect(resultViewOf(tools, { name: 'unknown', args: {} }, 'wrote 3 chars')).toMatchObject({ card: 'generic', ok: true });
+  });
+});
+
+describe('the subagent delegation declares its own view', () => {
+  /**
+   * A delegation is not a generic tool call. These pin the two things a reader
+   * needs from the row: WHAT was delegated, and that the report is a reply
+   * rather than an opaque blob. The kind is also what titles the row, so a
+   * `subagents` value that stops reaching the vocabulary fails above.
+   */
+  it('reads the label when given, else the brief\'s opening line', () => {
+    expect(presentSubagentCall({ prompt: 'x', label: '扫依赖' })).toMatchObject({
+      card: 'generic',
+      kind: 'subagents',
+      title: '扫依赖',
+    });
+    expect(presentSubagentCall({ prompt: '查一下登录链路\n第二行不该出现' })).toMatchObject({
+      title: '查一下登录链路',
+    });
+  });
+
+  it('marks a background delegation and survives a hostile payload', () => {
+    expect(presentSubagentCall({ prompt: 'x', run_in_background: true })).toMatchObject({ subtitle: '后台' });
+    // Never throws on model-authored args, and never renders an empty title: a
+    // non-string prompt is rejected by the tool, so the row says what it is
+    // rather than stringifying junk into the transcript.
+    expect(presentSubagentCall({}).title).toBe('subagent');
+    expect(presentSubagentCall({ label: '   ', prompt: 42 }).title).toBe('subagent');
+    // A long opening line is clipped rather than allowed to fill the row.
+    expect(String(presentSubagentCall({ prompt: 'a'.repeat(200) }).title).length).toBeLessThanOrEqual(61);
+  });
+
+  it('hands the whole report to the surface, with the tool\'s own failure signal', () => {
+    const report = 'complete\n证据见 a.ts:12';
+    expect(presentSubagentResult({}, report)).toEqual({ card: 'generic', ok: true, text: report });
+    // The one failure the tool produces before any nested run starts.
+    expect(presentSubagentResult({}, 'Error: prompt must be a non-empty string')).toMatchObject({ ok: false });
   });
 });
 

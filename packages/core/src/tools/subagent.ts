@@ -1,23 +1,20 @@
 import { runAgent } from '../agent.js';
 import { newId } from '../ids.js';
+import { presentSubagentCall, presentSubagentResult } from './subagent-view.js';
 import type { AgentHooks, ChatProvider, ToolCall, ToolDefinition, UsageStats } from '../types.js';
 
 /**
  * The `subagent` tool (dsh subagent design, single-provider simplification):
- * a focused nested agent loop with its OWN message surface. Context isolation
- * is the point — the subagent cannot see this conversation, so the prompt
- * must be self-contained; its final report flows back as the tool result
- * (the parent logs it like any tool output, keeping "model-visible means
- * logged" at the parent boundary; the subagent's own conversation is
- * ephemeral and never persists).
+ * a focused nested agent loop with its OWN message surface. Context isolation is
+ * the point — the subagent cannot see this conversation, so the prompt must be
+ * self-contained; its final report flows back as the tool result (the parent
+ * logs it like any tool output, keeping "model-visible means logged" at the
+ * parent boundary; the subagent's own conversation is ephemeral).
  *
  * Recursion is impossible by construction: `subagent` is filtered out of the
- * subagent's own toolset (depth 1, dsh's maxDepth-0 equivalent for tools that
- * would re-enter the loop). The nested loop runs through the SAME hooks, so
- * every nested tool call passes the same approval gate and pipeline as the
- * parent's.
+ * subagent's own toolset. The nested loop runs through the SAME hooks, so every
+ * nested tool call passes the same approval gate and pipeline as the parent's.
  */
-
 /** One nested-loop lifecycle moment, forwarded best-effort to `onProgress`. */
 export type SubagentProgress =
   | { type: 'start'; label: string }
@@ -212,7 +209,9 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
       required: ['prompt'],
       additionalProperties: false,
     },
-    // A subagent turn legitimately runs minutes; the parent turn's abort is
+    // The delegation reads as itself; the copy lives in `subagent-view.ts`.
+    presentCall: presentSubagentCall,
+    presentResult: presentSubagentResult,    // A subagent turn legitimately runs minutes; the parent turn's abort is
     // the real ceiling (propagated through ctx.signal below).
     async execute(args, ctx) {
       const prompt = typeof args['prompt'] === 'string' ? args['prompt'] : '';
@@ -264,6 +263,7 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
         const snapshot = ctx.jobs.start({
           kind: 'subagent',
           label: `[subagent: ${label}] ${prompt.slice(0, 80)}`,
+          sessionId: ctx.sessionId ?? '',
           cancel: (reason) => controller.abort(reason),
           done,
           progress: () =>

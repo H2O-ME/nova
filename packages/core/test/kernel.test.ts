@@ -13,6 +13,7 @@ import {
   EventPump,
   JobRegistry,
   NOT_EXECUTED_GUIDANCE,
+  QuestionBroker,
   Session,
   persistMissingToolResults,
   type AgentHooks,
@@ -101,6 +102,11 @@ async function harness(
   const messages: AgentMessage[] = [];
   const jobs = new JobRegistry();
   const broker = new ApprovalBroker(() => ({ card: 'generic', kind: 'execute', title: 'echo' }));
+  // The ask seam is required by `AgentSession` (a session without one has no way
+  // to fail an outstanding question closed). This harness registers no ask tool,
+  // so the broker is inert here — but it must still be attached, or the
+  // constructor's own wiring throws.
+  const questions = new QuestionBroker();
   const executed: string[] = [];
   const provider =
     opts?.provider ?? scriptedProvider(scripts.map((events) => events));
@@ -113,6 +119,7 @@ async function harness(
     hooks: () => opts?.hooks ?? brokerHooks(broker, opts?.auto ?? null),
     jobs,
     approvals: broker,
+    questions,
     maxTurns: opts?.maxTurns ?? 5,
     cacheDir: () => tmpdir(),
     ...(opts?.autoCompactLimit !== undefined ? { autoCompactLimit: opts.autoCompactLimit } : {}),
@@ -474,6 +481,7 @@ describe('compaction through the handle', () => {
       hooks: () => ({}),
       jobs: new JobRegistry(),
       approvals: broker,
+      questions: new QuestionBroker(),
       cacheDir: () => tmpdir(),
     });
     const events: KernelEvent[] = [];
@@ -514,7 +522,7 @@ describe('background jobs through the handle', () => {
     const done = new Promise<JobOutcome>((resolve) => {
       settle = (): void => resolve({ status: 'killed' });
     });
-    const started = h.jobs.start({ kind: 'bash', label: 'sleep 60', cancel: () => (cancelled = true), done });
+    const started = h.jobs.start({ kind: 'bash', sessionId: '', label: 'sleep 60', cancel: () => (cancelled = true), done });
     expect(h.agent.jobSnapshots().map((j) => j.id)).toEqual([started.id]);
 
     await expect(h.agent.stopJob(started.id)).resolves.toBe(true);

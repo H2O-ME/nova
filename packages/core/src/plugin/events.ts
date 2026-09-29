@@ -26,9 +26,16 @@ export function event<Args extends unknown[] = unknown[], Result = void>(
   return { name };
 }
 
-/** Registered listener shape: plain listeners simply ignore the trailing `next`. */
+/**
+ * Registered listener shape: plain listeners simply ignore the trailing `next`.
+ *
+ * `next` takes the same arguments the listener received, because delegation may
+ * REWRITE them (`next({ ...req, systemPrompt: hardened })`) — the runtime has
+ * always accepted a replacement array, and the waterfall doc below is written in
+ * terms of it. Leaving it zero-arg forced every transforming listener to cast.
+ */
 export type Listener<Args extends unknown[], Result> = (
-  ...args: [...Args, next: () => Promise<Result>]
+  ...args: [...Args, next: (...replacement: Args | []) => Promise<Result>]
 ) => unknown;
 
 export interface OnOptions {
@@ -105,15 +112,33 @@ export class EventRegistry {
    * `next(...args)` delegates — optionally with rewritten arguments, which is
    * how a plain transformer composes without re-implementing the chain:
    * `async (req, next) => next({ ...req, systemPrompt: hardened })`.
+   *
+   * Running OFF THE END of the chain yields the value in flight (the last
+   * argument), not `undefined`. Without that rule a delegating transformer is a
+   * silent no-op: `next(rewritten)` reaches the end, "nobody answered", the
+   * caller's `?? original` puts the ORIGINAL back, and the rewrite vanishes with
+   * no error — the exact failure the hook facade used to hide. An explicit
+   * abstention still abstains: a listener that returns `undefined` WITHOUT
+   * delegating ends the chain with `undefined` as before.
    */
   async waterfall<Result>(key: EventKey<never[], Result> | string, ...args: unknown[]): Promise<Result> {
     const list = this.listOf(key);
     const step = async (index: number, input: unknown[]): Promise<Result> => {
       const entry = list[index];
-      if (entry === undefined) return undefined as Result;
+      if (entry === undefined) {
+        // Value in flight is the trailing argument: `[req]` for llm/before,
+        // `[call, result]` for tool/after.
+        return (input.length === 0 ? undefined : input[input.length - 1]) as Result;
+      }
       let delegation: Promise<Result> | undefined;
-      const next = (replacement?: unknown[]): Promise<Result> =>
-        (delegation ??= step(index + 1, replacement ?? input));
+      // `next` is SPREAD, matching its declared type and every documented use
+      // (`next({ ...req, systemPrompt })`): the arguments are the event's own
+      // argument tuple, so no replacement and one replacement are both natural.
+      // It used to read a single array argument while the type and the docs said
+      // spread — so the documented call silently passed a bare object where an
+      // array was expected, and every rewrite was dropped.
+      const next = (...replacement: unknown[]): Promise<Result> =>
+        (delegation ??= step(index + 1, replacement.length > 0 ? replacement : input));
       const out = (await entry.listener(...input, next as () => Promise<unknown>)) as Result;
       if (out !== undefined) return out;
       return delegation === undefined ? (undefined as Result) : await delegation;
@@ -172,6 +197,9 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Convenience wrapper so callers can await a listener's result uniformly. */
-export type Next<Result> = () => Promise<Result>;
+/**
+ * Convenience wrapper so callers can await a listener's result uniformly.
+ * `[]` is admitted so a listener that rewrites nothing delegates as `next()`.
+ */
+export type Next<Args extends unknown[], Result> = (...replacement: Args | []) => Promise<Result>;
 export type { Awaitable };

@@ -480,9 +480,19 @@ describe('length cutoff defense', () => {
     const results = events.filter(
       (e): e is Extract<AgentEvent, { type: 'tool_call_result' }> => e.type === 'tool_call_result',
     );
+    const starts = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'tool_call_start' }> => e.type === 'tool_call_start',
+    );
     expect(results).toHaveLength(1);
     expect(results[0]?.result.content).toContain(LENGTH_CUTOFF_TOOL_GUIDANCE);
     expect(results[0]?.result.content).toContain('get_time');
+    // The START event must precede the result: surfaces build a tool row from
+    // `tool_call_start`, so a bare result renders nowhere. Without this the live
+    // stream and a reload disagreed — the browser drew nothing for the failure
+    // while the replayed transcript drew the row.
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.call.id).toBe(results[0]?.call.id);
+    expect(events.indexOf(starts[0]!)).toBeLessThan(events.indexOf(results[0]!));
     expect(messages.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant']);
     expect(events.at(-1)).toMatchObject({ type: 'done', stopReason: 'complete' });
   });
@@ -511,6 +521,13 @@ describe('malformed arguments defense', () => {
     expect(results).toHaveLength(1);
     expect(results[0]?.result.content).toContain('not valid JSON');
     expect(results[0]?.result.content).toContain('get_time');
+    // Same contract as the length-cutoff path: the refusal carries its START, so
+    // the live stream draws the row instead of only a reload doing so.
+    const malformedStarts = events.filter(
+      (e): e is Extract<AgentEvent, { type: 'tool_call_start' }> => e.type === 'tool_call_start',
+    );
+    expect(malformedStarts).toHaveLength(1);
+    expect(malformedStarts[0]?.call.id).toBe(results[0]?.call.id);
     // The malformed call never executed; the error result feeds back and the
     // model recovers on the next turn.
     expect(messages.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant']);
@@ -613,7 +630,7 @@ describe('background-job completion notices', () => {
   async function completedRegistry(): Promise<JobRegistry> {
     const registry = new JobRegistry();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'sleep 10',
       cancel: () => {},
       done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),
@@ -670,7 +687,7 @@ describe('background-job completion notices', () => {
   it('injects the finished-job notice into the request but never into the log', async () => {
     const registry = new JobRegistry();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'sleep 10',
       cancel: () => {},
       done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),
@@ -695,7 +712,7 @@ describe('background-job completion notices', () => {
   it('announces once across separate runs: the next run sees nothing stale', async () => {
     const registry = new JobRegistry();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'curl site',
       cancel: () => {},
       done: Promise.resolve({ status: 'failed', detail: 'exit code: 3' }),
@@ -715,7 +732,7 @@ describe('background-job completion notices', () => {
   it('runs beforeLLMCall hooks BEFORE appending the notice, so in-place hooks still shrink the log', async () => {
     const registry = new JobRegistry();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'sleep 10',
       cancel: () => {},
       done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),

@@ -306,6 +306,44 @@ describe('events', () => {
     expect(reached).toEqual([]);
   });
 
+  it('keeps a delegated rewrite when the chain ends (spread-style next)', async () => {
+    // The runtime used to expect `next([args])` while its type and its own docs
+    // said `next(...args)`, so the documented transformer silently passed a bare
+    // object and every rewrite was dropped at the end of the chain — with the
+    // caller's `?? original` hiding it. Both spellings must keep working, and a
+    // rewrite reaching the end must survive.
+    const root = Context.createRoot(silent);
+    const req = event<[string], string>('req');
+    root.plugin({
+      name: 'transform',
+      apply: (ctx) => {
+        ctx.on(req, async (input: string, next: (v: string) => Promise<string>) => {
+          const out = await next(`${input}+demo`);
+          return out ?? input;
+        });
+      },
+    });
+    await expect(root.waterfall(req, 'base')).resolves.toBe('base+demo');
+    // Two listeners: the first rewrites, the second observes the rewrite.
+    const two = Context.createRoot(silent);
+    const seen: string[] = [];
+    two.plugin({
+      name: 'chain',
+      apply: (ctx) => {
+        ctx.on(req, async (input: string, next: (v: string) => Promise<string>) => {
+          const out = await next(`${input}+first`);
+          return out ?? input;
+        });
+        ctx.on(req, (input: string) => {
+          seen.push(input);
+          return `${input}+second`;
+        });
+      },
+    });
+    await expect(two.waterfall(req, 'base')).resolves.toBe('base+first+second');
+    expect(seen).toEqual(['base+first']);
+  });
+
   it('stops a serial chain at the first non-empty answer', async () => {
     const root = Context.createRoot(silent);
     const ask = event<[], string | undefined>('ask');

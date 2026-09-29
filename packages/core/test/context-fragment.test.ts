@@ -3,6 +3,7 @@ import {
   buildContextFragment,
   contextSectionForm,
   contextSections,
+  isBlankSession,
   isContextFragment,
   type AgentMessage,
 } from '../src/index.js';
@@ -55,6 +56,28 @@ describe('contextSections', () => {
   it('does not split on angle brackets inside a section body', () => {
     const content = '<project_docs>\nuse <b> and </b> freely\n</project_docs>';
     expect(contextSections(fragmentMessage(content))[0]?.text).toBe('use <b> and </b> freely');
+  });
+});
+
+describe('isBlankSession', () => {
+  it('is true only while every user message is runner-seeded context', () => {
+    // A session and its log exist before the first prompt, so "has it started"
+    // is a question about content. Only the fragment so far → still blank.
+    expect(isBlankSession([fragmentMessage('<environment>\ncwd=/w\n</environment>')])).toBe(true);
+    expect(isBlankSession([])).toBe(true);
+    // An old log whose fragment got a plain id still counts, via its content.
+    expect(isBlankSession([{ id: 'msg_1', ts: 0, role: 'user', content: '<environment>\ncwd=/w\n</environment>' }])).toBe(true);
+  });
+
+  it('is false once the user has written anything, fragment or not', () => {
+    const fragment = fragmentMessage('<environment>\ncwd=/w\n</environment>');
+    expect(isBlankSession([fragment, { id: 'msg_2', ts: 1, role: 'user', content: 'hi' }])).toBe(false);
+    // A typed message that happens to start with `<` is still a user prompt —
+    // the id prefix is what marks a real fragment.
+    expect(isBlankSession([{ id: 'msg_3', ts: 0, role: 'user', content: '<not a fragment>' }])).toBe(false);
+    // An assistant reply with no user message cannot happen in a real log, but
+    // the predicate asks about user intent only.
+    expect(isBlankSession([{ id: 'msg_4', ts: 0, role: 'assistant', content: 'x' }])).toBe(true);
   });
 });
 

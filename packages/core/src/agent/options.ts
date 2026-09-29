@@ -38,6 +38,14 @@ export interface AgentOptions {
   cacheDir?: string;
   /** Background-job registry exposed to tools through ToolExecuteContext. */
   jobs?: JobRegistry;
+  /**
+   * The id of the session this run belongs to.
+   *
+   * Threaded so a tool that spawns a background job can stamp its owner. The
+   * registry is per-process by design (a job outlives the turn), so without
+   * this the job would be visible to, and announced into, every session.
+   */
+  sessionId?: string;
   /** Session-event sink exposed to tools (log-only events like todo/write). */
   emit?: (evt: import('../session.js').SessionEvent) => void | Promise<void>;
   /**
@@ -47,6 +55,14 @@ export interface AgentOptions {
    */
   onToolProgress?: (text: string) => void;
   signal?: AbortSignal;
+  /**
+   * Input modalities of the model in force. Called per request and only when a
+   * message actually carries an image, so a text-only conversation never pays
+   * for the lookup. Absent or `undefined` means "not declared", which counts as
+   * image-capable — see `acceptsImages`, and `image-projection.ts` for why the
+   * answer must be read live rather than captured.
+   */
+  inputModalities?: () => Promise<readonly string[] | undefined>;
 }
 
 /** Exported so UIs can display the effective limit in hints. */

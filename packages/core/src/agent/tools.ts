@@ -288,6 +288,7 @@ async function executeTool(
         rootDir: opts.rootDir,
         signal,
         ...(opts.jobs !== undefined ? { jobs: opts.jobs } : {}),
+        ...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
         ...(opts.emit !== undefined ? { emit: opts.emit } : {}),
         ...(opts.onToolProgress !== undefined ? { onProgress: opts.onToolProgress } : {}),
         ...(dispatch !== undefined ? { dispatch } : {}),

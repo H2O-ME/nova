@@ -1,3 +1,5 @@
+import type { ImageAttachmentRef } from './images.js';
+
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
 export interface ToolCall {
@@ -44,6 +46,37 @@ export interface SystemMessage extends BaseMessage {
 export interface UserMessage extends BaseMessage {
   role: 'user';
   content: string;
+  /**
+   * Images the user attached to THIS message, as durable references.
+   *
+   * References rather than bytes because the log is append-only and replayed:
+   * embedding base64 here would put megabytes into every projection, and the
+   * bytes already live under their own digest. Absent (not empty) when the
+   * message carries none, so a text-only log stays byte-identical to what it
+   * was before images existed.
+   *
+   * Whether these are actually SENT as image content depends on the model in
+   * force at request time, not at capture time — see `acceptsImages`.
+   */
+  images?: readonly ImageAttachmentRef[];
+  /**
+   * Request-only resolved copy of `images`, attached by core's request
+   * assembly after it has (a) confirmed the model in force accepts images and
+   * (b) read the bytes back from the store.
+   *
+   * Present only on the throwaway array handed to the provider, never on a
+   * logged message: the log keeps references, and this field is how the
+   * provider gets base64 without either layer reaching into the other's job.
+   * A message carrying references but no `resolvedImages` renders as text.
+   */
+  resolvedImages?: readonly ResolvedImage[];
+}
+
+/** One image's bytes, ready to be inlined into a provider request. */
+export interface ResolvedImage {
+  mediaType: string;
+  /** Canonical base64 of the exact stored bytes. */
+  data: string;
 }
 
 export interface AssistantMessage extends BaseMessage {
@@ -100,6 +133,14 @@ export interface ToolExecuteContext {
   signal?: AbortSignal;
   /** Background-job registry for tools that spawn long-running work. */
   jobs?: JobRegistry;
+  /**
+   * The session this call runs in.
+   *
+   * Required for any tool that registers a background job: the registry is
+   * per-process, so a job without an owner is listed by every session and
+   * announced into whichever one happens to be open when it settles.
+   */
+  sessionId?: string;
   /**
    * Persist a log-only session event (e.g. todo/write snapshots) without
    * joining the model surface. Wired by the host to the open session log.
@@ -234,8 +275,13 @@ export interface ChatProvider {
    * rebuilt client would strand the cache-affinity binding.
    */
   setModel?(model: string): void;
-  /** The endpoint's own catalog (`GET /models`), for the picker. */
-  listModels?(): Promise<string[]>;
+  /**
+   * The endpoint's own catalog (`GET /models`), for the picker.
+   * @param timeoutMs - override for this call's deadline. The boot-time id
+   *   reconciliation passes a SHORT one: it runs before any surface exists, and
+   *   a slow gateway must not delay startup by the full request timeout.
+   */
+  listModels?(timeoutMs?: number): Promise<string[]>;
 }
 
 /**

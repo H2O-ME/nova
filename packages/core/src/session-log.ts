@@ -7,7 +7,8 @@
  * about JSONL hygiene, not about what the session does with the events.
  */
 import { appendFile, open, readFile, rename, writeFile } from 'node:fs/promises';
-import { SESSION_VERSION, parseEventLine, type SessionEvent, type SessionHeader } from './session.js';
+import { SESSION_VERSION, type SessionEvent, type SessionHeader } from './session.js';
+import { parseEventLine } from './session-projection.js';
 import type { AgentMessage } from './types.js';
 
 export interface ReadResult {

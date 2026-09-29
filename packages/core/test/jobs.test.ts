@@ -14,7 +14,7 @@ describe('JobRegistry', () => {
     const registry = new JobRegistry();
     const d = deferred();
     const snapshot = registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'sleep 10',
       cancel: () => {},
       done: d.promise,
@@ -34,7 +34,7 @@ describe('JobRegistry', () => {
     let progress = '1 tools · bash ls';
     const d = deferred();
     registry.start({
-      kind: 'subagent',
+      kind: 'subagent', sessionId: '',
       label: '[subagent: scout] brief',
       cancel: () => {},
       done: d.promise,
@@ -54,7 +54,7 @@ describe('JobRegistry', () => {
     let cancelCalls = 0;
     const d = deferred();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'long task',
       cancel: () => {
         cancelCalls += 1;
@@ -75,7 +75,7 @@ describe('JobRegistry', () => {
     const registry = new JobRegistry();
     let buffer = '';
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'producer',
       cancel: () => {},
       done: Promise.resolve({ status: 'completed' }),
@@ -96,7 +96,7 @@ describe('JobRegistry', () => {
   it('keeps the subagent kind reserved and fails unknown job lookups gracefully', () => {
     const registry = new JobRegistry();
     const snapshot = registry.start({
-      kind: 'subagent',
+      kind: 'subagent', sessionId: '',
       label: 'explore',
       cancel: () => {},
       done: Promise.resolve({ status: 'completed' }),
@@ -117,8 +117,8 @@ describe('JobRegistry completion notices', () => {
     const registry = new JobRegistry();
     const a = deferred();
     const b = deferred();
-    registry.start({ kind: 'bash', label: 'sleep 10', cancel: () => {}, done: a.promise });
-    registry.start({ kind: 'bash', label: 'curl site', cancel: () => {}, done: b.promise });
+    registry.start({ kind: 'bash', sessionId: '', label: 'sleep 10', cancel: () => {}, done: a.promise });
+    registry.start({ kind: 'bash', sessionId: '', label: 'curl site', cancel: () => {}, done: b.promise });
 
     expect(registry.drainFinished()).toEqual([]); // nothing before settlement
     a.resolve({ status: 'completed', detail: 'exit code: 0' });
@@ -129,7 +129,7 @@ describe('JobRegistry completion notices', () => {
 
     const notices = registry.drainFinished();
     expect(notices.map((n) => n.id)).toEqual(['bash-1', 'bash-2']);
-    expect(notices[0]).toMatchObject({ kind: 'bash', status: 'completed', detail: 'exit code: 0' });
+    expect(notices[0]).toMatchObject({ kind: 'bash', sessionId: '', status: 'completed', detail: 'exit code: 0' });
     expect(notices[1]).toMatchObject({ status: 'failed', detail: 'exit code: 3' });
     expect(registry.drainFinished()).toEqual([]); // one drain = one announcement
   });
@@ -137,7 +137,7 @@ describe('JobRegistry completion notices', () => {
   it('requeue puts a failed delivery back at the head, keeping order and later drains', async () => {
     const registry = new JobRegistry();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'curl site',
       cancel: () => {},
       done: Promise.resolve({ status: 'completed', detail: 'exit code: 0' }),
@@ -151,7 +151,7 @@ describe('JobRegistry completion notices', () => {
     expect(again).toEqual(first); // identical batch, delivered at-least-once now
 
     // A fresh notice queues behind the requeued one, and requeue([]) is a no-op.
-    registry.start({ kind: 'bash', label: 'second', cancel: () => {}, done: Promise.resolve({ status: 'completed' }) });
+    registry.start({ kind: 'bash', sessionId: '', label: 'second', cancel: () => {}, done: Promise.resolve({ status: 'completed' }) });
     await flush();
     registry.requeue(first);
     registry.requeue([]);
@@ -163,7 +163,7 @@ describe('JobRegistry completion notices', () => {
     const registry = new JobRegistry();
     const d = deferred();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'long task',
       cancel: () => d.resolve({ status: 'killed', detail: 'exit code: null' }),
       done: d.promise,
@@ -178,7 +178,7 @@ describe('JobRegistry completion notices', () => {
   it('announces a producer-bug rejection as a failed job', async () => {
     const registry = new JobRegistry();
     registry.start({
-      kind: 'bash',
+      kind: 'bash', sessionId: '',
       label: 'buggy producer',
       cancel: () => {},
       done: Promise.reject(new Error('boom')),
@@ -191,7 +191,7 @@ describe('JobRegistry completion notices', () => {
 
   it('formatJobNotices renders jobs-list-shaped rows with the output hint', () => {
     const notices: JobNotice[] = [
-      { id: 'bash-1', kind: 'bash', label: 'sleep 10', status: 'completed', detail: 'exit code: 0' },
+      { id: 'bash-1', kind: 'bash', sessionId: '', label: 'sleep 10', status: 'completed', detail: 'exit code: 0' },
     ];
     expect(formatJobNotices(notices)).toBe(
       [
@@ -205,8 +205,8 @@ describe('JobRegistry completion notices', () => {
   it('truncates over-long command labels and handles multiple jobs', () => {
     const long = 'x'.repeat(90);
     const text = formatJobNotices([
-      { id: 'bash-1', kind: 'bash', label: long, status: 'completed' },
-      { id: 'bash-2', kind: 'bash', label: 'second', status: 'failed', detail: 'exit code: 1' },
+      { id: 'bash-1', kind: 'bash', sessionId: '', label: long, status: 'completed' },
+      { id: 'bash-2', kind: 'bash', sessionId: '', label: 'second', status: 'failed', detail: 'exit code: 1' },
     ]);
     expect(text).toContain(`- bash-1 [completed] ${'x'.repeat(79)}…`);
     expect(text).toContain('- bash-2 [failed] second (exit code: 1)');

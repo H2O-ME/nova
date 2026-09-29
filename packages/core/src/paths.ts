@@ -1,18 +1,17 @@
 import os from 'node:os';
 import path from 'node:path';
 
-/**
- * The on-disk layout of a nova installation — `~/.nova/`, the ONE data root
- * (config, sessions, skills, spill caches). Owned by core because session
- * persistence, compaction archives and the tool-output spill all resolve
- * paths against it, and every surface assembles kernels through the same
- * layout. The workspace itself is never written to (zero-write rule).
- */
+/** The on-disk layout: `~/.nova/` (the ONE data root) plus `~/.agents/`. */
 export const NOVA_DIR = '.nova';
 
 /** nova's home: `~/.nova/`. Overridable homedir for tests. */
 export function novaHome(homedir: string = os.homedir()): string {
   return path.join(homedir, NOVA_DIR);
+}
+
+/** `~/.agents/` — the cross-tool agent data directory other tools share. */
+export function agentsHome(homedir: string = os.homedir()): string {
+  return path.join(homedir, '.agents');
 }
 
 export function userConfigPath(homedir: string = os.homedir()): string {
@@ -22,6 +21,15 @@ export function userConfigPath(homedir: string = os.homedir()): string {
 /** Sessions root (codex-style date buckets): `~/.nova/sessions/YYYY/MM/DD/`. */
 export function sessionsRoot(homedir: string = os.homedir()): string {
   return path.join(novaHome(homedir), 'sessions');
+}
+
+/**
+ * `<base>/.agents/skills` — the standard skills root and the ONLY definition of
+ * the `.agents` layout. `base` is a home for the user level, a project root for
+ * the project level; both levels read the same convention.
+ */
+export function agentsSkillsRoot(base: string = os.homedir()): string {
+  return path.join(agentsHome(base), 'skills');
 }
 
 /** Local-timezone YYYY/MM/DD parts (the context fragment's `today` and the date bucket share this source). */
@@ -55,3 +63,12 @@ export function toolOutputsDir(sessionId?: string, homedir: string = os.homedir(
   const root = path.join(cacheRoot(homedir), 'tool-outputs');
   return sessionId === undefined ? root : path.join(root, sessionId);
 }
+
+/*
+ * There is no `uploadsDir`. It named `~/.nova/cache/uploads/`, where a dropped
+ * file's bytes were copied so `read_file` could reach them — but a local file
+ * already has a path, the model end is pure text, and nothing here reads images
+ * or video. The copy therefore fed the model nothing while duplicating the
+ * user's bytes in a directory that only ever grew. A prompt references the
+ * original path instead, so no such root is needed.
+ */

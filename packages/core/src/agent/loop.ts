@@ -6,10 +6,8 @@
 import { newId } from '../ids.js';
 import type {
   AgentEvent,
-  AgentMessage,
   AssistantMessage,
   ToolCall,
-  ToolResultMessage,
 } from '../types.js';
 import {
   DEFAULT_MAX_TOOL_RESULT_BYTES,
@@ -19,9 +17,9 @@ import {
   type AgentOptions,
 } from './options.js';
 import { STALE_TODO_TURNS, requeueUnaccounted, type NoticeState } from './notices.js';
-import { missingToolResults } from '../session-repair.js';
 import { assembleRequest } from './request.js';
 import { finishAborted, streamCompletion } from './stream.js';
+import { refuseCall, synthesizeMissingToolResults } from './refuse.js';
 import { makeDispatcher, parseArgs, runToolCalls } from './tools.js';
 
 /**
@@ -130,16 +128,7 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
       // batch still tried to act without landing a fresh snapshot).
       if (outcome.finishReason === 'length') {
         for (const call of toolCalls) {
-          const result: ToolResultMessage = {
-            id: newId('msg'),
-            ts: Date.now(),
-            role: 'tool',
-            toolCallId: call.id,
-            name: call.name,
-            content: `Tool call "${call.name}" ${LENGTH_CUTOFF_TOOL_GUIDANCE}`,
-          };
-          opts.messages.push(result);
-          yield { type: 'tool_call_result', turn, call, result };
+          yield* refuseCall(opts, call, turn, `Tool call "${call.name}" ${LENGTH_CUTOFF_TOOL_GUIDANCE}`);
         }
         countStaleTurn();
         continue;
@@ -149,19 +138,13 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
       // silently execute with {} (a fabricated empty plan). Fail just those
       // calls with an explicit result; the well-formed rest run on.
       const malformed = toolCalls.filter((call) => !call.argsOk);
-      if (malformed.length > 0) {
-        for (const call of malformed) {
-          const result: ToolResultMessage = {
-            id: newId('msg'),
-            ts: Date.now(),
-            role: 'tool',
-            toolCallId: call.id,
-            name: call.name,
-            content: `Tool call "${call.name}" was not executed: the streamed arguments were not valid JSON. Re-issue the tool call with well-formed JSON arguments.`,
-          };
-          opts.messages.push(result);
-          yield { type: 'tool_call_result', turn, call, result };
-        }
+      for (const call of malformed) {
+        yield* refuseCall(
+          opts,
+          call,
+          turn,
+          `Tool call "${call.name}" was not executed: the streamed arguments were not valid JSON. Re-issue the tool call with well-formed JSON arguments.`,
+        );
       }
       const executable = toolCalls.filter((call) => call.argsOk);
       if (executable.length === 0) {
@@ -203,9 +186,4 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
     requeueUnaccounted(opts, notices);
     synthesizeMissingToolResults(opts.messages);
   }
-}
-
-/** Fill in a NOT_EXECUTED_GUIDANCE result for every callId missing one. */
-function synthesizeMissingToolResults(messages: AgentMessage[]): void {
-  messages.push(...missingToolResults(messages));
 }

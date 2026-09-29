@@ -2,8 +2,24 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { newId } from './ids.js';
 import { readEvents, upgradeToV2 } from './session-log.js';
+import { compactionSurface, findOrphanCompaction } from './session-projection.js';
 import type { RunStats } from './kernel/metrics.js';
-import type { AgentMessage, UserMessage } from './types.js';
+import type { AgentMessage } from './types.js';
+import type { Goal } from './goal.js';
+
+/**
+ * Re-exported so a consumer of the log also gets the projections over it: the
+ * two are halves of one vocabulary, and every reader of `Session` needs both.
+ * The implementations live in `session-projection.ts` (pure, no I/O).
+ */
+export {
+  anchoredRunStats,
+  COMPACT_SUMMARY_PREFIX,
+  compactionSummaryMessage,
+  compactionSurface,
+  findOrphanCompaction,
+  parseEventLine,
+} from './session-projection.js';
 
 /**
  * Session log format v2: the file is an append-only event stream, not a
@@ -50,6 +66,13 @@ export type SessionEvent =
   | { type: 'compaction/end'; at: number; error?: string }
   /** Log-only durable todo snapshot; never joins the model surface. */
   | { type: 'todo/write'; todos: TodoItem[]; at: number }
+  /**
+   * A durable goal snapshot — log-only like `todo/write`, and for the same reason:
+   * the goal must survive a resume without becoming context the model pays for
+   * every turn. `null` records a CLEAR, so "no goal" has exactly one spelling on
+   * the wire and in the log.
+   */
+  | { type: 'goal/change'; goal: Goal | null; at: number }
   /** Log-only approval audit pair record; never joins the model surface. */
   | { type: 'approval'; toolName: string; kind: string; outcome: 'allow' | 'deny' | 'always'; at: number }
   /** Log-only workspace marker (session switching restores the tools' root
@@ -90,91 +113,6 @@ export type SessionEvent =
       at: number;
     };
 
-/**
- * Each run's measurement, keyed by the message it closed (the anchor the log
- * itself carries). A surface draws those numbers right after that message; one
- * the projection no longer holds (compaction replaced it) simply keeps no row,
- * because re-anchoring a measurement would attribute it to a message it never
- * measured.
- */
-export function anchoredRunStats(events: readonly SessionEvent[]): Map<string, RunStats> {
-  const runs = new Map<string, RunStats>();
-  for (const event of events) {
-    if (event.type !== 'run/stats' || event.afterMessageId === undefined) continue;
-    // Last write wins: a re-run of the same anchor is the one a reader saw last.
-    runs.set(event.afterMessageId, event.stats);
-  }
-  return runs;
-}
-
-/** The exported prefix used by the projected compaction summary message. */
-export const COMPACT_SUMMARY_PREFIX = '[已压缩的上一会话摘要]';
-
-/**
- * Deterministic summary message synthesized from a compaction/summary event.
- * Both the live compaction path and the replay projection construct the SAME
- * message through this helper, so the surface is byte-identical after resume.
- */
-export function compactionSummaryMessage(summary: string, seq: number, at: number): UserMessage {
-  return {
-    id: `msg_compact_${seq}`,
-    ts: at,
-    role: 'user',
-    content: `${COMPACT_SUMMARY_PREFIX}\n${summary}`,
-  };
-}
-
-/**
- * The ONE implementation of "surface after this compaction" = kept originals
- * + the synthesized summary message. The live compaction path (cli/compact)
- * and the replay projection (deriveMessages) both go through here, so the
- * two never drift — previously the live path resolved `keep` positionally
- * while the projection preferred `keepIds`, and the "model-visible means
- * logged" invariant leaned on a dev-only divergence check.
- */
-export function compactionSurface(
-  evt: Extract<SessionEvent, { type: 'compaction/summary' }>,
-  all: AgentMessage[],
-  seq: number,
-): AgentMessage[] {
-  return [...resolveKeptMessages(evt, all), compactionSummaryMessage(evt.summary, seq, evt.at)];
-}
-
-export function parseEventLine(line: string): SessionEvent {
-  return JSON.parse(line) as SessionEvent;
-}
-
-/**
- * Resolve a compaction/summary event's kept entries against the full message
- * stream. `keepIds` (written since M7.8) is authoritative: a corrupt middle
- * line shifts positional indices, but ids pin the kept messages exactly —
- * a kept message lost to damage is simply omitted. Old logs without keepIds
- * fall back to the positional `keep` indices.
- */
-function resolveKeptMessages(
-  evt: Extract<SessionEvent, { type: 'compaction/summary' }>,
-  all: AgentMessage[],
-): AgentMessage[] {
-  if (evt.keepIds !== undefined) {
-    const byId = new Map(all.map((msg) => [msg.id, msg] as const));
-    return evt.keepIds.map((id) => byId.get(id)).filter((msg): msg is AgentMessage => msg !== undefined);
-  }
-  return evt.keep.map((index) => all[index]).filter((msg): msg is AgentMessage => msg !== undefined);
-}
-
-/**
- * Index of the LAST unmatched compaction/start (an orphaned lock from a crash
- * mid-compaction), or -1 when every compaction is properly closed.
- */
-function findOrphanCompaction(events: SessionEvent[]): number {
-  let open = -1;
-  for (let i = 0; i < events.length; i++) {
-    const evt = events[i]!;
-    if (evt.type === 'compaction/start') open = i;
-    else if (evt.type === 'compaction/end') open = -1;
-  }
-  return open;
-}
 
 /**
  * Append-only JSONL session event log. v1 files (bare message lines) are
@@ -188,6 +126,17 @@ export class Session {
   readonly events: SessionEvent[] = [];
   /** Non-fatal problems noticed on open (e.g. orphaned compaction lock). */
   readonly warnings: string[] = [];
+  /**
+   * Set once the session is closed (the surface deleted or replaced it).
+   *
+   * Closing must SEAL the log, not merely stop reading it: `appendFile` creates
+   * a missing file, so a session whose log was deleted while a run was still in
+   * flight would resurrect it on the next commit — a log holding only the events
+   * logged after the delete. `appendEvent` therefore refuses once sealed, which
+   * makes "the delete was the last word on this log" a property of the store
+   * rather than something each surface has to remember at the right moment.
+   */
+  private sealed = false;
 
   private constructor(file: string, id: string, createdAt: number, events: SessionEvent[], warnings: string[]) {
     this.file = file;
@@ -227,14 +176,36 @@ export class Session {
     return findOrphanCompaction(this.events) !== -1;
   }
 
-  /** Append one raw event; returns its seq (index in the event stream). */
+  /**
+   * Append one raw event; returns its seq (index in the event stream).
+   *
+   * Rejects once the session is closed (see `sealed`). Callers that append
+   * best-effort already swallow the rejection; a caller that does not gets an
+   * error instead of a recreated log, which is the honest outcome.
+   */
   async appendEvent(evt: SessionEvent): Promise<number> {
+    if (this.sealed) throw new Error('session is closed; the log was sealed and cannot be appended');
     // Disk first, memory second: if the write throws (full disk, killed
     // mid-flush), in-memory state still matches what a resume will replay
     // instead of diverging with a phantom event that never hit the log.
     await appendFile(this.file, `${JSON.stringify(evt)}\n`, 'utf8');
     this.events.push(evt);
     return this.events.length - 1;
+  }
+
+  /**
+   * Seal the log: no further append will ever reach this file.
+   *
+   * Called when the owning session is closed. Idempotent, and deliberately not
+   * reversible — reopening a deleted log is exactly the bug this prevents.
+   */
+  seal(): void {
+    this.sealed = true;
+  }
+
+  /** Whether the log is sealed (see `seal`). */
+  get isSealed(): boolean {
+    return this.sealed;
   }
 
   /** Sugar for appending a model-visible message event. */
@@ -282,6 +253,23 @@ export class Session {
     for (let i = this.events.length - 1; i >= 0; i--) {
       const evt = this.events[i]!;
       if (evt.type === 'todo/write') return evt.todos;
+    }
+    return undefined;
+  }
+
+  /**
+   * Latest durable goal snapshot, or undefined when none was ever written.
+   *
+   * Same shape as `latestTodos` above because the two are the same mechanism: the
+   * goal is a log-only event carrying the WHOLE value (last write wins), so a
+   * resume restores the panel without a separate store. A `goal/change` whose
+   * `goal` is `null` records a CLEAR — it returns undefined, which is exactly what
+   * "no goal" means, so a cleared goal and a never-set goal read alike.
+   */
+  latestGoal(): Goal | undefined {
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const evt = this.events[i]!;
+      if (evt.type === 'goal/change') return evt.goal ?? undefined;
     }
     return undefined;
   }

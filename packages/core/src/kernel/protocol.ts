@@ -3,77 +3,45 @@
  *
  * `KernelEvent` is a superset of the raw `AgentEvent` stream (the 11 loop
  * variants pass through unchanged): it folds in the channels that used to be
- * bypass callbacks and shell-local guesses — approvals (request/response with
- * a correlation id), generation phase, live tool output, nested-subagent
- * progress, background-job transitions, the running prompt queue, compaction
- * progress and operational notices. A surface that only switches on
+ * bypass callbacks and shell-local guesses — approvals and user questions
+ * (request/response with a correlation id), generation phase, live tool output,
+ * nested-subagent progress, background-job transitions, the running prompt queue,
+ * compaction progress and operational notices. A surface that only switches on
  * `event.type` can drive the whole product; nothing outside this protocol is
- * observable, which is what makes surfaces replaceable (browser, bot,
- * headless) and testable against one reducer.
+ * observable, which is what makes surfaces replaceable (browser, bot, headless)
+ * and testable against one reducer.
  *
- * Shape and semantics live here; copy, colors and layout never do — a
- * `notice` carries a stable `code` plus a renderable fallback `text`, and
- * each surface decides whether to translate the code or print the text.
+ * Shape and semantics live here; copy, colors and layout never do — a `notice`
+ * carries a stable `code` plus a renderable fallback `text`, and each surface
+ * decides whether to translate the code or print the text.
  */
 import type { AgentEvent, UserMessage } from '../types.js';
 import type { ApprovalRequest, ApprovalResolution } from '../approval.js';
-import type { JobSnapshot } from '../jobs.js';
+import type { QuestionRequest, QuestionResolution } from '../user-question.js';
+import type { JobSnapshot } from '../job-types.js';
 import type { RunStats } from './metrics.js';
+import type { TodoItem } from '../session.js';
+import type { Goal } from '../goal.js';
+import type { CompactionProgress, NoticeCode, TurnPhase } from './protocol-vocabulary.js';
+
+export type { CompactionProgress, NoticeCode, TurnPhase };
+
 import type { SubagentProgress } from '../tools/subagent.js';
-
-/** What the agent is doing right now (drives live rows: spinner verb, web pulse). */
-export type TurnPhase =
-  | 'idle'
-  | 'thinking'
-  | 'writing'
-  | 'tool'
-  | 'waiting_approval'
-  | 'compacting'
-  | 'retrying';
-
-/** Stable machine codes for operational notices (text is the fallback rendering). */
-export type NoticeCode =
-  /** A per-request (headless) auto-compaction succeeded — the success line for
-   *  runs whose compaction never surfaces as a `compaction` event. */
-  | 'compacted'
-  /** Auto-compact ran and the retained floor is STILL over the limit: fused off for this session. */
-  | 'compact_fused'
-  /** A plugin hook replaced the messages array, so in-place compaction was disarmed. */
-  | 'compact_alias_broken'
-  /** An automatic compaction attempt threw (run continues uncompressed). */
-  | 'compact_failed'
-  /** A surface's event consumer fell behind MAX_LAG and its window was reset. */
-  | 'surface_lagged'
-  /** A subscribed event listener threw. Reported instead of crashing the run. */
-  | 'listener_failed';
-
-/** A compaction pass, start → done|error, with the outcome bits a surface renders. */
-export interface CompactionProgress {
-  state: 'start' | 'done' | 'error';
-  trigger: 'auto' | 'manual';
-  /** Retained recent messages (state 'done'). */
-  retained?: number;
-  /** Summary length in chars (state 'done'). */
-  summaryChars?: number;
-  /** Failure reason (state 'error'). */
-  error?: string;
-}
 
 export type KernelEvent =
   | AgentEvent
   /**
-   * A user prompt committed to the log (right when `prompt()` is called —
-   * queued or immediate — "model-visible means logged"). Surfaces render the
-   * transcript row from this event instead of echoing locally, so queue
-   * flush, reconnect replay and multi-consumer views stay consistent.
+   * A user prompt committed to the log (right when `prompt()` is called — queued
+   * or immediate — "model-visible means logged"). Surfaces render the transcript
+   * row from this instead of echoing locally, so queue flush, reconnect replay
+   * and multi-consumer views stay consistent.
    */
   | { type: 'user_message'; message: UserMessage }
   /** Phase transitions, emitted only on change. */
   | { type: 'phase'; phase: TurnPhase }
   /**
-   * An approval ask reached the surface: answer it via
-   * `AgentSession.resolveApproval(request.id, ...)`. Serialized by the
-   * permission engine — at most one outstanding request at a time.
+   * An approval ask reached the surface: answer via `resolveApproval`. Serialized
+   * by the permission engine — at most one outstanding request at a time.
    */
   | { type: 'approval_request'; request: ApprovalRequest }
   /**
@@ -81,6 +49,15 @@ export type KernelEvent =
    * closed) — surfaces clear their modal by this, never by racing resolve().
    */
   | { type: 'approval_resolved'; id: string; resolution: ApprovalResolution }
+  /**
+   * The model asked the human a question (`ask_user_question`) and the run is
+   * suspended inside the ask: answer via `AgentSession.resolveQuestion`, or
+   * dismiss the whole batch via `cancelQuestion`. Either way the wait ends — a
+   * surface that does neither leaves the run parked until it aborts.
+   */
+  | { type: 'question_request'; request: QuestionRequest }
+  /** A question stopped waiting; surfaces clear their card by THIS, never by racing their own send. */
+  | { type: 'question_resolved'; id: string; resolution: QuestionResolution }
   /** Live tail line from a running tool (bash output etc.). */
   | { type: 'tool_progress'; callId: string | undefined; text: string }
   /** Nested subagent lifecycle moment (foreground and background modes). */
@@ -89,6 +66,24 @@ export type KernelEvent =
   | { type: 'job_update'; job: JobSnapshot }
   /** The pending prompt queue changed (enqueue / flush). */
   | { type: 'queue_update'; items: readonly string[] }
+  /**
+   * The model rewrote its plan (`todo_write`). Publishes the WHOLE table, not a
+   * diff — the tool replaces the list wholesale — so a surface never accumulates
+   * and one attaching mid-run reads it from the next write. The durable
+   * `todo/write` event is the record (it survives a resume); this is the live
+   * signal, so a surface need not poll the log to notice a plan appeared.
+   */
+  | { type: 'todo'; todos: readonly TodoItem[] }
+  /**
+   * The goal changed, or was cleared (`null`).
+   *
+   * A whole-value snapshot with last-write-wins, the same rule as `todo` above and
+   * for the same reason: the log-only `goal/change` event is the durable record
+   * (so a resume restores the identical goal), and this is the live signal so a
+   * surface need not poll. `null` is "no goal", never "unchanged" — a surface
+   * replaces its state with whatever arrives.
+   */
+  | { type: 'goal'; goal: Goal | null }
   /**
    * The model in force changed (a picker switched it, or the surface
    * re-pointed the client). Published so every consumer of this kernel

@@ -20,6 +20,7 @@ export { EventRegistry, event, isBailed, type EventKey, type Listener, type Next
 export { ServiceStore, ServiceUnavailable, type ServiceImpl } from './store.js';
 export {
   key,
+  pluginName,
   resolvePlugin,
   type AnyPlugin,
   type AnyServiceKey,
@@ -50,6 +51,7 @@ export {
   spill,
   surfaces,
   tools,
+  userQuestions,
   type ApprovalService,
   type CommandDefinition,
   type CommandEntry,
@@ -62,6 +64,8 @@ export {
   type SkillRegistry,
   type SpillService,
   type SurfaceRegistry,
+  type SurfaceRows,
   type ToolEntry,
   type ToolRegistry,
+  type UserQuestionsService,
 } from './capabilities.js';

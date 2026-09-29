@@ -25,7 +25,8 @@ import type { ChatRequest, ToolCall, ToolCallVerdict, ToolDefinition, ToolPermis
 import type { CompactedSession, CompactSessionOptions } from '../compact.js';
 import type { JobRegistry } from '../jobs.js';
 import type { AgentSession } from '../kernel/session.js';
-import type { AgentSurface } from '../kernel.js';
+import type { AgentSurface, AgentSurfaceRequest } from '../kernel.js';
+import type { AskQuestionsFn } from '../user-question.js';
 import { event, type EventKey } from './events.js';
 import { key, type ServiceKey } from './types.js';
 
@@ -210,23 +211,81 @@ export interface SkillRegistry {
 
 export const skills: ServiceKey<SkillRegistry> = key<SkillRegistry>('skills');
 
+/* ── user questions ────────────────────────────────────────────────────── */
+
+/**
+ * "Can this surface ask a human?" as a service, mirroring dsh's root-level
+ * `user-questions` row. The ASK TOOL reads this key at call time instead of
+ * being handed an answerer (or nothing) as an assembly option, so:
+ *
+ *  - a surface with a person registers the provider (it owns the answerer);
+ *  - a surface without one leaves the key unprovided, and the tool reports the
+ *    typed `NO_PROVIDER` refusal rather than parking a run no card can release;
+ *  - the three hand-copied `userQuestions: true` booleans (`kernel-boot`,
+ *    `web/controller`, `surface-host`) disappear — the answer is a fact about
+ *    the container, not a parameter each assembly site must remember.
+ *
+ * The provider is a callback, not the broker: the broker is per kernel
+ * (`QuestionBroker`) while the DECISION to answer is the surface's. Reading it
+ * lazily is what keeps a re-roster from stranding a captured function.
+ */
+export interface UserQuestionsService {
+  /** The answerer, or undefined when this surface has nobody to ask. */
+  answerer(): AskQuestionsFn | undefined;
+}
+
+export const userQuestions: ServiceKey<UserQuestionsService> = key<UserQuestionsService>('userQuestions');
+
 /* ── surfaces ──────────────────────────────────────────────────────────── */
 
 /**
- * The human-facing end, as a registry: the browser UI, the bot channel and
- * the headless runners are all implementations of `AgentSurface`, and the cli
- * resolves which one to start by asking this service rather than by an argv
- * if-chain. A third-party surface package registers here exactly like an
- * official one.
+ * The human-facing end, as a registry: the browser UI, the terminal UI, the bot
+ * channel and the headless runners are all implementations of `AgentSurface`,
+ * and whoever owns the invocation resolves which one to start by asking this
+ * service rather than by an argv if-chain. A third-party surface package
+ * registers here exactly like an official one.
+ *
+ * It is provided INTO the container by the assembly (`surfaceRegistryProvider`
+ * in the plugins package), and a surface module named in config becomes a
+ * plugin row whose `apply` registers itself here — the same shape every other
+ * capability uses. The registry instance is built before the kernel so the
+ * roster can load surfaces into the same registry the resolver will read: the
+ * object precedes the container, but its PROVIDER does not, and that is what
+ * makes a surface an ordinary plugin rather than a special case outside the
+ * container. (The earlier revision left this key declared with no provider and
+ * called that an honest seam; it was not — it was a registry living outside the
+ * container, which is why a surface could not appear in `/plugins`.)
  */
 export interface SurfaceRegistry {
   all(): readonly AgentSurface[];
   /** The surface that claims this invocation, in registration order. */
-  resolve(argv: readonly string[]): AgentSurface | undefined;
+  resolve(request: AgentSurfaceRequest): AgentSurface | undefined;
   register(surface: AgentSurface): () => void;
+  /**
+   * The surface most recently returned by `resolve` — i.e. the one serving this
+   * invocation. Recorded as a side effect of resolving so a consumer that only
+   * has the registry (the `userQuestions` service) can answer "does the surface
+   * in force have a human?" WITHOUT the resolution result being threaded through
+   * the kernel assembly by hand. Undefined before the first resolve, which is
+   * the correct fail-closed answer.
+   */
+  current(): AgentSurface | undefined;
 }
 
 export const surfaces: ServiceKey<SurfaceRegistry> = key<SurfaceRegistry>('surfaces');
+
+/**
+ * The surfaces a caller has already loaded, ready for the assembly to adopt.
+ * `loaded` (not module specs) because the caller has to import the modules
+ * anyway to answer "which surface claims this invocation" — that is a pure
+ * predicate over argv needing no kernel. Passing the loaded objects means ONE
+ * import and one identity, so `registry.current()` and a surface's plugin row
+ * are the same object. `registry` is the same instance the resolver reads.
+ */
+export interface SurfaceRows {
+  registry: SurfaceRegistry;
+  loaded: readonly AgentSurface[];
+}
 
 /* ── lifecycle events ──────────────────────────────────────────────────── */
 
