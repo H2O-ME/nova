@@ -1,0 +1,47 @@
+node_modules/
+dist/
+# 前端构建产物（packages/web/ui 的 vite 输出）：与 dist/ 同性质，`pnpm build` 时由 -r 顺带重生
+packages/web/public/
+.nova/
+.zcode/
+skills-lock.json
+# 外部工具在本目录留下的临时转储，形如 .tmp-<项目>-<展平后的源路径>——不是本仓库的产物
+.tmp-*
+*.log
+
+# agent 工具在本目录留下的工作目录，同 .zcode/ 一类
+.pi/
+
+# 外部参照源码（vendored reference，只读不改，同 .reference/codex 的定位）：不是本仓库产物
+deepseek-harness-master/
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）
