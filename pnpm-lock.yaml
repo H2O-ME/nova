@@ -11,6 +11,9 @@ importers:
       '@changesets/cli':
         specifier: ^3.0.2
         version: 3.0.2
+      '@nova-agent/tui-app':
+        specifier: workspace:*
+        version: link:packages/tui-app
       '@types/node':
         specifier: ^26.4.0
         version: 26.4.0
@@ -94,6 +97,28 @@ importers:
         specifier: ^26.4.0
         version: 26.4.0
 
+  packages/tui:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+
+  packages/tui-app:
+    dependencies:
+      '@nova-agent/core':
+        specifier: workspace:*
+        version: link:../core
+      '@nova-agent/plugins':
+        specifier: workspace:*
+        version: link:../plugins
+      '@nova-agent/tui':
+        specifier: workspace:*
+        version: link:../tui
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+
   packages/web:
     dependencies:
       '@nova-agent/core':
@@ -109,6 +134,9 @@ importers:
 
   packages/web/ui:
     dependencies:
+      '@nova-agent/core':
+        specifier: workspace:*
+        version: link:../../core
       react:
         specifier: ^18.3.1
         version: 18.3.1
