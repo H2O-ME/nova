@@ -92,8 +92,9 @@ const TOOL_LABELS: Record<string, string> = {
   workspace: '切换工作区',
 };
 
+/** `Object.hasOwn` because the name is model output: a bare index would resolve `constructor` to an inherited member. */
 export function toolLabel(name: string): string {
-  return TOOL_LABELS[name] ?? toolCallKind(name);
+  return Object.hasOwn(TOOL_LABELS, name) ? TOOL_LABELS[name] as string : toolCallKind(name);
 }
 
 /** 按显示列数截尾（保留开头；CJK 计 2 列， ANSI 码忽略）。 */
@@ -137,8 +138,7 @@ export function toolDoneLines(
   return [head, `  ${p.red('▌')} ${p.red(firstLine)}`];
 }
 
-// ------------------------------------------------------------------ 文案表
-// labels/text 的属主（观感归 surface）：只留 readline/exec 需要的最小集。
+// 文案表（观感归 surface）：只留 readline/exec 需要的最小集。
 
 /** /approvals 的固定循环序。 */
 export const APPROVAL_ORDER = ['read-only', 'auto-edit', 'full'] as const;
@@ -150,7 +150,7 @@ const APPROVAL_LABELS: Record<string, string> = {
 };
 
 export function approvalLabel(mode: string): string {
-  return APPROVAL_LABELS[mode] ?? mode;
+  return Object.hasOwn(APPROVAL_LABELS, mode) ? APPROVAL_LABELS[mode] as string : mode;
 }
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -162,7 +162,7 @@ const PERMISSION_LABELS: Record<string, string> = {
 };
 
 export function permissionLabel(kind: string): string {
-  return PERMISSION_LABELS[kind] ?? kind;
+  return Object.hasOwn(PERMISSION_LABELS, kind) ? PERMISSION_LABELS[kind] as string : kind;
 }
 
 /** 执行模式标签与 /mode 一行语义。 */

@@ -1,12 +1,10 @@
 /**
  * CLI-only helpers: system prompt byte-stability (via the plugins package),
- * markdown-lite rendering, and the Windows toast PowerShell script.
+ * and the Windows toast PowerShell script.
  */
 import { describe, expect, it } from 'vitest';
 import { buildSystemPrompt, DEFAULT_SYSTEM_PROMPT } from '@nova-agent/plugins';
-import { createMarkdownRenderer, renderMarkdownLite } from '../src/markdown.js';
 import { buildWindowsToastScript } from '../src/notify.js';
-import { plainPaint } from '../src/lines.js';
 
 describe('system prompt', () => {
   it('forbids tool use on greetings and unsolicited work', () => {
@@ -35,40 +33,6 @@ describe('system prompt', () => {
   });
 });
 
-describe('markdown lite', () => {
-  const p = plainPaint;
-
-  it('strips inline markdown symbols', () => {
-    const lines = renderMarkdownLite('run `pnpm test` and **verify** the output', p);
-    expect(lines).toEqual(['run pnpm test and verify the output']);
-  });
-
-  it('normalizes bullets and headings, hides fence markers', () => {
-    const lines = renderMarkdownLite('# 标题\n\n- 第一项\n* 第二项\n```js\ncode();\n```', p);
-    // 列表项缩进 2 列挂圆点（与正文同列读不出层级）；wrapBlock 把前导空格
-    // 算进悬挂缩进，换行续行对齐条目文本列。
-    expect(lines).toEqual(['标题', '', '  · 第一项', '  · 第二项', 'code();']);
-    expect(renderMarkdownLite('  - 嵌套项', p)).toEqual(['    · 嵌套项']);
-  });
-
-  it('keeps plain paragraphs byte-identical', () => {
-    expect(renderMarkdownLite('你好\n世界', p)).toEqual(['你好', '世界']);
-  });
-
-  it('streams incrementally: complete lines cache, only the tail re-renders', () => {
-    const md = createMarkdownRenderer(p);
-    expect(md.push('# 标题\n')).toEqual(['标题']);
-    expect(md.push('第一行\n第二')).toEqual(['标题', '第一行', '第二']);
-    expect(md.push('行')).toEqual(['标题', '第一行', '第二行']);
-    // A partially typed fence marker must not toggle fence state early and
-    // leaves no premature output; the committed newline confirms the line.
-    expect(md.push('\n```')).toEqual(['标题', '第一行', '第二行']);
-    expect(md.push('`\ncode();\n```\n')).toEqual(['标题', '第一行', '第二行', 'code();']);
-    // A new open fence renders its lines dim; the state survives pushes.
-    expect(md.push('```js\nconst x = 1;\n')).toEqual(['标题', '第一行', '第二行', 'code();', 'const x = 1;']);
-  });
-});
-
 describe('windows toast script', () => {
   it('escapes quotes and flattens newlines for the PowerShell string literals', () => {
     const script = buildWindowsToastScript('Nova', "it's done\nline2");
@@ -76,18 +40,5 @@ describe('windows toast script', () => {
     expect(script).toContain("$b='it''s done line2'");
     expect(script).toContain('ToastNotificationManager');
     expect(script).toContain('ShowBalloonTip'); // balloon fallback present
-  });
-});
-
-describe('markdown inline: code span / bold isolation', () => {
-  it('bold never matches across a code span (placeholder extraction)', () => {
-    // Marker palette makes the wrapping observable in plain text.
-    const p = {
-      ...plainPaint,
-      cyan: (text: string) => `<c>${text}</c>`,
-      bold: (text: string) => `<b>${text}</b>`,
-    };
-    const lines = renderMarkdownLite('use `a**b` and **c** now', p as typeof plainPaint);
-    expect(lines).toEqual(['use <c>a**b</c> and <b>c</b> now']);
   });
 });

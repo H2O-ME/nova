@@ -3,6 +3,7 @@ import {
   type AgentSession,
   type ChatProvider,
   type KernelEvent,
+  type SurfaceRows,
 } from '@nova-agent/core';
 import { createNotifier } from './notify.js';
 import { bootKernel, createProvider } from './kernel-boot.js';
@@ -38,6 +39,8 @@ export interface ExecOptions {
   json: boolean;
   resumeFile?: string;
   approvalOverride?: ApprovalMode;
+  /** Configured surfaces (see `BootOptions.surfaces`): forwarded to the kernel. */
+  surfaces?: SurfaceRows;
   /** Injectable for tests; defaults to OpenAICompatClient from config. */
   provider?: ChatProvider;
   /** Injectable raw output sink for tests; defaults to process.stdout.write. */
@@ -62,7 +65,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
 
   // Test-injected provider takes precedence. The cache-affinity session id is
   // bound inside the kernel (its `llm` service), so nothing to rebind here.
-  const provider: ChatProvider = opts.provider ?? createProvider(config);
+  const provider: ChatProvider = opts.provider ?? (await createProvider(config));
   // Non-interactive: nobody can answer an approval prompt, so requests are
   // denied without dispatching an asker (fail-closed; no ask-path audit exists).
   const kernel = await bootKernel({
@@ -73,6 +76,7 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     perRequestCompact: true,
     ...(opts.approvalOverride !== undefined ? { approvalOverride: opts.approvalOverride } : {}),
     ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
+    ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
   });
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);

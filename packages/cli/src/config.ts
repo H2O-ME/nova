@@ -2,23 +2,63 @@ import { errMessage, novaHome, sessionDateBucket, sessionsRoot, userConfigPath }
 import { readFile } from 'node:fs/promises';
 import os from 'node:os';
 import { z } from 'zod';
+import { modelsSchema, providersSchema } from './config-schema-models.js';
+import { expandConfigDocument, type ConfigDiagnostic } from './config-expand.js';
+
+export { expandRefs, diagnosticText, unresolvedRef } from './config-expand.js';
+export type { ConfigDiagnostic } from './config-expand.js';
+export { modelEntrySchema, modelsSchema, providerEntrySchema, providersSchema } from './config-schema-models.js';
 
 const configSchema = z.object({
-  provider: z.object({
-    baseURL: z.string().min(1),
-    apiKey: z.string().min(1),
-    model: z.string().min(1),
-    /** Sampling temperature passed through to the provider. */
-    temperature: z.number().min(0).max(2).optional(),
-    /** Passed through as `max_tokens` when set. */
-    maxTokens: z.number().int().positive().max(1_000_000).optional(),
-    /**
-     * Context window size (prompt tokens). Normally resolved from
-     * https://models.dev/api.json by model id; set this to override/兜底 for
-     * self-hosted or unlisted models so the surface's context gauge has a denominator.
-     */
-    contextWindow: z.number().int().positive().max(200_000_000).optional(),
-  }),
+  /**
+   * 在役供应商（历史字段，仍是**唯一**「当前用哪个端点」的答案）。
+   *
+   * 它现在是**可选**的：初次使用就是空壳——装好就能启动，由设置页填端点与密钥。
+   * 缺失时各 surface 报「尚未配置模型端点」而不是启动失败（见 `resolveProvider`）。
+   * `providers` 非空时，这个对象的 `baseURL` / `apiKey` 由激活项派生（见
+   * `provider-store.ts`），此处保留是为了让老配置**逐字节继续可用**。
+   */
+  provider: z
+    .object({
+      baseURL: z.string().min(1),
+      apiKey: z.string().min(1),
+      model: z.string().min(1),
+      /** Sampling temperature passed through to the provider. */
+      temperature: z.number().min(0).max(2).optional(),
+      /** Passed through as `max_tokens` when set. */
+      maxTokens: z.number().int().positive().max(1_000_000).optional(),
+      /**
+       * Context window size (prompt tokens). Normally resolved from
+       * https://models.dev/api.json by model id; set this to override/兜底 for
+       * self-hosted or unlisted models so the surface's context gauge has a denominator.
+       */
+      contextWindow: z.number().int().positive().max(200_000_000).optional(),
+    })
+    .optional(),
+  /**
+   * 供应商清单（BYOK 多端点）。每一项是一个**独立的 OpenAI 兼容端点**，各有自己的
+   * baseURL / apiKey / 采样参数 / 上下文窗口覆盖——「只支持 api.tianhw.top」的解药。
+   *
+   * `activeProvider` 指名当前在役的那一项（缺省取列表第一项）。`provider` 与它同时
+   * 存在时**以它为准**：那是操作者在设置页刚点过的答案，比手写的 `provider` 新。
+   * `id` 是稳定标识（改名不改绑定），`name` 只用于显示。
+   *
+   * 形状定义在 `config-schema-models.ts`（与顶层 `models[]` 共用同一个 schema）。
+   */
+  providers: providersSchema,
+  /** 当前在役供应商的 `id`；缺省或指向不存在的项时取列表第一项。 */
+  activeProvider: z.string().min(1).optional(),
+  /**
+   * 模型目录（设置页「模型」的可编辑面）。**非空即接管**：此时列表就是菜单的全部
+   * 内容——端点没公布的模型也能加进来（自建/网关私有名字），不想要的删掉即可；缺省
+   * 时沿用「端点 `GET /models` 公布 + models.dev 元数据」的自动目录。
+   *
+   * 每项的能力字段是**逐字段覆盖**，不是重述：只写 `id` 的条目照样从 models.dev 取
+   * 窗口与多模态，所以手改能力是「按需选字段」，而不是「每个模型都要抄一遍」。三个
+   * 来源的权威顺序：这里写的 > models.dev > 未知（未知是真答案：仪表不画百分比，
+   * 而不是猜一个窗口）。形状见 `config-schema-models.ts`。
+   */
+  models: modelsSchema,
   systemPrompt: z.string().optional(),
   maxTurns: z.number().int().positive().max(500).optional(),
   approval: z.enum(['read-only', 'auto-edit', 'full']).optional(),
@@ -33,6 +73,12 @@ const configSchema = z.object({
    * (codex-style model_auto_compact_token_limit). Unset disables it.
    */
   autoCompactTokenLimit: z.number().int().positive().max(2_000_000).optional(),
+  /**
+   * 注入每个会话首条消息的 AGENTS.md 链的 token 预算。以 token 而非字节计：估算器
+   * 对中日韩字符约 1 token/字、其余约 1 token/4 字，按字节设限会让同一份中文文档
+   * 被静默按数倍计价。缺省 PROJECT_DOC_MAX_TOKENS（8000）。
+   */
+  projectDocMaxTokens: z.number().int().positive().max(1_000_000).optional(),
   /**
    * 界面外观（REPL 呈现层）。theme：dark（默认，配色与引入主题层前
    * 逐字节一致）/ light（亮背景高对比）/ plain（无色）。NO_COLOR 与
@@ -77,11 +123,27 @@ const configSchema = z.object({
    * `{ name, activate }` 形态的插件。这是配置层扩展点：不改源码就能选择、
    * 替换或扩展能力；拼错的 disable 名会告警，加载失败的 extra 直接让启动
    * 失败（静默忽略的扩展比坏掉的启动更糟）。
+   *
+   * `enable` 是**反方向**：默认关闭的进阶插件（subagent / ptc / qqbot）靠它按需
+   * 开启。两张表**按 tier 分工、永不重叠**——disable 收 standard 行，enable 收
+   * advanced 行；`disable` 在判定中**优先**（安全侧），所以同名同时出现在两边等于
+   * 永远关不上（见 `plugins/src/plugin-tier.ts` 的 `enabledByTier`）。
    */
   plugins: z
     .object({
       disable: z.array(z.string().min(1)).optional(),
+      enable: z.array(z.string().min(1)).optional(),
       extra: z.array(z.string().min(1)).optional(),
+    })
+    .optional(),
+  /**
+   * Skills 开关（设置面板「Skill 中心」的可视写入面）：disable 按 skill 名全局
+   * 关闭——项目级与用户级同名 skill 一律不再注入 `<available_skills>` 索引与
+   * `skill` 工具。拼错的名字在装配时告警（与 plugins.disable 同一条纪律）。
+   */
+  skills: z
+    .object({
+      disable: z.array(z.string().min(1)).optional(),
     })
     .optional(),
   /**
@@ -94,6 +156,17 @@ const configSchema = z.object({
       clientSecret: z.string().min(1),
     })
     .optional(),
+  /**
+   * 表面插件（surface 插件）——配置层动态加载的人机界面入口。每条是一个
+   * 模块规格（绝对路径 / 相对工作目录的路径 / 裸包名），由 `loadSurfacePlugins`
+   * 动态 `import()`，其 `default`（或 `surface`）导出须是 `AgentSurface`。与
+   * `plugins.extra` 同一套解析规则（见 `roster.ts` 的 `resolveModuleSpec`）。
+   *
+   * 终端界面就是这样加载的：`--tui` 要求这里写一条指向 tui-app 的 surface
+   * 子路径。cli 源码不依赖任何 surface 包——这里只是配置声明模块 id，第三方
+   * surface 写法相同：写一行包名即可替换或新增界面，不必改源码。
+   */
+  surfaces: z.array(z.string().min(1)).optional(),
 })
 // Strict: a typo'd key ("apporval") is a silent no-op on a lenient schema
 // and a confusing wrong-way run. Fail at load with the offending key named.
@@ -109,48 +182,48 @@ export type Config = z.infer<typeof configSchema>;
 export { novaHome, sessionsRoot, sessionDateBucket, userConfigPath };
 
 /**
- * Expands `{env:NAME}` references. Throws when a referenced variable is
- * unset — the empty-string fallback was a silent footgun (an empty apiKey
- * hit the provider as a 401 with no clue why).
+ * The loaded config plus what was wrong with it without being fatal.
+ *
+ * `diagnostics` is non-empty when a PLUGIN-owned section (see `config-expand.ts`)
+ * holds an unset `{env:NAME}`. The value is left as written in the returned
+ * config, so the owning plugin reports it where it is actually needed and every
+ * other surface only has to display it.
  */
-export function expandRefs(value: string): string {
-  return value.replace(/\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
-    const v = process.env[name];
-    if (v === undefined || v.length === 0) {
-      throw new Error(
-        `config references environment variable {env:${name}} but it is not set (or empty); set it in your shell or use a literal value`,
-      );
-    }
-    return v;
-  });
-}
-
-function expandDeep(value: unknown): unknown {
-  if (typeof value === 'string') return expandRefs(value);
-  if (Array.isArray(value)) return value.map(expandDeep);
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value)) out[key] = expandDeep(val);
-    return out;
-  }
-  return value;
+export interface LoadedConfig {
+  readonly config: Config;
+  readonly diagnostics: readonly ConfigDiagnostic[];
 }
 
 /**
- * Loads ~/.nova/config.json — the ONLY config location. Nothing is ever read
- * from (or written to) the workspace: per-project behaviour comes from where
- * you run nova, not from files planted in it.
+ * Loads ~/.nova/config.json — the ONLY config location — together with the
+ * non-fatal problems found while expanding it. Nothing is ever read from (or
+ * written to) the workspace: per-project behaviour comes from where you run
+ * nova, not from files planted in it.
+ *
+ * **A MISSING file is an empty shell, not an error.** First run must reach a
+ * usable product with no hand-written JSON: the operator configures an endpoint
+ * in the settings page, which writes the file. An absent file therefore loads as
+ * `{}`, and the surfaces that need an endpoint report 尚未配置模型端点 where the
+ * reader can act on it (see `resolveProvider`). A file that EXISTS but is
+ * malformed still throws — that is a config the operator wrote and got wrong,
+ * and silently replacing it with defaults would hide the mistake.
+ *
+ * A core section's unresolved `{env:NAME}` still throws (see `config-expand.ts`);
+ * only a plugin-owned section degrades to a diagnostic, so one unconfigured
+ * plugin can no longer stop the whole product from starting.
+ *
+ * @param homedir - the home directory to resolve `~/.nova` under.
+ * @returns the config and its diagnostics.
  */
-export async function loadConfig(homedir: string = os.homedir()): Promise<Config> {
+export async function loadConfigWithDiagnostics(homedir: string = os.homedir()): Promise<LoadedConfig> {
   const file = userConfigPath(homedir);
   let raw: string;
   try {
     raw = await readFile(file, 'utf8');
   } catch (err) {
     if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(
-        `missing config: ${file}\ncreate it, e.g.\n{\n  "provider": {\n    "baseURL": "https://api.example.com/v1",\n    "apiKey": "{env:MY_API_KEY}",\n    "model": "model-name"\n  }\n}`,
-      );
+      // The empty shell: no file at all is the supported first-run state.
+      return { config: configSchema.parse({}), diagnostics: [] };
     }
     throw err;
   }
@@ -160,7 +233,7 @@ export async function loadConfig(homedir: string = os.homedir()): Promise<Config
   } catch (err) {
     throw new Error(`invalid JSON in ${file}: ${errMessage(err)}`);
   }
-  const expanded = expandDeep(parsed);
+  const { value: expanded, diagnostics } = expandConfigDocument(parsed);
   const result = configSchema.safeParse(expanded);
   if (!result.success) {
     const issues = result.error.issues
@@ -168,5 +241,21 @@ export async function loadConfig(homedir: string = os.homedir()): Promise<Config
       .join('\n');
     throw new Error(`invalid config ${file}:\n${issues}`);
   }
-  return result.data;
+  return { config: result.data, diagnostics };
+}
+
+/**
+ * Loads ~/.nova/config.json, discarding the diagnostics.
+ *
+ * Use this where a non-fatal plugin problem is irrelevant to the caller (a
+ * `qqbot` diagnostic does not change what the REPL does). Callers that can SHOW
+ * a diagnostic — the browser surface, the settings panel — must use
+ * `loadConfigWithDiagnostics` instead, or the reader never learns why a plugin
+ * is unavailable.
+ *
+ * @param homedir - the home directory to resolve `~/.nova` under.
+ * @returns the parsed config.
+ */
+export async function loadConfig(homedir: string = os.homedir()): Promise<Config> {
+  return (await loadConfigWithDiagnostics(homedir)).config;
 }

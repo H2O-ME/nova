@@ -3,11 +3,13 @@ import type { OpenAICompatClient } from '@nova-agent/ai';
 import type { ApprovalMode, Kernel } from '@nova-agent/plugins';
 import {
   type AgentSession,
-  type AskResult,
+  type AskUserQuestionAnswer,
   type KernelEvent,
+  type SurfaceRows,
 } from '@nova-agent/core';
 import { detectCaps } from './term-text.js';
 import { awaitIdle, bootKernel, createProvider } from './kernel-boot.js';
+import { parseApprovalAnswer, parseQuestionAnswer, questionBatchLines, assembleAnswers } from './repl-answers.js';
 import { type Config } from './config.js';
 import { createModelListCache } from './commands.js';
 import { modelListRows, type ThemeName } from './command-core.js';
@@ -40,6 +42,8 @@ export interface ReplOptions {
   approvalOverride?: ApprovalMode;
   /** --theme 覆盖 config 的 ui.theme。 */
   theme?: ThemeName;
+  /** Configured surfaces (see `BootOptions.surfaces`): forwarded to the kernel. */
+  surfaces?: SurfaceRows;
 }
 
 /**
@@ -99,24 +103,7 @@ export class LineSource {
   }
 }
 
-/**
- * 行内审批答案解析：y/a 前缀=允许/总是，否定词（n/no/nope/nah）后跟的整句
- * 作为拒绝理由回流给模型（与 WebUI 同一 AskResult 形态）；其余输入一律
- * fail-closed 拒绝。
- */
-export function parseApprovalAnswer(raw: string): AskResult {
-  const text = raw.trim();
-  const lower = text.toLowerCase();
-  if (lower.startsWith('a')) return 'always';
-  if (lower.startsWith('y')) return 'allow';
-  const tokens = text.split(/\s+/);
-  const head = (tokens[0] ?? '').toLowerCase();
-  if (head === 'n' || head === 'no' || head === 'nope' || head === 'nah') {
-    const reason = tokens.slice(1).join(' ').trim();
-    return reason.length > 0 ? { answer: 'deny', reason } : 'deny';
-  }
-  return 'deny';
-}
+export { parseApprovalAnswer, parseQuestionAnswer } from './repl-answers.js';
 
 /**
  * readline REPL（M11 内核消费者）：主循环永远是行的唯一读者——提交走
@@ -131,7 +118,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   let paint: Paint = resolvePaint(themeName);
   let useColor = caps.color && themeName !== 'plain';
 
-  const client: OpenAICompatClient = createProvider(config);
+  const client: OpenAICompatClient = await createProvider(config);
   let kernel: Kernel;
   let agent: AgentSession;
   let unsubscribe: (() => void) | undefined;
@@ -150,6 +137,9 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
     ...(opts.approvalOverride !== undefined ? { approvalOverride: opts.approvalOverride } : {}),
     ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
     workspace: { onChange: (dir: string) => applyWorkspace(dir) },
+    // 终端形态有人类在答：模型可以问问题（多行输入仍归主循环路由）。
+    userQuestions: true,
+    ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
   });
   agent = kernel.agent;
 
@@ -186,6 +176,13 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   let subPromptPending = false;
   /** The approval modal awaiting its answer (next typed line routes here). */
   let pendingApprovalId: string | undefined;
+  /**
+   * The question batch awaiting answers, and how far through it we are. The
+   * kernel allows one outstanding batch, so these are two scalars rather than a
+   * map: the card the browser draws, in a terminal.
+   */
+  let pendingQuestion: { id: string; at: number } | undefined;
+  const questionAnswers: AskUserQuestionAnswer['answers'] = [];
   let turnStartedAt = 0;
 
   rl.on('SIGINT', () => {
@@ -266,8 +263,23 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       case 'approval_resolved':
         if (pendingApprovalId === event.id) pendingApprovalId = undefined;
         break;
+      case 'question_request':
+        // 开一组问题：整批一次渲染，答案按行读取（下一行输入路由到这里）。
+        pendingQuestion = { id: event.request.id, at: 0 };
+        questionAnswers.length = 0;
+        prog.beforeRow();
+        for (const line of questionBatchLines(paint, event.request.questions, 0)) console.log(line);
+        break;
+      case 'question_resolved':
+        if (pendingQuestion?.id === event.id) pendingQuestion = undefined;
+        questionAnswers.length = 0;
+        break;
       case 'queue_update':
-        if (event.items.length > 0) console.log(paint.dim(`  ⧉ 已排队 ${event.items.length} 条，本轮结束后自动处理`));
+        // Not "本轮结束后": an interjection the running loop picks up is read by
+        // the model at the NEXT step boundary of the CURRENT run. The queued line
+        // only becomes its own run when the current one ends early (abort), which
+        // is what the second clause covers.
+        if (event.items.length > 0) console.log(paint.dim(`  ⧉ 已排队 ${event.items.length} 条，当前运行的下一步即可读到`));
         break;
       case 'compaction': {
         if (event.progress.trigger === 'manual') break; // /compact 自己报告
@@ -368,7 +380,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       console.clear();
       console.log('（已清屏，会话记录保留在磁盘）');
     },
-    modeHint: '（repl 遵循 config.json 的 tools.code.mode）',
+    modeHint: '（repl 遵循 config.json 的 tools.code.mode；PTC 插件被关闭时回落原生）',
     exit: async () => {
       // 优雅收尾：轮在跑就先中断并等它解绕（挂起审批 fail-close、半截日志
       // 修复都在内核 abort 路径里）——退出绝不把进行中的轮丢在半路。
@@ -407,6 +419,31 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
       const id = pendingApprovalId;
       pendingApprovalId = undefined;
       if (!agent.resolveApproval(id, parseApprovalAnswer(input))) console.log(paint.dim('  （该审批已失效）'));
+      continue;
+    }
+
+    if (pendingQuestion !== undefined) {
+      // 提问挂起期下一条输入是该题的答案（不是新任务）：空行 = 跳过该题，
+      // 最后一题答完即整批提交。绝不静默吞任务——仍在提问就仍在这一支里。
+      const request = agent.pendingQuestions().find((item) => item.id === pendingQuestion?.id);
+      const question = request?.questions[pendingQuestion.at];
+      if (request === undefined || question === undefined) {
+        // 批次已被内核收敛（中断/关闭）：告知并放行这一行，不假装它被消费。
+        pendingQuestion = undefined;
+        console.log(paint.dim('  （该问题已失效）'));
+        continue;
+      }
+      questionAnswers.push(parseQuestionAnswer(question, input));
+      if (pendingQuestion.at + 1 < request.questions.length) {
+        pendingQuestion.at += 1;
+        for (const line of questionBatchLines(paint, request.questions, pendingQuestion.at)) console.log(line);
+        continue;
+      }
+      const id = request.id;
+      pendingQuestion = undefined;
+      const answer = assembleAnswers(request.questions, questionAnswers);
+      questionAnswers.length = 0;
+      if (!agent.resolveQuestion(id, answer)) console.log(paint.dim('  （该问题已失效）'));
       continue;
     }
 

@@ -1,15 +1,18 @@
 import path from 'node:path';
 
-import type { AgentSession, KernelEvent } from '@nova-agent/core';
+import type { AgentSession, KernelEvent, SurfaceRows } from '@nova-agent/core';
 import { createQqBotChannel, type Peer, type QqBotChannel } from '@nova-agent/qqbot';
 import { bootKernel, createProvider } from './kernel-boot.js';
 import type { Config } from './config.js';
 import { sessionsRoot } from './config.js';
+import { qqBotConfigProblem } from './config-read.js';
 import { resolvePaint, type Paint } from './lines.js';
 
 export interface QqBotOptions {
   rootDir: string;
   config: Config;
+  /** Configured surfaces (see `BootOptions.surfaces`): forwarded to the kernel. */
+  surfaces?: SurfaceRows;
 }
 
 /**
@@ -27,10 +30,20 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
   if (qq === undefined) {
     throw new Error('qqbot 模式需要在 ~/.nova/config.json 配置 qqbot.appId 与 qqbot.clientSecret（密钥可用 {env:NAME} 引用）');
   }
+  // The credentials are THIS surface's requirement, so the unresolved-reference
+  // failure belongs here rather than in `loadConfig`: `qqbot` is a plugin-owned
+  // section (see `config-expand.ts`), and the load no longer refuses the whole
+  // product on its behalf. Without this check the literal `{env:QQ_SECRET}`
+  // would travel to the token endpoint as the secret and come back as an opaque
+  // auth failure. The rule itself lives in one place (`qqBotConfigProblem`,
+  // which reads the raw document), so this surface and the settings panel can
+  // never disagree about whether the stored credentials are usable.
+  const problem = await qqBotConfigProblem();
+  if (problem !== undefined) throw new Error(problem);
   // 调色板装配单源 resolvePaint：尊重 ui.theme 与 NO_COLOR/TERM=dumb。
   const paint: Paint = resolvePaint(config.ui?.theme ?? 'dark');
 
-  const client = createProvider(config);
+  const client = await createProvider(config);
   const peerAgents = new Map<string, AgentSession>();
   const log = (line: string): void => console.log(paint.dim(`[qqbot] ${line}`));
 
@@ -51,6 +64,7 @@ export async function startQqBot(opts: QqBotOptions): Promise<void> {
     perRequestCompact: true,
     // 无人值守：'never' 策略确定性拒绝（连询问器都不派发，exec 同款）。
     policy: 'never',
+    ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
   });
 
   async function runPeerTurn(text: string, peer: Peer): Promise<string> {
