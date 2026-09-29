@@ -122,6 +122,32 @@ export class OpenAICompatClient implements ChatProvider {
     this.config.model = model;
   }
 
+  /** The endpoint this client currently talks to (baseURL as configured). */
+  get baseURL(): string {
+    return this.config.baseURL;
+  }
+
+  /**
+   * Re-point this client at another OpenAI-compatible endpoint, IN PLACE.
+   *
+   * In place rather than "build a second client" because everything downstream
+   * holds a reference to THIS instance: the kernel's `llm` service, the session
+   * handles, the subagent tool's nested provider, and the cache-affinity binding.
+   * Swapping the object would leave all of them talking to the previous endpoint
+   * while the UI claimed the new one.
+   *
+   * Only the three fields that identify an endpoint move. Sampling knobs
+   * (`temperature` / `maxTokens`), the retry budget and the injectable `fetchImpl`
+   * are properties of this CLIENT, not of the endpoint being addressed, so a
+   * provider switch does not silently reset them.
+   * @param endpoint - the new baseURL, api key and default model id.
+   */
+  setEndpoint(endpoint: { baseURL: string; apiKey: string; model: string }): void {
+    this.config.baseURL = endpoint.baseURL;
+    this.config.apiKey = endpoint.apiKey;
+    this.config.model = endpoint.model;
+  }
+
   /**
    * Rebind the session identity (e.g. /new starts a fresh session): the
    * `prompt_cache_key` body field and the x-session-affinity headers follow
@@ -296,13 +322,13 @@ export class OpenAICompatClient implements ChatProvider {
    * de-duplicated model ids in stable alphabetical order. Used by /model to
    * offer the endpoint's actual model list instead of manual names.
    */
-  async listModels(): Promise<string[]> {
+  async listModels(timeoutMs?: number): Promise<string[]> {
     const url = `${this.config.baseURL.replace(/\/+$/, '')}/models`;
     const response = await this.fetchImpl(url, {
       headers: {
         authorization: `Bearer ${this.config.apiKey}`,
       },
-      signal: AbortSignal.timeout(this.timeoutMs),
+      signal: AbortSignal.timeout(timeoutMs ?? this.timeoutMs),
     });
     if (!response.ok) {
       const text = await response.text().catch(() => '');
@@ -378,8 +404,9 @@ function errMessage(err: unknown): string {
 function toProviderMessage(msg: AgentMessage): Record<string, unknown> {
   switch (msg.role) {
     case 'system':
-    case 'user':
       return { role: msg.role, content: msg.content };
+    case 'user':
+      return { role: 'user', content: userContent(msg.content, msg.resolvedImages) };
     case 'assistant': {
       const out: Record<string, unknown> = { role: 'assistant', content: msg.content };
       if (msg.toolCalls && msg.toolCalls.length > 0) {
@@ -397,6 +424,46 @@ function toProviderMessage(msg: AgentMessage): Record<string, unknown> {
     case 'tool':
       return { role: 'tool', tool_call_id: msg.toolCallId, content: msg.content };
   }
+}
+
+/**
+ * One user turn's content: a plain string when there are no resolved images,
+ * else the OpenAI content-part array.
+ *
+ * The string form is kept for the no-image case on purpose — it is the shape
+ * every gateway accepts, including ones that predate multimodal requests, so a
+ * conversation without images stays byte-identical to what it was before this
+ * feature existed.
+ *
+ * The image form is the documented OpenAI `image_url` part carrying a `data:`
+ * URI. It was verified against a real gateway rather than assumed: a
+ * 64x64 solid-blue PNG sent as `data:image/png;base64,…` came back described as
+ * blue, and the response's `usage.prompt_tokens_details.image_tokens` was
+ * non-zero. A bare-base64 `url` and a bare `image_url` string were also
+ * accepted there, but the `data:` URI is the one the specification requires, so
+ * it is the one used.
+ *
+ * Only `resolvedImages` is read. A message still holding unresolved references
+ * (the log form) renders as text: resolution belongs to core's request
+ * assembly, which is the layer that can consult the model in force and read the
+ * stored bytes, and a provider that could not resolve them must not invent
+ * bytes of its own.
+ * @param text - the turn's text.
+ * @param images - request-resolved images, already base64.
+ * @returns the provider-facing `content` value.
+ */
+function userContent(
+  text: string,
+  images: readonly { mediaType: string; data: string }[] | undefined,
+): unknown {
+  if (images === undefined || images.length === 0) return text;
+  return [
+    { type: 'text', text },
+    ...images.map((image) => ({
+      type: 'image_url',
+      image_url: { url: `data:${image.mediaType};base64,${image.data}` },
+    })),
+  ];
 }
 
 function toProviderTool(tool: ToolDefinition): Record<string, unknown> {
