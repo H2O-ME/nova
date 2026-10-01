@@ -10,6 +10,7 @@
  */
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { listDirectoryChildren } from './file-listing-directory.js';
 
 /** One entry the `@` menu can offer. */
 export interface FileEntry {
@@ -30,8 +31,11 @@ export const SKIP_DIRS: ReadonlySet<string> = new Set(['.git', 'node_modules', '
 /**
  * One workspace listing.
  * @param root - the workspace root to walk.
- * @param query - the text after `@`; matched case-insensitively against the
- * relative path. An empty query lists the root's own entries.
+ * @param query - the text after `@`. Two modes, the harness split: a query
+ *   carrying `/` (or an empty one) names a directory and lists that
+ *   directory's own children — `src/` lists `src`, so a drill sees the folder
+ *   it descended into; a bare word is matched case-insensitively against the
+ *   relative path across the workspace.
  * @param limit - maximum entries to return.
  * @param budgetMs - wall-clock ceiling; the walk stops when it expires.
  * @returns the matching entries and whether the walk was cut short.
@@ -57,7 +61,16 @@ export async function listWorkspaceFiles(
   limit: number = DEFAULT_FILE_LIST_LIMIT,
   budgetMs: number = DEFAULT_FILE_LIST_BUDGET_MS,
 ): Promise<FileListingResult> {
-  const needle = query.trim().toLowerCase();
+  // The grammar writes `/` (the reference never inserts a native separator),
+  // but the draft is user-editable: a hand-typed `\` means the same path.
+  const normalized = query.replaceAll('\\', '/');
+  const slash = normalized.lastIndexOf('/');
+  if (normalized === '' || slash >= 0) {
+    const directory = slash < 0 ? '' : normalized.slice(0, slash + 1);
+    const fragment = slash < 0 ? '' : normalized.slice(slash + 1);
+    return listDirectoryChildren(root, directory, fragment, limit, budgetMs);
+  }
+  const needle = normalized.toLowerCase();
   const items: FileEntry[] = [];
   const deadline = Date.now() + budgetMs;
   let truncated = false;

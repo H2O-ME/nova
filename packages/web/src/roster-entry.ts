@@ -35,4 +35,11 @@ export interface WireRosterEntry {
    * prose — that is exactly what the localization adds).
    */
   title?: string;
+  /**
+   * Why an ENABLED extension has no fiber: its package could not be loaded
+   * (module missing / bad export). Such a row reads `state: 'failed'` with
+   * `enabled: false`; every other row omits this field. Absent on old hosts —
+   * nothing to show, nothing to say.
+   */
+  error?: string;
 }

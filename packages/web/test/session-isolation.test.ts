@@ -18,6 +18,7 @@ import { parseClientFrame } from '../src/client-frame.js';
 import { serializeServerFrame, type ClientFrame, type ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 import type { ChatProvider, ChatRequest, StreamEvent } from '@nova-agent/core';
 
 function scriptedProvider(scripts: StreamEvent[][]): ChatProvider {
@@ -72,7 +73,7 @@ async function makeController(scripts: StreamEvent[][]): Promise<{
   rootDir: string;
 }> {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-iso-root-'));
-  const controller = await WebController.create({
+  const controller = await bootController({
     rootDir,
     provider: scriptedProvider(scripts),
     config: { approval: 'full' },

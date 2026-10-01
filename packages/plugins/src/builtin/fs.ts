@@ -2,6 +2,7 @@ import { chmod, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile 
 import path from 'node:path';
 import {
   isFailureContent,
+  listWorkspaceFiles,
   tools as toolsKey,
   type DiffCallView,
   type DiffResultView,
@@ -189,14 +190,52 @@ function applyEdit(
   return tolerantReplace(text, oldString, newString, replaceAll);
 }
 
+/**
+ * The workspace path that most likely meant `raw`, for a not-found answer.
+ *
+ * Matching is by SUFFIX: the observed miss is a path one segment short of the
+ * real one (`docs/x.md` for `repo/docs/x.md`), so the requested path must end
+ * an existing entry, and the shortest such entry wins (the nearest ancestor
+ * spelling). The walk is the `@` menu's own listing — same skip-trees, same
+ * bound, same no-symlink rule — so a hint never names something the listing
+ * would refuse to offer.
+ * @param rootDir - the workspace root.
+ * @param raw - the path that was not found, as the caller wrote it.
+ * @returns the closest existing workspace-relative path, or undefined.
+ */
+async function closestWorkspacePath(rootDir: string, raw: string): Promise<string | undefined> {
+  const needle = raw.replaceAll('\\', '/').replace(/^\.\//u, '').replace(/\/+$/u, '');
+  const base = needle.split('/').filter((segment) => segment !== '').at(-1);
+  if (base === undefined || base === '') return undefined;
+  const { items } = await listWorkspaceFiles(rootDir, base);
+  const wanted = needle.toLowerCase();
+  const matches = items
+    .filter((item) => item.path.toLowerCase().endsWith(wanted))
+    .sort((left, right) => left.path.length - right.path.length);
+  return matches[0]?.path;
+}
+
 /** Execute read_file: in-root reads are free, out-of-root cross the boundary. */
 async function executeReadFile(
   args: Record<string, unknown>,
   c: ToolExecuteContext,
 ): Promise<string> {
-  const file = resolveAnywhere(c.rootDir, args['path']);
+  const requested = args['path'];
+  const file = resolveAnywhere(c.rootDir, requested);
   const info = await stat(file).catch(() => undefined);
-  if (!info) return `Error: file not found: ${args['path'] as string}`;
+  if (!info) {
+    // A path can be one segment off — a mention of `@repo/docs/x.md` read as
+    // `docs/x.md` when the workspace root holds the repo FOLDER (observed: the
+    // model dropped the first segment and then combed the tree for four more
+    // calls). Naming the closest existing path in the same answer turns that
+    // recovery into one step. The search is the listing tool's own policy
+    // (bounded, skip-trees, no symlink follow), so the hint can never offer
+    // something the listing would not show.
+    const closest = await closestWorkspacePath(c.rootDir, String(requested ?? ''));
+    return closest === undefined
+      ? `Error: file not found: ${String(requested)}`
+      : `Error: file not found: ${String(requested)}\nClosest path in the workspace: ${closest}`;
+  }
   if (info.isDirectory()) return `Error: path is a directory, use list_dir: ${args['path'] as string}`;
   if (info.size > READ_MAX_BYTES) {
     return `Error: file is ${info.size} bytes (over the ${READ_MAX_BYTES}-byte read cap); use bash (head/tail/sed) or a script to read it in chunks`;

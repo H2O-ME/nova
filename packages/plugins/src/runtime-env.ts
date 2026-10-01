@@ -216,10 +216,10 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
   }
   // The answerer seam the ask tool reads per call. This is the ONE source now:
   // "does the surface in force have a human?" is answered from the registry,
-  // lazily, so no assembly site hand-copies a boolean and the TUI cannot be
-  // forgotten again. A registry that has not resolved yet (or a surface with no
-  // human) answers false → the tool reports NO_PROVIDER instead of parking a run
-  // no card can release.
+  // lazily, so no assembly site hand-copies a boolean and no surface with a
+  // human can be forgotten again. A registry that has not resolved yet (or a
+  // surface with no human) answers false → the tool reports NO_PROVIDER instead
+  // of parking a run no card can release.
   //
   // The legacy `opts.userQuestions` boolean is still honoured for assemblies
   // that supply neither a registry nor a surface plugin (kernel tests, embedders

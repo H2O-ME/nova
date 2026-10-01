@@ -20,6 +20,7 @@ import { parseClientFrame } from '../src/client-frame.js';
 import { type ClientFrame, type ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 import type { ChatProvider, JobOutcome, JobRegistry, StreamEvent } from '@nova-agent/core';
 
 const TURN: StreamEvent[] = [
@@ -92,7 +93,7 @@ async function tick(ms = 80): Promise<void> {
 
 async function makeController(): Promise<WebController> {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-job-root-'));
-  return WebController.create({
+  return bootController({
     rootDir,
     provider: provider(),
     config: { approval: 'full' },

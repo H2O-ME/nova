@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ChatProvider, ChatRequest, StreamEvent } from '@nova-agent/core';
+import { createAgentKernel } from '@nova-agent/plugins';
 import { parseClientFrame } from '../src/client-frame.js';
 import type { ClientFrame, ServerFrame } from '../src/protocol.js';
 import { WebController } from '../src/controller.js';
@@ -49,13 +50,14 @@ class FakeConn implements WsConnection {
 }
 
 async function boot(rootDir: string, resumeFile?: string): Promise<{ controller: WebController; conn: FakeConn }> {
-  const controller = await WebController.create({
+  // 装配归壳：按真实调用方的形状先装内核，再把内核交给 controller。
+  const kernel = await createAgentKernel({
     rootDir,
     provider: scriptedProvider([[{ type: 'text_delta', text: 'reply' }, { type: 'finish', finishReason: 'stop' }]]),
     config: { approval: 'full' },
-    providerModelLabel: 'test-model',
     ...(resumeFile !== undefined ? { resumeFile } : {}),
   });
+  const controller = await WebController.create({ kernel, providerModelLabel: 'test-model' });
   const conn = new FakeConn();
   controller.attach(conn);
   return { controller, conn };

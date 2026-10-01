@@ -10,7 +10,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AgentSession, PtcMode } from '@nova-agent/core';
+import type { AgentSession, AgentSurfaceUi, PtcMode } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import { runAgentCommand, type CommandPorts } from '../src/command-runner.js';
 import type { ThemeName } from '../src/command-core.js';
@@ -19,14 +19,16 @@ interface Harness {
   ports: CommandPorts;
   lines: string[];
   setModelCalls: string[];
+  runCommandCalls: Array<[string, string]>;
   cleared: number;
   exited: number;
   mode(): PtcMode;
 }
 
-function harness(over: Partial<CommandPorts> = {}): Harness {
+function harness(over: Partial<CommandPorts> & { ui?: Partial<AgentSurfaceUi> } = {}): Harness {
   const lines: string[] = [];
   const setModelCalls: string[] = [];
+  const runCommandCalls: Array<[string, string]> = [];
   const state = {
     cleared: 0,
     exited: 0,
@@ -58,6 +60,33 @@ function harness(over: Partial<CommandPorts> = {}): Harness {
     codeMode: () => state.mode,
     rootDir: () => '/work',
     newAgentSession: async () => ({ session: { id: 'sess_2', file: '/home/.nova/sessions/2026/09/19/sess_2.jsonl' } }) as unknown as AgentSession,
+    // The live registry catalog + the one kernel runner: /compact 与 /goal
+    // 的语义住在 kernel 侧，壳只负责把 /name 交棒过去。
+    commands: [
+      { name: 'compact', description: '压缩上下文：总结历史，日志保留完整记录' },
+      { name: 'goal', description: '目标模式' },
+    ],
+    runCommand: async (name: string, args: string) => {
+      runCommandCalls.push([name, args]);
+    },
+  };
+  const { ui: uiOver, ...portOver } = over;
+  const ui: AgentSurfaceUi = {
+    theme: () => state.theme,
+    setTheme: (theme) => {
+      state.theme = theme as ThemeName;
+    },
+    note: (text) => lines.push(text),
+    pickModel: async (models) => models[1],
+    bindSession: () => undefined,
+    clear: () => {
+      state.cleared += 1;
+    },
+    modeHint: '（测试壳）',
+    exit: () => {
+      state.exited += 1;
+    },
+    ...uiOver,
   };
   const ports: CommandPorts = {
     kernel: kernel as unknown as Kernel,
@@ -68,27 +97,15 @@ function harness(over: Partial<CommandPorts> = {}): Harness {
     },
     config: { provider: { baseURL: 'http://x', apiKey: 'k', model: 'model-a' } } as unknown as CommandPorts['config'],
     approvalOverride: undefined,
-    theme: () => state.theme,
-    setTheme: (theme) => {
-      state.theme = theme;
-    },
-    note: (text) => lines.push(text),
     fetchModels: async () => ['model-a', 'model-b'],
-    pickModel: async (models) => models[1],
-    bindSession: () => undefined,
-    clear: () => {
-      state.cleared += 1;
-    },
-    modeHint: '（测试壳）',
-    exit: () => {
-      state.exited += 1;
-    },
-    ...over,
+    ui,
+    ...portOver,
   };
   return {
     ports,
     lines,
     setModelCalls,
+    runCommandCalls,
     get cleared() {
       return state.cleared;
     },
@@ -110,7 +127,7 @@ describe('the shared command runner', () => {
   it('parses a theme name and applies it through the port', async () => {
     const h = harness();
     await runAgentCommand('/theme plain', h.ports);
-    expect(h.ports.theme()).toBe('plain');
+    expect(h.ports.ui.theme()).toBe('plain');
     expect(h.lines.at(-1)).toContain('plain');
 
     await runAgentCommand('/theme 紫色', h.ports);
@@ -123,12 +140,12 @@ describe('the shared command runner', () => {
     expect(h.setModelCalls).toEqual(['model-b']);
     expect(h.lines.at(-1)).toContain('model-b');
 
-    const same = harness({ pickModel: async () => 'model-a' });
+    const same = harness({ ui: { pickModel: async () => 'model-a' } });
     await runAgentCommand('/model', same.ports);
     expect(same.setModelCalls).toEqual([]);
     expect(same.lines.at(-1)).toContain('已是当前模型');
 
-    const cancelled = harness({ pickModel: async () => undefined });
+    const cancelled = harness({ ui: { pickModel: async () => undefined } });
     await runAgentCommand('/model', cancelled.ports);
     expect(cancelled.lines.at(-1)).toBe('已取消');
 
@@ -152,15 +169,29 @@ describe('the shared command runner', () => {
     expect(unknown.lines.at(-1)).toContain('未知技能');
   });
 
-  it('clears through the shell, and refuses to compress mid-turn', async () => {
+  it('clears through the shell, and routes /compact to the kernel runner', async () => {
     const h = harness();
     await runAgentCommand('/clear', h.ports);
     expect(h.cleared).toBe(1);
 
-    const busy = harness();
-    (busy.ports.kernel.agent as { running: boolean }).running = true;
-    await runAgentCommand('/compact', busy.ports);
-    expect(busy.lines.at(-1)).toContain('本轮进行中');
+    await runAgentCommand('/compact', h.ports);
+    expect(h.runCommandCalls).toEqual([['compact', '']]);
+    expect(h.lines).toEqual([]); // 进度与拒绝都走 command/compaction 事件，壳不再自备文案
+  });
+
+  it('hands registry commands (/goal, third-party) to kernel.runCommand with their args', async () => {
+    const h = harness();
+    expect(await runAgentCommand('/goal edit 每天评审', h.ports)).toBe('handled');
+    expect(h.runCommandCalls).toEqual([['goal', 'edit 每天评审']]);
+  });
+
+  it('/help merges the shell list with the live registry catalog', async () => {
+    const h = harness();
+    await runAgentCommand('/help', h.ports);
+    const text = h.lines.join('\n');
+    expect(text).toContain('/theme'); // 壳自有命令
+    expect(text).toContain('/goal'); // 注册命令——收口前在壳目录里不可见
+    expect(text).toContain('压缩上下文'); // /compact 行来自活目录，壳清单已不再持有
   });
 
   it('exits through the shell, and reports mode with the shell’s own hint', async () => {

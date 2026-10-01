@@ -1,4 +1,4 @@
-/** 斜杠命令目录：面板、/help 与 readline 模式共用。 */
+/** 斜杠命令目录（壳自有命令）：/help 与 surface 命令端口共用。 */
 
 import type { PtcMode } from '@nova-agent/core';
 import { CODE_MODE_HINT, codeModeLabel, padDisplay } from './lines.js';
@@ -22,16 +22,22 @@ export const COMMAND_SPECS: CommandSpec[] = [
   { name: '/skill', usage: '/skill <name>', description: '加载指定技能的完整指令并立即执行' },
   { name: '/session', usage: '/session', description: '查看会话统计，选择并切换历史会话' },
   { name: '/new', usage: '/new', description: '开启新会话' },
-  { name: '/compact', usage: '/compact', description: '原位压缩当前会话（总结上下文，日志保留完整历史）' },
   { name: '/clear', usage: '/clear', description: '清空当前显示（会话记录保留在磁盘）' },
   { name: '/exit', usage: '/exit', description: '退出 nova（别名 /quit）' },
 ];
 
-/** 命令面板过滤：仅当输入是“裸命令”（无空格）时匹配。 */
-export function filterCommands(input: string): CommandSpec[] {
-  const trimmed = input.trim();
-  if (!trimmed.startsWith('/') || trimmed.includes(' ')) return [];
-  return COMMAND_SPECS.filter((spec) => spec.name.startsWith(trimmed));
+/**
+ * 壳清单与 kernel 活目录的合并视图：/help 与 surface 命令端口共用这一份，
+ * 注册命令（/goal 与第三方 /registerCommand）自动出现在每个壳的目录里。
+ * 同名以壳为准（壳命令需要界面才能完成，归壳所有）。
+ */
+export function mergedCommandSpecs(registry: readonly { readonly name: string; readonly description: string }[]): CommandSpec[] {
+  return [
+    ...COMMAND_SPECS,
+    ...registry
+      .filter((command) => !COMMAND_SPECS.some((spec) => spec.name === `/${command.name}`))
+      .map((command) => ({ name: `/${command.name}`, usage: `/${command.name}`, description: command.description })),
+  ];
 }
 
 /** /mode 的单行：current 标记决定调用方如何上色。 */

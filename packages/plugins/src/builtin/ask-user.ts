@@ -9,6 +9,7 @@ import {
   MAX_QUESTIONS,
   UserQuestionError,
   hasControlChars,
+  errMessage,
   tools as toolsKey,
   type AskQuestionsFn,
   type AskUserQuestionItem,
@@ -233,7 +234,7 @@ export function askUserPlugin(options: AskUserPluginOptions = {}): Plugin {
               // Every failure this call can have is one of the ask path's typed
               // errors (aborted / cancelled), and its message is the sentence the
               // model is meant to read — so it is reported, not reworded.
-              return `Error: ${err instanceof Error ? err.message : String(err)}`;
+              return `Error: ${errMessage(err)}`;
             }
           },
           /**

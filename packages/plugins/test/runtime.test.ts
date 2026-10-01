@@ -578,4 +578,57 @@ describe('createAgentKernel · commands', () => {
     // The command's own rows bracket it (the report the transcript renders).
     expect(events.filter((e) => e.type === 'command').map((e) => e.phase)).toEqual(['run', 'done']);
   });
+
+  it('refuses /compact while a turn is in flight — core guards, the command words it', async () => {
+    // A tool call held open keeps the run in flight deterministically (waiting
+    // on `running` alone raced the poll window under parallel vitest).
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const blocker: Plugin = {
+      name: 'gate-command',
+      inject: ['tools'],
+      apply(ctx) {
+        registerTool(
+          ctx,
+          {
+            name: 'gate',
+            description: 'holds the turn open',
+            parameters: { type: 'object', properties: {} },
+            execute: async () => {
+              await gate;
+              return 'released';
+            },
+          },
+          'read',
+        );
+      },
+    };
+    const gateScript: StreamEvent[] = [
+      { type: 'tool_call_delta', index: 0, id: 'call_gate', name: 'gate', argsDelta: '{}' },
+      { type: 'finish', finishReason: 'tool_calls' },
+    ];
+    const kernel = await createAgentKernel({
+      rootDir: await tmp(),
+      provider: provider([gateScript, answerScript]),
+      config: baseConfig,
+      sessionDir: await tmp(),
+      extraPlugins: [blocker],
+    });
+    const events: KernelEvent[] = [];
+    kernel.agent.subscribe((e) => events.push(e));
+    const run = kernel.agent.prompt('hold the turn');
+    for (let i = 0; i < 5000 && !events.some((e) => e.type === 'tool_call_start'); i += 1) {
+      await new Promise((r) => setTimeout(r, 1));
+    }
+    await kernel.runCommand('compact', '');
+    const done = events.find((e): e is Extract<KernelEvent, { type: 'command' }> => e.type === 'command' && e.phase === 'done');
+    expect(done?.name).toBe('compact');
+    expect(done?.text ?? '').toContain('本轮进行中');
+    // 拒绝即终局：没有任何压缩事件发生（core 的守卫是唯一执行点）。
+    expect(events.some((e) => e.type === 'compaction')).toBe(false);
+    release?.();
+    await run;
+  });
 });

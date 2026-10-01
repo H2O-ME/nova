@@ -15,6 +15,7 @@ import type {
   ApprovalMode,
   ApprovalRequest,
   ConfiguredModel,
+  ContextTimeline,
   DirectoryLevel,
   JobSnapshot,
   JobStatus,
@@ -65,6 +66,14 @@ export type ServerFrame =
   | ({ type: 'directory' } & WireDirectoryLevel)
   /** A `list_directory` / `create_directory` that the host refused. */
   | { type: 'directory_error'; message: string }
+  /**
+   * The answer to `pick_file` / `pick_directory`: what the host's native dialog
+   * produced. Exactly one of three readings — `path` set means picked;
+   * `error` set means the host has no dialog to open (fall back to the in-page
+   * browser); neither set means the operator dismissed the dialog. Cancel and
+   * unavailable are different facts and stay two spellings.
+   */
+  | { type: 'picked'; kind: 'file' | 'directory'; path?: string; error?: string }
   /** Session-level mode readout (after a switch, or when one is changed remotely). */
   | {
       type: 'state';
@@ -195,6 +204,13 @@ export type ServerFrame =
       detail?: string;
       error?: string;
     }
+  /**
+   * The Context panel's reading (answer to `context`, and the push that follows
+   * each run's end and every roster flip). `null` is a REAL value — the plugin
+   * that provides the reading is off, so the panel must clear itself and drop
+   * its tab, not keep drawing a snapshot that stopped moving.
+   */
+  | { type: 'context'; timeline: ContextTimeline | null }
   | { type: 'error'; message: string };
 
 /**
@@ -407,6 +423,14 @@ export interface ReadyInfo {
    * then falls back to the flip answers it does receive.
    */
   roster?: readonly WireRosterEntry[];
+  /**
+   * The Context panel's baseline: the session's context reading as of attach.
+   * Absent when the `context` plugin is off — the panel has no tab to draw, and
+   * the first `context` frame (or `ready` after a switch) states it. Sent on
+   * `ready` rather than fetched because the tab's first paint must not wait for
+   * a request.
+   */
+  context?: ContextTimeline;
   /** Where the config the switches write lives; names the roster's source. */
   configPath?: string;
 }

@@ -17,6 +17,7 @@ import { parseClientFrame } from '../src/client-frame.js';
 import { type ClientFrame, type ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 import type { ChatProvider, JobOutcome, JobRegistry, StreamEvent } from '@nova-agent/core';
 
 /**
@@ -105,7 +106,7 @@ async function tick(ms = 60): Promise<void> {
 
 async function makeController(provider: ChatProvider): Promise<WebController> {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-mid-root-'));
-  return WebController.create({
+  return bootController({
     rootDir,
     provider,
     config: { approval: 'full' },

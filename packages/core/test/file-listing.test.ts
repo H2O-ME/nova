@@ -25,12 +25,15 @@ async function workspace(): Promise<string> {
 }
 
 describe('listWorkspaceFiles', () => {
-  it('lists the workspace without entering skipped or dot trees', async () => {
+  it('lists the root\'s own children for an empty query', async () => {
     const root = await workspace();
     const { items } = await listWorkspaceFiles(root, '');
     const paths = items.map((entry) => entry.path);
+    // A directory listing, not a walk: the root's children and nothing deeper
+    // (the harness split — `src/` is how the menu descends).
     expect(paths).toContain('README.md');
-    expect(paths).toContain('src/main.ts');
+    expect(paths).toContain('src');
+    expect(paths).not.toContain('src/main.ts');
     // `node_modules` is skipped wholesale and a dot-file is not offered.
     expect(paths.some((p) => p.startsWith('node_modules/'))).toBe(false);
     expect(paths).not.toContain('.hidden');
@@ -38,13 +41,41 @@ describe('listWorkspaceFiles', () => {
     expect(SKIP_DIRS.has('node_modules')).toBe(true);
   });
 
-  it('separates directories from files and marks both kinds', async () => {
+  it('marks both kinds and sorts directories first', async () => {
     const root = await workspace();
-    const { items } = await listWorkspaceFiles(root, '');
-    const byPath = new Map(items.map((entry) => [entry.path, entry.kind]));
-    expect(byPath.get('src')).toBe('directory');
+    const { items } = await listWorkspaceFiles(root, 'src/');
+    const kinds = items.map((entry) => `${entry.kind}:${entry.path}`);
+    expect(kinds).toContain('directory:src/deep');
+    expect(kinds).toContain('file:src/main.ts');
+    // The harness listing's visible order: a directory row precedes a file row.
+    const deep = kinds.findIndex((row) => row === 'directory:src/deep');
+    const main = kinds.findIndex((row) => row === 'file:src/main.ts');
+    expect(deep).toBeGreaterThanOrEqual(0);
+    expect(main).toBeGreaterThan(deep);
+  });
+
+  it('a bare query walks the workspace by a substring of the relative path', async () => {
+    const root = await workspace();
+    const byPath = new Map(
+      (await listWorkspaceFiles(root, 'main')).items.map((entry) => [entry.path, entry.kind]),
+    );
     expect(byPath.get('src/main.ts')).toBe('file');
-    expect(byPath.get('README.md')).toBe('file');
+  });
+
+  it('a dot-entry hides in a directory listing unless the query asks for dot-entries by name', async () => {
+    const root = await workspace();
+    await writeFile(path.join(root, 'src', '.hush'), 'dot');
+    expect((await listWorkspaceFiles(root, 'src/')).items.map((entry) => entry.name))
+      .not.toContain('.hush');
+    expect((await listWorkspaceFiles(root, 'src/.')).items.map((entry) => entry.path))
+      .toContain('src/.hush');
+  });
+
+  it('a directory query for a path outside the workspace answers empty', async () => {
+    const root = await workspace();
+    const { items, truncated } = await listWorkspaceFiles(root, '../');
+    expect(items).toEqual([]);
+    expect(truncated).toBe(false);
   });
 
   it('filters by a case-insensitive substring of the relative path', async () => {

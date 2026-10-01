@@ -569,6 +569,12 @@ async function executeBash(
   }
 
   const parts: string[] = [];
+  // The directory the command actually ran in, first and always. It is the
+  // one fact a result cannot imply: when this ever disagrees with the
+  // session's `<environment> cwd`, every relative command in the turn was
+  // answered about the wrong tree, and a log that omits it cannot tell the
+  // difference (see the empty-`find` session of 2026-10-01).
+  parts.push(`cwd: ${c.rootDir}`);
   if (outcome.code === null) parts.push('[command did not exit: killed after timeout or aborted]');
   parts.push(`exit: ${outcome.code ?? 'null'}`);
   if (outcome.droppedBytes !== undefined) {

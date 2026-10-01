@@ -15,6 +15,7 @@ import type { KernelEvent, StreamEvent } from '@nova-agent/core';
 import { admitImage } from '@nova-agent/core';
 import { createLaunchAuth, type LaunchAuth } from '../src/auth.js';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 import { startWebServer, type WebServerHandle } from '../src/server.js';
 import { acceptKey } from '../src/ws.js';
 import type { ServerFrame } from '../src/protocol.js';
@@ -34,12 +35,17 @@ beforeAll(async () => {
   await writeFile(path.join(staticDir, 'index.html'), '<!doctype html><title>Nova</title>', 'utf8');
   await mkdir(path.join(staticDir, 'assets'), { recursive: true });
   await writeFile(path.join(staticDir, 'assets', 'index-abc123.js'), '/* bundle */', 'utf8');
+  // The install pipeline fetches these OUTSIDE the authenticated app context.
+  await writeFile(path.join(staticDir, 'manifest.webmanifest'), '{"name":"Nova"}', 'utf8');
+  await mkdir(path.join(staticDir, 'icons'), { recursive: true });
+  await writeFile(path.join(staticDir, 'icons', 'icon-192.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]), 'utf8');
+  await writeFile(path.join(staticDir, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>', 'utf8');
   const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-web-root-'));
   const scripts: StreamEvent[][] = [[
     { type: 'text_delta', text: 'ok' },
     { type: 'finish', finishReason: 'stop' },
   ]];
-  controller = await WebController.create({
+  controller = await bootController({
     rootDir,
     provider: {
       async *stream(_req) {
@@ -80,6 +86,19 @@ describe('http surface', () => {
   it('serves nothing before the launch hop (no cookie → 401)', async () => {
     const res = await http('/');
     expect(res.status).toBe(401);
+  });
+  it('PWA brand assets are public — the install pipeline carries no cookie', async () => {
+    // Chromium fetches the manifest and prefetches icons outside the
+    // authenticated app context; a 401 there silently kills the install
+    // affordance. These are the ONLY paths that skip the cookie gate.
+    const manifest = await http('/manifest.webmanifest');
+    expect(manifest.status).toBe(200);
+    expect(manifest.headers['content-type']).toContain('application/manifest+json');
+    expect((await http('/icons/icon-192.png')).status).toBe(200);
+    expect((await http('/favicon.svg')).status).toBe(200);
+    // Everything else — including the app document — stays gated.
+    expect((await http('/')).status).toBe(401);
+    expect((await http('/assets/index-abc123.js')).status).toBe(401);
   });
   it('the launch URL sets a hardened cookie and redirects', async () => {
     const res = await http(`/?t=${auth.token}`);

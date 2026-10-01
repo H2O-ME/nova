@@ -287,6 +287,26 @@ export interface SurfaceRows {
   loaded: readonly AgentSurface[];
 }
 
+/* ── context insights ──────────────────────────────────────────────────── */
+
+/**
+ * Reading a session's window: what it is made of right now, how it grew request
+ * by request, why it changed, and what the run did to the workspace's files.
+ *
+ * A SERVICE rather than something a surface computes for itself, because the
+ * answers cost a walk over the whole session log and are optional: the
+ * `context` plugin owns this seam at the `advanced` tier, so an operator who
+ * does not want the reading is not paying for it. Its presence IS the switch —
+ * a consumer that finds no provider renders nothing, and there is no second
+ * flag to keep in step with the roster.
+ *
+ * Provider usage anchors the reading where usage exists (`prompt` / `cached` /
+ * `output` on each point) and the token estimate fills the gaps; a consumer
+ * must never present an estimate as a bill.
+ */
+export const contextInsights: ServiceKey<import('../context-insights.js').ContextInsights> =
+  key<import('../context-insights.js').ContextInsights>('contextInsights');
+
 /* ── lifecycle events ──────────────────────────────────────────────────── */
 
 /**
@@ -318,6 +338,3 @@ export const beforeToolCall: EventKey<[ToolCall], ToolCallVerdict | undefined> =
  * may then adjust further.
  */
 export const afterToolResult: EventKey<[ToolCall, string], string | undefined> = event('tool/after');
-
-/** A plugin finished loading (or reloading). Observation only. */
-export const pluginLoaded: EventKey<[string], void> = event('plugin/loaded');

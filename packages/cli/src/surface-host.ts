@@ -1,13 +1,13 @@
 /**
- * The surface host: the half of assembly the cli owns (kernel + provider + the
- * one slash-command runner) and the adapter that hands a dynamically-loaded
- * `AgentSurface` the runtime it needs. A surface plugin consumes this through
- * core types only; the cli never imports the surface package.
+ * The surface host: the ONE assembly every surface goes through — built-in or
+ * configured — and the adapter that hands an `AgentSurface` its runtime.
  *
- * The kernel is assembled exactly once here and the surface drives its own
- * lifecycle (`start` cleans up); the cli derives the fail-closed `userQuestions`
- * flag from the surface's own declaration (`answersQuestions`/`interactive`) so
- * the three-hand-copied-lines hazard of the old per-site assembly cannot recur.
+ * 内置四家与动态 surface 在这里合流：`buildSurfaceRuntime` 装一次内核
+ * （provider → `bootKernel` → workspace holder → boot 贡献的选项 → `afterBoot`），
+ * 再把 `AgentSurfaceRuntime`（kernel + 命令口 + 模型读数 + 主题）交给
+ * `surface.start`。`cli/kernel-boot.ts` 的 `bootKernel` 是这里唯一的装配函数，
+ * 而 `createAgentKernel` 只被 `bootKernel` 调用——「谁装内核」全仓一处，
+ * 「新选项被静默丢掉」不再有地方可漏。
  */
 import os from 'node:os';
 import { deriveUserQuestions } from '@nova-agent/core';
@@ -19,20 +19,78 @@ import type {
   AgentSurfaceRequest,
   AgentSurfaceRuntime,
   AgentSurfaceUi,
+  ChatProvider,
+  ModelCatalogPort,
+  Plugin,
+  SurfaceRows,
 } from '@nova-agent/core';
-import { createAgentKernel, type Kernel } from '@nova-agent/plugins';
+import type { CreateKernelOptions, Kernel } from '@nova-agent/plugins';
 import type { ParsedArgs } from './cli-args.js';
-import type { ThemeName } from './command-core.js';
-import { runAgentCommand, type CommandPorts } from './command-runner.js';
-import { COMMAND_SPECS, createModelListCache } from './commands.js';
-import type { ConfigDiagnostic } from './config.js';
-import { createProvider, toKernelConfig } from './kernel-boot.js';
+import { runAgentCommand } from './command-runner.js';
+import { mergedCommandSpecs, createModelListCache } from './commands.js';
+import type { Config, ConfigDiagnostic } from './config.js';
+import { bootKernel, createProvider } from './kernel-boot.js';
 import { createModelMetaStore } from './model-meta.js';
-import type { SurfaceRequest } from './surfaces.js';
+
+/** The resolved invocation the shell assembles for: everything but "who claims it". */
+export interface SurfaceRequest {
+  rootDir: string;
+  config: Config;
+  parsed: ParsedArgs;
+  diagnostics: readonly ConfigDiagnostic[];
+  /** Both stdio ends are a TTY — the same reading the claim request carries. */
+  interactive: boolean;
+  /**
+   * Configured surfaces this invocation was resolved against (loaded by
+   * `loadDynamicSurfaces`). Always supplied by the shell: the registry's
+   * recorded winner is what the `userQuestions` provider reads, so the rows can
+   * never be "absent because no surface was configured".
+   */
+  surfaces?: SurfaceRows;
+}
+
+/**
+ * What a BUILT-IN surface contributes to the one assembly, beyond the shared
+ * options: extra kernel options (`exec`'s per-request compaction, `qqbot`'s
+ * channel plugin + session bucket, web's model catalog + config writers) and
+ * post-assembly adjustments (unattended policy).
+ *
+ * Configured surfaces contribute nothing: their runtime is the shared one, and
+ * the contract stays free of cli-side boot knobs. Deliberately an explicit
+ * shape rather than `Partial<CreateKernelOptions>` — a surface must not be able
+ * to silently set `userQuestions` or `rootDir` behind the shell's back.
+ */
+export interface SurfaceBoot {
+  /** Kernel options contributed by the winning built-in (async: web resolves metadata). */
+  kernel?: () => Promise<SurfaceKernelContribution> | SurfaceKernelContribution;
+  /** Post-assembly adjustments on the assembled kernel (`setPolicy('never')`, …). */
+  afterBoot?: (kernel: Kernel) => void;
+}
+
+/** The kernel options a built-in may contribute (a reviewed subset). */
+export interface SurfaceKernelContribution {
+  provider?: ChatProvider;
+  extraPlugins?: readonly Plugin[];
+  sessionDir?: string;
+  perRequestCompact?: boolean;
+  modelCatalog?: ModelCatalogPort;
+  persistConfig?: CreateKernelOptions['persistConfig'];
+}
+
+/** A built-in surface plus the shell-side facts only the shell knows about it. */
+export interface BuiltinSurface {
+  surface: AgentSurface;
+  boot?: SurfaceBoot;
+}
 
 /** Resolve an `AgentSurface` invocation: assemble the kernel, then run the surface. */
-export async function runSurface(surface: AgentSurface, m: SurfaceRequest, argv: readonly string[]): Promise<void> {
-  const runtime = await buildSurfaceRuntime(surface, m, argv);
+export async function runSurface(
+  surface: AgentSurface,
+  m: SurfaceRequest,
+  argv: readonly string[],
+  boot?: SurfaceBoot,
+): Promise<void> {
+  const runtime = await buildSurfaceRuntime(surface, m, argv, boot);
   // The surface owns its teardown (`app.stop()` before kernel/jobs dispose); the
   // host stops here once `start` resolves.
   await surface.start(runtime);
@@ -42,21 +100,31 @@ export async function buildSurfaceRuntime(
   surface: AgentSurface,
   m: SurfaceRequest,
   argv: readonly string[],
+  boot?: SurfaceBoot,
 ): Promise<AgentSurfaceRuntime> {
-  const client = await createProvider(m.config);
+  const bootContribution = boot?.kernel;
+  const contributed = bootContribution === undefined ? {} : await bootContribution();
+  const client = contributed.provider ?? (await createProvider(m.config));
   // `workspace.onChange` is bound before the kernel exists, so the holder is
-  // what makes that honest — same shape as the old `tui-mode.ts` holder.
+  // what makes that honest; the surface in force gets the feedback callback the
+  // contract advertises (`onWorkspaceChanged` — previously a declared-but-dead
+  // member no one implemented or wired).
   const holder: { kernel?: Kernel } = {};
-  const kernel = await createAgentKernel({
+  const kernel = await bootKernel({
     rootDir: m.rootDir,
+    config: m.config,
     provider: client,
-    config: toKernelConfig(m.config, m.parsed.approvalOverride),
+    ...(m.parsed.approvalOverride !== undefined ? { approvalOverride: m.parsed.approvalOverride } : {}),
     ...(m.parsed.resumeFile !== undefined ? { resumeFile: m.parsed.resumeFile } : {}),
+    ...(contributed.perRequestCompact !== undefined ? { perRequestCompact: contributed.perRequestCompact } : {}),
+    ...(contributed.sessionDir !== undefined ? { sessionDir: contributed.sessionDir } : {}),
+    ...(contributed.extraPlugins !== undefined ? { extraPlugins: [...contributed.extraPlugins] } : {}),
+    ...(contributed.modelCatalog !== undefined ? { modelCatalog: contributed.modelCatalog } : {}),
+    ...(contributed.persistConfig !== undefined ? { persistConfig: contributed.persistConfig } : {}),
     ...(m.surfaces !== undefined ? { surfaces: m.surfaces } : {}),
-    // Fail-closed by default; a surface with a person at the end opts in once,
-    // here — not as a hand-copied line at every assembly site. The derivation
-    // itself lives in core (`deriveUserQuestions`) so the service provider in
-    // `plugins/runtime-env` and this site can never disagree.
+    // Fail-closed by default; the registry's recorded winner is the ONE source
+    // (see `runtime-env.ts`'s provider) — this value only covers a caller that
+    // assembles without a registry (kernel tests, embedders).
     userQuestions: deriveUserQuestions(surface),
     workspace: {
       onChange: async (dir: string) => {
@@ -68,16 +136,30 @@ export async function buildSurfaceRuntime(
     },
   });
   holder.kernel = kernel;
+  boot?.afterBoot?.(kernel);
 
-  const themeHolder: { theme: ThemeName } = {
-    theme: (m.parsed.themeOverride ?? m.config.ui?.theme ?? 'dark') as ThemeName,
-  };
-  const modelCache = createModelListCache(() => client.listModels());
+  // A provider that cannot enumerate models answers with an empty list — the
+  // picker then renders "no models" instead of failing the request path.
+  const modelCache = createModelListCache(async () => (await client.listModels?.()) ?? []);
+  const theme = m.parsed.themeOverride ?? m.config.ui?.theme ?? 'dark';
 
   const commands = {
-    catalog: () => COMMAND_SPECS,
+    // The LIVE merged catalog (shell specs + registry commands), so /goal and
+    // any third-party registration show up in a surface's menu without this
+    // file listing names.
+    catalog: () => mergedCommandSpecs(kernel.commands),
     run: (input: string, ui: AgentSurfaceUi): Promise<AgentSurfaceCommandResult> =>
-      runAgentCommand(input, toCommandPorts(kernel, client, m, ui, themeHolder, modelCache)),
+      runAgentCommand(input, {
+        kernel,
+        client: {
+          model: client.model ?? '',
+          setModel: (model) => { client.setModel?.(model); },
+        },
+        config: m.config,
+        approvalOverride: m.parsed.approvalOverride,
+        fetchModels: () => modelCache(),
+        ui,
+      }),
   };
 
   return {
@@ -85,7 +167,7 @@ export async function buildSurfaceRuntime(
     kernel,
     commands,
     diagnostics: m.diagnostics.map(toDiagnostic),
-    model: () => client.model,
+    model: () => client.model ?? '',
     listModels: async () => modelCache(),
     ...(m.config.provider?.contextWindow !== undefined ? { contextWindow: m.config.provider.contextWindow } : {}),
     resolveContextWindow: () =>
@@ -93,36 +175,8 @@ export async function buildSurfaceRuntime(
         .lookup(m.config.provider?.model ?? '', m.config.provider?.baseURL ?? '')
         .then((meta) => meta?.contextWindow),
     ...(m.config.autoCompactTokenLimit !== undefined ? { autoCompactTokenLimit: m.config.autoCompactTokenLimit } : {}),
-    theme: m.parsed.themeOverride ?? m.config.ui?.theme ?? 'dark',
+    theme,
     homeDir: os.homedir(),
-  };
-}
-
-function toCommandPorts(
-  kernel: Kernel,
-  client: { readonly model: string; setModel(model: string): void },
-  m: SurfaceRequest,
-  ui: AgentSurfaceUi,
-  themeHolder: { theme: ThemeName },
-  modelCache: () => Promise<string[]>,
-): CommandPorts {
-  return {
-    kernel,
-    client,
-    config: m.config,
-    approvalOverride: m.parsed.approvalOverride,
-    theme: () => themeHolder.theme,
-    setTheme: (theme: ThemeName) => {
-      themeHolder.theme = theme;
-      ui.setTheme(theme);
-    },
-    note: (text, tone) => ui.note(text, tone),
-    fetchModels: () => modelCache(),
-    pickModel: (models) => ui.pickModel(models),
-    bindSession: (agent) => ui.bindSession(agent),
-    clear: () => ui.clear(),
-    modeHint: ui.modeHint,
-    exit: () => ui.exit(),
   };
 }
 
@@ -135,7 +189,8 @@ export function toAgentSurfaceRequest(m: SurfaceRequest, argv: readonly string[]
   };
 }
 
-function toFlags(parsed: ParsedArgs): AgentSurfaceFlags {
+/** The host-owned flags every surface may read (its own opt-ins come from `argv`). */
+export function toFlags(parsed: ParsedArgs): AgentSurfaceFlags {
   return {
     ...(parsed.resumeFile !== undefined ? { resumeFile: parsed.resumeFile } : {}),
     ...(parsed.approvalOverride !== undefined ? { approval: parsed.approvalOverride } : {}),
@@ -143,7 +198,6 @@ function toFlags(parsed: ParsedArgs): AgentSurfaceFlags {
     json: parsed.json,
     repl: parsed.repl,
     web: parsed.web,
-    tui: parsed.tui,
     positional: parsed.positional,
   };
 }

@@ -35,13 +35,21 @@ export interface RosterLists {
   disable?: readonly string[] | undefined;
 }
 
-/** Names the operator listed but no built-in provides — a typo, not a no-op. */
+/**
+ * Names the operator listed but nothing provides — a typo, not a no-op.
+ *
+ * `alsoKnown` covers names that are known without being candidates: the
+ * EXTENSION plugins load from their own packages only when enabled, so their
+ * names never appear among the candidates passed here — yet a `plugins.disable`
+ * entry naming one is correct, not a typo.
+ */
 export function unknownDisabled(
   plugins: readonly Plugin[],
   disable?: readonly string[],
+  alsoKnown: readonly string[] = [],
 ): string[] {
   if (disable === undefined) return [];
-  const known = new Set(plugins.map(rosterName));
+  const known = new Set([...plugins.map(rosterName), ...alsoKnown]);
   return disable.filter((name) => !known.has(name));
 }
 

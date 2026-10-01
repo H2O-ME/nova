@@ -10,8 +10,10 @@ import type { AgentSession, ApprovalMode, ConfiguredModel, SessionListing } from
 import type { Kernel } from '@nova-agent/plugins';
 import type { ManageHost, QqBotSnapshot } from './manage-frames.js';
 import type { ProviderHost } from './provider-frames.js';
+import type { PickFn } from './picker-frames.js';
 import type { ModelSeat } from './model-seat.js';
 import type { SessionPages } from './session-pages.js';
+import type { ContextFollow } from './context-follow.js';
 
 export interface FrameHost {
   agent: AgentSession;
@@ -19,6 +21,8 @@ export interface FrameHost {
   seat: ModelSeat;
   sessions: SessionListing;
   pages: SessionPages;
+  /** The Context panel's fold, kept in step with the log. */
+  context: ContextFollow;
   /** Remember a switch past this process; absent with no durable home for it. */
   persistModel: ((model: string) => void | Promise<void>) | undefined;
   /** The operator's model list: its writer, and its on-demand reader. */
@@ -50,6 +54,11 @@ export interface FrameHost {
   /** The approval tier picked earlier — the default for later sessions. */
   approvalDefault(): ApprovalMode | undefined;
   setApprovalDefault(mode: ApprovalMode): void;
+  /**
+   * Open the host's native file/folder dialog (`pick_file` / `pick_directory`).
+   * Undefined means the real one (`native-picker.ts`); tests inject a fake.
+   */
+  pickPath: PickFn | undefined;
   /** Send every attached client this text (a broadcast, not a reply). */
   broadcast(text: string): void;
   /** The current baseline frame, serialized. */

@@ -4,9 +4,7 @@ import { bashPlugin, type BashPluginOptions } from './bash.js';
 import { fsReadPlugin, fsWritePlugin } from './fs.js';
 import { goalPlugin, type GoalPluginOptions } from './goal.js';
 import { jobsPlugin } from './jobs.js';
-import { ptcPlugin, type PtcPluginOptions } from '../ptc/run-code.js';
 import { searchPlugin, type SearchPluginOptions } from './search.js';
-import { subagentPlugin, type SubagentPluginOptions } from './subagent.js';
 import { todoPlugin } from './todo.js';
 import { workspacePlugin, type WorkspacePluginOptions } from './workspace.js';
 
@@ -50,10 +48,6 @@ export interface BuiltinOptions {
    * its own bytes.
    */
   trustedReadRoots?: readonly string[];
-  /** PTC mode (Code Mode) configuration; omit or mode "native" disables it. */
-  code?: PtcPluginOptions;
-  /** Opt-in subagent tool; omit to leave it unregistered. */
-  subagent?: SubagentPluginOptions;
   /**
    * The model's question tool. Always registered — a surface with no human to ask
    * gets the typed `NO_PROVIDER` refusal rather than a silently missing tool, so
@@ -116,16 +110,8 @@ export function builtinPlugins(options: BuiltinOptions): Plugin[] {
   if (workspace !== undefined && workspace !== false) {
     plugins.push(workspacePlugin(workspace));
   }
-  if (options.subagent !== undefined) {
-    // Before PTC: the subagent tool must exist so a PTC-mode SDK projection
-    // includes it for programmatic orchestration.
-    plugins.push(subagentPlugin(options.subagent));
-  }
-  const code = options.code;
-  if (code !== undefined && (code.mode ?? 'both') !== 'native') {
-    // Last: its beforeLlmCall projection must run after any earlier
-    // tool-affecting hooks, and its activation sees the full tool set.
-    plugins.push(ptcPlugin(code));
-  }
+  // The three `advanced` EXTENSION plugins (subagent / context / ptc) are NOT
+  // here: they load from their own packages by specifier (see `extensions.ts`),
+  // because they must be absentable — this file is the base roster.
   return plugins;
 }

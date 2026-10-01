@@ -15,7 +15,7 @@
  * party would use), which ties the entry to this plugin's fiber — so a
  * re-roster unregisters cleanly.
  */
-import { commands as commandsKey, sessions as sessionsKey, type CommandDefinition, type Plugin } from '@nova-agent/core';
+import { commands as commandsKey, errMessage, sessions as sessionsKey, type CommandDefinition, type Plugin } from '@nova-agent/core';
 import { goalCommand } from './goal-command.js';
 import { registerCommand } from './toolbox.js';
 import type { Environment } from './runtime-env.js';
@@ -62,15 +62,12 @@ export function commandRunner(env: Environment): {
         });
         agent?.announceCommand(name, 'done', lines.join('\n'));
       } catch (err) {
-        agent?.announceCommand(name, 'done', lines.concat(errText(err)).join('\n'));
+        agent?.announceCommand(name, 'done', lines.concat(errMessage(err)).join('\n'));
       }
     },
   };
 }
 
-function errText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 /** The kernel-executable catalog. */
 export function kernelCommandsPlugin(env: Environment): Plugin {
@@ -88,9 +85,15 @@ export function kernelCommandsPlugin(env: Environment): Plugin {
               out.log('没有可压缩的活动会话');
               return;
             }
-            // The work itself reports: `compaction` start/summary/end events are
-            // already the transcript's rows, so this command adds no wording of
-            // its own beyond the refusal above.
+            // The refusal copy here is UX, not enforcement: core's compaction
+            // runner is the single guard (`cannot compact while a run is
+            // active`) — this pre-check only makes the row say it in the
+            // product's language. The work itself reports: `compaction`
+            // start/summary/end events are already the transcript's rows.
+            if (agent.running) {
+              out.log('本轮进行中，压缩会在轮结束后自动把关（或稍后再试）');
+              return;
+            }
             await agent.compact('manual');
           },
         },

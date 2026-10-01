@@ -32,6 +32,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { readdir, stat } from 'node:fs/promises';
 import { listDirectoryRoots } from './directory-roots.js';
+import { errMessage } from './errors.js';
 
 export { MAX_DIRECTORY_NAME_CHARS, isSafeDirectoryName, createDirectory } from './directory-create.js';
 
@@ -158,7 +159,7 @@ export async function listDirectory(
   // An unreadable level is a refusal, not an empty listing: the two look
   // identical to a user otherwise, and only one of them is worth retrying.
   const listing = await readdir(target, { withFileTypes: true }).catch((err: unknown) => {
-    throw new Error(`无法读取目录：${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`无法读取目录：${errMessage(err)}`);
   });
   const entries: DirectoryEntry[] = [];
   let truncated = false;

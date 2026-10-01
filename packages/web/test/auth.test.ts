@@ -4,7 +4,7 @@ import { AUTH_COOKIE, cookieHeader, cookieValue, createLaunchAuth, verifyCookie 
 describe('launch auth cookie', () => {
   it('only the exact launch token yields a cookie value', () => {
     const auth = createLaunchAuth();
-    expect(cookieValue(auth, auth.token)).toContain(`${auth.token}.`);
+    expect(cookieValue(auth, auth.token)).toContain(`${auth.cookieToken}.`);
     expect(cookieValue(auth, 'deadbeef')).toBeUndefined();
     expect(cookieValue(auth, '')).toBeUndefined();
   });
@@ -19,7 +19,7 @@ describe('launch auth cookie', () => {
     // swap the token, drop the cookie.
     const flipped = header.slice(0, -1) + (header.endsWith('f') ? '0' : 'f');
     expect(verifyCookie(auth, flipped)).toBe(false);
-    expect(verifyCookie(auth, `${AUTH_COOKIE}=${auth.token}.${auth.token}`)).toBe(false);
+    expect(verifyCookie(auth, `${AUTH_COOKIE}=${auth.cookieToken}.${auth.cookieToken}`)).toBe(false);
     expect(verifyCookie(auth, 'other=x')).toBe(false);
     expect(verifyCookie(auth, undefined)).toBe(false);
   });
@@ -31,9 +31,22 @@ describe('launch auth cookie', () => {
     expect(verifyCookie(b, `${AUTH_COOKIE}=${value}`)).toBe(false);
   });
 
-  it('Set-Cookie is host-hardened: HttpOnly, SameSite=Strict, path-scoped', () => {
+  it('a persisted pairing verifies across a restart while the URL token rotates', () => {
+    // The cookie names the DURABLE identity, so a fresh process with a new URL
+    // token still honors it — that is what lets an installed PWA reconnect.
+    const first = createLaunchAuth();
+    const restarted = { ...first, token: 'f'.repeat(32) };
+    const value = cookieValue(first, first.token) as string;
+    // Same durable identity → the new boot mints the very same cookie value.
+    expect(cookieValue(restarted, restarted.token)).toBe(value);
+    expect(verifyCookie(restarted, `${AUTH_COOKIE}=${value}`)).toBe(true);
+    // The old URL token no longer mints anything in the new process.
+    expect(cookieValue(restarted, first.token)).toBeUndefined();
+  });
+
+  it('Set-Cookie is host-hardened and persistent: HttpOnly, SameSite=Strict, Max-Age', () => {
     const header = cookieHeader('tok.sig');
-    expect(header).toBe('nova_ws=tok.sig; Path=/; HttpOnly; SameSite=Strict');
+    expect(header).toBe('nova_ws=tok.sig; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict');
   });
 
   it('cookie parsing survives sibling cookies', () => {

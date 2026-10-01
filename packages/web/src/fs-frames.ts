@@ -6,7 +6,7 @@
  * `session-frames.ts`. These share one discipline with them: **validate before
  * changing anything, and answer with state, never a bare "ok".**
  */
-import { createDirectory, listDirectory, listWorkspaceFiles, type DirectoryLevel } from '@nova-agent/core';
+import { createDirectory, errMessage, listDirectory, listWorkspaceFiles, type DirectoryLevel } from '@nova-agent/core';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
 import type { WsConnection } from './ws.js';
@@ -70,6 +70,6 @@ async function sendLevel(client: WsConnection, load: () => Promise<DirectoryLeve
   try {
     client.send(serialize({ type: 'directory', ...(await load()) }));
   } catch (err) {
-    client.send(serialize({ type: 'directory_error', message: err instanceof Error ? err.message : String(err) }));
+    client.send(serialize({ type: 'directory_error', message: errMessage(err) }));
   }
 }

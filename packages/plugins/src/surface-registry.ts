@@ -9,16 +9,16 @@
  * rule, loud failure on a missing export) so surface and kernel-plugin
  * loading agree on what a config string means.
  *
- * The `surfaces` capability ServiceKey in `core/plugin/capabilities.ts` stays
- * declared but intentionally has no in-container provider here: the registry
- * must exist before the kernel does (the kernel is assembled AFTER surfaces
- * are loaded, so it can be handed the chosen surface), so no consumer can
- * read it through `ctx.get(surfaces)`. Providing without an in-container
- * consumer would be a worse state than the honestly-dead seam; the public API
- * the surface model needs is `AgentSurface` + `loadSurfacePlugins`, not the
- * container key.
+ * The `surfaces` capability ServiceKey: the registry INSTANCE is built by the
+ * caller and must exist before the kernel does (the kernel is assembled after
+ * surfaces load, and the roster needs the same instance to register each
+ * surface as an ordinary plugin row). The assembly provides it INTO the
+ * container (`surfaceRegistryProvider` in `services.ts`), and `surfacePlugin`
+ * below is the row that consumes it — so a configured surface shows up in
+ * `/plugins`, sits in the tier table and can be switched like any plugin.
  */
 import {
+  errMessage,
   surfaces as surfacesKey,
   type AgentSurface,
   type AgentSurfaceRequest,
@@ -67,7 +67,11 @@ export async function loadSurfacePlugins(specs: readonly string[], cwd: string):
     try {
       module = (await import(target)) as Record<string, unknown>;
     } catch (err) {
-      throw new Error(`surfaces: cannot load "${spec}": ${message(err)}`);
+      // The config row names the module, so only the operator can fix a dead
+      // spec — say HOW, or the boot failure reads like a bug in the product.
+      throw new Error(
+        `surfaces: cannot load "${spec}": ${errMessage(err)}（若该 surface 已卸载，请从 ~/.nova/config.json 的 surfaces 行移除它）`,
+      );
     }
     const candidate = module['default'] ?? module['surface'];
     if (!isAgentSurface(candidate)) {
@@ -94,8 +98,8 @@ function isAgentSurface(value: unknown): value is AgentSurface {
  * The row registers the surface through the injected `surfaces` service. It does
  * not use the legacy `{ name, activate }` facade: that facade is only the
  * compatibility path for existing tool/command plugins. Keeping this adapter
- * native gives a surface the same `inject`/`apply` lifecycle as dsh-TUI and makes
- * disposal part of the owning fiber.
+ * native gives a surface the same `inject`/`apply` lifecycle as any kernel
+ * plugin and makes disposal part of the owning fiber.
  *
  * @param surface - loaded surface implementation.
  * @param registry - registry instance provided by the assembly.
@@ -115,6 +119,3 @@ export function surfacePlugin(surface: AgentSurface, registry: SurfaceRegistry):
   };
 }
 
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}

@@ -10,6 +10,7 @@
  * `fs-frames.ts` already makes for the filesystem frames, one hop further down.
  */
 import {
+  errMessage,
   isBlankSession,
   sessionLogPath,
   userConfigPath,
@@ -20,6 +21,8 @@ import type { ClientFrame } from './protocol.js';
 import { admitPromptImages } from './prompt-images.js';
 import type { WsConnection } from './ws.js';
 import { handleFsFrame } from './fs-frames.js';
+import { handlePickerFrame } from './picker-frames.js';
+import { pickNativePath } from './native-picker.js';
 import { handleSessionFrame } from './session-frames.js';
 import { handleHumanAnswer } from './human-frames.js';
 import { handleManageFrame } from './manage-frames.js';
@@ -99,6 +102,12 @@ export async function handleFrame(
         // mutating, answer with state); they live in `fs-frames.ts`.
         await handleFsFrame(client, frame, { rootDir: kernel.rootDir() });
         break;
+      case 'pick_file':
+      case 'pick_directory':
+        // The native-dialog pair: the host opens the OS picker and answers with
+        // one `picked` frame (see `picker-frames.ts`).
+        await handlePickerFrame(client, frame, host.pickPath ?? pickNativePath);
+        break;
       case 'set_workspace':
       case 'delete_session':
         // The two frames that redefine what is OPEN. They need the host's extra
@@ -126,6 +135,10 @@ export async function handleFrame(
       case 'load_trace': {
         const page = host.pages.trace(frame.have, agent.session.events);
         client.send(serialize({ type: 'trace', rows: page.items, total: page.total }));
+        break;
+      }
+      case 'context': {
+        client.send(serialize(host.context.frame(agent, kernel)));
         break;
       }
       case 'set_approval_mode':
@@ -263,10 +276,6 @@ export async function handleFrame(
         break;
     }
   } catch (err) {
-    client.send(serialize({ type: 'error', message: errMessageText(err) }));
+    client.send(serialize({ type: 'error', message: errMessage(err) }));
   }
-}
-
-function errMessageText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

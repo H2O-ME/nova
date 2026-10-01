@@ -9,6 +9,7 @@ import {
   selectModelMeta,
   type ModelMeta,
 } from '../src/model-meta.js';
+import { modelsDevStorePath } from '@nova-agent/core';
 
 const meta = (over: Partial<ModelMeta> & Pick<ModelMeta, 'id' | 'contextWindow'>): ModelMeta => ({
   provider: 'openrouter',
@@ -205,5 +206,15 @@ describe('formatModelMeta', () => {
         meta({ id: 'm', contextWindow: 200_000, maxOutput: 128_000, inputModalities: ['text', 'image'], reasoning: true, toolCall: true }),
       ),
     ).toBe('text+image→text · 推理 · 工具 · 窗口 200k · 输出 128k');
+  });
+});
+
+describe('models.dev cache location', () => {
+  it('stays at ~/.nova/cache/models-dev.json (single definition in core paths)', () => {
+    // Existing installs' cache files must keep being found, and the location has
+    // exactly one definition (`core/paths.ts`) — this pins the on-disk contract.
+    expect(modelsDevStorePath(path.join('/home', 'x'))).toBe(
+      path.join('/home', 'x', '.nova', 'cache', 'models-dev.json'),
+    );
   });
 });

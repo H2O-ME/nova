@@ -1,12 +1,13 @@
 /**
  * Browser auth for the single-process web surface (dsh's launch-token →
- * signed-cookie pattern, minimized). No accounts, no sessions database:
- * the server mints a one-time launch token per process; the first visit
- * `/?t=<token>` verifies it against the in-memory value and sets an
- * HttpOnly, SameSite=Strict, host-only cookie signed with a per-process
- * HMAC secret. Every later static request and the WS upgrade must present
- * a matching cookie — a page at any other origin can't read it (SameSite +
- * HttpOnly), and a guessed token can't produce the signature.
+ * signed-cookie pattern, minimized). The first visit `/?t=<token>` verifies
+ * the one-time launch token against the in-memory value and sets an HttpOnly,
+ * SameSite=Strict, host-only cookie; every later request and the WS upgrade
+ * must present a matching cookie. The URL token stays per-process (one-time
+ * pairing); the COOKIE identity — a durable `cookieToken` signed with a
+ * durable `secret`, supplied by `auth-store.ts` — is what an installed PWA
+ * replays, so it outlives the process. Delete the store and every cookie
+ * invalidates; re-pair from the terminal URL.
  */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
@@ -16,10 +17,17 @@ export interface LaunchAuth {
   /** The token embedded in the launch URL the user (or `nova --web`) opens. */
   readonly token: string;
   readonly secret: string;
+  /**
+   * The identity the cookie carries. Ephemeral pairings fold the URL token in
+   * here; a persisted pairing keeps its own value, so the cookie survives
+   * restarts the URL token deliberately does not.
+   */
+  readonly cookieToken: string;
 }
 
 export function createLaunchAuth(): LaunchAuth {
-  return { token: randomBytes(16).toString('hex'), secret: randomBytes(32).toString('hex') };
+  const token = randomBytes(16).toString('hex');
+  return { token, secret: randomBytes(32).toString('hex'), cookieToken: token };
 }
 
 function sign(secret: string, token: string): string {
@@ -36,12 +44,12 @@ function safeEqual(a: string, b: string): boolean {
 /** The cookie value for a verified launch token (set by the GET /?t= hop). */
 export function cookieValue(auth: LaunchAuth, token: string): string | undefined {
   if (!safeEqual(token, auth.token)) return undefined;
-  return `${token}.${sign(auth.secret, token)}`;
+  return `${auth.cookieToken}.${sign(auth.secret, auth.cookieToken)}`;
 }
 
-/** `Set-Cookie` attributes: host-only, HttpOnly, SameSite=Strict, path-scoped. */
+/** `Set-Cookie` attributes: host-only, HttpOnly, SameSite=Strict, path-scoped, persistent. */
 export function cookieHeader(value: string): string {
-  return `${AUTH_COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict`;
+  return `${AUTH_COOKIE}=${value}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict`;
 }
 
 /** Verify a Cookie header value against the launch auth. */
@@ -53,6 +61,6 @@ export function verifyCookie(auth: LaunchAuth, cookieHeader: string | undefined)
   if (dot <= 0) return false;
   const token = value.slice(0, dot);
   const sig = value.slice(dot + 1);
-  const expected = sign(auth.secret, token);
-  return safeEqual(sig, expected) && safeEqual(token, auth.token);
+  const expected = sign(auth.secret, auth.cookieToken);
+  return safeEqual(sig, expected) && safeEqual(token, auth.cookieToken);
 }

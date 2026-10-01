@@ -13,7 +13,7 @@ import {
   newId,
 } from '@nova-agent/core';
 import type { Goal, GoalStatus, Plugin, ToolExecuteContext } from '@nova-agent/core';
-import { beforeLlmCall, tools as toolsKey } from '@nova-agent/core';
+import { beforeLlmCall, errMessage, tools as toolsKey } from '@nova-agent/core';
 import { registerTool } from '../toolbox.js';
 
 /**
@@ -102,7 +102,7 @@ function applyPatch(goal: Goal, patch: GoalPatch): Goal | string {
     try {
       next = { ...next, maxRounds: resolveMaxRounds(patch.maxRounds), updatedAt: Date.now() };
     } catch (err) {
-      return `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return `Error: ${errMessage(err)}`;
     }
   }
   if (patch.status === undefined) return next;
@@ -114,7 +114,7 @@ function applyPatch(goal: Goal, patch: GoalPatch): Goal | string {
     try {
       return blockGoal(next, reason);
     } catch (err) {
-      return `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return `Error: ${errMessage(err)}`;
     }
   }
   if (patch.status === 'complete') return completeGoal(next);
@@ -124,7 +124,7 @@ function applyPatch(goal: Goal, patch: GoalPatch): Goal | string {
   try {
     return resumeGoal(next);
   } catch (err) {
-    return `Error: ${err instanceof Error ? err.message : String(err)}`;
+    return `Error: ${errMessage(err)}`;
   }
 }
 
@@ -181,7 +181,7 @@ export function goalPlugin(options: GoalPluginOptions): Plugin {
             const goal = createGoal(objective, rawMax === undefined ? {} : { maxRounds: rawMax });
             return await commit(goal, c.emit);
           } catch (err) {
-            return `Error: ${err instanceof Error ? err.message : String(err)}`;
+            return `Error: ${errMessage(err)}`;
           }
         },
         presentResult() {

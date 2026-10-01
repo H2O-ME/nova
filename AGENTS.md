@@ -33,10 +33,9 @@ pnpm release       # changeset version + sync root version + commit + tag
 
 > ⚠️ `packages/web`、`packages/cli` 解析 `@nova-agent/{plugins,core,web}` 的类型取**已构建的 `dist/index.d.mts`**。改了 core/plugins 要先 build 再 typecheck 依赖方。
 
-**`nova` 的五种形态**（认领规则见 §4）：
+**`nova` 的四种形态**（认领规则见 §4）：
 
-- `nova` → **浏览器界面**（`@nova-agent/web`，默认）：单 Node 进程 = HTTP 静态托管 + 单 WebSocket 事件流。启动打印**一次性带 launch token 的 localhost URL**，校验后落 HttpOnly 签名 cookie；绑定地址强制回环。`NOVA_WEB_PORT` 可固定端口（前端开发流：先 `nova --web`，再在 `packages/web/ui` 跑 `pnpm dev`，http/ws 全代理）。`--web` 是这个默认形态的**显式拼法**，不是另一个 surface。
-- `nova --tui` → **终端全屏界面**（`@nova-agent/tui-app`，**配置驱动的动态 surface 插件**）：alternate screen + 原始键盘 + 一条内核订阅。**需 stdin/stdout 都是 TTY**，管道下自动回落 `--repl`（朝管道里画帧只会吐出一堆转义序列）。显式 opt-in，不改默认形态。**需先在 `~/.nova/config.json` 的 `surfaces` 行声明 `@nova-agent/tui-app/surface`**——cli 源码不静态依赖 tui-app，未声明时 `--tui` 给一条引导错误而非静默回落（§4）。
+- `nova` → **浏览器界面**（`@nova-agent/web`，默认）：单 Node 进程 = HTTP 静态托管 + 单 WebSocket 事件流。启动打印**一次性带 launch token 的 localhost URL**，校验后落 HttpOnly 签名 cookie；绑定地址强制回环。`NOVA_WEB_PORT` 可固定端口（前端开发流：先 `nova --web`，再在 `packages/web/ui` 跑 `pnpm dev`，http/ws 全代理）；未设时**记住上次绑定端口**、下次优先复用（占用即回落临时端口）——origin 因此跨重启稳定，配合持久化配对 cookie，**WebUI 可作为 PWA 安装**（manifest 与图标由 `web/ui/public/` 下发）。`--web` 是这个默认形态的**显式拼法**，不是另一个 surface。
 - `nova --repl` → readline 终端形态（非 TTY 自动回落；`--repl` 是「强制回落」而非兼容 no-op）。
 - `nova qqbot` → QQ 机器人（需 `qqbot.appId` / `clientSecret`；对端独立会话，永不交互审批）。
 - `nova exec "<task>" --json` → 非交互单次执行（JSONL 事件流；未放行的审批自动拒绝）。`--json` 下另有控制行 `run_error` 与 `notice`；SIGINT 优雅中止。
@@ -78,6 +77,7 @@ pnpm release       # changeset version + sync root version + commit + tag
     "enable": ["subagent"],           // 开启的进阶插件（advanced 默认关；关闭＝从此表移除）
     "extra": ["./my-plugin.mjs"]      // 额外插件源（路径或包名；加载失败即启动失败）
   },
+  "skills": { "disable": [] },        // 可选：Skill 中心关掉的技能（按名；项目级/用户级同名一并关）
   "tools": {
     "bash": { "enabled": true, "timeoutMs": 60000, "shellPath": "C:/Program Files/Git/bin/bash.exe" },
     "code": {                          // 可选：PTC 模式（native|ptc|both，缺省 native = 关闭）
@@ -88,85 +88,87 @@ pnpm release       # changeset version + sync root version + commit + tag
     }
   },
   "qqbot": { "appId": "xxx", "clientSecret": "{env:QQBOT_SECRET}" },
-  "surfaces": ["@nova-agent/tui-app/surface"]  // 可选：动态 surface 插件模块 spec（包名或 ./rel.mjs）；加载失败即启动失败
+  "surfaces": ["./my-surface.mjs"]    // 可选：动态 surface 插件模块 spec（包名或 ./rel.mjs）；加载失败即启动失败
 }
 ```
 
-**`surfaces` 是 `plugins.extra` 的 surface 版**（§4）：每行一个模块 spec，由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`。模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**——与 `plugins.extra` 同一条纪律：静默忽略一个扩展比坏掉的启动更糟。**cli 源码不静态依赖任何 surface 包**：`surfaces` 行点名谁就加载谁，加一个 surface 是改配置，不是改 cli 源码。`--tui` 未在 `surfaces` 声明时给一条引导错误而非静默回落（§4）。
+**`surfaces` 是 `plugins.extra` 的 surface 版**（§4）：每行一个模块 spec，由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`。模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**——与 `plugins.extra` 同一条纪律：静默忽略一个扩展比坏掉的启动更糟。**cli 源码不静态依赖任何 surface 包**：`surfaces` 行点名谁就加载谁，加一个 surface 是改配置，不是改 cli 源码。
 
 **`plugins` 是配置层扩展点的正式入口**：不改源码即可关掉任一内置插件或加载自写插件。`extra` 模块须以 `default`（或 `plugin`）导出一个 core `Plugin`（`{ name, inject?, Config?, apply(ctx) }`，`apply` 可用 `registerTool` / `registerCommand` 注册工具与命令），走与内置插件**完全相同**的容器 API 与审批门。拼错的 `disable` 名会告警；加载失败的 `extra` 直接让启动失败——静默忽略的扩展比坏掉的启动更糟。
 
-**插件分三层**（`plugins/plugin-tier.ts`）：**core** 不可关且不渲染开关（注册表与服务、`fs-read`/`fs-write`/`search`/`ask-user`）；**standard** 默认开、可关（`bash`/`jobs`/`todo`/`goal`/`workspace`）；**advanced** 默认关、写 `plugins.enable` 才加载（`subagent`/`ptc`/`qqbot`）。生效规则只有一个函数 `enabledByTier`：`disable` 命中→关（**disable 优先**，安全侧）→ `enable` 命中→开 → tier 默认。未知名字 fail-open 到 standard——把第三方划进 core 会让它**永久不可关**。持久化分工：standard 写 `disable`，advanced 写 `enable`（关闭＝移出）。**有两个录取口的行是例外**：`ptc`（`code.mode !== 'native'` 即录取）与 `qqbot`（配置里有 `qqbot` 块即录取）——推导经 `plugin-tier.ts` 的 `impliedOptIns` **让位于显式 `disable`**（boot `kernel-config.ts` 与 live `runtime-roster.ts` 的 `codeModeOptIn` 走同一规则），所以这两行**两个方向都写**：关闭也写 `disable`，否则推导在下次启动把它复活，开关「自动打开」。`ptc` 关闭同时把生效 `codeMode` 归回 `native`（boot 侧在 `kernel-config.ts` 投影、live 侧在 `runtime-switch.ts` 跟随；文件保留操作者自己的 `tools.code.mode`，重新打开该行即恢复），且 `runtime-facade.ts` 的 `setCodeMode` 在 `ptc` 行被关时**拒绝**非 `native` 模式——插件没加载的模式绝不运行。
+**插件分三层**（`plugins/plugin-tier.ts`）：**core** 不可关且不渲染开关（注册表与服务、`fs-read`/`fs-write`/`search`/`ask-user`）；**standard** 默认开、可关（`bash`/`jobs`/`todo`/`goal`/`workspace`）；**advanced** 默认关、写 `plugins.enable` 才加载（`subagent`/`ptc`/`qqbot`/`context`）。生效规则只有一个函数 `enabledByTier`：`disable` 命中→关（**disable 优先**，安全侧）→ `enable` 命中→开 → tier 默认。未知名字 fail-open 到 standard——把第三方划进 core 会让它**永久不可关**。持久化分工：standard 写 `disable`，advanced 写 `enable`（关闭＝移出）。**有两个录取口的行是例外**：`ptc`（`code.mode !== 'native'` 即录取）与 `qqbot`（配置里有 `qqbot` 块即录取）——推导经 `plugin-tier.ts` 的 `impliedOptIns` **让位于显式 `disable`**（boot `kernel-config.ts` 与 live `runtime-roster.ts` 的 `codeModeOptIn` 走同一规则），所以这两行**两个方向都写**：关闭也写 `disable`，否则推导在下次启动把它复活，开关「自动打开」。`ptc` 关闭同时把生效 `codeMode` 归回 `native`（boot 侧在 `kernel-config.ts` 投影、live 侧在 `runtime-switch.ts` 跟随；文件保留操作者自己的 `tools.code.mode`，重新打开该行即恢复），且 `runtime-facade.ts` 的 `setCodeMode` 在 `ptc` 行被关时**拒绝**非 `native` 模式——插件没加载的模式绝不运行。
 
 Skills 的发现根按优先级：项目 `.agents/skills/` → 项目 `.nova/skills/`（向后兼容）→ 用户 `~/.agents/skills/` → 用户 `~/.nova/skills/`（向后兼容）；目录包 `<name>/SKILL.md` 与扁平 `<name>.md` 都认。frontmatter 仅 `name` / `description`（**支持 YAML 块标量** `>-` / `|`），同名时**项目级优先**。
 
 ## 4. 架构
 
-pnpm monorepo，依赖方向由 `pnpm gates` 机检。工作区 **9 个成员**（`packages/*` 加 `packages/web/ui`），**8 个受白名单管辖**：
+pnpm monorepo，依赖方向由 `pnpm gates` 机检。工作区 **10 个成员**（`packages/*` 九包 + 嵌套子包 `packages/web/ui`），**9 个包受白名单管辖**（嵌套成员的 `src/` 按宿主包 `web` 的规则一并受检）：
 
 | 包 | 职责 |
 | --- | --- |
-| `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、请求级修剪、后台 jobs、**插件容器**、**内核句柄与事件协议**、审批与呈现词汇表、向人提问、surface 目标校验、工作区文件与目录枚举 |
-| `plugins` | **插件世界与内核装配**：工具宿主（core `{ name, inject, apply }` 协议）、审批引擎、内置工具（含 `ask_user_question`）、skills、**命令目录唯一生产者**、`createAgentKernel`、roster、AGENTS.md 读链与 `/init` 模板 |
+| `core` | provider 无关的 agent 循环（async generator 事件流）、append-only 消息模型、会话持久化与投影、工具调度、token 预估、请求级修剪、后台 jobs、**插件容器**、**内核句柄与事件协议**、审批与呈现词汇表、向人提问、surface 目标校验、工作区文件与目录枚举、上下文洞察契约 |
+| `plugins` | **插件世界与内核装配**：工具宿主（core `{ name, inject, apply }` 协议）、审批引擎、内置工具（含 `ask_user_question`）、skills、**命令目录唯一生产者**、`createAgentKernel`、roster、surface 注册表、AGENTS.md 读链与 `/init` 模板、`context` 折叠器 |
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈、usage/缓存命中提取 |
-| `tui` | **终端渲染底座**：字符宽度表（CJK/emoji 双宽）、ANSI 清洗、键序解码、cell 网格 + 增量重绘。**零依赖、不认识内核**——它只认「字符格 + 按键」，所以任何包都能依赖它，而它不把任何产品概念带进渲染层 |
-| `tui-app` | **终端 surface**：transcript 归约（`blocks.ts`）、卡片渲染（`panels.ts` / `question-card.ts`）、键链（`keys.ts`）、批准与提问两张接管卡、帧装配（`app.ts`）。只依赖 `core`/`plugins`/`tui` |
-| `web` | **浏览器 surface 后端**：HTTP 静态托管 + 单 WS 事件流；launch token → HMAC 签名 HttpOnly cookie；自写 RFC6455（**零第三方依赖**） |
-| `qqbot` | QQ 机器人接入插件（**第三方插件编写示范**，只依赖 core/plugins 公共 API） |
+| `web` | **浏览器 surface 后端**（产品的富界面）：HTTP 静态托管 + 单 WS 事件流；launch token → HMAC 签名 HttpOnly cookie；自写 RFC6455（**零第三方依赖**） |
+| `qqbot` | QQ 机器人接入插件（**第三方插件编写示范**，只依赖 core/plugins 公共 API）：`src/surface/` 是它的 surface 半——`AgentSurface` 工厂、web 桥、设置页活通道缝、凭据探针，cli 经一处动态装载使用 |
+| `plugin-subagent` | 扩展出包（advanced 档，只依赖 core）：`subagent` 工具——隔离子代理 |
+| `plugin-context` | 扩展出包（advanced 档，只依赖 core）：上下文洞察折叠器（`contextInsights` 服务） |
+| `plugin-ptc` | 扩展出包（advanced 档，只依赖 core）：PTC / code mode（`run_code` + spawn-only worker 入口） |
 | `cli` | 产品壳（**surface 装配**）：argv → 装配哪个 surface + 配置发现 + 模型元数据 |
 
-前端子包 `packages/web/ui`（private `nova-web-ui`）是浏览器侧，React 18 + Vite 7 + Tailwind 4。
+前端子包 `packages/web/ui`（private `nova-web-ui`）是浏览器侧，React 18 + Vite 7 + Tailwind 4。终端只有 readline REPL（cli 自带，非 TTY 回落）——**全屏终端界面（TUI）已整体删除**：渲染层与产品逻辑纠缠、TTY 接缝反复出洞、真机验收无法自动化，而浏览器界面已是富界面；「终端上有第二个全屏界面」如有需要，应作为第三方 surface 插件另立包，不回本仓。
 
 **依赖方向白名单**（`scripts/dep-direction.mjs` 的 `ALLOW`）：
 
 ```
 core: []                              ai: [core]
-plugins: [core]                       qqbot: [core, plugins]
-web: [core, plugins]                  tui: []
-tui-app: [tui, core, plugins]
+plugins: [core, plugin-subagent, plugin-context, plugin-ptc]
+qqbot: [core, plugins]                plugin-subagent: [core]
+plugin-context: [core]                plugin-ptc: [core]
+web: [core, plugins]
 cli: [plugins, ai, core, qqbot, web]
 ```
 
-脚本用正则扫各包 `src/` 的 **import 语句**（不是 `package.json`）。`core` 零上游；**surface 层（web / tui-app / qqbot / repl / exec）地位相同**，都用 core/plugins 公共 API。**`web` 永不 import `cli`。** `tui` 的白名单是**空的且是有意的**——它能依赖的包为零，因此零依赖底座这个性质由门禁保证，而不是靠约定；反过来说任何包都可以依赖它而不产生环。
+（`plugins` 对三个扩展包的边是 **spec 表 + 运行时 `import()`**，源码不 import 实现——名字仍须在名单里，机检扫的是包名文本；三个扩展包只依赖 core，所以 `plugins` 声明它们为依赖时不成环。）
 
-> **`cli` 的白名单刻意不含 `tui` / `tui-app`**：终端界面是一个**配置驱动的动态 surface 插件**（`~/.nova/config.json` 的 `surfaces` 行点名模块），cli 源码里**不出现任何对它的引用**——正则扫全文件文本（含注释与字符串），cli 既不 import 它也不在字面量里点它的名。这是 dsh 的模型：host 源码永不点名 `@deepseek-harness-tui/dsh-tui`，它在 `cordis.yml` 的 `plugins` 行里被动态解析。**「`cli` 不能静态依赖 surface 包」是一条被门禁机检的红线**——加一个 surface 是改配置，不是改 cli 源码。**根 `package.json` 的 devDependency `@nova-agent/tui-app` 不是死代码**：它是让 `nova --tui` 运行期 `import('@nova-agent/tui-app/surface')` 能从 `node_modules` 解析到 workspace Junction 的**唯一**途径（cli 的依赖里没有它）。它刻意放根、不进 cli 依赖，正是这条红线的镜像——镜像是「运行期可解析」，镜像的反面是「源码不点名」。**门禁不扫根 `package.json`**（`dep-direction.mjs` 只扫 `packages/*/src` 的 import），所以这条只靠文档点名，别把它当可删的残留。
+脚本用正则扫各包 `src/` 的**全文件文本**（不是 `package.json`；注释与字符串里的包名同样算违规）。`core` 零上游；**surface 层（web / qqbot / repl / exec）地位相同**，都用 core/plugins 公共 API。**`web` 永不 import `cli`。**
+
+> **`cli` 的白名单 = 内核三件 + 内置 web 后端 + qqbot 的「动态边」**（`plugins` / `ai` / `core` / `web` / `qqbot`）：web 的入口要 `launchWeb`——这是**真实的静态依赖**，不是疏漏；`repl` / `exec` 是自带的纯 argv 形状 surface；**qqbot 已去静态化**——cli 对包的引用只剩 `cli/src/qqbot-api.ts` 一处动态装载（名字仍进白名单：机检扫的是包名文本，动态 `import()` 的字符串也算边），`qqbot-surface.ts` 只对**结构性镜像**编程，包缺席时 `nova qqbot` 报「扩展不可用」、`nova --web` 降级（见 §7.7）。内置四家的认领判据都是 argv 形状本身（子命令、`--web`、`--repl`、非 TTY 回落），所以**认领行留在 cli**（必须同步可答），产品形态各归其主。其余 surface 一律是**配置驱动的动态插件**（`~/.nova/config.json` 的 `surfaces` 行点名模块），cli 源码不点名；机检红线（`dep-direction.mjs`）只覆盖 `@nova-agent` 命名空间（非本 scope 的包名扫不到）。所以「加一个 surface 是改配置」对**第三方 surface** 成立、对内置默认形态（web）不成立。
 
 **包输出形态**：每个包 `exports` 只有 `"."`（`dist/index.*`），tsdown 单入口 `src/index.ts`。两个例外：① `plugins` 另有两个 **spawn-only worker 入口**（`ptc/worker.ts`、`builtin/search-worker.ts`）——固定输出文件名是 `new URL('./worker.mjs', import.meta.url)` 的解析前提，但**不是公共 API**；② `cli/src/index.ts` **零 `export`**，`"."` 是一个只执行 `main()` 的 bin 脚本，公共面在 `config.ts` / `surfaces.ts` / `command-runner.ts`。
 
 ### 可插拔 Surface：一份契约，两类来源
 
-surface 是「同一内核事件流的人类端消费者」。**契约只有一份**——`core/src/surface.ts` 的 `AgentSurface { name; interactive?; answersQuestions?; claim(request); onWorkspaceChanged?(dir,skillCount); start(runtime) }`，配套 `AgentSurfaceRequest`（argv + 交互性 + host-owned flags）、`AgentSurfaceRuntime`（装配好的 kernel + host 借出的命令端口 + 表现值）、`AgentSurfaceKernel`（**结构性**——真实 `Kernel` 满足它，所以 surface 包只对 core 类型）、`AgentSurfaceCommands` / `AgentSurfaceUi`（host 借出 / surface 自有）。**纯类型，零实现**——core 不认识任何具体 surface。
+surface 是「同一内核事件流的人类端消费者」。**契约只有一份**——`core/src/surface.ts` 的 `AgentSurface { name; interactive?; answersQuestions?; claim(request); onWorkspaceChanged?(dir,skillCount); start(runtime) }`，配套 `AgentSurfaceRequest`（argv + 交互性 + host-owned flags）、`AgentSurfaceRuntime`（装配好的 kernel + host 借出的命令端口 + 表现值）、`AgentSurfaceKernel`（**结构性**——真实 `Kernel` 满足它，所以 surface 包只对 core 类型）、`AgentSurfaceCommands` / `AgentSurfaceUi`（host 借出 / surface 自有）。**纯类型，零实现**——core 不认识任何具体 surface。**内置四家与配置加载的 surface 都实现它**：claim 只读 `AgentSurfaceRequest`，start 收装配好的 `AgentSurfaceRuntime`——「一份契约」不再有例外。
 
 surface 有**两类来源**，地位相同：
 
-- **内置 surface**（`cli/src/surfaces.ts`）：`SUBCOMMAND_SURFACES`（`qqbot` / `exec`）+ `DEFAULT_SURFACES`（`web` / `repl`）。它们是 cli 自带的，因为它们的认领判据是 argv 形状本身（子命令、`--web`、`--repl`、非 TTY 回落）。
-- **动态 surface 插件**（`~/.nova/config.json` 的 `surfaces` 行）：每行一个模块 spec（包名或 `./rel.mjs`），由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`——模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**（与 `plugins.extra` 同一条纪律：静默忽略一个扩展比坏掉的启动更糟）。**`tui-app/src/surface.ts` 就是这样一个插件**（`export default tuiSurface`）——cli 源码**不点名它**，只在配置 `surfaces` 行写 `@nova-agent/tui-app/surface` 时才被加载。
+- **内置 surface**（`exec.ts` / `repl.ts` / `web-mode.ts` 各自导出 `AgentSurface` 工厂；qqbot 的工厂在 `@nova-agent/qqbot` 包的 `src/surface/mode.ts`，cli 侧只有 `qqbot-surface.ts` 的认领 + 凭据端口适配，由 `cli/src/surfaces.ts` 的 `builtinSurfaces` 分成 `head`（`qqbot` / `exec`）与 `tail`（`web` / `repl`））。**认领行在 cli**（判据就是 argv 形状本身：子命令、`--web`、`--repl`、非 TTY 回落——必须同步可答），**实现在哪**与认领无关：qqbot 的产品形态属于它自己的包。
+- **动态 surface 插件**（`~/.nova/config.json` 的 `surfaces` 行）：每行一个模块 spec（包名或 `./rel.mjs`），由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`——模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**（与 `plugins.extra` 同一条纪律：静默忽略一个扩展比坏掉的启动更糟）。cli 源码**不点名任何 surface 包**，只在配置 `surfaces` 行写谁才加载谁。
 
-  解析是**先序遍历**：`SUBCOMMAND_SURFACES` → 动态 `surfaces`（注册顺序）→ `DEFAULT_SURFACES`，**第一个 `claim(request)` 为真的胜出**。所以动态 surface 是**加层**而非改道：子命令仍最高，`--repl` 仍强过任何「请给我全屏」的 opt-in，浏览器默认仍在最后兜底。
+  解析**只有一次 `registry.resolve(request)`**——内置与动态是同一个注册表里的行，**注册顺序即优先级**：`head` → 动态 `surfaces`（配置顺序）→ `tail`，**第一个 `claim(request)` 为真的胜出**，赢家同时被记录（`registry.current()`）。所以动态 surface 是**加层**而非改道：子命令仍最高，`--repl` 仍强过任何 opt-in，浏览器默认仍在最后兜底。
 
   ```
   1. qqbot — positional[0] === 'qqbot'      2. exec — positional[0] === 'exec'
-  [动态 surfaces：tui = flags.tui && !flags.repl && interactive  ← 仅当配置声明]
+  [动态 surfaces：各自的 claim 判据  ← 仅当配置声明]
   3. web — !repl && (web || interactive)     4. repl — repl || !interactive
   ```
 
-  `interactive = stdout.isTTY && stdin.isTTY`。**claim 必须覆盖交互与非交互两种 stdio**：`nova --web` 一走管道也必须被 web 认领（真机 smoke 就是这么跑的），否则会被 REPL 抢走。此判据由 `cli/test/surfaces.test.ts` 的认领表直测钉住（含注入一个 fake tui surface 作 `extras`，钉死动态层的优先级与回落）。
+  `interactive = stdout.isTTY && stdin.isTTY`。**claim 必须覆盖交互与非交互两种 stdio**：`nova --web` 一走管道也必须被 web 认领（真机 smoke 就是这么跑的），否则会被 REPL 抢走。此判据由 `cli/test/surfaces.test.ts` 直测钉住（按 `head → 配置 → tail` 亲历注册，注册一个 fake surface 钉死动态层的优先级与回落——配置的 surface 压过浏览器默认、让位 `--repl`、自带 TTY 守卫时管道下回落内置；并钉住「赢家被记录进 `current()`」对内置与配置同样成立）。
 
-  **`--tui` 是显式 opt-in，且带 TTY 前置条件**：`tuiSurface.claim` 读 `flags.tui && !flags.repl && interactive`，所以管道下自动让位给 `repl`——**绝不朝管道画帧**；与 `--repl` 同时给出时 `repl` 胜出（`--repl` 是「强制回落」，比「请给我全屏」更强）。两个方向都有直测钉住（`tui-app/test/surface.test.ts` 直测插件自己的 claim；`cli/test/surfaces.test.ts` 直测它在认领表里的位置）：去掉 `!repl` 或去掉 `interactive` 都会让测试变红。**`--tui` 未在 `surfaces` 配置时**，main() 给一条引导错误（点名「tui-app 包的 ./surface 子路径」），而非静默回落到 web——一个显式 opt-in 不该静默选错端。
-
-  **argv 解析与「谁来服务它」分成两个文件**：`cli/src/cli-args.ts` 拥有 `ParsedArgs` + `parseArgs`（`--tui` 是其中一个 flag），`cli/src/surfaces.ts` 拥有认领表 + 启动。两者问的是不同问题（「这行命令是什么意思」与「谁来执行它」），此前挤在一个文件里，拆开后 `surfaces.ts` 的上限从 258 降到 205——**上限下调就是这次拆分的证据**。
+  **argv 解析与「谁来服务它」分成两处**：`cli/src/cli-args.ts` 拥有 `ParsedArgs` + `parseArgs`，`cli/src/index.ts` 把 flags 交给唯一一次 `registry.resolve`，认领判据住在各 mode 文件的工厂里。前者问「这行命令是什么意思」，后者问「谁来执行它」——`surfaces.ts` 只是注册表接线与优先级排序。
 
   > **`surfaces` 是 `plugins.extra` 的 surface 版**：同一套动态加载原语（`resolveModuleSpec`）、同一套「校验失败即启动失败」的纪律。区别只在 `extra` 加载的是内核插件（core `Plugin`：`{ name, inject?, Config?, apply(ctx) }`），`surfaces` 加载的是 surface 插件（`{ name, claim, start }`）——两者都不许在 host 源码里点名。
 
-### 内核装配有三个调用点，不是「唯一装配点」
+### 内核装配只有一个调用点（2026-10-01 装配合一后）
 
-- **调用点 ①** `cli/src/kernel-boot.ts` 的 `bootKernel()`：exec / repl / qqbot 经它装配（provider 由 owning surface 注入）。
-- **调用点 ②** `web/src/controller.ts` 的 `WebController.create()`：**web 自己装配**，不经 `bootKernel`。`cli/web-mode.ts` 只借 `createProvider` / `toKernelConfig` 交给 `launchWeb`，内核在 `packages/web` 内建起来。这是**结构性分歧而非疏漏**：web 需要 `modelCatalog` 与 provider 的模型标签/窗口，而 `BootOptions` 装不下。因此「`nova` 默认形态走 `bootKernel`」是错的——**默认形态恰恰是唯一绕过它的那个**。
-- **调用点 ③** `cli/src/surface-host.ts` 的 `buildSurfaceRuntime()`：**任何动态加载的 surface（含 tui）经它装配**。`tui-mode.ts` 已删——TUI 不再有自己的装配壳，它是一个 surface 插件，`runSurface()` 调 `surface.start(runtime)`，`buildSurfaceRuntime()` 装内核。形状与 ② 同因——`TuiApp` 要 `kernel.skills` / `kernel.rootDir()` / `codeMode()` 以及 `workspace.onChange` 的活回调，而 `bootKernel` 返回的 `Kernel` 给不了「装配期间的 holder 绑定」（`onSubagentProgress` 要引用尚未存在的 `kernel`，靠一个 `holder` 对象延迟解析）。
+- **唯一入口**：`createAgentKernel` 在生产代码里只被 `cli/src/kernel-boot.ts` 的 `bootKernel` 调用一次；`cli/src/surface-host.ts` 的 `buildSurfaceRuntime()` 是通往它的唯一路径——**任何 surface（内置四家或配置加载）都经它装配**，装配完成后 `runSurface()` 才调 `surface.start(runtime)`。历史：曾有三个调用点（web 自装、动态 surface 自装），自装 web 的理由「`BootOptions` 装不下 `modelCatalog`」在字段补齐后失效——三个调用点曾是「新选项被静默丢掉」的温床。
+- 内置四家的差异以 **`SurfaceBoot` 贡献**表达：`exec` 贡献 `perRequestCompact` + 装配后 `setPolicy('never')`；`qqbot` 的贡献由包内 `prepare()` 产出（通道插件 + `sessionsRoot()/qqbot` 会话桶 + perRequestCompact），`qqbot-surface.ts` 把它接上 `SurfaceBoot` 并在装配后回填内核、钉同一条策略；web 贡献模型目录、设置页写回器与「未配置端点」的占位 provider；配置的 surface 没有贡献，拿共享的那份。`WebController.create` / `launchWeb` 收装配好的 `kernel`。
+- 「装配期间的活回调」由这里的 holder 绑定：`workspace.onChange` 引用尚未存在的内核，holder 延迟解析；换工作区的反馈经 `surface.onWorkspaceChanged` 交回**在役 surface**——契约成员从此有实现方（`repl`）。
 
-  **`userQuestions` 的单一来源**：推导规则只有一个——core 的 `deriveUserQuestions(caps)` 返回 `answersQuestions ?? interactive ?? false`，fail-closed。两个读它的地方共用这一个函数：`runtime-env.ts` 的服务端 provider（ask tool 每次调用时对 `registry.current()` 求值）与 `surface-host.ts` 的 `buildSurfaceRuntime`（对刚加载的 surface 求值）——它们**不可能再写出两条不一致的规则**，规则变更先变函数、测试先红。该 flag 默认 **false 且是 fail-closed**（无人值守的 exec / qqbot 若拿到 answerer，run 会停在提问里直到被 abort，而没有任何卡片能释放它）。有人的 surface 必须显式打开，否则 `ask_user_question` 直接回一句 `no user-questions answerer accepted the request` 给模型：工具在、UI 在、提问永远不会发生。`tuiSurface` 声明 `answersQuestions: true`，所以 TUI 路径现在与 `repl` / `web` 同源——这正是它当年恢复时漏的那一行，如今由 surface 自己声明、host 读取。
+  **`userQuestions` 的单一来源**：推导规则只有一个——core 的 `deriveUserQuestions(caps)` 返回 `answersQuestions ?? interactive ?? false`，fail-closed。`runtime-env.ts` 的服务端 provider 每次调用时对 `registry.current()` 求值——而注册表现在对**每一类** surface 都有赢家（内置四家也注册在里面），所以「这次是谁在服务、他能不能问人」全仓只有一个答案；`buildSurfaceRuntime` 传的 `deriveUserQuestions(surface)` 只覆盖「没有注册表的装配」（内核测试 / 嵌入方）。该 flag 默认 **false 且是 fail-closed**（无人值守的 exec / qqbot 若拿到 answerer，run 会停在提问里直到被 abort，而没有任何卡片能释放它）。有人者在自己的 `AgentSurface` 上声明一次（`repl` / `web` 靠 `interactive: true` 推导即真），否则 `ask_user_question` 直接回一句 `no user-questions answerer accepted the request` 给模型——工具在、UI 在、提问永远不会发生。
 
-  > 调用点 ① ② 没有 registry 时回落到 `opts.userQuestions`（repl / web 显式 `true`，exec / qqbot 默认 `false`）。**只要装配传了 `surfaces`（`registry.current()` 有值），服务端 provider 就从当前 surface 推导**，host 的显式值不再生效——所以动态 surface 的答案永远来自 surface 自己的声明，不来自装配点。直测在 `core/test/user-question.test.ts`（`deriveUserQuestions`）与 `surface.test.ts`（`answersQuestions` 被断言）。
+  > 没有注册表的装配回落到 `opts.userQuestions`（内核测试 / 嵌入方显式传）。直测在 `core/test/user-question.test.ts`（`deriveUserQuestions`）与 `cli/test/surfaces.test.ts`（内置赢家也被记录进 `current()`、`ready` 级断言见 `core/src/surface.ts`）。
 
 ## 5. 核心设计
 
@@ -178,12 +180,12 @@ surface 有**两类来源**，地位相同：
 - **waterfall**：监听器返回非 `undefined` 即胜出；调 `next(...)` 委派并可改写参数；不委派也不返回 = 弃权。
 - **serial / bail**：第一个决定性裁决即胜出——审批门是 `priority: 1000` 的监听器，所以权限总是先被裁定。
 - **effect 撤销**：一切注册走 `ctx.effect()`，返回的 disposer 在插件卸载时**逆序**执行——**正确拆除是构造出来的，不是记得做的**。
-- **一份插件协议**：`core/plugin/types.ts` 的 `Plugin`（`{ name?, inject?, Config?, apply(ctx) }` + 函数 / 类两种形式）是**唯一**的公共插件 API——内置、surface 自带、`plugins.extra` 第三方走同一条。`apply(ctx)` 里经 `plugins/toolbox.ts` 的 `registerTool(ctx, def, permission)` / `registerCommand(ctx, def)` 注册工具与命令，每个注册都变成容器 effect，于是正确拆除是构造出来的（插件卸载时 disposer 逆序执行）。**没有兼容门面、没有第二种插件形态**——历史上 `{ name, activate(ctx) }` 门面已随 `PluginContext` 一并删除。
+- **一份插件协议**：`core/plugin/types.ts` 的 `Plugin`（`{ name?, inject?, Config?, apply(ctx) }` + 函数 / 类两种形式）是**唯一**的公共插件 API——内置、surface 自带、`plugins.extra` 第三方走同一条。`apply(ctx)` 里经 `registerTool(ctx, def, permission)` / `registerCommand(ctx, def)` 注册工具与命令（两个原语住在 `core/src/plugin/registration.ts`、与键相邻——扩展插件包因此只依赖 core，`plugins` 原样再导出），每个注册都变成容器 effect，于是正确拆除是构造出来的（插件卸载时 disposer 逆序执行）。**没有兼容门面、没有第二种插件形态**——历史上 `{ name, activate(ctx) }` 门面已随 `PluginContext` 一并删除。
 - **roster 组装**在 `plugins/runtime-roster.ts`：内置 + surface 自带 + `extra` − `disable`，随后追加 `kernelCommandsPlugin` 与（非空时）`skillsPlugin`。`host.reset()` **复用同一个 registry**——重 roster 时工具服务不消失又回来，审批门看不到服务闪断。
 
-**能力服务缝**（`core/plugin/capabilities.ts` 是**唯一定义处**）：10 个服务键 `llm` / `tools` / `commands` / `approval` / `sessions` / `compaction` / `jobs` / `spill` / `skills` / `surfaces`，4 个事件键 `beforeLlmCall`(`llm/before`)、`beforeToolCall`(`tool/before`)、`afterToolResult`(`tool/after`)、`pluginLoaded`(`plugin/loaded`)。
+**能力服务缝**（`core/plugin/capabilities.ts` 是**唯一定义处**）：12 个服务键 `llm` / `tools` / `commands` / `approval` / `sessions` / `compaction` / `jobs` / `spill` / `skills` / `userQuestions` / `surfaces` / `contextInsights`，3 个事件键 `beforeLlmCall`(`llm/before`)、`beforeToolCall`(`tool/before`)、`afterToolResult`(`tool/after`)。（`pluginLoaded` 死缝已删，见 §7.5。）
 
-> **10 个服务键里 10 个有提供者。** `surfaces` 当初是无提供者的「刻意死缝」——注册表搬到了 plugins（`surface-registry.ts`），契约也被消费（`tui-app/src/surface.ts` 实现了 `AgentSurface`），但它**不进容器**：注册表必须在内核装配之前就存在（先决定哪个 surface 服务这次 argv，才装内核），而容器是内核装配的产物。这条「先得有、再装配」的时序约束依然成立——**注册表对象先于容器**——但现在装配方把已加载的 surfaces 连同注册表一起交给 `createAgentKernel({ surfaces })`，容器经 `runtime-env.ts` 的 `surfaceRegistryProvider` 把**同一个**注册表实例 provide 成 `surfaces` 服务，于是 surface 变成一条普通插件行（出现在 `/plugins`、落 tier 表、可开关）。所以它**有提供者**了，只是提供的是「容器外的同一实例」，不是新建的。`pluginLoaded` 仍是无提供者（声明齐全、全仓无 `ctx.on`/`ctx.emit`）。**新增能力键的前提是已经有人消费它。**
+> **12 个服务键里 12 个有提供者。** `surfaces` 当初是无提供者的「刻意死缝」——注册表在 plugins（`surface-registry.ts`），契约被 surface 包消费，但它**不进容器**：注册表必须在内核装配之前就存在（先决定哪个 surface 服务这次 argv，才装内核），而容器是内核装配的产物。这条「先得有、再装配」的时序约束依然成立——**注册表对象先于容器**——装配方把已加载的 surfaces 连同注册表一起交给 `createAgentKernel({ surfaces })`，容器经 `runtime-env.ts` 的 `surfaceRegistryProvider` 把**同一个**注册表实例 provide 成 `surfaces` 服务，于是 surface 变成一条普通插件行（出现在 `/plugins`、落 tier 表、可开关）。它**有提供者**，只是提供的是「容器外的同一实例」，不是新建的。
 
 ### 内核协议（`AgentSession` + `KernelEvent`）
 
@@ -208,7 +210,7 @@ surface 有**两类来源**，地位相同：
 
 runner 契约是「调用方永远拿到一条可渲染的结果」：开一条 `command` 行、收集命令自己 `log` 的行、以 `done` 行收尾（命令抛错**把原因写进同一行**，不中止会话）；未知名字同样留一行。前端「一份草稿意味着什么」是 `ui/src/composer/command-menu.ts` 的一组纯函数：注册表认得 `/name` 就发命令帧，认不得就**原样发提示词**。
 
-REPL 保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有终端能做）；但两边 `/compact` 的**语义是同一个**。
+REPL 壳保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有终端能做）；未命中壳条目的 `/name` **回落到内核 runner**（`command-runner.ts` 的默认分支先查 `kernel.commands` 再宣布未知）——于是 `/compact` 与 `/goal` 不再是壳里的第二份实现，但每个界面的菜单仍要认得它们：`commands.ts` 的 `mergedCommandSpecs(registry)` 把壳条目与注册表条目**合并成一份目录**（壳条目胜同名冲突，界面专属参数列不进通用行），`surface-host.ts` 的 `catalog()` 每次活读注册表，设置页保存后菜单无需重启即更新。
 
 ### 呈现意图词汇表（core 拥有形状，surface 拥有观感）
 
@@ -234,16 +236,20 @@ REPL 保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有终�
 - **surface 触摸文件系统的四件事**：换工作区、删会话、查文件、浏览目录。四个帧都遵守同一条纪律——**校验先于变更，答复即状态**：
   - `set_workspace {dir}`：先经 **`resolveWorkspaceDir()`** 校验（不存在 / 不是目录 / 落在 `~/.nova` 内一律拒绝），**再**调内核。顺序不可颠倒：`setWorkspace` 会把 bash / search / fs 的根一次性改指。通过后广播新的 `ready`——`rootDir` 是客户端获知工作区的**唯一**来源。
   - `delete_session {file}`：`deleteSessionLog()` 复用 `sessionLogPath()` 的同一道边界（删除与 resume 的合法范围**逐字相同**），**真删**（日志即会话，文件还在就仍会被列出）。文件已不在时回一条 error 帧——这是正常竞态而非故障。前端删除按钮在会话行的悬停位（dsh `Rows.tsx` 规则：动作占用时间戳单元格），确认框的**取消键带 `data-modal-autofocus`**（误按 Enter 必须落在安全侧）。
-  - `list_files {query}` → `files {query, items, truncated}`：`core/file-listing.ts` 广度优先遍历，跳过 `.git` / `node_modules` / `dist` 与点目录、**绝不跟随符号链接**、条目（200）与墙钟（1s）双上限；被截断时**明说**（"没有更多" 与 "没查完" 是两件事）。前端菜单在**词首**的 `@` 处开启（邮箱地址不弹列表），空格结束未加引号的引用，`"…"` 让带空格的路径保持为一个 token。
-  - `list_directory {dir?, files?}` → `directory {path, home, parent?, crumbs, roots, entries, truncated}` 与 `create_directory {dir, name}`：**工作区选择器与文件引用共用的目录浏览**。浏览器标签页没有能用的文件夹对话框——`showDirectoryPicker()` 在 `http://127.0.0.1` 上确实存在（回环算安全上下文），但它 resolve 出的 handle **不带路径**（`path` 是 Electron 扩展），而工作区按**绝对路径**采纳，所以**挑路径 = 问宿主枚举一层并画出来**（`core/directory-listing.ts`）。三条纪律：**默认只列目录**（`files: true` 才给文件，`kind: 'dir' | 'file'`）、**绝不跟随符号链接**、**拒绝与空列表是两种答复**（`directory_error` 帧 vs 空 `entries`：不可读的挂载不能看起来像空文件夹）。每条目带宿主拼好的绝对路径（浏览器永不自己 join）、home 面包屑裁剪到主目录、新文件夹名经 `isSafeDirectoryName` 校验（`.`, `..`, 分隔符, 控制字符, Windows 保留字符一律拒）。**`roots`（`directory-roots.ts`）是「只能选 C 盘」的正解**：Windows 上盘符是 `dirname` 的**死端**（`dirname('C:\') === 'C:\'`）而主目录只在一个盘上，所以光靠往上走永远到不了 `D:`——卷列表只有宿主知道，随每一层下发（Windows 逐个 `stat` 探活）；另配 dsh 的 `.crumbEditZone` 路径编辑框。前端 `DirectoryBrowser.tsx` 是进程内弹窗（portal + modal layer，另有 `DirectoryBrowserDialog` 无 portal 纯 markup 供无 DOM 的静态测试车道直接走）。**关闭即丢弃已取列表**（下次打开重问——宿主可能已经变了）。
+  - `list_files {query}` → `files {query, items, truncated}`：**两种语义，dsh `file-reference-local` 的切分**——查询**带 `/`（或为空）= 活目录列表**：列出该目录自己的孩子（`src/` 列 `src`），目录在前（dsh `kindRank`）、按名字母序，点条目默认隐藏、查询以 `.` 开头才现身（敲 `.env` 找得到 `.env`，敲 `e` 找不到）；**裸词 = 模糊走**：广度优先按相对路径子串全工作区匹配（浅层优先）。两种模式都跳过 `.git` / `node_modules` / `dist`、**绝不跟随符号链接**、条目（200）与墙钟（1s）双上限；被截断时**明说**（"没有更多" 与 "没查完" 是两件事）。目录模式在 `core/file-listing-directory.ts`（`src/` 查询的答案必须是「所入之目录的孩子」，此前的全树子串匹配让下钻看到的是满屏散件）。前端菜单在**词首**的 `@` 处开启（邮箱地址不弹列表），空格结束未加引号的引用，`"…"` 让带空格的路径保持为一个 token；**下钻**（Tab / chevron / 面包屑）把 token 改写成 `@dir/` 并在菜单顶部钉出**面包屑头**（根目录→…→当前，当前步不可点；**只有下钻才有**——手打的路径上下文就在草稿里，dsh `ui-reference` 的 `crumbsFor` 同一规则），行带 folder/file 图标与「文件」节标题（dsh `MenuView` 同源；有面包屑时行不再重复父目录描述）。
+  - `pick_file {}` / `pick_directory {}` → `picked {kind, path?, error?}`：**原生对话框优先**。浏览器的选择器给不了路径（`File.path` 是 Electron 扩展、`showDirectoryPicker()` 的 handle 也不带 `path`），而 `@` 引用与工作区都按**绝对路径**采纳——但宿主进程就跑在用户机器上（同一 launch token 认证，等同一句「坐在电脑前的人」），所以**让宿主开操作系统的对话框**：Windows 用 PowerShell + WinForms（`OpenFileDialog` / `FolderBrowserDialog`，零第三方依赖），POSIX 用 `zenity --file-selection`（`--directory` 选目录）；都没有则回 `picked.error`，前端**回落到下面的进程内浏览器**。**对话框弹出后由脚本自己把它顶到最前**：WinForms 定时器（跑在 `ShowDialog` 的消息循环里）找到本进程的 `#32770` 窗口，`SetWindowPos(HWND_TOPMOST)` + `SetForegroundWindow`，每 120ms 一次、约 1.7s 后自停——**轮询不是装饰**：窗口在 `ShowDialog` 进入之后才创建，试一次必然落空；`FolderBrowserDialog`（选目录那条）尤其如此，它自己永远不会激活。**刻意不用 dsh 的合成 Alt 按键**（它 `win32-dialog-worker` 就是这么做的）：Alt 是全球按键，会落到当前焦点窗口——火狐里直接弹出传统菜单栏（用户实测的「卡出旧版火狐菜单栏」）。本脚本零按键注入，测试里有一条断言钉住（`not.toContain('keybd_event')`）。**脚本经 `-EncodedCommand` 传入**（UTF-16LE 脚本的 base64），不是 `-Command`：脚本里有中文标题/描述，而这种形式是 PowerShell 自己定义的、对引号/转义/重编码免疫的通道——进程代码页与系统语言都不再参与（输出侧仍由 `[Console]::OutputEncoding` → UTF-8 保证 CJK 路径经管道不乱）。`picked` 的三种读法是三个事实：带 `path` = 选了；带 `error` = 这个宿主没有对话框可开（回落）；两者都无 = 用户取消（仍回一条裸 `picked`，前端读作「无事发生」，但单飞守卫照常落锁——守卫不能靠「不回帧」解除）。对话框是模态且用户-paced 的，**子进程不给超时**；取消与空输出是同一结果。前端两个入口（`+` 菜单「引用本地文件」与 hero「打开文件夹」）都**原生优先**，回落共用 `ui/src/shell/native-pick.ts` 的同一条缝（同一时刻只允许一个对话框在飞）。
+  - `list_directory {dir?, files?}` → `directory {path, home, parent?, crumbs, roots, entries, truncated}` 与 `create_directory {dir, name}`：**工作区选择器与文件引用共用的目录浏览**（原生对话框的回落，也是无对话框环境的主路）。浏览器标签页没有能用的文件夹对话框——`showDirectoryPicker()` 在 `http://127.0.0.1` 上确实存在（回环算安全上下文），但它 resolve 出的 handle **不带路径**（`path` 是 Electron 扩展），而工作区按**绝对路径**采纳，所以**挑路径 = 问宿主枚举一层并画出来**（`core/directory-listing.ts`）。三条纪律：**默认只列目录**（`files: true` 才给文件，`kind: 'dir' | 'file'`）、**绝不跟随符号链接**、**拒绝与空列表是两种答复**（`directory_error` 帧 vs 空 `entries`：不可读的挂载不能看起来像空文件夹）。每条目带宿主拼好的绝对路径（浏览器永不自己 join）、home 面包屑裁剪到主目录、新文件夹名经 `isSafeDirectoryName` 校验（`.`, `..`, 分隔符, 控制字符, Windows 保留字符一律拒）。**`roots`（`directory-roots.ts`）是「只能选 C 盘」的正解**：Windows 上盘符是 `dirname` 的**死端**（`dirname('C:\') === 'C:\'`）而主目录只在一个盘上，所以光靠往上走永远到不了 `D:`——卷列表只有宿主知道，随每一层下发（Windows 逐个 `stat` 探活）；另配 dsh 的 `.crumbEditZone` 路径编辑框。前端 `DirectoryBrowser.tsx` 是进程内弹窗（portal + modal layer，另有 `DirectoryBrowserDialog` 无 portal 纯 markup 供无 DOM 的静态测试车道直接走）。**关闭即丢弃已取列表**（下次打开重问——宿主可能已经变了）。
   - **引用是文本，不是协议对象**：一次挑选写进草稿的是 `@path` / `@"path with spaces"`——用户本可以手打的那种文本。因此「model-visible ⟺ logged」不需要任何日志改动就仍然成立；模型用已有的 `read_file` 读取它。这也是 `files` 帧回传 `query` 的原因：落在旧文本上的迟到答案据此丢弃，而不是替换成没人正在问的候选。
+  - **但显示成 chip**：草稿与已发出的消息都把 mention 画成药丸（dsh 的观感：品牌蓝字 + 圆角 + 浅底 + 文件/文件夹图标），文本本身一个字节不改。两处共用一条规则 `ui/src/mention-tokens.ts`（转写 dsh `ui-primitives` 的 `projectUserText`）——**消息气泡**是 `UserMessageRow` 的元素树，**输入框**没有 contenteditable（dsh 的编辑器是 Lexical），所以用**镜像层**：同字体、同内边距、同换行规则的一层画在 textarea 后面，textarea 自己的文字透明、只留光标（`.mirror` / `.mention`，见 `InputBar.module.css`；chip 的 padding 用等量负 margin 抵消，绝不允许装饰移动它装饰的字）。镜像与 textarea 的换行必须逐字一致，靠「同一份 CSS 值」保证，实测两者内容顶边同 y=340。**一处刻意的偏离**：dsh 的裸 token 是 `@[^\s]+` 再削尾部标点，而中文没有空格——`@a.ts，然后看` 会被整段吞进路径；这里让裸 token 在**中文标点处断词**（`@"…"` 内不受影响，需要中文标点的路径仍可加引号）。
+  - **装了 PWA 也不会永远看旧界面**：安装后的窗口是「恢复页面」而不是重新导航，于是它一直跑着当初那个 bundle（用户的「打开的永远是旧界面」）。`ui/src/stale-build.ts` + `shell/stale-build-watch.ts` 在挂载时与每次页面重新可见时 `fetch('/', {cache:'no-store'})`，比对该文档指向的产物名与**自己正在跑的产物名**（`import.meta.url`），不同才刷新，且**每个产物只刷一次**（`sessionStorage` 记账）——否则一次拿不到新文档的 fetch 会让页面每次聚焦都重载。开发服务器直发模块、比不出名字时整条缝自动沉默。
 - **引用本地文件（`@path`），不复制；粘贴图片例外，它必须上传**。两条规则是同一件事的两面，差别在于**字节到底住在哪里**：
   - **文件有路径**，模型用已有工具去读，所以附件是**指针**：一行卡片记住宿主报出的绝对路径，发送时把 `@path` 追加进草稿。**没有文件上传路由，没有上传目录。** 曾经的 `POST /api/upload` 把任意文件的字节流进 `~/.nova/cache/uploads/` 好让 `read_file` 够得着——而 `@path` 本来就是文件进提示词的通道，所以那份副本喂给模型的东西**从原路径一样读得到**，代价却是把用户的字节复制一份、且只增不减（实测 24MB 视频被白白复制）。
   - **粘贴的图片没有路径**：剪贴板只给字节（`File.path` 是 Electron 私有扩展），不落盘就**再也找不回来**。因此图片是**唯一**走字节的附件（`POST /api/image`）。`image/svg+xml` 刻意排除——文件类型表把它算作图片，但它不在请求路径接受的四种格式内。
   - **四条纪律**：①普通浏览器不给拖入/粘贴文件的真实路径，所以拿到真实路径的唯一途径是**宿主自己枚举**（`+` 菜单的「引用本地文件」）；②拖入/粘贴**仍然 `preventDefault`**（否则浏览器会导航到该文件、直接丢掉会话），非图片文件只回一句解释、**不静默复制**——静默正是当初被反对的行为；③目录行是「选择」不是「导航」（文件行点一下即采用，不进目录）；④路径是绝对路径，落在工作区外时走**正常审批门**，不再有 `trustedReadRoots` 豁免。
 - **审批走事件，不走隐式等待**：`approval_request` 帧带完整请求，前端以 `resolve_approval` 回答（answer 就是内核的 `AskResult`，线上解析走 core 的 `parseAskResult` 单一解析器）；断连时挂起审批随内核 abort 收敛为 deny（fail-closed）。
-- **认证只有一道**：启动打印一次性 `?t=<token>` 的 localhost URL，校验后落 **HMAC-SHA256 签名、host-only、HttpOnly、`SameSite=Strict`** cookie 并 302 到干净地址；HTTP 与 `/ws` 共用它（`timingSafeEqual` 比对），静态托管拒绝穿越。`web/src/index.ts` 强制回环绑定。**不引入任何第三方依赖**——RFC6455 服务端自写。**缓存策略按路径分**：`/assets/*` 是 Vite 内容哈希产物 → `max-age=31536000, immutable`；**其余（含 `index.html`）一律 `no-cache`**——缓存的文档指向上一次构建的资产 URL，重建后那个文件已不存在。
-- **前端分层与内核同构**：`state.ts` 是唯一 reducer（帧入、UI 块出，纯函数直测）；`state-events.ts` 归约事件；`card-view.ts` 是工具卡的**纯渲染模型**（六卡 × running/stale/ok/fail 四态，DOM-free 直测）；`chrome-view.ts` 是外壳视图模型；`flow.tsx` 是块 → 行的唯一映射；`format.ts` 是**主要格式化处**；`trace-view.ts` / `diff-lines.ts` / `session-groups.ts` 同为纯函数。React 组件只做投影。markdown 走**元素树渲染**，全程无 `innerHTML` / `dangerouslySetInnerHTML`——XSS 靠构造不可能，而非转义正确。
+- **认证只有一道**：启动打印一次性 `?t=<token>` 的 localhost URL，校验后落 **HMAC-SHA256 签名、host-only、HttpOnly、`SameSite=Strict`** cookie 并 302 到干净地址；HTTP 与 `/ws` 共用它（`timingSafeEqual` 比对），静态托管拒绝穿越。**唯一豁免**：`/manifest.webmanifest`、`/favicon.svg` 与 `/icons/*` 免认证——Chromium 的 PWA 安装管线在认证上下文之外取这些资产（可能不带 cookie），401 会静默杀死安装入口；它们是无机密的品牌资产，其余路径（含 `index.html`）一律 401。`web/src/index.ts` 强制回环绑定。**不引入任何第三方依赖**——RFC6455 服务端自写。**缓存策略按路径分**：`/assets/*` 是 Vite 内容哈希产物 → `max-age=31536000, immutable`；**其余（含 `index.html`）一律 `no-cache`**——缓存的文档指向上一次构建的资产 URL，重建后那个文件已不存在。
+- **origin 持久化是 PWA 的前提，分两半各归其主**：**端口半**（`listen.ts`）——未显式指定端口时先试 `web-port.json` 记住的上次端口，占用即回落临时端口，绑定结果回写（损坏/越界读作「无偏好」，写失败只告警）；**配对半**（`auth-store.ts`）——`web-auth.json` 持久化 `cookieToken`+`secret`，cookie 落 `Max-Age=31536000`，于是**安装的 PWA 冷启动无需 URL 参数**；URL token 保持每进程随机（一次性配对性质不变），删掉 `web-auth.json` 即吊销全部已发 cookie。两半都是**尽力而为**：任何存储故障都不许挡住服务器启动。
+- **前端分层与内核同构**：`state.ts` 是唯一 reducer（帧入、UI 块出，纯函数直测）；`state-events.ts` 归约事件；`card-view.ts` 是工具卡的**纯渲染模型**（六卡 × running/stale/ok/fail 四态，DOM-free 直测）；`chrome-view.ts` 是外壳视图模型；`flow.tsx` 是块 → 行的唯一映射；`format.ts` 是**主要格式化处**；`trace-view.ts` / `diff-lines.ts` / `session-groups.ts` / `context/context-model.ts` 同为纯函数。React 组件只做投影。markdown 走**元素树渲染**，全程无 `innerHTML` / `dangerouslySetInnerHTML`——XSS 靠构造不可能，而非转义正确。右栏（`rightbar/`：变更 / 文件 / 终端三页签，dsh `ui-sidebar-right` 移植）是右列的第二居住者：头部角落座位开栏，**点开的工具详情优先占栏**；它的 tree / terminal reducer 片段与 `list_directory` / `run_terminal` 帧协议共用，变更页是 `changesModel(blocks)` 的纯推导。
 - **视觉系统 = deepseek-harness 移植（MIT，样式文件逐份署名）**：三层 token（`--dsw-static-*` → `--dsw-alias-*` → 组件局部 `--dsh-*`），明暗双档同一级联（`body[data-ds-dark-theme]`，`index.html` 内联脚本首帧前解析，暗为默认）；三栏 AppFrame（280px 默认、264–420 可拖、<1024px 收为图标轨道）；转录由 `.root` + `.scroll` + `.column` 三层展开，`.scroll` 撑满剩余高度保证 composer 座**恒贴底**。图标全部手写内联 SVG（设计盒写进元素本身的 `width`/`height` 属性——只有 `viewBox` 的 SVG **没有内在尺寸**，在 flex 行里对父级宽度贡献为零）。护栏 `ui/test/style-guard.test.ts`：**零字面色（含注释）、零 ANSI、每个内联 `<svg>` 都声明设计盒、每个 CSS 类都有消费者**。
   > **CSS 变量的类型要当心**：`--dsw-font-xxs-12` 是 `font` **简写**（`12px/18px …`），写成 `font-size: var(--dsw-font-xxs-12)` 是**无效声明、被静默丢弃**（实测两个子代理摘要类因此一直继承 13px 而非参考的 10px）。用 `font:`，或直接用 `font-size` 的字面值。
 
@@ -254,16 +260,6 @@ REPL 保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有终�
 - **配置 `models[]` 非空即「全量接管」菜单**（`catalogIds`）：站点没公布的 id 也能选，被移除的不会再出现；**在役模型永远在列**（菜单得答得出「我在跟谁说话」）。读**活取**而非捕获数组，否则设置页保存后菜单要到重启才变。设置页编辑能力时同时显示「当前生效」与「自动值（占位）」，两者的差就是操作者在偏离什么。
 - `set_model` 走 `ChatProvider.setModel()`，**原地改写同一客户端**（不重建 provider——会话句柄、子代理工具、缓存亲和绑定都还指着这个实例）→ 会话发 `model` 事件 → 控制器把它变成给所有客户端的 `state` 帧：**座位跟着事件走，不跟点击的乐观值走**。失败是**答案**（空列表 + 重试）而不是断线；窗口未知时**清空分母**而不是沿用上一个模型的数字。
 
-### TUI surface
-
-`nova --tui` = 同一内核事件流的终端消费者，**与 web 同构**：事件进，帧出，没有第二套状态。
-
-- **分三层，因为三个问题不同**：`tui`（字符格 + 按键，零依赖、不认识内核）／`tui-app` 的纯函数层（`blocks.ts` 归约、`panels.ts` / `question-card.ts` 渲染、`keys.ts` 键链）／`app.ts` 的驱动层（stdin 原始模式、定时帧、内核订阅）。**整层可在无 TTY 的测试车道直测**（`tui` + `tui-app` 共 17 个测试文件 / 261 个断言，全部不碰真 TTY），驱动层只做「把纯层的输出写进 stdout」——这正是它当初被删的三条理由中第一条的反面（渲染层与产品逻辑纠缠）。
-- **TTY 归属只有一个出口**：`stop()` 一次还原原始模式、光标、alternate screen。当初被删的第二条理由是「TTY 接缝反复出洞」——治法是让**所有**终端状态变更都走同一条 `Screen` 生命周期，而不是散在各处的 `process.stdout.write`。
-- **两张接管卡，优先级是安全**：批准卡（`KeyboardOwner` = `'approval'`）**先于**提问卡路由——审批是安全门，一个待批准的 `rm` 不该被一次提问挡住键盘。两者可以**同时存在**（模型可以一边等审批一边问问题），所以 transcript 里是两个独立字段（`pending` / `question`）而不是一个联合。
-- **重放挂起状态是 `start()` 的责任，不是事件的**：`start()` 与 `setAgent()` 都要回放 `pendingApprovals()` **和** `pendingQuestions()`。只订阅事件会在一个已经停等中的 run 上永远画不出卡片——那个 run 的事件早已发完，而 surface 是后挂上来的。**两个都要**：只补一半照样卡死（恢复 TUI 时 `pendingQuestions()` 正是缺的那半）。
-- **提问语义与 web 逐字对齐**（`tui-app/src/question.ts` 是 `web/ui/src/question/decisions.ts` 的一对一移植）：**跳过是一次决定而非缺席**（把提交门设在「已回答」上会让一批全跳过的问题永远提交不出去）；**选项与自由文本互斥**（线上优先取文本，留着陈旧选中项就会出现「显示一个答案、发送另一个」）；**id 由模型给出**，所以用 `Object.hasOwn` 取草稿——`__proto__` / `constructor` / `toString` 这类 id 会让 `drafts[id]` 意外命中原型链成员。三处都有直测，含原型污染用例。
-
 ### 观测面自己算不出来就去内核要
 
 轮次 header 与底部统计条全部来自内核的 `run_stats`（`RunMeter` 在 `consume()` 里量），**表面一个数都不测**。**轮 header 就是参考实现的那一行**（dsh `TurnProcessNodeView`：满宽按钮 + `[label][chevron]`）——它**不承载任何读数**（dsh 样式表里根本没有 detail 类）：时钟 / TTFT / TPS / 工具时间住在**统计 pill 的弹窗**与**轨迹表**里，印在 header 下面既重复了 label 自己的「用时」，又把数字塞进参考实现空着的位置（本仓曾如此，已删）。过程组是 dsh `ChatGroupSeat` 的 body：`min(400px, 50vh)` 上限、组内自滚（`overscroll-behavior-y` 阻断链式滚动、`scrollbar-gutter: stable`），并在**还能继续滚的那一端**盖 24px 渐变遮罩——上限不让四十步的回合把答案顶出屏幕，遮罩让「被裁掉」与「到头了」可区分；**运行中的回合不设限**。推理行读 stepProcess 语义词汇（流式「正在分析请求」+ 思考实时尾行，落定「已完成分析」）。答案尾行带**用量 pill 与消息时钟**——同一份 `RunStats` 走两个出口：header 管时长、统计 pill 管 token，**读数不重复出现在第三处**。统计条读数取 dsh `stats.counts` 模板（`N 轮 N 步 · X tok/s`），用量段有计费输入即报「缓存命中 N%」；上下文占用环与统计 pill 同排挂 composer dock 行（hero 阶段无读数不渲染）。**占用环的分母来自内核**：`AgentSession.lastPromptTokens` 在进程内跑过时读内存锚点，否则从日志投影取**最后一条 assistant 消息自己的 `usage.promptTokens`**——这里曾读 `ready` 里的 `run/stats.promptTokens`，而那是**一轮内所有请求的求和**（`RunMeter` 刻意累加），不是「窗口现在多满」：实测一轮两请求报 25,268 而真实最后一次是 12,920（**+96%**）。工具行是按钮，点开右侧详情侧板看完整参数/结果原文/时间；后台 job 是转录里的**一行一处、原地改写**的活动行；状态点（solid 10px `::after` 芯 / ongoing 14px 旋转环）是 dsh `StateDot` 的移植，运行中的环由 `animation.startTime = 0` 相位锁定。
@@ -273,6 +269,20 @@ REPL 保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有终�
 > **`run_stats` 的时序契约**：它在 `done`（或 `run_failed`）**之前**发出——终结符是消费者等的最后一帧，统计跟在它后面就一定会被只等终结符的消费者漏掉；**落盘先于广播**，所以「崩在这一帧之后」不会留下一轮没有量测的运行。
 
 > **统计条不因缺 `usage` 而整行消失**（本仓曾如此）：轮/步计数由 `run_stats` 独立供给，量测项各自决定在不在。缺 `usage` 时该缺席的是**缓存命中那一段**，不是整行——让一个可选字段决定必需信息的存亡，等于丢掉本来拿得到的事实。
+
+### 上下文洞察（`context` 插件 + 上下文视图）
+
+会话窗口的读法：**现在装了什么、怎么长起来的、为什么变了、它对文件做了什么**。四问一次日志走查回答，落在一个 `advanced` 档插件（`plugins/src/context/`）提供的 **`contextInsights` 能力服务**上，由中心列的 **上下文** 视图消费。
+
+- **插件只提供能力，渲染归界面；它的在场就是开关**。`context` 是第一个**没有工具、没有命令、没有钩子**的内置插件——它 `ctx.provide(contextInsightsKey, …)` 一个折叠器。消费方（`web/src/context-follow.ts`）读不到这个键就**什么都不做**，帧里是 `null`，界面上没有那个 tab。所以「设置里那一行的开关」与「数据在不在」不可能各说各话：**没有第二个标志位**。它归 `advanced`（`subagent`/`ptc`/`qqbot` 同档）的理由与它们一致：回答这四问要**走一遍整个会话日志**，新装的机器不该为此付费。
+- **折叠器是有状态的、原地累加的**：`fold(events, surface)` 开一个游标，`apply(event)` 一次一步。会话是 append-only 的流，若每来一个事件就返回一份新对象，每个工具结果都要复制整张元素表而没有任何读者受益。`view()` 才产出可序列化的读数。
+- **元素列表 + 点列表**（移植自 dsh-context 的 timeline fold，MIT）：**元素**是窗口里的一个计价单位（一条工具 schema、一节注入片段、一条消息），带**入场的日志位置** `seq`；**点**是**一次已完成的模型请求**，其组成 = 入场早于它的元素中尚未被压缩移走的那些。于是一张元素表解释了每一次历史请求，**线宽与会话成正比而不是与请求数成正比**。
+- **请求的组成算在点之前**：一条 assistant 消息**不是**它自己那次请求的一部分。`syncSurface` 把系统提示与工具 schema 盖在 `seq - 1` 上，正是为了让「`element.seq < point.seq`」这**一条规则**足够——不需要为 schema 开例外。
+- **压缩后窗口真的会缩小**：`compaction/summary` 用的是 core 自己的 `compactionSurface`——**与活路径和回放投影同一个函数**，所以面板读的折叠与转录读的日志不可能对「留下了什么」有分歧；被移走的元素打上 `gone = seq`（仍留在列表里，因为**过去的请求仍要用它解释**），净回收量取日志的 `shadowedTokenCount`。
+- **估算是估算，账单是账单**：分类用 core 的 `estimateTextTokens` / `estimateMessageTokens`（**与自动压缩门同一个估算器**，两处不可能对「一条消息多贵」有分歧）；每次请求的 `prompt` / `cached` / `output` 直接来自 provider 的 `usage`，原样并列。**占用环的分母只有一个来源**：`ready` 携带的 `contextWindow`（`state.contextWindow`），与 composer 的环同源——折叠器**不**自己存窗口，否则同一个数字会有第二个会过期的读法。
+- **文件活动只记真的发生过的**：工具调用先入 `pending`，**结果落地且没报错**才记账（被拒绝或失败的写入没有碰文件，给它一行就是这张卡唯一能撒的谎）；行数增删从 `edit_file` / `write_file` 的**参数**读出；`run_code` 内部的派发日志里只有预览串，够不着结构化路径，**宁可不记也不编**。
+- **帧的纪律**：读数随 `ready` 基线首绘（不额外等一次往返），`context` 客户端帧按需刷新（打开 tab / 视图重挂），并在**每次 `run_stats`**（一次请求的结束就是一轮的结束）与**每次 roster 翻转**后推送。**`null` 是一个真实值**：插件被关掉时推的就是它，面板据此清空并撤掉 tab——`ready` 上则表现为**缺字段**，两种拼法各表一意。翻转的检测放在 `handle()` 的帧处理之后（一次 map 查找）：**「哪一帧翻转了它」正是会腐烂的知识**。
+- **前端按问题分文件**：`web/ui/src/context/` 下 `context-model.ts`（类别词汇表 + 构成条/占用率/统计格）、`trend-model.ts`（趋势柱/堆叠/轴刻度）、`element-model.ts`（窗口元素按占用排序 + 类别 chips）、`activity-model.ts`（事件行/筛选计数、文件行徽章）四份纯模型（无 React、无 DOM），四个卡片组件一卡一文件（`TrendCard` / `ElementCard` / `EventCard` / `FileCard`；`ContextCards.tsx` 只剩统计条与当前上下文），`ContextView.tsx` 只剩「怎么装这个面板」。分类色取自 token 层的静态色阶（`--dsw-static-*`，本次为 indigo/purple/teal 三族补了声明），**不允许拼字符串造 token 名**——护栏只跟得上它读得懂的名字。几何取值（16px 分段条、130px 画布/18px 头、14px 柱宽、5 档轴刻度）对齐第三方 dsh 插件 `dsh-context`（Apache-2.0），取舍与未移植项记在 `docs/dsh-parity-inventory.md` 第 9 轮。**滚动归共享 rollport**：上下文 / 轨迹两面板**不自开滚动条**——面板跟着内容长高，内层 `overflow:auto` 没有范围，而 `overscroll-behavior: contain` **不把带不动的滚动链给父级**，滚轮会被就地吞掉（实测：修复前滚不动、注回旧 CSS 又滚不动）；`scrollportOf()` 是找共享端口的**唯一实现**，上下文面板挂载时把端口回锚到自己的顶部（转录离开时它停在转录底部）。卡住的列表（事件 / 文件，`max-height: 320px`）也**不写 `overscroll-behavior`**：到底后滚轮照常链给外层的共享端口。**窗口元素一类别一张卡**（可折叠；卡头给项数/token/占比，卡内按占用降序）——平铺表会被十几个 ~1% 的工具 schema 淹没。
 
 ### 上下文与缓存命中率（核心差异化）
 
@@ -287,7 +297,7 @@ REPL 保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有终�
 
 ### 会话日志 v2（不可变事件流 + 投影）
 
-`SessionEvent` 共 **10 个变体**：`message`、`compaction/start`、`compaction/summary`、`compaction/end`、`todo/write`、**`goal/change`**、`approval`、**`workspace`**、`code-dispatch`、`run/stats`。其中 `todo/write` / `goal/change` / `approval` / `workspace` / `code-dispatch` / `run/stats` 是 **log-only**（永不进模型可见面）；`workspace` 标记供会话切换时恢复工具根与列表分组。
+`SessionEvent` 共 **10 个变体**：`message`、`compaction/start`、`compaction/summary`、`compaction/end`、`todo/write`、**`goal/change`**、`approval`、**`workspace`**、`code-dispatch`、`run/stats`。其中 `compaction/start` / `compaction/end` / `todo/write` / `goal/change` / `approval` / `workspace` / `code-dispatch` / `run/stats` 是 **log-only**（永不进模型可见面）；`workspace` 标记供会话切换时恢复工具根与列表分组。
 
 压缩不重开会话；v1 旧会话打开时原子升级（`upgradeToV2`）。`appendEvent` **先写盘后入内存**——写失败时内存与磁盘不再发散。**抗损坏**：进程被杀导致的末尾半行在 `Session.open` 时自动截断修复（不告警），中段真损坏行跳过并告警。`compactionSummaryMessage()` 让压缩的活路径与回放投影构造**逐字节相同**的摘要消息。
 
@@ -295,7 +305,7 @@ REPL 保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有终�
 
 ### 审批与权限（轻量版，对标 codex）
 
-三档：`read-only`（默认，只读自动放行）/ `auto-edit`（工作区内写自动放行）/ `full`（全放行）。execute/write/network 类工具交互确认，支持 `y / n / a(lways)`——bash 的 "always" 默认按**命令程序前缀**记忆（`git status` 放行后续 `git …`，不波及 `rm`），复合命令只整条记忆；该粒度**可交互调节**（选中「总是允许」行按 ←/→ 挪授权词数，引擎按**词前缀匹配**放行，越界/复合自动回落默认粒度）。「拒绝」行打字即补充理由，经 `{answer:'deny', reason}` → hook verdict 一路回流成工具结果 `Permission denied: by user: <理由>`——**拒绝从死路变成一次指令**。
+三档：`read-only`（默认，只读自动放行）/ `auto-edit`（工作区内写自动放行）/ `full`（全放行）。execute/write/network 类工具交互确认，支持 `y / n / a(lways)`——bash 的 "always" 默认按**命令程序前缀**记忆（`git status` 放行后续 `git …`，不波及 `rm`），复合命令只整条记忆；该粒度**可交互调节**（WebUI：选中「总是允许」行按 ←/→ 挪授权词数；REPL 侧无此交互。引擎按**词前缀匹配**放行，越界/复合自动回落默认粒度）。「拒绝」行打字即补充理由，经 `{answer:'deny', reason}` → hook verdict 一路回流成工具结果 `Permission denied: by user: <理由>`——**拒绝从死路变成一次指令**。
 
 **答案解析只有一个实现**：`core/approval.ts` 的 `parseAskResult(value)` 把**任何不可信来源**的答案（WebUI 帧、插件 asker 返回值、REPL 行）转成内核 `AskResult`——同时接受 tagged 与 bare 两种形状，fail-closed（畸形一律 `undefined`），scope 词数与拒绝理由长度有界，拒绝理由里的控制字符被拒（`core/text.ts` 的 `hasControlChars`，多行字段允许换行）。此前每个 surface 各带一份，三份的「什么算合法」各不相同。
 
@@ -304,6 +314,9 @@ ask 路径的每次决定写入 `approval` 审计事件（log-only，可回放�
 ### 工具执行
 
 - **文件工具硬化**：`write_file` / `edit_file` 越界检查跑在 **realpath 规范化路径**上（堵死符号链接跟穿逃逸）；写用同目录 tmp + rename 原子替换；`edit_file` 带按文件版本的陈旧检测；`read_file` / `edit_file` 共用 `READ_MAX_BYTES = 8 MiB` 上限，另有二进制探测。`countLines()` 不把尾换行当一行。
+- **`@path` 是工作区相对路径，提示词明说**：`system-prompt.ts` 有一条「按原样交给 read_file，不得增删路径段」——实测缺这一条时模型会自行「归一化」路径：工作区根是 `D:\下载\codex-main (1)`（根下只有一层 `codex-main/`），用户写 `@codex-main/docs/agents_md.md`，模型读成 `docs/agents_md.md` → 找不到 → 又花了四步侦察才找回原路径。
+- **`read_file` 找不到时给出最近的同后缀路径**：`closestWorkspacePath()`（`builtin/fs.ts`）复用 `@` 菜单的列举策略（有界、跳过 `.git`/`node_modules`/`dist`、不跟随符号链接），返回**最短的同后缀命中**，附在 `file not found` 之后（没有任何相近项时只报找不到，答案保持原样）。上例中这一步就把四步恢复压缩成一步。
+- **bash 结果第一行是 `cwd:`**：命令实际跑在哪个目录，是结果自身无法推断的那个事实——一旦它与 `<environment>` 的 `cwd` 不一致，这一轮所有相对路径的命令都答错了树，而省略 cwd 的结果从日志里看不出来（2026-10-01 那条 `find` 返回 `exit: 0` + 空输出、同命令在工作区根下却能列出文件，正是这类无从判断的情形）。
 - **并行执行**：工具可声明 `isConcurrencySafe` 纯同步分类器，相邻多个 opt-in 调用整段并行（审批仍逐个串行），结果按原调用顺序写入保持确定性；并行段用 `Promise.allSettled` 收敛避免 unhandledRejection。
 - **输出截断防御**：`finish_reason=length` 的截断消息中**所有 tool call 一律不执行**（流式参数可能静半截），整批以错误结果回填让模型重发；未解析成 JSON 的畸形参数**只失败那几条**，其余照跑；两条拒绝路径同样**成对发 `tool_call_start`**（只发结果则现场不显示）。
 - **search_files**：`content_regex` 与 `name_glob` **至少一个必填**，两个都给时 `content_regex` 优先；默认跳过 `.git` / `node_modules` / `dist` 与点目录、绝不跟随符号链接、单文件 1 MiB 上限。**回溯隔离**：`content_regex` 先经宿主预检（长度 ≤ 512、量词总数 ≤ 32、嵌套量词组拒绝），再进**全新 worker 线程**执行；墙钟预算默认 30s、中止信号透传 `terminate()`。
@@ -346,6 +359,8 @@ Skills 只把 name+description 注入索引，命中触发词才加载正文—�
 └─ cache/
    ├─ tool-outputs/<sessionId>/   # 工具输出溢出 + 压缩前全文存档
    ├─ images/<sha256-hex>         # 粘贴图片的字节（内容寻址，见 §5 模型端）
+   ├─ web-port.json               # 上次绑定的 WebUI 端口（下次优先复用，origin 稳定）
+   ├─ web-auth.json               # WebUI 配对（cookieToken+secret；cookie 跨重启有效）
    └─ models-dev.json             # 模型目录缓存
 ```
 
@@ -378,15 +393,18 @@ Skills 只把 name+description 注入索引，命中触发词才加载正文—�
 
 ## 7. 状态与开放问题
 
-**版本现状**：**0.4.0 已发行**（附注标签 `v0.4.0`；`core` / `ai` / `plugins` / `tui` / `tui-app` / `web` / `cli` **七个锁步包** + 根包；`qqbot` 独立升到 **0.3.0**，记录在其自身 CHANGELOG）。本次发行把插件协议换代（删除 legacy `{ name, activate(ctx) }` 门面）等全部积压变更集收进 `0.4.0` 段；0.y.z 期破坏性变更升次版本（§8），锁步组下次发行基线为 0.4.0。**TUI 已按插件形态恢复**（见 §4 / §5）：`tui` 是零依赖渲染底座、`tui-app` 是与 web 同构的 surface，`nova --tui` 显式 opt-in。它曾被整体删除，原因是①渲染层与产品逻辑纠缠、②TTY 归属接缝反复出洞、③真机验收无法自动化——①由「纯函数层 / 驱动层」分层解决，②由单一 `stop()` 生命周期解决，③仍然是**未解决**的那一条（见下）。**`docs/` 只放对齐清单 `dsh-parity-inventory.md`，其余会漂移的副本不要加。**
+**版本现状**：**0.4.0 已发行**（附注标签 `v0.4.0`；锁步组基线 0.4.0；`qqbot` 独立升到 **0.3.0**，记录在其自身 CHANGELOG）。0.y.z 期破坏性变更升次版本（§8）。**TUI 源码已删除（工作区；v0.4.0 仍含 TUI，删除随下一版发行落地）**（`packages/tui` / `packages/tui-app` 源码与 `--tui` flag、引导错误已移除，磁盘残留的 `dist/` + `node_modules/` 随后清理）：恢复后仍受三件事拖累——渲染层与产品逻辑纠缠、TTY 归属接缝反复出洞、真机验收无法自动化，而浏览器界面已是富界面，终端保留 readline REPL 即可。**`docs/` 只放对齐清单 `dsh-parity-inventory.md`，其余会漂移的副本不要加。**
 
 1. **OpenAI 兼容接口缓存语义不一致**：DeepSeek 自动前缀缓存、部分网关需显式参数。已落地 usage/命中率统计；按 provider 的能力探测表留待后续。
 2. **外部插件加载**：`plugins.extra` 已可加载本地路径/包名模块；尚无 registry 与 git URL 安装。
 3. **容器化建议**：v1 不做进程沙箱，重隔离建议容器化运行。
-4. **TUI 的真机验收仍然无法自动化**：这是它当初被删的三条理由里**唯一没被解决**的一条。`tui` + `tui-app` 有 17 个测试文件 / 261 个断言、`--tui` 无 TTY 的回落有直测，但「帧真的画对了、键真的被收到了、退出真的还原了终端」在 CI 里**没有任何自动化证据**——它只能在真 TTY 上人工看一次。`pnpm smoke:web` 是浏览器面的真机档，TUI 还没有对应物。
-5. **`AgentSurface` 契约已被消费 + `surfaces` 服务键已有提供者（均已解决）**：core 声明的公共 surface 契约现在有消费者——`tui-app/src/surface.ts` 实现了它，`plugins/src/surface-registry.ts` 加载它，`cli/src/surface-host.ts` 把它接到内核装配。「第三方 surface 只依赖 core/plugins 公共 API」是事实，不再是意图。**`surfaces` 服务键也已从死缝变成有提供者**：装配方把已加载的 surfaces 连同注册表交给 `createAgentKernel({ surfaces })`，容器经 `runtime-env.ts` 的 `surfaceRegistryProvider` 把**同一个**注册表实例 provide 成 `surfaces` 服务（见 §5）。`pluginLoaded` 事件键仍同类：只有声明，全仓无 `ctx.on`/`ctx.emit`。
-6. **三个装配点的一致性（`userQuestions` / `onSubagentProgress`）已收口**：`userQuestions` 的**推导规则**收成一个 core 纯函数 `deriveUserQuestions(caps)`（`answersQuestions ?? interactive ?? false`），`runtime-env.ts` 的服务端 provider 与 `buildSurfaceRuntime` 共用它，直测在 `core/test/user-question.test.ts` 钉住「有人 surface ⇒ true、无人值守 ⇒ false」——规则变更先改函数、测试先红，两端不可能再写出两条不一致的规则。`onSubagentProgress` 同理已由 `runtime-builtins.ts` 的 `kernelPlugins()` 在装配点接线（§5 Subagent）。**剩余**：① ② 没有 registry 时 `userQuestions` 仍回落到 host 显式值（repl/web `true`、exec/qqbot 默认 `false`），这是「内置 surface 的声明」而不是「装配点的规则」，不是缺陷。
-7. **（已解决）** `tui-mode.ts` 已被删除——TUI 不再是 cli 源码里的一个装配壳，它是 `tui-app` 里配置驱动的动态 surface 插件，经 `cli/src/surface-host.ts` 的 `buildSurfaceRuntime` 装配。`tui` + `tui-app` 的 17 个测试文件 / 261 个断言全部不碰真 TTY，`--tui` 无 TTY 的回落由 `cli/test/surfaces.test.ts` 认领表直测。**剩余的 ④（真机验收）仍无法自动化**——见本列表第 4 条。
+4. **（已解决，待下一版发行落地）TUI 源码已删除**：`packages/tui` / `packages/tui-app` 的源码（工作区已删、v0.4.0 仍含）与 `--tui` flag、引导错误一并移除，「帧真的画对了、退出真的还原了终端」这类无法自动化验收的问题随包消失；`pnpm smoke:web` 是唯一真机档。若未来重做终端全屏界面，应作为第三方 surface 插件另立包（`surfaces` 配置行即可加载），不回本仓。
+5. **（已解决）`pluginLoaded` 死缝已删除（2026-10-01）**：它自始只有声明、全仓无 `ctx.on`/`ctx.emit` 的消费者；按「新增能力键的前提是已经有人消费它」的纪律，随本批 minor 删除（`EventKey` 导出与 `plugin/loaded` 事件名一并移除）。`surfaces` 服务键**有提供者**（见 §5 能力服务缝）。
+6. **装配点的一致性（`userQuestions` / `onSubagentProgress`）已收口**（装配合一后全仓只有一个调用点，见 §4）：`userQuestions` 的**推导规则**收成一个 core 纯函数 `deriveUserQuestions(caps)`（`answersQuestions ?? interactive ?? false`），`runtime-env.ts` 的服务端 provider 每次调用对 `registry.current()` 求值——注册表现在对每一类 surface 都有赢家，所以规则的唯一读者就是它；`buildSurfaceRuntime` 的同名调用只覆盖没有注册表的装配（内核测试 / 嵌入方）。`onSubagentProgress` 已由 `runtime-builtins.ts` 的 `kernelPlugins()` 在装配点接线（§5 Subagent）。**剩余**：没有注册表的装配仍回落到 `opts.userQuestions`（内核测试 / 嵌入方显式传），这是「嵌入方的规则」而不是「装配点的规则」，不是缺陷。
+
+7. **插件发行模型迁移（进行中，2026-10-01 定规）**：基础能力（`bash` / `jobs` / `todo` / `goal` 等）**留主程序**——可开关、不可删除；扩展能力（`subagent` / `ptc` / `context` / `qqbot`）**按第三方对待**——独立包、按 spec 装载、缺失不影响整体应用。**进展**：`subagent` / `context` / `ptc` 已出包（`@nova-agent/plugin-*`）并由 `extensions.ts` 的 spec 表容错装载（缺包只在该行留 `error`，不伤启动）；`qqbot` 去静态化且**产品形态整体入包**（cli 对包零静态依赖，`qqbot-api.ts` 一处动态装载 + `qqbot-surface.ts` 一处适配；缺失时 `nova qqbot` 报错、`nova --web` 降级并在设置页显示原因）；`SurfaceRegistry.resolve` 生产者已补（适配器认领经注册表裁决并记录赢家）；web 装配合一（并入 `bootKernel`，见 §4）；surface 契约归一与注册表唯一解析（见第 8 条）。
+
+8. **surface 合流已完成（2026-10-01 第二批）**：内置四家实现同一份 `AgentSurface`（各工厂），`SurfaceEntry` 形状删除；全部 surface 注册进同一注册表、解析只剩一次 `registry.resolve`（赢家记录进 `current()`，`userQuestions` 由此单一来源）；`onWorkspaceChanged` 接线（`repl` 首个实现方）、`CommandPorts` 并入 `AgentSurfaceUi`；装配收敛为唯一入口（见 §4）。**qqbot 物理搬包已落地（第三批）**：10 个界面文件（mode / bridge / activate / peer / approval / turn / wiring / remote / remote-parse / probe）迁入 `packages/qqbot/src/surface/`，以 `AgentSurface` 形态导出（`createQqBotSurface` / `startQqBotBridge` / `qqBotRuntimeSeam` / `testQqBotConnection`）；cli 只剩 `qqbot-api.ts`（结构性镜像，一处动态装载）与 `qqbot-surface.ts`（凭据端口 + 认领 + web 桥适配）——凭据的 raw 文档读法留在 cli（那是配置层的规则）。**本项无剩余**。（设置页「扩展缺失」行内提示、`pluginLoaded` 死缝删除与设置页连接读数平铺→嵌套的存量修复均已在同批完成。）
 
 ## 8. 版本与发布（SemVer 2.0.0）
 
@@ -401,8 +419,8 @@ Skills 只把 name+description 注入索引，命中触发词才加载正文—�
 3. **JSONL 会话日志 v2 格式与投影语义**：`SessionEvent` 的 10 个事件类型、字段结构、`deriveMessages()` 投影规则、压缩语义。
 4. **插件 API**：core `Plugin`（`{ name, inject?, Config?, apply(ctx) }` + 函数 / 类两种形式）、`registerTool(ctx, def, permission)` / `registerCommand(ctx, def)`、`ToolDefinition`（含 `presentCall` / `presentResult` / `preview`）、`ToolExecuteContext`、钩子签名、审批档位与 `permission` 声明；**容器公共面**（`Context` / `ctx.provide` / `key<T>()` / `ctx.on` / `ctx.effect`）与 `plugins.extra` 能加载的插件形态。
 5. **内核协议（surface 契约）**：`AgentSession` 句柄的方法集、`KernelEvent` 的变体与字段、`Kernel` 的成员（含 `models?` / `commands` / `runCommand()` / `roster()`）、`createAgentKernel` 的装配签名——凡实现一个 surface（官方或第三方）所依赖的都是公共面。
-   > **`surfaces` 服务键保留声明但刻意无容器提供者**（§5 能力服务缝 + §7.5）：注册表在容器之外先于内核装配存在（`plugins/src/surface-registry.ts`），契约被 `tui-app/src/surface.ts` 消费——所以 `AgentSurface` / `AgentSurfaceKernel` **是行为契约**（有人实现、有人加载、有人装配），但 `surfaces` ServiceKey 与 `pluginLoaded` 事件键仍是死缝（无 `ctx.provide` / 无 `ctx.on`）。`surfaces` 的死是**刻意的**：往容器里 provide 一个「内核还没装好时就要用」的东西自相矛盾。`pluginLoaded` 仍未接线。它们仍是 `core` 的导出，签名变更照样要升位。
-6. **各 `@nova-agent/*` 包公开导出**：每个包 `exports` 只有 `"."`。`core`（agent 循环 / 消息模型 / 会话 / kernel 句柄与事件协议 / 审批与呈现词汇表 / 插件容器 / 模型 id 对账与目录选择规则 / 文件与目录枚举；**`session-peek.ts` 不在其中**）、`ai`（`client` + `sse`）、`plugins`（容器门面 / 审批 / 内置工具 / 命令目录与 runner / 内核装配；`fs.ts` 与 `bash.ts` 只做**窄化具名再导出**）、`web`（surface 后端与帧协议：`list_models` / `set_model` / `list_model_config` / `save_models` / `command` / `load_earlier` / `load_trace` / `set_workspace` / `delete_session` / `list_files` / `list_directory` / `create_directory` 客户端帧与 `parseClientFrame` 判据、`models` / `model_config` / `state` / `sessions` / `files` / `directory` / `directory_error` / `ready` 的字段、`server.ts` 的静态缓存策略与 `GET`/`POST /api/image` 字节路由）、`qqbot`（渠道插件示范）、`cli`（`config` / `surfaces` / `command-runner`——**`"."` 是 bin 脚本，零 export**）。
+   > **`surfaces` 服务键已有提供者**（§5 能力服务缝）：注册表在容器之外先于内核装配存在（`plugins/src/surface-registry.ts`），装配方把它连同已加载的 surfaces 交给 `createAgentKernel({ surfaces })`，容器把**同一个**实例 provide 成 `surfaces` 服务——所以 `AgentSurface` / `AgentSurfaceKernel` **是行为契约**（有人实现、有人加载、有人装配）。`pluginLoaded` 事件键已删除（2026-10-01，见 §7.5）。它们仍是 `core` 的导出，签名变更照样要升位。
+6. **各 `@nova-agent/*` 包公开导出**：每个包 `exports` 只有 `"."`。`core`（agent 循环 / 消息模型 / 会话 / kernel 句柄与事件协议 / 审批与呈现词汇表 / 插件容器 / 模型 id 对账与目录选择规则 / 文件与目录枚举；**`session-peek.ts` 不在其中**）、`ai`（`client` + `sse`）、`plugins`（容器门面 / 审批 / 内置工具 / 命令目录与 runner / 内核装配；`fs.ts` 与 `bash.ts` 只做**窄化具名再导出**）、`web`（surface 后端与帧协议：`list_models` / `set_model` / `list_model_config` / `save_models` / `command` / `load_earlier` / `load_trace` / `set_workspace` / `delete_session` / `list_files` / `list_directory` / `create_directory` / `pick_file` / `pick_directory` 客户端帧与 `parseClientFrame` 判据、`models` / `model_config` / `state` / `sessions` / `files` / `directory` / `directory_error` / `picked` / `ready` 的字段、`server.ts` 的静态缓存策略与 `GET`/`POST /api/image` 字节路由）、`qqbot`（渠道插件示范，含 surface 半：`createQqBotSurface` / `startQqBotBridge` / `qqBotRuntimeSeam` / `testQqBotConnection` 与 `QqBotLiveReading` 等类型）、`cli`（`config` / `surfaces` / `command-runner`——**`"."` 是 bin 脚本，零 export**）。
 
 ### 升位映射
 
@@ -414,7 +432,7 @@ Skills 只把 name+description 注入索引，命中触发词才加载正文—�
 
 ### 发布流程（changesets）
 
-- monorepo **fixed 锁步组**：7 个 `@nova-agent/*` 工作区包（`core` / `ai` / `plugins` / `tui` / `tui-app` / `web` / `cli`）恒一致、共享单一版本号（`.changeset/config.json` 的 `fixed` + `privatePackages: { version: true, tag: true }`、`access: "restricted"`）；`qqbot` **刻意留在组外**（第三方插件示范，按自身改动独立升位）。根包 `nova-agent` 是 private 且非 workspace 成员，由 `scripts/sync-root-version.mjs` 在 release 中读 `packages/cli/package.json` 同步。**锁步组与磁盘上的工作区包必须一致**：`cli/test/version.test.ts` 从磁盘发现包并校验——组里写了不存在的包会让 `changeset version` 直接失败。
+- monorepo **fixed 锁步组**：5 个 `@nova-agent/*` 工作区包（`core` / `ai` / `plugins` / `web` / `cli`）恒一致、共享单一版本号（`.changeset/config.json` 的 `fixed` + `privatePackages: { version: true, tag: true }`、`access: "restricted"`）；`qqbot` **刻意留在组外**（第三方插件示范，按自身改动独立升位）。根包 `nova-agent` 是 private 且非 workspace 成员，由 `scripts/sync-root-version.mjs` 在 release 中读 `packages/cli/package.json` 同步。**锁步组与磁盘上的工作区包必须一致**：`cli/test/version.test.ts` 从磁盘发现包并校验——组里写了不存在的包会让 `changeset version` 直接失败。
 - 每项面向用户改动提交一份 changeset（`.changeset/*.md`，标注 minor / patch）。**变更集在发行前可合并**：被后续重写取代的条目应并入取代它的那一条，而不是留成悬空记录。
 - 发行：`pnpm changeset` → `pnpm changeset version` → 提交 → `changeset tag` → `pnpm release` 一条龙。
 - **已发行版本内容不可变**（规范第 3 条）：绝不 amend / 移动既有 tag；一切修改以新版本向前发行。

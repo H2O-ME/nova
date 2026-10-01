@@ -87,8 +87,9 @@ export type KernelEvent =
   /**
    * The model in force changed (a picker switched it, or the surface
    * re-pointed the client). Published so every consumer of this kernel
-   * renders the same model — a browser switch moves the TUI's status bar too —
-   * instead of each surface keeping its own copy of a boot-time label.
+   * renders the same model — a browser switch moves another surface's status
+   * line too — instead of each surface keeping its own copy of a boot-time
+   * label.
    */
   | {
       type: 'model';

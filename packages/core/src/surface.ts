@@ -60,7 +60,6 @@ export interface AgentSurfaceFlags {
   readonly json: boolean;
   readonly repl: boolean;
   readonly web: boolean;
-  readonly tui: boolean;
   readonly positional: readonly string[];
 }
 
@@ -102,7 +101,9 @@ export interface AgentSurfaceRuntime {
 export interface AgentSurfaceKernel {
   readonly agent: import('./kernel/session.js').AgentSession;
   readonly skills: readonly { readonly name: string }[];
-  readonly host: { readonly toolEntries: readonly { readonly tool: ToolViewSource }[] };
+  readonly host: {
+    readonly toolEntries: readonly { readonly plugin: string; readonly tool: ToolViewSource }[];
+  };
   readonly jobs: { dispose(): Promise<void> };
   rootDir(): string;
   codeMode(): PtcMode;

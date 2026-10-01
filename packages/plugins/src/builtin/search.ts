@@ -1,4 +1,4 @@
-import { errMessage, isFailureContent, tools as toolsKey } from '@nova-agent/core';
+import { errMessage, isFailureContent, SKIP_DIRS, tools as toolsKey } from '@nova-agent/core';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -9,7 +9,7 @@ import type {
   SearchResultView,
   ToolExecuteContext,
 } from '@nova-agent/core';
-import { codeRuntimeAvailable } from '../ptc/code-runtime.js';
+import { typeStrippingAvailable } from '@nova-agent/core';
 import { registerTool } from '../toolbox.js';
 import { looksBinary, resolveAnywhere, rootPermissionKind } from './fs.js';
 import { intArg, strArg } from './args.js';
@@ -29,7 +29,7 @@ import { intArg, strArg } from './args.js';
  * compiled by globToRegExp and cannot backtrack.
  */
 
-const SKIP_DIRS = new Set(['.git', 'node_modules', 'dist']);
+
 /** Content search never reads more than this per file (bounds regex cost). */
 const SCAN_MAX_BYTES = 1024 * 1024;
 const DEFAULT_MAX_RESULTS = 200;
@@ -371,7 +371,7 @@ export function searchPlugin(options: SearchPluginOptions): Plugin {
   // The source world runs this file through native type stripping, so the
   // .ts worker entry only loads on runtimes that support it; without it the
   // in-process path stays available (pre-flight screen still applies).
-  const wantWorker = options.worker !== false && codeRuntimeAvailable();
+  const wantWorker = options.worker !== false && typeStrippingAvailable();
   return {
     name: 'search',
     description: 'Recursive file/content search inside the workspace.',

@@ -11,11 +11,10 @@
  * name. It used to be threaded in by a loading adapter, which meant a plugin
  * loaded by any other route registered its tools under `'assembly'`.
  */
-import type { Context, Plugin, ToolDefinition, ToolPermissionKind } from '@nova-agent/core';
+import type { Context, Plugin, ToolDefinition } from '@nova-agent/core';
 import {
   commands as commandsKey,
   tools as toolsKey,
-  type CommandDefinition,
   type CommandEntry,
   type CommandRegistry,
   type ToolEntry,
@@ -88,27 +87,10 @@ export const toolboxPlugin: Plugin = {
 };
 
 /**
- * Register one tool under the calling plugin's own name, with its undo tied to
- * that plugin's fiber.
- *
- * This is the ONE registration idiom for first-party tools — the same two lines
- * (`ctx.effect` + `registry.register`) every plugin would otherwise retype, and
- * therefore the same two lines that used to drift (some plugins passed `owner`,
- * some did not, and the loading adapter had to paper over it). A plugin that
- * registers a tool should also list `tools` in its `inject`, which is what makes
- * a replaced registry re-point it rather than strand it.
- * @param ctx - the registering plugin's context.
- * @param tool - the tool definition the model will see.
- * @param permission - highest-impact kind this tool needs; drives the approval gate.
+ * The registration idiom now lives in CORE (`core/src/plugin/registration.ts`),
+ * next to the keys it registers into. It moved so an extension plugin package
+ * can depend on `core` ALONE — importing these helpers from this package would
+ * have made the kernel frame and its own extension packages a dependency cycle.
+ * Re-exported here so `@nova-agent/plugins`'s public API is unchanged.
  */
-export function registerTool(ctx: Context, tool: ToolDefinition, permission: ToolPermissionKind): void {
-  const registry = ctx.must(toolsKey);
-  const owner = ctx.fiber?.name ?? 'assembly';
-  ctx.effect(() => registry.register(tool, { permission, owner }), `tool(${tool.name})`);
-}
-
-/** Register one slash command, owned by the calling plugin's fiber. */
-export function registerCommand(ctx: Context, command: CommandDefinition): void {
-  const registry = ctx.must(commandsKey);
-  ctx.effect(() => registry.register(command), `command(/${command.name})`);
-}
+export { registerCommand, registerTool } from '@nova-agent/core';

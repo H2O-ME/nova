@@ -19,8 +19,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ChatProvider, ChatRequest, KernelEvent, StreamEvent } from '@nova-agent/core';
+import { createAgentKernel } from '@nova-agent/plugins';
 import { parseClientFrame } from '../src/client-frame.js';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 import type { ClientFrame, ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 
@@ -95,25 +97,33 @@ async function makeRig(opts: {
   keepFrames?: boolean;
   /** Boot with these plugins switched off in the config, as a restart would. */
   bootDisable?: string[];
+  /** Boot with one enabled extension whose module is missing (see `extensions.ts`). */
+  failedExtension?: boolean;
 } = {}): Promise<Rig> {
   const root = await mkdtemp(path.join(tmpdir(), 'nova-manage-root-'));
   if (opts.skills === true) {
     await writeSkill(root, 'alpha', 'first skill');
     await writeSkill(root, 'beta', 'second skill');
   }
+  const pluginsConfig = {
+    ...(opts.bootDisable !== undefined ? { disable: [...opts.bootDisable] } : {}),
+    ...(opts.failedExtension === true ? { enable: ['context'] } : {}),
+  };
   const pluginsOff: string[] = [];
   const pluginsOn: string[] = [];
   const skillsOff: string[] = [];
   const sent: unknown[] = [];
-  const controller = await WebController.create({
+  const kernel = await createAgentKernel({
     rootDir: root,
     provider: provider(),
     config: {
       approval: 'read-only',
       ...(opts.codeMode !== undefined ? { code: { mode: opts.codeMode } } : {}),
-      ...(opts.bootDisable !== undefined ? { plugins: { disable: [...opts.bootDisable] } } : {}),
+      ...(Object.keys(pluginsConfig).length > 0 ? { plugins: pluginsConfig } : {}),
     },
-    providerModelLabel: 'test-model',
+    ...(opts.failedExtension === true
+      ? { extensionSpecs: { context: path.join(root, 'missing-ext.mjs') } }
+      : {}),
     persistConfig: {
       setPluginEnabled: (name, enabled) => {
         if (opts.persistThrows === true) throw new Error('disk is on fire');
@@ -140,6 +150,18 @@ async function makeRig(opts: {
         return Promise.resolve([...skillsOff]);
       },
     },
+    ...(opts.liveQqBot === true
+      ? {
+          // The real shell injects its qqbot plugin via `extraPlugins` (the
+          // bridge's plugin joins the roster at assembly); without a row named
+          // qqbot the flip is refused as unknown before `stop` could matter.
+          extraPlugins: [{ name: 'qqbot', apply: () => {} }],
+        }
+      : {}),
+  });
+  const controller = await WebController.create({
+    kernel,
+    providerModelLabel: 'test-model',
     ...(opts.qqBot === true
       ? {
           persistQqBot: (saved: { appId?: string; clientSecret?: string }) => { sent.push(saved); },
@@ -152,10 +174,6 @@ async function makeRig(opts: {
       : {}),
     ...(opts.liveQqBot === true
       ? {
-          // The real shell injects its qqbot plugin via `extraPlugins` (the
-          // bridge's plugin joins the roster at assembly); without a row named
-          // qqbot the flip is refused as unknown before `stop` could matter.
-          extraPlugins: [{ name: 'qqbot', apply: () => {} }],
           qqBotRuntime: {
             running: () => false,
             // The seam this test pins: turning the row OFF must reach the
@@ -313,6 +331,24 @@ describe('plugin manager frames', () => {
     });
   });
 
+  it('carries a failed extension row with its reason (state failed, not merely off)', async () => {
+    // An enabled extension whose package cannot load must reach the panel as
+    // `state: 'failed'` WITH the reason: every failed treatment in the UI
+    // (group count, sort-to-top, 失败 label) keys off that state, and without
+    // `error` the reader sees a switch that is on with nothing loaded and no
+    // explanation.
+    await withFakeHome(async () => {
+      const { controller, conn } = await makeRig({ failedExtension: true });
+      await drive(controller, conn, { type: 'roster' });
+      const answer = conn.last('roster');
+      const row = answer?.entries.find((entry) => entry.name === 'context');
+      expect(row).toBeDefined();
+      expect(row?.state).toBe('failed');
+      expect(row?.enabled).toBe(false);
+      expect(row?.error).toBeTruthy();
+    });
+  });
+
   it('surfaces a persister failure as an error frame, not a crash', async () => {
     await withFakeHome(async () => {
       const { controller, conn } = await makeRig({ persistThrows: true });
@@ -459,7 +495,7 @@ describe('management frames with no persistence wired', () => {
   it('refuses a flip instead of pretending it landed', async () => {
     await withFakeHome(async () => {
       const root = await mkdtemp(path.join(tmpdir(), 'nova-manage-nop-'));
-      const controller = await WebController.create({
+      const controller = await bootController({
         rootDir: root,
         provider: provider(),
         config: { approval: 'read-only' },

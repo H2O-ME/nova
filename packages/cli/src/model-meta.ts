@@ -1,7 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
-import { novaHome } from './config.js';
+import { modelsDevStorePath } from '@nova-agent/core';
 import { humanTokens } from "./lines.js";
 
 /**
@@ -144,10 +143,6 @@ export interface ModelMetaStoreOptions {
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 
-export function modelMetaCacheFile(homedir: string = os.homedir()): string {
-  return path.join(novaHome(homedir), 'cache', 'models-dev.json');
-}
-
 async function defaultFetchRaw(url: string): Promise<unknown> {
   const res = await fetch(url, {
     headers: { accept: 'application/json', 'user-agent': 'nova-agent' },
@@ -160,7 +155,7 @@ async function defaultFetchRaw(url: string): Promise<unknown> {
 export function createModelMetaStore(options: ModelMetaStoreOptions = {}): ModelMetaStore {
   const url = options.url ?? MODELS_DEV_URL;
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
-  const cacheFile = options.cacheFile ?? modelMetaCacheFile();
+  const cacheFile = options.cacheFile ?? modelsDevStorePath();
   const now = options.now ?? (() => Date.now());
   const fetchRaw = options.fetchRaw ?? defaultFetchRaw;
 

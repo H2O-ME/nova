@@ -64,6 +64,21 @@ export function toolOutputsDir(sessionId?: string, homedir: string = os.homedir(
   return sessionId === undefined ? root : path.join(root, sessionId);
 }
 
+/** Web surface stores: the last bound port (origin survives restarts) and the
+ * launch pairing (cookies outlive the process — a PWA needs no URL token). */
+export function webPortStorePath(homedir: string = os.homedir()): string {
+  return path.join(cacheRoot(homedir), 'web-port.json');
+}
+
+export function webAuthStorePath(homedir: string = os.homedir()): string {
+  return path.join(cacheRoot(homedir), 'web-auth.json');
+}
+
+/** models.dev catalog cache: `~/.nova/cache/models-dev.json` — the sole definition. */
+export function modelsDevStorePath(homedir: string = os.homedir()): string {
+  return path.join(cacheRoot(homedir), 'models-dev.json');
+}
+
 /*
  * There is no `uploadsDir`. It named `~/.nova/cache/uploads/`, where a dropped
  * file's bytes were copied so `read_file` could reach them — but a local file

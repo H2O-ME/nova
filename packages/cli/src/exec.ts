@@ -1,12 +1,9 @@
-import type { ApprovalMode } from '@nova-agent/plugins';
 import {
   type AgentSession,
-  type ChatProvider,
+  type AgentSurfaceRuntime,
   type KernelEvent,
-  type SurfaceRows,
 } from '@nova-agent/core';
 import { createNotifier } from './notify.js';
-import { bootKernel, createProvider } from './kernel-boot.js';
 import {
   emptyCompletionNotice,
   plainPaint,
@@ -19,6 +16,7 @@ import {
   type Paint,
 } from './lines.js';
 import type { Config } from './config.js';
+import type { BuiltinSurface } from './surface-host.js';
 
 /**
  * `--json` 模式下 KernelEvent 之外的两类控制行（AGENTS.md §2 记载的 schema）。
@@ -31,18 +29,10 @@ export type ExecControlEvent =
   | { type: 'notice'; text: string };
 
 export interface ExecOptions {
-  rootDir: string;
-  config: Config;
   /** The task to execute in one non-interactive run. */
   prompt: string;
   /** Emit every kernel event as JSONL instead of human-readable text. */
   json: boolean;
-  resumeFile?: string;
-  approvalOverride?: ApprovalMode;
-  /** Configured surfaces (see `BootOptions.surfaces`): forwarded to the kernel. */
-  surfaces?: SurfaceRows;
-  /** Injectable for tests; defaults to OpenAICompatClient from config. */
-  provider?: ChatProvider;
   /** Injectable raw output sink for tests; defaults to process.stdout.write. */
   out?: (text: string) => void;
 }
@@ -56,28 +46,13 @@ export interface ExecOptions {
  * INSIDE every request (perRequestCompact): one run spans the whole task,
  * the boundary checks could never fire here.
  */
-export async function runExec(opts: ExecOptions): Promise<void> {
-  const { rootDir, config, prompt, json } = opts;
+export async function runExec(runtime: AgentSurfaceRuntime, config: Config, opts: ExecOptions): Promise<void> {
+  const { prompt, json } = opts;
+  const kernel = runtime.kernel;
   const write = opts.out ?? ((text: string) => process.stdout.write(text));
   // 调色板装配单源 resolvePaint（与 repl 同路）：尊重 ui.theme 与
   // NO_COLOR/TERM=dumb；注入 sink（测试）恒无色。
   const paint: Paint = opts.out === undefined ? resolvePaint(config.ui?.theme ?? 'dark') : plainPaint;
-
-  // Test-injected provider takes precedence. The cache-affinity session id is
-  // bound inside the kernel (its `llm` service), so nothing to rebind here.
-  const provider: ChatProvider = opts.provider ?? (await createProvider(config));
-  // Non-interactive: nobody can answer an approval prompt, so requests are
-  // denied without dispatching an asker (fail-closed; no ask-path audit exists).
-  const kernel = await bootKernel({
-    rootDir,
-    config,
-    provider,
-    policy: 'never',
-    perRequestCompact: true,
-    ...(opts.approvalOverride !== undefined ? { approvalOverride: opts.approvalOverride } : {}),
-    ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
-    ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
-  });
 
   if (!json) write(`${paint.cyan('›')} ${prompt}\n`);
   const notify = createNotifier({ enabled: opts.out === undefined && config.notify !== false });
@@ -121,6 +96,57 @@ export async function runExec(opts: ExecOptions): Promise<void> {
     await kernel.jobs.dispose().catch(() => undefined);
   }
   process.exitCode = ctx.exitCode;
+}
+
+/**
+ * `nova exec "<task>"` — the headless surface: one task, event stream out
+ * (`KernelEvent` JSONL under `--json`), process exit code as the verdict.
+ *
+ * The task text is the first positional after `exec`, or stdin when piped;
+ * nobody can answer an approval prompt here, so the assembly runs the session
+ * under the `never` policy (read-only tools still work) and auto-compaction
+ * gates INSIDE every request (`perRequestCompact`) — one run spans the whole
+ * task, boundary checks could never fire.
+ */
+export function execSurface(config: Config): BuiltinSurface {
+  return {
+    surface: {
+      name: 'exec',
+      claim: (request) => request.flags.positional[0] === 'exec',
+      start: async (runtime) => {
+        const prompt = await execPrompt(runtime.request.flags.positional);
+        if (prompt === undefined) return;
+        await runExec(runtime, config, { prompt, json: runtime.request.flags.json });
+      },
+    },
+    boot: {
+      kernel: () => ({ perRequestCompact: true }),
+      afterBoot: (kernel) => kernel.permission.setPolicy('never'),
+    },
+  };
+}
+
+/** `nova exec "<task>"`, or the task piped in on stdin (CI-friendly). */
+async function execPrompt(positional: readonly string[]): Promise<string | undefined> {
+  let prompt = positional.slice(1).join(' ').trim();
+  if (prompt.length === 0 && process.stdin.isTTY !== true) prompt = (await readStdin()).trim();
+  if (prompt.length === 0) {
+    console.error('usage: nova exec "<task>"（或通过管道传入任务文本）');
+    process.exitCode = 1;
+    return undefined;
+  }
+  return prompt;
+}
+
+export function readStdin(): Promise<string> {
+  return new Promise((resolve) => {
+    let text = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk: string) => {
+      text += chunk;
+    });
+    process.stdin.on('end', () => resolve(text));
+  });
 }
 
 interface ExecCtx {

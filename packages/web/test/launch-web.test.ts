@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { StreamEvent } from '@nova-agent/core';
+import { createAgentKernel } from '@nova-agent/plugins';
 import { launchWeb } from '../src/index.js';
 import type { WebServerHandle } from '../src/server.js';
 import { exchange } from './helpers/ws-client.js';
@@ -64,17 +65,22 @@ async function launchCookie(url: string): Promise<string> {
 describe('launchWeb option forwarding', () => {
   it('hands the controller the injected option instead of dropping it', async () => {
     const saved: string[] = [];
-    handle = await launchWeb({
+    // 装配归壳：modelCatalog 是内核选项（见 cli/kernel-boot.ts 的透传），
+    // persistModel 是 controller 选项——本用例证明 launchWeb 不丢后者。
+    const kernel = await createAgentKernel({
       rootDir,
       provider: stubProvider(),
       config: { approval: 'read-only' },
-      providerModelLabel: 'm1',
-      staticDir,
       // A real launch always has one (the shell resolves models.dev metadata).
       modelCatalog: {
         label: 'endpoint',
         describe: async (id: string) => ({ name: id }),
       },
+    });
+    handle = await launchWeb({
+      kernel,
+      providerModelLabel: 'm1',
+      staticDir,
       persistModel: (model) => {
         saved.push(model);
       },
@@ -91,13 +97,12 @@ describe('launchWeb option forwarding', () => {
   it('keeps a hosting option out of the controller options', async () => {
     // `staticDir` belongs to the server, not the controller; stripping it must
     // not also strip real controller options.
-    handle = await launchWeb({
+    const kernel = await createAgentKernel({
       rootDir,
       provider: stubProvider(),
       config: { approval: 'read-only' },
-      providerModelLabel: 'm1',
-      staticDir,
     });
+    handle = await launchWeb({ kernel, providerModelLabel: 'm1', staticDir });
     // Serving the built asset proves `staticDir` reached the SERVER: the entry
     // point kept it for hosting while forwarding the rest.
     const cookie = await launchCookie(handle.url);

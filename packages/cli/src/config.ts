@@ -34,6 +34,7 @@ const configSchema = z.object({
        */
       contextWindow: z.number().int().positive().max(200_000_000).optional(),
     })
+    .strict()
     .optional(),
   /**
    * 供应商清单（BYOK 多端点）。每一项是一个**独立的 OpenAI 兼容端点**，各有自己的
@@ -88,6 +89,7 @@ const configSchema = z.object({
     .object({
       theme: z.enum(['dark', 'light', 'plain']).optional(),
     })
+    .strict()
     .optional(),
   tools: z
     .object({
@@ -97,6 +99,7 @@ const configSchema = z.object({
           timeoutMs: z.number().int().positive().optional(),
           shellPath: z.string().optional(),
         })
+        .strict()
         .optional(),
       /**
        * PTC 模式（Cloudflare Code Mode，dsh 简化版）：模型针对工具注册表
@@ -113,8 +116,10 @@ const configSchema = z.object({
           maxOutputBytes: z.number().int().positive().optional(),
           maxOldGenerationSizeMb: z.number().int().positive().optional(),
         })
+        .strict()
         .optional(),
     })
+    .strict()
     .optional(),
   /**
    * 插件 roster（M11 批10）：disable 列出**不加载**的内置插件（名字即
@@ -135,6 +140,7 @@ const configSchema = z.object({
       enable: z.array(z.string().min(1)).optional(),
       extra: z.array(z.string().min(1)).optional(),
     })
+    .strict()
     .optional(),
   /**
    * Skills 开关（设置面板「Skill 中心」的可视写入面）：disable 按 skill 名全局
@@ -145,6 +151,7 @@ const configSchema = z.object({
     .object({
       disable: z.array(z.string().min(1)).optional(),
     })
+    .strict()
     .optional(),
   /**
    * QQ 机器人模式（nova qqbot）：腾讯机器人开放平台 WebSocket 通道。凭据在
@@ -155,6 +162,7 @@ const configSchema = z.object({
       appId: z.string().min(1),
       clientSecret: z.string().min(1),
     })
+    .strict()
     .optional(),
   /**
    * 表面插件（surface 插件）——配置层动态加载的人机界面入口。每条是一个
@@ -162,14 +170,14 @@ const configSchema = z.object({
    * 动态 `import()`，其 `default`（或 `surface`）导出须是 `AgentSurface`。与
    * `plugins.extra` 同一套解析规则（见 `roster.ts` 的 `resolveModuleSpec`）。
    *
-   * 终端界面就是这样加载的：`--tui` 要求这里写一条指向 tui-app 的 surface
-   * 子路径。cli 源码不依赖任何 surface 包——这里只是配置声明模块 id，第三方
+   * cli 源码不依赖任何 surface 包——这里只是配置声明模块 id，第三方
    * surface 写法相同：写一行包名即可替换或新增界面，不必改源码。
    */
   surfaces: z.array(z.string().min(1)).optional(),
 })
-// Strict: a typo'd key ("apporval") is a silent no-op on a lenient schema
-// and a confusing wrong-way run. Fail at load with the offending key named.
+// Strict at every level: a typo'd key ("apporval", "temprature",
+// "tools.code.modee") is a silent no-op on a lenient schema and a confusing
+// wrong-way run. Fail at load with the offending key named.
 .strict();
 
 export type Config = z.infer<typeof configSchema>;

@@ -13,6 +13,11 @@ export default defineConfig({
       // touches the channel red in the fast ring while staying green in the
       // full one (which builds first). Tests read source, never stale output.
       '@nova-agent/qqbot': fileURLToPath(new URL('./packages/qqbot/src/index.ts', import.meta.url)),
+      // Extension packages, same source-plane rule: tests read their sources,
+      // never a possibly stale dist.
+      '@nova-agent/plugin-subagent': fileURLToPath(new URL('./packages/plugin-subagent/src/index.ts', import.meta.url)),
+      '@nova-agent/plugin-context': fileURLToPath(new URL('./packages/plugin-context/src/index.ts', import.meta.url)),
+      '@nova-agent/plugin-ptc': fileURLToPath(new URL('./packages/plugin-ptc/src/index.ts', import.meta.url)),
     },
   },
   test: {

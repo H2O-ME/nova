@@ -20,22 +20,23 @@ import {
   SessionListing,
   sessionsRoot,
   sessionWorkspace,
-  unconfiguredProvider,
   type AgentSession,
   type ApprovalMode,
   type ConfiguredModel,
   type KernelEvent,
 } from '@nova-agent/core';
-import { createAgentKernel, type Kernel } from '@nova-agent/plugins';
+import type { Kernel } from '@nova-agent/plugins';
 import { ModelSeat } from './model-seat.js';
 import { assembleReady } from './ready.js';
 import { SessionPages } from './session-pages.js';
+import { ContextFollow } from './context-follow.js';
 import type { ClientFrame, ServerFrame } from './protocol.js';
 import { ClientFanout } from './clients.js';
 import { SessionFollow } from './session-follow.js';
 import type { WsConnection } from './ws.js';
 import type { ControllerOptions } from './options.js';
 import type { ProviderHost } from './provider-frames.js';
+import type { PickFn } from './picker-frames.js';
 import { handleFrame } from './frame-router.js';
 import { wireFrame } from './wire-frame.js';
 
@@ -61,6 +62,17 @@ export class WebController {
   private readonly sessions = new SessionListing(sessionsRoot());
   /** The two frozen windows a client pages back through (see `session-pages.ts`). */
   private readonly pages = new SessionPages();
+  /** The Context panel's fold (see `context-follow.ts`); null-timeline when the plugin is off. */
+  private readonly context = new ContextFollow();
+  /**
+   * Whether the `context` plugin was providing a reading at the last look.
+   *
+   * The one thing a settings flip must reach: turning the row on or off swaps
+   * the provider, and the panel has to learn that from a frame. `ready` states
+   * it at every attach, so this starts at the boot-time answer and only ever
+   * fires on a CHANGE — a flip, not every frame.
+   */
+  private contextAvailable = false;
   /**
    * The approval tier settings picked, applied to every session created after
    * it. The config file stays the boot default (the server does not rewrite
@@ -126,36 +138,18 @@ export class WebController {
     private readonly readProviders: ProviderHost['readProviders'],
     private readonly storedApiKey: ProviderHost['storedApiKey'],
     private readonly configuredModel: ProviderHost['configuredModel'],
+    /** The native-dialog override for `pick_file` / `pick_directory` (tests). */
+    private readonly pickPath: PickFn | undefined,
   ) {
     this.kernel = kernel;
     this.seat = seat;
   }
 
   static async create(opts: ControllerOptions): Promise<WebController> {
-    const kernel = await createAgentKernel({
-      rootDir: opts.rootDir,
-      // Absent means "no endpoint configured yet": the kernel still assembles
-      // (it needs a provider to type its `llm` service), so the shell passes a
-      // refusing placeholder rather than making the whole surface conditional on
-      // a config the operator has not written. See `ControllerOptions.provider`.
-      provider: opts.provider ?? unconfiguredProvider(),
-      config: opts.config,
-      ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
-      ...(opts.modelCatalog !== undefined ? { modelCatalog: opts.modelCatalog } : {}),
-      ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
-      // The browser is a surface WITH a human: `ask_user_question` is answerable
-      // here, so the tool gets the kernel's answerer. This line is the whole
-      // difference between `nova` and `nova exec` for that tool.
-      userQuestions: true,
-      ...(opts.persistConfig !== undefined ? { persistConfig: opts.persistConfig } : {}),
-      // The shell's own plugins (the qqbot channel for `nova --web`). Passed
-      // through rather than built here: this package must not know any channel.
-      ...(opts.extraPlugins !== undefined ? { extraPlugins: [...opts.extraPlugins] } : {}),
-    });
-    // Hand the assembled kernel back to the shell BEFORE any session exists: a
-    // contributed channel needs it to run a peer turn, and the channel had to be
-    // built before the kernel (its plugin is part of the assembly).
-    opts.onKernelReady?.(kernel);
+    // 装配由壳完成（`cli/kernel-boot.ts` 的 bootKernel）：controller 只消费内核。
+    // 「未配置端点也要能起」由壳在装配时用占位 provider 表达（见 web-mode）；
+    // 三个装配点由此收敛为一处，「新选项被静默丢掉」这类缝一并消失。
+    const kernel = opts.kernel;
     const controller = new WebController(
       kernel,
       new ModelSeat(kernel.models, opts.providerModelLabel, opts.contextWindow, opts.providerModelName),
@@ -163,16 +157,14 @@ export class WebController {
       opts.persistModel,
       opts.persistQqBot,
       // The qqbot diagnostic rides its own snapshot: a plugin whose `{env:NAME}`
-      // did not resolve is reported in the panel that owns it (see
-      // `pluginDiagnostics`), never as a startup failure.
+      // did not resolve (or an absent extension) is reported in the panel that
+      // owns it, never as a startup failure.
       {
         ...opts.qqBotConfig,
         ...(opts.pluginDiagnostics?.['qqbot'] !== undefined ? { error: opts.pluginDiagnostics['qqbot'] } : {}),
       },
       opts.testQqBot,
       opts.recheckQqBot,
-      // Live channel, or absent: without it a save writes the file and nothing
-      // dials out (see the constructor's note).
       opts.qqBotRuntime,
       opts.persistModels,
       opts.readModels ?? (async () => []),
@@ -180,8 +172,12 @@ export class WebController {
       opts.readProviders ?? (async () => ({ providers: [] })),
       opts.storedApiKey ?? (() => undefined),
       opts.configuredModel ?? (() => undefined),
+      opts.pickPath,
     );
     controller.followSession();
+    // The boot-time answer, so the first inbound frame does not look like a flip:
+    // `ready` already stated it, and only a CHANGE is worth a frame.
+    controller.contextAvailable = controller.context.available(kernel);
     return controller;
   }
 
@@ -215,6 +211,7 @@ export class WebController {
       seat: this.seat,
       sessions: this.sessions,
       pages: this.pages,
+      context: this.context,
       persistModel: this.persistModel,
       persistQqBot: this.persistQqBot,
       qqBotSnapshot: () => this.qqBotSnapshot ?? {},
@@ -230,6 +227,7 @@ export class WebController {
       configuredModel: this.configuredModel,
       approvalDefault: () => this.approvalDefault,
       setApprovalDefault: (mode) => { this.approvalDefault = mode; },
+      pickPath: this.pickPath,
       broadcast: (text) => { this.clients.broadcast(text); },
       readyFrame: () => this.readyFrame(),
       broadcastState: () => { this.broadcastState(); },
@@ -239,6 +237,18 @@ export class WebController {
     // AFTER the frame: a workspace move replaces the session inside the kernel,
     // so follow it here rather than making every handler remember to.
     this.followSession();
+    // …and after a plugin flip the provider may have appeared or gone, which is
+    // the Context panel's whole on/off. Checked after EVERY frame (a map lookup)
+    // because "which frame flipped it" is exactly the knowledge that rots.
+    this.syncContextAvailability();
+  }
+
+  /** Tell every client when the context reading appeared or went away. */
+  private syncContextAvailability(): void {
+    const available = this.context.available(this.kernel);
+    if (available === this.contextAvailable) return;
+    this.contextAvailable = available;
+    this.clients.broadcast(serialize(this.context.frame(this.agent, this.kernel)));
   }
 
   /** Session-switch replies carry a fresh `ready` (new transcript baseline). */
@@ -307,16 +317,23 @@ export class WebController {
    * the kernel keeps working.
    */
   private followSession(): void {
-    this.follow.follow(this.kernel.agent, (event) => {
-      if (event.type === 'model') {
-        // The seat follows the session, then every client is re-stated with the
-        // same `state` frame the mode switches use — it answers the same
-        // question: "what is in force right now".
-        this.seat.apply(event.model, { ...(event.name !== undefined ? { name: event.name } : {}), ...(event.contextWindow !== undefined ? { contextWindow: event.contextWindow } : {}) });
-        this.broadcastState();
-      }
-      this.clients.broadcast(serialize(wireFrame(this.kernel, event)));
-    });
+      this.follow.follow(this.kernel.agent, (event) => {
+        if (event.type === 'model') {
+          // The seat follows the session, then every client is re-stated with the
+          // same `state` frame the mode switches use — it answers the same
+          // question: "what is in force right now".
+          this.seat.apply(event.model, { ...(event.name !== undefined ? { name: event.name } : {}), ...(event.contextWindow !== undefined ? { contextWindow: event.contextWindow } : {}) });
+          this.broadcastState();
+        }
+        this.clients.broadcast(serialize(wireFrame(this.kernel, event)));
+        // The context fold is measured at the REQUEST's end (a run's messages
+        // and tool results are what the reading prices), and a run's end is a
+        // request's end before it is anything else — so the freshest reading
+        // rides the `run_stats` event rather than waiting for the panel to ask.
+        if (event.type === 'run_stats') {
+          this.clients.broadcast(serialize(this.context.frame(this.agent, this.kernel)));
+        }
+      });
   }
 
   /**
@@ -333,6 +350,7 @@ export class WebController {
         seat: this.seat,
         pages: this.pages,
         ...(this.version !== undefined ? { version: this.version } : {}),
+        context: this.context.reading(this.agent, this.kernel),
       }),
     });
   }

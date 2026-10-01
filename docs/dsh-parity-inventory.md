@@ -24,10 +24,10 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 | 7 | `ui-conversation` | 126 / 27071 | `conversation/`(19)、`composer/`(33)、`chat/ChatView.tsx` | 部分 |
 | 8 | `ui-deliverables` | 43 / 5085 | — | **未对齐** |
 | 9 | `ui-directory-picker-browse` | 11 / 3666 | `conversation/DirectoryBrowser.tsx` | 对齐 |
-| 10 | `ui-directory-picker-native` | 8 / 468 | — | **N/A**（N3） |
+| 10 | `ui-directory-picker-native` | 8 / 468 | `web/src/native-picker.ts` + `picker-frames.ts`、`web/ui/src/shell/native-pick.ts` | **已对齐**（机制同源；实现路径偏离见下方 N4，勿修回） |
 | 11 | `ui-dockkit` | 37 / 8922 | `composer/DockStack.tsx` | 部分 |
 | 12 | `ui-goal` | 19 / 1979 | `conversation/GoalPanel.tsx`、`composer/claim-hint.ts`、`plugins/goal-command.ts` | **已对齐**（dsh `GoalBar` 的动作按钮条未移植，面板暂只读） |
-| 13 | `ui-input-trigger` | 22 / 4193 | `composer/{command-menu,reference-menu}`、`InputBar.tsx` | 部分 |
+| 13 | `ui-input-trigger` | 22 / 4193 | `composer/{command-menu,reference-menu,reference-crumbs,ComposerMenu,ComposerCrumbs}`、`InputBar.tsx` | **已对齐**（@ 的目录列举语义、下钻面包屑、folder/file 行图标、「文件」节标题与 dsh `ui-reference`/`MenuView` 同源；dsh 的会话候选源未做——本仓没有 session reference 通道） |
 | 14 | `ui-jobs` | 11 / 1777 | `flow/StatusRows.tsx` | 部分 |
 | 15 | `ui-layout` | 21 / 2781 | `shell/{AppFrame,columns,layout-store,use-layout}` | 对齐 |
 | 16 | `ui-message-feedback` | 21 / 2867 | `chat/MessageIconActions.tsx`（**仅复制**；分叉按钮已渲染但从未接通，见未对齐明细 11） | 部分 |
@@ -75,7 +75,7 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 - **N1 `ui-slots` / `ui-renderer`**：dsh 的插件化 UI 靠**运行时插槽注册表**（`ui-slots` 声明、`ui-renderer` 安装渲染器），才有「第三方 UI 模块热装进同一界面」。Nova 的前端是**单一 Vite 构建的静态产物**，没有浏览器侧插件加载器，插槽概念没有承载物。**空目录不是缺陷**：把插槽注册表搬进来而没有第三方 UI 模块可注册，就是一层无人消费的抽象（AGENTS.md §5「`surfaces` 键无消费者」是同类反面教材）。
 - **N2 `ui-settings-account`**：管理 DeepSeek 账号登录与平台计费页。Nova 面向**任意 OpenAI 兼容端点**、凭证来自 `~/.nova/config.json` 的 `apiKey`（含 `{env:NAME}`），**没有账号体系**可登录，也没有计费后台。
 - **N3 `ui-open-in-app`**：调宿主原生能力打开目录/文件（Finder/资源管理器/revealInOS）。浏览器标签页没有这类 API；Nova 的等价能力是 `list_directory` + 目录浏览弹窗（AGENTS.md §5 已记录 `showDirectoryPicker()` 拿不到路径）。
-- **N4 `ui-directory-picker-native`**：桌面/Host 原生目录选择器，同 N3。
+- **N4 `ui-directory-picker-native`**：已补齐（2026-09-30，`pick_file` / `pick_directory` 帧 → 宿主原生对话框）。**机制同源，实现路径偏离，勿修回**：dsh Windows 用 koffi+COM 驱动 `IFileOpenDialog` 子进程，macOS `osascript`、Linux zenity→kdialog；Nova 零第三方依赖，Windows 走 PowerShell + WinForms、POSIX 仅 zenity（macOS 无 zenity 时回落进程内浏览器，osascript 未加）。**前台处理刻意不同**：dsh 在 Show 前合成一次 Alt 按键（`keybd_event(VK_MENU)`）解锁前台；**本仓实测否决了这条**——Alt 是全球按键，在火狐里会弹出传统菜单栏（用户报告的「卡出旧版火狐菜单栏」）。改用 WinForms 定时器轮询 `SetWindowPos(HWND_TOPMOST)` + `SetForegroundWindow` 顶自己的 `#32770` 窗口，零按键注入；轮询是必需的（窗口在 ShowDialog 之后才创建，且 `FolderBrowserDialog` 自己永远不激活——它正是用户报告「被盖在浏览器下面」的那条）。dsh 的中止协议（`WM_CLOSE` 重投 + kill 兜底）未移植——Nova 的 pick 子进程无超时、随断连收敛，不做中止。
 - **N5 `ui-sidebar-terminal` / `ui-sidebar-browser`**：右栏交互式 shell 与沙箱浏览器 tab。Nova 的右栏只有**工具详情侧板**；终端与内嵌浏览器都是大块独立能力，且 dsh 侧依赖其桌面宿主。**不是遗漏，是未立项**。
 
 ## 未对齐明细（按可实施性排序）
@@ -204,6 +204,18 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 - **测试**：`config.test.ts` 新增 11 条（插件段降级 + 核心段仍致命 + 混合文档 + 每变量只报一次 + 从磁盘取判定）。**变异验证**：把 `qqbot` 移出插件白名单 → **4 条立刻变红**。另加 UI 静态渲染测试（有 error 时显示、健康时不显示）。
 - **归档**：`config-write.ts` 按职责拆出 `config-doc.ts`（**怎么改**）与 `config-read.ts`（**读什么**：存的是哪个变量引用、现在能不能用），`config-write.ts` 只留「改什么」。
 
+### 上下文视图按 `dsh-context` 重做（第 9 轮：用户点名「插件显示页面有些简陋，没达到」）
+
+参照 = 第三方 dsh 插件 `dsh-context`（Apache-2.0，本地 `D:\下载\dsh-context-main`，其自带 `AGENTS.md`）。**对齐的是几何与词汇，不是代码**——它的客户端（1.4 万行、Tailwind 类 + 宿主 `@deepseek-ai/*` 原语）搬不进本仓，逐项换算到本仓的 CSS module + token 层与 fold 的数据面。
+
+- **对齐取值**：构成条 16px（原 12px）、段间 2px 缝、未占满的窗口画斜纹剩余区；趋势图 130px 画布 + 18px 头、14px 柱宽、2px 节奏、左侧 44px 轴栏、5 档刻度（1/¾/½/¼/0）与虚线网格 + 实线零基线；行/卡节奏沿用 pane 既有（12px 卡内边距、tabular 数字、`--dsw-*` 色）。
+- **对齐词汇**（`locale` 的 key 反查所得）：`当前上下文 / 上下文趋势 / 上下文事件 / 文件活动 / 轮次 / 请求 / 工具调用 / 缓存命中 / 读取 · 写入 · 搜索 / 全部 / 约 N tokens（估算）`。分类名沿用本仓既有（系统提示/工具定义/注入上下文/用户输入/助手回复/工具结果），与 chat 侧一致。
+- **对齐结构**：统计条（新）、当前上下文（大号读数 + 已用百分比 + 悬停联动的图例）、趋势（真图表 + 悬停气泡 + 点击钉住 + 明细行）、**窗口元素**（新卡：构成条的「开箱」，按占用降序 + 类别筛选）、事件（kind 筛选 chips + 着色药丸）、文件（按用途逐枚徽章 + `+增/−删`）。
+- **刻意未移植（数据面不在本仓）**：费用/计价与模型价格表、跨会话仪表盘与热力图、计时 spans、智能体网络图、**轮次条**（会话日志没有 turn/step 坐标——`ContextPoint` 只有 `seq`/`at`）、**自动压缩预留带**（内核按 `autoCompactTokenLimit` 绝对阈值压缩，窗口比例不是本仓的事实；要画得先把它加进 `ready`）、DNA 模式与上下文浏览器（元素列表已上，但正文/头部的 on-demand 历史读取不在本仓协议里）。
+- **不重复读数**：悬停气泡只报「身份 + 总量」，输入/输出/缓存命中归明细行；缓存命中百分比复用 `cacheHitText`（与聊天 pill 同一实现）。
+- **真机量测**（headless Edge + CDP，临时 home + 复制一份真实会话）：六张卡同宽 710 / 同列 x=501（与转录同宽轴）；构成条 680×16；趋势柱 14×112；元素表 19 行；轴刻度 13.4K/10K/6.7K/3.3K/0。变异验证三条：趋势顺序反排、构成条不做饱和、文件徽章退回支配规则——各自立刻变红。
+- **随之修掉的滚动缺陷（用户报告「不能上下滚动，卡在这了」）**：上下文与轨迹两面板在共享 rollport（`[data-conversation-scroll]`）之外各开了一层 `overflow:auto; overscroll-behavior: contain`；面板跟着内容长高，所以那层**永远没有滚动范围**，而 Chrome 对「没有范围 + contain」的元素**就地吞掉滚轮且不链给父级**——整页滚不动。修法：两面板都不再自开滚动条，滚动归共享端口（转录同款 `scrollportOf`）；上下文面板挂载时把端口回锚到顶部。**A/B 实测**：修复前轮滚 → `scrollTop` 恒 0；修复后 → 300；把旧 CSS 注回面板元素 → 又回 0。卡住的三个列表（元素/事件/文件，`max-height: 320px`）也去掉了自写的 `overscroll-behavior-y: contain`，到底后滚轮正常链走（参照实现同样不写）。
+
 ## 差异清单（既有条目）
 - **`ui-user-questions` 的草稿查表崩溃（真 bug，`?? fallback` 缺陷类的第 10 处）**：`decisions.ts` 的四处 `drafts[question.id] ?? EMPTY_DRAFT` 都**挡不住原型链**——问题 id 是**模型给的**（`parseQuestions` 只限长度、不排除 `constructor`），而草稿表是对象字面量，于是 `drafts['constructor']` 取到继承来的 `Object` 函数、`??` 回退**永远不触发**，`isComplete` 拿函数去读 `.length` 抛 `TypeError`，**整张问题卡崩掉**。实测四个函数（`allComplete` / `firstIncomplete` / `buildAnswer` / `isComplete`）全部抛错。修法：`decisions.ts` 新增**唯一**的安全查表 `draftOf(drafts, id)`（`Object.hasOwn`），四处调用点全部改走它；`QuestionPanel.tsx` 的同名写法也一并收口。回归测试用五个继承成员名（`constructor`/`toString`/`valueOf`/`__proto__`/`hasOwnProperty`）钉住，并做变异验证（恢复 `??` 写法后 2 条测试立刻变红）。
 - **`ui-user-questions` 的 Skip 死路（真 bug）**：`Skip` 只移动分页游标、**不记录跳过**，于是 (a) 单题批次的 Skip 是**彻底的空操作**，(b) 多题批次跳过的题永远 `isAnswered === false`，`allAnswered` 恒假，**提交按钮永久禁用**——用户走进死胡同。参照实现用 `completed = answered || skipped` 收口，Nova 缺的就是 `skipped` 这一位。已按 `isComplete` / `allComplete` / `firstIncomplete` / `skipQuestion` 收口，并把「提交被拒时跳到卡住的那一题」也补上。
@@ -212,6 +224,8 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 - **`ui-user-questions` 的卡片头部（用户反馈「UI 效果简陋」后对齐）**：提问卡此前**借用了审批卡的彩色顶部条**（`等待确认` + dot + 序号 badge），而 dsh 的 `QuestionComposer` 是**干净的 header**——问题文本本身是卡片标题（16px/500 的 `h2`，可选 `header` 作为 eyebrow），右上角是折叠 / 放弃两个 24px 图标按钮，**没有彩色条**。已按 dsh 逐行对齐：`QstionPanel.header` 承载标题与折叠/关闭，`strip` 移除；选项前加**序号（单选）/ 勾选框（多选）**指示器（20×20）、选项选中态改为轻浮层背景 + 细边；自定义答案改为**选项形状的一行**（`customRow`，带指示器；无选项时才是独立 `customBlock`）；底部翻页器（`‹ n / m ›`）独立成 `pager`，进度不再挤在 badge 里。**有意保留**：审批卡的彩色条**不能再共用**——dsh 的审批卡本身就是 warn strip（`ApprovalPanel.tsx` 的 `StateDot + waiting`），所以审批卡是对的、别把它当「简陋」改回去。
 
 ## TUI 移植（终端面，`dsh-TUI-main` 参照）
+
+> **状态（2026-09-30）：TUI 已再次整体删除**——`packages/tui` / `packages/tui-app` 不复存在。本节保留为历史记录（当初的移植判定与未对齐清单），**勿据此恢复**。真机验收无法自动化（下文第 3 条）始终未解，是本次删除的直接原因之一；浏览器界面已是富界面，终端保留 readline REPL。若未来重做终端全屏界面，作为第三方 surface 插件另立包（`surfaces` 配置行即可加载）。
 
 参照系：`D:\下载\dsh-TUI-main\dsh-TUI-main`（**只读**）。名义规模 1069 文件 / 约 17.3 MB，`src/` 约 12.5 万行；其中**可移植的 UI 层**约 3.8 万行，**宿主耦合层**约 7.8 万行。
 

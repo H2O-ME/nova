@@ -11,7 +11,7 @@
  * `note` line, a model picker of its own shape (numbered prompt vs panel) and
  * a `clear` of its own kind (console vs transcript).
  */
-import { errMessage, type AgentSession } from '@nova-agent/core';
+import { type AgentSurfaceCommandResult, type AgentSurfaceUi } from '@nova-agent/core';
 import { writeAgentsMd, type ApprovalMode, type Kernel } from '@nova-agent/plugins';
 import type { Config } from './config.js';
 import {
@@ -29,11 +29,22 @@ import {
   themeTarget,
   themeUnknownMessage,
   unknownCommandParts,
-  type ThemeName,
 } from './command-core.js';
-import { COMMAND_SPECS, modeOverviewRows } from './commands.js';
+import { mergedCommandSpecs, modeOverviewRows } from './commands.js';
 import { codeModeLabel, permissionLabel } from './lines.js';
 
+/**
+ * What the runner needs beyond the surface: the kernel, the two host-side
+ * handles (`/model` needs the provider; `/session` / `/plugins` read config),
+ * the cached catalog — and the surface's own PRESENTATION half, which is core's
+ * `AgentSurfaceUi` and nothing else.
+ *
+ * This used to be a parallel interface re-declaring the Ui members
+ * (`note` / `clear` / `theme` / `pickModel` / `bindSession` / `modeHint` /
+ * `exit`) beside it — the audit's "hand-copied second shape". Now there is ONE
+ * presentation contract: the runner speaks `AgentSurfaceUi`, every surface
+ * implements it.
+ */
 export interface CommandPorts {
   kernel: Kernel;
   /**
@@ -47,44 +58,29 @@ export interface CommandPorts {
   };
   config: Config;
   approvalOverride: ApprovalMode | undefined;
-  /** The live theme name (`/theme` with no argument reports it). */
-  theme(): ThemeName;
-  setTheme(theme: ThemeName): void;
-  /** One line for the surface: stdout, or a note in the transcript. */
-  note(text: string, tone?: 'info' | 'warn'): void;
   /** The catalog, cached per shell. */
   fetchModels(): Promise<string[]>;
-  /** The shell's own picker: the chosen model, or undefined when cancelled. */
-  pickModel(models: readonly string[]): Promise<string | undefined>;
-  /** Follow a NEW session handle (subscriptions, panels, affinity). */
-  bindSession(agent: AgentSession): void;
-  /** The shell's own clear: `console.clear()` or an empty transcript. */
-  clear(): void;
-  /** How THIS shell switches modes, appended to the `/mode` header. */
-  modeHint: string;
-  exit(): void | Promise<void>;
+  /** The surface's presentation half (core's contract). */
+  ui: AgentSurfaceUi;
 }
 
-/**
- * `'handled'` = consumed; `'exit'` = shut the shell down; `{prompt}` = the
- * text the shell should send to the model (`/skill` expands into one).
- */
-export type CommandResult = 'handled' | 'exit' | { prompt: string };
+/** `'handled'` = consumed; `'exit'` = shut the surface down; `{prompt}` = send it. */
+export type CommandResult = AgentSurfaceCommandResult;
 
 export async function runAgentCommand(input: string, ports: CommandPorts): Promise<CommandResult> {
   const [cmd = ''] = input.split(/\s+/);
   switch (cmd) {
     case '/exit':
     case '/quit':
-      await ports.exit();
+      await ports.ui.exit();
       return 'exit';
     case '/help':
-      ports.note(helpRows(COMMAND_SPECS).join('\n'));
+      ports.ui.note(helpRows(mergedCommandSpecs(ports.kernel.commands)).join('\n'));
       return 'handled';
     case '/new':
       return newSession(ports);
     case '/session':
-      ports.note(
+      ports.ui.note(
         sessionReportLines({
           file: ports.kernel.agent.session.file,
           messageCount: ports.kernel.agent.messages.length,
@@ -102,7 +98,7 @@ export async function runAgentCommand(input: string, ports: CommandPorts): Promi
       switchTheme(input, ports);
       return 'handled';
     case '/plugins':
-      ports.note(
+      ports.ui.note(
         pluginReportLines({
           approvalMode: ports.kernel.permission.approvalMode,
           override: ports.approvalOverride !== undefined,
@@ -123,33 +119,38 @@ export async function runAgentCommand(input: string, ports: CommandPorts): Promi
     case '/approvals': {
       const next = nextApprovalMode(ports.kernel.permission.approvalMode);
       ports.kernel.permission.setMode(next);
-      ports.note(approvalSwitchLine(next));
+      ports.ui.note(approvalSwitchLine(next));
       return 'handled';
     }
     case '/mode': {
       const mode = ports.kernel.codeMode();
-      ports.note(
+      ports.ui.note(
         [
-          `执行模式：${codeModeLabel(mode)}${ports.modeHint}`,
+          `执行模式：${codeModeLabel(mode)}${ports.ui.modeHint}`,
           ...modeOverviewRows(mode).map((row) => `  ${row.text}`),
         ].join('\n'),
       );
       return 'handled';
     }
-    case '/compact':
-      await compact(ports);
-      return 'handled';
     case '/clear':
-      ports.clear();
+      ports.ui.clear();
       return 'handled';
     case '/init':
-      ports.note(agentsMdWrittenLine(await writeAgentsMd(ports.kernel.rootDir())));
+      ports.ui.note(agentsMdWrittenLine(await writeAgentsMd(ports.kernel.rootDir())));
       return 'handled';
     case '/skill':
       return skill(input, ports);
     default: {
+      // 命令目录的注册命令（/goal 与一切第三方 /registerCommand）归 kernel
+      // runner：壳侧不认识的 /name 先查活目录，有则原样交棒——壳特判一份
+      // 语义就会漂移（/compact 曾两边各写一份，守卫与文案各自演化）。
+      const name = cmd.slice(1);
+      if (ports.kernel.commands.some((entry) => entry.name === name)) {
+        await ports.kernel.runCommand(name, input.slice(cmd.length).trim());
+        return 'handled';
+      }
       const unknown = unknownCommandParts(cmd);
-      ports.note(`${unknown.head}${unknown.hint}`, 'warn');
+      ports.ui.note(`${unknown.head}${unknown.hint}`, 'warn');
       return 'handled';
     }
   }
@@ -160,8 +161,8 @@ async function newSession(ports: CommandPorts): Promise<CommandResult> {
   // The kernel's sessions service re-points current AND re-binds the provider
   // affinity; the shell only follows with its own rendering state.
   const next = await ports.kernel.newAgentSession();
-  ports.bindSession(next);
-  ports.note(newSessionLine(next.session.file));
+  ports.ui.bindSession(next);
+  ports.ui.note(newSessionLine(next.session.file));
   return 'handled';
 }
 
@@ -169,52 +170,38 @@ async function pickModel(ports: CommandPorts): Promise<void> {
   try {
     const models = await ports.fetchModels();
     if (models.length === 0) {
-      ports.note(MODEL_LIST_EMPTY);
+      ports.ui.note(MODEL_LIST_EMPTY);
       return;
     }
-    const chosen = await ports.pickModel(models);
+    const chosen = await ports.ui.pickModel(models);
     if (chosen === undefined) {
-      ports.note('已取消');
+      ports.ui.note('已取消');
       return;
     }
     if (chosen === ports.client.model) {
-      ports.note(`已是当前模型：${chosen}`);
+      ports.ui.note(`已是当前模型：${chosen}`);
       return;
     }
     ports.client.setModel(chosen);
-    ports.note(`模型已切换为 ${chosen}`);
+    ports.ui.note(`模型已切换为 ${chosen}`);
   } catch (err) {
-    ports.note(modelListError(err), 'warn');
+    ports.ui.note(modelListError(err), 'warn');
   }
 }
 
 function switchTheme(input: string, ports: CommandPorts): void {
   const arg = input.trim().split(/\s+/)[1];
   if (arg === undefined) {
-    ports.note(`当前主题：${ports.theme()}（/theme dark|light|plain 切换；NO_COLOR 恒定无色）`);
+    ports.ui.note(`当前主题：${ports.ui.theme()}（/theme dark|light|plain 切换；NO_COLOR 恒定无色）`);
     return;
   }
   const target = themeTarget(arg);
   if (target === undefined) {
-    ports.note(themeUnknownMessage(arg), 'warn');
+    ports.ui.note(themeUnknownMessage(arg), 'warn');
     return;
   }
-  ports.setTheme(target);
-  ports.note(themeSwitchedMessage(target));
-}
-
-async function compact(ports: CommandPorts): Promise<void> {
-  if (ports.kernel.agent.running) {
-    ports.note('本轮进行中，压缩会在轮结束后自动把关（或稍后再试）', 'warn');
-    return;
-  }
-  ports.note('正在压缩会话…');
-  try {
-    const outcome = await ports.kernel.agent.compact('manual');
-    ports.note(`已压缩 — 会话原位压缩（日志保留完整历史），摘要 ${outcome.summary.length} 字，保留 ${outcome.retained} 条最近用户消息`);
-  } catch (err) {
-    ports.note(`压缩失败：${errMessage(err)}`, 'warn');
-  }
+  ports.ui.setTheme(target);
+  ports.ui.note(themeSwitchedMessage(target));
 }
 
 /** `/skill <name>` expands into the prompt that loads the skill body. */
@@ -222,7 +209,7 @@ async function skill(input: string, ports: CommandPorts): Promise<CommandResult>
   const invocation = await expandSkillInvocation(input, ports.kernel.skills);
   if (invocation === undefined) return 'handled'; // not a skill invocation at all
   if (!invocation.ok) {
-    ports.note(invocation.error, 'warn');
+    ports.ui.note(invocation.error, 'warn');
     return 'handled';
   }
   return { prompt: invocation.content };

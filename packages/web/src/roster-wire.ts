@@ -23,6 +23,8 @@ export interface RosterSourceEntry {
   description?: string;
   tier?: string;
   title?: string;
+  /** Why an enabled-but-unloadable extension has no fiber (see the row's field). */
+  error?: string;
 }
 
 /**
@@ -40,5 +42,6 @@ export function toWireRosterEntry(entry: RosterSourceEntry): WireRosterEntry {
     ...(entry.description !== undefined ? { description: entry.description } : {}),
     ...(entry.tier !== undefined ? { tier: entry.tier } : {}),
     ...(entry.title !== undefined ? { title: entry.title } : {}),
+    ...(entry.error !== undefined ? { error: entry.error } : {}),
   };
 }

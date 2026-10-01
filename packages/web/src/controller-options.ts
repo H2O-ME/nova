@@ -1,6 +1,7 @@
-import type { ChatProvider, ConfiguredModel, ModelCatalogPort, Plugin, SurfaceRows } from '@nova-agent/core';
-import type { Kernel, KernelConfig } from '@nova-agent/plugins';
+import type { ConfiguredModel } from '@nova-agent/core';
+import type { Kernel } from '@nova-agent/plugins';
 import type { QqBotRuntime } from './qqbot-frames.js';
+import type { PickFn } from './picker-frames.js';
 import type { WireProviderInput, WireProviderRow } from './provider-wire.js';
 
 /**
@@ -66,27 +67,25 @@ export interface PersistConfigSeams {
   setSkillEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
 }
 
-/** The seams every surface assembles: the endpoint client, plus the writers. */
+/**
+ * The seams the browser surface runs on: the ASSEMBLED KERNEL plus the
+ * persistence seams only the shell can supply.
+ *
+ * 装配权归壳：controller **不**再调用 `createAgentKernel`。这样「谁装内核」全仓
+ * 只有一处（`cli/kernel-boot.ts` 的 `bootKernel`），web 面与 exec / repl / qqbot
+ * 共用同一段装配（含 modelCatalog / persistConfig / extraPlugins / surfaces 的
+ * 转发），三个装配点收敛为一条入口——此前 web 自装一份，正是「新选项被静默丢掉」
+ * 与「两处模型元数据实现」的温床。
+ */
 export interface ControllerOptions extends ProviderSeams {
-  rootDir: string;
-  /**
-   * The endpoint client. OPTIONAL, and that absence is a supported state, not a
-   * gap: a first run has nothing configured yet, and the product must reach a
-   * usable settings page so the operator can add one. `undefined` means "no
-   * endpoint yet" — the UI says so, and the surfaces that cannot work without a
-   * client (`nova exec`, `nova qqbot`) refuse at their own entry points rather
-   * than pretending.
-   */
-  provider?: ChatProvider;
-  config: KernelConfig;
+  /** The assembled kernel. The controller consumes it; it never builds one. */
+  kernel: Kernel;
   /**
    * The running version (the shell's own single source, `cliVersion()`).
    * `ready` carries it so the UI names the build; omitted → the field stays
    * off the wire and the surface keeps its static badge.
    */
   version?: string;
-  /** Resume an existing JSONL log as the first session. */
-  resumeFile?: string;
   /** Display label for the active model (from config; the surface shows it). */
   providerModelLabel: string;
   /**
@@ -101,13 +100,6 @@ export interface ControllerOptions extends ProviderSeams {
    * context gauge; resolving it is the shell's business.
    */
   contextWindow?: number;
-  /**
-   * Metadata for the model picker (display names + context windows). Omitting
-   * it leaves the seat inert: the ids themselves come from the endpoint
-   * (`ChatProvider.listModels`), so this port never becomes a second catalog
-   * that could disagree with the one actually being served.
-   */
-  modelCatalog?: ModelCatalogPort;
   /**
    * Remember a model switch past this process. The seat is in-memory by design
    * (it tracks the live client) and only the shell knows the config file that
@@ -128,7 +120,6 @@ export interface ControllerOptions extends ProviderSeams {
    * durable home", and the page then shows the endpoint's catalog only.
    */
   readModels?: () => Promise<readonly ConfiguredModel[]>;
-  persistConfig?: PersistConfigSeams;
   /**
    * The qqbot snapshot the panel starts from: the app id, whether a secret is
    * stored, and the `{env:NAME}` reference when the stored text is one. It is an
@@ -186,32 +177,11 @@ export interface ControllerOptions extends ProviderSeams {
    */
   pluginDiagnostics?: Readonly<Record<string, string>>;
   /**
-   * Plugins the owning shell contributes to this kernel's roster.
-   *
-   * The browser surface may not import the QQ channel package (dependency
-   * direction: this package depends on core + plugins only), yet that CHANNEL is
-   * a plugin this process must host for `nova --web` to answer QQ messages at all.
-   * So the shell builds it and hands it over, exactly as it hands over the
-   * provider client — this package stays ignorant of every channel.
+   * Override the host's native file/folder dialog (`pick_file` /
+   * `pick_directory`). Absent in production — the real dialog from
+   * `native-picker.ts` answers; tests inject a fake so no OS dialog ever opens.
    */
-  extraPlugins?: readonly Plugin[];
-  /**
-   * Configured surfaces the shell has already loaded, forwarded so the kernel
-   * adopts them as ordinary plugin rows — this is what makes a configured
-   * surface appear in `/plugins` while `nova --web` is the host. The shell owns
-   * the loading (`loadDynamicSurfaces`); this package is ignorant of any surface
-   * package, and simply passes through what it is handed.
-   */
-  surfaces?: SurfaceRows;
-  /**
-   * Called once with the assembled kernel, before the first session exists.
-   *
-   * It exists for the extra plugins above: a channel needs the kernel to run a
-   * peer turn, but the kernel cannot be built until the channel's plugin is in
-   * hand. The shell closes that loop by capturing the kernel here instead of the
-   * surface growing a qqbot-shaped hole (see `cli/qqbot-bridge.ts`).
-   */
-  onKernelReady?: (kernel: Kernel) => void;
+  pickPath?: PickFn;
 }
 
 export interface LaunchWebOptions extends ControllerOptions {

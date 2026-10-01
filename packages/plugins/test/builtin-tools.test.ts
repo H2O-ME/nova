@@ -2,11 +2,10 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { JobRegistry, type TodoItem } from '@nova-agent/core';
+import { JobRegistry, typeStrippingAvailable, type TodoItem } from '@nova-agent/core';
 import { PluginHost, builtinPlugins, READ_MAX_BYTES } from '../src/index.js';
 import { bashOnPath, BudgetedBuffer } from '../src/builtin/bash.js';
 import { screenContentRegex } from '../src/builtin/search.js';
-import { codeRuntimeAvailable } from '../src/ptc/code-runtime.js';
 
 async function activatedHost(): Promise<{ host: PluginHost; jobs: JobRegistry; emitted: unknown[] }> {
   const host = new PluginHost('.');
@@ -128,6 +127,19 @@ describe('BudgetedBuffer (bash output head+tail capture)', () => {
 } );
 
 describe('bash plugin', () => {
+  it.runIf(bashOnPath())('the result names the directory the command ran in', async () => {
+    // The cwd is the one fact a result cannot imply: when it ever disagrees
+    // with <environment> cwd, every relative command answered about the wrong
+    // tree — and a result that omits it cannot show the difference.
+    const host = new PluginHost('.');
+    for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
+    await host.activate();
+    const tool = host.tools.find((t) => t.name === 'bash')!;
+
+    const result = await tool.execute({ command: 'echo hi' }, { rootDir: process.cwd() });
+    expect(result.split('\n')[0]).toBe(`cwd: ${process.cwd()}`);
+    expect(result).toContain('stdout:\nhi');
+  }, 20_000);
   it.runIf(bashOnPath())('foreground runOnce keeps the most recent output past the cap', async () => {
     const host = new PluginHost('.');
     // Tiny cap so a 500-line seq overflows: head 60% + tail 40% ring.
@@ -201,6 +213,30 @@ describe('fs sandbox', () => {
     );
     // The real target must not have been created through the link.
     expect(await readFile(path.join(outside, 'pwned.txt'), 'utf8').catch(() => undefined)).toBeUndefined();
+  });
+
+  it('read_file names the closest workspace path when the path is one segment short', async () => {
+    // The observed miss (2026-10-01): a mention `@repo/docs/agents_md.md` was
+    // read as `docs/agents_md.md`, the model then combed the tree for four more
+    // calls. The answer must name the real path instead of only saying no.
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-fs-'));
+    await mkdir(path.join(root, 'repo', 'docs'), { recursive: true });
+    await writeFile(path.join(root, 'repo', 'docs', 'agents_md.md'), 'content', 'utf8');
+    const host = await fsHostAt(root);
+    const read = host.tools.find((t) => t.name === 'read_file')!;
+
+    const miss = await read.execute({ path: 'docs/agents_md.md' }, { rootDir: root });
+    expect(miss).toContain('Error: file not found: docs/agents_md.md');
+    expect(miss).toContain('Closest path in the workspace: repo/docs/agents_md.md');
+    // The hint is actionable as written.
+    expect(await read.execute({ path: 'repo/docs/agents_md.md' }, { rootDir: root })).toBe('content');
+  });
+
+  it('read_file says only "not found" when nothing in the workspace resembles the path', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-fs-'));
+    const host = await fsHostAt(root);
+    const read = host.tools.find((t) => t.name === 'read_file')!;
+    expect(await read.execute({ path: 'nope.txt' }, { rootDir: root })).toBe('Error: file not found: nope.txt');
   });
 
   it('read_file classifies a symlinked outside path as read-external', async () => {
@@ -410,7 +446,7 @@ describe('search_files', () => {
     expect(screenContentRegex('(a|a)*b')).toBeUndefined();
   });
 
-  it.runIf(codeRuntimeAvailable())('terminates a runaway content_regex worker at the wall clock', async () => {
+  it.runIf(typeStrippingAvailable())('terminates a runaway content_regex worker at the wall clock', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-search-redos-'));
     // A single line long enough that (a+)+b backtracks for far past the cap:
     // no match, so every split path is explored.
@@ -429,7 +465,7 @@ describe('search_files', () => {
     expect(elapsed).toBeLessThan(10_000);
   }, 20_000);
 
-  it.runIf(codeRuntimeAvailable())('aborts an in-flight worker search when the signal fires', async () => {
+  it.runIf(typeStrippingAvailable())('aborts an in-flight worker search when the signal fires', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-search-abort-'));
     await writeFile(path.join(root, 'slow.txt'), `${'a'.repeat(28)}x\n`, 'utf8');
     const host = new PluginHost(root);

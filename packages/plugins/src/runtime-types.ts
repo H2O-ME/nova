@@ -126,9 +126,10 @@ export interface PluginRosterEntry {
    */
   enabled: boolean;
   /**
-   * Where the plugin came from: a built-in (`builtin`), a third-party module
-   * (`extra`), a capability provider (`capability`), or the surface's own
-   * assembly (`surface`). The settings panel groups rows by this.
+   * Where the plugin came from: a built-in (`builtin`), an extension package
+   * loaded by spec (`extension`), a third-party module (`extra`), a capability
+   * provider (`capability`), or the surface's own assembly (`surface`). The
+   * settings panel groups rows by this.
    */
   origin: PluginOrigin;
   /**
@@ -145,10 +146,16 @@ export interface PluginRosterEntry {
    * third-party plugin with no label and no description has neither.
    */
   description?: string;
+  /**
+   * Why an ENABLED extension has no fiber: its package could not be loaded
+   * (module missing / bad export). Absent for every other row — a plugin that
+   * loaded, or one that is simply off, has no error to report.
+   */
+  error?: string;
 }
 
 /** Where a roster row came from (the plugin manager's grouping axis). */
-export type PluginOrigin = 'builtin' | 'surface' | 'extra' | 'capability';
+export type PluginOrigin = 'builtin' | 'surface' | 'extra' | 'extension' | 'capability';
 
 /**
  * One known plugin, loaded or not: the row the plugin manager draws. Loaded
@@ -165,4 +172,6 @@ export interface PluginDescriptor {
   title: string;
   /** The row's one-line description; see `PluginRosterEntry.description`. */
   description?: string;
+  /** Why an enabled extension could not load; see `PluginRosterEntry.error`. */
+  error?: string;
 }

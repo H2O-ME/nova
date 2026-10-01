@@ -26,7 +26,6 @@ function req(flags: Partial<AgentSurfaceFlags> = {}, interactive = true): AgentS
       json: false,
       repl: false,
       web: false,
-      tui: false,
       positional: [],
       ...flags,
     },
@@ -113,11 +112,11 @@ describe('createSurfaceRegistry', () => {
 
   it('resolve returns the first surface whose claim is true, in register order', () => {
     const registry = createSurfaceRegistry();
-    const a: AgentSurface = { name: 'a', claim: (r) => r.flags.tui, start: async () => {} };
+    const a: AgentSurface = { name: 'a', claim: (r) => r.flags.repl, start: async () => {} };
     const b: AgentSurface = { name: 'b', claim: (r) => r.flags.web, start: async () => {} };
     registry.register(a);
     registry.register(b);
-    expect(registry.resolve(req({ tui: true }))?.name).toBe('a');
+    expect(registry.resolve(req({ repl: true }))?.name).toBe('a');
     expect(registry.resolve(req({ web: true }))?.name).toBe('b');
   });
 
@@ -125,6 +124,21 @@ describe('createSurfaceRegistry', () => {
     const registry = createSurfaceRegistry();
     registry.register(neverClaims);
     expect(registry.resolve(req())).toBeUndefined();
+  });
+
+  it('records the resolved winner, which current() hands to the userQuestions provider', () => {
+    const registry = createSurfaceRegistry();
+    registry.register(neverClaims);
+    // Fail-closed before anything resolved: no answerer is claimed.
+    expect(registry.current()).toBeUndefined();
+    expect(registry.resolve(req())).toBeUndefined();
+    expect(registry.current()).toBeUndefined();
+    const yes: AgentSurface = { name: 'yes', claim: () => true, start: async () => {} };
+    registry.register(yes);
+    expect(registry.resolve(req())?.name).toBe('yes');
+    // The recording is a side effect of resolving — the ONE fact
+    // `runtime-env.ts`'s userQuestions provider reads per call.
+    expect(registry.current()).toBe(yes);
   });
 
   it('all lists every registered surface', () => {
@@ -161,30 +175,30 @@ describe('configured surfaces as kernel plugin rows', () => {
    */
   it('passing surfaces makes each one a roster row and a registered service', async () => {
     const registry = createSurfaceRegistry();
-    const tui: AgentSurface = {
-      name: 'tui',
+    const custom: AgentSurface = {
+      name: 'custom',
       interactive: true,
       answersQuestions: true,
       claim: () => true,
       start: async () => {},
     };
-    registry.register(tui);
+    registry.register(custom);
     const kernel = await createAgentKernel({
       rootDir: await dir(),
       sessionDir: await dir(),
       provider: provider(),
       config: { approval: 'read-only' },
-      surfaces: { registry, loaded: [tui] },
+      surfaces: { registry, loaded: [custom] },
     });
 
-    const row = kernel.roster().find((entry) => entry.name === 'tui');
+    const row = kernel.roster().find((entry) => entry.name === 'custom');
     expect(row, 'configured surface should appear in the roster').toBeDefined();
     expect(row?.origin).toBe('surface');
 
     // The surface's plugin row registers onto the SAME registry the resolver
     // reads: the `surfacePlugin` adapter's `apply` calls `service.register(surface)`
     // where service IS the passed-in registry — one instance, one identity.
-    expect(registry.all().map((s) => s.name)).toContain('tui');
+    expect(registry.all().map((s) => s.name)).toContain('custom');
 
     await kernel.dispose();
   });

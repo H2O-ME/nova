@@ -107,7 +107,7 @@ describe('describePlugins', () => {
     const rows = kernel.roster();
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
-      expect(['builtin', 'surface', 'extra', 'capability']).toContain(row.origin);
+      expect(['builtin', 'surface', 'extra', 'extension', 'capability']).toContain(row.origin);
       expect(['core', 'standard', 'advanced']).toContain(row.tier);
       // The tier contract: everything except `advanced` is on at boot; an
       // advanced row is present but OFF until `plugins.enable` names it.

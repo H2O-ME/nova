@@ -109,6 +109,16 @@ export type ClientFrame =
    */
   | { type: 'create_directory'; dir: string; name: string }
   /**
+   * Open the host's NATIVE file dialog and name one file. A browser cannot
+   * produce an absolute path (`File.path` is an Electron extension) and an `@`
+   * reference needs exactly that — so the host, which runs on the user's
+   * machine behind the same authentication as every other frame, opens the
+   * dialog itself and answers with a `picked` frame.
+   */
+  | { type: 'pick_file' }
+  /** Open the host's native FOLDER dialog, for adopting a workspace root. */
+  | { type: 'pick_directory' }
+  /**
    * Ask for the live plugin roster (the same rows `/plugins` prints) plus the
    * config file's path. Sent when the settings panel's plugins section opens:
    * a read of kernel state, not a subscription — the answer is a snapshot.
@@ -234,6 +244,14 @@ export type ClientFrame =
    * not of anything the kernel keeps in memory.
    */
   | { type: 'load_trace'; have: number }
+  /**
+   * Ask for the Context panel's reading, fresh (the tab's open/refresh path).
+   *
+   * The reading also rides `ready` and refreshes with each run's end; this
+   * frame exists for the moments in between — opening the tab, or pulling it
+   * back to date after the panel was hidden for a while.
+   */
+  | { type: 'context' }
   /**
    * Run one shell command from the right panel's terminal.
    *

@@ -2,27 +2,32 @@
 /**
  * `nova` — argv in, surface out.
  *
- * This file is deliberately thin: version/help, argv parsing and surface
- * resolution. Built-in surfaces (web/repl/exec/qqbot) live in `surfaces.ts`;
- * every OTHER surface — the terminal UI included — is a plugin loaded from
- * `~/.nova/config.json` `surfaces` via `loadDynamicSurfaces`, so adding a
- * surface is a config row, not a source change here.
+ * This file is deliberately thin: version/help, argv parsing, and surface
+ * resolution. The four built-ins (web/repl/exec/qqbot) and every configured
+ * surface are the SAME `AgentSurface` type living in ONE registry, registered
+ * in precedence order (subcommands → configured → defaults); the shell asks
+ * `registry.resolve` once and hands the winner to the ONE assembly
+ * (`surface-host.ts`). Adding a surface the shell does not ship is a config
+ * row (`~/.nova/config.json` `surfaces`), never a source change here.
  */
+import path from 'node:path';
+import process from 'node:process';
+import type { AgentSurfaceRequest } from '@nova-agent/core';
 import { createSurfaceRegistry } from '@nova-agent/plugins';
 import { loadConfigWithDiagnostics } from './config.js';
-import { loadDynamicSurfaces, parseArgs, reportError, resolveSurface, surfaceRequest } from './surfaces.js';
+import { builtinSurfaces, loadDynamicSurfaces, parseArgs, reportError } from './surfaces.js';
+import { runSurface, toFlags } from './surface-host.js';
 import { cliVersion } from './version.js';
 
 const HELP = `nova — 自研本地编码智能体
 
 usage:
-  nova [--tui|--web|--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
+  nova [--web|--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
   nova exec "<task>" [--json] [--approval ...] [--resume <session.jsonl>]
 
 options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
   qqbot           QQ 机器人模式（需配置 qqbot.appId / qqbot.clientSecret）
-  --tui           终端全屏界面（需 stdin/stdout 都是 TTY；管道下回落 --repl）
   --web           浏览器界面（本机 HTTP+WS 单进程，打印带 token 的 URL；NOVA_WEB_PORT 固定端口）——交互运行的默认形态
   --repl          改用 readline 终端形态（非 TTY 自动回落）
   --resume        续接历史会话文件
@@ -53,41 +58,45 @@ async function main(): Promise<void> {
   if (parsed === undefined) return;
   try {
     const { config, diagnostics } = await loadConfigWithDiagnostics();
-    // Surface plugins are resolved BEFORE the kernel exists — the chosen
-    // surface declares whether it answers questions, which the assembly reads.
-    // Configured surfaces sit between the subcommands and the defaults.
+    // ONE registry, registered in PRECEDENCE ORDER: the two subcommands, then
+    // whatever `~/.nova/config.json` `surfaces` loaded, then the defaults.
+    // Resolution is a single `registry.resolve` — the winner is recorded as a
+    // side effect (`current()`), which is the ONE source the `userQuestions`
+    // provider reads.
     const registry = createSurfaceRegistry();
-    const { entries: extras, rows } = await loadDynamicSurfaces(config, process.cwd(), args, registry);
-    const request = surfaceRequest(process.cwd(), config, parsed, diagnostics, rows);
-    const resolved = resolveSurface(request, extras);
-    if (resolved === undefined) {
+    const builtins = builtinSurfaces({ config, diagnostics });
+    for (const entry of builtins.head) registry.register(entry.surface);
+    const rows = await loadDynamicSurfaces(config, process.cwd(), registry);
+    for (const entry of builtins.tail) registry.register(entry.surface);
+
+    const rootDir = path.resolve(process.cwd());
+    const request: AgentSurfaceRequest = {
+      rootDir,
+      argv: args,
+      interactive: process.stdout.isTTY === true && process.stdin.isTTY === true,
+      flags: toFlags(parsed),
+    };
+    const winner = registry.resolve(request);
+    if (winner === undefined) {
       console.error('没有 surface 认领这个调用（--help 查看用法）');
       process.exitCode = 1;
       return;
     }
-    if (parsed.json && resolved.name !== 'exec') {
+    if (parsed.json && winner.name !== 'exec') {
       console.error('--json 仅在 exec 模式有效');
-      process.exitCode = 1;
-      return;
-    }
-    // `--tui` is an explicit opt-in: if no configured surface named "tui" claimed
-    // it, the request fell through to the browser default — that is a surprise,
-    // not a sensible fallback. Point at the config row that would fix it.
-    if (parsed.tui && !parsed.repl && resolved.name !== 'tui') {
-      console.error(
-        '--tui 需在 ~/.nova/config.json 的 surfaces 里声明终端界面插件（tui-app 包的 ./surface 子路径）',
-      );
       process.exitCode = 1;
       return;
     }
     // Interactive surfaces take stray positionals as noise rather than as a
     // task — flag it so a typo like `nova epwn` does not silently drop intent.
-    if (resolved.interactive === true && parsed.positional.length > 0) {
+    if (winner.interactive === true && parsed.positional.length > 0) {
       console.error(
         `warning: 交互模式忽略多余位置参数：${parsed.positional.join(' ')}（exec 模式请用 nova exec "<task>"）`,
       );
     }
-    await resolved.start(request);
+    // 内置四家的装配前置（boot 贡献）随行；配置的 surface 没有贡献。
+    const entry = [...builtins.head, ...builtins.tail].find((builtin) => builtin.surface === winner);
+    await runSurface(winner, { rootDir, config, parsed, diagnostics, interactive: request.interactive, surfaces: rows }, args, entry?.boot);
   } catch (err) {
     reportError(err);
   }

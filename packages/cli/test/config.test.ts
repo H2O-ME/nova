@@ -118,6 +118,14 @@ describe('loadConfig', () => {
     );
     await expect(loadConfig(home)).rejects.toThrow(/apporval/);
   });
+
+  it('rejects unknown NESTED keys too, naming the offender (strict at every level)', async () => {
+    const provider = { baseURL: 'https://x.test/v1', apiKey: 'sk-1', model: 'm' };
+    const badProvider = await withConfig(JSON.stringify({ provider: { ...provider, temprature: 0.5 } }));
+    await expect(loadConfig(badProvider)).rejects.toThrow(/temprature/);
+    const badTools = await withConfig(JSON.stringify({ provider, tools: { code: { modee: 'ptc' } } }));
+    await expect(loadConfig(badTools)).rejects.toThrow(/modee/);
+  });
 });
 
 /**

@@ -17,6 +17,7 @@ import { parseClientFrame } from '../src/client-frame.js';
 import { serializeServerFrame, type ClientFrame, type ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 
 const QUESTIONS = [
   { id: 'mode', question: 'Which mode?', options: [{ label: 'Fast' }, { label: 'Thorough (Recommended)' }] },
@@ -88,7 +89,7 @@ async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
 
 async function makeController(scripts: StreamEvent[][]): Promise<WebController> {
   const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-web-q-root-'));
-  return WebController.create({
+  return bootController({
     rootDir,
     provider: scriptedProvider(scripts),
     config: { approval: 'read-only' },

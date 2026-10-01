@@ -8,6 +8,7 @@ import { parseClientFrame } from '../src/client-frame.js';
 import { serializeServerFrame, type ClientFrame, type ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 import type { ChatProvider, ChatRequest, KernelEvent, ModelCatalogPort, StreamEvent } from '@nova-agent/core';
 
 // --------------------------------------------------------------------- rigs
@@ -111,7 +112,7 @@ async function makeController(
   } = {},
 ): Promise<{ controller: WebController; rootDir: string }> {
   const rootDir = extra.rootDir ?? await mkdtemp(path.join(tmpdir(), 'nova-web-root-'));
-  const controller = await WebController.create({
+  const controller = await bootController({
     rootDir,
     provider: extra.provider ?? scriptedProvider(scripts),
     config: { approval },
@@ -322,7 +323,7 @@ describe('WebController', () => {
   it('names the running version in ready when the shell reports one', async () => {
     await withFakeHome(async () => {
       const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-web-root-'));
-      const controller = await WebController.create({
+      const controller = await bootController({
         rootDir,
         provider: scriptedProvider([]),
         config: { approval: 'read-only' },

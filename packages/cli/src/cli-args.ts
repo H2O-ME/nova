@@ -18,7 +18,6 @@ export interface ParsedArgs {
   json: boolean;
   repl: boolean;
   web: boolean;
-  tui: boolean;
   positional: string[];
 }
 
@@ -27,7 +26,7 @@ export interface ParsedArgs {
  * starting with `-` (`nova exec -- "-check the config"`) passes through.
  */
 export function parseArgs(args: string[]): ParsedArgs | undefined {
-  const parsed: ParsedArgs = { json: false, repl: false, web: false, tui: false, positional: [] };
+  const parsed: ParsedArgs = { json: false, repl: false, web: false, positional: [] };
   let positionalOnly = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
@@ -53,11 +52,6 @@ export function parseArgs(args: string[]): ParsedArgs | undefined {
       parsed.json = true;
     } else if (arg === '--repl') {
       parsed.repl = true;
-    } else if (arg === '--tui') {
-      // The terminal UI: an explicit opt-in, not the default. It needs a TTY on
-      // both ends, so a piped invocation is claimed by the REPL instead (see the
-      // entry's claim) rather than starting a frame nothing can draw.
-      parsed.tui = true;
     } else if (arg === '--web') {
       // The explicit spelling of the default surface (the catch-all `web`
       // entry claims it either way; the flag stays for scripts and for help).

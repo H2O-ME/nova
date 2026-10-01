@@ -1,19 +1,17 @@
 import { createInterface } from 'node:readline/promises';
-import type { OpenAICompatClient } from '@nova-agent/ai';
-import type { ApprovalMode, Kernel } from '@nova-agent/plugins';
-import {
-  type AgentSession,
-  type AskUserQuestionAnswer,
-  type KernelEvent,
-  type SurfaceRows,
+import type {
+  AgentSession,
+  AgentSurfaceRuntime,
+  AgentSurfaceUi,
+  AskUserQuestionAnswer,
+  KernelEvent,
 } from '@nova-agent/core';
 import { detectCaps } from './term-text.js';
-import { awaitIdle, bootKernel, createProvider } from './kernel-boot.js';
+import { awaitIdle } from './kernel-boot.js';
 import { parseApprovalAnswer, parseQuestionAnswer, questionBatchLines, assembleAnswers } from './repl-answers.js';
 import { type Config } from './config.js';
-import { createModelListCache } from './commands.js';
-import { modelListRows, type ThemeName } from './command-core.js';
-import { runAgentCommand, type CommandPorts } from './command-runner.js';
+import { modelListRows, themeTarget, type ThemeName } from './command-core.js';
+import type { BuiltinSurface } from './surface-host.js';
 import {
   approvalLabel,
   approvalPromptText,
@@ -35,15 +33,25 @@ import { ReplProgress } from './repl-progress.js';
 import { Spinner } from './spinner.js';
 import { cliVersion } from './version.js';
 
-export interface ReplOptions {
-  rootDir: string;
-  config: Config;
-  resumeFile?: string;
-  approvalOverride?: ApprovalMode;
-  /** --theme 覆盖 config 的 ui.theme。 */
-  theme?: ThemeName;
-  /** Configured surfaces (see `BootOptions.surfaces`): forwarded to the kernel. */
-  surfaces?: SurfaceRows;
+/**
+ * `nova --repl` — the readline surface, as an `AgentSurface` like every other.
+ *
+ * 工作区切换的反馈由 `surface-host.ts` 的 holder 接回这里（P4-C：契约里的
+ * `onWorkspaceChanged` 从此有实现方）；paint 由 start 时回填，供那行反馈上色。
+ */
+export function replSurface(config: Config): BuiltinSurface {
+  const feedback: { paint?: Paint } = {};
+  return {
+    surface: {
+      name: 'repl',
+      interactive: true,
+      claim: (request) => request.flags.repl || !request.interactive,
+      onWorkspaceChanged: (dir) => {
+        console.log(feedback.paint?.dim(`  ✓ 工作区已切换到 ${dir}`) ?? `  ✓ 工作区已切换到 ${dir}`);
+      },
+      start: (runtime) => startRepl(runtime, config, feedback),
+    },
+  };
 }
 
 /**
@@ -111,46 +119,32 @@ export { parseApprovalAnswer, parseQuestionAnswer } from './repl-answers.js';
  * `subscribe` 事件回调，审批以事件到达、下一条输入路由作答。旧 REPL 的
  * 「for-await 消费事件 + ask 内嵌读行」两把簿记在批1c 后都归内核。
  */
-export async function startRepl(opts: ReplOptions): Promise<void> {
-  const { rootDir, config } = opts;
+export async function startRepl(
+  runtime: AgentSurfaceRuntime,
+  config: Config,
+  feedback: { paint?: Paint },
+): Promise<void> {
+  const rootDir = runtime.request.rootDir;
+  const kernel = runtime.kernel;
   const caps = detectCaps();
-  let themeName: ThemeName = opts.theme ?? config.ui?.theme ?? 'dark';
+  let themeName: ThemeName = themeTarget(runtime.theme) ?? 'dark';
   let paint: Paint = resolvePaint(themeName);
   let useColor = caps.color && themeName !== 'plain';
+  feedback.paint = paint;
 
-  const client: OpenAICompatClient = await createProvider(config);
-  let kernel: Kernel;
   let agent: AgentSession;
   let unsubscribe: (() => void) | undefined;
 
-  // switch_workspace 的模型侧入口：kernel.setWorkspace 重指工具根/文档/
-  // 技能并重建 host（单源在装配工厂），这里只剩一行反馈。
-  async function applyWorkspace(dir: string): Promise<void> {
-    await kernel.setWorkspace(dir);
-    console.log(paint.dim(`  ✓ 工作区已切换到 ${dir}`));
-  }
-
-  kernel = await bootKernel({
-    rootDir,
-    config,
-    provider: client,
-    ...(opts.approvalOverride !== undefined ? { approvalOverride: opts.approvalOverride } : {}),
-    ...(opts.resumeFile !== undefined ? { resumeFile: opts.resumeFile } : {}),
-    workspace: { onChange: (dir: string) => applyWorkspace(dir) },
-    // 终端形态有人类在答：模型可以问问题（多行输入仍归主循环路由）。
-    userQuestions: true,
-    ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
-  });
   agent = kernel.agent;
 
-  if (opts.resumeFile) {
+  if (runtime.request.flags.resumeFile !== undefined) {
     console.log(`resumed ${agent.messages.length} messages from ${agent.session.file}`);
     for (const warning of agent.session.warnings) console.log(paint.yellow(`  ${warning}`));
   }
   const pluginNames = [...new Set(kernel.host.toolEntries.map((entry) => entry.plugin))].join(',') || 'none';
   banner(paint, {
-    model: client.model,
-    approval: `${approvalLabel(kernel.permission.approvalMode)}${opts.approvalOverride !== undefined ? '（--approval）' : ''}`,
+    model: runtime.model(),
+    approval: `${approvalLabel(agent.approvalMode ?? 'read-only')}${runtime.request.flags.approval !== undefined ? '（--approval）' : ''}`,
     plugins: pluginNames,
     sessionFile: agent.session.file,
     rootDir,
@@ -170,7 +164,6 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   });
   const timing = new ToolTiming();
   const notify = createNotifier({ enabled: config.notify !== false });
-  const fetchModelList = createModelListCache(() => client.listModels());
 
   /** True while blocked on a sub-prompt (/model pick …): Ctrl+C cancels only that wait. */
   let subPromptPending = false;
@@ -282,13 +275,29 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
         if (event.items.length > 0) console.log(paint.dim(`  ⧉ 已排队 ${event.items.length} 条，当前运行的下一步即可读到`));
         break;
       case 'compaction': {
-        if (event.progress.trigger === 'manual') break; // /compact 自己报告
+        if (event.progress.trigger === 'manual') {
+          // /compact 经 kernel runner 执行，压缩进度就是它的工作汇报（壳不再
+          // 自带一份文案）；拒绝与失败经 command 行到达。
+          if (event.progress.state === 'start') console.log(paint.yellow('  ⟳ 正在压缩会话…'));
+          else if (event.progress.state === 'done') {
+            console.log(`  已压缩 — 会话原位压缩（日志保留完整历史），保留 ${event.progress.retained ?? 0} 条最近用户消息`);
+          }
+          break;
+        }
         if (event.progress.state === 'start') console.log(paint.yellow('  ⟳ 上下文超过阈值，自动压缩中…'));
         else if (event.progress.state === 'done') {
           console.log(`  已自动压缩 — 会话原位压缩（日志保留完整历史），保留 ${event.progress.retained ?? 0} 条最近用户消息`);
         }
         break;
       }
+      case 'command':
+        // 注册命令（/goal 与第三方）经 kernel runner 汇报：done 行携带命令
+        // 自己 log 的输出；run 行与空 done 不打印（/compact 的进度由上面的
+        // compaction 行承担）。
+        if (event.phase === 'done' && event.text !== undefined) {
+          for (const line of event.text.split('\n')) console.log(paint.dim(`  ${line}`));
+        }
+        break;
       case 'notice':
         console.log(paint.dim(`  ⟳ ${event.text}`));
         break;
@@ -336,28 +345,26 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   }
 
   /**
-   * 斜杠命令：语义全在 `command-runner`（与 WebUI 共用一份），这里只出端口——
+   * 斜杠命令：语义全在 `command-runner`（与每个 surface 共用一份，经
+   * `runtime.commands`），这里只实现 core 的呈现契约 `AgentSurfaceUi`——
    * note 走 stdout、模型选择走序号提问、清屏是 `console.clear()`。
-   * 返回 false = 退出主循环。
    */
-  const commandPorts: CommandPorts = {
-    kernel,
-    client,
-    config,
-    approvalOverride: opts.approvalOverride,
+  const ui: AgentSurfaceUi = {
     theme: () => themeName,
     setTheme: (theme) => {
-      themeName = theme;
-      paint = resolvePaint(theme);
-      useColor = caps.color && theme !== 'plain';
+      const target = themeTarget(theme);
+      if (target === undefined) return;
+      themeName = target;
+      paint = resolvePaint(target);
+      useColor = caps.color && target !== 'plain';
+      feedback.paint = paint;
     },
     note: (text) => {
       for (const row of text.split('\n')) console.log(row);
     },
-    fetchModels: () => fetchModelList(),
     pickModel: async (models) => {
-      console.log(`当前模型：${client.model}`);
-      for (const row of modelListRows(client.model, [...models])) console.log(row);
+      console.log(`当前模型：${runtime.model()}`);
+      for (const row of modelListRows(runtime.model(), [...models])) console.log(row);
       subPromptPending = true;
       let raw: string | null;
       try {
@@ -392,7 +399,7 @@ export async function startRepl(opts: ReplOptions): Promise<void> {
   };
 
   async function runCommand(input: string): Promise<boolean> {
-    const outcome = await runAgentCommand(input, commandPorts);
+    const outcome = await runtime.commands.run(input, ui);
     if (outcome === 'exit') return false;
     // `/skill <name>` 展开成提示词：与普通输入同一路径下发（此前它落进
     // 「未知命令」——两壳各写一份语义的直接后果）。

@@ -1,17 +1,19 @@
 /**
- * Runner 共享的内核装配**唯一一处** `bootKernel`（配置降维与 provider 工厂在
+ * 内核装配的**唯一入口** `bootKernel`（配置降维与 provider 工厂在
  * `kernel-config.ts`）。
  *
- * 批10 起五个 surface 的装配差异（续接文件 / 会话桶 / 请求内压缩 / 额外插件 /
- * workspace 回调 / 子代理进度 / 审批策略 / 有无人类可答问题）都落在这一个调用点
- * 上——此前每个 surface 各抄一份 `createAgentKernel`，改一处缝要改五处。
+ * 生产代码里 `createAgentKernel` 只被这里调用一次；任何 surface（内置四家或
+ * 配置加载的）都经 `cli/src/surface-host.ts` 的 `buildSurfaceRuntime` 走到此处。
+ * 各内置的装配差异以 `SurfaceBoot` 贡献表达（`exec` / `qqbot` / web），转发只
+ * 在 surface-host 一处——「逐字段手抄漏掉新选项」不再有地方可漏。
  */
 import {
   createAgentKernel,
   type ApprovalMode,
+  type CreateKernelOptions,
   type Kernel,
 } from '@nova-agent/plugins';
-import type { ApprovalPolicy, ChatProvider, Plugin, SubagentProgress, SurfaceRows } from '@nova-agent/core';
+import type { ChatProvider, ModelCatalogPort, Plugin, SurfaceRows } from '@nova-agent/core';
 import type { Config } from './config.js';
 import { createProvider, configuredModel, toKernelConfig } from './kernel-config.js';
 
@@ -32,23 +34,28 @@ export interface BootOptions {
   extraPlugins?: Plugin[];
   /**
    * Configured surfaces already loaded (by `loadDynamicSurfaces`), forwarded so
-   * the kernel adopts them as ordinary plugin rows. Every assembly point passes
-   * its `SurfaceRequest.surfaces` here — this is the ① 调用点 half of the same
-   * rule ③ uses (`buildSurfaceRuntime`): a configured surface shows up in
-   * `/plugins` regardless of which surface is the host.
+   * the kernel adopts them as ordinary plugin rows — a configured surface shows
+   * up in `/plugins` regardless of which surface is the host. Also what makes
+   * `registry.current()` (the userQuestions source) available to the kernel.
    */
   surfaces?: SurfaceRows;
-  /** 模型侧 `switch_workspace` 入口；不给就不注册该工具。 */
+  /**
+   * Model metadata for the picker（web 面用）。原样透传：只有浏览器界面渲染
+   * 模型选择器，而内核的 `models` 控制恰好在此端口被提供时出现。
+   */
+  modelCatalog?: ModelCatalogPort;
+  /**
+   * 设置页开关的写回器（web 面用）。原样透传：写的是操作者的配置文件，
+   * 所以只有掌握该文件的界面才会提供。
+   */
+  persistConfig?: CreateKernelOptions['persistConfig'];
+  /** 模型侧 `switch_workspace` 入口；不给就不注册该工具。由 `buildSurfaceRuntime` 以 holder 包裹后传入。 */
   workspace?: { onChange: (dir: string) => void | Promise<void> };
-  /** 嵌套子代理的活行回馈（best-effort）。 */
-  onSubagentProgress?: (progress: SubagentProgress) => void;
-  /** 无人值守形态：'never' 连询问器都不派发，确定性拒绝（exec/qqbot）。 */
-  policy?: ApprovalPolicy;
   /**
    * 这个 surface 有没有「人」可以回答 `ask_user_question`。默认 false =
    * fail-closed：无人值守形态（exec / qqbot）给了回答器就会卡在提问里，而没有
-   * 任何界面能把它放出来。REPL 传 true；WebUI 不经 `bootKernel`，在
-   * `WebController` 那侧直接传。
+   * 任何界面能把它放出来。`buildSurfaceRuntime` 传 `deriveUserQuestions(surface)`；
+   * 覆盖没有注册表的装配（内核测试 / 嵌入方）。
    */
   userQuestions?: boolean;
   /** 测试注入的假 provider（省略则按 config 建真客户端）。 */
@@ -71,11 +78,11 @@ export async function bootKernel(opts: BootOptions): Promise<Kernel> {
     ...(opts.perRequestCompact !== undefined ? { perRequestCompact: opts.perRequestCompact } : {}),
     ...(opts.extraPlugins !== undefined ? { extraPlugins: opts.extraPlugins } : {}),
     ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
+    ...(opts.modelCatalog !== undefined ? { modelCatalog: opts.modelCatalog } : {}),
+    ...(opts.persistConfig !== undefined ? { persistConfig: opts.persistConfig } : {}),
     ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
-    ...(opts.onSubagentProgress !== undefined ? { onSubagentProgress: opts.onSubagentProgress } : {}),
     ...(opts.userQuestions !== undefined ? { userQuestions: opts.userQuestions } : {}),
   });
-  if (opts.policy !== undefined) kernel.permission.setPolicy(opts.policy);
   return kernel;
 }
 

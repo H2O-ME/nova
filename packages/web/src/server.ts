@@ -13,6 +13,7 @@ import path from 'node:path';
 import { parseClientFrame } from './client-frame.js';
 import type { FrameRejection } from './reject.js';
 import { cookieHeader, cookieValue, verifyCookie, type LaunchAuth } from './auth.js';
+import { listenWithPreferredPort } from './listen.js';
 import type { WebController } from './controller.js';
 import { handleImageUpload } from './image-upload.js';
 import { handleImageBytes } from './image-bytes.js';
@@ -26,6 +27,7 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.woff2': 'font/woff2',
 };
 
@@ -44,10 +46,15 @@ export interface StartWebServerOptions {
   staticDir: string;
   host: string;
   port?: number;
+  /**
+   * Where the remembered port lives. Defaults to the cache root so the origin
+   * survives restarts; tests point it at a temp file.
+   */
+  portStore?: string;
 }
 
 export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHandle> {
-  const { controller, auth, staticDir, host } = opts;
+  const { controller, auth, staticDir } = opts;
   const server = createServer((req, res) => {
     // `handleHttp` is async, so a throw inside it would surface as an unhandled
     // rejection — and Node's default mode for those is to end the process. One
@@ -63,24 +70,7 @@ export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHa
   server.on('upgrade', (req, socket, head) => {
     handleUpgrade(req, socket, head, { controller, auth });
   });
-  return new Promise((resolve, rejectPromise) => {
-    server.once('error', rejectPromise);
-    server.listen(opts.port ?? 0, host, () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address !== null ? address.port : (opts.port ?? 0);
-      resolve({
-        server,
-        port,
-        url: `http://${host}:${port}/?t=${auth.token}`,
-        close: () =>
-          new Promise<void>((done) => {
-            controller.dispose().catch(() => undefined);
-            server.closeAllConnections?.();
-            server.close(() => done());
-          }),
-      });
-    });
-  });
+  return listenWithPreferredPort(server, opts);
 }
 
 interface HttpCtx {
@@ -103,7 +93,24 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
     res.end();
     return;
   }
-  if (!verifyCookie(ctx.auth, req.headers.cookie)) {
+  // Static path resolution happens BEFORE the auth gate: the PWA install
+  // pipeline fetches the manifest and icons outside the authenticated app
+  // context (icon prefetches may carry no credentials), and a 401 there
+  // silently kills the install affordance. Brand assets are public; nothing
+  // else is.
+  let relPath: string;
+  try {
+    relPath = decodeURIComponent(url.pathname);
+  } catch {
+    deny(res, 400, 'bad path');
+    return;
+  }
+  if (relPath === '/' || relPath === '') relPath = '/index.html';
+  const isPublicAsset =
+    relPath === '/manifest.webmanifest' ||
+    relPath === '/favicon.svg' ||
+    relPath.startsWith('/icons/');
+  if (!isPublicAsset && !verifyCookie(ctx.auth, req.headers.cookie)) {
     deny(res, 401, 'unauthorized');
     return;
   }
@@ -122,14 +129,6 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
   // escape) is a 400: letting `decodeURIComponent` throw here would take the
   // request — and, without the caller's catch, the process — down, and no
   // legitimate client ever sends one.
-  let relPath: string;
-  try {
-    relPath = decodeURIComponent(url.pathname);
-  } catch {
-    deny(res, 400, 'bad path');
-    return;
-  }
-  if (relPath === '/' || relPath === '') relPath = '/index.html';
   const abs = path.join(ctx.staticDir, path.normalize(relPath));
   if (!abs.startsWith(ctx.staticDir + path.sep) && abs !== ctx.staticDir) {
     deny(res, 400, 'bad path');

@@ -7,9 +7,25 @@
  * this one by whoever calls `createAgentKernel`, that one by every caller of
  * the resulting handle.
  */
-import type { ChatProvider, ModelCatalogPort, Plugin, SubagentProgress, SurfaceRows } from '@nova-agent/core';
-import type { BuiltinOptions } from './builtin/index.js';
+import type { ChatProvider, ModelCatalogPort, Plugin, PtcMode, SubagentProgress, SurfaceRows } from '@nova-agent/core';
 import type { ApprovalMode } from './permission.js';
+
+/**
+ * The PTC config as the KERNEL sees it: a structural mirror of the extension
+ * plugin's options (the PTC extension package). Deliberately not imported from
+ * there — the extension package can be absent, and a config type must not be
+ * what makes the main program fail to compile without it. The two shapes are
+ * kept in step by the plugin's own runtime validation
+ * (`resolveCodeRuntimeConfig`) and by the P3 tests.
+ */
+export interface CodeModeConfig {
+  mode?: PtcMode;
+  maxParallelSubCalls?: number;
+  computeMs?: number;
+  maxWallMs?: number;
+  maxOutputBytes?: number;
+  maxOldGenerationSizeMb?: number;
+}
 
 /** The surface-independent slice of `~/.nova/config.json` the kernel needs. */
 export interface KernelConfig {
@@ -27,7 +43,7 @@ export interface KernelConfig {
   /** false disables bash; object tunes it (mirrors config.tools.bash). */
   bash?: false | { timeoutMs?: number; shellPath?: string };
   /** PTC config (mirrors config.tools.code); mode drives the tool projection. */
-  code?: BuiltinOptions['code'];
+  code?: CodeModeConfig;
   /**
    * Which plugins load. `disable` names plugins to leave out (the name is the
    * plugin's own, as `/plugins` prints it); `extra` lists modules to load
@@ -94,11 +110,11 @@ export interface CreateKernelOptions {
    * `resolveQuestion` is what settles the wait.
    *
    * Set it ONLY when assembling for a surface the kernel cannot ask: the cli's
-   * built-in entries (web / repl / qqbot / exec) are `SurfaceEntry`s, not
-   * registry `AgentSurface`s, so they have no `answersQuestions` declaration to
-   * read. A config-loaded surface goes through
-   * `packages/cli/src/surface-host.ts`, which derives this from the surface's own
-   * declaration instead — do not hand-copy it there.
+   * built-in surfaces are registered `AgentSurface`s now, so the registry's
+   * recorded winner answers for them — this explicit value covers assemblies
+   * with no registry (kernel tests, embedders). A config-loaded surface goes
+   * through `packages/cli/src/surface-host.ts`, which derives the value from
+   * the surface's own declaration as a fallback — do not hand-copy it there.
    */
   userQuestions?: boolean;
   /**
@@ -150,5 +166,13 @@ export interface CreateKernelOptions {
    * hand.
    */
   surfaces?: SurfaceRows;
+  /**
+   * Override the extension plugins' module specifiers (name → spec), merged
+   * over the built-in table (`extensions.ts`). Two uses: a test points one
+   * name at a nonexistent module to prove an absent extension cannot take the
+   * app down, and an operator swaps an implementation without touching source.
+   * Only the KNOWN extension names are honored; extra keys are ignored.
+   */
+  extensionSpecs?: Readonly<Record<string, string>>;
 }
 

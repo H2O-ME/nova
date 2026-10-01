@@ -2,8 +2,9 @@ import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Session, type ChatRequest, type StreamEvent } from '@nova-agent/core';
-import { runExec } from '../src/exec.js';
+import { Session, type ChatProvider, type ChatRequest, type StreamEvent } from '@nova-agent/core';
+import { execSurface, runExec } from '../src/exec.js';
+import { buildSurfaceRuntime, type SurfaceBoot } from '../src/surface-host.js';
 import { sessionDateBucket, type Config } from '../src/config.js';
 import { scriptedProvider } from './helpers/scripted-provider.js';
 import { withFakeHome } from './helpers/with-fake-home.js';
@@ -11,6 +12,42 @@ import { withFakeHome } from './helpers/with-fake-home.js';
 const config: Config = {
   provider: { baseURL: 'https://unused.example.com/v1', apiKey: 'sk-test', model: 'test-model' },
 };
+
+/**
+ * Assemble EXACTLY like the shell does — `execSurface`'s boot contributions
+ * (perRequestCompact, the `never` policy) included — then run. The provider is
+ * injected through the boot contribution, the same seam web's boot uses.
+ */
+async function runExecInTest(
+  root: string,
+  provider: ChatProvider,
+  opts: { prompt: string; json: boolean; config?: Config; out?: (text: string) => void },
+): Promise<void> {
+  const effective = opts.config ?? config;
+  const surface = execSurface(effective);
+  const contributed = (await surface.boot?.kernel?.()) ?? {};
+  const boot: SurfaceBoot = {
+    kernel: () => ({ ...contributed, provider }),
+    ...(surface.boot?.afterBoot !== undefined ? { afterBoot: surface.boot.afterBoot } : {}),
+  };
+  const runtime = await buildSurfaceRuntime(
+    surface.surface,
+    {
+      rootDir: root,
+      config: effective,
+      parsed: { positional: [], json: false, repl: false, web: false },
+      diagnostics: [],
+      interactive: false,
+    },
+    [],
+    boot,
+  );
+  await runExec(runtime, effective, {
+    prompt: opts.prompt,
+    json: opts.json,
+    ...(opts.out !== undefined ? { out: opts.out } : {}),
+  });
+}
 
 const TEXT_ONLY: StreamEvent[] = [
   { type: 'text_delta', text: 'Hello from Nova' },
@@ -23,12 +60,9 @@ describe('runExec', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
     await withFakeHome(async (home) => {
       const lines: string[] = [];
-      await runExec({
-        rootDir: root,
-        config,
+      await runExecInTest(root, scriptedProvider([TEXT_ONLY]), {
         prompt: '打个招呼',
         json: true,
-        provider: scriptedProvider([TEXT_ONLY]),
         out: (text) => lines.push(text),
       });
 
@@ -64,12 +98,9 @@ describe('runExec', () => {
     // sessions root is global — without this the run lands in the real ~/.nova
     // and shows up in the user's own session list as a `nova-exec-…` workspace.
     await withFakeHome(async () => {
-      await runExec({
-        rootDir: root,
-        config,
-        prompt: 'run echo for me',
-        json: false,
-        provider: scriptedProvider([
+      await runExecInTest(
+        root,
+        scriptedProvider([
           [
             { type: 'tool_call_delta', index: 0, id: 'c1', name: 'bash', argsDelta: '{"command":"echo hi"}' },
             { type: 'finish', finishReason: 'tool_calls' },
@@ -80,8 +111,8 @@ describe('runExec', () => {
             { type: 'finish', finishReason: 'stop' },
           ],
         ]),
-        out: (text) => out.push(text),
-      });
+        { prompt: 'run echo for me', json: false, out: (text) => out.push(text) },
+      );
     });
     const text = out.join('');
     expect(text).toContain('run echo for me');
@@ -119,12 +150,10 @@ describe('runExec', () => {
         ],
         requests,
       );
-      await runExec({
-        rootDir: root,
-        config: { ...config, autoCompactTokenLimit: 1000 },
+      await runExecInTest(root, provider, {
         prompt: bigPrompt,
         json: true,
-        provider,
+        config: { ...config, autoCompactTokenLimit: 1000 },
         out: () => {},
       });
 
@@ -165,17 +194,19 @@ describe('runExec', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-exec-'));
     await withFakeHome(async () => {
       const out: string[] = [];
-      await runExec({
-        rootDir: root,
-        config: { ...config, autoCompactTokenLimit: 1000 },
-        prompt: 'y'.repeat(40_000),
-        json: false,
-        provider: scriptedProvider([
+      await runExecInTest(
+        root,
+        scriptedProvider([
           [{ type: 'text_delta', text: '摘要' }, { type: 'finish', finishReason: 'stop' }],
           [{ type: 'text_delta', text: 'done' }, { type: 'finish', finishReason: 'stop' }],
         ]),
-        out: (text) => out.push(text),
-      });
+        {
+          prompt: 'y'.repeat(40_000),
+          json: false,
+          config: { ...config, autoCompactTokenLimit: 1000 },
+          out: (text) => out.push(text),
+        },
+      );
       const text = out.join('');
       expect(text).toContain('已自动压缩上下文');
       // Fuse line: compaction stopped because the retained floor itself exceeds

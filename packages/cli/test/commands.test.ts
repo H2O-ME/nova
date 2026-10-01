@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createModelListCache, filterCommands, modeOverviewRows, COMMAND_SPECS } from '../src/commands.js';
+import { createModelListCache, mergedCommandSpecs, modeOverviewRows, COMMAND_SPECS } from '../src/commands.js';
 import { parseApprovalAnswer } from '../src/repl.js';
 import {
   agentsMdWrittenLine,
@@ -22,28 +22,17 @@ import {
   unknownCommandParts,
 } from '../src/command-core.js';
 
-describe('filterCommands', () => {
-  it('matches by prefix when input is a bare slash command', () => {
-    // Order is an implementation choice; the user-visible contract is only
-    // "both /model and /mode match the /m and /mode prefixes".
-    const mMatches = filterCommands('/m').map((s) => s.name);
-    expect(mMatches).toContain('/model');
-    expect(mMatches).toContain('/mode');
-
-    const modeMatches = filterCommands('/mode').map((s) => s.name);
-    expect(modeMatches).toContain('/model');
-    expect(modeMatches).toContain('/mode');
-
-    // Bare slash lists every command.
-    expect(filterCommands('/').map((s) => s.name).sort()).toEqual(
-      COMMAND_SPECS.map((s) => s.name).sort(),
-    );
+describe('mergedCommandSpecs', () => {
+  it('appends registry commands so /goal shows up in every shell catalog', () => {
+    const merged = mergedCommandSpecs([{ name: 'goal', description: '目标模式' }]);
+    expect(merged.map((s) => s.name)).toContain('/goal');
+    expect(merged.find((s) => s.name === '/goal')?.description).toBe('目标模式');
   });
 
-  it('closes once the user types arguments', () => {
-    expect(filterCommands('/model gpt')).toEqual([]);
-    expect(filterCommands('hello')).toEqual([]);
-    expect(filterCommands('')).toEqual([]);
+  it('a name both sides claim stays shell-owned exactly once', () => {
+    const merged = mergedCommandSpecs([{ name: 'theme', description: '注册表里的同名行' }]);
+    expect(merged.filter((s) => s.name === '/theme')).toHaveLength(1);
+    expect(merged.find((s) => s.name === '/theme')?.description).not.toContain('同名行');
   });
 });
 
@@ -124,8 +113,8 @@ describe('command-core', () => {
     const rows = helpRows(COMMAND_SPECS);
     expect(rows).toHaveLength(COMMAND_SPECS.length);
     expect(rows[0]).toMatch(/^ {2}\/\S+/);
-    const spec = COMMAND_SPECS.find((s) => s.usage.includes('/compact'))!;
-    expect(rows.find((r) => r.includes('/compact'))).toContain(spec.description);
+    const spec = COMMAND_SPECS.find((s) => s.usage.includes('/theme'))!;
+    expect(rows.find((r) => r.includes('/theme'))).toContain(spec.description);
   });
 
   it('theme accepts exactly the three declared names', () => {

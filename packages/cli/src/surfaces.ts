@@ -1,236 +1,62 @@
 /**
- * The surface registry — which human-facing end this invocation gets.
+ * Surface resolution: the ONE registry, built in precedence order.
  *
- * Four surfaces are wired into the cli itself: the browser UI, the readline
- * REPL, the headless runner and the QQ bot channel (they are inseparable from
- * the product shell — argv grammar, the exec event stream, the bot channel).
- * Every OTHER surface — the terminal UI included — is a plugin loaded from
- * `~/.nova/config.json` `surfaces` (module specs), resolved dynamically by
- * `loadDynamicSurfaces`. Adding a surface is a config row, not a source change;
- * the cli never imports a surface package.
+ * 内置四家（qqbot / exec / web / repl）与配置加载的动态 surface 是同一份
+ * `AgentSurface` 契约、同一个注册表、同一段装配（`surface-host.ts`）。注册顺序
+ * 即优先级——子命令 → 配置的 surface → 默认（web / repl）——壳只问一次
+ * `registry.resolve`，「谁服务这次调用」全仓一个答案；`registry.current()` 从此
+ * 对每一类 surface 都有值（`userQuestions` 的单一来源，见 `runtime-env.ts`）。
  *
- * Precedence: subcommands outrank flags; a configured surface is consulted
- * before the browser/REPL defaults (so an explicit opt-in like `--tui` can win)
- * but after the subcommands. `--repl` (the force-fallback) wins over a
- * configured surface because the surface's own `claim` includes `!repl`. Every
- * invocation is claimed exactly once. Entries load lazily: a plain run never
- * pays for the other graphs.
- *
- * argv → options lives in `cli-args.ts`; this file only answers "who serves it".
+ * argv → options 在 `cli-args.ts`；装配在 `surface-host.ts`；四个内置各自的
+ * claim 判据与启动前置在各自的 surface 文件里——qqbot 的产品形态在它自己的包
+ * （`qqbot-surface.ts` 只留认领与凭据端口的适配）。
  */
-import path from 'node:path';
 import process from 'node:process';
 import { errMessage, type SurfaceRegistry, type SurfaceRows } from '@nova-agent/core';
 import { loadSurfacePlugins } from '@nova-agent/plugins';
-import { resumeAndApproval, type ParsedArgs } from './cli-args.js';
 import type { Config, ConfigDiagnostic } from './config.js';
-import { runSurface, toAgentSurfaceRequest } from './surface-host.js';
+import { execSurface } from './exec.js';
+import { replSurface } from './repl.js';
+import { qqbotBuiltinSurface } from './qqbot-surface.js';
+import type { BuiltinSurface } from './surface-host.js';
+import { webSurface } from './web-mode.js';
 
+export type { BuiltinSurface, SurfaceBoot, SurfaceRequest } from './surface-host.js';
+// argv → options 的公开面留在 `cli-args.ts`，这里原样转出去（历史导入点）。
 export { parseArgs, resumeAndApproval, type ParsedArgs } from './cli-args.js';
 
-/** What a surface entry is handed: the parsed argv plus the resolved context. */
-export interface SurfaceRequest {
-  rootDir: string;
-  config: Config;
-  parsed: ParsedArgs;
-  /**
-   * Non-fatal config problems (`config.ts`): a PLUGIN-owned section whose
-   * `{env:NAME}` did not resolve. A surface that can SHOW one must; a surface
-   * that cannot stays silent rather than refusing to start — one unconfigured
-   * plugin must not take the product down (see `config-expand.ts`).
-   */
-  diagnostics: readonly ConfigDiagnostic[];
-  /** Both stdio ends are a TTY — what the browser surface needs to launch. */
-  interactive: boolean;
-  /**
-   * The configured surfaces this invocation was resolved against (loaded by
-   * `loadDynamicSurfaces`). Threaded to every assembly point (`opts.surfaces`)
-   * so the kernel adopts them as ordinary plugin rows — a surface listed in
-   * `/plugins`. Absent when no configured surface exists.
-   */
-  surfaces?: SurfaceRows;
+/**
+ * The four built-ins in two groups: `head` claims before configured surfaces
+ * (the subcommands), `tail` after them (the defaults). The shell registers
+ * `head`, then the configured surfaces, then `tail`; registration order IS the
+ * precedence contract.
+ */
+export interface Builtins {
+  readonly head: readonly BuiltinSurface[];
+  readonly tail: readonly BuiltinSurface[];
 }
 
-export interface SurfaceEntry {
-  /** Stable id; `/plugins` and the help text use it. */
-  name: string;
-  /** Interactive surfaces treat stray positionals as noise, not as a task. */
-  interactive?: boolean;
-  claim(m: SurfaceRequest): boolean;
-  start(m: SurfaceRequest): Promise<void>;
+export function builtinSurfaces(m: { config: Config; diagnostics: readonly ConfigDiagnostic[] }): Builtins {
+  return {
+    head: [qqbotBuiltinSurface(m.config), execSurface(m.config)],
+    tail: [webSurface(m), replSurface(m.config)],
+  };
 }
 
-/** Subcommands outrank every flag (exec is the CI surface, qqbot the channel). */
-const SUBCOMMAND_SURFACES: readonly SurfaceEntry[] = [
-  {
-    name: 'qqbot',
-    claim: (m) => m.parsed.positional[0] === 'qqbot',
-    start: async (m) => {
-      const { startQqBot } = await import('./qqbot-mode.js');
-      await startQqBot({
-        rootDir: m.rootDir,
-        config: m.config,
-        ...(m.surfaces !== undefined ? { surfaces: m.surfaces } : {}),
-      });
-    },
-  },
-  {
-    name: 'exec',
-    claim: (m) => m.parsed.positional[0] === 'exec',
-    start: async (m) => {
-      const prompt = await execPrompt(m);
-      if (prompt === undefined) return;
-      const { runExec } = await import('./exec.js');
-      await runExec({
-        rootDir: m.rootDir,
-        config: m.config,
-        prompt,
-        json: m.parsed.json,
-        ...resumeAndApproval(m.parsed),
-        ...(m.surfaces !== undefined ? { surfaces: m.surfaces } : {}),
-      });
-    },
-  },
-];
-
-/**
- * The defaults, consulted LAST: `--web` is the product surface (claims with or
- * without a TTY — the smoke harness drives it down a pipe), `--repl` is the
- * force-fallback and the only option without a TTY.
- */
-const DEFAULT_SURFACES: readonly SurfaceEntry[] = [
-  {
-    name: 'web',
-    interactive: true,
-    claim: (m) => !m.parsed.repl && (m.parsed.web || m.interactive),
-    start: async (m) => {
-      const { startWeb } = await import('./web-mode.js');
-      await startWeb({
-        rootDir: m.rootDir,
-        config: m.config,
-        diagnostics: m.diagnostics,
-        ...resumeAndApproval(m.parsed),
-        ...webPort(),
-        ...(m.surfaces !== undefined ? { surfaces: m.surfaces } : {}),
-      });
-    },
-  },
-  {
-    name: 'repl',
-    interactive: true,
-    claim: (m) => m.parsed.repl || !m.interactive,
-    start: async (m) => {
-      const { startRepl } = await import('./repl.js');
-      await startRepl({
-        rootDir: m.rootDir,
-        config: m.config,
-        ...resumeAndApproval(m.parsed),
-        ...(m.parsed.themeOverride !== undefined ? { theme: m.parsed.themeOverride } : {}),
-        ...(m.surfaces !== undefined ? { surfaces: m.surfaces } : {}),
-      });
-    },
-  },
-];
-
-/** All built-in entries (kept for `/plugins`-style enumeration if needed). */
-export const SURFACES: readonly SurfaceEntry[] = [...SUBCOMMAND_SURFACES, ...DEFAULT_SURFACES];
-
-/**
- * Load configured surface plugins (`~/.nova/config.json` `surfaces`) and adapt
- * each to the cli's `SurfaceEntry` shape. A loaded surface's `claim` reads the
- * host-owned flags through the public `AgentSurfaceRequest`; its `start` hands
- * the host-assembled runtime to the plugin. The registry holds the loaded
- * surfaces for `resolve` and is built here so the cli resolves argv against the
- * same instance that registered them.
- */
-/**
- * The adapter entries the resolver consults (`entries`) plus the loaded surface
- * implementations and the shared registry (`rows`), handed to the kernel so it
- * adopts every configured surface as an ordinary plugin row.
- */
-export interface LoadedSurfaces {
-  entries: SurfaceEntry[];
-  rows: SurfaceRows;
-}
-
-/** Load configured surfaces; empty `surfaces` yields no entries nor rows. */
+/** Load and register the configured surfaces into the SAME registry the resolver reads. */
 export async function loadDynamicSurfaces(
   config: Config,
   cwd: string,
-  argv: readonly string[],
   registry: SurfaceRegistry,
-): Promise<LoadedSurfaces> {
-  // An absent or empty `surfaces` key yields no surfaces — the cli never names
-  // a surface package in source, so what loads is exactly what the operator
-  // declared in `~/.nova/config.json`. `--tui` with nothing configured is a
-  // guided error (see `main()`), not a silent fallthrough.
+): Promise<SurfaceRows> {
   const specs = config.surfaces;
-  if (specs === undefined || specs.length === 0) return { entries: [], rows: { registry, loaded: [] } };
+  // An absent or empty `surfaces` key yields nothing — the cli never names a
+  // surface package in source, so what loads is exactly what the operator
+  // declared in `~/.nova/config.json`.
+  if (specs === undefined || specs.length === 0) return { registry, loaded: [] };
   const surfaces = await loadSurfacePlugins(specs, cwd);
   for (const surface of surfaces) registry.register(surface);
-  const entries: SurfaceEntry[] = surfaces.map((surface) => ({
-    name: surface.name,
-    ...(surface.interactive === true ? { interactive: true } : {}),
-    claim: (m) => surface.claim(toAgentSurfaceRequest(m, argv)),
-    start: (m) => runSurface(surface, m, argv),
-  }));
-  return { entries, rows: { registry, loaded: surfaces } };
-}
-
-/**
- * The first entry that claims this invocation. Configured surfaces sit between
- * the subcommands and the defaults, so an explicit opt-in (`--tui`) outranks
- * the browser default but yields to `--repl` (via the surface's own `claim`).
- */
-export function resolveSurface(m: SurfaceRequest, extras: readonly SurfaceEntry[] = []): SurfaceEntry | undefined {
-  return [...SUBCOMMAND_SURFACES, ...extras, ...DEFAULT_SURFACES].find((entry) => entry.claim(m));
-}
-
-/** `nova exec "<task>"`, or the task piped in on stdin (CI-friendly). */
-async function execPrompt(m: SurfaceRequest): Promise<string | undefined> {
-  let prompt = m.parsed.positional.slice(1).join(' ').trim();
-  if (prompt.length === 0 && process.stdin.isTTY !== true) prompt = (await readStdin()).trim();
-  if (prompt.length === 0) {
-    console.error('usage: nova exec "<task>"（或通过管道传入任务文本）');
-    process.exitCode = 1;
-    return undefined;
-  }
-  return prompt;
-}
-
-export function readStdin(): Promise<string> {
-  return new Promise((resolve) => {
-    let text = '';
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', (chunk: string) => {
-      text += chunk;
-    });
-    process.stdin.on('end', () => resolve(text));
-  });
-}
-
-/** `NOVA_WEB_PORT` pins the port for the frontend dev-server proxy flow. */
-function webPort(): { port?: number } {
-  const fixed = Number.parseInt(process.env['NOVA_WEB_PORT'] ?? '', 10);
-  return Number.isInteger(fixed) && fixed > 0 ? { port: fixed } : {};
-}
-
-/** The invocation context: resolved cwd + stdio shape. */
-export function surfaceRequest(
-  rootDir: string,
-  config: Config,
-  parsed: ParsedArgs,
-  diagnostics: readonly ConfigDiagnostic[] = [],
-  surfaces?: SurfaceRows,
-): SurfaceRequest {
-  return {
-    rootDir: path.resolve(rootDir),
-    config,
-    parsed,
-    diagnostics,
-    interactive: process.stdout.isTTY === true && process.stdin.isTTY === true,
-    ...(surfaces !== undefined ? { surfaces } : {}),
-  };
+  return { registry, loaded: surfaces };
 }
 
 /** Errors reach the terminal as one line, never as a stack (user-facing CLI). */

@@ -190,8 +190,8 @@ function toInfo(skill: SkillMetadata): SkillInfo {
  * `answers` is a thunk, not a boolean, because the answer must be read PER CALL:
  * a surface that only becomes known once it claims the invocation (the registry
  * is resolved after the kernel exists) must still be able to say yes. Reading it
- * eagerly at assembly time is exactly the bug that made the TUI's first restore
- * silently never ask.
+ * eagerly at assembly time is exactly the bug that once made a late-claiming
+ * surface silently never ask.
  */
 export function userQuestionsProvider(asker: AskQuestionsFn, answers: () => boolean): Plugin {
   return {

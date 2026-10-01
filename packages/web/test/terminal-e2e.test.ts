@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { WebController } from '../src/controller.js';
+import { bootController } from './controller-rig.js';
 import { parseClientFrame } from '../src/client-frame.js';
 import type { ClientFrame, ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
@@ -77,7 +78,7 @@ describe('terminal frames through the controller', () => {
   it('runs a command in the workspace and streams its output', async () => {
     await withFakeHome(async () => {
       const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-terminal-root-'));
-      const controller = await WebController.create({
+      const controller = await bootController({
         rootDir,
         provider,
         config: { approval: 'read-only' },
@@ -120,7 +121,7 @@ describe('terminal frames through the controller', () => {
   it('answers a re-list with the running command, so a reload rebuilds the panel', async () => {
     await withFakeHome(async () => {
       const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-terminal-root-'));
-      const controller = await WebController.create({
+      const controller = await bootController({
         rootDir,
         provider,
         config: { approval: 'read-only' },

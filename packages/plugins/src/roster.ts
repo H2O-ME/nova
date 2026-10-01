@@ -1,20 +1,17 @@
 /**
- * The roster — which plugins load, in what order, and how config changes that.
+ * Third-party plugin loading (`plugins.extra`): module spec resolution, name
+ * normalization and the plugin-shape check. The ROSTER ASSEMBLY itself (what
+ * loads, in what order, tier gating) lives in `runtime-roster.ts`; the pure
+ * filtering half is re-exported from `roster-filter.ts`.
  *
- * The built-in roster is data: a list of first-party plugins. Configuration can
- * subtract from it (`plugins.disable`) or add third-party modules
- * (`plugins.extra`), so an operator changes what the product does without
- * touching source — that is what `~/.nova/config.json` means by "select,
- * replace or extend any capability".
- *
- * Extra modules are loaded as the *public* plugin shape (`{ name, activate }`),
+ * Extra modules are loaded as the *public* plugin shape (`{ name, apply }`),
  * the same one the built-ins use. Container plugins with `inject` are the
  * kernel's own seams; a third party does not need them to add a tool, a command
  * or a hook.
  */
 import { pathToFileURL } from 'node:url';
 import { isAbsolute, resolve } from 'node:path';
-import { pluginName, type AnyPlugin, type Plugin } from '@nova-agent/core';
+import { errMessage, pluginName, type AnyPlugin, type Plugin } from '@nova-agent/core';
 
 /**
  * The pure filtering half lives in `roster-filter.ts` (it is what the settings
@@ -48,7 +45,7 @@ export async function loadExtraPlugins(specs: readonly string[], cwd: string): P
     try {
       module = (await import(target)) as Record<string, unknown>;
     } catch (err) {
-      throw new Error(`plugins.extra: cannot load "${spec}": ${message(err)}`);
+      throw new Error(`plugins.extra: cannot load "${spec}": ${errMessage(err)}`);
     }
     const candidate = module['default'] ?? module['plugin'];
     if (!isPlugin(candidate)) {
@@ -101,8 +98,4 @@ function isPlugin(value: unknown): value is Plugin {
     );
   }
   return typeof shape.apply === 'function';
-}
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }

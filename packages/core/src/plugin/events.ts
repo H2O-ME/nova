@@ -13,6 +13,7 @@
  *   bail       `serial` without the awaiting (for sync predicates)
  */
 import type { Awaitable } from './types.js';
+import { errMessage } from '../errors.js';
 
 export interface EventKey<Args extends unknown[] = unknown[], Result = void> {
   readonly name: string;
@@ -97,7 +98,7 @@ export class EventRegistry {
       try {
         entry.listener(...args, noop);
       } catch (err) {
-        this.log('error', `listener for "${name(key)}" threw: ${message(err)}`);
+        this.log('error', `listener for "${name(key)}" threw: ${errMessage(err)}`);
       }
     }
   }
@@ -193,9 +194,6 @@ function name(key: EventKey<never[], unknown> | string): string {
   return typeof key === 'string' ? key : key.name;
 }
 
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 /**
  * Convenience wrapper so callers can await a listener's result uniformly.

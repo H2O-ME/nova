@@ -244,8 +244,8 @@ describe('askUserPlugin through the real tool host', () => {
   });
 
   it('reads the answerer per call, so a surface that gains a human mid-run is honoured', async () => {
-    // `ask` is a THUNK, not the answerer itself: the TUI's first restore wired a
-    // boolean at assembly time and the tool silently never asked. Reading at call
+    // `ask` is a THUNK, not the answerer itself: an assembly-time boolean once
+    // made a late-claiming surface silently never ask. Reading at call
     // time is what makes the registry's late resolution count.
     let available = false;
     const tool = await toolOf(askUserPlugin({

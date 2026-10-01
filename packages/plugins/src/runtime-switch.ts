@@ -54,7 +54,17 @@ export function describePlugins(env: Environment): PluginRosterEntry[] {
     if (fiber !== undefined) {
       rows.push({ name: fiber.name, state: fiber.state, inject: fiber.inject, enabled: true, ...base });
     } else {
-      rows.push({ name: known.name, state: 'disabled', inject: [], enabled: false, ...base });
+      rows.push({
+        name: known.name,
+        // An enabled extension whose package could not load is FAILED, not off:
+        // the panel's failed treatment (group count, sort-to-top, 失败 label)
+        // is what the reader needs, with `error` saying why.
+        state: known.error !== undefined ? 'failed' : 'disabled',
+        inject: [],
+        enabled: false,
+        ...base,
+        ...(known.error !== undefined ? { error: known.error } : {}),
+      });
     }
   }
   // Fibers no manifest names (capability providers, the toolbox, an extra that

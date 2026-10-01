@@ -3,10 +3,10 @@
  * （PTC dispatcher）、超时/中断宽限执行、结果落盘溢出。
  */
 import { mkdir, writeFile } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { newId } from '../ids.js';
 import { errMessage } from '../errors.js';
+import { toolOutputsDir } from '../paths.js';
 import { truncateUtf8Head, truncateUtf8Tail } from '../utf8.js';
 import { validateToolCallVerdict } from '../types.js';
 import type {
@@ -386,7 +386,7 @@ async function storeToolResult(
   if (Buffer.byteLength(raw, 'utf8') <= maxBytes) return { content: raw };
   // The spill never lands in the workspace (zero-write rule): callers pass a
   // cacheDir under ~/.nova, and the fallback keeps that contract too.
-  const cacheDir = opts.cacheDir ?? path.join(os.homedir(), '.nova', 'cache', 'tool-outputs');
+  const cacheDir = opts.cacheDir ?? toolOutputsDir();
   await mkdir(cacheDir, { recursive: true });
   const ref = path.join(cacheDir, `${newId('out')}.txt`);
   // 'wx' refuses to overwrite (or follow a planted symlink at) an existing path.

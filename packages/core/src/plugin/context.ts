@@ -14,6 +14,7 @@
  *    plugin like any other; this file is the whole framework.
  */
 import { EventRegistry, type EventKey, type Listener, type OnOptions, type Logger } from './events.js';
+import { errMessage } from '../errors.js';
 import { Fiber, type Runtime } from './fiber.js';
 import { ServiceStore, ServiceUnavailable } from './store.js';
 import {
@@ -60,7 +61,7 @@ export class Context {
       const waiters = [...runtime.fibers].filter((fiber) => fiber.state !== 'disposed' && fiber.inject.includes(name));
       for (const fiber of waiters) {
         void fiber.refresh().catch((err: unknown) => {
-          log('error', `plugin "${fiber.name}" failed to reload: ${describe(err)}`);
+          log('error', `plugin "${fiber.name}" failed to reload: ${errMessage(err)}`);
         });
       }
     });
@@ -219,9 +220,6 @@ async function runReverse(disposers: readonly Dispose[]): Promise<void> {
   }
 }
 
-function describe(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
 

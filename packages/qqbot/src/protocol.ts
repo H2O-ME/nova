@@ -2,7 +2,7 @@ import { errMessage } from '@nova-agent/core';
 // The credential/token layer lives in `token.ts` (see that file for why it is split).
 // Imported for local use by the gateway below, and re-exported so `protocol.ts` keeps
 // answering the same questions it always did: every existing importer (`runtime.ts`,
-// `qqbot-probe.ts`, the protocol tests) reads the token manager and the fetch types
+// `surface/probe.ts`, the protocol tests) reads the token manager and the fetch types
 // from this module, and the package's public surface is a flat `export *` over these
 // files — dropping the re-export would silently shrink that surface.
 import { AccessTokenManager, TOKEN_ENDPOINT, type CredentialSource, type FetchLike, type HttpClientResponse } from './token.js';

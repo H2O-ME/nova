@@ -12,7 +12,7 @@
  * has no live event to re-send, so a client attaching after the ask went out
  * learns about it here or not at all.
  */
-import type { AgentSession } from '@nova-agent/core';
+import type { AgentSession, ContextTimeline } from '@nova-agent/core';
 import { userConfigPath } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import type { ModelSeat } from './model-seat.js';
@@ -32,6 +32,8 @@ export function assembleReady(opts: {
   pages: SessionPages;
   /** The running version, as the owning shell reported it at boot. */
   version?: string;
+  /** The Context panel's reading, when the plugin is on. */
+  context?: ContextTimeline;
 }): ReadyInfo {
   const { agent, kernel, seat, pages } = opts;
   const cuts = pages.cut(agent, kernel.host.tools);
@@ -75,7 +77,14 @@ export function assembleReady(opts: {
     // derives which PAGES exist from it, and the `roster` frame only arrives
     // when the plugins panel is mounted. Without this, the first 设置 open after
     // a restart drew the page of a plugin the operator had switched off.
-    roster: kernel.roster().map(toWireRosterEntry),
-    configPath: userConfigPath(),
-  };
+  roster: kernel.roster().map(toWireRosterEntry),
+  configPath: userConfigPath(),
+  /**
+   * The Context panel's baseline reading, when the `context` plugin is on.
+   * Read from the fold the controller keeps (same object the `context` frame
+   * answers with), so an attach and a panel-refresh cannot disagree about what
+   * the window looks like.
+   */
+  ...(opts.context !== undefined ? { context: opts.context } : {}),
+};
 }

@@ -14,7 +14,8 @@
  * workspace switch — reading the boot document again would undo it and would
  * make a boot-time entry impossible to clear. The verdict itself is ONE call
  * (`loadableRoster` → `enabledByTier`), applied to every source in one pass:
- * the surface's own plugins, this build's built-ins, and `plugins.extra` alike.
+ * the surface's own plugins, this build's built-ins, the spec-loaded
+ * extensions, and `plugins.extra` alike.
  * `extra` used to be spread into the host raw, which is why a third-party
  * module could not be switched off.
  *
@@ -34,11 +35,12 @@ import {
 import { PluginHost } from './host.js';
 import { kernelCommandsPlugin } from './kernel-commands.js';
 import { kernelPlugins } from './runtime-builtins.js';
-import { impliedOptIns, labelFor, pluginTier } from './plugin-tier.js';
+import { enabledByTier, impliedOptIns, labelFor, pluginTier } from './plugin-tier.js';
 import { skillsPlugin } from './skills.js';
 import { wrapHeadlessCompact } from './headless-compact.js';
 import { loadExtraPlugins } from './roster.js';
 import { loadableRoster, unknownDisabled } from './roster-filter.js';
+import { extensionDescriptor, extensionNames, loadExtensions } from './extensions.js';
 import { surfacePlugin } from './surface-registry.js';
 import type { CreateKernelOptions, PluginDescriptor, PluginOrigin } from './runtime-types.js';
 import type { Environment } from './runtime-env.js';
@@ -64,6 +66,16 @@ export async function reroster(env: Environment, opts: CreateKernelOptions): Pro
   const surfacePlugins = opts.extraPlugins ?? [];
   const builtins = kernelPlugins(env, opts);
   const extra = await loadExtraPlugins(opts.config.plugins?.extra ?? [], process.cwd());
+  // The EXTENSION plugins load from their OWN packages (spec table) and only
+  // when enabled: a disabled or absent extension costs nothing, and one that
+  // fails to load becomes a warning + an `error` on its row instead of killing
+  // boot/re-roster. `enable` already carries the derived opt-ins (`codeModeOptIn`).
+  const extensionRows = extensionNames();
+  const extensions = await loadExtensions(
+    extensionRows.filter((name) => enabledByTier(name, { enable, disable: effectiveDisable })),
+    env,
+    opts,
+  );
   // Configured surfaces load as ORDINARY PLUGIN ROWS into the same registry the
   // resolver reads (see `surfacePlugin`): that is what puts a surface in
   // `/plugins`, in the tier table, and under the switch, instead of leaving it
@@ -75,15 +87,23 @@ export async function reroster(env: Environment, opts: CreateKernelOptions): Pro
     surfaceRows === undefined
       ? []
       : surfaceRows.loaded.map((surface) => surfacePlugin(surface, surfaceRows.registry));
-  const typo = unknownDisabled([...builtins, ...surfacePlugins, ...extra, ...surfaces], effectiveDisable);
+  const typo = unknownDisabled(
+    [...builtins, ...surfacePlugins, ...extra, ...surfaces],
+    effectiveDisable,
+    extensionRows,
+  );
   if (typo.length > 0) {
     env.root.log('warn', `plugins.disable names no known plugin: ${typo.join(', ')}`);
   }
   // The manifest: every KNOWN plugin's name + origin + tier + Chinese label.
   // Built from the CANDIDATES, not the loadable subset — see the file header.
+  const extensionErrors = new Map(extensions.failed.map((failure) => [failure.name, failure.error]));
   env.state.manifest = [
     ...surfacePlugins.map((plugin) => describe(plugin, 'surface')),
     ...builtins.map((plugin) => describe(plugin, 'builtin')),
+    // Every extension keeps a row whether or not it loaded: a disabled, absent
+    // or failed row must stay visible on the page that switches it.
+    ...extensionRows.map((name) => extensionDescriptor(name, extensionErrors.get(name))),
     ...extra.map((plugin) => describe(plugin, 'extra')),
     ...surfaces.map((plugin) => describe(plugin, 'surface')),
   ];
@@ -91,6 +111,7 @@ export async function reroster(env: Environment, opts: CreateKernelOptions): Pro
   const candidates: Plugin[] = [
     ...surfacePlugins,
     ...builtins,
+    ...extensions.plugins,
     ...extra,
     ...surfaces,
     // Kernel-executable commands (a surface's `/` menu reads its registry).

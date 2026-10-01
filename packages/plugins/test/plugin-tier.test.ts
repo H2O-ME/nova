@@ -154,8 +154,19 @@ describe('the tier table', () => {
     expect(enabledByTier('some-third-party', {})).toBe(true);
   });
 
-  it('lets the off-switch beat a derived second-door opt-in', () => {
-    // `enabledByTier` already puts `disable` first; the DERIVATION must agree, or
+  it('offers the context reading as an advanced opt-in with words of its own', () => {
+    // The Context panel's whole on/off: the plugin is OFF until asked for (the
+    // service it provides is what the web surface renders the pane from), and
+    // its row is drawn by a person, so it needs Chinese words rather than the
+    // identifier `context`.
+    expect(pluginTier('context')).toBe('advanced');
+    expect(enabledByTier('context', {})).toBe(false);
+    expect(enabledByTier('context', { enable: ['context'] })).toBe(true);
+    expect(labelFor('context').title).toBe('上下文洞察');
+    expect(labelFor('context').description.length).toBeGreaterThan(0);
+  });
+
+  it('lets the off-switch beat a derived second-door opt-in', () => {    // `enabledByTier` already puts `disable` first; the DERIVATION must agree, or
     // the switch is a lie — the row reads OFF and the next roster puts the plugin
     // back (the reported "开关会自动打开"). Two plugins have such a door: `ptc`'s
     // non-`native` code mode, and `qqbot`'s stored credentials.

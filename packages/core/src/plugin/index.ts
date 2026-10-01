@@ -15,6 +15,7 @@
  * ```
  */
 export { Context } from './context.js';
+export { registerCommand, registerTool } from './registration.js';
 export { Fiber, type FiberState, type Runtime } from './fiber.js';
 export { EventRegistry, event, isBailed, type EventKey, type Listener, type Next, type OnOptions } from './events.js';
 export { ServiceStore, ServiceUnavailable, type ServiceImpl } from './store.js';
@@ -43,9 +44,9 @@ export {
   beforeToolCall,
   commands,
   compaction,
+  contextInsights,
   jobs,
   llm,
-  pluginLoaded,
   sessions,
   skills,
   spill,

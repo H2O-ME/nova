@@ -34,7 +34,4 @@ export { resolveInRoot, READ_MAX_BYTES } from './builtin/fs.js';
 export { POWERSHELL_UTF8_PREFIX, powershellInvocation, bashOnPath, resolveShellName, startBashJob } from './builtin/bash.js';
 export type { BashJobRequest } from './builtin/bash.js';
 export * from './skills.js';
-export * from './ptc/json.js';
-export * from './ptc/sdk.js';
-export * from './ptc/code-runtime.js';
-export * from './ptc/run-code.js';
+export * from './extensions.js';

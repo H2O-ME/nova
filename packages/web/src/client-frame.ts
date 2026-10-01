@@ -86,6 +86,8 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'roster':
     case 'list_skills':
     case 'qqbot':
+    case 'pick_file':
+    case 'pick_directory':
       return { type: obj['type'] } as ClientFrame;
     case 'set_plugin_enabled':
     case 'set_skill_enabled': {
@@ -145,6 +147,10 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
       }
       return { type: 'load_trace', have };
     }
+    case 'context':
+      // No payload: the reading is whatever the session currently holds, so
+      // there is nothing for a client to state (or to forge).
+      return { type: 'context' };
     case 'resolve_approval': {
       if (typeof obj['id'] !== 'string' || !ID_RE.test(obj['id'])) return reject('resolve_approval.id must be an ASCII token');
       // The answer's shape is core's business, not the wire's: `parseAskResult`

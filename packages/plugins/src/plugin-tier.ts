@@ -53,8 +53,8 @@ export const CORE_PLUGINS: readonly string[] = [
   // The surface registry and the answerer seam. Both are capability providers
   // (like `llm` / `approval`), so a switch that dropped one would take the
   // resolver — or the ask tool's ability to learn there is nobody to ask — down
-  // with it. `surfaces` is a provider NAME; a surface's own fiber is named after
-  // the surface (`tui`), so the two never collide.
+  // with it. `surfaces` is a provider NAME; a surface's own fiber is named
+  // after the surface itself, so the two never collide.
   'surfaces',
   'user-questions',
   // The agent's basic tools: without them a run cannot read, write or search.
@@ -66,11 +66,12 @@ export const CORE_PLUGINS: readonly string[] = [
 
 /**
  * OFF until asked for. `subagent` and `ptc` add whole execution modes (`ptc`
- * also changes what the model is offered every turn), and `qqbot` opens an
- * external channel — none of them is something a new install should be paying
- * for by default.
+ * also changes what the model is offered every turn), `qqbot` opens an external
+ * channel, and `context` reads a whole session log to answer a question only a
+ * reader asks — none of them is something a new install should be paying for by
+ * default.
  */
-export const ADVANCED_PLUGINS: readonly string[] = ['subagent', 'ptc', 'qqbot'];
+export const ADVANCED_PLUGINS: readonly string[] = ['subagent', 'ptc', 'qqbot', 'context'];
 
 /**
  * The Chinese display name and one-line description of every name this build
@@ -105,6 +106,7 @@ export const PLUGIN_LABELS: Record<string, { title: string; description: string 
   subagent: { title: '子代理', description: '为自包含的子任务启动隔离的子代理。' },
   ptc: { title: '代码模式', description: '运行 run_code 程序，按需调用工具。' },
   qqbot: { title: 'QQ 机器人', description: 'QQ 渠道插件：向群与单聊发送消息。' },
+  context: { title: '上下文洞察', description: '汇总当前上下文组成、逐次请求的趋势、变更事件与文件活动。' },
 };
 
 /** One plugin's tier. Unknown names are `standard` (see the module doc). */
