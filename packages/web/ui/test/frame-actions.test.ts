@@ -68,6 +68,22 @@ describe('frameAction', () => {
     expect(frameAction({ type: 'error', message: 'boom' })).toEqual({ type: 'error', message: 'boom' });
   });
 
+  it('routes a context reading, and a null reading as a real value', () => {
+    // The Context panel's on/off travels as `null` — the plugin is off — and
+    // must not be routed as "no action" (the pane would keep drawing a snapshot
+    // that stopped moving, and its tab would never go away).
+    expect(frameAction({ type: 'context', timeline: null })).toEqual({ type: 'context', timeline: null });
+    const timeline = {
+      truncated: false,
+      live: { cats: { system: 1, tools: 0, injected: 0, user: 0, assistant: 0, tool: 0 }, total: 1, elements: [] },
+      counts: { requests: 0, turns: 0, toolCalls: 0, compactions: 0 },
+      points: [],
+      events: [],
+      files: [],
+    };
+    expect(frameAction({ type: 'context', timeline })).toEqual({ type: 'context', timeline });
+  });
+
   it('routes a listed directory level whole, optional parent preserved', () => {
     const frame: ServerFrame = {
       type: 'directory',

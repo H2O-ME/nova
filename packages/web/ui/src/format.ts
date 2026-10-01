@@ -208,20 +208,6 @@ export function formatExactTokens(count: number): string {
 }
 
 /**
- * A session row's right-hand stamp, kept short enough for a 280px sidebar:
- * time of day for today's sessions, the date for everything older (the rows are
- * grouped by workspace, so the group label no longer carries the date).
- */
-export function stampLabel(ms: number, now: number = Date.now()): string {
-  const date = new Date(ms);
-  const today = new Date(now);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  if (date.toDateString() === today.toDateString()) return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  if (date.getFullYear() === today.getFullYear()) return `${date.getMonth() + 1}月${date.getDate()}日`;
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-/**
  * What an "always" grant pinned to the first `scope` words covers, as the user
  * will read it back in the approval dialog: the word prefix plus an ellipsis
  * when it stops short of the whole command. The words come from the kernel

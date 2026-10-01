@@ -4,7 +4,7 @@
  * directly instead of being verified through a rendered row.
  */
 import { describe, expect, it } from 'vitest';
-import { averageFirstToken, cacheHitText, formatClock, formatDuration, formatExactTokens, formatTokens, liveDurationText, modelThroughput, runDurationText, runMetaText, scopedGrant, stampLabel, subagentTotals, throughput } from '../src/format.js';
+import { averageFirstToken, cacheHitText, formatClock, formatDuration, formatExactTokens, formatTokens, liveDurationText, modelThroughput, runDurationText, runMetaText, scopedGrant, subagentTotals, throughput } from '../src/format.js';
 import { emptyTotals, type SessionTotals } from '../../src/totals.js';
 
 describe('formatDuration', () => {
@@ -25,15 +25,6 @@ describe('formatTokens', () => {
     expect(formatTokens(4_100)).toBe('4.1K');
     expect(formatTokens(200_000)).toBe('200K');
     expect(formatTokens(4_100_000)).toBe('4.1M');
-  });
-});
-
-describe('stampLabel', () => {
-  it('shows the time of day for today, the date for anything older', () => {
-    const now = new Date(2026, 8, 21, 15, 0, 0).getTime();
-    expect(stampLabel(new Date(2026, 8, 21, 9, 5).getTime(), now)).toBe('09:05');
-    expect(stampLabel(new Date(2026, 8, 3, 9, 5).getTime(), now)).toBe('9月3日');
-    expect(stampLabel(new Date(2025, 11, 30, 9, 5).getTime(), now)).toBe('2025-12-30');
   });
 });
 

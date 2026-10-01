@@ -1,0 +1,781 @@
+/* The 上下文 pane's sheet. Same chrome rules as the 轨迹 pane (one centered column
+   on the shared width axis, the secondary tier for meta text, hairlines, tabular
+   numerals) plus the cards this pane adds: the stats strip, the composition bar
+   with its hover bubble, the trend chart with its axes and grid, the element
+   board, the event log and the file list.
+
+   Colours come from the token layer (static hues for categories, alias tiers for
+   chrome) — never a literal. Chart geometry (16px composition bar, 130px plot
+   with an 18px head, 14px bars on a 2px rhythm, the axis/quarter-line offsets)
+   follows dsh-context's stackedBar/trendChart (Apache-2.0), the reference this
+   pane is aligned to. */
+
+/* The pane is a plain column: the SCROLLPORT is the conversation's shared one
+   (`[data-conversation-scroll]`, see the component header) — an inner scroller
+   here would have no range of its own and would swallow the wheel instead of
+   letting it chain. */
+.root {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Same column and side clearance as the transcript and the trace, so switching
+   views does not move the left edge the reader is anchored to. */
+.column {
+  box-sizing: border-box;
+  width: var(--dsh-chat-content-width);
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 12px var(--dsh-composer-side-clearance) 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card {
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-settings-card-fill, var(--dsw-alias-bg-layer-1));
+  padding: 12px 14px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--dsh-content-font-size-body, 14px);
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.trailing {
+  color: var(--dsw-alias-label-caption);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  margin: 0;
+  padding: 8px 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}
+
+/* ── stats strip ───────────────────────────────────────────────────────── */
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 0;
+}
+
+.stat {
+  flex: 1 1 96px;
+  min-width: 88px;
+}
+
+.statLabel {
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-font-xxs-12, 12px);
+}
+
+.statValue {
+  margin: 2px 0 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* ── composition ───────────────────────────────────────────────────────── */
+
+.headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.headlineNumber {
+  color: var(--dsw-alias-label-primary);
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.headlineUnit {
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-variant-numeric: tabular-nums;
+}
+
+.headlinePct {
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}
+
+.headlinePct b {
+  color: var(--dsw-alias-brand-primary);
+  font-weight: 600;
+}
+
+.barWrap {
+  position: relative;
+}
+
+.bar {
+  display: flex;
+  gap: 2px;
+  height: 16px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-skeleton, var(--dsw-alias-bg-layer-2));
+}
+
+.slot {
+  flex-basis: 0;
+  min-width: 0;
+  transition: opacity 0.2s ease;
+}
+
+.slotDim {
+  opacity: 0.35;
+}
+
+/* The unfilled remainder of the window: the striped region the session has not
+   reached (nothing is drawn when the estimate already covers the window). */
+.free {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--dsw-alias-label-dimmed) 22%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+}
+
+.barTip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--dsw-alias-tooltip-bg, var(--dsw-alias-bg-layer-2));
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: var(--dsh-font-xxs-12, 12px);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv3);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.barTip span {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.legendItemOn {
+  color: var(--dsw-alias-label-primary);
+}
+
+.legendSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.legendLabel {
+  white-space: nowrap;
+}
+
+.legendValue,
+.legendPct {
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── trend ─────────────────────────────────────────────────────────────── */
+
+.chartRow {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+/* The axis column: five ticks pinned to the same offsets as the grid lines. */
+.axis {
+  position: relative;
+  width: 44px;
+  height: 130px;
+  box-sizing: border-box;
+  color: var(--dsw-alias-label-caption);
+  font-size: var(--dsh-font-xxs-12, 11px);
+}
+
+.axis span {
+  position: absolute;
+  right: 0;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.axisTop {
+  top: 13px;
+}
+
+.axisQ3 {
+  top: 41px;
+}
+
+.axisMid {
+  top: 69px;
+}
+
+.axisQ1 {
+  top: 97px;
+}
+
+.axisBot {
+  top: 125px;
+}
+
+/* Owns the hover bubble (absolute, outside the scroller so a wide tip neither
+   scrolls the plot nor gets clipped by it). */
+.chartWrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.chartScroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  padding-bottom: 6px;
+}
+
+.chart {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 130px;
+  padding: 18px 2px 0;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: 100%;
+}
+
+.grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--dsw-alias-border-l1);
+  pointer-events: none;
+}
+
+.gridTop {
+  top: 18px;
+}
+
+.gridQ3 {
+  top: 46px;
+}
+
+.gridMid {
+  top: 74px;
+}
+
+.gridQ1 {
+  top: 102px;
+}
+
+/* The solid zero baseline, drawn after the dashed guides. */
+.gridZero {
+  top: 130px;
+  border-top-style: solid;
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.trendBar {
+  position: relative;
+  width: 14px;
+  flex: none;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 2px;
+  outline: 1px dashed transparent;
+  outline-offset: 1px;
+  cursor: pointer;
+  transition: outline-color 0.2s ease;
+}
+
+.trendBarHover {
+  outline-color: var(--dsw-alias-brand-primary);
+}
+
+/* Declared after the hover rule: a pinned bar keeps its solid frame while the
+   pointer is still resting on it. */
+.trendBarPicked {
+  outline: 2px solid var(--dsw-alias-label-primary);
+  outline-offset: 1px;
+}
+
+.trendStack {
+  display: flex;
+  flex-direction: column-reverse;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.seg {
+  flex-basis: 0;
+  min-height: 0;
+}
+
+.chartTip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  background: var(--dsw-alias-tooltip-bg, var(--dsw-alias-bg-layer-2));
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: var(--dsh-font-xxs-12, 12px);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: var(--dsw-shadow-lv3);
+  pointer-events: none;
+}
+
+.chartTip span + span {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+/* The active bar's identity and usage, then its composition on the next line. */
+.detailHead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-bottom: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-font-xxs-12, 12px);
+  font-variant-numeric: tabular-nums;
+}
+
+.detailWhen {
+  color: var(--dsw-alias-label-primary);
+}
+
+.miniLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.miniItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ── filter chips (element board / event log) ──────────────────────────── */
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: var(--dsh-font-xxs-12, 11px);
+  line-height: 18px;
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.chip:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.chipOn {
+  background: var(--dsw-alias-interactive-bg-active);
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.chipN {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* ── element board ─────────────────────────────────────────────────────── */
+
+/* One card per category (the reference browser's anatomy): the header carries
+   the category's own answer and collapses the body; the rows inside are
+   heaviest-first. */
+.catList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.catCard {
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+}
+
+.catHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.catHead:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* A drawn chevron (a bordered box rotated -45°→45°), not a glyph: it rotates
+   about its true centre and stays crisp at any zoom (the reference's idiom). */
+.catChev {
+  flex: none;
+  width: 10px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.catChev::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.2s ease;
+}
+
+.catChev[data-open='true']::before {
+  transform: rotate(45deg);
+}
+
+.catDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.catLabel {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.catCount {
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-font-xxs-12, 12px);
+  white-space: nowrap;
+}
+
+.catTokens {
+  margin-left: auto;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.catPct {
+  flex: none;
+  width: 36px;
+  text-align: right;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.catBody {
+  margin: 0;
+  padding: 4px 6px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+  list-style: none;
+}
+
+.elementRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}
+
+.elementRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.elementLabel {
+  flex: none;
+  max-width: 42%;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.elementPreview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.elementTokens {
+  flex: none;
+  margin-left: auto;
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.elementPct {
+  flex: none;
+  width: 36px;
+  text-align: right;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── event log ─────────────────────────────────────────────────────────── */
+
+.eventList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.eventRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: 6px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}
+
+.eventRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.eventGlyph,
+.chipGlyph {
+  flex: none;
+  text-align: center;
+}
+
+.eventGlyph {
+  width: 16px;
+}
+
+/* The kind's tint lives on `color`; the pill WEARS it through currentColor, so
+   one tone class serves the glyph, the chip and the pill. */
+.eventPill {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font-size: var(--dsh-font-xxs-12, 11px);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.toneCompaction {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.toneWorkspace {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.toneGoal {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.eventDetail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventTime {
+  flex: none;
+  margin-left: auto;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── file activity ─────────────────────────────────────────────────────── */
+
+.fileList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: 6px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+}
+
+.fileRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.filePath {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--dsh-font-family-mono, monospace);
+  font-size: var(--dsh-font-xxs-12, 12px);
+}
+
+.fileBadge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font-size: var(--dsh-font-xxs-12, 11px);
+  white-space: nowrap;
+}
+
+.badgeRead {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.badgeWrite {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.badgeSearch {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.badgeCount {
+  margin-left: 4px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fileDelta {
+  flex: none;
+  display: inline-flex;
+  gap: 5px;
+  font-size: var(--dsh-font-xxs-12, 11px);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.deltaUp {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.deltaDown {
+  color: var(--dsw-alias-state-error-primary);
+}

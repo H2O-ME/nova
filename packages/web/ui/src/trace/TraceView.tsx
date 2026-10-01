@@ -46,8 +46,7 @@ export function TraceView({
   const hidden = Math.max(0, total - held);
   return (
     <div className={css.root} data-trace-view="">
-      <div className={css.scroller}>
-        <div className={css.column}>
+      <div className={css.column}>
           <div className={css.toolbar}>
             <span className={css.count} data-trace-count="">
               日志共 {total} 条{hidden > 0 ? ` · 未加载 ${hidden} 条` : ''}
@@ -76,7 +75,6 @@ export function TraceView({
             );
           })}
         </div>
-      </div>
     </div>
   );
 }

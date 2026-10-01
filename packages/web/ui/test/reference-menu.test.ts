@@ -140,8 +140,21 @@ describe('referenceItems', () => {
     { path: 'README.md', name: 'README.md', kind: 'file' },
   ];
 
-  it('lists files before directories', () => {
-    expect(referenceItems(entries).map((item) => item.id)).toEqual(['src/main.ts', 'README.md', 'src']);
+  it('lists directories before files, the harness listing\'s order', () => {
+    expect(referenceItems(entries).map((item) => item.id)).toEqual(['src', 'src/main.ts', 'README.md']);
+  });
+
+  it('a drilled listing drops the parent description its breadcrumb already carries', () => {
+    expect(referenceItems(entries, false).every((item) => item.description === undefined)).toBe(true);
+    expect(referenceItems(entries, true).find((item) => item.id === 'src/main.ts')?.description).toBe('src');
+  });
+
+  it('rows carry the reference domain as an icon kind and the section heading', () => {
+    const file = referenceItems(entries).find((item) => item.id === 'README.md');
+    const dir = referenceItems(entries).find((item) => item.id === 'src');
+    expect(file?.icon).toBe('file');
+    expect(dir?.icon).toBe('folder');
+    expect(file?.section).toBe('文件');
   });
 
   it('names the parent directory as the disambiguator, and omits it at the root', () => {

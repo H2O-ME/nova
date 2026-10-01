@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- NovaAgent favicon: the README hero's 星芒徽标 on a rounded badge. -->
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="#ffffff"/>
+  <path d="M29 14 L30.8 27.2 L42 32 L30.8 36.8 L29 50 L27.2 36.8 L16 32 L27.2 27.2 Z" fill="#e8a13c"/>
+  <path d="M45 15.5 L45.8 20.9 L50 23 L45.8 25.1 L45 30.5 L44.2 25.1 L40 23 L44.2 20.9 Z" fill="#e8a13c" opacity="0.55"/>
+</svg>

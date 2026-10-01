@@ -95,8 +95,15 @@ const MAPPERS: Mapper = {
     },
   }),
   directory_error: (frame) => ({ type: 'directory_error', message: frame.message }),
+  // The native-dialog answer travels whole (path / error are independently
+  // optional; neither present means the dialog was dismissed).
+  picked: (frame) => {
+    const { type: _frameType, ...reply } = frame;
+    return { type: 'picked', ...reply };
+  },
   history_earlier: (frame) => ({ type: 'history_earlier', blocks: frame.blocks, total: frame.total }),
   trace: (frame) => ({ type: 'trace', rows: frame.rows, total: frame.total }),
+  context: (frame) => ({ type: 'context', timeline: frame.timeline }),
   // The terminal frame travels as its payload (minus the discriminant): the
   // slice's fold reads `id`/`status`/`text`/`detail`/`error` whole, and
   // re-listing the fields here is how a new one gets silently dropped.

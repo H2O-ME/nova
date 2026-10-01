@@ -27,6 +27,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { droppedDirectories } from './drop-entries.js';
+import { basename } from './file-type.js';
 import { isImageMediaType, previewUrl, uploadImage, type ImageDraft } from './image-draft.js';
 import { formatMention } from './reference-menu.js';
 
@@ -85,12 +86,6 @@ export const DROP_NEEDS_PATH = '拖入的文件没有可引用的真实路径：
 
 /** The `+` menu entry that opens the host's file picker. */
 export const REFERENCE_LOCAL_FILE = '引用本地文件';
-
-/** The last path segment, for platforms where `\` separates. */
-function leafName(path: string): string {
-  const cut = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-  return cut === -1 ? path : path.slice(cut + 1);
-}
 
 /**
  * The mention tokens that make referenced files reachable by the model.
@@ -158,7 +153,7 @@ export function useAttachments(
       if (current.some((entry) => entry.path === trimmed)) return current;
       return [...current, {
         id,
-        name: name === undefined || name === '' ? leafName(trimmed) : name,
+        name: name === undefined || name === '' ? basename(trimmed) : name,
         path: trimmed,
         bytes: 0,
         status: 'ready',

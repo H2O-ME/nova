@@ -116,3 +116,20 @@ export const DatabaseIcon = (p: P): JSX.Element => (
     <path d="M2.25 7.95A5.75 2.4 0 0 0 13.75 7.95" stroke="currentColor" strokeWidth="1.25" />
   </Svg>
 );
+
+/** The `@` row's file glyph — the harness `BrowseOutlineArtwork` (16-box; the menu draws it at 14, a transcript chip sizes it in CSS). */
+export const ReferenceFileIcon = (p: P): JSX.Element => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className={p.className}>
+    <path d="M4.9375 5.90295H11.0625" stroke="currentColor" />
+    <path d="M4.9375 9.02991H8.27841" stroke="currentColor" />
+    <path d="M12.5 1.32617C13.3039 1.32617 14 1.95171 14 2.77637V13.2246C13.9996 14.0489 13.3036 14.6738 12.5 14.6738H3.5C2.69637 14.6738 2.00042 14.0489 2 13.2246V2.77637C2 1.95171 2.69613 1.32617 3.5 1.32617H12.5ZM3.5 2.32617C3.1993 2.32617 3 2.55186 3 2.77637V13.2246C3.00044 13.4489 3.19963 13.6738 3.5 13.6738H12.5C12.8004 13.6738 12.9996 13.4489 13 13.2246V2.77637C13 2.55186 12.8007 2.32617 12.5 2.32617H3.5Z" fill="currentColor" />
+  </svg>
+);
+
+/** The `@` row's folder glyph — the harness `FolderCloseArtwork` (16-box; the menu draws it at 14, a transcript chip sizes it in CSS). */
+export const ReferenceFolderIcon = (p: P): JSX.Element => (
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true" className={p.className}>
+    <path d="M1.50439 3.11059C1.50439 2.55831 1.95211 2.1106 2.50439 2.1106H5.43389C5.67773 2.1106 5.91318 2.19969 6.09593 2.36113L7.71649 3.79265C7.89924 3.95409 8.1347 4.04319 8.3785 4.04319H13.4958C14.0481 4.04319 14.4958 4.4909 14.4958 5.04319V12.8894C14.4958 13.4417 14.0481 13.8894 13.4958 13.8894H2.50439C1.95211 13.8894 1.50439 13.4417 1.50439 12.8894V4.04319V3.11059Z" stroke="currentColor" />
+    <path d="M3.63501 7.66614H12.3647" stroke="currentColor" />
+  </svg>
+);

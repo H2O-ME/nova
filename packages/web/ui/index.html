@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nova</title>
+    <!-- PWA: stable origin (the server remembers its port) + persistent auth
+         cookie make these meaningful; see web/src/port.ts / auth-store.ts. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate icon" href="/icons/icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151517" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
   </head>
   <body>
     <div id="root"></div>

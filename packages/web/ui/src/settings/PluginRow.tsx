@@ -150,6 +150,10 @@ export function PluginRow({
           {entry.description !== undefined && entry.description.length > 0 && (
             <p className={css.detailLine}>{entry.description}</p>
           )}
+          {/* Why an enabled row has no fiber (an extension whose package could
+              not load): the reason belongs with the row, not only in the host's
+              stdout — the reader acting here is the one who can fix it. */}
+          {entry.error !== undefined && <p className={css.detailLine}>{`加载失败：${entry.error}`}</p>}
           {entry.inject.length > 0 && <p className={css.detailLine}>{`依赖：${entry.inject.join(' / ')}`}</p>}
           {!canSwitch && <p className={css.detailLine}>{SETTINGS_COPY['plugins.locked']}</p>}
         </div>

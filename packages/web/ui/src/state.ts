@@ -17,7 +17,7 @@
  * this file; one case per kernel event lives next door in `state-events.ts`.
  */
 import type {
-  ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, ConfiguredModel, Goal, JobSnapshot, KernelEvent, ModelCapabilities, ModelGroup, PtcMode, QuestionRequest, ReadyInfo,
+  ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, ConfiguredModel, ContextTimeline, Goal, JobSnapshot, KernelEvent, ModelCapabilities, ModelGroup, PtcMode, QuestionRequest, ReadyInfo,
   RunStats, SessionListItem, SubagentUsage, TodoItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
   WireDirectoryLevel, WireFileEntry, WireProviderRow, WireRosterEntry, WireSkillEntry, WireTraceRow,
 } from './types.js';
@@ -268,6 +268,12 @@ export interface UiState {
    */
   trace: TraceState | null;
   /**
+   * The Context panel's reading, or null when the plugin is off (the `context`
+   * frame answers null and the panel then has no tab to draw). Present only when
+   * the panel is open enough to be worth paying for the walk — see `ContextView`.
+   */
+  context: ContextTimeline | null;
+  /**
    * The `@` menu's answer: workspace entries for the query the host last
    * answered, or null when no answer has landed. Keyed by `query` because a
    * reply for abandoned text must not replace the rows for what is typed now
@@ -282,6 +288,13 @@ export interface UiState {
    * both the request and its reply.
    */
   directory: DirectoryState | null;
+  /** A native-dialog pick (`pick_file` / `pick_directory`) is in flight. */
+  pickPending: boolean;
+  /**
+   * The last `picked` frame, or null. Kept here (not in a component) because
+   * the ask and its answer are frames and the reducer is what sees both.
+   */
+  pick: PickReply | null;
   /**
    * The right panel's workspace tree: one level per absolute path, as the host
    * answered `list_directory`, plus the paths still in flight.
@@ -301,8 +314,8 @@ export interface UiState {
   totals: SessionTotals;
 }
 
-/** The session pane's view ids (the header's tabs, ported from the source's ledger). */
-export type SessionViewId = 'chat' | 'trace';
+/** The session pane's view ids. `context` appears (and its tab renders) only while the panel has a reading — see the reducer's `context` handling. */
+export type SessionViewId = 'chat' | 'trace' | 'context';
 
 /** One Skill 中心 answer: discovered skills with their switch state. */
 export interface SkillsSnapshot {
@@ -399,6 +412,17 @@ export interface ProviderProbe {
 }
 
 /**
+ * One native-dialog pick's answer (`picked` frame), held for App to consume:
+ * a path adopts a workspace or rails a file, an error falls back to the
+ * in-page browser, and neither means the dialog was dismissed.
+ */
+export interface PickReply {
+  kind: 'file' | 'directory';
+  path?: string;
+  error?: string;
+}
+
+/**
  * The workspace picker's directory browser, as the host last described it.
  *
  * `level` and `error` are mutually exclusive readings of one request, and they
@@ -491,8 +515,11 @@ export const initialState: UiState = {
   historyPending: false,
   view: 'chat',
   trace: null,
+  context: null,
   files: null,
   directory: null,
+  pickPending: false,
+  pick: null,
   tree: emptyTree,
   terminal: emptyTerminal,
   totals: emptyTotals,
@@ -522,6 +549,8 @@ export type Action =
   | { type: 'files'; query: string; items: readonly WireFileEntry[]; truncated: boolean }
   | { type: 'directory'; level: WireDirectoryLevel }
   | { type: 'directory_error'; message: string }
+  /** The host's native dialog answered (`picked` frame). */
+  | { type: 'picked'; kind: 'file' | 'directory'; path?: string; error?: string }
   /**
    * One `terminal` frame from the right panel's terminal: a job's status plus
    * the output produced since this client's last read. The fold (append text,
@@ -539,6 +568,7 @@ export type Action =
   | { type: 'directory_open'; open: boolean; mode?: 'directory' | 'file' }
   | { type: 'history_earlier'; blocks: readonly WireBlock[]; total: number }
   | { type: 'trace'; rows: readonly WireTraceRow[]; total: number }
+  | { type: 'context'; timeline: ContextTimeline | null }
   /**
    * The user picked a view. A local action, not a frame: the host has no
    * opinion about which pane is on screen, and nothing about it is durable.
@@ -568,6 +598,8 @@ export function reduce(state: UiState, action: Action): UiState {
         directory: state.directory !== null && !action.connected
           ? { ...state.directory, pending: false }
           : state.directory,
+        // A dropped socket cannot deliver the `picked` reply either.
+        pickPending: action.connected ? state.pickPending : false,
       };
     case 'sent':
       if (action.frame.type === 'load_earlier') return { ...state, historyPending: true };
@@ -615,6 +647,11 @@ export function reduce(state: UiState, action: Action): UiState {
       // closed and reopened cannot show a stale answer as fresh.
       if (action.frame.type === 'list_models') {
         return { ...state, catalog: { groups: state.catalog?.groups ?? [], loading: true } };
+      }
+      // The native-dialog ask marks itself in flight: the guard against a second
+      // dialog reads it, and only the `picked` reply (or a disconnect) settles it.
+      if (action.frame.type === 'pick_file' || action.frame.type === 'pick_directory') {
+        return { ...state, pickPending: true };
       }
       return state;
     case 'ready':
@@ -746,6 +783,10 @@ export function reduce(state: UiState, action: Action): UiState {
           mode: state.directory?.mode ?? 'directory',
         },
       };
+    case 'picked': {
+      const { type: _picked, ...reply } = action;
+      return { ...state, pickPending: false, pick: reply };
+    }
     case 'terminal':
       return { ...state, terminal: upsertTerminal(state.terminal, action.frame) };
     case 'history_earlier': {
@@ -776,6 +817,16 @@ export function reduce(state: UiState, action: Action): UiState {
           pending: false,
           have: state.trace !== null && state.trace.have > 0 ? state.trace.have + action.rows.length : action.rows.length,
         },
+      };
+    case 'context':
+      // A null reading is REAL: the plugin is off, so the panel must drop its
+      // tab (a view stuck on `context` would draw a pane with no data). When the
+      // panel is not in front, the reading is still kept — the tab shows the
+      // composition as a strip until it is opened.
+      return {
+        ...state,
+        context: action.timeline,
+        ...(action.timeline === null && state.view === 'context' ? { view: 'chat' } : {}),
       };
     case 'select_view':
       return { ...state, view: action.view };
@@ -874,6 +925,10 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     // held belong to a session that is no longer open: drop them and let an
     // open pane re-read (`traceTotal` says how many there are to read).
     trace: null,
+    // Same rule for the Context panel, and a switch off of the plugin: the
+    // reading rides the baseline, so a resumed session draws its own window and
+    // a plugin now off clears the panel (and drops its tab).
+    context: info.context ?? null,
     // The session's numbers come from the HOST's fold over the whole log
     // (this frame carried it), so a resumed session shows the totals of every
     // run it ever had — the live stream then adds each new one.

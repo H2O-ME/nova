@@ -3,8 +3,8 @@
  * and its purpose.
  *
  * The shell hands this kernel the channel as a candidate plugin even while the
- * credentials are unusable (`cli/qqbot-bridge.ts`), so the page can always say
- * the feature exists. Four different facts then have to stay apart, and the page
+ * credentials are unusable (`packages/qqbot/src/surface/bridge.ts`), so the page
+ * can always say the feature exists. Four different facts then have to stay apart, and the page
  * used to collapse all of them into one word ("已配置") — which is the confusion
  * this page's reading exists to remove:
  *

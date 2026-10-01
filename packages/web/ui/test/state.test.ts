@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ApprovalRequest, KernelEvent, QuestionRequest, ToolCallView, ToolResultView } from '@nova-agent/core';
 import type { ReadyInfo, WireBlock, WireTraceRow } from '../../src/protocol.js';
+import type { ContextTimeline } from '../src/types.js';
 import { emptyTotals } from '../../src/totals.js';
 import { initialState, reduce, type Block, type UiState } from '../src/state.js';
 import { isIgnoredEvent } from '../src/state-events.js';
@@ -291,6 +292,41 @@ describe('reduce / trace view', () => {
     const switched = reduce(live, { type: 'select_view', view: 'trace' });
     expect(switched.view).toBe('trace');
     expect(texts(switched.blocks)).toEqual(['x']);
+  });
+});
+
+describe('reduce / context view', () => {
+  const reading = (seq: number): ContextTimeline => ({
+    truncated: false,
+    live: { cats: { system: 0, tools: 0, injected: 0, user: seq, assistant: 0, tool: 0 }, total: seq, elements: [] },
+    counts: { requests: seq, turns: seq, toolCalls: 0, compactions: 0 },
+    points: [],
+    events: [],
+    files: [],
+  });
+
+  it('holds the reading from a frame, and from the baseline', () => {
+    const framed = reduce(initialState, { type: 'context', timeline: reading(4) });
+    expect(framed.context?.counts.requests).toBe(4);
+    const based = reduce(initialState, { type: 'ready', info: { ...readyInfo(), context: reading(7) } });
+    expect(based.context?.counts.requests).toBe(7);
+    // A baseline with no reading (the plugin off) must leave the panel empty,
+    // not keep the previous session's numbers.
+    expect(reduce(framed, { type: 'ready', info: readyInfo() }).context).toBeNull();
+  });
+
+  it('drops a view left on the panel when the reading goes away', () => {
+    // The plugin was switched off: the pane has nothing to draw, and a view
+    // stuck on `context` would render an empty column with no way out but the
+    // header — which the reducer would have to keep offering.
+    const open = reduce(reduce(initialState, { type: 'context', timeline: reading(2) }), {
+      type: 'select_view',
+      view: 'context',
+    });
+    expect(open.view).toBe('context');
+    const cleared = reduce(open, { type: 'context', timeline: null });
+    expect(cleared.context).toBeNull();
+    expect(cleared.view).toBe('chat');
   });
 });
 
@@ -763,6 +799,34 @@ describe('reduce / directory browser', () => {
     });
     const closed = reduce(listed, { type: 'directory_open', open: false });
     expect(closed.directory).toBeNull();
+  });
+});
+
+describe('reduce / native pick', () => {
+  it('a pick ask marks in flight; the reply settles it and carries its reading', () => {
+    const asked = reduce(initialState, {
+      type: 'sent',
+      frame: { type: 'pick_file' },
+    });
+    expect(asked.pickPending).toBe(true);
+    const picked = reduce(asked, { type: 'picked', kind: 'file', path: 'D:\\notes\\a.md' });
+    expect(picked.pickPending).toBe(false);
+    expect(picked.pick).toEqual({ kind: 'file', path: 'D:\\notes\\a.md' });
+  });
+  it('unavailable and cancel are the two no-path readings, kept distinct', () => {
+    const unavailable = reduce(initialState, {
+      type: 'picked',
+      kind: 'directory',
+      error: 'spawn zenity ENOENT',
+    });
+    expect(unavailable.pick).toEqual({ kind: 'directory', error: 'spawn zenity ENOENT' });
+    const cancelled = reduce(initialState, { type: 'picked', kind: 'file' });
+    expect(cancelled.pick).toEqual({ kind: 'file' });
+  });
+  it('a disconnect settles a stuck pick: the reply cannot arrive', () => {
+    const asked = reduce(initialState, { type: 'sent', frame: { type: 'pick_directory' } });
+    const dropped = reduce(asked, { type: 'connection', connected: false });
+    expect(dropped.pickPending).toBe(false);
   });
 });
 

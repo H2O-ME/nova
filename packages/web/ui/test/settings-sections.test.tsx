@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { GeneralSection } from '../src/settings/GeneralSection.js';
 import { ModelSection } from '../src/settings/ModelSection.js';
+import { PluginRow } from '../src/settings/PluginRow.js';
 import { PluginsSection } from '../src/settings/PluginsSection.js';
 import { QqbotSection } from '../src/settings/QqbotSection.js';
 import { SETTINGS_COPY } from '../src/settings/copy.js';
@@ -103,6 +104,35 @@ describe('model section', () => {
 
 describe('plugins section', () => {
   const pluginsProps = { plugins: null, disabled: false, manageError: null, onClose: () => undefined } as const;
+
+  it('shows WHY a failed row has no fiber once the row is open', () => {
+    // An enabled extension whose package could not load arrives as
+    // `state: 'failed'` + `error`; the reason renders in the expanded detail —
+    // the reader acting on this row is the one who can fix it.
+    const html = renderToStaticMarkup(
+      <PluginRow
+        entry={{
+          name: 'context',
+          state: 'failed',
+          inject: [],
+          enabled: false,
+          origin: 'extension',
+          title: '上下文洞察',
+          error: '无法加载 @nova-agent/plugin-context：module not found',
+        }}
+        switchable
+        advanced
+        open
+        disabled={false}
+        lockedNote={null}
+        switching={null}
+        onToggle={() => undefined}
+        onFlip={() => undefined}
+      />,
+    );
+    expect(html).toContain(SETTINGS_COPY['pluginState.failed']);
+    expect(html).toContain('加载失败：无法加载 @nova-agent/plugin-context：module not found');
+  });
   it('renders roster rows with the localized state and the tier group', () => {
     const html = renderToStaticMarkup(
       <PluginsSection

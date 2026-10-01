@@ -12,7 +12,7 @@
  * its seat invisible while the baseline lands, and only an active transcript
  * gets a scroller, width handles and the strict header.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApprovalPanel } from './approval/ApprovalPanel.js';
 import { QuestionPanel } from './question/QuestionPanel.js';
 import { ChatView } from './chat/ChatView.js';
@@ -26,6 +26,7 @@ import { ConversationRoot } from './conversation/ConversationRoot.js';
 import { PanelExpandButton } from './conversation/PanelExpandButton.js';
 import { HeroShell, WorkspaceRow } from './conversation/EmptyHero.js';
 import { DirectoryBrowser } from './conversation/DirectoryBrowser.js';
+import { useNativePick } from './shell/native-pick.js';
 import { SessionHeader } from './conversation/SessionHeader.js';
 import { StatsPills } from './composer/StatsPills.js';
 import { conversationPhase, awaitingFirstTurn } from './conversation/phase.js';
@@ -51,17 +52,25 @@ import { BookIcon, ChatBotIcon, PluginIcon, SettingsIcon } from './icons.js';
 import { DataOutline16 } from './composer/Icons.js';
 import { ToolPanel } from './tool/ToolPanel.js';
 import { TraceView } from './trace/TraceView.js';
+import { ContextView } from './context/ContextView.js';
+import { RightbarOpenButton, RightbarPanel } from './rightbar/RightbarPanel.js';
+import { changesModel } from './rightbar/changes-model.js';
 import { useTheme } from './theme.js';
 
 /**
  * The session pane's views, in tab order. The strip only renders when there is
  * more than one (`SessionHeader`'s rule), and these ARE the views it offers: the
- * conversation, and the durable log behind it.
+ * conversation and the durable log behind it — plus the Context tab, which is
+ * appended only while the `context` plugin provides a reading. That tab IS the
+ * plugin's visible on/off: with no reading there is nothing to read, so it is
+ * not offered (and a view left on it is dropped by the reducer).
  */
 const SESSION_TABS = [
   { id: 'chat', label: '对话' },
   { id: 'trace', label: '轨迹' },
 ] as const;
+
+const CONTEXT_TAB = { id: 'context', label: '上下文' } as const;
 
 export function App(): JSX.Element {
   const { state, dispatch, send, connection, reconnect } = useAgent();
@@ -70,6 +79,9 @@ export function App(): JSX.Element {
   const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
   /** The settings dialog: the shell owns the panel, the sidebar foot the seat. */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The right panel's three-tab body (变更/文件/终端); a tool detail click
+   *  outranks it — an explicitly opened call takes the column. */
+  const [rightbarOpen, setRightbarOpen] = useState(false);
   const layout = useLayout();
   const theme = useTheme();
   const { openRightbar, closeRightbar } = layout;
@@ -127,10 +139,32 @@ export function App(): JSX.Element {
     setPickedFile((current) => ({ path, name, seq: (current?.seq ?? 0) + 1 }));
   }, []);
 
+  // The native dialog is the FIRST move for both pickers (the `+` menu's
+  // 引用本地文件 and the hero's 打开文件夹): the host opens the OS chooser and
+  // answers with `picked`. The reply lands on the same two seams the in-page
+  // browser's answers use (rail a file / adopt a workspace); a host without a
+  // dialog falls back to that browser. See `shell/native-pick.ts`.
+  const pickNative = useNativePick({
+    send,
+    pickPending: state.pickPending,
+    pick: state.pick,
+    onFile: pickFile,
+    onDirectory: useCallback((dir: string) => {
+      dispatch({ type: 'directory_open', open: false });
+      pickWorkspace(dir);
+    }, [dispatch, pickWorkspace]),
+    onFallback: useCallback((kind) => {
+      dispatch({ type: 'directory_open', open: true, mode: kind });
+    }, [dispatch]),
+  });
+
   const closePanel = useCallback((): void => setOpenCallId(null), []);
-  // Escape closes one layer per press, topmost first: the detail panel, then
-  // the sidebar's narrow-frame expansion (the transcript has nothing to close).
+  const closeRightbarPanel = useCallback((): void => setRightbarOpen(false), []);
+  // Escape closes one layer per press, topmost first: the right panel, then the
+  // detail panel, then the sidebar's narrow-frame expansion (the transcript has
+  // nothing to close).
   useEscapeToClose([
+    ...(rightbarOpen ? [closeRightbarPanel] : []),
     ...(openCallId !== null ? [closePanel] : []),
     ...(layout.narrow && !layout.collapsed ? [layout.toggleSidebar] : []),
   ]);
@@ -138,7 +172,8 @@ export function App(): JSX.Element {
   // The right column is a track, not a box: the detail panel anchors to the
   // frame's right edge at the resolved normal width, and with `track: false`
   // the centre never narrows for it — the panel hangs over the content edge.
-  const open = openCallId !== null;
+  // Either occupant opens it: an opened call, or the three-tab right panel.
+  const open = openCallId !== null || rightbarOpen;
   useEffect(() => {
     if (open) openRightbar(false, false);
     else closeRightbar();
@@ -160,6 +195,10 @@ export function App(): JSX.Element {
     (): void => send({ type: 'load_trace', have: state.trace?.rows.length ?? 0 }),
     [send, state.trace?.rows.length],
   );
+  // The Context pane's read: the reading also rides `ready` and every run's
+  // end, so this is the open/refresh path only (mounting the tab, or pulling it
+  // back to date after it was hidden).
+  const onRefreshContext = useCallback((): void => send({ type: 'context' }), [send]);
   const toggleFullscreen = useCallback(
     (): void => openRightbar(false, !layout.layout.rightbarFullscreen),
     [openRightbar, layout.layout.rightbarFullscreen],
@@ -168,6 +207,9 @@ export function App(): JSX.Element {
   // One pure derivation for everything the frame shows about the session; the
   // JSX below reads fields instead of deciding (see chrome-view.ts).
   const view = chromeView(state, openCallId);
+  // The right panel's 变更 tab folds the conversation's own tool calls into a
+  // change list — a pure derivation of the blocks, recomputed only when they do.
+  const changes = useMemo(() => changesModel(state.blocks), [state.blocks]);
   const phase = conversationPhase({
     bound: state.meta !== null,
     // The harness's awaiting-first-turn semantic, not a row count: the seeded
@@ -215,14 +257,21 @@ export function App(): JSX.Element {
                 // Two views of one session: the conversation (what a reader
                 // saw) and the trace (what the log recorded). The strip renders
                 // only when there is more than one, which is the source's rule.
-                tabs={SESSION_TABS}
+                tabs={state.context !== null ? [...SESSION_TABS, CONTEXT_TAB] : SESSION_TABS}
                 activeTabId={state.view}
-                onSelectTab={(id) => { dispatch({ type: 'select_view', view: id === 'trace' ? 'trace' : 'chat' }); }}
-                // The corner's expand control, shown only while the panel is
-                // collapsed AND there is a call to show — the harness's own gate,
-                // with this product's answer for what that call is.
-                corner={!open && view.lastToolCallId !== undefined
-                  ? <PanelExpandButton callId={view.lastToolCallId} onOpen={setOpenCallId} />
+                onSelectTab={(id) => { dispatch({ type: 'select_view', view: id === 'trace' ? 'trace' : id === 'context' ? 'context' : 'chat' }); }}
+                // The corner seat, shown only while the right column is
+                // collapsed: the way back into the last call, and — the
+                // harness's own seat for it — the way into the right panel.
+                corner={!open
+                  ? (
+                    <>
+                      {view.lastToolCallId !== undefined && (
+                        <PanelExpandButton callId={view.lastToolCallId} onOpen={setOpenCallId} />
+                      )}
+                      <RightbarOpenButton onOpen={() => { setRightbarOpen(true); }} />
+                    </>
+                  )
                   : undefined}
               />
             )}
@@ -242,7 +291,7 @@ export function App(): JSX.Element {
                 // sending one here put TWO identical frames on the socket for one
                 // 打开文件夹 click and let the two answers race. One gesture, one
                 // request, one owner.
-                onBrowse={() => { dispatch({ type: 'directory_open', open: true, mode: 'directory' }); }}
+                onBrowse={() => { pickNative('directory'); }}
               />
             }
             session={
@@ -257,6 +306,12 @@ export function App(): JSX.Element {
                   pending={state.trace?.pending ?? false}
                   onRefresh={onLoadTrace}
                   onLoadEarlier={onLoadMoreTrace}
+                />
+              ) : state.view === 'context' ? (
+                <ContextView
+                  timeline={state.context}
+                  {...(state.contextWindow !== null ? { window: state.contextWindow } : {})}
+                  onRefresh={onRefreshContext}
                 />
               ) : phase === 'active' ? (
                 <ChatView
@@ -328,10 +383,10 @@ export function App(): JSX.Element {
                   fileItems={state.files?.items ?? []}
                   filesTruncated={state.files?.truncated ?? false}
                   filesPending={state.files?.pending ?? false}
-                  // The `+` menu's 引用本地文件 opens the HOST's file picker: a
-                  // browser `File` carries no real path, so only the host's own
-                  // enumeration can yield an `@`-referenceable one.
-                  onReferenceFile={() => { dispatch({ type: 'directory_open', open: true, mode: 'file' }); }}
+                  // The `+` menu's 引用本地文件 opens the HOST's NATIVE file
+                  // dialog first; a host without one falls back to the in-page
+                  // browser (see the `picked` consumer above).
+                  onReferenceFile={() => { pickNative('file'); }}
                   pickedFile={pickedFile}
                   onPickedFileConsumed={() => { setPickedFile(null); }}
                   variant={phase === 'hero' ? 'hero' : 'composer'}
@@ -357,20 +412,42 @@ export function App(): JSX.Element {
           />
         </>
       }
-      rightbar={({ width, canShow }) =>
-        view.detail === undefined ? null : (
-          <ToolPanel
-            block={view.detail}
+      rightbar={({ width, canShow }) => {
+        // A clicked call takes the column (an explicit open outranks the
+        // panel); the three-tab right panel is the column's other occupant.
+        if (view.detail !== undefined) {
+          return (
+            <ToolPanel
+              block={view.detail}
+              width={width}
+              canShow={canShow}
+              idle={view.idle}
+              fullscreen={layout.layout.rightbarFullscreen}
+              onClose={closePanel}
+              onToggleFullscreen={toggleFullscreen}
+              cwd={view.rootDir}
+            />
+          );
+        }
+        if (!rightbarOpen) return null;
+        return (
+          <RightbarPanel
             width={width}
             canShow={canShow}
-            idle={view.idle}
             fullscreen={layout.layout.rightbarFullscreen}
-            onClose={closePanel}
             onToggleFullscreen={toggleFullscreen}
-            cwd={view.rootDir}
+            onClose={closeRightbarPanel}
+            changes={changes}
+            tree={state.tree}
+            terminal={state.terminal}
+            sessions={state.sessions}
+            currentFile={sessionFile}
+            rootDir={view.rootDir}
+            connected={connection === 'open'}
+            send={send}
           />
-        )
-      }
+        );
+      }}
     />
     {/* The settings dialog the sidebar foot's seat opens. The shell registers
        the sections this product really has — 通用设置 (permission, execution

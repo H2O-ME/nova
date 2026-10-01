@@ -210,3 +210,26 @@
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
 }
 
+
+/* One mention inside a sent bubble, ported from the harness `ui-primitives`
+   `user-text.module.css` (MIT). Plain inline, NOT inline-flex: a flex container
+   takes its baseline from its first item — the icon svg, which has no text
+   baseline — and the chip's label would ride above the surrounding text. */
+.refChip {
+  display: inline;
+  max-width: 100%;
+  margin: 0 2px;
+  color: var(--dsw-alias-state-business-primary);
+  font-weight: 500;
+  white-space: inherit;
+  overflow-wrap: anywhere;
+}
+
+.refIcon {
+  width: 1em;
+  height: 1em;
+  margin-right: 4px;
+  /* Optical centering against the text: drops the glyph below the baseline by
+     a font-relative amount, so it holds across the font axis. */
+  vertical-align: -0.125em;
+}

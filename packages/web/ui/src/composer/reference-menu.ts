@@ -16,6 +16,7 @@
  * whitespace, and `@"…"` carries whitespace inside it.
  */
 import type { WireFileEntry } from '../types.js';
+import { REFERENCE_SECTION } from './composer-text.js';
 import type { ComposerMenuItem } from './ComposerMenu.js';
 
 /**
@@ -129,15 +130,23 @@ export function formatMention(path: string, directory = false): string | null {
 /**
  * The menu's rows for one listing.
  *
- * Files before directories: a reference almost always names a file, and the
- * host already returns them in walk order (shallow first), which this keeps.
+ * Directories before files, the harness listing's visible order (its
+ * `kindRank` tie-break): a directory listing reads like a file explorer, and
+ * within each kind the host's order stands — alphabetical for a directory
+ * listing, shallow-first for a workspace walk.
  * @param entries - the host's listing for the current query.
- * @returns the rows, files first.
+ * @param withLocation - the row names its parent directory. A drilled
+ *   listing's breadcrumb header already carries the directory, so its rows
+ *   repeat nothing (`withLocation: false`); every other listing has no header.
+ * @returns the rows, directories first.
  */
-export function referenceItems(entries: readonly WireFileEntry[]): ComposerMenuItem[] {
-  const files = entries.filter((entry) => entry.kind === 'file');
+export function referenceItems(
+  entries: readonly WireFileEntry[],
+  withLocation = true,
+): ComposerMenuItem[] {
   const dirs = entries.filter((entry) => entry.kind === 'directory');
-  return [...files, ...dirs].map((entry) => {
+  const files = entries.filter((entry) => entry.kind === 'file');
+  return [...dirs, ...files].map((entry) => {
     const slash = entry.path.lastIndexOf('/');
     const parent = slash < 0 ? '' : entry.path.slice(0, slash);
     return {
@@ -145,7 +154,9 @@ export function referenceItems(entries: readonly WireFileEntry[]): ComposerMenuI
       label: entry.kind === 'directory' ? `${entry.name}/` : entry.name,
       // The parent directory is the useful disambiguator; a root entry has
       // none to name, and repeating the row's own label says nothing.
-      ...(parent !== '' ? { description: parent } : {}),
+      ...(parent !== '' && withLocation ? { description: parent } : {}),
+      icon: entry.kind === 'directory' ? 'folder' : 'file',
+      section: REFERENCE_SECTION,
       ...(entry.kind === 'directory' ? { drill: true } : {}),
     };
   });

@@ -12,8 +12,9 @@
  * because the key contract needs it (`composer-keys.ts`) and the stylesheet
  * uses it to hide the placeholder under a candidate window.
  */
-import { useLayoutEffect } from 'react';
+import { Fragment, useLayoutEffect } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
+import { mentionSegments } from '../mention-tokens.js';
 import { composerSurfaceHeight } from './composer-measure.js';
 import { cx } from './cx.js';
 import css from './InputBar.module.css';
@@ -71,6 +72,18 @@ export function DraftSurface({
        `.scroll` — capped at 14 lines in CSS — is the only thing that scrolls. */
     <div ref={scrollRef} className={css.scroll} data-input-scroll="">
       <div className={css.grow}>
+        {/* The mirror: the same draft drawn BEHIND the textarea, in the same
+            font and padding, with mentions dressed as chips. A textarea cannot
+            hold atomic elements (the harness's editor is a contenteditable), so
+            the text is painted twice — once as chrome by this layer, once as
+            the real, editable text with a transparent fill on top. It is
+            `aria-hidden` and pointer-transparent: it is a picture of the draft,
+            never a second input. */}
+        <div aria-hidden="true" className={cx(css.mirror, disabled && css.mirrorDisabled)} data-composer-mirror="">
+          {mentionSegments(value).map((segment, index) => segment.kind === 'text'
+            ? <Fragment key={index}>{segment.text}</Fragment>
+            : <span key={index} className={css.mention} title={segment.raw}>{segment.raw}</span>)}
+        </div>
         <textarea
           ref={boxRef}
           className={cx(css.input, disabled && css.inputDisabled)}

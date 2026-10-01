@@ -45,7 +45,9 @@ import { COMPOSING_GRACE_MS, composerKey } from '../composer-keys.js';
 import { ComposerMenu, type ComposerMenuItem } from './ComposerMenu.js';
 import { ADD_FILE_ITEM, actionItems, commandDraft, commandItems, draftFrame, menuKeyDecision, slashQuery } from './command-menu.js';
 import { claimHint } from './claim-hint.js';
-import { atQuery, referenceDraft, referenceItems } from './reference-menu.js';
+import { atQuery, atSpan, referenceDraft, referenceItems } from './reference-menu.js';
+import { referenceCrumbs } from './reference-crumbs.js';
+import type { ReferenceCrumb } from './reference-crumbs.js';
 import { attachmentMentions, useAttachments } from './attachments.js';
 import { readyImageRefs } from './image-draft.js';
 import { ComposerAttachments } from './ComposerAttachments.js';
@@ -224,13 +226,35 @@ export function InputBar({
   // `@` source claims the menu whenever its query is live.
   const refQuery = atQuery(draft, caret);
   const refSource = refQuery !== null;
+  // The trail a drill owes, keyed by the query the drill produced: only that
+  // exact query shows the breadcrumb header (a drill replaced the text the
+  // user was reading and owes them the way back), and any other edit — typing,
+  // a settling pick — clears it, because the draft again carries its own
+  // context. This is the harness's `drilled` request flag, re-derived.
+  const drilledQuery = useRef<string | null>(null);
+  const refCrumbs = refQuery !== null && refSource
+    ? referenceCrumbs(refQuery, refQuery === drilledQuery.current)
+    : null;
+  // A crumb press drills back to that step: the root rewrites the token to a
+  // bare `@` (the listing it reopens is the workspace itself), any deeper step
+  // keeps the quote-open directory form a drill pick writes. Both keep the
+  // menu open — a crumb is navigation, not a settling pick.
+  const drillToCrumb = (crumb: ReferenceCrumb): void => {
+    const span = atSpan(draft, caret);
+    if (span === null) return;
+    drilledQuery.current = crumb.path === '' ? null : `${crumb.path}/`;
+    edit(crumb.path === ''
+      ? `${draft.slice(0, span.start)}@${draft.slice(span.end)}`
+      : referenceDraft(draft, crumb.path, true, caret));
+    boxRef.current?.focus();
+  };
   const menuOpen = !disabled && (refSource || (commands.length > 0 && (pinned || (query !== null && !dismissed))));
   // The composer's own action rows ride the menu only while it was opened as a
   // browser (`pinned`): they belong to this surface, not to the kernel's
   // catalog, so a typed `/query` — a question about that catalog — does not see
   // them. See `actionItems()`.
   const items = refSource
-    ? referenceItems(fileItems)
+    ? referenceItems(fileItems, refCrumbs === null)
     : [...(pinned ? actionItems() : []), ...commandItems(commands, menuOpen ? query ?? '' : '')];
   const active = Math.min(activeItem, Math.max(0, items.length - 1));
   const setMenu = (open: boolean): void => {
@@ -261,6 +285,10 @@ export function InputBar({
     // token's own span, so a command or mention typed mid-draft leaves its
     // surroundings alone. Both leave the menu's own state reset through `edit`.
     if (refSource) {
+      // A drill keeps the token live (`@src/`), so the next listing is the
+      // directory's own children and the trail names it; a settling pick ends
+      // the reference and the trail with it.
+      drilledQuery.current = item.drill === true ? `${item.id}/` : null;
       edit(referenceDraft(draft, item.id, item.drill === true, caret));
     } else {
       edit(commandDraft(draft, item.id, caret));
@@ -406,7 +434,10 @@ export function InputBar({
           {menuOpen && (
             <ComposerMenu
               items={items.map((item, index) => (index === active ? { ...item, active: true } : item))}
-              groupTitle={refSource ? (filesTruncated ? '文件（已截断）' : '文件') : '命令'}
+              // Reference rows carry their own section heading (`文件`); the
+              // command catalog has no per-row sections, so the group heading
+              // names it.
+              groupTitle={refSource ? undefined : '命令'}
               ariaLabel={refSource ? '文件引用' : '命令'}
               // Names the list and gives its rows ids, so the armed row is
               // announced as `aria-activedescendant` even though focus stays in
@@ -415,6 +446,9 @@ export function InputBar({
               // A pending `@` listing shows the reference's skeleton rows; an
               // empty command catalog has nothing pending to wait for.
               pending={refSource && filesPending && items.length === 0}
+              // Only a drill carries the trail: the header IS the way back.
+              crumbs={refCrumbs ?? undefined}
+              onCrumb={drillToCrumb}
               onPick={pick}
               // The chevron's click. Without this the control rendered, was
               // focusable, carried `进入目录` and did nothing — and because its
@@ -432,11 +466,19 @@ export function InputBar({
               which are different answers a reader acts on differently. The
               running answer is the skeleton above, so only the finished-and-
               empty one reaches this line. */}
-          {refSource && menuOpen && items.length === 0 && !filesPending && (
-            <div className={css.menuStatus} role="status">
-              没有匹配的文件
-            </div>
-          )}
+          {refSource && menuOpen && !filesPending && (items.length === 0
+            ? (
+              <div className={css.menuStatus} role="status">
+                没有匹配的文件
+              </div>
+            )
+            : filesTruncated
+              ? (
+                <div className={css.menuStatus} role="status">
+                  结果已截断，继续输入以缩小范围
+                </div>
+              )
+              : null)}
         </div>
         {/* No `<input type=file>`: a browser `File` carries no real path, so it
             cannot become an `@` reference. The `+` menu's 引用本地文件 opens the

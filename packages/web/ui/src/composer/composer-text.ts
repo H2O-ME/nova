@@ -30,6 +30,12 @@ export const DRILL_ARIA = '进入目录';
 export const DRILL_KEY = 'Tab';
 /** `slash.menu`'s `loading`: the pending candidate list's accessible name. */
 export const MENU_LOADING = '正在加载…';
+/** `reference.crumb.root` (`reference` dictionary): the trail's first step. */
+export const REFERENCE_ROOT_CRUMB = '根目录';
+/** `reference.section.files`: the `@` listing's single section heading. */
+export const REFERENCE_SECTION = '文件';
+/** `slash.menu`'s `crumbs.aria`: the drilled listing's breadcrumb header. */
+export const REFERENCE_CRUMBS_ARIA = '所在目录';
 
 /**
  * The attachment rail's copy, verbatim from the reference's `conversation`

@@ -15,9 +15,11 @@
  * harness keeps them apart too. The finished run's numbers ride the turn
  * header and the tail's usage pill (see `chat/TurnHeader.tsx`), not a row here.
  */
-import { memo } from 'react';
+import { Fragment, memo } from 'react';
 import type { ReactNode } from 'react';
+import { mentionSegments } from '../mention-tokens.js';
 import { imageRefUrl } from '../composer/image-draft.js';
+import { ReferenceFileIcon, ReferenceFolderIcon } from '../composer/Icons.js';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import type { MarkdownLabels } from './markdown/labels.js';
 import { MessageIconActions } from './MessageIconActions.js';
@@ -68,7 +70,21 @@ export function UserMessageRow({ text, time, pending, echo, images, onBranch }: 
             ))}
           </div>
         )}
-        <div className={css.bubble}>{text}</div>
+        <div className={css.bubble}>
+          {/* The logged text is the single truth; this is its display
+              projection (the harness `projectUserText`), so a reference a user
+              wrote — by picking or by hand — reads as a chip here too. */}
+          {mentionSegments(text).map((segment, index) => segment.kind === 'text'
+            ? <Fragment key={index}>{segment.text}</Fragment>
+            : (
+              <span key={index} className={css.refChip} data-ref-chip={segment.kind} title={segment.raw}>
+                {segment.kind === 'folder'
+                  ? <ReferenceFolderIcon className={css.refIcon} />
+                  : <ReferenceFileIcon className={css.refIcon} />}
+                {segment.label}
+              </span>
+            ))}
+        </div>
       </div>
       <MessageIconActions
         text={text}

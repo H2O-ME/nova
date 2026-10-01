@@ -127,7 +127,7 @@ const NAME_TYPES: Readonly<Record<string, FileType>> = {
 };
 
 /** The last path segment, for either separator. */
-function basename(path: string): string {
+export function basename(path: string): string {
   return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
 }
 

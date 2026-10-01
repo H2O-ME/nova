@@ -25,7 +25,10 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import type { ReactNode } from 'react';
 import { DRILL_ARIA, DRILL_HINT, DRILL_KEY, MENU_LOADING } from './composer-text.js';
 import { MENU_MAX_HEIGHT, menuMaxHeight, menuOverflowBelow } from './composer-measure.js';
+import { ComposerCrumbs } from './ComposerCrumbs.js';
 import { cx } from './cx.js';
+import { ReferenceFileIcon, ReferenceFolderIcon } from './Icons.js';
+import type { ReferenceCrumb } from './reference-crumbs.js';
 import css from './ComposerMenu.module.css';
 
 /**
@@ -66,7 +69,11 @@ export interface ComposerMenuItem {
   description?: string;
   /** A heading rendered above the first item carrying it. */
   section?: string;
-  icon?: ReactNode;
+  /**
+   * The row's glyph. A string names one of the reference domains (the harness
+   * `MenuView` renders those itself); anything else is a ready element.
+   */
+  icon?: ReactNode | 'file' | 'folder';
   /** The shared highlight: pointer motion and keyboard moves park it here. */
   active?: boolean;
   /** A drillable row (a directory): shows the Tab hint and the chevron. */
@@ -79,8 +86,10 @@ export function ComposerMenu({
   ariaLabel,
   pending = false,
   listboxId,
+  crumbs,
   onPick,
   onDrill,
+  onCrumb,
   onHover,
   onDismiss,
 }: {
@@ -103,8 +112,15 @@ export function ComposerMenu({
    * this id plus one per row (see {@link rowId}).
    */
   listboxId?: string;
+  /**
+   * The drilled listing's breadcrumb trail, pinned above the viewport. It is
+   * rendered only for a drill — a typed path keeps its context in the draft.
+   */
+  crumbs?: readonly ReferenceCrumb[];
   onPick?: (item: ComposerMenuItem) => void;
   onDrill?: (item: ComposerMenuItem) => void;
+  /** A crumb before the current one was pressed: drill back to its directory. */
+  onCrumb?: (crumb: ReferenceCrumb) => void;
   /** Pointer motion moved onto a row: park the shared highlight there. */
   onHover?: (item: ComposerMenuItem) => void;
   /** A pointer pressed outside the menu and outside the composer card. */
@@ -166,6 +182,9 @@ export function ComposerMenu({
       data-trigger-menu=""
       data-overflow-below={overflowBelow || undefined}
     >
+      {crumbs !== undefined && crumbs.length > 0 && (
+        <ComposerCrumbs crumbs={crumbs} onCrumb={(crumb) => onCrumb?.(crumb)} />
+      )}
       <div
         ref={viewportRef}
         id={listboxId}
@@ -221,7 +240,13 @@ export function ComposerMenu({
                       onMouseMove={item.active === true ? undefined : () => { onHover?.(item) }}
                     >
                       {item.icon !== undefined && (
-                        <span className={css.itemIcon} aria-hidden="true">{item.icon}</span>
+                        <span className={css.itemIcon} aria-hidden="true">
+                          {item.icon === 'folder'
+                            ? <ReferenceFolderIcon />
+                            : item.icon === 'file'
+                              ? <ReferenceFileIcon />
+                              : item.icon}
+                        </span>
                       )}
                       <span className={css.itemName}>{item.label}</span>
                       {item.alias !== undefined && <span className={css.itemAlias}>{item.alias}</span>}
@@ -259,8 +284,9 @@ export function ComposerMenu({
 }
 
 /** `ic_ds_chevron_right_outline_14`: the drill seat's glyph, drawn here because
- * it is the menu's alone (the composer's other glyphs live in `Icons.tsx`). */
-function ChevronRight(): JSX.Element {
+ * it is the menu's alone (the composer's other glyphs live in `Icons.tsx`).
+ * `ComposerCrumbs` reuses it as the trail's separator. */
+export function ChevronRight(): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
       <path

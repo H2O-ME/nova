@@ -15,6 +15,13 @@ body {
   --dsw-static-amber-500: rgb(245, 158, 11);
   --dsw-static-amber-600: rgb(221, 134, 41);
   --dsw-static-amber-900: rgb(39, 36, 31);
+  /* Hue families the Context pane's composition categories are painted with.
+     Kept in the token layer, not in that pane's sheet, so they are theme-resolved
+     static colors a reader can rely on — and so the style guard's "every consumed
+     token is declared" rule keeps holding. */
+  --dsw-static-indigo-500: rgb(99, 102, 241);
+  --dsw-static-purple-500: rgb(168, 85, 247);
+  --dsw-static-teal-500: rgb(20, 184, 166);
   --dsw-static-blue-100: rgb(219, 234, 254);
   --dsw-static-blue-300: rgb(147, 197, 253);
   --dsw-static-blue-400: rgb(96, 165, 250);
@@ -96,6 +103,12 @@ body[data-ds-dark-theme] {
   --dsw-static-amber-500: rgb(245, 158, 11);
   --dsw-static-amber-600: rgb(221, 134, 41);
   --dsw-static-amber-900: rgb(39, 36, 31);
+  /* Same three hue families as the light block: the Context pane's composition
+     categories read the same in both themes (a static color is not theme-flipped;
+     only the alias tier is). */
+  --dsw-static-indigo-500: rgb(99, 102, 241);
+  --dsw-static-purple-500: rgb(168, 85, 247);
+  --dsw-static-teal-500: rgb(20, 184, 166);
   --dsw-static-blue-100: rgb(219, 234, 254);
   --dsw-static-blue-300: rgb(147, 197, 253);
   --dsw-static-blue-400: rgb(96, 165, 250);

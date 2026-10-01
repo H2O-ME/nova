@@ -175,7 +175,11 @@
   word-break: break-word;
   overflow-wrap: anywhere;
   outline: none;
-  color: var(--dsw-alias-label-primary);
+  /* The draft's glyphs come from `.mirror` (below): a textarea cannot carry
+     atomic elements, so mentions are painted by a same-font layer behind it
+     and the real text is drawn transparent on top. Only the caret stays — the
+     business blue the harness gives it — because the caret IS the textarea's. */
+  color: transparent;
   /* Business blue, not brand-primary: that token resolves to ink in this sheet. */
   caret-color: var(--dsw-alias-state-business-primary);
   display: block;
@@ -208,8 +212,43 @@
 }
 
 .inputDisabled {
-  color: var(--dsw-alias-label-tertiary);
+  /* The ink of a disabled draft belongs to the mirror (see `.mirrorDisabled`);
+     this rule only says what the surface does under the pointer. */
   cursor: not-allowed;
+}
+
+/* The draft drawn behind the textarea: same font, same pads, same wrapping
+   rules — the two must break lines identically, or the chips drift off their
+   glyphs. The top/left `inset` mirrors .input's padding. */
+.mirror {
+  position: absolute;
+  inset: 4px 8px auto 14px;
+  font-family: var(--dsw-font-family);
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-primary);
+  pointer-events: none;
+  user-select: none;
+}
+
+.mirrorDisabled {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* One mention, dressed as a chip (the harness `ui-reference`'s `.reference`:
+   business ink, small radius, tinted ground). The padding is cancelled by an
+   equal negative margin so the chip cannot move the text it decorates — the
+   mirror's line breaking stays character-for-character the textarea's. */
+.mention {
+  padding: 0 3px;
+  margin: 0 -3px;
+  border-radius: var(--dsw-radius-sm);
+  color: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-state-business-tertiary);
+  font-weight: 500;
 }
 
 /* The claim's ghost hint. The harness writes it as generated content after the
