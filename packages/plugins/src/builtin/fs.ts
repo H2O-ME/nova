@@ -1,8 +1,14 @@
-import { chmod, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   isFailureContent,
+  isInsideRealRoot,
   listWorkspaceFiles,
+  looksBinary,
+  READ_MAX_BYTES,
+  resolveAnywhere,
+  resolveInRoot,
+  resolveReal,
   tools as toolsKey,
   type DiffCallView,
   type DiffResultView,
@@ -14,70 +20,13 @@ import {
 import { registerTool } from '../toolbox.js';
 import { intArg, strArg } from './args.js';
 
-/**
- * Resolve a user/model-supplied path against the workspace root and reject
- * anything that escapes it. This is the M1 sandbox: no writes outside root.
- * Escapes through symlinks are caught because the containment check runs on
- * CANONICAL paths (realpath of the deepest existing ancestor), not on the
- * raw resolved string.
- */
-export async function resolveInRoot(rootDir: string, raw: unknown): Promise<string> {
-  const file = await resolveReal(rootDir, raw);
-  const realRoot = await canonicalize(path.resolve(rootDir));
-  if (!isCanonicalInside(realRoot, file)) {
-    throw new Error(`path escapes workspace root: ${raw as string}`);
-  }
-  return file;
-}
+// The path primitives live in core (`file-io.ts`) so the sidebar's own file
+// operations and these tools share ONE containment rule; re-exported here
+// because this module is where the package's public surface names them.
+export { READ_MAX_BYTES, looksBinary, resolveAnywhere, resolveInRoot, resolveReal };
 
-/** Resolve without the workspace restriction (reads may cross it, gated). */
-export function resolveAnywhere(rootDir: string, raw: unknown): string {
-  if (typeof raw !== 'string' || raw.length === 0) throw new Error('path is required');
-  return path.resolve(path.resolve(rootDir), raw);
-}
-
-/** True when a resolved path stays inside the workspace root (string-only). */
-export function isInsideRoot(rootDir: string, resolved: string): boolean {
-  const root = path.resolve(rootDir);
-  return isCanonicalInside(root, resolved);
-}
-
-/**
- * Canonical absolute path of the target: realpath of the deepest EXISTING
- * ancestor plus the not-yet-existing remainder (write targets usually do not
- * exist). Pure string prefix checks are fooled by a symlink planted inside
- * the workspace pointing outside it — write_file would silently follow it and
- * escape the workspace.
- */
-export async function resolveReal(rootDir: string, raw: unknown): Promise<string> {
-  return canonicalize(resolveAnywhere(rootDir, raw));
-}
-
-async function canonicalize(resolved: string): Promise<string> {
-  let current = resolved;
-  const tail: string[] = [];
-  for (;;) {
-    try {
-      const real = await realpath(current);
-      return tail.length === 0 ? real : path.join(real, ...tail);
-    } catch {
-      const parent = path.dirname(current);
-      if (parent === current) return resolved; // unreachable on real filesystems
-      tail.unshift(path.basename(current));
-      current = parent;
-    }
-  }
-}
-
-function isCanonicalInside(canonicalRoot: string, canonicalTarget: string): boolean {
-  if (process.platform === 'win32') {
-    const root = path.resolve(canonicalRoot).toLowerCase();
-    const target = path.resolve(canonicalTarget).toLowerCase();
-    return target === root || target.startsWith(`${root}${path.sep}`);
-  }
-  const root = path.resolve(canonicalRoot);
-  const target = path.resolve(canonicalTarget);
-  return target === root || target.startsWith(`${root}${path.sep}`);
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -96,38 +45,16 @@ export async function rootPermissionKind(
   trustedReadRoots: string[] = [],
 ): Promise<ToolPermissionKind> {
   try {
-    const realRoot = await canonicalize(path.resolve(rootDir));
     const file = await resolveReal(rootDir, raw);
-    if (isCanonicalInside(realRoot, file)) return 'read';
+    if (await isInsideRealRoot(rootDir, file)) return 'read';
     for (const trusted of trustedReadRoots) {
       if (trusted.length === 0) continue;
-      const realTrusted = await canonicalize(path.resolve(trusted));
-      if (isCanonicalInside(realTrusted, file)) return 'read';
+      if (await isInsideRealRoot(trusted, file)) return 'read';
     }
     return 'read-external';
   } catch {
     return 'read-external';
   }
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Binary/non-UTF8 probe: a C0 control character (tab/lf/cr excepted) or DEL
- * in the sample means reading the file as UTF-8 text would garble output.
- * A charcode scan rather than a regex class — control ranges read clearer
- * spelled than escaped.
- */
-export function looksBinary(text: string, sampleChars = 8192): boolean {
-  const limit = Math.min(text.length, sampleChars);
-  for (let i = 0; i < limit; i++) {
-    const code = text.charCodeAt(i);
-    if (code < 32 && code !== 9 && code !== 10 && code !== 13) return true;
-    if (code === 127) return true;
-  }
-  return false;
 }
 
 /**
@@ -667,7 +594,5 @@ export function fsWritePlugin(options: { rootDir: () => string }): Plugin {
   };
 }
 
-/** Byte cap for read_file (an 8 MiB text file is already a wall of noise). */
-export const READ_MAX_BYTES = 8 * 1024 * 1024;
 /** Preview diff side length cap (approval popup rows are precious). */
 const PREVIEW_MAX_LINES = 17;

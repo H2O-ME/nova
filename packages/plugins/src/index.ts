@@ -31,7 +31,20 @@ export * from './agents-md.js';
 export * from './agents-md-init.js';
 export * from './system-prompt.js';
 export { resolveInRoot, READ_MAX_BYTES } from './builtin/fs.js';
-export { POWERSHELL_UTF8_PREFIX, powershellInvocation, bashOnPath, resolveShellName, startBashJob } from './builtin/bash.js';
+export { startBashJob } from './builtin/bash.js';
+export {
+  bashOnPath,
+  commandInvocation,
+  findExecutable,
+  modelShell,
+  panelShell,
+  ptyInvocation,
+  shellCandidates,
+  shellFamily,
+  shellName,
+  POWERSHELL_UTF8_PREFIX,
+} from './builtin/shell-select.js';
+export type { ShellCandidate, ShellFamily } from './builtin/shell-select.js';
 export type { BashJobRequest } from './builtin/bash.js';
 export * from './skills.js';
 export * from './extensions.js';

@@ -33,7 +33,7 @@ import {
   type SessionEnvInfo,
 } from '@nova-agent/core';
 import { collectProjectDocs } from './agents-md.js';
-import { resolveShellName } from './builtin/bash.js';
+import { modelShell } from './builtin/shell-select.js';
 import { PluginHost } from './host.js';
 import { composeHooks } from './hooks.js';
 import { buildSystemPrompt } from './system-prompt.js';
@@ -144,7 +144,7 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
   const { provider, config } = opts;
   const root = Context.createRoot();
   const jobs = new JobRegistry();
-  const systemPrompt = opts.systemPrompt ?? buildSystemPrompt();
+  const systemPrompt = opts.systemPrompt ?? buildSystemPrompt(opts.systemPromptSections ?? []);
   const shellPath = typeof config.bash === 'object' ? config.bash.shellPath : undefined;
   const state: State = {
     rootDir: opts.rootDir,
@@ -179,7 +179,7 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
     sessionEnv: () => ({
       platform: process.platform,
       cwd: state.rootDir,
-      shell: resolveShellName(shellPath),
+      shell: modelShell(shellPath).name,
       // Local date, matching the session bucket: a UTC slice calls every
       // evening run west of the meridian "yesterday".
       today: localDateKey().join('-'),

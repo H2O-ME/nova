@@ -5,8 +5,14 @@
  * Deliberately free of volatile content: environment info, user
  * instructions and the skills index live in the session-start user
  * fragment (context.ts) so this prefix stays byte-stable and
- * provider prompt-cache friendly.
+ * provider prompt-cache friendly. Plugin-owned sections are appended by
+ * `buildSystemPrompt` from `prompt-sections.ts`; they tail the persona under
+ * their own headings and never rewrite it.
  */
+import { foldPromptSections, renderPromptSections, type SystemPromptSection } from './prompt-sections.js';
+
+export type { SystemPromptSection } from './prompt-sections.js';
+
 export const DEFAULT_SYSTEM_PROMPT = `You are Nova, a local coding agent running in the Nova CLI on the user's computer.
 
 ## Conversation
@@ -55,6 +61,14 @@ export const DEFAULT_SYSTEM_PROMPT = `You are Nova, a local coding agent running
 - Never revert or overwrite changes you did not make; if you notice unexpected changes, stop and ask how to proceed.
 - If an operation might destroy user data, confirm before doing it.`;
 
-export function buildSystemPrompt(): string {
-  return DEFAULT_SYSTEM_PROMPT;
+/**
+ * Build the persona prompt with plugin-owned sections appended under their own
+ * `## <name>` headings. Sections are additive — the persona prompt is never
+ * modified — so the byte-stable prefix cache survives any combination of
+ * registered sections.
+ */
+export function buildSystemPrompt(sections: readonly SystemPromptSection[] = []): string {
+  if (sections.length === 0) return DEFAULT_SYSTEM_PROMPT;
+  const body = renderPromptSections(foldPromptSections(sections));
+  return body.length === 0 ? DEFAULT_SYSTEM_PROMPT : `${DEFAULT_SYSTEM_PROMPT}\n\n${body}`;
 }

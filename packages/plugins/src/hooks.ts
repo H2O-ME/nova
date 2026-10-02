@@ -20,8 +20,11 @@ import {
   approval as approvalKey,
   beforeLlmCall as beforeLlmCallEvent,
   beforeToolCall as beforeToolCallEvent,
+  beforeTurnEnd as beforeTurnEndEvent,
   tools as toolsKey,
   type AgentHooks,
+  type BeforeTurnEndContext,
+  type BeforeTurnEndVerdict,
   type ChatRequest,
   type Context,
   type Listener,
@@ -70,6 +73,14 @@ function buildHooks(ctx: Context): AgentHooks {
     },
     afterToolResult: async (call: ToolCall, result: string): Promise<string> => {
       return (await ctx.waterfall(afterToolResultEvent, call, result)) ?? result;
+    },
+    beforeTurnEnd: async (turnCtx: BeforeTurnEndContext): Promise<BeforeTurnEndVerdict | void> => {
+      // Serial / first-decisive-wins, mirroring beforeToolCall. The first
+      // plugin that returns `{ action: 'steer' }` (or `{ action: 'stop' }`)
+      // wins; `undefined` passes to the next listener.
+      const verdict = await ctx.serial(beforeTurnEndEvent, turnCtx);
+      if (verdict === undefined || verdict === null) return;
+      return verdict;
     },
   };
 }

@@ -9,9 +9,8 @@
  * kernel's own seams; a third party does not need them to add a tool, a command
  * or a hook.
  */
-import { pathToFileURL } from 'node:url';
-import { isAbsolute, resolve } from 'node:path';
 import { errMessage, pluginName, type AnyPlugin, type Plugin } from '@nova-agent/core';
+import { resolveModuleSpec } from './module-spec.js';
 
 /**
  * The pure filtering half lives in `roster-filter.ts` (it is what the settings
@@ -21,15 +20,10 @@ import { errMessage, pluginName, type AnyPlugin, type Plugin } from '@nova-agent
 export { loadableRoster, unknownDisabled, type RosterLists } from './roster-filter.js';
 
 /**
- * Resolve a module spec the way plugins (and surfaces) load it: an absolute
- * path or one starting with `.` is made a file URL under the working directory,
- * a bare package name is returned as-is for Node to resolve. Shared with
- * `loadSurfacePlugins` so surface and kernel-plugin loading agree on what a
- * config string means — one resolution rule, not two.
+ * The resolution rule itself lives in `module-spec.ts` — one config string must
+ * mean one thing for plugins, surfaces and the extension table alike.
  */
-export function resolveModuleSpec(spec: string, cwd: string): string {
-  return isAbsolute(spec) || spec.startsWith('.') ? pathToFileURL(resolve(cwd, spec)).href : spec;
-}
+export { resolveModuleSpec, resolvableFromProduct } from './module-spec.js';
 
 /**
  * Load `plugins.extra`: module specifiers (absolute, relative to the working
@@ -76,7 +70,18 @@ export async function loadExtraPlugins(specs: readonly string[], cwd: string): P
 function withName(module: Record<string, unknown>, plugin: AnyPlugin, spec: string): Plugin {
   const fromModule = typeof module['name'] === 'string' && module['name'].length > 0 ? module['name'] : spec;
   const declared = pluginName(plugin, fromModule);
-  if (typeof plugin === 'function') return Object.assign(plugin, { name: declared });
+  if (typeof plugin === 'function') {
+    // A CJS-interop export can be FROZEN (`name` not writable) and `Object.assign`
+    // then throws — a plain `module.exports = function (ctx) {…}` would fail to
+    // load while looking like a protocol violation. The identity is already
+    // resolved (`pluginName` prefers the function's own name), so a function that
+    // cannot carry the stamp keeps the name it has.
+    try {
+      return Object.assign(plugin, { name: declared });
+    } catch {
+      return plugin as Plugin;
+    }
+  }
   return { ...(plugin as object), name: declared } as Plugin;
 }
 
@@ -87,7 +92,7 @@ function withName(module: Record<string, unknown>, plugin: AnyPlugin, spec: stri
  * gone, and a module still written against it would otherwise register nothing
  * while looking like it loaded.
  */
-function isPlugin(value: unknown): value is Plugin {
+export function isPlugin(value: unknown): value is Plugin {
   if (typeof value === 'function') return true;
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as { apply?: unknown; activate?: unknown };

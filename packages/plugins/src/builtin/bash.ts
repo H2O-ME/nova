@@ -1,8 +1,7 @@
 import { errMessage, tools as toolsKey } from '@nova-agent/core';
-import { existsSync } from 'node:fs';
 import { spawn, type ChildProcess } from 'node:child_process';
-import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
+import { commandInvocation, modelShell } from './shell-select.js';
 import type {
   JobRegistry,
   JobSnapshot,
@@ -143,65 +142,18 @@ export class BudgetedBuffer {
   }
 }
 
-/** Prefer a POSIX shell (Git Bash) on Windows; fall back to PowerShell. */
+/**
+ * The command form for this session's shell, resolved UP FRONT.
+ *
+ * There used to be a second answer at spawn time: try `bash.exe`, and on an
+ * ENOENT retry as PowerShell — while the context fragment had already declared
+ * one of the two to the model. `modelShell` probes the PATH once, so the shell
+ * that runs the command is the shell the model was told about, and a spawn
+ * failure is a failure rather than a silent family switch.
+ */
 function invocation(command: string, shellPath?: string): ShellInvocation {
-  if (shellPath !== undefined && shellPath.length > 0) {
-    return { cmd: shellPath, args: ['-c', command] };
-  }
-  if (process.platform === 'win32') {
-    return { cmd: 'bash.exe', args: ['-c', command] };
-  }
-  return { cmd: 'bash', args: ['-c', command] };
-}
-
-/**
- * The shell name the bash tool will REALLY run commands in — `'bash'` or
- * `'powershell'`. The single source of truth for both the runtime
- * invocation() choice above AND the cli/context.ts declaredShell() report
- * the model sees at session start, so the two cannot drift (a "powershell"
- * declaration while bash runs the command would make every PowerShell-ism
- * fail with a bare non-zero exit).
- */
-export function resolveShellName(shellPath: string | undefined): 'bash' | 'powershell' {
-  if (shellPath !== undefined && shellPath.length > 0) return 'bash';
-  if (process.platform === 'win32') return bashOnPath() ? 'bash' : 'powershell';
-  return 'bash';
-}
-
-/**
- * Whether `bash.exe` is resolvable on PATH on Windows — i.e. whether the bash
- * tool will actually run commands through a POSIX shell or fall back to
- * PowerShell. The context fragment reports this SAME resolution so the model
- * writes commands for the shell that will really execute them (a "shell:
- * powershell" declaration while bash.exe runs the command makes every
- * PowerShell-ism fail with a bare non-zero exit).
- */
-export function bashOnPath(): boolean {
-  if (process.platform !== 'win32') return false;
-  const dirs = (process.env['PATH'] ?? '').split(';');
-  return dirs.some((dir) => {
-    if (dir.trim().length === 0) return false;
-    try {
-      return existsSync(path.join(dir, 'bash.exe'));
-    } catch {
-      return false;
-    }
-  });
-}
-
-/**
- * Windows PowerShell defaults to the legacy console codepage (e.g. GBK on
- * zh-CN systems), which garbles non-ASCII output read as UTF-8. Prepending
- * this statement (codex's approach) forces UTF-8 for the whole invocation.
- */
-export const POWERSHELL_UTF8_PREFIX =
-  'try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}';
-
-export function powershellInvocation(command: string): ShellInvocation {
-  return {
-    cmd: 'powershell.exe',
-    args: ['-NoProfile', '-Command', `${POWERSHELL_UTF8_PREFIX}\n${command}`],
-  };
+  const shell = modelShell(shellPath);
+  return commandInvocation(shell.family, command, shellPath);
 }
 
 /**
@@ -499,13 +451,9 @@ export function startBashJob(req: BashJobRequest): JobSnapshot | string {
   const command = req.command;
   if (command.trim().length === 0) return 'Error: command is required';
   const outputLimitBytes = req.outputLimitBytes ?? DEFAULT_BASH_OUTPUT_BYTES;
-  // Pre-check with the SAME resolution `declaredShell` reports: a missing
-  // bash.exe surfaces as an async ENOENT event, too late for a fallback — so
-  // pick PowerShell up front.
-  const inv =
-    process.platform === 'win32' && req.shellPath === undefined && !bashOnPath()
-      ? powershellInvocation(command)
-      : invocation(command, req.shellPath);
+  // The SAME up-front resolution the foreground path uses: a missing
+  // executable would surface as an async ENOENT event, too late to reconsider.
+  const inv = invocation(command, req.shellPath);
   const handle = startBackground(inv, req.rootDir, outputLimitBytes);
   if (typeof handle === 'string') return `Error: cannot spawn shell (${inv.cmd}): ${handle}`;
   return req.jobs.start({
@@ -557,13 +505,8 @@ async function executeBash(
   // arrives, so the tool line can show a live tail instead of looking
   // frozen until the process exits.
   const onOutput = c.onProgress !== undefined ? (text: string): void => c.onProgress?.(text) : undefined;
-  let inv = invocation(command, shellPath);
-  let outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
-  if (outcome.spawnError !== undefined && process.platform === 'win32') {
-    // No Git Bash on PATH: fall back to PowerShell.
-    inv = powershellInvocation(command);
-    outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
-  }
+  const inv = invocation(command, shellPath);
+  const outcome = await runOnce(inv, c.rootDir, timeoutMs, maxOutputBytes, c.signal, onOutput);
   if (outcome.spawnError !== undefined) {
     return `Error: cannot spawn shell (${inv.cmd}): ${outcome.spawnError}`;
   }

@@ -8,8 +8,9 @@ import {
   PluginHost,
   approvalProvider,
   builtinPlugins,
+  commandInvocation,
   permissionGatePlugin,
-  powershellInvocation,
+  modelShell,
   PermissionService,
   registerCommand,
   registerTool,
@@ -429,13 +430,19 @@ describe('bash plugin', () => {
     for (const plugin of builtinPlugins({ bash: { timeoutMs: 15_000 }, rootDir: () => '.' })) host.use(plugin);
     await host.activate();
     const bash = host.tools.find((t) => t.name === 'bash')!;
-    const result = await bash.execute({ command: 'echo oops >&2; exit 3' }, { rootDir: root });
+    // The SAME contract in whichever shell this machine actually resolved:
+    // `>&2` is POSIX redirection, `Write-Error` is PowerShell's. Writing the
+    // POSIX form unconditionally made this test a Git-Bash-only test the moment
+    // the model's shell started preferring PowerShell 7.
+    const family = modelShell(undefined).family;
+    const command = family === 'posix' ? 'echo oops >&2; exit 3' : 'Write-Error oops; exit 3';
+    const result = await bash.execute({ command }, { rootDir: root });
     expect(result).toContain('exit: 3');
     expect(result).toContain('oops');
   });
 
   it('prepends the UTF-8 encoding statement to PowerShell invocations', async () => {
-    const inv = powershellInvocation('Get-ChildItem');
+    const inv = commandInvocation('powershell', 'Get-ChildItem');
     expect(inv.cmd).toBe('powershell.exe');
     expect(inv.args[0]).toBe('-NoProfile');
     const script = inv.args[2] ?? '';

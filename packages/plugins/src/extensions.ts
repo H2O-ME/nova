@@ -23,7 +23,7 @@
 import { errMessage, sessions as sessionsKey, tools as toolsKey } from '@nova-agent/core';
 import type { AgentHooks, ChatProvider, Plugin, SubagentProgress, ToolDefinition } from '@nova-agent/core';
 import { labelFor, pluginTier } from './plugin-tier.js';
-import { resolveModuleSpec } from './roster.js';
+import { resolveModuleSpec } from './module-spec.js';
 import type { CodeModeConfig, CreateKernelOptions } from './runtime-assembly.js';
 import type { PluginDescriptor } from './runtime-types.js';
 import type { Environment } from './runtime-env.js';

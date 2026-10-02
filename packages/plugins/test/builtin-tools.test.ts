@@ -4,7 +4,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { JobRegistry, typeStrippingAvailable, type TodoItem } from '@nova-agent/core';
 import { PluginHost, builtinPlugins, READ_MAX_BYTES } from '../src/index.js';
-import { bashOnPath, BudgetedBuffer } from '../src/builtin/bash.js';
+import { bashOnPath } from '../src/builtin/shell-select.js';
+import { BudgetedBuffer } from '../src/builtin/bash.js';
 import { screenContentRegex } from '../src/builtin/search.js';
 
 async function activatedHost(): Promise<{ host: PluginHost; jobs: JobRegistry; emitted: unknown[] }> {

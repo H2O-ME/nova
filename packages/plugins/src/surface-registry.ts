@@ -26,7 +26,7 @@ import {
   type Plugin as CorePlugin,
   type SurfaceRegistry,
 } from '@nova-agent/core';
-import { resolveModuleSpec } from './roster.js';
+import { resolveModuleSpec } from './module-spec.js';
 
 /** An empty registry a caller populates via `register()` (or `loadSurfacePlugins`). */
 export function createSurfaceRegistry(): SurfaceRegistry {

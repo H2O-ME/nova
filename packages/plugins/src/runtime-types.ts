@@ -152,6 +152,26 @@ export interface PluginRosterEntry {
    * loaded, or one that is simply off, has no error to report.
    */
   error?: string;
+  /**
+   * The plugin's BROWSER-side bundle, when it ships one. Absent means the
+   * plugin is server-only (the common case — most plugins extend the kernel
+   * container with tools/services and need nothing in the browser beyond what
+   * the host already ships). A plugin that contributes UI capabilities
+   * (fence renderers, genui panels) declares where its client bundle is served
+   * so the browser loader can fetch and register it on boot.
+   *
+   * `rev` rides the boot graph: a plugin rebuild bumps it, which busts the
+   * loader's per-entry memo together with the host's immutable asset caching.
+   * The path is served by the host's `RouteRegistry` under the same prefix
+   * (`/plugins/<name>/client.js`) — the loader builds that URL from the
+   * plugin's name, so the bundle is discoverable without a separate manifest.
+   */
+  clientBundle?: {
+    /** Path under the plugin's `/plugins/<name>/` prefix; defaults to `client.js`. */
+    path?: string;
+    /** Content rev (a hash or version string) for cache busting. */
+    rev?: string;
+  };
 }
 
 /** Where a roster row came from (the plugin manager's grouping axis). */

@@ -124,6 +124,14 @@ export interface CreateKernelOptions {
   perRequestCompact?: boolean;
   /** Persona override; defaults to the shipped static prompt. */
   systemPrompt?: string;
+  /**
+   * Plugin-owned sections appended to the persona prompt at environment
+   * creation. Resolved ONCE (at roster build), so each kernel's prompt is
+   * byte-stable for its lifetime — the contract the prefix cache depends on.
+   * Sections are additive: they tail the persona under their own headings and
+   * never rewrite it.
+   */
+  systemPromptSections?: ReadonlyArray<{ name: string; text: string }>;
   /** Session-file bucket override (qqbot archives under sessionsRoot()/qqbot). */
   sessionDir?: string;
   /**
