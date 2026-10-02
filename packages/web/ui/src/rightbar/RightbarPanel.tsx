@@ -14,8 +14,7 @@
  * The frame owns the column's geometry and passes the resolved width in; the
  * panel reports nothing back, because the shell (App) is what calls
  * `openRightbar`/`closeRight`. `fullscreen` and `takeover` are the frame's
- * two presentations and are drawn here (`data-rightbar`), the same vocabulary
- * the tool detail panel uses.
+ * two presentations and are drawn here (`data-rightbar`).
  */
 import { PanelIcon } from '../icons.js';
 import type { ClientFrame, WireJobRow, WireShell } from '../types.js';

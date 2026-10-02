@@ -191,6 +191,9 @@ describe('bash plugin', () => {
     await jobs.dispose();
     expect(Date.now() - t0).toBeLessThan(10_000);
     expect(jobs.get('bash-1')?.status).toBe('killed');
+    // A killed job carries NO detail: its exit code is deliberately null, so
+    // any "exit code: …" string would be noise the status word already covers.
+    expect(jobs.get('bash-1')?.detail).toBeUndefined();
   }, 20_000);
 });
 

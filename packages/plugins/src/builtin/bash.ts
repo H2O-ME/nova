@@ -368,7 +368,10 @@ function startBackground(
   };
   const describeExit = (): { status: 'completed' | 'killed' | 'failed'; detail?: string } =>
     killed
-      ? { status: 'killed', detail: `exit code: ${exitCode ?? 'null'}` }
+      // No detail for a killed job: the exit code is deliberately nulled above
+      // (Windows reports 1), so "exit code: null" would be the only possible
+      // string — a fact with no content where the status word already speaks.
+      ? { status: 'killed' }
       : exitCode === 0
         ? { status: 'completed', detail: 'exit code: 0' }
         : exitCode === null
