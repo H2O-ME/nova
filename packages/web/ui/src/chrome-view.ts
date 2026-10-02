@@ -5,7 +5,7 @@
  * tests rather than inferred from JSX, and the components stay projections.
  */
 import type { PtcMode, TurnPhase, ApprovalMode } from './types.js';
-import type { Block, UiState } from './state.js';
+import type { UiState } from './state.js';
 
 export interface ChromeView {
   /** The workspace root (the title crumb's tooltip; '' before `ready`). */
@@ -29,8 +29,6 @@ export interface ChromeView {
   compactBusy: boolean;
   /** Baseline blocks the host holds that this browser has not loaded yet. */
   hidden: number;
-  /** The tool call the detail panel is open on (undefined = panel closed). */
-  detail: Extract<Block, { kind: 'tool' }> | undefined;
 }
 
 /**
@@ -85,7 +83,7 @@ export function effectiveCodeMode(state: UiState): PtcMode {
   return ptcPluginOff(state) ? 'native' : state.codeMode;
 }
 
-export function chromeView(state: UiState, openCallId: string | null): ChromeView {
+export function chromeView(state: UiState): ChromeView {
   const idle = isIdle(state);
   const firstUser = state.blocks.find((b) => b.kind === 'user');
   return {
@@ -102,10 +100,6 @@ export function chromeView(state: UiState, openCallId: string | null): ChromeVie
     canCompact: state.connected,
     compactBusy: state.phase === 'compacting',
     hidden: Math.max(0, state.historyTotal - state.historyLoaded),
-    detail:
-      openCallId === null
-        ? undefined
-        : state.blocks.find((b): b is Extract<Block, { kind: 'tool' }> => b.kind === 'tool' && b.callId === openCallId),
   };
 }
 

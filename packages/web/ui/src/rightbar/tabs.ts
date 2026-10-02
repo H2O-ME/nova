@@ -25,8 +25,31 @@ export type RightbarTabId = 'changes' | 'files' | 'tasks' | 'terminal';
  */
 export const GUIDE_TAB = 'guide';
 
-/** Anything the strip draws: the guide, or one of the four pages. */
-export type StripTabId = RightbarTabId | typeof GUIDE_TAB;
+/**
+ * A file tab's strip id: `file:` + the ABSOLUTE path, which is the tab's whole
+ * identity — the reference's document tabs are keyed the same way (a path is
+ * one tab; opening it again reveals the open one). The prefix is namespaced so
+ * a page id can never collide with a path.
+ */
+export const FILE_TAB_PREFIX = 'file:';
+
+/** The strip id of one file's tab. */
+export function fileTabId(path: string): StripTabId {
+  return `${FILE_TAB_PREFIX}${path}`;
+}
+
+/** Whether a strip id names a file tab. */
+export function isFileTabId(id: StripTabId): boolean {
+  return id.startsWith(FILE_TAB_PREFIX);
+}
+
+/** The path behind a file tab id (only meaningful when `isFileTabId`). */
+export function filePathOf(id: StripTabId): string {
+  return id.slice(FILE_TAB_PREFIX.length);
+}
+
+/** Anything the strip draws: the guide, one of the four pages, or a file tab. */
+export type StripTabId = RightbarTabId | typeof GUIDE_TAB | (string & {});
 /** One tab as the strip draws it. */
 export interface RightbarTab {
   id: RightbarTabId;

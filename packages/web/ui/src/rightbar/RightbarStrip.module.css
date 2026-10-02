@@ -1,35 +1,38 @@
 /*
- * The tab strip's own sheet: 34px of chips with one hairline under it, the
- * panel's controls at its end.
- *
- * Ported from the reference plugin's shell (dsh-better-sidebar, MIT) — the
- * geometry is the reference's `sidebar.module.css` tab bar: a tab capped at
- * 160px and ellipsized, a hairline on its right edge, the active tab on a
- * filled chip rather than an underline, and a sticky `+` that stays reachable
- * while the row overflows. Tokens only.
+ * The tab strip's own sheet — ported from deepseek-harness ui-dockkit
+ * (dockkit.module.css, MIT): a 28px chip row with 10px of air above it, the
+ * hairline slots between chips, the active chip as a filled tab whose
+ * neighbours' slots go blank, and a hover-revealed 20px close inside each
+ * chip. The strip draws no border: a body that wants a rule under it draws
+ * its own (the dockkit contract).
  */
 
-/* The strip IS the panel's top edge: open tabs from the left, the `+` menu,
-   the panel's own two controls at the end. No title row above it. */
+/* The strip row: chips, the `+` control, and the panel's own chrome all centre
+   on one 28px band; the 10px top margin is inside the box so the hit area is
+   one element. Geometry verbatim (dockkit `.tabStrip`). */
 .strip {
   display: flex;
-  align-items: stretch;
-  gap: 2px;
   flex: none;
-  height: 34px;
-  padding: 0 4px 0 0;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
+  gap: 4px;
+  align-items: center;
+  height: 28px;
+  padding: 10px 6px 0 10px;
 }
 
-/* The tab list scrolls horizontally when tabs overflow; its own scrollbar is
-   hidden (the wheel scrolls it — the reference's same rule). */
+/* The chip run. Shrinks to nothing before any control after it moves; chips
+   keep their 80px floor, so what no longer fits scrolls here with no
+   scrollbar drawn. `data-strip-scroll` names the hidden sides (`start`, `end`,
+   or both); each hidden side fades the chips out over 24px into the pane's
+   ground, so the row reads as continuing under the controls (dockkit
+   `.stripTabs` + its mask variants). */
 .tabs {
   display: flex;
-  align-items: stretch;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  align-items: center;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
   scrollbar-width: none;
 }
 
@@ -37,21 +40,36 @@
   display: none;
 }
 
-/* A tab: the reference's geometry — capped at 160px (ellipsized), a hairline
-   on its right edge (chips of one row), quiet until it is the page in front.
-   The close verb sits inside the tab; clicking it must not also switch. */
+.tabs[data-strip-scroll='end'] {
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+
+.tabs[data-strip-scroll='start'] {
+  mask-image: linear-gradient(to right, transparent, black 24px);
+}
+
+.tabs[data-strip-scroll='start end'] {
+  mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+}
+
+/* The chip: a 28px tab whose title runs to the right inset (dockkit `.tab`).
+   The close control is not in the flow — it sits over the title's last 14px
+   and shows while the chip is active, hovered, or holds focus — so a chip is
+   the same width with and without it and nothing shifts on hover. */
 .tab {
-  flex: none;
-  display: inline-flex;
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
   align-items: center;
-  gap: 4px;
-  box-sizing: border-box;
-  max-width: 160px;
-  min-width: 64px;
-  padding: 0 4px 0 10px;
-  border-right: 1px solid var(--dsw-alias-border-l1);
+  min-width: 80px;
+  max-width: 170px;
+  height: 28px;
+  padding: 0 10px;
   color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-xxs-12);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: var(--dsw-radius-sm);
   cursor: pointer;
   user-select: none;
   transition:
@@ -63,16 +81,33 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* The active chip is the filled tab, in the tag fill (dockkit `.tabActive`). */
+.tab[aria-selected='true'] {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-markdown-tag);
+}
+
 .tab:focus-visible {
   outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
   outline-offset: -2px;
 }
 
-.tab[aria-selected='true'] {
-  color: var(--dsw-alias-label-primary);
-  /* Native selected fill (the sidebar's selected session row) — no underline,
-     no shadow. */
-  background: var(--dsw-alias-interactive-bg-active);
+.tabTitle {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.4;
+}
+
+/* While the close shows, the title fades out under the close's circle
+   (dockkit's 30px→14px mask). */
+.tab:hover .tabTitle,
+.tab:focus-within .tabTitle,
+.tab[aria-selected='true'] .tabTitle {
+  mask-image: linear-gradient(to right, black calc(100% - 30px), transparent calc(100% - 14px));
 }
 
 .tabIcon {
@@ -91,31 +126,43 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* A 20px icon button inset 4px from the chip's end (dockkit `.tabClose`). */
 .tabClose {
-  display: inline-flex;
-  flex: none;
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
   color: var(--dsw-alias-label-tertiary);
+  line-height: 1;
+  background: transparent;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
   cursor: pointer;
-  transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+  opacity: 0;
+  /* Hidden means untouchable too: without this a press on the chip's trailing
+     20px would close the tab instead of activating it. */
+  pointer-events: none;
+  transition: opacity var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.tab:hover .tabClose,
+.tab:focus-within .tabClose,
+.tab[aria-selected='true'] .tabClose {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .tabClose:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .tabClose:focus-visible {
@@ -128,24 +175,45 @@
   height: 12px;
 }
 
-/* The `+` that opens more pages, right of the last tab: sticky at the
-   scrollport's right edge so an overflowing tab row keeps it reachable. */
-.plus {
+/* The slot between two chips: a 10px box with a hairline down its centre
+   (dockkit `.slot`). The slots beside the active chip go blank, so the row
+   reads as the tab between bare chips. */
+.slot {
+  display: flex;
   flex: none;
-  align-self: center;
-  position: sticky;
-  right: 0;
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin: 0 6px;
+  width: 10px;
+  height: 28px;
+}
+
+.slot::before {
+  content: '';
+  width: 0.5px;
+  height: 14px;
+  background: var(--dsw-alias-border-l4);
+}
+
+.slotAfterActive::before,
+.slotBeforeActive::before {
+  background: transparent;
+}
+
+/* The `+` that opens more pages: chip height and corner, so it reads as one
+   more tab in the row (dockkit `.addTab`). */
+.plus {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  line-height: 1;
+  background: transparent;
   border: none;
-  border-radius: 5px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-tertiary);
+  border-radius: var(--dsw-radius-sm);
   cursor: pointer;
   transition:
     background-color var(--ds-transition-duration) var(--ds-ease-in-out),
@@ -153,8 +221,8 @@
 }
 
 .plus:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .plus:focus-visible {
@@ -163,35 +231,37 @@
 }
 
 .plus svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
+/* The strip's END: the panel's own controls, spaced from the `+` as they are
+   from each other (dockkit `.stripChrome`). */
 .stripEnd {
   display: flex;
-  align-items: center;
-  gap: 2px;
   flex: none;
-  margin-left: auto;
+  gap: 8px;
+  align-items: center;
+  height: 28px;
+  margin-left: 4px;
 }
 
 /* The geometry of every control in this surface: a 28px box around a 15px
-   glyph. The strip keeps its copy for these two buttons; the pages read the
-   same recipe from `kit.module.css`. */
+   glyph (dockkit `.iconButton`). The strip keeps its copy for these two
+   buttons; the pages read the same recipe from `kit.module.css`. */
 .iconButton {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  align-self: center;
   width: 28px;
   height: 28px;
-  padding: 0;
+  padding: 6px;
   color: var(--dsw-alias-label-secondary);
   line-height: 1;
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--dsw-radius-sm);
   cursor: pointer;
   transition:
     background-color var(--ds-transition-duration) var(--ds-ease-in-out),

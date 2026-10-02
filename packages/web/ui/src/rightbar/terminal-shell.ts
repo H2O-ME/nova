@@ -13,6 +13,7 @@
  * Pure: no React, no DOM beyond the storage accessors' try/catch (a browser
  * that refuses storage gets the host default every time, which is correct).
  */
+import type { ClientFrame } from '../types.js';
 
 /** Where the remembered shell lives (versioned: a future shape takes a new key). */
 export const SHELL_STORAGE_KEY = 'nova.terminal.shell.v1';
@@ -65,4 +66,34 @@ export function requestedShell(
   if (preferred === null) return current;
   const match = items.find((item) => item.path.toLowerCase() === preferred.toLowerCase());
   return match?.path ?? current;
+}
+
+/**
+ * The `term_open` an emulator at this grid should send — or null while the
+ * shell inventory is still unknown.
+ *
+ * **The wait is what makes the choice real.** A cold page has no `shells`
+ * answer yet; an open sent without one resolves to the HOST's default shell,
+ * and the second `term_open` that arrives once the inventory lands is ignored
+ * (`ensure` keeps the pty that already exists) — so the reader's remembered
+ * shell silently lost and every cold open started in the environment default,
+ * which is the reported 「不能选终端」. One open, after the answer, carrying the
+ * resolved path.
+ * @param grid - the emulator's current size (the pty is born at it).
+ * @param shells - the host's answer, or null before the first one.
+ * @param preferred - the remembered shell path, or null.
+ * @returns the frame to send, or null to wait.
+ */
+export function terminalOpenFrame(
+  grid: { cols: number; rows: number },
+  shells: { items: readonly { path: string }[]; current: string } | null,
+  preferred: string | null,
+): ClientFrame | null {
+  if (shells === null) return null;
+  return {
+    type: 'term_open',
+    cols: grid.cols,
+    rows: grid.rows,
+    shell: requestedShell(shells.items, shells.current, preferred),
+  };
 }

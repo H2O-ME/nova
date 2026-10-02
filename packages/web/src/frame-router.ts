@@ -106,7 +106,6 @@ export async function handleFrame(
         await handleFsFrame(client, frame, { rootDir: kernel.rootDir() });
         break;
       case 'read_entry':
-      case 'write_entry':
       case 'rename_entry':
       case 'remove_entry':
       case 'new_entry':

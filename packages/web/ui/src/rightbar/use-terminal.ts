@@ -61,26 +61,52 @@ export function useTerminalEmulator(): TerminalEmulator {
     let disposed = false;
     let emulator: Terminal | null = null;
     let observer: ResizeObserver | null = null;
+    let themeObserver: MutationObserver | null = null;
     void (async () => {
       try {
+        // xterm's OWN stylesheet rides along: the helper layer's rules live
+        // there and nowhere else — `.xterm-char-measure-element { visibility:
+        // hidden }` hides the width-cache probe, whose text is the last
+        // measured glyph repeated 32×. Without it that probe paints a
+        // shifting line of junk characters above the first row (the reported
+        // 乱码: a line of `>` before cmd's banner), and the helper textarea
+        // renders as a box. Loading it here keeps CSS and constructor
+        // together — never a half-styled terminal.
         const [{ Terminal: Xterm }, { FitAddon }] = await Promise.all([
           import('@xterm/xterm'),
           import('@xterm/addon-fit'),
+          import('@xterm/xterm/css/xterm.css'),
         ]);
         if (disposed) return;
-        const style = window.getComputedStyle(host);
         const instance = new Xterm({
           cursorBlink: true,
           minimumContrastRatio: 4.5,
           fontSize: 13,
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
           scrollback: 4000,
-          theme: { background: 'transparent', foreground: style.color },
+          theme: { background: 'transparent', foreground: window.getComputedStyle(host).color },
         });
         const fit = new FitAddon();
         instance.loadAddon(fit);
         instance.open(host);
         fit.fit();
+        // The emulator's ink follows the page's theme: foreground and cursor
+        // are re-read from the host's computed style whenever the document's
+        // theme attribute flips (the reference's `TerminalTheme.update`; the
+        // background stays transparent — the page's own layer paints it).
+        const applyTheme = (): void => {
+          instance.options.theme = {
+            background: 'transparent',
+            foreground: window.getComputedStyle(host).color,
+            cursor: window.getComputedStyle(host).color,
+          };
+        };
+        applyTheme();
+        themeObserver = new MutationObserver(applyTheme);
+        themeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['class', 'data-ds-dark-theme'],
+        });
         instance.onData((data) => { sendRef.current({ type: 'term_input', data }); });
         instance.textarea?.setAttribute('aria-label', RIGHTBAR_COPY['term.output']);
         emulator = instance;
@@ -106,6 +132,7 @@ export function useTerminalEmulator(): TerminalEmulator {
     return () => {
       disposed = true;
       observer?.disconnect();
+      themeObserver?.disconnect();
       apiRef.current = null;
       setReady(false);
       try {

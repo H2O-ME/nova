@@ -1,0 +1,69 @@
+/*
+ * The file tab viewer's own sheet. Values ported from the reference's
+ * document preview (ui-sidebar-documentpreview, MIT) and this panel's own
+ * diff pane geometry: one row per line, a right-aligned gutter number, and
+ * wrapping as the default reading (a 300px column cannot afford a side
+ * scroll per long line — the wrap chip restores a pan reading instead).
+ */
+
+.view {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.bar {
+  display: flex;
+  flex: none;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 10px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+/* The code reading: mono font, one row per line, gutter numbers in the
+   tertiary ink. */
+.code {
+  padding: 8px 0 16px;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 10px;
+}
+
+.lineNo {
+  flex: none;
+  width: 2.5em;
+  text-align: right;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  user-select: none;
+}
+
+/* Wrapping is the default (a narrow pane cannot afford a horizontal pan for
+   every long line); the wrap chip switches to a preserved-lines reading. */
+.lineText {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.code[data-wrap] .lineText {
+  white-space: pre;
+  word-break: normal;
+}
+
+/* Markdown renders as reading matter, not source. */
+.markdown {
+  padding: 12px 14px 16px;
+}

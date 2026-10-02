@@ -216,6 +216,8 @@ export function killPtyTree(handle: PtyHandle): void {
  */
 export class TermRegistry {
   private readonly bySession = new Map<string, TermSession>();
+  /** Spawns in flight, keyed by session (concurrent opens share one). */
+  private readonly spawning = new Map<string, Promise<TermSession>>();
 
   constructor(private readonly spawnPty: PtySpawner = nodePtySpawn) {}
 
@@ -226,6 +228,14 @@ export class TermRegistry {
 
   /**
    * The session's terminal, spawning it on first use.
+   *
+   * The check-then-spawn is SINGLE-FLIGHTED: the client legitimately opens
+   * twice in a row (an open before the shell inventory lands, another once it
+   * has), and an awaited spawn leaves a window where two opens both see "no
+   * session" — two ptys for one tab, both broadcasting, their escape streams
+   * interleaving into on-screen garbage (the 「首行 >>>> 乱码」 report). The
+   * first spawn's promise is parked, and every concurrent open awaits the same
+   * one.
    *
    * An EXITED terminal is NOT replaced here: its scrollback is the last thing
    * the reader needs to see (why did it die?), and the panel's explicit new-
@@ -244,10 +254,20 @@ export class TermRegistry {
   ): Promise<TermSession> {
     const existing = this.bySession.get(sessionId);
     if (existing !== undefined) return existing;
-    const handle = await this.spawnPty({ file: opts.file, args: opts.args, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
-    const created = new TermSession(handle, onOutput, onExit);
-    this.bySession.set(sessionId, created);
-    return created;
+    const inFlight = this.spawning.get(sessionId);
+    if (inFlight !== undefined) return inFlight;
+    const promise = (async () => {
+      const handle = await this.spawnPty({ file: opts.file, args: opts.args, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
+      const created = new TermSession(handle, onOutput, onExit);
+      this.bySession.set(sessionId, created);
+      return created;
+    })();
+    this.spawning.set(sessionId, promise);
+    try {
+      return await promise;
+    } finally {
+      this.spawning.delete(sessionId);
+    }
   }
 
   /**

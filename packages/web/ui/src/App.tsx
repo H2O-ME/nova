@@ -25,8 +25,8 @@ import { GoalPanel } from './conversation/GoalPanel.js';
 import { ContextMeter } from './conversation/ContextMeter.js';
 import { ConversationRoot } from './conversation/ConversationRoot.js';
 import { HeroShell, WorkspaceRow } from './conversation/EmptyHero.js';
-import { NewSessionButton, SettingsButton } from './conversation/HeaderButtons.js';
 import { DirectoryBrowser } from './conversation/DirectoryBrowser.js';
+import { Sidebar } from './sidebar/Sidebar.js';
 import { useNativePick } from './shell/native-pick.js';
 import { SessionHeader } from './conversation/SessionHeader.js';
 import { StatsPills } from './composer/StatsPills.js';
@@ -47,19 +47,18 @@ import { AppFrame } from './shell/AppFrame.js';
 import { DocumentTitle } from './shell/DocumentTitle.js';
 import { readRecentWorkspaces, rememberWorkspace } from './shell/workspaces.js';
 import { useEscapeToClose } from './shell/use-escape.js';
-import { ConnectionBadge } from './shell/ConnectionBadge.js';
 import { useLayout } from './shell/use-layout.js';
 import { BookIcon, ChatBotIcon, PluginIcon, SettingsIcon } from './icons.js';
 import { DataOutline16 } from './composer/Icons.js';
-import { ToolPanel } from './tool/ToolPanel.js';
 import { TraceView } from './trace/TraceView.js';
 import { ContextView } from './context/ContextView.js';
 import { RightbarOpenButton, RightbarPanel } from './rightbar/RightbarPanel.js';
-import { GUIDE_TAB, type RightbarTabId, type StripTabId } from './rightbar/tabs.js';
-import { addGuide, closeTab, focusTab, initialStrip, pickGuideEntry, type StripState } from './rightbar/strip-state.js';
+import { isFileTabId, filePathOf, type RightbarTabId, type StripTabId } from './rightbar/tabs.js';
+import { addGuide, closeTab, focusTab, initialStrip, openFileTab as revealFileTab, pickGuideEntry, type StripState } from './rightbar/strip-state.js';
 import { ErrorBoundary } from './shell/ErrorBoundary.js';
 import { SHELL_COPY } from './shell/copy.js';
 import { changesModel } from './rightbar/changes-model.js';
+import { writeShellPreference } from './rightbar/terminal-shell.js';
 import { useTheme } from './theme.js';
 import { useTranscriptView } from './chat/transcript-view.js';
 
@@ -80,13 +79,11 @@ const CONTEXT_TAB = { id: 'context', label: '上下文' } as const;
 
 export function App(): JSX.Element {
   const { state, dispatch, send, connection, reconnect } = useAgent();
-  const [openCallId, setOpenCallId] = useState<string | null>(null);
   /** Turn headers the reader opened; a settled turn starts collapsed without one. */
   const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
   /** The settings dialog: the shell owns the panel, the sidebar foot the seat. */
   const [settingsOpen, setSettingsOpen] = useState(false);
-  /** The right panel's three-tab body (变更/文件/终端); a tool detail click
-   *  outranks it — an explicitly opened call takes the column. */
+  /** The right panel's four-page body (变更/文件/任务/终端). */
   const [rightbarOpen, setRightbarOpen] = useState(false);
   // The right panel's OPEN tabs and the one in front (null = the start page).
   // Held HERE (the panel still renders from props) because the column's error
@@ -104,7 +101,33 @@ export function App(): JSX.Element {
   const openPageFromGuide = useCallback((page: RightbarTabId): void => {
     setStrip((state) => pickGuideEntry(state, page));
   }, []);
-  const closeStripTab = useCallback((tab: StripTabId): void => { setStrip((state) => closeTab(state, tab)); }, []);
+  const closeStripTab = useCallback((tab: StripTabId): void => {
+    setStrip((state) => closeTab(state, tab));
+    // A closed FILE tab takes its document with it: the strip owns what is on
+    // screen, and a doc the strip no longer names is a dead cache (and would
+    // re-render as its own pane if a later tab ever read `editor.docs`).
+    if (isFileTabId(tab)) dispatch({ type: 'editor_close', path: filePathOf(tab) });
+  }, [dispatch]);
+  // A file opened from ANYWHERE (tree row, 变更 verb, later pages) takes the
+  // same one entrance: the read goes out (the `sent` reduction places the
+  // doc), the strip reveals-or-opens its tab. One gesture, one owner.
+  const openFileTab = useCallback((path: string): void => {
+    send({ type: 'read_entry', path });
+    setStrip((state) => revealFileTab(state, path));
+  }, [send]);
+  // The start page's shell menu: remember the row, bring the terminal tab
+  // forward, and let the terminal page re-aim its next open at the pick (the
+  // epoch re-render is what reaches the page even when the strip state is
+  // unchanged). A RUNNING terminal is killed here — an explicit respawn, the
+  // same two halves the restart button performs.
+  const [shellPick, setShellPick] = useState(0);
+  const discoverShells = useCallback((): void => { send({ type: 'discover_shells' }); }, [send]);
+  const pickTerminalShell = useCallback((path: string): void => {
+    writeShellPreference(path);
+    setStrip((state) => pickGuideEntry(state, 'terminal'));
+    if (state.term.status === 'running') send({ type: 'term_kill' });
+    setShellPick((epoch) => epoch + 1);
+  }, [send, state.term.status]);
   const layout = useLayout();
   const theme = useTheme();
   const transcript = useTranscriptView();
@@ -113,15 +136,11 @@ export function App(): JSX.Element {
   // Per-session browser selections die with the session. The turn-collapse
   // set is keyed by block ids the baseline mints fresh (`b1…`): carrying the
   // old set across a switch would open the new session's turns by coincidence
-  // of numbering. The detail panel's target is a block of ONE session: after
-  // a switch the lookup misses, but the surviving id would still hold the
-  // right track open (`open` reads the id, not the panel) over an empty
-  // column. A re-attach to the same session keeps both — the sessionFile
+  // of numbering. A re-attach to the same session keeps it — the sessionFile
   // effect simply does not run.
   const sessionFile = state.meta?.sessionFile ?? '';
   useEffect(() => {
     setOpenTurns(new Set());
-    setOpenCallId(null);
   }, [sessionFile]);
   const toggleTurn = useCallback((id: string): void => {
     setOpenTurns((current) => {
@@ -131,6 +150,20 @@ export function App(): JSX.Element {
       return next;
     });
   }, []);
+
+  // The session list is a sidebar concern, and asking for it is ONE decision
+  // with one place to make it: whenever the reducer says the list is stale
+  // (first attach, a reconnect, a switch that may have added a session) and no
+  // request is in flight. The rows already on screen keep rendering while the
+  // answer travels, so a switch never blanks the panel — the rule the harness
+  // follows by re-listing only on connect and pushing the rest as events.
+  const requestSessions = useCallback((): void => {
+    if (state.sessionsPending) return;
+    send({ type: 'list_sessions' });
+  }, [send, state.sessionsPending]);
+  useEffect(() => {
+    if (connection === 'open' && state.sessionsStale) requestSessions();
+  }, [connection, state.sessionsStale, requestSessions]);
 
   // The workspace shortlist the picker offers: what this browser has been in,
   // newest first. The live root is recorded as it arrives, so the menu always
@@ -176,30 +209,25 @@ export function App(): JSX.Element {
     }, [dispatch]),
   });
 
-  const closePanel = useCallback((): void => setOpenCallId(null), []);
   const closeRightbarPanel = useCallback((): void => setRightbarOpen(false), []);
-  // Escape closes one layer per press, topmost first: the right panel, then the
-  // detail panel (the transcript has nothing to close).
+  // Escape closes one layer per press, topmost first: the right panel. The
+  // narrow frame's sidebar expansion counts as the outermost layer — closing
+  // it is the same "get this out of the way" gesture.
   useEscapeToClose([
     ...(rightbarOpen ? [closeRightbarPanel] : []),
-    ...(openCallId !== null ? [closePanel] : []),
+    ...(layout.narrow && !layout.collapsed ? [layout.toggleSidebar] : []),
   ]);
 
   // The right column is a track, not a box: a shown panel RESERVES its track
   // (`openRightbar` owns the rule), so the centre makes room and the shell is
   // three columns — the panel slid in from the frame's right edge while the
-  // conversation narrowed beside it. Either occupant opens it: an opened call,
-  // or the right panel.
-  const open = openCallId !== null || rightbarOpen;
+  // conversation narrowed beside it.
+  const open = rightbarOpen;
   useEffect(() => {
     if (!open) closeRightbar();
     else openRightbar(layout.layout.rightbarFullscreen);
   }, [open, openRightbar, closeRightbar, layout.layout.rightbarFullscreen]);
 
-  const openTool = useCallback(
-    (callId: string): void => setOpenCallId((current) => (current === callId ? null : callId)),
-    [],
-  );
   const stopJob = useCallback((id: string): void => send({ type: 'stop_job', id }), [send]);
   const onLoadEarlier = useCallback(
     (): void => send({ type: 'load_earlier', have: state.historyLoaded }),
@@ -223,7 +251,7 @@ export function App(): JSX.Element {
 
   // One pure derivation for everything the frame shows about the session; the
   // JSX below reads fields instead of deciding (see chrome-view.ts).
-  const view = chromeView(state, openCallId);
+  const view = chromeView(state);
   // The right panel's 变更 tab folds the conversation's own tool calls into a
   // change list — a pure derivation of the blocks, recomputed only when they do.
   const changes = useMemo(() => changesModel(state.blocks), [state.blocks]);
@@ -237,8 +265,6 @@ export function App(): JSX.Element {
   const rows = useMemo(
     () => flowRows(state.blocks, {
       idle: view.idle,
-      selectedCallId: openCallId,
-      onOpenTool: openTool,
       onStopJob: stopJob,
       cwd: view.rootDir,
       runningStatus,
@@ -247,7 +273,7 @@ export function App(): JSX.Element {
       modelName: state.modelName,
       policy: transcript.policy,
     }),
-    [state.blocks, view.idle, openCallId, openTool, stopJob, view.rootDir, runningStatus, openTurns, toggleTurn, state.modelName, transcript.policy],
+    [state.blocks, view.idle, stopJob, view.rootDir, runningStatus, openTurns, toggleTurn, state.modelName, transcript.policy],
   );
   const phase = conversationPhase({
     bound: state.meta !== null,
@@ -265,7 +291,25 @@ export function App(): JSX.Element {
       dragging={layout.dragging}
       onDragChange={layout.setDragging}
       onViewportWidth={layout.setViewportWidth}
+      onSidebarWidth={layout.setSidebar}
       onRightbarWidth={layout.setRightbar}
+      sidebar={({ collapsed, width, auto }) => (
+        <Sidebar
+          items={state.sessions}
+          currentFile={state.meta?.sessionFile ?? ''}
+          collapsed={collapsed}
+          width={width}
+          autoCollapsed={auto}
+          connection={connection}
+          onReconnect={reconnect}
+          send={send}
+          settingsOpen={settingsOpen}
+          onOpenSettings={() => { setSettingsOpen(true); }}
+          onDeleteSession={(file) => { send({ type: 'delete_session', file }); }}
+          onReloadSessions={requestSessions}
+          onToggleCollapsed={layout.toggleSidebar}
+        />
+      )}
       center={
         <>
           <DocumentTitle title={view.title} />
@@ -423,24 +467,8 @@ export function App(): JSX.Element {
       rightbar={({ width, canShow }) => {
         // The column is guarded on its own: a panel that cannot draw must cost
         // the reader the panel, not the conversation beside it. `resetKey` is
-        // what is on screen, so switching panel or tab is itself the way out.
+        // what is on screen, so switching tab is itself the way out.
         const occupant = ((): JSX.Element | null => {
-        // A clicked call takes the column (an explicit open outranks the
-        // panel); the four-page right panel is the column's other occupant.
-        if (view.detail !== undefined) {
-          return (
-            <ToolPanel
-              block={view.detail}
-              width={width}
-              canShow={canShow}
-              idle={view.idle}
-              fullscreen={layout.layout.rightbarFullscreen}
-              onClose={closePanel}
-              onToggleFullscreen={toggleFullscreen}
-              cwd={view.rootDir}
-            />
-          );
-        }
         if (!rightbarOpen) return null;
         return (
           <RightbarPanel
@@ -453,12 +481,15 @@ export function App(): JSX.Element {
             tab={strip.front}
             onPickTab={pickStripTab}
             onOpenPage={openPageFromGuide}
+            shells={state.shells}
+            shellPick={shellPick}
+            onDiscoverShells={discoverShells}
+            onPickShell={pickTerminalShell}
             onAddGuide={addGuideTab}
             onCloseTab={closeStripTab}
             changes={changes}
             tree={state.tree}
             term={state.term}
-            shells={state.shells}
             currentFile={sessionFile}
             rootDir={view.rootDir}
             connected={connection === 'open'}
@@ -469,13 +500,10 @@ export function App(): JSX.Element {
             // The git setup card's 打开文件夹 is the hero's own gesture: the
             // native dialog first, the in-page browser on fallback.
             onOpenWorkspace={() => { pickNative('directory'); }}
-            // The 变更 row's 打开编辑器 lands in the files page beside the
-            // tree: the request owns the open (the `sent` reduction places the
-            // doc), the tab switch is the only extra gesture it needs.
-            onOpenFile={(file) => {
-              send({ type: 'read_entry', path: file });
-              pickStripTab('files');
-            }}
+            // The 变更 row's verb opens the file as ITS OWN TAB (the strip's
+            // reveal-if-opened) — the read goes out through the same one
+            // entrance every other opener uses.
+            onOpenFileTab={openFileTab}
             dispatch={dispatch}
             send={send}
             // The tree row's `@` railing reuses the pickers' own intake — one
@@ -488,7 +516,7 @@ export function App(): JSX.Element {
         return (
           <ErrorBoundary
             label={SHELL_COPY['error.label.rightbar']}
-            resetKey={view.detail !== undefined ? `call:${view.detail.callId}` : rightbarOpen ? `panel:${strip.front}` : 'closed'}
+            resetKey={rightbarOpen ? `panel:${strip.front}` : 'closed'}
           >
             {occupant}
           </ErrorBoundary>

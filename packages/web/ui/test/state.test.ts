@@ -629,6 +629,27 @@ describe('reduce / tool detail and jobs', () => {
     expect(settled.blocks).toHaveLength(1);
     expect(settled.blocks[0]).toMatchObject({ kind: 'job', job: { id: 'bash-1', status: 'completed' } });
   });
+
+  it('keeps an open tasks list in step with the live updates', () => {
+    // The 任务 page reads `state.jobs`, which `list_jobs` answers once. Without
+    // the fold, a page opened before the job started would never show it and an
+    // opened page would never see a row settle — the reader would have to press
+    // refresh to watch work finish.
+    const job = (status: 'running' | 'completed', progress?: string): KernelEvent => ({
+      type: 'job_update',
+      job: { id: 'bash-1', kind: 'bash', label: 'pnpm build', status, sessionId: 'sess_test', ...(progress !== undefined ? { progress } : {}) },
+    });
+    const opened = reduce(fold([{ event: job('running', 'starting') }]), {
+      type: 'jobs',
+      items: [{ id: 'bash-1', kind: 'bash', label: 'pnpm build', status: 'running', progress: 'starting' }],
+    });
+    const settled = fold([{ event: job('completed', 'done') }], opened);
+    expect(settled.jobs).toEqual([{ id: 'bash-1', kind: 'bash', label: 'pnpm build', status: 'completed', sessionId: 'sess_test', progress: 'done' }]);
+    // A page nobody opened stays unopened: the transcript row still appears,
+    // but `jobs: null` must not turn into rows behind the reader's back.
+    const closed = fold([{ event: job('running') }]);
+    expect(closed.jobs).toBeNull();
+  });
 });
 
 describe('reduce / history pagination', () => {

@@ -12,7 +12,7 @@
  * the reason, not with an error: the panel's job is to say why the file is not
  * in the editor, and "too big" is not a failure of the read.
  */
-import { createEntry, errMessage, readTextFile, removeEntry, renameEntry, writeTextFile } from '@nova-agent/core';
+import { createEntry, errMessage, readTextFile, removeEntry, renameEntry } from '@nova-agent/core';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { MAX_EDITOR_BYTES } from './protocol.js';
@@ -29,7 +29,7 @@ export interface EntryFrameHost {
 /** The entry frames this module answers. */
 export type EntryFrame = Extract<
   ClientFrame,
-  { type: 'read_entry' | 'write_entry' | 'rename_entry' | 'remove_entry' | 'new_entry' | 'open_entry' }
+  { type: 'read_entry' | 'rename_entry' | 'remove_entry' | 'new_entry' | 'open_entry' }
 >;
 
 /**
@@ -50,11 +50,6 @@ export async function handleEntryFrame(client: WsConnection, frame: EntryFrame, 
         // instead of an empty editor, which would claim the file is empty.
         client.send(serialize({ type: 'entry_error', path: frame.path, message: errMessage(err) }));
       }
-      return;
-    }
-    case 'write_entry': {
-      const written = await writeTextFile(host.rootDir, frame.path, frame.content);
-      client.send(serialize({ type: 'entry_saved', path: written.path, bytes: written.bytes }));
       return;
     }
     case 'rename_entry': {

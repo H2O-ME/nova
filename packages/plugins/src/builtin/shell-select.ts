@@ -146,14 +146,48 @@ function installedShells(): ShellCandidate[] {
     : [process.env['SHELL'] ?? '', 'bash', 'sh'];
   const seen = new Set<string>();
   const out: ShellCandidate[] = [];
-  for (const name of names) {
-    if (name.length === 0) continue;
-    const found = candidate(name);
-    if (found === undefined) continue;
+  const probe = (exePath: string): void => {
+    const found = candidate(exePath);
+    if (found === undefined) return;
     const key = found.path.toLowerCase();
-    if (seen.has(key)) continue;
+    if (seen.has(key)) return;
     seen.add(key);
     out.push(found);
+  };
+  for (const name of names) {
+    if (name.length === 0) continue;
+    probe(name);
+  }
+  if (process.platform === 'win32') {
+    // A standard-installed pwsh is often NOT on PATH (the MSI does not add
+    // itself), so the PATH probe alone misses it — the operator's 「没法用
+    // powershell7」. The well-known install locations close that gap.
+    for (const location of windowsPowerShellLocations(process.env['ProgramFiles'], process.env['LocalAppData'])) {
+      probe(location);
+    }
+  }
+  return out;
+}
+
+/**
+ * The standard install locations of PowerShell 7 on Windows, as absolute
+ * paths — pure, so the well-known table is testable on any platform.
+ * @param programFiles - `%ProgramFiles%` (the MSI's default root).
+ * @param localAppData - `%LocalAppData%` (the Store/zip-per-user location).
+ * @returns candidate executables, most standard first.
+ */
+export function windowsPowerShellLocations(
+  programFiles: string | undefined,
+  localAppData: string | undefined,
+): string[] {
+  const out: string[] = [];
+  for (const version of ['7', '6', '7-preview']) {
+    if (programFiles !== undefined && programFiles.length > 0) {
+      out.push(path.join(programFiles, 'PowerShell', version, 'pwsh.exe'));
+    }
+  }
+  if (localAppData !== undefined && localAppData.length > 0) {
+    out.push(path.join(localAppData, 'Microsoft', 'WindowsApps', 'pwsh.exe'));
   }
   return out;
 }

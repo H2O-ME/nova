@@ -16,8 +16,6 @@ import type { RunStats } from '../src/types.js';
 
 const options = (over: Partial<Parameters<typeof flowRows>[1]> = {}): Parameters<typeof flowRows>[1] => ({
   idle: true,
-  selectedCallId: null,
-  onOpenTool: () => {},
   onStopJob: () => {},
   runningStatus: null,
   openTurns: new Set(),

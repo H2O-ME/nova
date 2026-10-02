@@ -28,14 +28,28 @@ export interface TermFrame {
 /** The panel's own view of life: before the first open, plus the host's states. */
 export type TermLife = 'off' | TermFrame['status'];
 
+/**
+ * Most characters the panel holds for an emulator that is not attached.
+ *
+ * The host keeps 256 KiB of scrollback (`web/src/term-session.ts`); holding
+ * more than the ring means the ring's tail is the better reconstruction, so
+ * past this bound the slot drops its bytes and says so (`overflow`) rather
+ * than growing without bound while the tab is closed.
+ */
+export const TERM_FEED_LIMIT = 256 * 1024;
+
 export interface TermState {
   status: TermLife;
   /** The pty's exit code, once it has one. */
   exitCode?: number;
   /** Why the terminal could not be opened (spawn refusal). */
   error?: string;
-  /** The bytes owed to the emulator, and the number it has caught up with. */
-  feed: { data: string; reset: boolean; seq: number } | null;
+  /**
+   * The bytes owed to the emulator, and the number it has caught up with.
+   * `overflow` means the bytes the slot would have held were dropped (see
+   * `TERM_FEED_LIMIT`), so the view must re-read the host's ring instead.
+   */
+  feed: { data: string; reset: boolean; seq: number; overflow?: boolean } | null;
   /** The session log this terminal belongs to. */
   session: string;
 }
@@ -62,15 +76,33 @@ export function termForSession(state: TermState, sessionFile: string): TermState
  * exactly the thing that knows what to do with them. `seq` rises with each
  * owed batch so the view can tell a repeat from new bytes without keeping its
  * own copy of the screen.
+ *
+ * The slot ACCUMULATES: frames are folded as they arrive and consumed at
+ * render rate, and several can land between two renders (the socket delivers
+ * bursts, React batches the dispatches). Keeping only the last frame silently
+ * dropped the middle of an ANSI stream — a truncated escape paints as junk
+ * where the screen should have text, so the "garbled terminal" was real even
+ * though every byte on the wire was clean. A later `reset` frame discards the
+ * bytes it will clear anyway, so the batch stays exactly what sequential
+ * `reset`+`write` calls would have produced.
  * @param state - the panel's state before the frame.
  * @param frame - the frame's payload.
  * @returns the state after it.
  */
 export function applyTerm(state: TermState, frame: TermFrame): TermState {
   const owed = frame.data.length > 0 || frame.reset === true;
-  const feed = owed
-    ? { data: frame.data, reset: frame.reset === true, seq: (state.feed?.seq ?? 0) + 1 }
-    : state.feed;
+  const previous = state.feed;
+  let feed = previous;
+  if (owed) {
+    const data = frame.reset === true ? frame.data : (previous?.data ?? '') + frame.data;
+    const overflow = data.length > TERM_FEED_LIMIT;
+    feed = {
+      data: overflow ? '' : data,
+      reset: frame.reset === true || (previous?.reset ?? false),
+      seq: (previous?.seq ?? 0) + 1,
+      ...(overflow ? { overflow: true } : {}),
+    };
+  }
   // An error describes the LAST attempt. Bytes arriving means the terminal
   // moved on, so the line goes; a frame that states one replaces it; a
   // state-only frame leaves it standing.

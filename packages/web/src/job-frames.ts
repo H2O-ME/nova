@@ -33,6 +33,7 @@ export function handleJobFrame(client: WsConnection, host: JobHost): void {
     status: snapshot.status,
     ...(snapshot.detail !== undefined ? { detail: snapshot.detail } : {}),
     ...(snapshot.startedAt !== undefined ? { startedAt: snapshot.startedAt } : {}),
+    ...(snapshot.finishedAt !== undefined ? { finishedAt: snapshot.finishedAt } : {}),
     ...(snapshot.progress !== undefined ? { progress: snapshot.progress } : {}),
   }));
   client.send(serialize({ type: 'jobs', items }));

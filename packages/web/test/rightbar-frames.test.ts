@@ -115,36 +115,6 @@ describe('handleEntryFrame', () => {
     expect(conn.last('entry')).toBeUndefined();
   });
 
-  it('answers a write with `entry_saved`, not a bare ok', async () => {
-    const conn = new FakeConn();
-    const target = path.join(root, 'fresh.txt');
-    await handleEntryFrame(
-      conn,
-      frame(JSON.stringify({ type: 'write_entry', path: target, content: 'fresh body' })),
-      entryHost(),
-    );
-    const saved = conn.last('entry_saved');
-    expect(saved).toBeDefined();
-    expect(saved!.type).toBe('entry_saved');
-    if ('bytes' in saved!) expect(saved!.bytes).toBe('fresh body'.length);
-    if ('path' in saved!) expect(saved!.path).toBe(target);
-  });
-
-  it('refuses to WRITE outside the workspace (validate before mutate, on writes too)', async () => {
-    const outside = path.resolve(root, '..', 'escape-write.txt');
-    const conn = new FakeConn();
-    // The handler does not swallow traversal refusals — `writeTextFile` throws
-    // from core's `resolveInRoot` BEFORE touching the filesystem. The contract
-    // is the throw (no half-write) and no `entry_saved` reaching the panel.
-    await expect(
-      handleEntryFrame(
-        conn,
-        frame(JSON.stringify({ type: 'write_entry', path: outside, content: 'x' })),
-        entryHost(),
-      ),
-    ).rejects.toThrow(/escapes workspace root/);
-    expect(conn.last('entry_saved')).toBeUndefined();
-  });
 });
 
 describe('handleGitFrame', () => {

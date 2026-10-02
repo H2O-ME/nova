@@ -1,18 +1,22 @@
 /**
- * Frame measurement and the right panel's width preference as a React
- * binding, ported from deepseek-harness `ui-layout` (MIT). All the decisions
- * live in `layout-store.ts` (pure, directly tested); this module only owns the
- * state cell, the `dragging` flag the tracks read, and the stable action
- * identities `AppFrame`'s effects depend on.
+ * Frame measurement and column preferences as a React binding, ported from
+ * deepseek-harness `ui-layout` (MIT). All the decisions live in
+ * `layout-store.ts` (pure, directly tested); this module only owns the state
+ * cell, the `dragging` flag the tracks read, and the stable action identities
+ * `AppFrame`'s effects depend on.
  */
 import { useCallback, useMemo, useState } from 'react';
+import { SIDEBAR_AUTO_COLLAPSE } from './columns.js';
 import type { LayoutState } from './layout-store.js';
 import {
   closeRightbar as closeRightbarState,
   initialLayout,
   openRightbar as openRightbarState,
   setRightbar as setRightbarState,
+  setSidebar as setSidebarState,
   setViewportWidth as setViewportWidthState,
+  sidebarCollapsed,
+  toggleSidebar as toggleSidebarState,
 } from './layout-store.js';
 
 export interface LayoutBinding {
@@ -21,9 +25,15 @@ export interface LayoutBinding {
   dragging: boolean;
   setDragging: (dragging: boolean) => void;
   setViewportWidth: (width: number) => void;
+  setSidebar: (px: number) => void;
   setRightbar: (px: number) => void;
   openRightbar: (fullscreen: boolean) => void;
   closeRightbar: () => void;
+  toggleSidebar: () => void;
+  /** Whether the sidebar renders as the collapsed rail. */
+  collapsed: boolean;
+  /** Below the breakpoint the expanded sidebar floats over the centre. */
+  narrow: boolean;
 }
 
 export function useLayout(): LayoutBinding {
@@ -32,6 +42,9 @@ export function useLayout(): LayoutBinding {
 
   const setViewportWidth = useCallback((width: number): void => {
     setLayout((state) => setViewportWidthState(state, width));
+  }, []);
+  const setSidebar = useCallback((px: number): void => {
+    setLayout((state) => setSidebarState(state, px));
   }, []);
   const setRightbar = useCallback((px: number): void => {
     setLayout((state) => setRightbarState(state, px));
@@ -42,6 +55,9 @@ export function useLayout(): LayoutBinding {
   const closeRightbar = useCallback((): void => {
     setLayout((state) => closeRightbarState(state));
   }, []);
+  const toggleSidebar = useCallback((): void => {
+    setLayout((state) => toggleSidebarState(state));
+  }, []);
 
   return useMemo(
     () => ({
@@ -49,10 +65,14 @@ export function useLayout(): LayoutBinding {
       dragging,
       setDragging,
       setViewportWidth,
+      setSidebar,
       setRightbar,
       openRightbar,
       closeRightbar,
+      toggleSidebar,
+      collapsed: sidebarCollapsed(layout),
+      narrow: layout.viewportWidth < SIDEBAR_AUTO_COLLAPSE,
     }),
-    [layout, dragging, setViewportWidth, setRightbar, openRightbar, closeRightbar],
+    [layout, dragging, setViewportWidth, setSidebar, setRightbar, openRightbar, closeRightbar, toggleSidebar],
   );
 }

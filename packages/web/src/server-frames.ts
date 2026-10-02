@@ -238,8 +238,6 @@ export type ServerFrame =
   | { type: 'entry'; path: string; text: string; bytes: number; truncated: boolean; binary: boolean }
   /** A `read_entry` the host could not perform (missing, outside the root). */
   | { type: 'entry_error'; path: string; message: string }
-  /** A `write_entry` that landed; `bytes` is what the file now holds. */
-  | { type: 'entry_saved'; path: string; bytes: number }
   /**
    * A structural change the panel must re-read: `dir` is the directory whose
    * listing changed (the reply every rename/remove/create answers with, so the
@@ -563,6 +561,8 @@ export interface WireJobRow {
   status: string;
   detail?: string;
   startedAt?: number;
+  /** Settle time (ms epoch) — the settle-order sort key and the duration end. */
+  finishedAt?: number;
   progress?: string;
 }
 

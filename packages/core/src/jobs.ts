@@ -89,6 +89,7 @@ export class JobRegistry {
           entry.status = 'killed';
         }
         if (outcome.detail !== undefined) entry.detail = outcome.detail;
+        entry.finishedAt = Date.now();
         this.announce(entry);
       })
       .catch((err: unknown) => {
@@ -96,6 +97,7 @@ export class JobRegistry {
         // record failure instead of leaving the job stuck as running.
         entry.status = 'failed';
         entry.detail = errMessage(err);
+        entry.finishedAt = Date.now();
         this.pendingNotices.push({
           id,
           kind: entry.kind,

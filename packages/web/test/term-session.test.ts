@@ -150,6 +150,23 @@ describe('TermRegistry', () => {
     expect(launch()[0]).toMatchObject({ file: 'bash.exe', cwd: '/w', cols: 120, rows: 30 });
   });
 
+  it('single-flights CONCURRENT opens — two opens in flight spawn one pty', async () => {
+    // The client legitimately opens twice in a row (before and after the shell
+    // inventory lands). Two awaited spawns for the same session would put two
+    // ptys behind one tab, their interleaved output reading as on-screen
+    // garbage — the spawn promise is parked, and both opens share it.
+    let releaseSpawn: (() => void) | undefined;
+    const spawn: PtySpawner = () => new Promise((resolve) => {
+      releaseSpawn = () => { resolve(new FakePty()); };
+    });
+    const registry = new TermRegistry(spawn);
+    const first = registry.ensure('s1', launchOpts(), () => {}, () => {});
+    const second = registry.ensure('s1', launchOpts(), () => {}, () => {});
+    releaseSpawn?.();
+    const [a, b] = await Promise.all([first, second]);
+    expect(b).toBe(a);
+  });
+
   it('does not silently replace an exited terminal — its scrollback is the reading', async () => {
     const { registry, launch } = fakeRegistry();
     const first = await registry.ensure('s1', launchOpts(), () => {}, () => {});

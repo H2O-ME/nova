@@ -78,10 +78,7 @@ const MAPPERS: Mapper = {
     models: frame.models,
     ...(frame.message !== undefined ? { message: frame.message } : {}),
   }),
-  // The session list is a host API this surface no longer renders (the session
-  // sidebar is gone): the frame is acknowledged as read and dropped, which is
-  // this table's own way of saying "deliberately ignored".
-  sessions: () => null,
+  sessions: (frame) => ({ type: 'sessions', items: frame.items }),
   files: (frame) => ({ type: 'files', query: frame.query, items: frame.items, truncated: frame.truncated }),
   // The level travels whole: `path`/`crumbs`/`roots`/`parent` are the host's own
   // answer and the dialog draws them directly, so nothing is re-derived here.
@@ -118,7 +115,6 @@ const MAPPERS: Mapper = {
     binary: frame.binary,
   }),
   entry_error: (frame) => ({ type: 'entry_error', path: frame.path, message: frame.message }),
-  entry_saved: (frame) => ({ type: 'entry_saved', path: frame.path, bytes: frame.bytes }),
   entry_changed: (frame) => ({ type: 'entry_changed', change: frame.change, path: frame.path, dir: frame.dir }),
   git_status: (frame) => ({
     type: 'git_status',

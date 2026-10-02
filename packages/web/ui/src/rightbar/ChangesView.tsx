@@ -50,7 +50,7 @@ export interface ChangesViewProps {
   /** Open the workspace picker (the setup card's 打开文件夹); absent = no button. */
   onOpenWorkspace?: (() => void) | undefined;
   /** Open a changed file in the files page's editor; absent = no per-row verb. */
-  onOpenFile?: ((path: string) => void) | undefined;
+  onOpenFileTab?: ((path: string) => void) | undefined;
   /** The lens in force; uncontrolled (remembered locally) when omitted. */
   lens?: ChangesLens | undefined;
   onPickLens?: ((lens: ChangesLens) => void) | undefined;
@@ -63,7 +63,7 @@ export function ChangesView({
   connected,
   clonePending,
   onOpenWorkspace,
-  onOpenFile,
+  onOpenFileTab,
   send,
   lens: controlled,
   onPickLens,
@@ -115,7 +115,7 @@ export function ChangesView({
           connected={connected}
           clonePending={clonePending}
           onOpenWorkspace={onOpenWorkspace}
-          onOpenFile={onOpenFile}
+          onOpenFileTab={onOpenFileTab}
           send={send}
         />
       ) : (
@@ -131,14 +131,14 @@ function GitLens({
   connected,
   clonePending,
   onOpenWorkspace,
-  onOpenFile,
+  onOpenFileTab,
   send,
 }: {
   git: GitState | null;
   connected: boolean;
   clonePending: boolean | undefined;
   onOpenWorkspace: (() => void) | undefined;
-  onOpenFile: ((path: string) => void) | undefined;
+  onOpenFileTab: ((path: string) => void) | undefined;
   send: (frame: ClientFrame) => void;
 }): JSX.Element {
   if (git === null) return <Notice kind="loading">{RIGHTBAR_COPY['git.loading']}</Notice>;
@@ -160,7 +160,7 @@ function GitLens({
             selectedPath={git.diff?.path ?? null}
             selectedStaged={git.diff?.staged ?? false}
             connected={connected}
-            onOpenFile={onOpenFile}
+            onOpenFileTab={onOpenFileTab}
             send={send}
           />
         )}
@@ -172,7 +172,7 @@ function GitLens({
             selectedPath={git.diff?.path ?? null}
             selectedStaged={git.diff?.staged ?? false}
             connected={connected}
-            onOpenFile={onOpenFile}
+            onOpenFileTab={onOpenFileTab}
             send={send}
           />
         )}
@@ -213,12 +213,12 @@ interface GroupProps {
   selectedStaged: boolean;
   connected: boolean;
   /** Open a file in the files page's editor; absent = no per-row verb. */
-  onOpenFile: ((path: string) => void) | undefined;
+  onOpenFileTab: ((path: string) => void) | undefined;
   send: (frame: ClientFrame) => void;
 }
 
 /** One status group: a sticky header with its batch verb, then its directory tree. */
-function ChangeGroup({ label, entries, staged, selectedPath, selectedStaged, connected, onOpenFile, send }: GroupProps): JSX.Element {
+function ChangeGroup({ label, entries, staged, selectedPath, selectedStaged, connected, onOpenFileTab, send }: GroupProps): JSX.Element {
   const [collapsed, setCollapsed] = useState<readonly string[]>([]);
   const nodes = useMemo(() => buildChangeTree(entries), [entries]);
   const verb = staged ? RIGHTBAR_COPY['git.unstageAll'] : RIGHTBAR_COPY['git.stageAll'];
@@ -254,7 +254,7 @@ function ChangeGroup({ label, entries, staged, selectedPath, selectedStaged, con
             connected={connected}
             collapsed={collapsed}
             onToggle={(path) => { setCollapsed((current) => (current.includes(path) ? current.filter((item) => item !== path) : [...current, path])); }}
-            onOpenFile={onOpenFile}
+            onOpenFileTab={onOpenFileTab}
             send={send}
           />
         ))}
@@ -274,7 +274,7 @@ interface NodeRowProps {
   collapsed: readonly string[];
   onToggle: (path: string) => void;
   /** Open a file in the files page's editor; absent = no per-row verb. */
-  onOpenFile: ((path: string) => void) | undefined;
+  onOpenFileTab: ((path: string) => void) | undefined;
   send: (frame: ClientFrame) => void;
 }
 
@@ -288,7 +288,7 @@ function ChangeNodeRow({
   connected,
   collapsed,
   onToggle,
-  onOpenFile,
+  onOpenFileTab,
   send,
 }: NodeRowProps): JSX.Element {
   const indent = depth * 12 + 6;
@@ -326,7 +326,7 @@ function ChangeNodeRow({
             connected={connected}
             collapsed={collapsed}
             onToggle={onToggle}
-            onOpenFile={onOpenFile}
+            onOpenFileTab={onOpenFileTab}
             send={send}
           />
         ))}
@@ -357,13 +357,13 @@ function ChangeNodeRow({
       >
         {staged ? <UnstageGlyph /> : <StageGlyph />}
       </button>
-      {onOpenFile !== undefined && (
+      {onOpenFileTab !== undefined && (
         <button
           type="button"
           className={css.rowVerb}
-          aria-label={RIGHTBAR_COPY['git.openEditor']}
-          title={RIGHTBAR_COPY['git.openEditor']}
-          onClick={() => { onOpenFile(node.path); }}
+          aria-label={RIGHTBAR_COPY['git.openTab']}
+          title={RIGHTBAR_COPY['git.openTab']}
+          onClick={() => { onOpenFileTab(node.path); }}
         >
           <EditGlyph />
         </button>

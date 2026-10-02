@@ -11,6 +11,7 @@ import {
   readShellPreference,
   requestedShell,
   SHELL_STORAGE_KEY,
+  terminalOpenFrame,
   writeShellPreference,
 } from '../src/rightbar/terminal-shell.js';
 
@@ -70,5 +71,34 @@ describe('terminal shell preference', () => {
     delete (globalThis as { window?: unknown }).window;
     expect(readShellPreference()).toBe(null);
     expect(() => { writeShellPreference('x'); }).not.toThrow();
+  });
+
+  it('waits for the shell inventory before opening — a blind open loses the choice', () => {
+    // The killing case: the cold page fires term_open before `shells` lands,
+    // the host spawns its default, and the second open (carrying the picked
+    // shell) only replays the pty that already exists — the reader's choice
+    // silently lost. No inventory, no open.
+    expect(terminalOpenFrame({ cols: 96, rows: 53 }, null, 'C:/Program Files/PowerShell/7/pwsh.exe')).toBe(null);
+  });
+
+  it('opens once the inventory is known, carrying the resolved shell', () => {
+    expect(
+      terminalOpenFrame(
+        { cols: 96, rows: 53 },
+        { items: SHELLS, current: 'C:/Windows/system32/cmd.exe' },
+        'C:/Program Files/PowerShell/7/pwsh.exe',
+      ),
+    ).toEqual({
+      type: 'term_open',
+      cols: 96,
+      rows: 53,
+      shell: 'C:/Program Files/PowerShell/7/pwsh.exe',
+    });
+  });
+
+  it('resolves a stale preference to the host row at open time too', () => {
+    expect(
+      terminalOpenFrame({ cols: 80, rows: 24 }, { items: [SHELLS[0] ?? { path: 'x' }], current: 'cmd.exe' }, 'gone.exe'),
+    ).toEqual({ type: 'term_open', cols: 80, rows: 24, shell: 'cmd.exe' });
   });
 });

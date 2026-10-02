@@ -230,17 +230,16 @@ describe('token ownership', () => {
   /**
    * A docked column draws no elevation.
    *
-   * The right column's two occupants (the right panel and the tool detail
-   * board) are columns of the page, not floats: the harness gives the level-3
-   * shadow to floating panes only (dockkit's `.float`), and a docked column
-   * that carries it reads as a card hovering over the conversation — the
-   * "floating" the operator reported even after the column reserved its track.
-   * Both sheets said "a column of the page, not a raised surface" while
-   * declaring `box-shadow`; the prose and the declaration were opposites, so
-   * the declaration is what this pins.
+   * The right column (the panel pages) is a column of the page, not a float:
+   * the harness gives the level-3 shadow to floating panes only (dockkit's
+   * `.float`), and a docked column that carries it reads as a card hovering
+   * over the conversation — the "floating" the operator reported even after
+   * the column reserved its track. The sheet said "a column of the page, not
+   * a raised surface" while declaring `box-shadow`; the prose and the
+   * declaration were opposites, so the declaration is what this pins.
    */
   it('the docked right column declares no elevation', () => {
-    const docked = ['rightbar/RightbarPanel.module.css', 'tool/ToolPanel.module.css'];
+    const docked = ['rightbar/RightbarPanel.module.css'];
     const offenders: string[] = [];
     for (const rel of docked) {
       const text = stripComments(readFileSync(join(SRC, rel), 'utf8'));
@@ -256,6 +255,22 @@ describe('token ownership', () => {
     const strip = stripComments(readFileSync(join(SRC, 'rightbar/RightbarStrip.module.css'), 'utf8'));
     if (strip.includes('box-shadow')) offenders.push('rightbar/RightbarStrip.module.css: declares box-shadow');
     expect(offenders).toEqual([]);
+  });
+
+  /**
+   * The terminal emulator loads xterm's OWN stylesheet.
+   *
+   * The helper layer's rules live there and nowhere else — above all
+   * `.xterm-char-measure-element { visibility: hidden }`, which hides the
+   * width-cache probe. That probe's text is the last measured glyph repeated
+   * 32 times; with the sheet missing it paints as a visible line of junk
+   * above the first row (the reported 乱码: a line of `>` before cmd's
+   * banner), and the helper textarea renders as a box. A component sheet
+   * cannot stand in: the class belongs to xterm's own injected markup.
+   */
+  it('the terminal emulator imports xterm\'s own stylesheet', () => {
+    const hook = readFileSync(join(SRC, 'rightbar/use-terminal.ts'), 'utf8');
+    expect(hook).toContain("'@xterm/xterm/css/xterm.css'");
   });
 });
 

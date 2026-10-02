@@ -1,11 +1,13 @@
 /*
- * 终端: an emulator screen over a slim footer bar.
+ * 终端: an emulator screen over the reference's status band.
  *
  * The screen is the page: xterm.js paints its own canvas/grid inside this
  * element and owns scrolling, so the host stylesheet only gives it every pixel
- * the footer does not take. The footer carries the three facts the emulator
- * does not draw — the terminal's state, which shell it runs, and the way back
- * in — on one 28px strip, the reference's status-band recipe.
+ * the band does not take. The band exists only when the terminal has something
+ * to say (the reference hides it entirely while a terminal runs) — the state
+ * word, plus the way back in: a retry on a refused spawn, a 新建终端 primary
+ * on an ended one. Geometry is the reference's: `padding: 5px 12px` over the
+ * layer-2 fill, wrapping so a long state word never pushes the button out.
  */
 
 .view {
@@ -21,16 +23,24 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  padding: 6px 8px;
+  padding: 8px;
   background: var(--dsw-alias-bg-layer-1);
 }
 
+/* xterm's own sheet (loaded with the emulator, so it arrives AFTER this file)
+   paints the viewport with a black fill; this surface keeps the theme's
+   background. The extra class outranks `.xterm .xterm-viewport` by
+   specificity, not by order. */
+.screen :global(.xterm .xterm-viewport) {
+  background-color: transparent;
+}
+
 /* A spawn refusal is the terminal's own state, not a page-level error: the
-   line sits between the screen and the footer, and the next open replaces it. */
+   line sits between the screen and the band, and the next open replaces it. */
 .error {
   flex: none;
-  padding: 6px 12px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  padding: 10px 12px;
+  background: var(--dsw-alias-bg-layer-2);
   color: var(--dsw-alias-state-error-primary);
   font: var(--dsw-font-xxs-12);
   white-space: nowrap;
@@ -41,12 +51,11 @@
 .footer {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  height: 28px;
-  padding: 0 4px 0 12px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
-  background: var(--dsw-alias-bg-layer-1);
+  padding: 5px 12px;
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .status {
@@ -55,7 +64,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--dsw-font-xxxs-11);
+  font: var(--dsw-font-xxs-12);
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -67,39 +76,63 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
-.shellPick {
+.retry {
   display: inline-flex;
   flex: none;
+  gap: 4px;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.shellLabel {
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.shellSelect {
-  max-width: 140px;
-  height: 20px;
-  padding: 0 4px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-1);
+  height: 24px;
+  padding: 0 10px;
   color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxxs-11);
+  font: var(--dsw-font-xxs-12);
+  background: none;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
   cursor: pointer;
   transition:
     border-color var(--ds-transition-duration) var(--ds-ease-in-out),
     background-color var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
-.shellSelect:hover {
+.retry:hover {
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.shellSelect:focus-visible {
+.retry:focus-visible {
   outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
   outline-offset: -1px;
+}
+
+.retry svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The reference's `Button variant="primary"` on an ended terminal: filled with
+   the primary fill, the band's one loud element. */
+.newButton {
+  flex: none;
+  height: 24px;
+  padding: 0 12px;
+  color: var(--dsw-alias-label-primary-inverted);
+  font: var(--dsw-font-xxs-strong-12);
+  background: var(--dsw-alias-button-primary-fill);
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.newButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.newButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline-offset: -1px;
+}
+
+.newButton:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

@@ -21,7 +21,8 @@ const filesView = readFileSync(fileURLToPath(new URL('../src/rightbar/FilesView.
 const tasksTsx = readFileSync(fileURLToPath(new URL('../src/rightbar/TasksView.tsx', import.meta.url)), 'utf8');
 const tasksCss = readFileSync(fileURLToPath(new URL('../src/rightbar/TasksView.module.css', import.meta.url)), 'utf8');
 
-/** The `.rowRail` rule's body (up to its closing brace). */
+const dotCss = readFileSync(fileURLToPath(new URL('../src/tool/StateDot.module.css', import.meta.url)), 'utf8');
+const dotTsx = readFileSync(fileURLToPath(new URL('../src/tool/StateDot.tsx', import.meta.url)), 'utf8');
 function railRule(css: string): string {
   const at = css.indexOf('.rowRail {');
   expect(at, 'the tree must define .rowRail').toBeGreaterThanOrEqual(0);
@@ -46,21 +47,38 @@ describe('tree dock row layout', () => {
 });
 
 describe('files page', () => {
-  it('lets the tree own the page while no document is open', () => {
+  it('lets the tree own the page — always, not only while nothing is open', () => {
+    // A click opens a file as its own strip tab (the reference's shape), so the
+    // page never splits into tree + document pane: the dock is unconditionally
+    // the page.
     expect(filesView).toContain('data-tree-full');
-    // The full-width rule must exist in the sheet, not only in the JSX.
-    expect(filesCss).toMatch(/\[data-tree-full\] \.dock \{[\s\S]*?flex: 1 1 auto;/);
+    expect(filesCss).toMatch(/\.dock \{[\s\S]*?flex: 1 1 auto;/);
+    expect(filesCss).not.toContain('data-tree-full');
   });
 });
 
 describe('tasks page', () => {
-  it('draws the status as a Tag with the state’s own ink', () => {
-    // 「简陋落后」was a gray word among gray words: the reference's jobs drawer
-    // gives each state a Tag pill in the state's ink.
-    expect(tasksTsx).toContain('data-tasks-tag');
-    expect(tasksCss).toMatch(/\.tag\[data-status='running'\][^{]*\{[^}]*state-business-primary/);
-    expect(tasksCss).toMatch(/\.tag\[data-status='completed'\][^{]*\{[^}]*state-success-primary/);
-    expect(tasksCss).toMatch(/\.tag\[data-status='failed'\][^{]*\{[^}]*state-error-primary/);
+  it('draws each state as a dot in that state’s own ink', () => {
+    // The row's state marker is the reference's StateDot — the ONE dot recipe
+    // (the rightbar used to carry a second, four-state copy of it) — and a
+    // live row has no status word to fall back on, so the dot alone must say
+    // `stopping`/`killed` (attention) apart from `running` (the spinner).
+    expect(tasksTsx).toContain("import { StateDot } from '../tool/StateDot.js';");
+    expect(tasksTsx).toContain('<StateDot state={jobDot(job.status)} />');
+    expect(dotTsx).toContain("'done' | 'warning' | 'ongoing' | 'error' | 'idle'");
+    expect(dotCss).toMatch(/\.dot\[data-state='done'\][^{]*\{[^}]*state-success-primary/);
+    expect(dotCss).toMatch(/\.dot\[data-state='error'\][^{]*\{[^}]*state-error-primary/);
+    expect(dotCss).toMatch(/\.dot\[data-state='warning'\][^{]*\{[^}]*state-warn-primary/);
+  });
+
+  it('keeps the stop out of the row and the confirm inside it', () => {
+    // The two-press affordance: the button only exists on running rows, and
+    // the armed state widens into a labeled pill instead of a tint only — a
+    // confirmation nobody can read without hovering is not a confirmation.
+    expect(tasksTsx).toContain("job.status === 'running' &&");
+    expect(tasksTsx).toContain('phase === \'armed\' && <span className={css.stopLabel}>');
+    expect(tasksCss).toMatch(/\.stopArmed,[\s\S]*?background: var\(--dsw-alias-interactive-bg-hover-danger\);/);
+    expect(tasksCss).toMatch(/\.stopArmed,[\s\S]*?color: var\(--dsw-alias-state-error-primary\);/);
   });
 
   it('answers the empty state with one card, not stacked notices', () => {

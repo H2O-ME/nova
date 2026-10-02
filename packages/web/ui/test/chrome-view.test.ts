@@ -37,8 +37,8 @@ function ready(over: Partial<ReadyInfo> = {}): UiState {
 
 describe('chromeView', () => {
   it('falls back to placeholders before the first ready', () => {
-    const view = chromeView(initialState, null);
-    expect(view).toMatchObject({ rootDir: '', title: '', detail: undefined });
+    const view = chromeView(initialState);
+    expect(view).toMatchObject({ rootDir: '', title: '' });
   });
 
   it('keeps the model out of the header (it belongs to the composer seat)', () => {
@@ -46,13 +46,13 @@ describe('chromeView', () => {
     // and a second copy here would be a place for the two to disagree.
     const state = ready({ model: 'test-model' });
     expect(state.model).toBe('test-model');
-    expect(chromeView(state, null)).not.toHaveProperty('model');
+    expect(chromeView(state)).not.toHaveProperty('model');
   });
 
   it('titles the session from the first user block, not the newest one', () => {
     const state = reduce(ready(), { type: 'event', event: { type: 'user_message', message: { id: 'm1', ts: 0, role: 'user', content: '第一句' } } });
     const later = reduce(state, { type: 'event', event: { type: 'user_message', message: { id: 'm2', ts: 0, role: 'user', content: '第二句' } } });
-    expect(chromeView(later, null).title).toBe('第一句');
+    expect(chromeView(later).title).toBe('第一句');
   });
 
   it('counts an unanswered approval as a running turn', () => {
@@ -60,7 +60,7 @@ describe('chromeView', () => {
       type: 'event',
       event: { type: 'approval_request', request: { id: 'ap1', call: { id: 'c1', name: 'bash', args: {}, rawArgs: '{}' }, kind: 'execute' } },
     });
-    const view = chromeView(asking, null);
+    const view = chromeView(asking);
     expect(view).toMatchObject({ running: true, idle: false, phase: 'waiting_approval' });
   });
 
@@ -72,48 +72,39 @@ describe('chromeView', () => {
       type: 'event',
       event: { type: 'question_request', request: { id: 'q1', questions: [{ id: 'a', question: 'q' }] } },
     });
-    expect(chromeView(asking, null)).toMatchObject({ running: true, idle: false, phase: 'waiting_question' });
+    expect(chromeView(asking)).toMatchObject({ running: true, idle: false, phase: 'waiting_question' });
     expect(composerDisabled(asking)).toBe(true);
     // Answering clears both the phase and the block.
     const answered = reduce(asking, {
       type: 'event',
       event: { type: 'question_resolved', id: 'q1', resolution: { source: 'user', answer: { answers: [] } } },
     });
-    expect(chromeView(answered, null).phase).not.toBe('waiting_question');
+    expect(chromeView(answered).phase).not.toBe('waiting_question');
     expect(composerDisabled(answered)).toBe(false);
   });
 
   it('reports the idle phases as idle, including a dropped socket', () => {
-    expect(chromeView(ready(), null).idle).toBe(true);
+    expect(chromeView(ready()).idle).toBe(true);
     const down = reduce(ready(), { type: 'connection', connected: false });
-    expect(chromeView(down, null)).toMatchObject({ idle: true, phase: 'disconnected' });
+    expect(chromeView(down)).toMatchObject({ idle: true, phase: 'disconnected' });
   });
 
   it('reports how much of the baseline is still unloaded, never a negative', () => {
     const state = ready({ history: [{ kind: 'user', text: 'q' }], historyTotal: 40 });
-    expect(chromeView(state, null).hidden).toBe(39);
+    expect(chromeView(state).hidden).toBe(39);
     // A host that reports fewer total blocks than the client holds (a stale
     // baseline) must not render "还有 -3 条".
-    expect(chromeView(ready({ historyTotal: 0 }), null).hidden).toBe(0);
+    expect(chromeView(ready({ historyTotal: 0 })).hidden).toBe(0);
   });
 
   it('labels the hero chip with the workspace basename on either separator', () => {
     expect(workspaceLabel('D:\\web\\agent')).toBe('agent');
     expect(workspaceLabel('/home/user/nova')).toBe('nova');
     expect(workspaceLabel('/')).toBe('/');
-    expect(chromeView(ready(), null).workspace).toBe('proj');
-    expect(chromeView(initialState, null).workspace).toBe('');
+    expect(chromeView(ready()).workspace).toBe('proj');
+    expect(chromeView(initialState).workspace).toBe('');
   });
 
-  it('opens the detail panel only on a tool block with that call id', () => {
-    const state = reduce(ready(), {
-      type: 'event',
-      event: { type: 'tool_call_start', turn: 1, call: { id: 'c1', name: 'bash', args: {}, rawArgs: '{}' } },
-    });
-    expect(chromeView(state, 'c1').detail).toMatchObject({ callId: 'c1' });
-    expect(chromeView(state, 'nope').detail).toBeUndefined();
-    expect(chromeView(state, null).detail).toBeUndefined();
-  });
 
   it('gates the composer on the socket and on a pending approval', () => {
     expect(composerDisabled(initialState)).toBe(true);

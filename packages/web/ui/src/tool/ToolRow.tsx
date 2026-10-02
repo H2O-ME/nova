@@ -13,13 +13,13 @@
  * paints no overlay band, so neither does this row. Expanding draws the
  * card's own body — a terminal banner, a real diff, numbered read lines, a
  * grouped search, a plan list — or the IN/OUT card for a card-less call. The
- * 详情 pill is a SIBLING of the row (harness discipline: no nested interactive
- * elements), appearing in flow under an expanded body.
+ * expanded body is the call's ONLY way of being read: the separate detail
+ * column is gone (the right column belongs to the panel pages alone).
  */
 import { memo, useMemo, useState, type KeyboardEvent } from 'react';
 import { toolCardModel, type CardModel } from '../card-view.js';
 import { ChevronDownIcon, ChevronUpIcon } from '../icons.js';
-import { BashIcon, BrowseIcon, ChecklistIcon, EditIcon, InspectIcon, SearchToolIcon, ToolIcon } from './icons.js';
+import { BashIcon, BrowseIcon, ChecklistIcon, EditIcon, SearchToolIcon, ToolIcon } from './icons.js';
 import { bodyShell, rowDot, rowSlots, rowStatusLabel, rowVariant, type RowSlots, type RowVariant } from './model.js';
 import { StateDot } from './StateDot.js';
 import { TextShimmer } from '../shell/TextShimmer.js';
@@ -28,7 +28,6 @@ import type { ToolCallView, ToolResultView } from '../types.js';
 import css from './ToolRow.module.css';
 
 export interface ToolRowProps {
-  callId: string;
   name: string;
   /** The call's original argument JSON (the IN section / the panel). */
   args: string;
@@ -41,12 +40,8 @@ export interface ToolRowProps {
   tail?: string | undefined;
   /** Nothing is running: an unfinished call is a leftover, not in flight. */
   idle: boolean;
-  /** This call is the one open in the detail panel. */
-  selected: boolean;
   /** Flow identity for prepend re-anchoring. */
   anchorKey: string;
-  /** Stable dispatcher (takes the id, so the prop identity survives renders). */
-  onOpen: (callId: string) => void;
   /** Session workspace root, for the terminal banner's prompt label. */
   cwd?: string | undefined;
   /** Host account home, so a cwd equal to it collapses to `~`. */
@@ -60,7 +55,6 @@ export interface ToolRowProps {
  * identities the reducer preserves, so the default shallow compare holds.
  */
 export const ToolRow = memo(function ToolRow({
-  callId,
   name,
   args,
   view,
@@ -68,9 +62,7 @@ export const ToolRow = memo(function ToolRow({
   output,
   tail,
   idle,
-  selected,
   anchorKey,
-  onOpen,
   cwd,
   home,
 }: ToolRowProps): JSX.Element {
@@ -107,7 +99,6 @@ export const ToolRow = memo(function ToolRow({
       {open && (
         <div className={css.bodyWrap}>
           <CardBody shell={shell} slots={slots} cwd={cwd} home={home} failed={model.state === 'fail'} />
-          <InspectPill name={name} selected={selected} onOpen={() => onOpen(callId)} />
         </div>
       )}
     </div>
@@ -217,20 +208,4 @@ function cardGlyph(variant: RowVariant, plan: boolean): JSX.Element {
     case 'others':
       return <ToolIcon />;
   }
-}
-
-/** The hover-revealed way into the call's details (the panel's opener). */
-function InspectPill({ name, selected, onOpen }: { name: string; selected: boolean; onOpen: () => void }): JSX.Element {
-  return (
-    <button
-      type="button"
-      className={css.inspectButton}
-      data-selected={selected || undefined}
-      aria-label={`查看 ${name} 调用详情`}
-      onClick={onOpen}
-    >
-      <InspectIcon />
-      详情
-    </button>
-  );
 }

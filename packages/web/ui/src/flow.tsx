@@ -63,9 +63,6 @@ export function turnStatus(phase: TurnPhase | 'disconnected', running: boolean):
 export interface FlowOptions {
   /** No run is in flight: an unfinished tool call renders as stopped, not live. */
   idle: boolean;
-  /** The tool whose detail panel is open (its row keeps the selected state). */
-  selectedCallId: string | null;
-  onOpenTool: (callId: string) => void;
   onStopJob: (id: string) => void;
   /** The session's root, for the terminal card's prompt hint. */
   cwd?: string | undefined;
@@ -348,7 +345,6 @@ function rowNode(
     case 'tool':
       return (
         <ToolRow
-          callId={block.callId}
           name={block.name}
           args={block.args}
           view={block.view}
@@ -356,9 +352,7 @@ function rowNode(
           output={block.output}
           tail={block.tail}
           idle={options.idle}
-          selected={block.callId === options.selectedCallId}
           anchorKey={block.id}
-          onOpen={options.onOpenTool}
           cwd={options.cwd}
         />
       );

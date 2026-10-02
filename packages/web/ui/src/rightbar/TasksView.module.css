@@ -1,11 +1,15 @@
 /*
  * 任务: the background jobs of the live session.
  *
- * Rows follow the reference's jobs drawer (`dsh-better-sidebar`
- * `JobsDrawer.tsx`): a two-line card — label in mono and the Tag-styled status
- * word on the first line, the progress/detail tail on the second — and a stop
- * button whose COLUMN is reserved on every row, so revealing it never reflows
- * the label beside it.
+ * Geometry is the reference's (`ui-jobs/src/client/JobListAction.module.css`,
+ * MIT): a live row is a filled card, which is what makes running work outrank
+ * the settled tail, with the chevron and the stop as 20px bordered squares so
+ * both read as buttons before hover. A settled row is one line that recedes
+ * into tertiary ink — not into a dimmed opacity, which would take its status
+ * colour down with it — and its duration is frozen at settle time by the
+ * model, so a repaint cannot make finished work look still running. The
+ * expanded panel holds metadata where the reference holds live output (named
+ * deviation: the output ring is the model's cursor).
  */
 
 .view {
@@ -49,114 +53,258 @@
   list-style: none;
 }
 
+.item {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The row plus its stop button share one line; the row button flexes so the
+   full width stays clickable whatever trailing controls appear. */
+.rowLine {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+/* Live rows are filled cards: running work outranks the settled tail, and the
+   hover wash sits on the card so the trailing controls never escape it. */
+.rowLineLive {
+  padding: 4px 8px 4px 2px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2);
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.rowLineLive:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowLine .row {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The card carries the wash, so the inner button stays transparent: two
+   stacked washes would read as a state, not as a hover. */
+.rowLineLive .row:hover {
+  background: transparent;
+}
+
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  padding: 5px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 6px;
-  background: var(--dsw-alias-bg-layer-1);
-  transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    border-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  line-height: 17px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
-.row:hover {
+.row:hover,
+.row:focus-visible {
   background: var(--dsw-alias-interactive-bg-hover);
-  border-color: var(--dsw-alias-border-l2);
 }
 
-/* A settled job recedes: it is history, not work. */
-.row[data-settled] {
-  opacity: 0.62;
+/* A settled row recedes in ink, not in opacity: its status word keeps the one
+   colour that says "failed" or "cancelled". */
+.rowSettled {
+  color: var(--dsw-alias-label-tertiary);
 }
 
-/* The card's text column: the label line, and the tail line beneath it. */
-.body {
-  flex: 1 1 auto;
-  min-width: 0;
+/* A row with nothing behind its chevron offers no interaction. */
+.rowStatic {
+  cursor: default;
+}
+
+.rowStatic:hover {
+  background: transparent;
+}
+
+/* The live row's text column: the label line, and the kind/detail/clock line
+   beneath it. */
+.main {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
-.line {
+.primary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.secondary {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
 
-.label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--ds-font-family-code);
-  font-size: 12px;
-  color: var(--dsw-alias-label-primary);
-}
-
 .kind {
   flex: none;
-  padding: 0 4px;
-  border-radius: 2px;
+  padding: 0 5px;
+  border-radius: var(--dsw-radius-xs);
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-xxxs-11);
-}
-
-/* The status as a Tag (the reference's `Tag`): a pill in the layer-2 fill with
-   the state's own ink, so the five states read at a glance instead of as one
-   gray word among gray words. */
-.tag {
-  flex: none;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-xxxs-strong-11);
-}
-
-.tag[data-status='running'],
-.tag[data-status='stopping'] {
-  color: var(--dsw-alias-state-business-primary);
-}
-
-.tag[data-status='failed'] {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.tag[data-status='completed'] {
-  color: var(--dsw-alias-state-success-primary);
-}
-
-/* The meta hugs the row's right edge; the spacer absorbs the label's spare
-   width so a short label cannot strand the meta in the middle. */
-.spacer {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.meta {
-  flex: none;
-  font-family: var(--ds-font-family-code);
   font-size: 10px;
+  line-height: 16px;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--ds-font-family-code);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A failed task's detail is the producer's raw text, so it has no bound;
+   without this it widens the row past the panel instead of eliding. */
+.status {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.duration {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 18px;
   font-variant-numeric: tabular-nums;
 }
 
-.progress {
+/* The expand affordance: a persistent bordered square, so it reads as a
+   button before hover (it lives inside the row toggle). */
+.chevronBox {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms var(--ds-ease-in-out);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* Two-press stop: the same persistent square, error ink on hover. */
+.stop {
+  display: inline-flex;
+  flex: none;
+  align-self: center;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.stop:hover,
+.stop:focus-visible {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.stop:disabled {
+  cursor: default;
+}
+
+/* The armed press widens into a labeled danger pill, so the confirm step is
+   legible without hover; the state-error token is the one StateDot uses. */
+.stopArmed,
+.stopArmed:hover,
+.stopArmed:focus-visible {
+  gap: 4px;
+  width: auto;
+  padding: 0 7px;
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.stopLabel {
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+/* The expanded panel: the metadata a row cannot fit (the full progress line
+   and the exact clocks). */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 8px 8px;
+  padding: 6px 9px;
+  border: 0.5px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.metaRow {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.metaKey {
+  flex: none;
+  min-width: 44px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.metaValue {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--dsw-alias-label-secondary);
   font-family: var(--ds-font-family-code);
   font-size: 10px;
-  color: var(--dsw-alias-label-tertiary);
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* The empty state: ONE centered card — 「没有任务」 and 「为什么没有」 are the
@@ -182,52 +330,4 @@
   max-width: 260px;
   font: var(--dsw-font-xxxs-11);
   color: var(--dsw-alias-label-tertiary);
-}
-
-/* The stop button's column: always laid out, so a reveal cannot reflow. */
-.killSlot {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  width: 28px;
-  height: 28px;
-}
-
-.kill {
-  min-width: 28px;
-  height: 22px;
-  padding: 0 6px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--dsw-alias-label-tertiary);
-  font: var(--dsw-font-xxxs-11);
-  cursor: pointer;
-  opacity: 0;
-  transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    border-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out),
-    opacity 120ms var(--ds-ease-in-out);
-}
-
-.row:hover .kill,
-.row:focus-within .kill {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .kill {
-    opacity: 1;
-  }
-}
-
-/* Armed: the second click fires, and the button says so with the error ink. */
-.kill[data-armed] {
-  width: auto;
-  border-color: var(--dsw-alias-state-error-primary);
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
-  opacity: 1;
 }

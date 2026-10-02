@@ -1,7 +1,7 @@
 /* Ported from deepseek-harness ui-tool (c) 2026 DeepSeek — MIT License. */
 /* Row chrome (`.root`, the sweep, `.sep`, `.summary`, `.summarySuffix`,
    `.diffStat`, `.errorSummary`, `.stoppedSummary`, the `.row:hover` lift,
-   `.bodyWrap`, `.inspectButton`, `.visuallyHidden`) is ToolRow.module.css;
+   `.bodyWrap`, `.visuallyHidden`) is ToolRow.module.css;
    `.row`, `.leading`, `.iconIdle`, `.chevronHover` and `.title` are the shared
    24px disclosure chrome from ui-primitives DisclosureRow.module.css (same
    license), inlined here because this frontend has no primitive package.
@@ -184,58 +184,6 @@
 .bodyWrap {
   display: flex;
   flex-direction: column;
-}
-
-/* Hover-revealed jump to the call's details: a small pill in real flow under
-   the expanded body's bottom-left corner (it reserves its line, so revealing
-   never shifts layout); revealed by hovering anywhere on the tool call — title
-   row included — or by keyboard focus. */
-.inspectButton {
-  display: inline-flex;
-  align-self: flex-start;
-  align-items: center;
-  gap: 4px;
-  margin: 4px 0 2px 4px;
-  padding: 2px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: 999px;
-  corner-shape: round;
-  /* Base background, not bg-overlay: the overlay token is a raised dark
-     surface and reads too heavy for a quiet in-flow affordance. */
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-secondary);
-  font-size: 11px;
-  line-height: 16px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 100ms ease;
-}
-
-.root:hover .inspectButton,
-.inspectButton:focus-visible {
-  opacity: 1;
-}
-
-/* The pill's glyph is the harness's 12px asset (`IconInspectOutline12`) — the
-   one place in this sheet a 16px icon is drawn a step smaller. */
-.inspectButton svg {
-  width: 12px;
-  height: 12px;
-  flex: none;
-}
-
-/* The open call's own row keeps its pill visible, so the transcript says which
-   call the panel is showing. */
-.inspectButton[data-selected] {
-  opacity: 1;
-  color: var(--dsw-alias-state-business-primary);
-  border-color: var(--dsw-alias-state-business-primary);
-}
-
-/* Solid hover fill (a translucent token would let content bleed through). */
-.inspectButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover-solid);
-  color: var(--dsw-alias-label-primary);
 }
 
 /* Visually hidden run-state label for assistive technology: the StateDot and

@@ -60,6 +60,8 @@ export interface TreeDockProps {
   currentFile: string | null;
   connected: boolean;
   send: (frame: ClientFrame) => void;
+  /** Open a file (its own tab in the strip); default is a bare `read_entry`. */
+  onOpenFile?: ((path: string) => void) | undefined;
   onReferenceFile?: ((path: string) => void) | undefined;
 }
 
@@ -70,6 +72,7 @@ export function TreeDock({
   currentFile,
   connected,
   send,
+  onOpenFile,
   onReferenceFile,
 }: TreeDockProps): JSX.Element {
   const [expanded, setExpanded] = useState<readonly string[]>(() => (rootDir === '' ? [] : [rootDir]));
@@ -117,7 +120,10 @@ export function TreeDock({
     if (opening && needsListing(tree, path)) ask(path);
   };
 
-  const openFile = (path: string): void => { send({ type: 'read_entry', path }); };
+  const openFile = (path: string): void => {
+    if (onOpenFile !== undefined) onOpenFile(path);
+    else send({ type: 'read_entry', path });
+  };
 
   const beginNew = (dir: string, entry: 'file' | 'dir'): void => {
     if (!open.has(dir)) { setExpanded((current) => toggleExpanded(current, dir)); ask(dir); }

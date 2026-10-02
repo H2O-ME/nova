@@ -18,15 +18,14 @@
  */
 import type {
   ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, ConfiguredModel, ContextTimeline, GitLogEntry, Goal, GitStatusEntry, JobSnapshot, KernelEvent, ModelCapabilities, ModelGroup, PtcMode, QuestionRequest, ReadyInfo,
-  RunStats, SubagentUsage, TodoItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
+  RunStats, SessionListItem, SubagentUsage, TodoItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
   WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow,
 } from './types.js';
 import { reduceEvent } from './state-events.js';
 import { hostErrorText } from './host-messages.js';
 import { treeAsk, treeError, treeLevel, emptyTree, type TreeState } from './rightbar/files-model.js';
 import { applyTerm, emptyTerm, termForSession, type TermFrame, type TermState } from './rightbar/terminal-model.js';
-import {
-  activateDoc, closeDoc, docEdited, docError, docLoaded, docSaved, emptyEditor, openDoc,
+import { closeDoc, docError, docLoaded, emptyEditor, openDoc,
   type EditorState,
 } from './rightbar/editor-model.js';
 
@@ -240,6 +239,15 @@ export interface UiState {
    * list is not part of it — blanking it would show "loading" on every switch
    * and re-ask for what the sidebar is already holding.
    */
+  sessions: readonly SessionListItem[] | null;
+  /**
+   * The list is worth re-asking (an attach landed, or a switch may have added
+   * a session). The host's answer settles it; a stale list keeps rendering
+   * meanwhile, which is why this is not "sessions = null".
+   */
+  sessionsStale: boolean;
+  /** A `list_sessions` request is in flight (single-flight, same rule as paging). */
+  sessionsPending: boolean;
   /** Baseline blocks the browser holds (from `ready` plus `load_earlier`). */
   historyLoaded: number;
   /** Blocks the baseline has in all — anything above `historyLoaded` is older. */
@@ -565,6 +573,9 @@ export const initialState: UiState = {
   turnCount: 0,
   usedTokens: 0,
   contextWindow: null,
+  sessions: null,
+  sessionsStale: false,
+  sessionsPending: false,
   historyLoaded: 0,
   historyTotal: 0,
   historyPending: false,
@@ -605,6 +616,7 @@ export type Action =
   | { type: 'qqbot_test'; result: QqBotTest }
   /** The operator edited a qqbot field: the probe's answer no longer applies. */
   | { type: 'qqbot_test_clear' }
+  | { type: 'sessions'; items: readonly SessionListItem[] }
   | { type: 'files'; query: string; items: readonly WireFileEntry[]; truncated: boolean }
   | { type: 'directory'; level: WireDirectoryLevel }
   | { type: 'directory_error'; message: string }
@@ -631,8 +643,6 @@ export type Action =
   | { type: 'entry'; path: string; text: string; bytes: number; truncated: boolean; binary: boolean }
   /** A read the host refused; the document stays open showing the reason. */
   | { type: 'entry_error'; path: string; message: string }
-  /** A save landed; the open document of that path is clean again. */
-  | { type: 'entry_saved'; path: string; bytes: number }
   /**
    * A structural change (rename/remove/create): the directory it happened in is
    * marked for re-listing, so the tree refreshes from an answer rather than
@@ -649,11 +659,7 @@ export type Action =
   | { type: 'jobs'; items: readonly WireJobRow[] }
   /** The host's shell inventory (the answer to `discover_shells`). */
   | { type: 'shells'; frame: { items: readonly WireShell[]; current: string } }
-  /** The user picked an open document. */
-  | { type: 'editor_activate'; path: string }
-  /** A keystroke in the open document. */
-  | { type: 'editor_edit'; path: string; text: string }
-  /** The user closed a document. */
+  /** The user closed a file tab (the tab is the strip's; the doc leaves too). */
   | { type: 'editor_close'; path: string }
   /**
    * The user picked a view. A local action, not a frame: the host has no
@@ -701,6 +707,11 @@ export function reduce(state: UiState, action: Action): UiState {
             have: action.frame.have,
           },
         };
+      }
+      if (action.frame.type === 'list_sessions') {
+        // Same rule as the catalog: the request went out, so the answer is
+        // what settles it — and the list stays on screen until it does.
+        return { ...state, sessionsStale: false, sessionsPending: true };
       }
       if (action.frame.type === 'list_files') {
         // The in-flight flag rides the query: the menu shows its loading row
@@ -825,6 +836,8 @@ export function reduce(state: UiState, action: Action): UiState {
       return { ...state, qqbotTest: action.result };
     case 'qqbot_test_clear':
       return { ...state, qqbotTest: null };
+    case 'sessions':
+      return { ...state, sessions: action.items, sessionsStale: false, sessionsPending: false };
     case 'files':
       // A reply for text the user has already typed past is dropped: replacing
       // the rows now would show candidates for a query nobody is asking.
@@ -899,8 +912,6 @@ export function reduce(state: UiState, action: Action): UiState {
       return { ...state, editor: docLoaded(state.editor, action) };
     case 'entry_error':
       return { ...state, editor: docError(state.editor, action.path, action.message) };
-    case 'entry_saved':
-      return { ...state, editor: docSaved(state.editor, action.path, action.bytes) };
     case 'entry_changed': {
       // The change happened in one directory; marking that level as needing a
       // fresh read is the whole update — the panel's own effect asks, and the
@@ -941,10 +952,6 @@ export function reduce(state: UiState, action: Action): UiState {
       return { ...state, jobs: action.items };
     case 'shells':
       return { ...state, shells: action.frame };
-    case 'editor_activate':
-      return { ...state, editor: activateDoc(state.editor, action.path) };
-    case 'editor_edit':
-      return { ...state, editor: docEdited(state.editor, action.path, action.text) };
     case 'editor_close':
       return { ...state, editor: closeDoc(state.editor, action.path) };
     case 'history_earlier': {
@@ -998,6 +1005,7 @@ export function reduce(state: UiState, action: Action): UiState {
         ...hint(state, hostErrorText(action.message), 'warn'),
         manageError: { seq, message: action.message },
         historyPending: false,
+        sessionsPending: false,
         clonePending: false,
         trace: state.trace !== null ? { ...state.trace, pending: false } : null,
       };
@@ -1070,6 +1078,15 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     historyLoaded: history.length,
     historyTotal: info.historyTotal,
     historyPending: false,
+    // A session switch re-baselines everything session-scoped EXCEPT the
+    // sidebar's list: a switch can add a session (the one just created) or
+    // change the current row's highlight, so the list is re-asked — but the
+    // rows already on screen stay, because re-asking is not a reason to blink.
+    // A request that was in flight died with the socket that carried it, so
+    // the flag resets with the attach rather than waiting for a reply that
+    // will never come (which would block every later re-ask).
+    sessionsStale: true,
+    sessionsPending: false,
     // The pane's view is chrome for ONE session: carried across a switch it
     // stacked the new session's pane under the hero (the reported 上下文/轨迹 +
     // 新会话 overlay — the hero phase renders no tab strip, so a surviving

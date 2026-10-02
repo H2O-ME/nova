@@ -20,6 +20,7 @@ import {
   shellFamily,
   shellName,
   POWERSHELL_UTF8_PREFIX,
+  windowsPowerShellLocations,
 } from '../src/builtin/shell-select.js';
 
 const savedPath = process.env['PATH'];
@@ -149,5 +150,21 @@ describe('panelShell and shellCandidates', () => {
     // The contract, not a name: row one is what a fresh terminal becomes.
     expect(paths[0]).toBe(panelShell().path.toLowerCase());
     for (const item of items) expect(findExecutable(item.path)).toBeDefined();
+  });
+});
+
+describe('windowsPowerShellLocations', () => {
+  it('names the standard MSI and per-user install locations of pwsh', () => {
+    // A standard-installed pwsh is often NOT on PATH; discovery must look in
+    // the well-known locations or the operator's 「没法用 powershell7」.
+    const locations = windowsPowerShellLocations('C:/Program Files', 'C:/Users/me/AppData/Local');
+    expect(locations).toContain(path.join('C:/Program Files', 'PowerShell', '7', 'pwsh.exe'));
+    expect(locations).toContain(path.join('C:/Program Files', 'PowerShell', '6', 'pwsh.exe'));
+    expect(locations).toContain(path.join('C:/Program Files', 'PowerShell', '7-preview', 'pwsh.exe'));
+    expect(locations).toContain(path.join('C:/Users/me/AppData/Local', 'Microsoft', 'WindowsApps', 'pwsh.exe'));
+  });
+
+  it('yields nothing when the environment roots are unset', () => {
+    expect(windowsPowerShellLocations(undefined, undefined)).toEqual([]);
   });
 });

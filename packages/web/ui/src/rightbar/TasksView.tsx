@@ -6,25 +6,37 @@
  * it), so a panel that read it would be eating the agent's data. A row carries
  * the sampled progress line, which is the peek designed for exactly this.
  *
- * The row shape is the reference's jobs drawer (`dsh-better-sidebar`
- * `JobsDrawer.tsx`, MIT), which is a CARD and not a text line: a status dot,
- * the job's label in mono on the first line, the Tag-styled status word beside
- * it, the progress/detail line on the second line as the tail, and a stop
- * button that ARMS on the first click and fires on the second (a background
- * command is somebody's work; one stray click must not kill it). The empty
- * state is one centered card, not two stacked notices — 「没有任务」 and
- * 「为什么没有」 belong to the same reading.
+ * The row is the reference's (`ui-jobs/src/client/JobListAction.tsx`, MIT): a
+ * state dot whose colour carries the five states, live rows as filled cards
+ * with the label over a kind/progress/duration line, settled rows as one
+ * receding line, and a chevron that opens the metadata the row cannot fit (the
+ * reference opens the live OUTPUT there; output is out of scope — named
+ * deviation). The stop button is a two-press affordance that arms on the first
+ * press and fires on the second: a background command is somebody's work, and
+ * one stray click must not kill it. Ordering, the dot vocabulary, the elapsed
+ * clocks and the arm machine are all `tasks-model.ts` — this file only paints.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ClientFrame, WireJobRow } from '../types.js';
-import { RefreshIcon } from '../icons.js';
+import { ChevronDownIcon, RefreshIcon, StopIcon } from '../icons.js';
 import { formatDuration } from '../format.js';
 import { RIGHTBAR_COPY } from './copy.js';
-import { IconButton, Notice, StateDot } from './kit.js';
+import { IconButton, Notice } from './kit.js';
+import { StateDot } from '../tool/StateDot.js';
+import {
+  isLiveJob,
+  jobDetail,
+  jobDot,
+  jobElapsedMs,
+  jobHasMeta,
+  jobMetaRows,
+  jobStateWord,
+  killPhaseTtlMs,
+  orderedJobs,
+  pressKill,
+  type KillPhase,
+} from './tasks-model.js';
 import css from './TasksView.module.css';
-
-/** How long an armed stop button waits before it disarms itself. */
-export const JOB_KILL_ARM_MS = 3000;
 
 export interface TasksViewProps {
   jobs: readonly WireJobRow[] | null;
@@ -33,21 +45,57 @@ export interface TasksViewProps {
 }
 
 export function TasksView({ jobs, connected, send }: TasksViewProps): JSX.Element {
-  const [armed, setArmed] = useState<string | null>(null);
-  const timer = useRef<number | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [kill, setKill] = useState<KillPhase | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
   // Opening the page asks for the session's jobs; so does an explicit refresh.
   useEffect(() => {
     if (connected) send({ type: 'list_jobs' });
   }, [connected, send]);
-  useEffect(() => () => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-  }, []);
 
-  const arm = (id: string): void => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    setArmed(id);
-    timer.current = window.setTimeout(() => { setArmed(null); }, JOB_KILL_ARM_MS);
+  const ordered = useMemo(() => (jobs === null ? [] : orderedJobs(jobs)), [jobs]);
+  // The clock only beats while something is running: a page of settled rows has
+  // nothing that changes, and a 1 s tick over history is pure repainting.
+  const live = jobs !== null && jobs.some((job) => isLiveJob(job.status));
+  useEffect(() => {
+    if (!live) return;
+    const id = window.setInterval(() => { setNow(Date.now()); }, 1_000);
+    return () => { window.clearInterval(id); };
+  }, [live]);
+
+  // A phase belongs to a running row: once the row settles (or the list no
+  // longer carries it) the button is gone, and a phase left behind would stand
+  // over the next row of the same id — or over a job nobody can stop.
+  useEffect(() => {
+    if (kill === null) return;
+    const row = jobs?.find((job) => job.id === kill.id);
+    if (row === undefined || row.status !== 'running') setKill(null);
+  }, [jobs, kill]);
+
+  // An armed button disarms itself (the reference's KILL_ARM_MS); a pending one
+  // waits on the host, whose answer is the row's own status flip.
+  useEffect(() => {
+    if (kill === null) return;
+    const ttl = killPhaseTtlMs(kill);
+    if (ttl === null) return;
+    const id = window.setTimeout(() => {
+      setKill((current) => (current !== null && current.id === kill.id ? null : current));
+    }, ttl);
+    return () => { window.clearTimeout(id); };
+  }, [kill]);
+
+  const onKillPress = (id: string): void => {
+    const pressed = pressKill(kill, id);
+    setKill(pressed.phase);
+    if (pressed.fire) send({ type: 'stop_job', id });
   };
+
+  const refresh = (
+    <IconButton label={RIGHTBAR_COPY['tasks.refresh']} size="sm" disabled={!connected} onClick={() => { send({ type: 'list_jobs' }); }}>
+      <RefreshIcon />
+    </IconButton>
+  );
 
   if (jobs === null) return <Notice kind="loading">{RIGHTBAR_COPY['tasks.loading']}</Notice>;
   if (jobs.length === 0) {
@@ -55,9 +103,7 @@ export function TasksView({ jobs, connected, send }: TasksViewProps): JSX.Elemen
       <div className={css.emptyCard} data-tasks-empty="">
         <span className={css.emptyTitle}>{RIGHTBAR_COPY['tasks.empty']}</span>
         <span className={css.emptyNote}>{RIGHTBAR_COPY['tasks.empty.note']}</span>
-        <IconButton label={RIGHTBAR_COPY['tasks.refresh']} size="sm" disabled={!connected} onClick={() => { send({ type: 'list_jobs' }); }}>
-          <RefreshIcon />
-        </IconButton>
+        {refresh}
       </div>
     );
   }
@@ -66,50 +112,93 @@ export function TasksView({ jobs, connected, send }: TasksViewProps): JSX.Elemen
       <div className={css.head}>
         <span className={css.title}>{RIGHTBAR_COPY['tasks.title']}</span>
         <span className={css.count}>{jobs.length}</span>
-        <IconButton label={RIGHTBAR_COPY['tasks.refresh']} size="sm" disabled={!connected} onClick={() => { send({ type: 'list_jobs' }); }}>
-          <RefreshIcon />
-        </IconButton>
+        {refresh}
       </div>
-      <ul className={css.list}>
-        {jobs.map((job) => {
-          const settled = job.status !== 'running' && job.status !== 'stopping';
-          const tail = job.progress !== undefined && job.progress !== ''
-            ? job.progress
-            : job.detail !== undefined && job.detail !== '' ? job.detail : '';
-          const live = job.startedAt !== undefined && !settled
-            ? formatDuration(Date.now() - job.startedAt)
-            : '';
-          return (
-            <li key={job.id} className={css.row} data-settled={settled ? '' : undefined}>
-              <StateDot state={dotOf(job.status)} />
-              <span className={css.body}>
-                <span className={css.line}>
+      <ul className={css.list} aria-label={RIGHTBAR_COPY['tasks.title']}>
+        {ordered.map((job) => {
+          const isLive = isLiveJob(job.status);
+          const expandable = jobHasMeta(job);
+          const opened = expanded === job.id;
+          const detail = jobDetail(job);
+          const word = jobStateWord(job.status);
+          const elapsed = jobElapsedMs(job, now);
+          const duration = elapsed === undefined ? undefined : formatDuration(elapsed);
+          const durationTitle = duration === undefined
+            ? undefined
+            : (isLive ? RIGHTBAR_COPY['tasks.duration.live'] : RIGHTBAR_COPY['tasks.duration.done']).replace('{duration}', duration);
+          const phase = kill !== null && kill.id === job.id ? kill.state : null;
+          const stopLabel = phase === 'armed' ? RIGHTBAR_COPY['tasks.stop.action'] : RIGHTBAR_COPY['tasks.stop.row'].replace('{label}', job.label);
+          const body = isLive ? (
+            <>
+              <StateDot state={jobDot(job.status)} />
+              <span className={css.main}>
+                <span className={css.primary}>
                   <span className={css.label} title={job.label}>{job.label}</span>
-                  <span className={css.kind}>{job.kind}</span>
-                  <span className={css.tag} data-tasks-tag="" data-status={job.status}>{statusWord(job.status)}</span>
-                  {(tail !== '' || live !== '') && <span className={css.spacer} />}
-                  {live !== '' && <span className={css.meta}>{live}</span>}
                 </span>
-                {tail !== '' && <span className={css.progress} title={tail}>{tail}</span>}
+                <span className={css.secondary} title={detail ?? word}>
+                  <span className={css.kind}>{job.kind}</span>
+                  {detail !== undefined && <span className={css.status}>{detail}</span>}
+                  {duration !== undefined && <span className={css.duration} title={durationTitle}>{duration}</span>}
+                </span>
               </span>
-              {!settled && (
-                <span className={css.killSlot}>
+              <span className={css.chevronBox}>
+                <ChevronDownIcon className={opened ? `${css.chevron} ${css.chevronOpen}` : css.chevron} />
+              </span>
+            </>
+          ) : (
+            <>
+              <StateDot state={jobDot(job.status)} />
+              <span className={css.kind}>{job.kind}</span>
+              <span className={css.label} title={job.label}>{job.label}</span>
+              <span className={css.status} title={detail ?? word}>{detail ?? word}</span>
+              {duration !== undefined && <span className={css.duration} title={durationTitle}>{duration}</span>}
+              {expandable && (
+                <span className={css.chevronBox}>
+                  <ChevronDownIcon className={opened ? `${css.chevron} ${css.chevronOpen}` : css.chevron} />
+                </span>
+              )}
+            </>
+          );
+          return (
+            <li key={job.id} className={css.item}>
+              <div className={isLive ? `${css.rowLine} ${css.rowLineLive}` : css.rowLine}>
+                {expandable ? (
                   <button
                     type="button"
-                    className={css.kill}
-                    data-armed={armed === job.id ? '' : undefined}
-                    aria-label={RIGHTBAR_COPY['tasks.stop']}
-                    title={armed === job.id ? RIGHTBAR_COPY['tasks.stop.confirm'] : RIGHTBAR_COPY['tasks.stop']}
-                    disabled={!connected}
-                    onClick={() => {
-                      if (armed !== job.id) { arm(job.id); return; }
-                      setArmed(null);
-                      send({ type: 'stop_job', id: job.id });
-                    }}
+                    className={isLive ? css.row : `${css.row} ${css.rowSettled}`}
+                    aria-expanded={opened}
+                    aria-label={(opened ? RIGHTBAR_COPY['tasks.collapse'] : RIGHTBAR_COPY['tasks.expand']).replace('{label}', job.label)}
+                    onClick={() => { setExpanded(opened ? null : job.id); }}
                   >
-                    {armed === job.id ? RIGHTBAR_COPY['tasks.stop.confirm'] : RIGHTBAR_COPY['tasks.stop']}
+                    {body}
                   </button>
-                </span>
+                ) : (
+                  <span className={`${css.row} ${css.rowSettled} ${css.rowStatic}`}>{body}</span>
+                )}
+                {job.status === 'running' && (
+                  <button
+                    type="button"
+                    className={phase === 'armed' ? `${css.stop} ${css.stopArmed}` : css.stop}
+                    data-kill-state={phase ?? 'idle'}
+                    disabled={!connected || phase === 'pending'}
+                    aria-label={stopLabel}
+                    title={phase === 'armed' ? RIGHTBAR_COPY['tasks.stop.confirm'] : stopLabel}
+                    onClick={() => { onKillPress(job.id); }}
+                  >
+                    <StopIcon />
+                    {phase === 'armed' && <span className={css.stopLabel}>{RIGHTBAR_COPY['tasks.stop.action']}</span>}
+                  </button>
+                )}
+              </div>
+              {opened && (
+                <div className={css.panel}>
+                  {jobMetaRows(job, now).map((meta) => (
+                    <div key={meta.key} className={css.metaRow}>
+                      <span className={css.metaKey}>{RIGHTBAR_COPY[meta.key]}</span>
+                      <span className={css.metaValue} title={meta.value}>{meta.value}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </li>
           );
@@ -117,21 +206,4 @@ export function TasksView({ jobs, connected, send }: TasksViewProps): JSX.Elemen
       </ul>
     </div>
   );
-}
-
-/** The dot a job's status draws. */
-function dotOf(status: string): 'ongoing' | 'done' | 'error' | 'idle' {
-  if (status === 'running' || status === 'stopping') return 'ongoing';
-  if (status === 'completed') return 'done';
-  if (status === 'failed') return 'error';
-  return 'idle';
-}
-
-/** The status word a row carries (the kernel's own five states). */
-function statusWord(status: string): string {
-  if (status === 'running') return RIGHTBAR_COPY['tasks.running'];
-  if (status === 'stopping') return RIGHTBAR_COPY['tasks.stopping'];
-  if (status === 'completed') return RIGHTBAR_COPY['tasks.completed'];
-  if (status === 'failed') return RIGHTBAR_COPY['tasks.failed'];
-  return RIGHTBAR_COPY['tasks.killed'];
 }

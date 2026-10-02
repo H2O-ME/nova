@@ -14,7 +14,7 @@
  * Pure: no React, no DOM (the storage read is `tabs.ts`'s job), so the four
  * rules are asserted directly in the UI lane.
  */
-import { GUIDE_TAB, type RightbarTabId, type StripTabId } from './tabs.js';
+import { GUIDE_TAB, fileTabId, type RightbarTabId, type StripTabId } from './tabs.js';
 
 /** Which tabs the strip draws, and which one is in front. */
 export interface StripState {
@@ -68,6 +68,19 @@ export function addGuide(state: StripState): StripState {
 export function pickGuideEntry(state: StripState, page: RightbarTabId): StripState {
   const rest = state.tabs.filter((id) => id !== GUIDE_TAB && id !== page);
   return { tabs: [...rest, page], front: page };
+}
+
+/**
+ * Open a file as its own tab — the reference's reveal-if-opened: a path that
+ * already has a tab just comes to the front (no duplicate, no second read);
+ * a new path joins the run and takes it. One path is one tab for the panel's
+ * whole life, exactly as a document tab is in the reference.
+ * @param state - the strip as it stands.
+ * @param path - the absolute path to open.
+ * @returns the next state, with the file's tab in front.
+ */
+export function openFileTab(state: StripState, path: string): StripState {
+  return focusTab(state, fileTabId(path));
 }
 
 /**

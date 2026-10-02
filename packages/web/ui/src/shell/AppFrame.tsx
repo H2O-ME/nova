@@ -1,11 +1,10 @@
 /**
- * Two-column shell frame (centre | rightbar), ported from deepseek-harness
- * `ui-layout/src/client/AppFrame.tsx` (MIT) with its sidebar half removed —
- * the session sidebar is gone, and the session header carries this product's
- * chrome. Owns the grid tracks, the right column's drag handle (pointer
- * capture + rAF throttle), the column solve (`columns.ts`), and the child
- * render decisions: the right column occupant receives its presentation
- * parameters.
+ * Three-column shell frame, ported from deepseek-harness
+ * `ui-layout/src/client/AppFrame.tsx` (MIT). Owns the grid tracks (sidebar |
+ * center | rightbar), the drag handles (pointer capture + rAF throttle), the
+ * column solve (`columns.ts`), and the child render decisions: the sidebar
+ * occupant receives the resolved collapse state and width, the right column
+ * occupant receives its presentation parameters.
  *
  * The right column is a track, not a box: its occupant draws its panel
  * anchored to the frame's right edge at the resolved normal width, and the
@@ -25,9 +24,26 @@ import type { ReactNode } from 'react';
 import {
   computeColumns,
   RIGHTBAR_DEFAULT_RATIO,
+  SIDEBAR_AUTO_COLLAPSE,
 } from './columns.js';
 import type { LayoutState } from './layout-store.js';
+import { sidebarCollapsed, sidebarPreference } from './layout-store.js';
 import css from './AppFrame.module.css';
+
+/** What the sidebar occupant needs to know about its own column. */
+export interface SidebarSlotParams {
+  collapsed: boolean;
+  width: number;
+  /**
+   * The collapse is the NARROW-FRAME auto-collapse rather than the reader's own
+   * choice. The two look identical in a 56px rail, and they mean different
+   * things: one is a state the reader chose, the other is a state the window
+   * imposed on them. The occupant needs the difference to make the way back
+   * discoverable (its toggle names the reason and keeps the accent), which is the
+   * defect the rail-only affordance left: a sidebar that "just disappeared".
+   */
+  auto: boolean;
+}
 
 /** What the right column occupant needs to know about its own column. */
 export interface RightbarSlotParams {
@@ -41,10 +57,12 @@ export interface AppFrameProps {
   layout: LayoutState;
   /** Publish the frame's own measured width (rAF-throttled ResizeObserver). */
   onViewportWidth: (width: number) => void;
+  onSidebarWidth: (px: number) => void;
   onRightbarWidth: (px: number) => void;
-  /** Whether a drag is in flight (the tracks pause their transition). */
+  /** Whether a sidebar drag is in flight (the tracks pause their transition). */
   dragging: boolean;
   onDragChange: (dragging: boolean) => void;
+  sidebar: (params: SidebarSlotParams) => ReactNode;
   center: ReactNode;
   /** Right column occupant; also responsible for reporting its presentation. */
   rightbar?: (params: RightbarSlotParams) => ReactNode;
@@ -73,10 +91,11 @@ function RightbarColumn({ children }: { children?: ReactNode }): JSX.Element {
 }
 
 /**
- * The drag handle: pointer capture, rAF-throttled dx reports against the
- * drag-start origin.
+ * One drag handle: pointer capture, rAF-throttled dx reports against the
+ * drag-start origin. `side` keys the hover-reveal CSS to the owning column.
  */
 function DragHandle(props: {
+  side: 'sidebar' | 'rightbar';
   left: number;
   onStart: () => void;
   onDrag: (dx: number) => void;
@@ -141,6 +160,7 @@ function DragHandle(props: {
     <div
       className={css.handle}
       style={{ left: props.left }}
+      data-side={props.side}
       data-dragging={dragging || undefined}
       role="separator"
       aria-orientation="vertical"
@@ -153,13 +173,15 @@ function DragHandle(props: {
   );
 }
 
-/** The two-column frame (see module doc). */
+/** The three-column frame (see module doc). */
 export function AppFrame({
   layout,
   onViewportWidth,
+  onSidebarWidth,
   onRightbarWidth,
   dragging,
   onDragChange,
+  sidebar,
   center,
   rightbar,
   overlay,
@@ -193,12 +215,18 @@ export function AppFrame({
     };
   }, [onViewportWidth]);
 
+  const narrow = viewport < SIDEBAR_AUTO_COLLAPSE;
+  const collapsed = sidebarCollapsed(layout);
+  const preference = sidebarPreference(layout);
+  // The auto-collapse is a fact about WHY the rail is drawn, and it is only true
+  // while the frame is narrow AND the rail is closed (a reader who expanded it
+  // below the breakpoint has already answered the question).
+  const autoCollapsed = narrow && collapsed;
   const rightbarPreference = layout.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO;
-  // Opening on a frame that cannot afford it: the solve gives no track and the
-  // occupant draws a takeover. Eligibility uses the preference BEFORE the
-  // occupant's first shown report arrives.
-  const normal = computeColumns(viewport, rightbarPreference);
-  const cols = computeColumns(viewport, layout.rightbarTrack ? rightbarPreference : 0);
+  // Opening on a narrow frame collapses the left sidebar. Eligibility must
+  // include that space before the occupant's first shown report arrives.
+  const normal = computeColumns(viewport, !layout.rightbarShown && narrow ? 0 : preference, rightbarPreference);
+  const cols = computeColumns(viewport, preference, layout.rightbarTrack ? rightbarPreference : 0);
   const colsRef = useRef(cols);
   colsRef.current = cols;
   const rightbarWidth = useRef(normal.rightbar);
@@ -211,18 +239,19 @@ export function AppFrame({
   // 600ms timeout as the reduced-motion and covered-frame fallback), and
   // restarts when a re-toggle interrupts a running transition.
   const [animating, setAnimating] = useState(0);
-  const previousToggle = useRef(layout.rightbarTrack);
+  const toggle = `${collapsed}:${layout.rightbarTrack}`;
+  const previousToggle = useRef(toggle);
   const previousViewport = useRef(viewport);
   useLayoutEffect(() => {
     const viewportChanged = previousViewport.current !== viewport;
     previousViewport.current = viewport;
-    if (previousToggle.current === layout.rightbarTrack) return;
-    previousToggle.current = layout.rightbarTrack;
-    // A toggle arriving together with a viewport change is a responsive
-    // concession firing mid window-resize; that one stays instant.
+    if (previousToggle.current === toggle) return;
+    previousToggle.current = toggle;
+    // A toggle arriving together with a viewport change is the responsive
+    // auto-collapse firing mid window-resize; that one stays instant.
     if (viewportChanged) return;
     setAnimating((token) => token + 1);
-  }, [layout.rightbarTrack, viewport]);
+  }, [toggle, viewport]);
   useEffect(() => {
     if (animating === 0) return;
     const frame = frameRef.current;
@@ -242,8 +271,17 @@ export function AppFrame({
   // The drag base is the rendered width captured at drag start (grabbing a
   // concession-clamped panel must not jump back to the stored preference);
   // it stays frozen for the whole gesture so dx deltas do not compound.
+  const sidebarBase = useRef(0);
   const rightbarBase = useRef(0);
   const onDragEnd = useCallback((): void => onDragChange(false), [onDragChange]);
+  const onSidebarStart = useCallback((): void => {
+    sidebarBase.current = colsRef.current.sidebar;
+    onDragChange(true);
+  }, [onDragChange]);
+  const onSidebarDrag = useCallback(
+    (dx: number): void => onSidebarWidth(sidebarBase.current + dx),
+    [onSidebarWidth],
+  );
   const onRightbarStart = useCallback((): void => {
     rightbarBase.current = rightbarWidth.current;
     onDragChange(true);
@@ -253,6 +291,10 @@ export function AppFrame({
     [onRightbarWidth],
   );
 
+  const sidebarNode = useMemo(
+    () => sidebar({ collapsed, width: cols.sidebar, auto: autoCollapsed }),
+    [sidebar, collapsed, cols.sidebar, autoCollapsed],
+  );
   const rightbarNode = useMemo(
     () =>
       rightbar?.({ width: normal.rightbar, viewportWidth: viewport, canShow: normal.rightbar > 0 }),
@@ -263,18 +305,28 @@ export function AppFrame({
     <div
       ref={frameRef}
       className={css.frame}
-      style={{ gridTemplateColumns: `minmax(0, 1fr) ${cols.rightbar}px` }}
+      style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px` }}
+      {...(collapsed ? { 'data-sidebar-collapsed': '' } : {})}
+      {...(autoCollapsed ? { 'data-sidebar-auto-collapsed': '' } : {})}
       {...(cols.rightbar === 0 ? { 'data-rightbar-collapsed': '' } : {})}
       {...(layout.rightbarFullscreen ? { 'data-rightbar-fullscreen': '' } : {})}
       {...(layout.rightbarInstant ? { 'data-rightbar-instant': '' } : {})}
       {...(dragging ? { 'data-dragging': '' } : {})}
       {...(animating > 0 ? { 'data-animating': '' } : {})}
     >
-      <CenterColumn>{center}</CenterColumn>
-      <RightbarColumn>{rightbarNode}</RightbarColumn>
+      <div className={css.sidebarCol}>{sidebarNode}</div>
+      <>
+        <CenterColumn>{center}</CenterColumn>
+        <RightbarColumn>{rightbarNode}</RightbarColumn>
+      </>
       {overlay !== undefined && <div className={css.overlayLayer}>{overlay}</div>}
+      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
+      {!collapsed && (
+        <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />
+      )}
       {layout.rightbarShown && !layout.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle
+          side="rightbar"
           left={viewport - normal.rightbar}
           onStart={onRightbarStart}
           onDrag={onRightbarDrag}

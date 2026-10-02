@@ -12,6 +12,7 @@
 import type { KernelEvent, SubagentProgress, ToolCallView, ToolResultView } from './types.js';
 import type { Block, Draft, SubRow, UiState } from './state.js';
 import { addRun } from '../../src/totals';
+import { upsertJobRow } from './rightbar/tasks-model.js';
 
 /** A notice code without an entry below still renders (its `text` is the fallback). */
 type NoticeCode = Extract<KernelEvent, { type: 'notice' }>['code'];
@@ -248,8 +249,16 @@ function reduceTranscript(
       if (tail.length === 0) return state;
       return { ...state, blocks: mapTool(state.blocks, event.callId, (b) => (b.result === undefined ? { ...b, tail } : b)) };
     }
-    case 'job_update':
-      return upsertRow(state, `job:${event.job.id}`, (id) => ({ id, kind: 'job', job: event.job }));
+    case 'job_update': {
+      // One fact, two readings: the transcript block (the line a reloaded
+      // session draws) and the 任务 page's list, when it is open. The host
+      // scopes `job_update` to the current session (`job-listener.ts`), so a
+      // live row can never be another conversation's job — and a list the
+      // reader has not asked for yet (`jobs === null`) stays null instead of
+      // materializing rows for a page nobody opened.
+      const next = upsertRow(state, `job:${event.job.id}`, (id) => ({ id, kind: 'job', job: event.job }));
+      return state.jobs === null ? next : { ...next, jobs: upsertJobRow(state.jobs, event.job) };
+    }
     case 'subagent_update':
       return reduceSubagent(state, event.progress);
     case 'llm_retry': {

@@ -21,6 +21,7 @@ import { PanelIcon } from '../icons.js';
 import type { ClientFrame, WireJobRow, WireShell } from '../types.js';
 import type { Action, GitState } from '../state.js';
 import { ChangesView, type ChangesLens } from './ChangesView.js';
+import { FileTabView } from './FileTabView.js';
 import { FilesView } from './FilesView.js';
 import { TasksView } from './TasksView.js';
 import { TerminalView } from './TerminalView.js';
@@ -28,10 +29,10 @@ import { RightbarStrip } from './RightbarStrip.js';
 import { StartView } from './StartView.js';
 import { RIGHTBAR_COPY } from './copy.js';
 import type { ChangesModel } from './changes-model.js';
-import type { EditorState } from './editor-model.js';
+import { docAt, type EditorState } from './editor-model.js';
 import type { TreeState } from './files-model.js';
 import type { TermState } from './terminal-model.js';
-import { GUIDE_TAB, type RightbarTabId, type StripTabId } from './tabs.js';
+import { GUIDE_TAB, isFileTabId, filePathOf, type RightbarTabId, type StripTabId } from './tabs.js';
 import css from './RightbarPanel.module.css';
 
 /** The reducer dispatch the panels share (any of the union's actions). */
@@ -62,6 +63,12 @@ export interface RightbarPanelProps {
   term: TermState;
   /** The host's discovered shells (the terminal picker's rows); null until asked. */
   shells: { items: readonly WireShell[]; current: string } | null;
+  /** Bumped when the reader picks a shell on the start page (the respawn trigger). */
+  shellPick: number;
+  /** Ask the host for its shell inventory (the start-page menu's open gesture). */
+  onDiscoverShells: () => void;
+  /** Remember a shell picked on the start page and (re)aim the terminal at it. */
+  onPickShell: (path: string) => void;
   currentFile: string;
   rootDir: string;
   connected: boolean;
@@ -72,9 +79,9 @@ export interface RightbarPanelProps {
   clonePending?: boolean | undefined;
   /** Open the workspace picker (the git setup card's 打开文件夹). */
   onOpenWorkspace?: (() => void) | undefined;
-  /** Open a changed file in the files page's editor (the 变更 row's verb). */
-  onOpenFile?: ((path: string) => void) | undefined;
-  /** The reducer dispatch (editor and page-local actions). */
+  /** Open a changed file as its own tab (the 变更 row's verb). */
+  onOpenFileTab: (path: string) => void;
+  /** The reducer dispatch (page-local actions). */
   dispatch: PanelDispatch;
   send: (frame: ClientFrame) => void;
   /** Rail a tree row into the composer draft (`@rel`); absent = no per-row button. */
@@ -112,8 +119,21 @@ export function RightbarPanel(props: RightbarPanelProps): JSX.Element {
             a switch. The start page is a TAB of its own (the reference's
             `GUIDE_KIND`), drawn while it is the one in front; it holds no state,
             so it needs no mount to survive a switch. */}
-        {props.tab === GUIDE_TAB && <StartView onOpen={props.onOpenPage} />}
-        {props.tabs.map((id) => (id === GUIDE_TAB ? null : (
+        {props.tab === GUIDE_TAB && (
+          <StartView
+            onOpen={props.onOpenPage}
+            shells={props.shells}
+            onDiscoverShells={props.onDiscoverShells}
+            onPickShell={props.onPickShell}
+          />
+        )}
+        {/* A file tab in front IS the body: one read-only viewer for that path
+            (the strip's tab is the tab bar; the page never grows its own). */}
+        {isFileTabId(props.tab) && (() => {
+          const doc = docAt(props.editor, filePathOf(props.tab));
+          return doc !== null ? <div className={css.page} data-active><FileTabView doc={doc} send={props.send} /></div> : null;
+        })()}
+        {props.tabs.map((id) => (id === GUIDE_TAB || isFileTabId(id) ? null : (
           <div key={id} className={css.page} data-active={id === props.tab || undefined}>
             {id === 'changes' && (
               <ChangesView
@@ -121,9 +141,9 @@ export function RightbarPanel(props: RightbarPanelProps): JSX.Element {
                 git={props.git}
                 connected={props.connected}
                 send={props.send}
+                onOpenFileTab={props.onOpenFileTab}
                 {...(props.clonePending !== undefined ? { clonePending: props.clonePending } : {})}
                 {...(props.onOpenWorkspace !== undefined ? { onOpenWorkspace: props.onOpenWorkspace } : {})}
-                {...(props.onOpenFile !== undefined ? { onOpenFile: props.onOpenFile } : {})}
                 {...(props.changesLens !== undefined ? { lens: props.changesLens } : {})}
                 {...(props.onPickChangesLens !== undefined ? { onPickChangesLens: props.onPickChangesLens } : {})}
               />
@@ -132,11 +152,10 @@ export function RightbarPanel(props: RightbarPanelProps): JSX.Element {
               <FilesView
                 rootDir={props.rootDir}
                 tree={props.tree}
-                editor={props.editor}
                 git={props.git}
                 connected={props.connected}
                 send={props.send}
-                dispatch={props.dispatch}
+                onOpenFileTab={props.onOpenFileTab}
                 {...(props.onReferenceFile !== undefined ? { onReferenceFile: props.onReferenceFile } : {})}
               />
             )}
@@ -148,6 +167,7 @@ export function RightbarPanel(props: RightbarPanelProps): JSX.Element {
                 connected={props.connected}
                 send={props.send}
                 shells={props.shells}
+                pick={props.shellPick}
               />
             )}
           </div>

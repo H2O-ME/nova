@@ -127,11 +127,6 @@ export function Notice({ kind = 'empty', children }: NoticeProps): JSX.Element {
   );
 }
 
-/** The status dot a task row carries (`ongoing` spins its ring, see the sheet). */
-export function StateDot({ state }: { state: 'ongoing' | 'done' | 'error' | 'idle' }): JSX.Element {
-  return <span className={css.stateDot} data-state={state} aria-hidden="true" />;
-}
-
 /**
  * The one-letter git badge (`M` / `A` / `D` / `R` / `U` / `!`).
  *

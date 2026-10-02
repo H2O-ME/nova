@@ -293,8 +293,6 @@ export type ClientFrame =
    * not be used.
    */
   | { type: 'read_entry'; path: string }
-  /** Save one workspace file from the editor (whole-file write, atomic on disk). */
-  | { type: 'write_entry'; path: string; content: string }
   /** Move one entry; `to` is the full target path. */
   | { type: 'rename_entry'; path: string; to: string }
   /** Delete one entry (a directory goes with its tree; the root is refused). */

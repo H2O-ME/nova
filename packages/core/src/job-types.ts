@@ -24,6 +24,16 @@ export interface JobSnapshot {
   detail?: string;
   /** Wall-clock start (ms epoch); UIs derive elapsed time from it. */
   startedAt?: number;
+  /**
+   * Wall-clock settle (ms epoch), set when the producer's outcome lands.
+   *
+   * A surface that lists finished jobs orders them by this (newest first) and
+   * renders their duration as `finishedAt - startedAt`; without it, a settled
+   * row's elapsed time keeps growing on every repaint and the ordering has
+   * nothing to sort on but the start times of work that may have begun long
+   * before it ended.
+   */
+  finishedAt?: number;
   /** Latest activity line sampled from the producer (UI live rows). */
   progress?: string;
   /**
@@ -144,6 +154,7 @@ export function snapshotOf(entry: JobEntry): JobSnapshot {
     // routes on it, and a surface that receives one can tell whose it is.
     sessionId: entry.sessionId,
     startedAt: entry.startedAt,
+    ...(entry.finishedAt !== undefined ? { finishedAt: entry.finishedAt } : {}),
     ...(entry.detail !== undefined ? { detail: entry.detail } : {}),
     ...(entry.progress !== undefined ? { progress: entry.progress() } : {}),
   };

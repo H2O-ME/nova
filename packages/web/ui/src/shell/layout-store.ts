@@ -1,35 +1,43 @@
 /**
- * Frame measurement and the right panel's width preference, ported from
- * deepseek-harness `ui-layout/src/client/stores.ts` (MIT) with its sidebar half
- * removed (the session sidebar is gone; the session header carries this
- * product's chrome) and its Cordis store replaced by plain pure functions —
- * no DOM, no React, directly testable.
+ * Frame measurement and column preferences, ported from deepseek-harness
+ * `ui-layout/src/client/stores.ts` (MIT) with its Cordis store replaced by
+ * plain pure functions — no DOM, no React, directly testable.
  *
  * Transient preferences only: responsive concessions never rewrite widths (a
  * narrowed frame re-solves `computeColumns` against the same preference, so
- * re-widening restores the pre-squeeze layout). The right panel keeps its px
- * preference across resizes and close, and its expanded/`fullscreen` state
- * belongs to its occupant, which reports it back through
- * `openRightbar`/`closeRightbar`.
+ * re-widening restores the pre-squeeze layout). For the sidebar the preference
+ * IS the width, so closing it forgets its drag width — reopening restores the
+ * contract default. The right panel keeps its px preference across resizes and
+ * close, and its expanded/`fullscreen` state belongs to its occupant, which
+ * reports it back through `openRightbar`/`closeRightbar`.
  */
 import {
   clampWidth,
   RIGHTBAR_DEFAULT_RATIO,
   RIGHTBAR_MAX_RATIO,
   RIGHTBAR_MIN,
+  SIDEBAR_AUTO_COLLAPSE,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
 } from './columns.js';
 
 export interface LayoutState {
+  /** Sidebar width preference in px; 0 = closed to the rail. */
+  sidebar: number;
   /** Last positive frame measurement; window width bootstraps the first render. */
   viewportWidth: number;
+  /** Narrow-frame override: a manual toggle below the breakpoint expands the
+   *  rail over the squeezed center without touching the width preference. */
+  narrowExpanded: boolean;
   /** Saved right panel width in px, or null before its first opening. */
   rightbar: number | null;
   /** Whether the right panel is drawn at all, in either presentation. */
   rightbarShown: boolean;
   /** Whether the normal panel width reserves a grid track, including beneath
    *  fullscreen. Always true while shown (`openRightbar` reserves it for every
-   *  shown panel), always false while hidden — a shown panel is a second
-   *  column, never an overlay. */
+   *  shown panel), always false while hidden — a shown panel is a third column,
+   *  never an overlay. */
   rightbarTrack: boolean;
   /** Reported fullscreen presentation; hides the outer resize handle. */
   rightbarFullscreen: boolean;
@@ -43,7 +51,9 @@ export interface LayoutState {
  *  a zero-width frame (the frame's own measurement lands in a layout effect). */
 export function initialLayout(viewportWidth = window.innerWidth): LayoutState {
   return {
+    sidebar: SIDEBAR_DEFAULT,
     viewportWidth,
+    narrowExpanded: false,
     rightbar: null,
     rightbarShown: false,
     rightbarTrack: false,
@@ -52,9 +62,30 @@ export function initialLayout(viewportWidth = window.innerWidth): LayoutState {
   };
 }
 
+export function setSidebar(state: LayoutState, px: number): LayoutState {
+  return {
+    ...state,
+    rightbarInstant: false,
+    sidebar: clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX),
+  };
+}
+
+/** Narrow toggles flip only the override: the width preference survives
+ *  untouched, so re-widening restores the pre-squeeze layout. */
+export function toggleSidebar(state: LayoutState): LayoutState {
+  if (state.viewportWidth < SIDEBAR_AUTO_COLLAPSE) {
+    return { ...state, rightbarInstant: false, narrowExpanded: !state.narrowExpanded };
+  }
+  return { ...state, rightbarInstant: false, sidebar: state.sidebar === 0 ? SIDEBAR_DEFAULT : 0 };
+}
+
+/** Crossing the breakpoint in either direction drops the override: the narrow
+ *  default is auto-collapsed, the wide state is the preference. */
 export function setViewportWidth(state: LayoutState, width: number): LayoutState {
   if (state.viewportWidth === width) return state;
-  return { ...state, rightbarInstant: false, viewportWidth: width };
+  const crossed =
+    state.viewportWidth < SIDEBAR_AUTO_COLLAPSE !== width < SIDEBAR_AUTO_COLLAPSE;
+  return { ...state, rightbarInstant: false, narrowExpanded: crossed ? false : state.narrowExpanded, viewportWidth: width };
 }
 
 export function setRightbar(state: LayoutState, px: number): LayoutState {
@@ -67,13 +98,17 @@ export function setRightbar(state: LayoutState, px: number): LayoutState {
 
 /**
  * Open the right panel. The first opening seeds the width preference at 45% of
- * the frame.
+ * the frame, and opening below the breakpoint collapses the sidebar first (the
+ * panel takes the room, not the center).
  *
  * A shown panel RESERVES its track — the centre makes room, and that is what
- * keeps the shell two real columns instead of a panel floating over the
- * conversation. The track is not a parameter: the shown panel bids for it, and
- * the frame solve owns the one case where there is nothing to bid for — a frame
- * too narrow resolves to a zero track and the occupant draws a takeover.
+ * keeps the shell three columns instead of a panel floating over the
+ * conversation (the reference's `track = shown && !autoFullscreen`). The track
+ * is not a parameter: every shown panel bids for it, and the frame solve owns
+ * the one case where there is nothing to bid for — a frame too narrow resolves
+ * to a zero track and the occupant draws a takeover. The track used to be a
+ * caller-supplied `false` (a port slip), which is why an opened panel hung over
+ * the centre; with no parameter there is no call site left to get it wrong.
  * Fullscreen keeps the track beneath the covered frame, so leaving fullscreen
  * lands on the same conversation width instead of jumping.
  */
@@ -85,6 +120,8 @@ export function openRightbar(state: LayoutState, fullscreen: boolean): LayoutSta
   return {
     ...state,
     rightbarInstant: presentationChanged ? state.rightbarFullscreen && !fullscreen : state.rightbarInstant,
+    narrowExpanded:
+      !state.rightbarShown && state.viewportWidth < SIDEBAR_AUTO_COLLAPSE ? false : state.narrowExpanded,
     rightbar:
       state.rightbar ?? Math.max(RIGHTBAR_MIN, Math.round(state.viewportWidth * RIGHTBAR_DEFAULT_RATIO)),
     rightbarShown: true,
@@ -101,4 +138,17 @@ export function closeRightbar(state: LayoutState): LayoutState {
     rightbarTrack: false,
     rightbarFullscreen: false,
   };
+}
+
+/** The sidebar's rendered width preference after responsive collapse. */
+export function sidebarPreference(state: LayoutState): number {
+  const narrow = state.viewportWidth < SIDEBAR_AUTO_COLLAPSE;
+  const collapsed = narrow ? !state.narrowExpanded : state.sidebar === 0;
+  if (collapsed) return 0;
+  return state.sidebar === 0 ? SIDEBAR_DEFAULT : state.sidebar;
+}
+
+/** Whether the sidebar renders as the collapsed rail. */
+export function sidebarCollapsed(state: LayoutState): boolean {
+  return state.viewportWidth < SIDEBAR_AUTO_COLLAPSE ? !state.narrowExpanded : state.sidebar === 0;
 }

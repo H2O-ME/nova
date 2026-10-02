@@ -217,7 +217,6 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'list_directory':
     case 'create_directory':
     case 'read_entry':
-    case 'write_entry':
     case 'rename_entry':
     case 'remove_entry':
     case 'new_entry':

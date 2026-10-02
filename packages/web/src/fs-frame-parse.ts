@@ -16,7 +16,6 @@
 import { hasControlChars, MAX_DIRECTORY_NAME_CHARS } from '@nova-agent/core';
 import {
   MAX_COMMIT_MESSAGE_CHARS,
-  MAX_EDITOR_BYTES,
   MAX_FILE_QUERY_CHARS,
   MAX_GIT_CLONE_URL_CHARS,
   MAX_GIT_LOG,
@@ -33,7 +32,6 @@ export type FsFrameType =
   | 'list_directory'
   | 'create_directory'
   | 'read_entry'
-  | 'write_entry'
   | 'rename_entry'
   | 'remove_entry'
   | 'new_entry'
@@ -115,20 +113,6 @@ export function parseFsFrame(type: FsFrameType, obj: Record<string, unknown>): C
       const pathValue = pathField(obj['path'], `${type}.path`);
       if (isRejection(pathValue)) return pathValue;
       return { type, path: pathValue } as ClientFrame;
-    }
-    case 'write_entry': {
-      const pathValue = pathField(obj['path'], 'write_entry.path');
-      if (isRejection(pathValue)) return pathValue;
-      const content = obj['content'];
-      if (typeof content !== 'string') return reject('write_entry.content must be a string');
-      // A document: newlines and tabs are its content, other C0 is junk. The
-      // byte budget is the wire's (a save is one 512 KiB client frame), not the
-      // disk's — a larger file must be edited on disk, not half-delivered.
-      if (hasControlChars(content, { multiline: true })) return reject('write_entry.content contains control characters');
-      if (Buffer.byteLength(content, 'utf8') > MAX_EDITOR_BYTES) {
-        return reject(`write_entry.content exceeds ${MAX_EDITOR_BYTES} bytes`);
-      }
-      return { type: 'write_entry', path: pathValue, content };
     }
     case 'rename_entry': {
       const pathValue = pathField(obj['path'], 'rename_entry.path');

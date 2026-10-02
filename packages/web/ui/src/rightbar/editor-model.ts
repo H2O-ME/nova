@@ -1,20 +1,24 @@
 /**
- * The editor's documents (right panel): pure list operations over the open
- * files — open, activate, edit, save, close.
+ * The file tabs' content store (right panel): pure operations over the read
+ * files — open, settle, close.
  *
  * Pure because the reducer is the only place that sees both a request and its
  * answer: a read is asked for here (the doc enters as `loading`), the host's
- * `entry` frame settles it, and a save flips `dirty` back — three moments that
- * must not be three sources of truth.
+ * `entry` frame settles it. The documents are READ-ONLY — the reference's
+ * document preview is a viewer (the harness renders it with Shiki), and this
+ * panel's editor never was one: a textarea that writes exactly what it shows
+ * was the honest version of a rich editor we did not ship, and the honest
+ * version of honesty was removing the write path. The strip (not this store)
+ owns which tab is in front.
  */
 
-/** One open document. */
+/** One open document (a file tab's content). */
 export interface EditorDoc {
-  /** The absolute path the host resolved (what a save names). */
+  /** The absolute path the host resolved. */
   path: string;
-  /** The text in the editor: exactly what a save will write. */
+  /** The file's text as read (the viewer's whole content). */
   text: string;
-  /** On-disk size at load/save time, in bytes. */
+  /** On-disk size at read time, in bytes. */
   bytes: number;
   /** The file is larger than the wire budget: `text` is empty by design. */
   truncated: boolean;
@@ -24,16 +28,12 @@ export interface EditorDoc {
   error?: string;
   /** A read is in flight for this document. */
   loading: boolean;
-  /** The text differs from what was last loaded or saved. */
-  dirty: boolean;
-  /** The last save failed with this reason (cleared by the next save). */
-  saveError?: string;
 }
 
 export interface EditorState {
-  /** Open documents, in open order. */
+  /** Open documents, in open order (the file tabs' backing store). */
   docs: readonly EditorDoc[];
-  /** The document on screen, or null when none is open. */
+  /** The document read most recently (the strip owns what is on screen). */
   active: string | null;
 }
 
@@ -45,7 +45,7 @@ export function emptyEditor(): EditorState {
 export function openDoc(state: EditorState, path: string): EditorState {
   const existing = state.docs.find((doc) => doc.path === path);
   if (existing !== undefined) return { ...state, active: path };
-  const doc: EditorDoc = { path, text: '', bytes: 0, truncated: false, binary: false, loading: true, dirty: false };
+  const doc: EditorDoc = { path, text: '', bytes: 0, truncated: false, binary: false, loading: true };
   return { docs: [...state.docs, doc], active: path };
 }
 
@@ -57,7 +57,7 @@ export function docLoaded(
   return {
     ...state,
     docs: state.docs.map((doc) => (doc.path === reading.path
-      ? { ...doc, text: reading.text, bytes: reading.bytes, truncated: reading.truncated, binary: reading.binary, loading: false, dirty: false }
+      ? { ...doc, text: reading.text, bytes: reading.bytes, truncated: reading.truncated, binary: reading.binary, loading: false }
       : doc)),
   };
 }
@@ -67,24 +67,6 @@ export function docError(state: EditorState, path: string, message: string): Edi
   return {
     ...state,
     docs: state.docs.map((doc) => (doc.path === path ? { ...doc, loading: false, error: message } : doc)),
-  };
-}
-
-/** A keystroke: the text becomes dirty. */
-export function docEdited(state: EditorState, path: string, text: string): EditorState {
-  return {
-    ...state,
-    docs: state.docs.map((doc) => (doc.path === path ? { ...doc, text, dirty: true } : doc)),
-  };
-}
-
-/** A save that landed: the text is now what is on disk. */
-export function docSaved(state: EditorState, path: string, bytes: number): EditorState {
-  return {
-    ...state,
-    docs: state.docs.map((doc) => (doc.path === path
-      ? { ...doc, bytes, dirty: false, saveError: undefined, error: undefined }
-      : doc)),
   };
 }
 
@@ -98,17 +80,7 @@ export function closeDoc(state: EditorState, path: string): EditorState {
   return { docs, active: neighbour?.path ?? null };
 }
 
-/** Bring one open document to the front. */
-export function activateDoc(state: EditorState, path: string): EditorState {
-  return state.docs.some((doc) => doc.path === path) ? { ...state, active: path } : state;
-}
-
-/** The document on screen, when there is one. */
-export function activeDoc(state: EditorState): EditorDoc | null {
-  return state.docs.find((doc) => doc.path === state.active) ?? null;
-}
-
-/** Whether the document on screen has unsaved changes (the close guard). */
-export function hasDirty(state: EditorState): boolean {
-  return state.docs.some((doc) => doc.dirty);
+/** The document at one path, when it is open. */
+export function docAt(state: EditorState, path: string): EditorDoc | null {
+  return state.docs.find((doc) => doc.path === path) ?? null;
 }

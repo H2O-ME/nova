@@ -8,8 +8,8 @@
  *  - **the 文件 page never asks where the workspace is** — its tree's root is the
  *    session's own `rootDir`, and the regression this pins is the workspace
  *    picker that page used to open;
- *  - **the tree and the file are drawn TOGETHER** (the merged window: a click
- *    opens the file beside the tree, never on another page);
+ *  - **the files page is the tree alone and a click opens the file as its own
+ *    tab** (the reference's shape: the explorer never grows a document pane);
  *  - **the 终端 page is a real terminal** (an emulator host the shell feeds, a
  *    status band only when it ended, and no fake prompt of our own);
  *  - **the panel states its own presentation** (`data-rightbar`) so the frame and
@@ -50,6 +50,9 @@ function html(tab: StripTabId, over: Partial<Parameters<typeof RightbarPanel>[0]
       tree={emptyTree}
       term={emptyTerm}
       shells={null}
+      shellPick={0}
+      onDiscoverShells={() => {}}
+      onPickShell={() => {}}
       currentFile=""
       rootDir=""
       connected
@@ -58,6 +61,7 @@ function html(tab: StripTabId, over: Partial<Parameters<typeof RightbarPanel>[0]
       jobs={null}
       dispatch={dispatch}
       send={send}
+      onOpenFileTab={() => {}}
       {...over}
     />,
   );
@@ -180,10 +184,11 @@ describe('right panel shell', () => {
     expect(markup).toContain('>A<');
     expect(markup).toContain(RIGHTBAR_COPY['git.commit']);
     expect(markup).toContain('main');
-    // The row's open verb exists when the host can open files (the reference's
-    // 打开编辑器), and stays out of the markup when it cannot.
-    expect(html('changes', { git, onOpenFile: () => {} })).toContain(`aria-label="${RIGHTBAR_COPY['git.openEditor']}"`);
-    expect(markup).not.toContain(`aria-label="${RIGHTBAR_COPY['git.openEditor']}"`);
+    // The row's open verb exists when the host can open files (its own tab in
+    // the strip), and stays out of the markup when it cannot (the helper's
+    // default callback must be explicitly withdrawn here).
+    expect(html('changes', { git, onOpenFileTab: () => {} })).toContain(`aria-label="${RIGHTBAR_COPY['git.openTab']}"`);
+    expect(html('changes', { git, onOpenFileTab: undefined })).not.toContain(`aria-label="${RIGHTBAR_COPY['git.openTab']}"`);
   });
 
   it('draws the setup card, not a dead notice, when the workspace is no repo', () => {
@@ -206,22 +211,28 @@ describe('right panel shell', () => {
     expect(markup).not.toContain(RIGHTBAR_COPY['git.setup.open']);
   });
 
-  it('renders the workspace tree and the open file side by side, never a picker', () => {
-    // The whole point of the merged window: one page holds the explorer AND the
-    // document pane, and the tree's root is the SESSION's workspace — the page
-    // must never ask the reader where they are.
+  it('renders the files page as the tree alone, and a file as its own tab', () => {
+    // The reference's path: clicking a file opens it as ITS OWN TAB (the strip's
+    // reveal-if-opened) — the files page stays the explorer, and the tree's root
+    // is the SESSION's workspace (the page must never ask the reader where
+    // they are; the old picker regression stays pinned).
+    const markup = html('files', { rootDir: '/w', tree: TREE });
+    expect(markup).toContain('data-tree-full');
+    expect(markup).toContain('data-tree-dock');
+    expect(markup).toContain('src');
+    expect(markup).not.toContain(RIGHTBAR_COPY['files.noWorkspace']);
+    expect(markup).not.toContain('directory-browser');
+    // An open file tab in front is the read-only viewer — one document, no
+    // editor chrome (no dirty/save, the viewer cannot write).
     const editor = docLoaded(openDoc(emptyEditor(), '/w/README.md'), {
       path: '/w/README.md', text: '# hi\n', bytes: 5, truncated: false, binary: false,
     });
-    const markup = html('files', { rootDir: '/w', tree: TREE, editor });
-    expect(markup).toContain('data-tree-dock');
-    expect(markup).not.toContain('data-tree-full');
-    expect(markup).toContain('src');
-    expect(markup).toContain('# hi');
-    // No picker affordance of any kind: the old page opened the workspace
-    // browser on mount (「文件页面居然需要我再选择一遍」).
-    expect(markup).not.toContain(RIGHTBAR_COPY['files.noWorkspace']);
-    expect(markup).not.toContain('directory-browser');
+    const fileMarkup = html('file:/w/README.md', {
+      tabs: [...noTabs, 'file:/w/README.md'],
+      editor,
+    });
+    expect(fileMarkup).toContain('<h1>hi</h1>');
+    expect(fileMarkup).not.toContain('textarea');
   });
 
   it('gives the tree the whole page while nothing is open', () => {
@@ -259,13 +270,15 @@ describe('right panel shell', () => {
     expect(markup).not.toContain(RIGHTBAR_COPY['term.exited']);
   });
 
-  it('carries a status band with a restart affordance when the terminal ended', () => {
+  it('carries the status band with the way back in when the terminal ended', () => {
+    // The reference's band: the state word plus a 新建终端 primary — and it
+    // hides entirely while the terminal runs (a running terminal is its screen).
     const markup = html('terminal', {
       rootDir: '/w',
       term: { status: 'exited', exitCode: 2, feed: null, session: '/n/one.jsonl' },
     });
     expect(markup).toContain(RIGHTBAR_COPY['term.code'].replace('{code}', '2'));
-    expect(markup).toContain(`title="${RIGHTBAR_COPY['term.restart']}"`);
+    expect(markup).toContain(RIGHTBAR_COPY['term.new']);
   });
 
   it('says why the terminal could not be opened instead of drawing nothing', () => {
@@ -274,36 +287,45 @@ describe('right panel shell', () => {
       term: { status: 'unavailable', error: 'Cannot find module', feed: null, session: '/n/one.jsonl' },
     });
     expect(markup).toContain(RIGHTBAR_COPY['term.unavailable']);
+    expect(markup).toContain(`title="${RIGHTBAR_COPY['term.restart']}"`);
   });
 
-  it('offers the discovered shells in the footer picker once they are known', () => {
-    // The shell choice is the reader's (dsh's own preference shape): the rows
-    // are the host's DISCOVERED list — a shell that is not installed is not a
-    // row — and the picker lives in the footer strip the status shares.
-    const markup = html('terminal', {
-      rootDir: '/w',
+  it('offers the shell menu on the start page, not in the terminal', () => {
+    // The shell menu is the start page's terminal card (the reference's
+    // TerminalGuide): a chevron trigger beside the card, no <select> anywhere —
+    // the rows themselves are the Menu's own contract, drawn only while open.
+    const markup = html('guide', {
       shells: { items: [
         { name: 'cmd', path: 'C:/Windows/system32/cmd.exe', family: 'cmd' },
         { name: 'pwsh', path: 'C:/Program Files/PowerShell/7/pwsh.exe', family: 'pwsh' },
       ], current: 'C:/Windows/system32/cmd.exe' },
+      tabs: [GUIDE_TAB, ...noTabs],
     });
-    expect(markup).toContain(RIGHTBAR_COPY['term.shell']);
-    expect(markup).toContain('pwsh');
-    expect(markup).toContain('C:/Program Files/PowerShell/7/pwsh.exe');
-    // Without the answer there is no picker, and no invented rows.
+    expect(markup).toContain(`aria-label="${RIGHTBAR_COPY['term.shell']}"`);
+    expect(markup).toContain('aria-haspopup="menu"');
+    expect(markup).not.toContain('<select');
+    // The terminal page itself never draws the picker.
     expect(html('terminal', { rootDir: '/w' })).not.toContain(RIGHTBAR_COPY['term.shell']);
   });
 
-  it('lists the background jobs with their status words', () => {
+  it('lists the background jobs as state-dot rows', () => {
+    // A live row shows its dot and progress line (the reference carries no
+    // status word there — the dot and the ticking clock are the state), a
+    // settled row without a detail spells its outcome out, and the stop is a
+    // two-press button that names the job it would kill.
     const jobs: WireJobRow[] = [
       { id: 'bash-1', kind: 'bash', label: 'pnpm test', status: 'running', progress: 'running 12 tests' },
-      { id: 'bash-2', kind: 'bash', label: 'pnpm build', status: 'completed', detail: 'exit code: 0' },
+      { id: 'bash-2', kind: 'bash', label: 'pnpm build', status: 'killed', startedAt: 1_000, finishedAt: 4_000 },
     ];
     const markup = html('tasks', { jobs });
     expect(markup).toContain('pnpm test');
-    expect(markup).toContain(RIGHTBAR_COPY['tasks.running']);
-    expect(markup).toContain(RIGHTBAR_COPY['tasks.completed']);
-    expect(markup).toContain(RIGHTBAR_COPY['tasks.stop']);
+    expect(markup).toContain('running 12 tests');
+    expect(markup).toContain('data-state="ongoing"');
+    expect(markup).toContain(RIGHTBAR_COPY['tasks.killed']);
+    expect(markup).toContain('data-state="warning"');
+    expect(markup).toContain(RIGHTBAR_COPY['tasks.stop.row'].replace('{label}', 'pnpm test'));
+    // The stop belongs to running work alone: the settled row carries none.
+    expect(markup).not.toContain(RIGHTBAR_COPY['tasks.stop.row'].replace('{label}', 'pnpm build'));
   });
 
   it('names the reason the task list is empty instead of drawing nothing', () => {
