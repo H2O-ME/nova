@@ -16,7 +16,13 @@
  * costs a reader only a tab that is not drawn.
  */
 import { contextInsights as contextInsightsKey, type Plugin } from '@nova-agent/core';
-import { contextInsightsOf } from './fold.js';
+import { contextInsightsOf, windowAtSeq } from './fold.js';
+
+// Re-exported so the web surface can fold a session log into one request's
+// window snapshot — the Browser/DNA cards' read. The ONE definition of "what
+// was in the window" lives in `fold.ts`; re-exporting it keeps the trend's view
+// of a past request and the cards' view from disagreeing.
+export { windowAtSeq };
 
 export const contextPlugin: Plugin = {
   name: 'context',

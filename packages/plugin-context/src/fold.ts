@@ -37,6 +37,7 @@ import {
   type ContextPoint,
   type ContextSurface,
   type ContextTimeline,
+  type ContextWindowSnapshot,
   type FileOpRecord,
   type SessionEvent,
   type ToolResultMessage,
@@ -94,6 +95,10 @@ class ContextReading implements ContextFold {
   /** Every message the log has carried, in order — what a compaction resolves `keep` against. */
   private readonly messages: AgentMessage[] = [];
   private readonly points: ContextPoint[] = [];
+  /** Assistant message id → index into `points`, so a `run/stats` event can find its point. */
+  private readonly pointByMessageId = new Map<string, number>();
+  /** Point seq → the assistant message id that produced it (for truncation rebuilds). */
+  private readonly pointMessageIds = new Map<number, string>();
   private readonly events: ContextEventRecord[] = [];
   private readonly files = new Map<string, FileOpRecord>();
   /** Tool calls awaiting their result, so an op is recorded only if it RAN. */
@@ -140,9 +145,20 @@ class ContextReading implements ContextFold {
           ...(event.goal !== null ? { detail: preview(event.goal.objective, LABEL) } : {}),
         });
         break;
+      case 'run/stats':
+        // The run's measurements — log-only bookkeeping, but the per-request
+        // timings are joined onto the matching `ContextPoint` so a Timing card
+        // can draw a per-request TTFT/response-duration series. The event
+        // anchors itself with the LAST assistant message id of the run; its
+        // timing entry is the LAST one in `requestTimings` (the others belong
+        // to earlier iterations whose own `run/stats` would have carried them
+        // — but a single run that spanned multiple iterations reports them all
+        // here, in order, so we distribute them across the run's points).
+        this.applyRunStats(event);
+        break;
       // Every remaining variant is log-only bookkeeping that does not move the
-      // window: an approval audit, a plan snapshot, a PTC dispatch, a run's
-      // measurements, the compaction lock itself.
+      // window: an approval audit, a plan snapshot, a PTC dispatch, the
+      // compaction lock itself.
       default:
         break;
     }
@@ -171,6 +187,39 @@ class ContextReading implements ContextFold {
       events: [...this.events],
       files: [...this.files.values()].sort((a, b) => b.seq - a.seq),
     };
+  }
+
+  /**
+   * Frozen window snapshot at one position — the Browser/DNA cards' read. Same
+   * composition rule as `compositionBefore(seq)`: an element is in the window
+   * iff it entered before `seq` AND had not been removed by a compaction whose
+   * own position is `<= seq`. The point at `seq` (if any) is attached so the
+   * Browser card can head the panel with the request's own usage.
+   *
+   * Returns `undefined` when nothing entered before `seq` — that is a seq past
+   * the run's first element, not a legitimate "empty window" (a request that
+   * saw only its own surface has at least the surface rows).
+   */
+  windowAt(seq: number): ContextWindowSnapshot | undefined {
+    const elements: ContextElement[] = [];
+    const cats = emptyBreakdown();
+    let total = 0;
+    for (const element of this.elements) {
+      if (element.seq >= seq) break;
+      if (element.gone !== undefined && element.gone <= seq) continue;
+      elements.push(element);
+      cats[element.cat] += element.tokens;
+      total += element.tokens;
+    }
+    if (elements.length === 0 && total === 0) {
+      // Distinguish "no element entered before seq" (a missing position) from
+      // "the window had elements but all were zero-token rows" — the latter
+      // keeps its (zero-total) snapshot, the former is undefined.
+      const hadAny = this.elements.some((e) => e.seq < seq);
+      if (!hadAny) return undefined;
+    }
+    const point = this.points.find((p) => p.seq === seq);
+    return { seq, elements, cats, total, ...(point !== undefined ? { point } : {}) };
   }
 
   // ── the surface ───────────────────────────────────────────────────────────
@@ -328,7 +377,7 @@ class ContextReading implements ContextFold {
     let total = 0;
     for (const category of Object.keys(cats) as (keyof ContextBreakdown)[]) total += cats[category];
     const usage = msg.usage;
-    this.points.push({
+    const point: ContextPoint = {
       seq,
       at: msg.ts,
       cats,
@@ -336,11 +385,24 @@ class ContextReading implements ContextFold {
       ...(usage !== undefined
         ? { prompt: usage.promptTokens, cached: usage.cachedTokens, output: usage.completionTokens }
         : {}),
-    });
+    };
+    this.points.push(point);
+    this.pointByMessageId.set(msg.id, this.points.length - 1);
     if (this.points.length > MAX_POINTS) {
       this.truncated = true;
-      this.points.splice(0, this.points.length - MAX_POINTS);
+      const drop = this.points.length - MAX_POINTS;
+      this.points.splice(0, drop);
+      // Indices shift by `drop`; rebuild the message-id → index map. Points
+      // whose message was among the dropped ones simply stop resolving — a
+      // late `run/stats` for an evicted point finds no entry, which is right.
+      this.pointByMessageId.clear();
+      for (let i = 0; i < this.points.length; i += 1) {
+        const id = this.pointMessageIds.get(this.points[i]!.seq);
+        if (id !== undefined) this.pointByMessageId.set(id, i);
+      }
     }
+    // Remember which message produced this seq, for the rebuild above.
+    this.pointMessageIds.set(seq, msg.id);
   }
 
   private compositionBefore(seq: number): ContextBreakdown {
@@ -351,6 +413,46 @@ class ContextReading implements ContextFold {
       cats[element.cat] += element.tokens;
     }
     return cats;
+  }
+
+  /**
+   * Join a `run/stats` event's per-request timings onto the points the run
+   * produced. Each entry in `stats.requestTimings` corresponds to one loop
+   * iteration in the run, in order; each iteration produces exactly one
+   * assistant message and therefore one point. The event's `afterMessageId`
+   * names the run's LAST assistant message — so the timings map to a SUFFIX
+   * of the run's points (same count, same order).
+   *
+   * A run whose `requestTimings` is absent (old logs that predate the field)
+   * contributes nothing — those points keep no `timing` and a Timing card
+   * hides itself.
+   */
+  private applyRunStats(event: Extract<SessionEvent, { type: 'run/stats' }>): void {
+    const timings = event.stats.requestTimings;
+    if (timings === undefined || timings.length === 0) return;
+    const anchorId = event.afterMessageId;
+    if (anchorId === undefined) return;
+    const anchorIdx = this.pointByMessageId.get(anchorId);
+    if (anchorIdx === undefined) return;
+    // The anchor is the LAST point of the run; the run produced
+    // `timings.length` points, so earlier timings map to the (anchor - i - 1)
+    // points before it. Defensive against a timings array that exceeds the
+    // points available (a partial log replay): cap at the points we have.
+    const runPoints = Math.min(timings.length, anchorIdx + 1);
+    for (let i = 0; i < runPoints; i += 1) {
+      const pointIdx = anchorIdx - runPoints + 1 + i;
+      const point = this.points[pointIdx];
+      if (point === undefined) continue;
+      const timing = timings[i]!;
+      // Don't overwrite a timing already joined (a duplicate event from a
+      // re-emit): first writer wins, which keeps the earliest record.
+      if (point.timing !== undefined) continue;
+      point.timing = {
+        startedAt: timing.startedAt,
+        ...(timing.firstTokenAt !== undefined ? { firstTokenAt: timing.firstTokenAt } : {}),
+        ...(timing.finishedAt !== undefined ? { finishedAt: timing.finishedAt } : {}),
+      };
+    }
   }
 
   /**
@@ -474,8 +576,31 @@ class ContextReading implements ContextFold {
 /** The context-insight capability: open a fold over a session log. */
 export function contextInsightsOf(): {
   fold(events: readonly SessionEvent[], surface?: ContextSurface): ContextFold;
+  windowAt(events: readonly SessionEvent[], seq: number, surface?: ContextSurface): ContextWindowSnapshot | undefined;
 } {
   return {
     fold: (events, surface) => new ContextReading(events, surface),
+    windowAt: (events, seq, surface) => windowAtSeq(events, seq, surface),
   };
+}
+
+/**
+ * Read the window snapshot at one request's log position — the Browser/DNA
+ * cards' data source. Walks the events once with the same fold the live path
+ * uses, so the snapshot's composition CANNOT disagree with the trend's view of
+ * what a past request was made of.
+ *
+ * Returns `undefined` when no element entered before `seq` (a seq that points
+ * past the end, or one before the first element): an empty window is a real
+ * answer (the request saw only its own surface, not nothing), but a missing
+ * position is not — the Browser card distinguishes the two by whether the host
+ * answered at all.
+ */
+export function windowAtSeq(
+  events: readonly SessionEvent[],
+  seq: number,
+  surface?: ContextSurface,
+): ContextWindowSnapshot | undefined {
+  const reading = new ContextReading(events, surface);
+  return reading.windowAt(seq);
 }
