@@ -95,6 +95,52 @@ export async function setPluginsEnabled(names: readonly string[], homedir?: stri
   return next;
 }
 
+/**
+ * Add one module spec to `plugins.extra` (the list is created when absent).
+ *
+ * Idempotent and order-preserving: the same module listed twice would be loaded
+ * twice, and the operator's own ordering is the loading order.
+ * @param spec - a module specifier (package name or path), stored verbatim.
+ * @param homedir - Override for tests; defaults to the real home.
+ * @returns the extra list now in force.
+ */
+export async function addExtraPlugin(spec: string, homedir?: string): Promise<readonly string[]> {
+  let result: readonly string[] = [];
+  await patchConfig((doc) => {
+    const owner = plainMember(doc, 'plugins') ?? (() => {
+      const created: Record<string, unknown> = {};
+      doc['plugins'] = created;
+      return created;
+    })();
+    const extra = ensureList(owner, 'extra');
+    result = extra.includes(spec) ? [...extra] : [...extra, spec];
+    owner['extra'] = [...result];
+  }, homedir);
+  return result;
+}
+
+/**
+ * Drop one module spec from `plugins.extra`; an EMPTY list DELETES the key, the
+ * same discipline `setPluginsEnabled` follows ("no extra plugins" is the
+ * absence of the list, not `[]`). A document with no `plugins` object is left
+ * untouched rather than created.
+ * @param spec - the exact row to remove.
+ * @param homedir - Override for tests; defaults to the real home.
+ * @returns the extra list now in force (empty when nothing was left).
+ */
+export async function removeExtraPlugin(spec: string, homedir?: string): Promise<readonly string[]> {
+  let result: readonly string[] = [];
+  await patchConfig((doc) => {
+    const owner = plainMember(doc, 'plugins');
+    if (owner === undefined) return;
+    const next = ensureList(owner, 'extra').filter((entry) => entry !== spec);
+    result = next;
+    if (next.length === 0) delete owner['extra'];
+    else owner['extra'] = next;
+  }, homedir);
+  return result;
+}
+
 /** The shared body of the two switches: one list, one discipline. */
 async function flipSwitch(
   section: 'plugins' | 'skills',

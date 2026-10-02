@@ -17,6 +17,7 @@ import { createSurfaceRegistry } from '@nova-agent/plugins';
 import { loadConfigWithDiagnostics } from './config.js';
 import { builtinSurfaces, loadDynamicSurfaces, parseArgs, reportError } from './surfaces.js';
 import { runSurface, toFlags } from './surface-host.js';
+import { runPluginCommand } from './plugin-command.js';
 import { cliVersion } from './version.js';
 
 const HELP = `nova — 自研本地编码智能体
@@ -28,6 +29,7 @@ usage:
 options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
   qqbot           QQ 机器人模式（需配置 qqbot.appId / qqbot.clientSecret）
+  plugin          add <包名> | remove <包名> | list——第三方插件装到 ~/.nova/plugins 并写入 plugins.extra（不经配置加载，配置坏了也能修）
   --web           浏览器界面（本机 HTTP+WS 单进程，打印带 token 的 URL；NOVA_WEB_PORT 固定端口）——交互运行的默认形态
   --repl          改用 readline 终端形态（非 TTY 自动回落）
   --resume        续接历史会话文件
@@ -56,6 +58,14 @@ async function main(): Promise<void> {
   }
   const parsed = parseArgs(args);
   if (parsed === undefined) return;
+  // `nova plugin …` runs BEFORE the config is loaded (outside the try below, on
+  // purpose): the rows it rewrites are the ones the next boot reads, and a
+  // `plugins.extra` row that cannot load is exactly what fails a boot — a repair
+  // tool that needs a working config cannot repair a broken one.
+  if (parsed.positional[0] === 'plugin') {
+    process.exitCode = await runPluginCommand(parsed.positional.slice(1));
+    return;
+  }
   try {
     const { config, diagnostics } = await loadConfigWithDiagnostics();
     // ONE registry, registered in PRECEDENCE ORDER: the two subcommands, then

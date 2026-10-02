@@ -24,6 +24,23 @@ import { unresolvedRef } from './config-expand.js';
 const ENV_REF_RE = /^\{env:([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
 /**
+ * The `plugins.extra` rows as stored, in file order — what `nova plugin` reads
+ * to answer "is this configured", and what `remove` checks before it touches
+ * anything.
+ *
+ * Read from the RAW document for the same reason as the qqbot readers: the
+ * loaded `Config` is a boot-time snapshot, and this list is exactly what a
+ * running process's edit changes.
+ * @param homedir - Override for tests; defaults to the real home.
+ * @returns the specs; [] when the file, the `plugins` object or the list is absent.
+ */
+export async function readExtraPlugins(homedir?: string): Promise<string[]> {
+  const doc = await readDoc(docFile(homedir)).catch(() => undefined);
+  const extra = plainMember(doc, 'plugins')?.['extra'];
+  return Array.isArray(extra) ? extra.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+/**
  * The environment variable a stored `qqbot.clientSecret` reads from, when it is
  * exactly one `{env:NAME}` reference; undefined when it is a literal — or when
  * there is no config file to read.

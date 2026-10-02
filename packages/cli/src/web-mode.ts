@@ -13,7 +13,8 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { errMessage, unconfiguredProvider } from '@nova-agent/core';
-import { launchWeb } from '@nova-agent/web';
+import { launchWeb, WebRouteRegistry } from '@nova-agent/web';
+import { routeRegistryProvider } from '@nova-agent/plugins';
 import type { Kernel } from '@nova-agent/plugins';
 import { cliVersion } from './version.js';
 import { diagnosticText, type Config, type ConfigDiagnostic } from './config.js';
@@ -52,7 +53,9 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
      * cli 自带的，按真句柄用）。
      */
     live: { kernel?: Kernel };
-  } = { model: '', pluginDiagnostics: {}, live: {} };
+    /** Plugin asset route registry (built here, fed into the kernel + the HTTP server). */
+    routes: WebRouteRegistry;
+  } = { model: '', pluginDiagnostics: {}, live: {}, routes: new WebRouteRegistry() };
 
   return {
     surface: {
@@ -72,6 +75,7 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
         }
         const handle = await launchWeb({
           kernel,
+          routes: shared.routes,
           version: cliVersion(),
           providerModelLabel: shared.model,
           ...(shared.providerModelName !== undefined ? { providerModelName: shared.providerModelName } : {}),
@@ -186,6 +190,11 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
           shared.pluginDiagnostics[diagnostic.section] = diagnosticText(diagnostic);
         }
         if (shared.qqMissing !== undefined) shared.pluginDiagnostics['qqbot'] = shared.qqMissing;
+        // 壳自带的插件（QQ 通道 + 资产路由注册表）：这里交出去，`web` 包本身
+        // 不认识任何渠道。资产路由注册表是 web surface 才需要的容器缝——
+        // 插件经 `ctx.must(routes)` 写入，HTTP 处理器经同一个实例分派。
+        const extraPlugins = [routeRegistryProvider(shared.routes)];
+        if (shared.qq !== undefined) extraPlugins.push(shared.qq.plugin);
         return {
           provider: client ?? unconfiguredProvider(),
           // The list reader is LIVE (re-reads the raw file per menu open): the settings
@@ -204,8 +213,7 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
             setSkillEnabled,
             setPluginEnabledList: setPluginsEnabled,
           },
-          // 壳自带的插件（QQ 通道）：这里交出去，`web` 包本身不认识任何渠道。
-          ...(shared.qq !== undefined ? { extraPlugins: [shared.qq.plugin] } : {}),
+          extraPlugins,
         };
       },
       afterBoot: (kernel) => {
