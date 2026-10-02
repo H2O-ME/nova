@@ -17,8 +17,9 @@ import type {
   ConfiguredModel,
   ContextTimeline,
   DirectoryLevel,
+  GitLogEntry,
+  GitStatusEntry,
   JobSnapshot,
-  JobStatus,
   KernelEvent,
   ModelCapabilities,
   ModelGroup,
@@ -30,9 +31,10 @@ import type {
   ToolCallView,
   ToolResultView,
 } from '@nova-agent/core';
-import type { CommandSummary } from '@nova-agent/plugins';
+import type { CommandSummary, ShellFamily } from '@nova-agent/plugins';
 import type { WireRosterEntry } from './roster-entry.js';
 import type { WireProviderRow } from './provider-wire.js';
+import type { TermStatus } from './term-session.js';
 import type { SessionTotals } from './totals.js';
 
 export type ServerFrame =
@@ -184,25 +186,39 @@ export type ServerFrame =
    */
   | { type: 'trace'; rows: readonly WireTraceRow[]; total: number }
   /**
-   * One terminal job's state, plus the output produced since this client's last
-   * read of it (answers to `run_terminal` / `read_terminal` / `list_terminal`).
+   * The 终端 tab's terminal: raw PTY bytes plus the pty's own state.
    *
-   * The frame is an upsert keyed by `id`: `run_terminal` answers with the empty
-   * text and the starting status, each poll appends, and a re-listing answers
-   * once per live job with no text at all. An EMPTY `id` with `error` set is the
-   * panel's own refusal line (a spawn the host would not start) — it belongs to
-   * the panel, not to the transcript, which is why it is not an `error` frame.
+   * Output is the shell's byte stream VERBATIM (ANSI included) — the browser
+   * emulator interprets it, this surface never parses it. `reset: true` marks a
+   * replay answer (a mount/reload rebuilds the emulator from the retained
+   * scrollback: feed it, do not append). `status` / `exitCode` ride every frame
+   * so a status change with no output still reaches an idle panel; `error` is
+   * the spawn refusal itself (`unavailable`) — the terminal's own state, next
+   * to the panel that asked for it.
    */
   | {
-      type: 'terminal';
-      id: string;
-      command: string;
-      status: JobStatus;
-      /** Output since the previous read; '' when nothing new arrived. */
-      text: string;
-      /** Producer detail (`exit code: 0`), once the command settled. */
-      detail?: string;
+      type: 'term';
+      /** PTY output bytes (or the replay); '' when nothing new arrived. */
+      data: string;
+      /** The emulator must clear before writing this data (a replay). */
+      reset?: boolean;
+      status: TermStatus;
+      /** The pty's exit code, once it has one. */
+      exitCode?: number;
+      /** Why the terminal cannot be had right now (spawn refusal). */
       error?: string;
+    }
+  /**
+   * The shells this host can start (the answer to `discover_shells`).
+   *
+   * Installed candidates only — a menu row that would fail to spawn is worse
+   * than a shorter menu. `current` is the path a `term_open` with no choice
+   * would start, so the panel's checkmark and its next terminal cannot disagree.
+   */
+  | {
+      type: 'shells';
+      items: readonly WireShell[];
+      current: string;
     }
   /**
    * The Context panel's reading (answer to `context`, and the push that follows
@@ -211,6 +227,57 @@ export type ServerFrame =
    * its tab, not keep drawing a snapshot that stopped moving.
    */
   | { type: 'context'; timeline: ContextTimeline | null }
+  /**
+   * One file's content for the editor panel (answer to `read_entry`).
+   *
+   * `truncated` and `binary` are READINGS, not errors: an oversized or binary
+   * file cannot be shown as text, and saying so is the honest answer — the
+   * panel prints the reason instead of an empty editor claiming the file is
+   * empty. `bytes` is the on-disk size either way.
+   */
+  | { type: 'entry'; path: string; text: string; bytes: number; truncated: boolean; binary: boolean }
+  /** A `read_entry` the host could not perform (missing, outside the root). */
+  | { type: 'entry_error'; path: string; message: string }
+  /** A `write_entry` that landed; `bytes` is what the file now holds. */
+  | { type: 'entry_saved'; path: string; bytes: number }
+  /**
+   * A structural change the panel must re-read: `dir` is the directory whose
+   * listing changed (the reply every rename/remove/create answers with, so the
+   * tree refreshes from state rather than from the click).
+   */
+  | { type: 'entry_changed'; change: 'renamed' | 'removed' | 'created'; path: string; dir: string }
+  /**
+   * The workspace's git status (answer to `git_status`, and the shape a
+   * stage/unstage/commit re-answers with). `repo: false` means this workspace
+   * is not a repository — the panel says so instead of drawing an empty list.
+   */
+  | {
+      type: 'git_status';
+      repo: boolean;
+      branch: string;
+      entries: readonly GitStatusEntry[];
+      /**
+       * The last operation's own line (`已提交 a1b2c3：…`, or why it failed).
+       * Rides the state frame rather than a separate notice because the panel
+       * must render it NEXT TO the refreshed list — a commit's evidence is the
+       * index it emptied, and two frames could arrive out of order.
+       */
+      message?: string;
+    }
+  /**
+   * One file's diff (answer to `git_diff`). `untracked: true` marks a file git
+   * has no diff for at all — the panel renders the file's own text as an
+   * all-new diff, which is what "this file is entirely new" looks like.
+   */
+  | { type: 'git_diff'; path: string; staged: boolean; text: string; truncated: boolean; untracked: boolean }
+  /** Recent commits (answer to `git_log`). */
+  | { type: 'git_log'; entries: readonly GitLogEntry[] }
+  /**
+   * The live session's background jobs (answer to `list_jobs`), in start
+   * order. Read-only: output is the model's cursor and a panel must not drain
+   * it, so a row carries the sampled `progress` line and nothing consumable.
+   */
+  | { type: 'jobs'; items: readonly WireJobRow[] }
   | { type: 'error'; message: string };
 
 /**
@@ -221,6 +288,18 @@ export type ServerFrame =
  * first, then the legacy `~/.nova/skills/`) — the cross-tool `.agents` standard
  * leads at each level, and `.nova` is kept as the compatible second root.
  */
+/**
+ * One shell the host can start — a row of the `shells` answer.
+ *
+ * `path` is what a `term_open` sends back to choose this row; `family` is a
+ * label only, because the host owns the argument table.
+ */
+export interface WireShell {
+  name: string;
+  path: string;
+  family: ShellFamily;
+}
+
 export interface WireSkillEntry {
   name: string;
   description: string;
@@ -467,6 +546,24 @@ export interface SessionListItem {  /** Absolute path of the JSONL log (the `res
    * neither a workspace marker nor a `cwd=` line.
    */
   workspace?: string;
+}
+
+/**
+ * One background job as the tasks panel lists it.
+ *
+ * Deliberately WITHOUT output: `JobRegistry.readOutput` is a consuming cursor
+ * move (the model's `jobs` tool reads through it), so a panel that drained it
+ * would eat the model's output. The one-line `progress` sample is the peek
+ * designed for live rows, and it is what this row carries.
+ */
+export interface WireJobRow {
+  id: string;
+  kind: string;
+  label: string;
+  status: string;
+  detail?: string;
+  startedAt?: number;
+  progress?: string;
 }
 
 /** One host frame per WS text message. */

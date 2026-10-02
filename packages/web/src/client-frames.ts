@@ -253,26 +253,83 @@ export type ClientFrame =
    */
   | { type: 'context' }
   /**
-   * Run one shell command from the right panel's terminal.
+   * Open this session's terminal: the host spawns ONE real PTY per session on
+   * first use (a genuine pseudo-terminal — interactive programs, full-screen
+   * apps and Ctrl-C all work) and answers with a `term` frame replaying the
+   * retained scrollback (`reset: true`, because a browser reload or a tab
+   * re-mount starts from an empty emulator). `cols` / `rows` are the size the
+   * browser's emulator measured, so the PTY is born at the right geometry and
+   * programs wrap correctly from their first line.
    *
-   * This is explicitly NOT a PTY session: the command is submitted once, runs to
-   * completion in the session's workspace, and its output is drained by
-   * `read_terminal`. There is no stdin, no window size and no signal channel
-   * beyond the existing `stop_job`. The job it starts is an ordinary background
-   * job owned by the live session, so it is listed, stopped and disposed by the
-   * same registry a model-started command uses.
+   * `shell` is the PATH of one entry from the `shells` answer — the operator's
+   * choice. Absent means the host's own default (the environment's shell, NOT
+   * the one the model's commands run through). An unknown path is refused, not
+   * spawned.
    */
-  | { type: 'run_terminal'; command: string }
+  | { type: 'term_open'; cols: number; rows: number; shell?: string }
   /**
-   * Drain one terminal job's output produced since the previous read.
-   *
-   * A read is a CURSOR MOVE, not a peek (the job registry's `readOutput`
-   * contract): each answer carries only what arrived since the last one, which
-   * is what keeps a chatty build from re-sending its whole log every poll.
+   * Ask which shells this host can actually start. The answer is `shells`:
+   * installed candidates only (a row that would fail to spawn is not listed),
+   * with the default first — so the menu and the first terminal never disagree.
    */
-  | { type: 'read_terminal'; id: string }
+  | { type: 'discover_shells' }
   /**
-   * Re-list this session's terminal jobs — the panel's rebuild path after a
-   * reload, so a page refresh does not orphan a running command.
+   * Raw keystrokes and paste for the terminal's stdin — the browser emulator's
+   * `onData` verbatim. Control characters are the CONTENT here (Enter is `CR`,
+   * arrows are escape sequences), so the only bound is size.
    */
-  | { type: 'list_terminal' };
+  | { type: 'term_input'; data: string }
+  /** Resize the PTY to the emulator's new grid (a SIGWINCH to the shell). */
+  | { type: 'term_resize'; cols: number; rows: number }
+  /**
+   * Terminate this session's PTY and its whole process tree. The next
+   * `term_open` spawns a fresh one, so this is "end this terminal", not
+   * "disable the panel".
+   */
+  | { type: 'term_kill' }
+  /**
+   * Read one workspace file into the editor panel. The answer is `entry` (with
+   * `truncated` / `binary` readings) or `entry_error` when the path itself could
+   * not be used.
+   */
+  | { type: 'read_entry'; path: string }
+  /** Save one workspace file from the editor (whole-file write, atomic on disk). */
+  | { type: 'write_entry'; path: string; content: string }
+  /** Move one entry; `to` is the full target path. */
+  | { type: 'rename_entry'; path: string; to: string }
+  /** Delete one entry (a directory goes with its tree; the root is refused). */
+  | { type: 'remove_entry'; path: string }
+  /** Create one empty file or folder under `dir`. */
+  | { type: 'new_entry'; dir: string; name: string; kind: 'file' | 'dir' }
+  /**
+   * Reveal one entry in the OS file manager (the panel's "open externally").
+   * The host runs on the operator's machine behind the same authentication as
+   * every other frame, so it is the side that can actually do this.
+   */
+  | { type: 'open_entry'; path: string }
+  /** Read the workspace's git status (the 变更 tab's git lens). */
+  | { type: 'git_status' }
+  /** One file's diff; `staged` picks the index side. */
+  | { type: 'git_diff'; path: string; staged: boolean }
+  /** Add paths to the git index. */
+  | { type: 'git_stage'; paths: readonly string[] }
+  /** Remove paths from the git index. */
+  | { type: 'git_unstage'; paths: readonly string[] }
+  /** Commit the index with one message. */
+  | { type: 'git_commit'; message: string }
+  /** Recent commits, newest first. */
+  | { type: 'git_log'; limit?: number }
+  /**
+   * Clone a repository and OPEN it: the target is the current workspace's
+   * parent (the new repo becomes a sibling, not a child), and the answer is the
+   * same re-stated surface a `set_workspace` gives, because the workspace did
+   * change. Only here does a git frame move what is open — which is why it
+   * routes with the session-target frames, not the git ones.
+   */
+  | { type: 'git_clone'; url: string }
+  /**
+   * List the live session's background jobs (the 任务 tab). Read-only: the
+   * answer carries status and the sampled progress line, never output — output
+   * reads consume the model's own cursor.
+   */
+  | { type: 'list_jobs' };

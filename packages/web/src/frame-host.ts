@@ -8,11 +8,13 @@
  */
 import type { AgentSession, ApprovalMode, ConfiguredModel, SessionListing } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
+import type { GitStatusCache } from './git-frames.js';
 import type { ManageHost, QqBotSnapshot } from './manage-frames.js';
 import type { ProviderHost } from './provider-frames.js';
 import type { PickFn } from './picker-frames.js';
 import type { ModelSeat } from './model-seat.js';
 import type { SessionPages } from './session-pages.js';
+import type { TermRegistry } from './term-session.js';
 import type { ContextFollow } from './context-follow.js';
 
 export interface FrameHost {
@@ -21,6 +23,20 @@ export interface FrameHost {
   seat: ModelSeat;
   sessions: SessionListing;
   pages: SessionPages;
+  /**
+   * The 终端 tab's live PTYs, one per session.
+   *
+   * Process-scoped like the pages: a terminal outlives any one socket (two
+   * attached tabs share it) and dies with the session it belongs to, so the
+   * controller owns the registry and hands the same instance to every routing
+   * call.
+   */
+  terms: TermRegistry;
+  /**
+   * The 变更 tab's status reading. One cache per process, so the tab, the file
+   * tree's decorations and a diff's untracked check all read the same answer.
+   */
+  gitCache: GitStatusCache;
   /** The Context panel's fold, kept in step with the log. */
   context: ContextFollow;
   /** Remember a switch past this process; absent with no durable home for it. */

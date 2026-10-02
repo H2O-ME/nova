@@ -9,11 +9,12 @@ import { startWebServer, type WebServerHandle } from './server.js';
 import type { LaunchWebOptions } from './options.js';
 
 export { WebController } from './controller.js';
+export { WebRouteRegistry } from './route-registry.js';
 export { startWebServer, type WebServerHandle, type StartWebServerOptions } from './server.js';
 export { createLaunchAuth, cookieHeader, cookieValue, verifyCookie, AUTH_COOKIE, type LaunchAuth } from './auth.js';
 export { loadLaunchAuth } from './auth-store.js';
 export { readPreferredPort, writePreferredPort } from './port.js';
-export { serializeServerFrame, MAX_CLIENT_FRAME_BYTES, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_TERMINAL_COMMAND_CHARS, MAX_TEXT_FIELD_CHARS, type ApprovalMode, type ClientFrame, type PtcMode, type ServerFrame, type ReadyInfo, type SessionListItem, type WireBlock, type WireTraceRow, type WireSkillEntry } from './protocol.js';
+export { serializeServerFrame, MAX_CLIENT_FRAME_BYTES, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_TERM_INPUT_CHARS, MAX_TEXT_FIELD_CHARS, type ApprovalMode, type ClientFrame, type PtcMode, type ServerFrame, type ReadyInfo, type SessionListItem, type WireBlock, type WireTraceRow, type WireSkillEntry } from './protocol.js';
 export { parseClientFrame } from './client-frame.js';
 export { reject, type FrameRejection } from './reject.js';
 export { projectTranscript } from './transcript.js';
@@ -29,7 +30,7 @@ export async function launchWeb(opts: LaunchWebOptions): Promise<WebServerHandle
   // Everything that is not a hosting concern belongs to the controller, so it
   // is forwarded wholesale instead of field by field: hand-copying silently
   // dropped newly added options (a missed optional field still typechecks).
-  const { staticDir, port, host: _host, onReady, ...controllerOptions } = opts;
+  const { staticDir, port, host: _host, onReady, routes, ...controllerOptions } = opts;
   const controller = await WebController.create(controllerOptions);
   // The pairing (cookieToken + secret) persists under ~/.nova/cache so the
   // cookie — not the URL token, which stays per-boot — outlives the process.
@@ -40,6 +41,7 @@ export async function launchWeb(opts: LaunchWebOptions): Promise<WebServerHandle
     staticDir,
     host,
     ...(port !== undefined ? { port } : {}),
+    ...(routes !== undefined ? { routes } : {}),
   });
   onReady?.(handle.url);
   return handle;

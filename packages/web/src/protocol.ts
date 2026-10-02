@@ -16,6 +16,10 @@ export type { CommandSummary } from '@nova-agent/plugins';
 export type { ModelGroup, ModelOption } from '@nova-agent/core';
 /** The editable model list's row shape is core's too (config `models[]`). */
 export type { ConfiguredModel, ModelCapabilities } from '@nova-agent/core';
+/** The git lens's row shapes are core's too (the runner's own contract). */
+export type { GitLogEntry, GitStatusEntry } from '@nova-agent/core';
+/** The 任务 tab's row shape (output-free, by design — see server-frames.ts). */
+export type { WireJobRow } from './server-frames.js';
 /** Durable image references cross the wire as ids + metadata, never as bytes. */
 export type { ImageAttachmentRef } from '@nova-agent/core';/** One roster row (the `/plugins` panel's contract). */
 export type { WireRosterEntry } from './roster-entry.js';
@@ -47,10 +51,18 @@ export {
   MAX_MODEL_MODALITIES,
   MAX_PROMPT_CHARS,
   MAX_PROMPT_IMAGES,
-  MAX_TERMINAL_COMMAND_CHARS,
+  MAX_TERM_COLS,
+  MAX_TERM_INPUT_CHARS,
+  MAX_TERM_ROWS,
   MAX_TEXT_FIELD_CHARS,
   MAX_WORKSPACE_CHARS,
   TRACE_TAIL,
+  MAX_EDITOR_BYTES,
+  MAX_COMMIT_MESSAGE_CHARS,
+  MAX_GIT_PATHS,
+  MAX_GIT_LOG,
+  MAX_GIT_CLONE_URL_CHARS,
+  MAX_SHELL_PATH_CHARS,
 } from './wire-limits.js';
 /**
  * The BYOK bounds live with their own family (`provider-limits.ts`): a limit on

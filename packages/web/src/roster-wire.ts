@@ -25,6 +25,8 @@ export interface RosterSourceEntry {
   title?: string;
   /** Why an enabled-but-unloadable extension has no fiber (see the row's field). */
   error?: string;
+  /** The plugin's client bundle (boot-graph entry); absent when server-only. */
+  clientBundle?: { path?: string; rev?: string };
 }
 
 /**
@@ -43,5 +45,6 @@ export function toWireRosterEntry(entry: RosterSourceEntry): WireRosterEntry {
     ...(entry.tier !== undefined ? { tier: entry.tier } : {}),
     ...(entry.title !== undefined ? { title: entry.title } : {}),
     ...(entry.error !== undefined ? { error: entry.error } : {}),
+    ...(entry.clientBundle !== undefined ? { clientBundle: entry.clientBundle } : {}),
   };
 }

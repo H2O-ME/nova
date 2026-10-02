@@ -42,4 +42,11 @@ export interface WireRosterEntry {
    * nothing to show, nothing to say.
    */
   error?: string;
+  /**
+   * The plugin's BROWSER-side bundle, when it ships one. The boot-graph loader
+   * fetches `/plugins/<name>/<path>` and registers what it exports; `rev`
+   * busts the loader's per-entry memo on a rebuild. Absent on hosts/plugins
+   * without a client bundle — the loader skips the row.
+   */
+  clientBundle?: { path?: string; rev?: string };
 }

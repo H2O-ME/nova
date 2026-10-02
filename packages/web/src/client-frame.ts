@@ -14,7 +14,10 @@ import {
   MAX_HISTORY_BLOCKS,
   MAX_MODEL_CHARS,
   MAX_PROMPT_CHARS,
-  MAX_TERMINAL_COMMAND_CHARS,
+  MAX_SHELL_PATH_CHARS,
+  MAX_TERM_COLS,
+  MAX_TERM_INPUT_CHARS,
+  MAX_TERM_ROWS,
   MAX_TEXT_FIELD_CHARS,
   type ClientFrame,
 } from './protocol.js';
@@ -43,6 +46,23 @@ const FILE_RE = /^[^"]{1,512}\.jsonl$/;
  * name it would never contain.
  */
 const COMMAND_RE = new RegExp(`^[a-z][a-z0-9_-]{0,${MAX_COMMAND_NAME_CHARS - 1}}$`);
+
+/**
+ * The terminal's grid off the wire: two bounded integers, or the reason not.
+ * @param frame - the frame name, for the rejection's prefix.
+ * @param cols - the raw value.
+ * @param rows - the raw value.
+ * @returns the validated grid, or the rejection message.
+ */
+function parseGrid(frame: string, cols: unknown, rows: unknown): { cols: number; rows: number } | string {
+  if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 2 || cols > MAX_TERM_COLS) {
+    return `${frame}.cols must be an integer in 2..${MAX_TERM_COLS}`;
+  }
+  if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1 || rows > MAX_TERM_ROWS) {
+    return `${frame}.rows must be an integer in 1..${MAX_TERM_ROWS}`;
+  }
+  return { cols, rows };
+}
 
 /** Parse + validate one inbound frame. Never throws on untrusted input. */
 export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
@@ -88,6 +108,7 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'qqbot':
     case 'pick_file':
     case 'pick_directory':
+    case 'list_jobs':
       return { type: obj['type'] } as ClientFrame;
     case 'set_plugin_enabled':
     case 'set_skill_enabled': {
@@ -151,6 +172,9 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
       // No payload: the reading is whatever the session currently holds, so
       // there is nothing for a client to state (or to forge).
       return { type: 'context' };
+    case 'discover_shells':
+      // Same shape as `context`: the answer is what the HOST has installed.
+      return { type: 'discover_shells' };
     case 'resolve_approval': {
       if (typeof obj['id'] !== 'string' || !ID_RE.test(obj['id'])) return reject('resolve_approval.id must be an ASCII token');
       // The answer's shape is core's business, not the wire's: `parseAskResult`
@@ -192,34 +216,57 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'list_files':
     case 'list_directory':
     case 'create_directory':
+    case 'read_entry':
+    case 'write_entry':
+    case 'rename_entry':
+    case 'remove_entry':
+    case 'new_entry':
+    case 'open_entry':
+    case 'git_status':
+    case 'git_diff':
+    case 'git_stage':
+    case 'git_unstage':
+    case 'git_commit':
+    case 'git_log':
+    case 'git_clone':
       // The path-shaped frames share their own rules (see `fs-frame-parse.ts`).
       return parseFsFrame(obj['type'] as FsFrameType, obj);
     case 'stop_job': {
       if (typeof obj['id'] !== 'string' || !ID_RE.test(obj['id'])) return reject('stop_job.id must be an ASCII token');
       return { type: 'stop_job', id: obj['id'] };
     }
-    case 'run_terminal': {
-      // A command line is a document-shaped field: newlines are its content (a
-      // heredoc is one command), other C0 junk is not.
-      const command = obj['command'];
-      if (typeof command !== 'string' || command.trim().length === 0) {
-        return reject('run_terminal.command must be a non-empty string');
-      }
-      if (command.length > MAX_TERMINAL_COMMAND_CHARS) {
-        return reject(`run_terminal.command exceeds ${MAX_TERMINAL_COMMAND_CHARS} chars`);
-      }
-      if (hasControlChars(command, { multiline: true })) {
-        return reject('run_terminal.command contains control characters');
-      }
-      return { type: 'run_terminal', command };
+    case 'term_resize': {
+      const grid = parseGrid('term_resize', obj['cols'], obj['rows']);
+      if (typeof grid === 'string') return reject(grid);
+      return { type: 'term_resize', cols: grid.cols, rows: grid.rows };
     }
-    case 'read_terminal': {
-      // Job ids are the registry's own (`bash-1`), validated like every other id.
-      if (typeof obj['id'] !== 'string' || !ID_RE.test(obj['id'])) return reject('read_terminal.id must be an ASCII token');
-      return { type: 'read_terminal', id: obj['id'] };
+    case 'term_open': {
+      // The grid is a size; `shell` is a PATH the host matches against the
+      // shells it actually discovered — an unknown one is refused there rather
+      // than spawned, so the wire only checks it is a plausible string.
+      const grid = parseGrid('term_open', obj['cols'], obj['rows']);
+      if (typeof grid === 'string') return reject(grid);
+      const shell = obj['shell'];
+      if (shell === undefined) return { type: 'term_open', cols: grid.cols, rows: grid.rows };
+      if (typeof shell !== 'string' || shell.length === 0 || shell.length > MAX_SHELL_PATH_CHARS) {
+        return reject(`term_open.shell must be a non-empty path of at most ${MAX_SHELL_PATH_CHARS} chars`);
+      }
+      if (hasControlChars(shell)) return reject('term_open.shell must not contain control chars');
+      return { type: 'term_open', cols: grid.cols, rows: grid.rows, shell };
     }
-    case 'list_terminal':
-      return { type: 'list_terminal' };
+    case 'term_input': {
+      // Raw keystrokes/paste for the pty. Control characters are the CONTENT
+      // (Enter is CR, arrows are escape sequences), so the only bound is size —
+      // there is nothing here that could be "junk".
+      const data = obj['data'];
+      if (typeof data !== 'string' || data.length === 0) return reject('term_input.data must be a non-empty string');
+      if (data.length > MAX_TERM_INPUT_CHARS) {
+        return reject(`term_input.data exceeds ${MAX_TERM_INPUT_CHARS} chars`);
+      }
+      return { type: 'term_input', data };
+    }
+    case 'term_kill':
+      return { type: 'term_kill' };
     case 'set_approval_mode': {
       const mode = obj['mode'];
       if (mode !== 'read-only' && mode !== 'auto-edit' && mode !== 'full') return reject('set_approval_mode.mode invalid');

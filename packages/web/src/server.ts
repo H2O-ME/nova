@@ -10,6 +10,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { Duplex } from 'node:stream';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { RouteRegistry } from '@nova-agent/core';
+import { sessionsRoot } from '@nova-agent/core';
 import { parseClientFrame } from './client-frame.js';
 import type { FrameRejection } from './reject.js';
 import { cookieHeader, cookieValue, verifyCookie, type LaunchAuth } from './auth.js';
@@ -17,6 +19,8 @@ import { listenWithPreferredPort } from './listen.js';
 import type { WebController } from './controller.js';
 import { handleImageUpload } from './image-upload.js';
 import { handleImageBytes } from './image-bytes.js';
+import { handleDashboard } from './dashboard.js';
+import { handleContextWindow } from './context-window.js';
 import { upgrade, type WsConnection } from './ws.js';
 
 const MIME: Record<string, string> = {
@@ -51,10 +55,25 @@ export interface StartWebServerOptions {
    * survives restarts; tests point it at a temp file.
    */
   portStore?: string;
+  /**
+   * The plugin asset route registry. When a request's path matches a prefix a
+   * plugin registered, the registry's handler runs INSTEAD of static serving
+   * (and before it). The auth gate still applies first: a plugin route is a
+   * private read, not an unauthenticated public asset. Absent in tests and in
+   * any shell that did not wire the seam — the server then serves as usual.
+   */
+  routes?: RouteRegistry;
+  /**
+   * The sessions root the dashboard route folds over. Defaults to the host's
+   * own `sessionsRoot()` (the ~/.nova/sessions tree). Tests point it at a temp
+   * directory so a corpus read never touches real logs.
+   */
+  sessionsRootDir?: string;
 }
 
 export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHandle> {
-  const { controller, auth, staticDir } = opts;
+  const { controller, auth, staticDir, routes } = opts;
+  const sessionsRootDir = opts.sessionsRootDir ?? sessionsRoot();
   const server = createServer((req, res) => {
     // `handleHttp` is async, so a throw inside it would surface as an unhandled
     // rejection — and Node's default mode for those is to end the process. One
@@ -62,7 +81,13 @@ export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHa
     // URIError) would therefore kill the whole server, run and socket alike.
     // The handler answers its own failures; this is the backstop for anything
     // that escapes it, so a bad request can only ever fail that request.
-    handleHttp(req, res, { controller, auth, staticDir }).catch(() => {
+    handleHttp(req, res, {
+      controller,
+      auth,
+      staticDir,
+      sessionsRootDir,
+      ...(routes !== undefined ? { routes } : {}),
+    }).catch(() => {
       if (!res.headersSent) deny(res, 500, 'internal error');
       else res.end();
     });
@@ -77,6 +102,8 @@ interface HttpCtx {
   controller: WebController;
   auth: LaunchAuth;
   staticDir: string;
+  sessionsRootDir: string;
+  routes?: RouteRegistry;
 }
 
 async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCtx): Promise<void> {
@@ -114,11 +141,33 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
     deny(res, 401, 'unauthorized');
     return;
   }
+  // Plugin asset routes: a plugin that ships UI capabilities registers its
+  // prefixes via `ctx.must(routes)`; the registry answers here, INSIDE the
+  // auth gate (a plugin asset is a private read like everything else that is
+  // not a brand asset) and BEFORE image handling and static serving. The
+  // registry dispatches in reverse-registration order, so a later plugin can
+  // override an earlier prefix — the same replace-by-key semantics the
+  // container uses for service providers. A handler that does not match (no
+  // registry, or no prefix hit) falls through to the host's own handlers.
+  if (ctx.routes !== undefined) {
+    const handler = ctx.routes.handlerFor?.(relPath);
+    if (handler !== undefined) {
+      try {
+        await handler(req, res, url);
+      } catch {
+        if (!res.headersSent) deny(res, 500, 'plugin route error');
+        else res.end();
+      }
+      return;
+    }
+  }
   // Image upload: the only route that carries image BYTES. It must be handled
   // before static serving, which would otherwise 404 the path. See
   // `image-upload.ts` for why images need a route while files do not: a file
   // has a path and crosses as `@path` text, but a pasted image exists only as
   // clipboard bytes, and 8 MiB does not fit the 512 KiB client-frame channel.
+  if (await handleDashboard(req, res, url, ctx.sessionsRootDir)) return;
+  if (await handleContextWindow(req, res, url, ctx.sessionsRootDir)) return;
   if (await handleImageUpload(req, res, url)) return;
   // Image bytes BACK to the browser: the transcript carries only the reference,
   // so without this a reload would silently drop every pasted image.

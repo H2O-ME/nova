@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@nova-agent/core": "workspace:*",
-    "@nova-agent/plugins": "workspace:*"
+    "@nova-agent/plugin-context": "workspace:*",
+    "@nova-agent/plugins": "workspace:*",
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.4.0"

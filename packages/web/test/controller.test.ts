@@ -592,7 +592,13 @@ describe('WebController', () => {
       const conn = new FakeConn();
       controller.attach(conn);
       await handle(controller, conn, { type: 'prompt', text: 'run echo' });
-      await conn.waitFor((frames) => frames.some((f) => f.type === 'event' && f.event.type === 'tool_call_result'));
+      // This wait spawns a REAL shell (the assertion is a real exit code), so
+      // its budget has to cover the slowest one we support: PowerShell's cold
+      // start runs well past the 3s default when the lane is busy.
+      await conn.waitFor(
+        (frames) => frames.some((f) => f.type === 'event' && f.event.type === 'tool_call_result'),
+        15_000,
+      );
       const start = conn.frames.find((f) => f.type === 'event' && f.event.type === 'tool_call_start');
       expect(start).toMatchObject({ view: { card: 'terminal', command: 'echo hi' } });
       const result = conn.frames.find((f) => f.type === 'event' && f.event.type === 'tool_call_result');

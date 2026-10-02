@@ -82,11 +82,51 @@ export const MAX_IMAGE_NAME_CHARS = 200;
 export const MAX_PROMPT_IMAGES = 8;
 
 /**
- * Max chars of one command submitted from the right panel's terminal.
+ * Chars of one keystroke burst from the right panel's terminal.
  *
- * The terminal is a shell, not a document channel, but a real command line can
- * be long: a heredoc, a chained `&&` build, a `git log --format` with a big
- * template. This is the same order as a workspace path (4 KiB) and far below the
- * frame budget, so a pasted file cannot be smuggled in as a "command".
+ * The terminal is a real PTY, so this frame carries typed characters and paste
+ * bursts, not whole documents: xterm delivers a paste of ordinary text in one
+ * `onData` callback, and 16 KiB is far above any paste a keyboard can produce
+ * while staying far below the frame budget. Control characters are LEGAL here
+ * (Enter is `\r`, arrows are `ESC [` sequences) — the bound is size only.
  */
-export const MAX_TERMINAL_COMMAND_CHARS = 4096;
+export const MAX_TERM_INPUT_CHARS = 16_384;
+
+/** Widest terminal grid the host will size a PTY to (a guard, not a real limit). */
+export const MAX_TERM_COLS = 500;
+
+/** Tallest terminal grid the host will size a PTY to. */
+export const MAX_TERM_ROWS = 500;
+
+/**
+ * Longest shell path a `term_open` may ask for. The host matches it against the
+ * shells it actually discovered — the bound is a frame-size guard, not trust.
+ */
+export const MAX_SHELL_PATH_CHARS = 4_096;
+
+/**
+ * Bytes one editor read may put on the wire — and therefore the largest file
+ * the editor can save back.
+ *
+ * A WIRE budget, not a disk one: the read answer is one WS message (capped at
+ * 1 MiB) and a save is one client frame (capped at 512 KiB), so a file the
+ * socket cannot carry must be refused with a reason rather than half-delivered.
+ * 192 KiB leaves room for JSON escaping and the frame's other fields.
+ */
+export const MAX_EDITOR_BYTES = 192 * 1024;
+
+/** Chars of one commit message. */
+export const MAX_COMMIT_MESSAGE_CHARS = 2000;
+
+/** Paths one stage/unstage frame may name (a bulk stage is still bounded). */
+export const MAX_GIT_PATHS = 200;
+
+/** Commits one `git_log` read may return. */
+export const MAX_GIT_LOG = 100;
+
+/**
+ * Chars of one clone URL. A remote URL is short (an HTTPS endpoint or an SCP
+ * shape); 2048 is the browser URL convention and far above anything real, so a
+ * pasted document cannot ride in as a "URL".
+ */
+export const MAX_GIT_CLONE_URL_CHARS = 2048;

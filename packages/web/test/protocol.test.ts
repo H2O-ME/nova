@@ -7,6 +7,7 @@ import {
   MAX_HISTORY_BLOCKS,
   MAX_MODEL_CHARS,
   MAX_PROMPT_CHARS,
+  MAX_SHELL_PATH_CHARS,
   serializeServerFrame,
   type ClientFrame,
 } from '../src/protocol.js';
@@ -32,6 +33,22 @@ describe('parseClientFrame', () => {
   it('stop_job takes a job id and nothing else', () => {
     expect(frame({ type: 'stop_job', id: 'bash-1; rm -rf /' })).toMatchObject({ ok: false });
     expect(frame({ type: 'stop_job' })).toMatchObject({ ok: false });
+  });
+
+  it('carries a shell choice on term_open and refuses a junk one', () => {
+    const cmd = 'C:\\Windows\\System32\\cmd.exe';
+    expect(frame({ type: 'term_open', cols: 80, rows: 24, shell: cmd }))
+      .toEqual({ type: 'term_open', cols: 80, rows: 24, shell: cmd });
+    // No choice is a real answer: the host starts its own default.
+    expect(frame({ type: 'term_open', cols: 80, rows: 24 })).toEqual({ type: 'term_open', cols: 80, rows: 24 });
+    for (const bad of ['', 42, 'a\u0000b', 'x'.repeat(MAX_SHELL_PATH_CHARS + 1)]) {
+      expect(frame({ type: 'term_open', cols: 80, rows: 24, shell: bad }), JSON.stringify(bad))
+        .toMatchObject({ ok: false });
+    }
+  });
+
+  it('asks for the host’s shell inventory with no payload', () => {
+    expect(frame({ type: 'discover_shells' })).toEqual({ type: 'discover_shells' });
   });
 
   it('rejects a pagination cursor that is not a count', () => {

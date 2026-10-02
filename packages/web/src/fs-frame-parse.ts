@@ -14,11 +14,50 @@
  * judgements belong at those two layers.
  */
 import { hasControlChars, MAX_DIRECTORY_NAME_CHARS } from '@nova-agent/core';
-import { MAX_FILE_QUERY_CHARS, MAX_WORKSPACE_CHARS, type ClientFrame } from './protocol.js';
+import {
+  MAX_COMMIT_MESSAGE_CHARS,
+  MAX_EDITOR_BYTES,
+  MAX_FILE_QUERY_CHARS,
+  MAX_GIT_CLONE_URL_CHARS,
+  MAX_GIT_LOG,
+  MAX_GIT_PATHS,
+  MAX_WORKSPACE_CHARS,
+  type ClientFrame,
+} from './protocol.js';
 import { reject, type FrameRejection } from './reject.js';
 
 /** Which frame types this module owns. */
-export type FsFrameType = 'set_workspace' | 'list_files' | 'list_directory' | 'create_directory';
+export type FsFrameType =
+  | 'set_workspace'
+  | 'list_files'
+  | 'list_directory'
+  | 'create_directory'
+  | 'read_entry'
+  | 'write_entry'
+  | 'rename_entry'
+  | 'remove_entry'
+  | 'new_entry'
+  | 'open_entry'
+  | 'git_status'
+  | 'git_diff'
+  | 'git_stage'
+  | 'git_unstage'
+  | 'git_commit'
+  | 'git_log'
+  | 'git_clone';
+
+/** One workspace path field: non-empty, capped, free of control junk. */
+function pathField(value: unknown, label: string): string | FrameRejection {
+  if (typeof value !== 'string' || value.trim().length === 0) return reject(`${label} must be a non-empty string`);
+  if (value.length > MAX_WORKSPACE_CHARS) return reject(`${label} exceeds ${MAX_WORKSPACE_CHARS} chars`);
+  if (hasControlChars(value)) return reject(`${label} contains control characters`);
+  return value;
+}
+
+/** Whether a helper's answer is a rejection rather than the parsed value. */
+function isRejection(value: string | FrameRejection): value is FrameRejection {
+  return typeof value !== 'string';
+}
 
 /**
  * Validate one filesystem frame.
@@ -69,6 +108,96 @@ export function parseFsFrame(type: FsFrameType, obj: Record<string, unknown>): C
       if (typeof name !== 'string') return reject('create_directory.name must be a string');
       if (name.length > MAX_DIRECTORY_NAME_CHARS) return reject(`create_directory.name exceeds ${MAX_DIRECTORY_NAME_CHARS} chars`);
       return { type: 'create_directory', dir, name };
+    }
+    case 'read_entry':
+    case 'open_entry':
+    case 'remove_entry': {
+      const pathValue = pathField(obj['path'], `${type}.path`);
+      if (isRejection(pathValue)) return pathValue;
+      return { type, path: pathValue } as ClientFrame;
+    }
+    case 'write_entry': {
+      const pathValue = pathField(obj['path'], 'write_entry.path');
+      if (isRejection(pathValue)) return pathValue;
+      const content = obj['content'];
+      if (typeof content !== 'string') return reject('write_entry.content must be a string');
+      // A document: newlines and tabs are its content, other C0 is junk. The
+      // byte budget is the wire's (a save is one 512 KiB client frame), not the
+      // disk's — a larger file must be edited on disk, not half-delivered.
+      if (hasControlChars(content, { multiline: true })) return reject('write_entry.content contains control characters');
+      if (Buffer.byteLength(content, 'utf8') > MAX_EDITOR_BYTES) {
+        return reject(`write_entry.content exceeds ${MAX_EDITOR_BYTES} bytes`);
+      }
+      return { type: 'write_entry', path: pathValue, content };
+    }
+    case 'rename_entry': {
+      const pathValue = pathField(obj['path'], 'rename_entry.path');
+      if (isRejection(pathValue)) return pathValue;
+      const to = pathField(obj['to'], 'rename_entry.to');
+      if (isRejection(to)) return to;
+      return { type: 'rename_entry', path: pathValue, to };
+    }
+    case 'new_entry': {
+      const dir = obj['dir'];
+      const name = obj['name'];
+      const kind = obj['kind'];
+      if (typeof dir !== 'string' || dir.trim().length === 0) return reject('new_entry.dir must be a non-empty string');
+      if (dir.length > MAX_WORKSPACE_CHARS) return reject(`new_entry.dir exceeds ${MAX_WORKSPACE_CHARS} chars`);
+      if (hasControlChars(dir)) return reject('new_entry.dir contains control characters');
+      if (typeof name !== 'string' || name.length === 0 || name.length > MAX_DIRECTORY_NAME_CHARS) {
+        return reject(`new_entry.name must be a string of at most ${MAX_DIRECTORY_NAME_CHARS} chars`);
+      }
+      if (hasControlChars(name)) return reject('new_entry.name contains control characters');
+      if (kind !== 'file' && kind !== 'dir') return reject("new_entry.kind must be 'file' or 'dir'");
+      return { type: 'new_entry', dir, name, kind };
+    }
+    case 'git_status':
+      return { type: 'git_status' };
+    case 'git_diff': {
+      const pathValue = pathField(obj['path'], 'git_diff.path');
+      if (isRejection(pathValue)) return pathValue;
+      const staged = obj['staged'];
+      if (staged !== undefined && typeof staged !== 'boolean') return reject('git_diff.staged must be a boolean when present');
+      return { type: 'git_diff', path: pathValue, staged: staged === true };
+    }
+    case 'git_stage':
+    case 'git_unstage': {
+      const paths = obj['paths'];
+      if (!Array.isArray(paths) || paths.length === 0 || paths.length > MAX_GIT_PATHS) {
+        return reject(`${type}.paths must be a non-empty array of at most ${MAX_GIT_PATHS} paths`);
+      }
+      const parsed: string[] = [];
+      for (const item of paths) {
+        const one = pathField(item, `${type}.paths[]`);
+        if (isRejection(one)) return one;
+        parsed.push(one);
+      }
+      return { type, paths: parsed } as ClientFrame;
+    }
+    case 'git_commit': {
+      const message = obj['message'];
+      if (typeof message !== 'string' || message.trim().length === 0) return reject('git_commit.message must be a non-empty string');
+      if (message.length > MAX_COMMIT_MESSAGE_CHARS) return reject(`git_commit.message exceeds ${MAX_COMMIT_MESSAGE_CHARS} chars`);
+      // A commit message is a document (subject + body): newlines are content.
+      if (hasControlChars(message, { multiline: true })) return reject('git_commit.message contains control characters');
+      return { type: 'git_commit', message };
+    }
+    case 'git_log': {
+      const limit = obj['limit'];
+      if (limit !== undefined && (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > MAX_GIT_LOG)) {
+        return reject(`git_log.limit must be an integer between 1 and ${MAX_GIT_LOG}`);
+      }
+      return limit === undefined ? { type: 'git_log' } : { type: 'git_log', limit };
+    }
+    case 'git_clone': {
+      // The URL is DATA end to end: the host runs git with argv (no shell) and
+      // a `--` separator, so even a `-`-leading string cannot become an option.
+      // The wire check only guarantees a string core's rules can read.
+      const url = obj['url'];
+      if (typeof url !== 'string' || url.trim().length === 0) return reject('git_clone.url must be a non-empty string');
+      if (url.length > MAX_GIT_CLONE_URL_CHARS) return reject(`git_clone.url exceeds ${MAX_GIT_CLONE_URL_CHARS} chars`);
+      if (hasControlChars(url)) return reject('git_clone.url contains control characters');
+      return { type: 'git_clone', url: url.trim() };
     }
   }
 }

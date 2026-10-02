@@ -15,6 +15,7 @@ import type { KernelEvent, StreamEvent } from '@nova-agent/core';
 import { admitImage } from '@nova-agent/core';
 import { createLaunchAuth, type LaunchAuth } from '../src/auth.js';
 import { WebController } from '../src/controller.js';
+import { WebRouteRegistry } from '../src/route-registry.js';
 import { bootController } from './controller-rig.js';
 import { startWebServer, type WebServerHandle } from '../src/server.js';
 import { acceptKey } from '../src/ws.js';
@@ -26,6 +27,7 @@ let home: string;
 let auth: LaunchAuth;
 let handle: WebServerHandle;
 let controller: WebController;
+let pluginRoutes: WebRouteRegistry;
 
 beforeAll(async () => {
   home = await mkdtemp(path.join(tmpdir(), 'nova-web-home-'));
@@ -55,8 +57,18 @@ beforeAll(async () => {
     config: { approval: 'read-only' },
     providerModelLabel: 'test-model',
   });
+  // Plugin routes the host publishes: a registered prefix must answer BEFORE
+  // static serving, but still INSIDE the auth gate.
+  pluginRoutes = new WebRouteRegistry();
+  pluginRoutes.register({
+    prefix: '/plugins/genui/assets',
+    handler: async (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('plugin-asset-body');
+    },
+  });
   auth = createLaunchAuth();
-  handle = await startWebServer({ controller, auth, staticDir, host: '127.0.0.1' });
+  handle = await startWebServer({ controller, auth, staticDir, host: '127.0.0.1', routes: pluginRoutes });
 });
 
 afterAll(async () => {
@@ -161,6 +173,28 @@ describe('http surface', () => {
     if (!cake.ok) throw new Error('admit failed');
     const res = await http(`/api/image/${encodeURIComponent(cake.ref.id)}`);
     expect(res.status).toBe(401);
+  });
+
+  it('plugin asset routes answer before static serving but behind the auth gate', async () => {
+    // A registered plugin prefix runs INSTEAD of static serving — without this
+    // dispatch the path would 404 as a missing file under staticDir.
+    const cookie = cookieFor(await http(`/?t=${auth.token}`));
+    const ok = await http('/plugins/genui/assets/bundle.js', cookie);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toBe('plugin-asset-body');
+    // A nested path under the same prefix also matches.
+    const nested = await http('/plugins/genui/assets/sub/icon.svg', cookie);
+    expect(nested.status).toBe(200);
+    expect(nested.body).toBe('plugin-asset-body');
+    // The auth gate still applies — a plugin route is a private read, not a
+    // public brand asset, so an unauthenticated request must be refused BEFORE
+    // the handler runs.
+    const noCookie = await http('/plugins/genui/assets/bundle.js');
+    expect(noCookie.status).toBe(401);
+    // A plugin-unowned path still falls through to static serving.
+    const through = await http('/assets/index-abc123.js', cookie);
+    expect(through.status).toBe(200);
+    expect(through.body).toBe('/* bundle */');
   });
 });
 

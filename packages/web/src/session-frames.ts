@@ -9,7 +9,8 @@
  * Both obey the same discipline: **validate before changing anything, and answer
  * with state, never a bare "ok".**
  */
-import { deleteSessionLog, resolveWorkspaceDir, sessionLogPath } from '@nova-agent/core';
+import path from 'node:path';
+import { deleteSessionLog, gitClone, resolveWorkspaceDir, sessionLogPath } from '@nova-agent/core';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
 import type { WsConnection } from './ws.js';
@@ -45,6 +46,8 @@ export interface SessionFrameHost {
   broadcastReady(): void;
   /** Answer one client with the current session list (a read, no broadcast). */
   sendSessions(client: WsConnection): Promise<void>;
+  /** The live workspace root (the clone's target is its parent directory). */
+  currentRootDir(): string;
 }
 
 /**
@@ -67,6 +70,26 @@ export async function handleSessionFrame(
       // tool call. The answer is a fresh baseline either way — `ready` states the
       // workspace, so a refusal must not leave the client showing what it asked.
       const dir = await resolveWorkspaceDir(frame.dir);
+      await host.setWorkspace(dir);
+      await host.sendSessions(client);
+      host.broadcastReady();
+      return true;
+    }
+    case 'git_clone': {
+      // Clone, then OPEN: the 源代码管理 empty state offers 打开文件夹 and
+      // 克隆仓库, and a clone that leaves the workspace where it was is only
+      // half of either — the reader would have to find and switch to the new
+      // folder by hand. The target is the current workspace's PARENT, so the
+      // new repository becomes a sibling of the folder being read (a drive root
+      // has no parent to receive it and says so). Everything after the clone is
+      // the `set_workspace` path verbatim, validation included: the directory
+      // exists (it was just created), but the same gate runs anyway — one rule,
+      // not a fast path.
+      const current = path.resolve(host.currentRootDir());
+      const parent = path.dirname(current);
+      if (parent === current) throw new Error('当前工作区是盘符根目录，没有可克隆进的父目录；请先切换到一个普通文件夹');
+      const { path: cloned } = await gitClone(parent, frame.url);
+      const dir = await resolveWorkspaceDir(cloned);
       await host.setWorkspace(dir);
       await host.sendSessions(client);
       host.broadcastReady();

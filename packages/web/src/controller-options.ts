@@ -1,4 +1,4 @@
-import type { ConfiguredModel } from '@nova-agent/core';
+import type { ConfiguredModel, RouteRegistry } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import type { QqBotRuntime } from './qqbot-frames.js';
 import type { PickFn } from './picker-frames.js';
@@ -193,4 +193,13 @@ export interface LaunchWebOptions extends ControllerOptions {
   host?: '127.0.0.1' | 'localhost' | '::1';
   /** Called with the full launch URL (token included) once listening. */
   onReady?: (url: string) => void;
+  /**
+   * The plugin asset route registry. The SAME instance is provided to the
+   * kernel container (via `routeRegistryProvider`) so plugins register their
+   * prefixes from `apply(ctx)`; the host's request handler then dispatches
+   * through it before falling back to its own handlers. Absent in tests and in
+   * any surface whose shell did not wire the seam — the server then serves as
+   * usual and plugin UI capabilities degrade.
+   */
+  routes?: RouteRegistry;
 }
