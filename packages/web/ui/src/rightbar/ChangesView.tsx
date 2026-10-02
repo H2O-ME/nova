@@ -26,11 +26,13 @@ import { RIGHTBAR_COPY } from './copy.js';
 import { fileSummary, type ChangedFile, type ChangesModel } from './changes-model.js';
 import { buildChangeTree, type ChangeNode } from './change-tree.js';
 import { relativeStamp } from '../sidebar/relative-time.js';
-import { diffStatRows, folds, parseUnifiedDiff, type DiffRow } from './git-diff-rows.js';
+import { diffStatRows, folds, parseUnifiedDiff, splitRows, type DiffRow, type SplitCell, type SplitLine } from './git-diff-rows.js';
+import { readDiffLayout, readDiffWrap, writeDiffLayout, writeDiffWrap, type DiffLayout } from './diff-view.js';
 import { highlightDiffRows } from './diff-highlight.js';
 import { TOKEN_VAR, type HlLine } from '../chat/markdown/highlight.js';
-import { StageGlyph, UnstageGlyph, EditGlyph } from './panel-icons.js';
+import { EditGlyph, NoWrapGlyph, SplitGlyph, StageGlyph, UnstageGlyph, WrapGlyph } from './panel-icons.js';
 import { Chip, CountPill, IconButton, Notice, SectionHeader, StatusBadge, type StatusTone } from './kit.js';
+import { Menu } from '../shell/Menu.js';
 import { GitSetup } from './GitSetup.js';
 import { cx } from '../composer/cx.js';
 import css from './ChangesView.module.css';
@@ -177,7 +179,14 @@ function GitLens({
           />
         )}
       </div>
-      {git.diff !== null && <DiffPane diff={git.diff} />}
+      {git.diff !== null && (
+        <DiffPane
+          diff={git.diff}
+          files={[...unstaged, ...staged].map((entry) => ({ path: entry.path, staged: isStaged(entry) }))}
+          onOpenFileTab={onOpenFileTab}
+          send={send}
+        />
+      )}
       <CommitBar send={send} hasStaged={staged.length > 0} />
       {git.log.length > 0 && (
         <div className={css.logWrap}>
@@ -388,32 +397,144 @@ function badgeToneCss(tone: 'staged' | 'changed' | 'untracked' | 'conflict'): st
   return css.inkRenamed;
 }
 
-/** The open file's diff: its head, its hunks, and its line numbers. */
-function DiffPane({ diff }: { diff: NonNullable<GitState['diff']> }): JSX.Element {
+/** The open file's diff: its head (selector, counts, view tools), then its hunks. */
+function DiffPane({ diff, files, onOpenFileTab, send }: {
+  diff: NonNullable<GitState['diff']>;
+  /** Every changed file, in listing order — the head's selector (the reference's file menu). */
+  files: readonly { path: string; staged: boolean }[];
+  /** Open this file in the files page's reader; absent = no verb. */
+  onOpenFileTab: ((path: string) => void) | undefined;
+  send: (frame: ClientFrame) => void;
+}): JSX.Element {
   const rows = useMemo(() => parseUnifiedDiff(diff.text), [diff.text]);
   const stat = useMemo(() => diffStatRows(rows), [rows]);
   // One scan of the file's whole content, zipped back onto the rows — the
   // block comment that opened three rows ago must still color this row.
   const highlighted = useMemo(() => highlightDiffRows(rows, diff.path), [rows, diff.path]);
+  const [layout, setLayout] = useState<DiffLayout>(readDiffLayout);
+  const [wrap, setWrap] = useState<boolean>(readDiffWrap);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const split = layout === 'split';
+  const lines = useMemo(() => (split ? splitRows(rows) : []), [split, rows]);
+  const pickLayout = (next: DiffLayout): void => {
+    setLayout(next);
+    writeDiffLayout(next);
+  };
+  const pickWrap = (next: boolean): void => {
+    setWrap(next);
+    writeDiffWrap(next);
+  };
   return (
     <div className={css.diff}>
       <div className={css.diffHead}>
-        <span className={css.diffPath} title={diff.path}>{diff.path}</span>
+        <Menu
+          open={menuOpen}
+          label={RIGHTBAR_COPY['git.diff.file']}
+          align="start"
+          items={files.map((file) => ({
+            id: `${file.staged ? 'i' : 'w'}:${file.path}`,
+            label: file.path,
+            title: file.path,
+          }))}
+          selectedId={`${diff.staged ? 'i' : 'w'}:${diff.path}`}
+          onSelect={(id) => {
+            setMenuOpen(false);
+            const cut = id.indexOf(':');
+            const staged = id.slice(0, cut) === 'i';
+            send({ type: 'git_diff', path: id.slice(cut + 1), staged });
+          }}
+          onClose={() => { setMenuOpen(false); }}
+          anchor={(
+            <button
+              type="button"
+              className={css.diffFile}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label={RIGHTBAR_COPY['git.diff.file']}
+              title={`${diff.path} · ${diff.staged ? RIGHTBAR_COPY['git.stagedSection'] : RIGHTBAR_COPY['git.unstagedSection']}`}
+              onClick={() => { setMenuOpen((open) => !open); }}
+            >
+              <span className={css.diffPath}>{diff.path}</span>
+              <ChevronDownIcon />
+            </button>
+          )}
+        />
         <span className={css.diffStat}>
           <span className={css.statAdd}>+{stat.added}</span>
           <span className={css.statDel}>−{stat.removed}</span>
         </span>
-        <span className={css.diffSide}>{diff.staged ? RIGHTBAR_COPY['git.stagedSection'] : RIGHTBAR_COPY['git.unstagedSection']}</span>
+        <span className={css.diffTools}>
+          <button
+            type="button"
+            className={css.diffTool}
+            data-diff-tool="split"
+            aria-pressed={split}
+            aria-label={split ? RIGHTBAR_COPY['git.diff.toUnified'] : RIGHTBAR_COPY['git.diff.toSplit']}
+            title={split ? RIGHTBAR_COPY['git.diff.toUnified'] : RIGHTBAR_COPY['git.diff.toSplit']}
+            onClick={() => { pickLayout(split ? 'unified' : 'split'); }}
+          >
+            <SplitGlyph className={css.splitMark} />
+          </button>
+          <button
+            type="button"
+            className={css.diffTool}
+            data-diff-tool="wrap"
+            aria-pressed={wrap}
+            aria-label={wrap ? RIGHTBAR_COPY['git.diff.toNoWrap'] : RIGHTBAR_COPY['git.diff.toWrap']}
+            title={wrap ? RIGHTBAR_COPY['git.diff.toNoWrap'] : RIGHTBAR_COPY['git.diff.toWrap']}
+            onClick={() => { pickWrap(!wrap); }}
+          >
+            {wrap ? <NoWrapGlyph /> : <WrapGlyph />}
+          </button>
+          {onOpenFileTab !== undefined && (
+            <button
+              type="button"
+              className={css.diffTool}
+              data-diff-tool="open-file"
+              aria-label={RIGHTBAR_COPY['git.openTab']}
+              title={RIGHTBAR_COPY['git.openTab']}
+              onClick={() => { onOpenFileTab(diff.path); }}
+            >
+              <EditGlyph />
+            </button>
+          )}
+        </span>
       </div>
       {/* An untracked file answers its own content as an all-added diff; the
           note is only for the cases that CANNOT render (binary / oversized /
           empty), where inventing or omitting silently would both lie. */}
       {diff.untracked && diff.text === '' && <Notice kind="hint">{RIGHTBAR_COPY['git.untrackedNote']}</Notice>}
-      <div className={css.diffBody}>
-        {rows.map((row, index) => <DiffLine key={index} row={row} hl={highlighted[index]} />)}
+      <div className={css.diffBody} data-view={split ? 'split' : 'unified'} data-wrap={wrap ? '' : undefined}>
+        {split
+          ? lines.map((line, index) => (line.kind === 'full'
+            ? <DiffLine key={index} row={line.row} hl={undefined} />
+            : (
+              <div key={index} className={css.splitLine} data-diff-line={pairKind(line)}>
+                <SplitCellView cell={line.left} hl={line.left === null ? undefined : highlighted[line.left.at]} />
+                <SplitCellView cell={line.right} hl={line.right === null ? undefined : highlighted[line.right.at]} />
+              </div>
+            )))
+          : rows.map((row, index) => <DiffLine key={index} row={row} hl={highlighted[index]} />)}
       </div>
       {diff.truncated && <Notice kind="hint">{RIGHTBAR_COPY['git.diffTruncated']}</Notice>}
     </div>
+  );
+}
+
+/** The kind a paired row reads as, for the row's own mark. */
+function pairKind(line: Extract<SplitLine, { kind: 'pair' }>): string {
+  if (line.left?.kind === 'del') return 'del';
+  if (line.right?.kind === 'add') return 'add';
+  return 'ctx';
+}
+
+/** One side of a paired row; a `null` cell is the fill that keeps the sides aligned. */
+function SplitCellView({ cell, hl }: { cell: SplitCell | null; hl: HlLine | undefined }): JSX.Element {
+  return (
+    <span className={css.splitCell} data-kind={cell?.kind ?? 'empty'}>
+      <span className={css.lineNo}>{cell?.no ?? ''}</span>
+      <DiffText text={cell?.text ?? ''} hl={hl} />
+    </span>
   );
 }
 
@@ -428,18 +549,29 @@ function DiffLine({ row, hl }: { row: DiffRow; hl: HlLine | undefined }): JSX.El
       <span className={css.lineNo}>{row.oldNo ?? ''}</span>
       <span className={css.lineNo}>{row.newNo ?? ''}</span>
       <span className={css.sign}>{row.kind === 'add' ? '+' : row.kind === 'del' ? '−' : ' '}</span>
-      <span className={css.lineText} title={fold ? row.text : undefined}>
-        {hl !== undefined && !fold
-          ? hl.map((span, at) =>
-            span.kind === 'plain'
-              ? <span key={at}>{span.text}</span>
-              : <span key={at} style={{ color: TOKEN_VAR[span.kind] }}>{span.text}</span>,
-          )
-          : fold
-            ? `${row.text.slice(0, 200)}…`
-            : row.text}
-      </span>
+      <DiffText text={row.text} hl={hl} fold={fold} />
     </div>
+  );
+}
+
+/**
+ * One line's text: the scanner's spans when it produced them, the raw text
+ * otherwise. A folded row (longer than `FOLD_THRESHOLD`) draws one ellipsized
+ * line instead — a 3 KB minified line is not a line, and the full text stays in
+ * the row's tooltip.
+ */
+function DiffText({ text, hl, fold = false }: { text: string; hl: HlLine | undefined; fold?: boolean }): JSX.Element {
+  if (fold) return <span className={css.lineText} title={text}>{`${text.slice(0, 200)}…`}</span>;
+  return (
+    <span className={css.lineText}>
+      {hl === undefined
+        ? text
+        : hl.map((span, at) =>
+          span.kind === 'plain'
+            ? <span key={at}>{span.text}</span>
+            : <span key={at} style={{ color: TOKEN_VAR[span.kind] }}>{span.text}</span>,
+        )}
+    </span>
   );
 }
 
@@ -514,7 +646,7 @@ function TranscriptLens({ model }: { model: ChangesModel }): JSX.Element {
       <div className={css.diff}>
         <div className={css.diffHead}>
           <span className={css.diffPath} title={current.path}>{current.path}</span>
-          <span className={css.diffSide}>{verdictWord(current)}</span>
+          <span className={css.diffVerdict}>{verdictWord(current)}</span>
         </div>
         <div className={css.diffBody}>
           {current.rows.map((row, index) => (

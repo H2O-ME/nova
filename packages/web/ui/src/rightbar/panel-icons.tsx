@@ -158,3 +158,37 @@ export const TreeDockGlyph = (p: P): JSX.Element => (
     <path d="M2 12.25l2-4.25h10l-2 4.25H2Z" />
   </Svg>
 );
+
+/** 并排: one pane split down the middle (the reference's compare-split mark). */
+export const SplitGlyph = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <rect x="1.75" y="3.25" width="12.5" height="9.5" rx="2" />
+    <path d="M8 3.25v9.5" />
+  </Svg>
+);
+
+/** 统一: one pane whole. */
+export const UnifiedGlyph = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <rect x="1.75" y="3.25" width="12.5" height="9.5" rx="2" />
+    <path d="M4.25 6.5h7.5M4.25 9.5h7.5" />
+  </Svg>
+);
+
+/** 换行: lines that turn at the edge. */
+export const WrapGlyph = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M2.75 4.5h10.5" />
+    <path d="M2.75 8h7.5a2 2 0 1 1 0 4H7.5" />
+    <path d="M9 10.5 7 12l2 1.5" />
+  </Svg>
+);
+
+/** 不换行: lines that run past the edge. */
+export const NoWrapGlyph = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M2.75 4.5h10.5" />
+    <path d="M2.75 8h9.5" />
+    <path d="M2.75 11.5h6" />
+  </Svg>
+);

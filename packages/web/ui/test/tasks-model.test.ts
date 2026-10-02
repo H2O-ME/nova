@@ -33,13 +33,16 @@ function row(over: Partial<WireJobRow> = {}): WireJobRow {
 
 describe('task rows', () => {
   it('leads with live work in start order, then settles newest-first', () => {
+    // The settled pair is chosen so finish order CONTRADICTS start order (the
+    // late starter is the one that settled last): with matching fixtures the
+    // two rules agree and the sort could silently become a start sort.
     const ordered = orderedJobs([
-      row({ id: 'old-done', status: 'completed', startedAt: 100, finishedAt: 900 }),
+      row({ id: 'first-started', status: 'completed', startedAt: 100, finishedAt: 700 }),
       row({ id: 'live-late', startedAt: 500 }),
-      row({ id: 'new-done', status: 'completed', startedAt: 400, finishedAt: 700 }),
+      row({ id: 'last-started', status: 'completed', startedAt: 400, finishedAt: 900 }),
       row({ id: 'live-early', startedAt: 300 }),
     ]);
-    expect(ordered.map((job) => job.id)).toEqual(['live-early', 'live-late', 'old-done', 'new-done']);
+    expect(ordered.map((job) => job.id)).toEqual(['live-early', 'live-late', 'last-started', 'first-started']);
   });
 
   it('breaks a same-millisecond settle tie back to start order', () => {

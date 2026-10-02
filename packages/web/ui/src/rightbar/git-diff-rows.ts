@@ -30,8 +30,15 @@ export interface DiffRow {
 /** Lines longer than this fold to one row (the reference's `FOLD_THRESHOLD`). */
 export const FOLD_THRESHOLD = 120;
 
-/** Rows one file's diff renders before it stops. */
-export const MAX_DIFF_ROWS = 600;
+/**
+ * Rows one file's diff renders before it stops.
+ *
+ * The reference's `MAX_RENDERED_LINES` (`ui-deliverables/src/client/FileDiff.tsx`):
+ * a hundred-thousand-row layout is a frozen tab, and a file that big has long
+ * since stopped being readable in a side column — the marker says so and the
+ * files page opens the whole thing.
+ */
+export const MAX_RENDERED_LINES = 5000;
 
 const HUNK_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/u;
 
@@ -57,7 +64,7 @@ export function parseUnifiedDiff(text: string): DiffRow[] {
   // An empty line INSIDE a hunk is real (a blank context line) and stays.
   if (lines.at(-1) === '') lines.pop();
   for (const line of lines) {
-    if (rows.length >= MAX_DIFF_ROWS) {
+    if (rows.length >= MAX_RENDERED_LINES) {
       rows.push({ kind: 'more', oldNo: null, newNo: null, text: '' });
       return rows;
     }
@@ -109,4 +116,70 @@ export function diffStatRows(rows: readonly DiffRow[]): { added: number; removed
     if (row.kind === 'del') removed += 1;
   }
   return { added, removed };
+}
+
+/** One numbered line on one side of a paired row. */
+export interface SplitCell {
+  no: number;
+  text: string;
+  kind: 'add' | 'del' | 'ctx';
+  /** Index of the source row in the parsed list — the highlight array's key. */
+  at: number;
+}
+
+/**
+ * One drawn line of the side-by-side view: a paired row (either side may be
+ * empty, `null`), or a full-width row (`full`) that spans both columns — a
+ * hunk header, git's `\ No newline` note, or the truncation marker. The full
+ * case carries the row itself; it is drawn exactly as the unified view draws it.
+ */
+export type SplitLine =
+  | { kind: 'pair'; left: SplitCell | null; right: SplitCell | null }
+  | { kind: 'full'; row: DiffRow };
+
+/**
+ * Pair a parsed diff for the side-by-side view.
+ *
+ * The reference's rule (`FileDiff.tsx` `splitRows`): each run of deletions is
+ * aligned with the run of additions that follows it, row by row; a run that is
+ * longer than its partner leaves the short side empty (the `--diff-empty-fill`
+ * cell) rather than shifting the rows below; context lines sit on both sides
+ * and flush the run. Alignment is what makes the view readable — pairing by
+ * index across the whole file would put unrelated lines side by side.
+ * @param rows - the parsed rows, in file order.
+ * @returns the paired lines.
+ */
+export function splitRows(rows: readonly DiffRow[]): SplitLine[] {
+  const lines: SplitLine[] = [];
+  let dels: SplitCell[] = [];
+  let adds: SplitCell[] = [];
+  const flush = (): void => {
+    for (let at = 0; at < Math.max(dels.length, adds.length); at += 1) {
+      lines.push({ kind: 'pair', left: dels[at] ?? null, right: adds[at] ?? null });
+    }
+    dels = [];
+    adds = [];
+  };
+  rows.forEach((row, at) => {
+    if (row.kind === 'del') {
+      dels.push({ no: row.oldNo ?? 0, text: row.text, kind: 'del', at });
+      return;
+    }
+    if (row.kind === 'add') {
+      adds.push({ no: row.newNo ?? 0, text: row.text, kind: 'add', at });
+      return;
+    }
+    flush();
+    if (row.kind === 'ctx') {
+      lines.push({
+        kind: 'pair',
+        left: { no: row.oldNo ?? 0, text: row.text, kind: 'ctx', at },
+        right: { no: row.newNo ?? 0, text: row.text, kind: 'ctx', at },
+      });
+      return;
+    }
+    lines.push({ kind: 'full', row });
+  });
+  flush();
+  return lines;
 }
