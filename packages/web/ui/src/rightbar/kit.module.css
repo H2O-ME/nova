@@ -1,0 +1,240 @@
+/* The right panel's primitives — see `kit.tsx` for the port's provenance.
+ *
+ * Geometry is the reference's native scale, carried as literal px: 28px
+ * controls, 22px chips, 28px section bands, radii 2/3/4px. Colour only ever
+ * through tokens (the surface's `style-guard` test enforces it), and no
+ * elevation: a docked column floats over nothing. */
+
+.iconButton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out),
+    opacity var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.iconButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline-offset: -1px;
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.iconButton svg {
+  width: 15px;
+  height: 15px;
+}
+
+.iconButtonSm {
+  width: 24px;
+  height: 24px;
+}
+
+.iconButtonSm svg {
+  width: 14px;
+  height: 14px;
+}
+
+.iconButtonActive {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.iconButtonDanger:hover:not(:disabled) {
+  color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxxs-11);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    border-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.chip:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Selected is a third picture, not a darker hover: accent fill AND accent edge. */
+.chipSelected {
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+  border-color: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  font: var(--dsw-font-xxs-strong-12);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.sectionLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionCount {
+  flex: none;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.sectionAction {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.countPill {
+  flex: none;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxxs-strong-11);
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.notice {
+  margin: 0;
+  padding: 16px;
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+.noticeError {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.noticeWarn {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.noticeHint {
+  padding: 4px 12px 8px;
+  text-align: left;
+  font: var(--dsw-font-xxxs-11);
+  line-height: 1.45;
+}
+
+/* The solid 10px core the reference's StateDot carries; `ongoing` swaps the
+ * fill for an open ring that spins, so "still running" is a shape as well as a
+ * colour (the same reading the transcript's status dot uses). */
+.stateDot {
+  position: relative;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-tertiary);
+}
+
+.stateDot[data-state='ongoing'] {
+  background: transparent;
+  border: 2px solid var(--dsw-alias-state-business-primary);
+  animation: stateDotSpin 900ms linear infinite;
+}
+
+.stateDot[data-state='done'] {
+  background: var(--dsw-alias-state-success-primary);
+}
+
+.stateDot[data-state='error'] {
+  background: var(--dsw-alias-state-error-primary);
+}
+
+@keyframes stateDotSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stateDot[data-state='ongoing'] {
+    animation: none;
+  }
+}
+
+.statusBadge {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 2px;
+  font: var(--dsw-font-xxxs-strong-11);
+  font-family: var(--ds-font-family-code);
+}
+
+.statusBadge[data-tone='modified'] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.statusBadge[data-tone='added'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.statusBadge[data-tone='deleted'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.statusBadge[data-tone='renamed'] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.statusBadge[data-tone='neutral'] {
+  color: var(--dsw-alias-label-tertiary);
+}

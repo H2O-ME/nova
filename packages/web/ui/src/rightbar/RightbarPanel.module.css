@@ -1,17 +1,22 @@
 /*
- * The right sidebar's chrome: the panel box, its tab strip, and the three bodies.
- * Ported from deepseek-harness ui-sidebar-right (c) 2026 DeepSeek — MIT License
- * (`SidebarRight.module.css`'s panel box and 28px strip control), re-housed for
- * a panel with a fixed tab set instead of a docking tree.
+ * The right sidebar's own sheet: the panel box, the body that hosts its pages,
+ * and the way back in. The tab strip — the panel's top edge — carries its own
+ * sheet (`RightbarStrip.module.css`).
  *
- * Tokens only; the panel borrows the conversation's ground (it is a column of the
- * page, not a card floating over it) and states its edge with one hairline.
+ * Rebuilt against the reference plugin's shell (dsh-better-sidebar, MIT): a
+ * docked column that borrows the conversation's ground (it is a column of the
+ * page, not a card floating over it) and states its edge with one hairline, and
+ * one body hosting every open page at once. Each page owns its own sheet too.
+ *
+ * Tokens only.
  */
 
 /*
  * Anchored to the frame's right edge, which never moves: opening and closing is
- * one slide from that edge, and a zero-width track leaves the panel hanging over
- * the centre rather than squeezing it.
+ * one slide from that edge, and the panel's width is the track the frame
+ * resolved for it — a shown panel reserves that track, so the centre squeezes
+ * beside the slide. A frame too narrow for a track drops the panel to the
+ * takeover presentation instead.
  */
 .panel {
   position: absolute;
@@ -25,8 +30,9 @@
   box-sizing: border-box;
   background: var(--dsw-alias-bg-base);
   border-left: 0.5px solid var(--dsw-alias-border-l4);
-  box-shadow: var(--dsw-shadow-lv3);
-  /* Elevated surface: the l2 scrollbar pair, like every other side panel. */
+  /* No elevation: a docked column is flat page furniture; the reference gives
+     its shadow to floating panes only, and this frontend has none in the
+     column. A docked panel carrying one reads as a card over the conversation. */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   animation: rightbar-in var(--ds-transition-duration-slow) var(--ds-ease-in-out);
@@ -53,91 +59,11 @@
   border-left: none;
 }
 
-/* The strip IS the panel's top edge: tab chips from the left, the panel's own
-   two controls at the end. No title row above it (the harness's own rule). */
-.strip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  padding: 8px 10px 8px 12px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
-}
-
-.tabs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-}
-
-/* A tab chip: quiet by default, filled when it is the page in front. */
-.tab {
-  flex: none;
-  padding: 4px 10px;
-  border: none;
-  border-radius: var(--dsw-radius-sm);
-  corner-shape: round;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-s-14);
-  cursor: pointer;
-}
-
-.tab:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-
-.tab[aria-selected='true'] {
-  background: var(--dsw-alias-interactive-bg-active);
-  color: var(--dsw-alias-label-primary);
-}
-
-.stripEnd {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-}
-
-/* The geometry of a message's action row button (28px box around a 15px glyph),
-   shared with every other control in this surface. */
-.iconButton {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 6px;
-  color: var(--dsw-alias-label-secondary);
-  line-height: 1;
-  background: transparent;
-  border: none;
-  border-radius: var(--dsw-radius-sm);
-  corner-shape: round;
-  cursor: pointer;
-}
-
-.iconButton svg {
-  width: 15px;
-  height: 15px;
-}
-
-.iconButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-
-.iconButton:disabled {
-  color: var(--dsw-alias-label-dimmed);
-  cursor: default;
-}
-
+/* The body hosts every page at once; only the one in front is laid out, so a
+   switch never tears down the other three's local state (scroll offsets, dock
+   widths, the shell's follow-tail switch). */
 .body {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -146,8 +72,20 @@
   overflow: hidden;
 }
 
+.page {
+  display: none;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.page[data-active] {
+  display: flex;
+}
+
 /* The expand affordance's glyph, mirrored from the sidebar's collapse icon so
-   open and close read as one control seen from two sides (the harness's rule). */
+   open and close read as one control seen from two sides. */
 .openGlyph {
   flex: none;
   width: 16px;
@@ -170,429 +108,14 @@
   border-radius: var(--dsw-radius-sm);
   corner-shape: round;
   cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
 .openButton:hover {
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
-}
-
-/* ---- shared body furniture: empty states, captions, path lines ---- */
-
-.empty {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 24px 16px;
-  text-align: center;
-}
-
-.emptyTitle {
-  margin: 0;
-  font: var(--dsw-font-s-14);
-  color: var(--dsw-alias-label-secondary);
-}
-
-.emptyNote {
-  margin: 0;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.pathLine {
-  margin: 0;
-  padding: 8px 12px 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--ds-font-family-code);
-  font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.errorLine {
-  margin: 0;
-  padding: 6px 12px;
-  font: var(--dsw-font-xs-13);
-  color: var(--dsw-alias-state-error-primary);
-}
-
-/* ---- 变更 ---- */
-
-.changes {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1 1 auto;
-}
-
-.summary {
-  margin: 0;
-  padding: 10px 12px 6px;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.fileList {
-  flex: none;
-  max-height: 40%;
-  margin: 0;
-  padding: 0 8px 8px;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.fileRow {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--dsw-radius-sm);
-  corner-shape: round;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xs-13);
-  text-align: left;
-  cursor: pointer;
-}
-
-.fileRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.fileRow[aria-pressed='true'] {
-  background: var(--dsw-alias-interactive-bg-active);
-}
-
-.filePath {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: left;
-}
-
-.fileStats {
-  flex: none;
-  font-family: var(--ds-font-family-code);
-  font-size: 11px;
-  color: var(--dsw-alias-state-success-primary);
-}
-
-.fileStats[data-verdict='fail'] {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.fileStats[data-verdict='running'] {
-  color: var(--dsw-alias-label-tertiary);
-}
-
-/* The open diff: a header line (path + verdict) over the rows. */
-.diff {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  margin: 0 8px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-md);
-  overflow: hidden;
-}
-
-.diffHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex: none;
-  padding: 6px 10px;
-  background: var(--dsw-alias-markdown-code-block-banner);
-}
-
-.diffPath {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--ds-font-family-code);
-  font-size: 11px;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.diffVerdict {
-  flex: none;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.diffBody {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  background: var(--dsw-alias-markdown-code-block);
-  padding: 6px 0;
-}
-
-/* One diff row: gutter mark + text, monospaced, wrapped (never clipped). */
-.diffLine {
-  display: flex;
-  gap: 8px;
-  padding: 0 10px;
-  font-family: var(--ds-font-family-code);
-  font-size: 11px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.diffMark {
-  flex: none;
-  width: 8px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.diffText {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.diffLine[data-op='add'] {
-  background: var(--dsw-alias-file-diff-added-bg);
-}
-
-.diffLine[data-op='add'] .diffMark {
-  color: var(--dsw-alias-code-diff-added);
-}
-
-.diffLine[data-op='del'] {
-  background: var(--dsw-alias-file-diff-deleted-bg);
-}
-
-.diffLine[data-op='del'] .diffMark {
-  color: var(--dsw-alias-code-diff-deleted);
-}
-
-.diffLine[data-op='skip'] .diffText {
-  color: var(--dsw-alias-label-tertiary);
-}
-
-/* ---- 文件 ---- */
-
-.files {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.section + .section {
-  margin-top: 8px;
-  border-top: 0.5px solid var(--dsw-alias-border-l1);
-}
-
-.sectionHead {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 8px 0 12px;
-}
-
-.sectionLabel {
-  flex: 1 1 auto;
-  min-width: 0;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-caption);
-}
-
-.tree {
-  margin: 0;
-  padding: 0 8px 8px;
-  list-style: none;
-}
-
-.treeRow {
-  display: flex;
-  align-items: center;
-}
-
-/* The depth indent is an inline `padding-left` on the row: nesting depth is
-   data, and a fixed set of indent classes would cap how deep a workspace can be
-   browsed. `data-depth` stays on the element for tests and inspection. */
-
-.treeButton,
-.sessionRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-  padding: 4px 8px;
-  border: none;
-  border-radius: var(--dsw-radius-sm);
-  corner-shape: round;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xs-13);
-  text-align: left;
-  cursor: pointer;
-}
-
-.treeButton:hover,
-.sessionRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.sessionRow[aria-current='true'] {
-  background: var(--dsw-alias-interactive-bg-active);
-}
-
-.treeIcon {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.treeName {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.treeHint {
-  flex: none;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.sessionStamp {
-  flex: none;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.treeNote {
-  display: block;
-  padding: 4px 8px;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.treeNote[data-tone='error'] {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-/* ---- 终端 ---- */
-
-.terminal {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
-.commandBar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  padding: 10px 12px 4px;
-}
-
-.commandInput {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-specific-input-major);
-  color: var(--dsw-alias-label-primary);
-  font-family: var(--ds-font-family-code);
-  font-size: 12px;
-}
-
-.runButton {
-  flex: none;
-  padding: 6px 12px;
-  border: none;
-  border-radius: var(--dsw-radius-sm);
-  corner-shape: round;
-  background: var(--dsw-alias-button-elevated-fill);
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xs-13);
-  cursor: pointer;
-}
-
-.runButton:hover {
-  background: var(--dsw-alias-button-floating-hover);
-}
-
-.runButton:disabled {
-  color: var(--dsw-alias-label-dimmed);
-  cursor: default;
-}
-
-.terminalBody {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 4px 12px 16px;
-}
-
-.job + .job {
-  margin-top: 12px;
-}
-
-.jobHead {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 2px 0;
-}
-
-.jobCommand {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--ds-font-family-code);
-  font-size: 12px;
-  color: var(--dsw-alias-label-primary);
-}
-
-.jobStatus {
-  flex: none;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.job[data-status='failed'] .jobStatus,
-.job[data-status='killed'] .jobStatus {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.jobOutput {
-  margin: 4px 0 0;
-  padding: 8px 10px;
-  max-height: 280px;
-  overflow: auto;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-markdown-code-block);
-  font-family: var(--ds-font-family-code);
-  font-size: 11px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 @media (prefers-reduced-motion: reduce) {

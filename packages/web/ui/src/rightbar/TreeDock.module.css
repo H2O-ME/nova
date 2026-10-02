@@ -1,0 +1,380 @@
+/*
+ * The docked workspace tree: a search row, the rows, and the batch bar.
+ *
+ * Row geometry is the reference's (`FileTree.tsx`): 28px, 22px per depth, a 4px
+ * radius, the accent bar inset 4px on the left of a selected row, and two
+ * hover-revealed verbs at the row's right edge (`@` reference, 复制路径) plus the
+ * menu. Indentation is applied inline (it is data, one number per depth) while
+ * everything visible about a row is here.
+ */
+
+.dock {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.searchRow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 4px 0 8px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.search::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 6px 12px;
+  scrollbar-width: thin;
+}
+
+.rootRow {
+  display: flex;
+  align-items: center;
+  height: 28px;
+}
+
+.rootPick {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-strong-12);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.rootPick:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rootName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One row: a single clickable surface whose name owns the row's whole width.
+   The verbs sit behind the name and take NO layout at rest (the reference's
+   `explorerRef` is `display:none` until the row is hovered) — with them always
+   in the layout, a dock at its 160px floor leaves the name one character wide.
+   The indentation is inline (it is data, one number per depth). */
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  padding-right: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+  text-align: left;
+  cursor: pointer;
+  animation: dock-row-in 150ms var(--ds-ease-in-out);
+}
+
+@keyframes dock-row-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline-offset: -2px;
+}
+
+/* Selected is not hover: the active fill PLUS a 2px accent bar, so a pick stays
+   legible under the pointer that made it. */
+.row[data-picked] {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.row[data-picked]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-state-business-primary);
+}
+
+/* The document on screen, when it is not also picked. */
+.row[data-current] .rowName {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 140ms var(--ds-ease-in-out);
+}
+
+.chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.chevron[data-open] svg {
+  transform: rotate(0deg);
+}
+
+/* A leaf keeps the chevron's column so names line up with their siblings. */
+.chevron[data-leaf] {
+  visibility: hidden;
+}
+
+.rowIcon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rowIconDir {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.rowName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowName[data-git-tone='changed'] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.rowName[data-git-tone='staged'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.rowName[data-git-tone='untracked'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.rowName[data-git-tone='conflict'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* A directory with changes under it is tinted, never lettered: git has no status
+   for a folder, and a letter would be a claim it cannot make. */
+.rowName[data-dir-changed] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.hiddenMark {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxxs-11);
+}
+
+/* The row's verbs, revealed only when the row is hovered or focused — the
+   reference's `explorerRef` rule. Hidden means GONE from the layout (not
+   transparent): the name gets the row's whole width at rest, and one auto
+   margin parks the rail at the far edge when it does appear. `data-open`
+   keeps the rail up while its own menu is open (pointer-leave must not
+   withdraw the anchor a live popover is anchored to). */
+.rowRail {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-left: auto;
+}
+
+.row:hover .rowRail,
+.row:focus-within .rowRail,
+.rowRail[data-open] {
+  display: inline-flex;
+}
+
+/* Touch has no hover: the verbs are simply always there. */
+@media (hover: none) {
+  .rowRail {
+    display: inline-flex;
+  }
+}
+
+.refPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxxs-strong-11);
+  cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.refPill:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.copyPill {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxxs-11);
+  cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.copyPill:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* A level's own note (loading / empty / refused / truncated), indented to the
+   depth it describes. */
+.note {
+  padding-right: 8px;
+  height: 24px;
+  line-height: 24px;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note[data-tone='error'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* The in-place name box (rename / new entry). */
+.rowEdit {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding-right: 4px;
+}
+.inlineInput {
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--dsw-alias-state-business-primary);
+  border-radius: 3px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.inlineInput:focus {
+  outline: none;
+}
+
+/* The batch bar: what a Ctrl/Shift pick turned into, pinned to the dock's foot
+   so it never scrolls away from the rows it describes. */
+.batchBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 6px 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.batchCount {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.batchVerb {
+  flex: none;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxxs-11);
+  cursor: pointer;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.batchVerb:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    animation: none;
+  }
+}

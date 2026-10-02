@@ -12,12 +12,11 @@
  * **What it is not.** This is the workspace's CURRENT contents. It is not the
  * changed-file list (that is the 变更 tab, which reads the session) and it is not
  * a session browser: the session logs are the host's own listing, folded into
- * rows by `sessionFileRows` below.
+ * rows by `sessionFileRows` (`session-files.ts`), which is a different question
+ * about a different set of files.
  */
 import type { DirectoryEntry } from '@nova-agent/core';
-import type { SessionListItem, WireDirectoryLevel } from '../types.js';
-import { relativeStamp } from '../sidebar/relative-time.js';
-import { sessionTitle } from '../sidebar/view.js';
+import type { WireDirectoryLevel } from '../types.js';
 import { RIGHTBAR_COPY } from './copy.js';
 
 /** What the panel knows about one directory level. */
@@ -185,6 +184,51 @@ export function treeRows(tree: TreeState, root: string, expanded: readonly strin
 }
 
 /**
+ * The rows a search shows: every row whose NAME matches, plus the directory
+ * chain that leads to it.
+ *
+ * The filter runs over the rows already folded, which is the only honest scope
+ * there is — the browser cannot read a directory, so a level nobody opened has
+ * no contents to search. Keeping the ancestors is what makes a deep match
+ * readable: a lone `index.ts` with no path above it says nothing about WHICH
+ * index.ts was found.
+ *
+ * Note rows (loading / empty / refused / truncated) are dropped while a query is
+ * active: they describe a level, not a match, and the reader asked for matches.
+ * @param rows - the folded rows (`treeRows`).
+ * @param needle - what the reader typed; blank shows everything.
+ * @returns rows in display order.
+ */
+export function filterRows(rows: readonly TreeRow[], needle: string): TreeRow[] {
+  const query = needle.trim().toLowerCase();
+  if (query === '') return [...rows];
+  const keep = new Set<number>();
+  rows.forEach((row, index) => {
+    if (row.kind !== 'entry' || !row.entry.name.toLowerCase().includes(query)) return;
+    keep.add(index);
+    let depth = row.depth;
+    for (let back = index - 1; back >= 0 && depth > 0; back -= 1) {
+      const above = rows[back];
+      if (above === undefined || above.kind !== 'entry') continue;
+      if (above.depth < depth) { keep.add(back); depth = above.depth; }
+    }
+  });
+  return rows.filter((_row, index) => keep.has(index));
+}
+
+/**
+ * The selectable paths of a row list, in display order: the entry rows only.
+ *
+ * A Shift-range is defined over THIS list, so a note row (正在读取…, 空目录)
+ * must not be something a range can land on.
+ * @param rows - rows in display order.
+ * @returns one absolute path per entry row.
+ */
+export function entryPaths(rows: readonly TreeRow[]): string[] {
+  return rows.flatMap((row) => (row.kind === 'entry' ? [row.entry.path] : []));
+}
+
+/**
  * Toggle one directory in the expansion set.
  * @param expanded - the set before the click.
  * @param path - the directory's absolute path.
@@ -203,45 +247,4 @@ export function toggleExpanded(expanded: readonly string[], path: string): strin
  */
 export function needsListing(tree: TreeState, path: string): boolean {
   return tree.levels[path] === undefined;
-}
-
-/** One session log as the 会话文件 list draws it. */
-export interface SessionFileRow {
-  /** Absolute path of the JSONL log — the `resume` frame's own form. */
-  file: string;
-  /** The log's first real prompt, or 新会话 for one that has none yet. */
-  title: string;
-  /** The workspace the log belongs to ('' when its head carries none). */
-  workspace: string;
-  /** Relative stamp for the last write (`刚刚`, `3分钟`). */
-  stamp: string;
-  /** Whether this is the session the kernel is attached to. */
-  current: boolean;
-}
-
-/**
- * The session logs, newest first, as rows.
- *
- * The logs live under `~/.nova/sessions`, OUTSIDE the workspace: they are the
- * session's own durable files, and this panel lists them the way the sidebar
- * does — from the host's listing and its title/workspace/stamp rules, so the two
- * surfaces cannot disagree about what a session is called. Order comes from the
- * host (`list_sessions` is newest-first); this function preserves it.
- * @param items - the host's session listing (`null` before the first answer).
- * @param currentFile - the log the kernel is attached to.
- * @param now - the clock the stamps are read against.
- * @returns one row per log.
- */
-export function sessionFileRows(
-  items: readonly SessionListItem[] | null,
-  currentFile: string,
-  now: number,
-): SessionFileRow[] {
-  return (items ?? []).map((item) => ({
-    file: item.file,
-    title: sessionTitle(item),
-    workspace: item.workspace ?? '',
-    stamp: relativeStamp(item.mtime, now),
-    current: item.file === currentFile,
-  }));
 }

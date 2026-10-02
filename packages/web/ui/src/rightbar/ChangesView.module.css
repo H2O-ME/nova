@@ -1,0 +1,560 @@
+/*
+ * 变更: the lens head, the two status groups, the diff, the commit bar, the log.
+ *
+ * Geometry is the reference's (`dsh-better-sidebar` `changes/changes.module.css`
+ * + `diff/diff.module.css`, MIT): a 36px band, 28px rows with a 4px radius and
+ * the accent bar inset 4px, hover-revealed row verbs that occupy their column at
+ * all times (so revealing one never reflows the name beside it), and diff rows
+ * that WRAP rather than panning sideways — a diff read at a 300px column cannot
+ * afford horizontal scrolling.
+ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 4px 0 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.lens {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.branch {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.lensBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.groups {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+
+/* Each group is its own block so its sticky header releases exactly when the
+   group scrolls past (the reference's own reason for the nesting). */
+.group {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 2px;
+}
+
+.groupHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--dsw-alias-bg-base);
+}
+
+.headVerb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out),
+    opacity 120ms var(--ds-ease-in-out);
+}
+
+.headVerb svg {
+  width: 14px;
+  height: 14px;
+}
+
+.groupHead:hover .headVerb,
+.groupHead:focus-within .headVerb {
+  opacity: 1;
+}
+
+.headVerb:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.headVerb:disabled {
+  cursor: default;
+  opacity: 0;
+}
+
+@media (hover: none) {
+  .headVerb {
+    opacity: 1;
+  }
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  padding: 0 6px;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 28px;
+  padding-right: 2px;
+  border-radius: 4px;
+  animation: change-row-in 150ms var(--ds-ease-in-out);
+}
+
+@keyframes change-row-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.row[data-selected] {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.row[data-selected]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-state-business-primary);
+}
+
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding-right: 6px;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.chevron svg {
+  width: 12px;
+  height: 12px;
+}
+
+.chevron[data-open] svg {
+  transform: rotate(0deg);
+}
+
+/* A leaf keeps the chevron's column so names line up under their directory. */
+.chevron[data-leaf] {
+  visibility: hidden;
+}
+
+.dirName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dsw-font-xxs-strong-12);
+}
+
+.fileName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inkModified {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.inkAdded {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.inkDeleted {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.inkRenamed {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+/* The row's stage verb: its column is reserved on every row (the button is
+   always laid out), only its ink appears on hover. */
+.rowVerb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
+    color var(--ds-transition-duration) var(--ds-ease-in-out),
+    opacity 120ms var(--ds-ease-in-out);
+}
+
+.rowVerb svg {
+  width: 14px;
+  height: 14px;
+}
+
+.row:hover .rowVerb,
+.row:focus-within .rowVerb {
+  opacity: 1;
+}
+
+.rowVerb:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.rowVerb:disabled {
+  cursor: default;
+}
+
+@media (hover: none) {
+  .rowVerb {
+    opacity: 1;
+  }
+}
+
+/* The diff: a head band, then the rows. The body is the page's flexible half —
+   the groups above keep their own scroll, so a long file cannot push the commit
+   box off screen. */
+.diff {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
+  max-height: 46%;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.diffHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px 0 12px;
+}
+
+.diffPath {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.diffStat {
+  display: inline-flex;
+  gap: 5px;
+  flex: none;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+}
+
+.statAdd {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.statDel {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.diffSide {
+  flex: none;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.diffBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 8px;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+}
+
+.diffRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 0 10px;
+  line-height: 18px;
+}
+
+.diffRow[data-kind='del'] {
+  background: var(--dsw-alias-file-diff-deleted-bg);
+}
+
+.diffRow[data-kind='add'] {
+  background: var(--dsw-alias-file-diff-added-bg);
+}
+
+.diffRow[data-kind='del'] .sign,
+.diffRow[data-kind='del'] .lineText {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.diffRow[data-kind='add'] .sign,
+.diffRow[data-kind='add'] .lineText {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.diffRow[data-kind='ctx'] .lineText {
+  color: var(--dsw-alias-label-secondary);
+}
+
+.lineNo {
+  flex: none;
+  width: 2.5em;
+  text-align: right;
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+  user-select: none;
+}
+
+.sign {
+  flex: none;
+  width: 1em;
+  text-align: center;
+  user-select: none;
+  font-weight: 700;
+}
+
+/* Wrapping, never a horizontal pan: a 300px column cannot afford a side-scroll
+   for every long line. */
+.lineText {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diffHunk {
+  padding: 2px 10px;
+  color: var(--dsw-alias-state-business-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diffMeta {
+  padding: 2px 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font-style: italic;
+}
+
+.diffMore {
+  padding: 4px 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The commit box: pinned to the page's foot, above the log. */
+.commitBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.commitInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.commitInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.commitInput:focus {
+  outline: none;
+  border-color: var(--dsw-alias-border-l2);
+}
+
+.commitButton {
+  flex: none;
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 4px;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-inverted);
+  font: var(--dsw-font-xxs-strong-12);
+  cursor: pointer;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.commitButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.commitButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The log: newest first, hash badge then subject, with the author as the tail. */
+.logWrap {
+  flex: none;
+  max-height: 30%;
+  overflow-y: auto;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 4px 6px 8px;
+  list-style: none;
+}
+
+.logRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.logRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.logHash {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code);
+  font-size: 10px;
+}
+
+.logSubject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-primary);
+}
+
+.logMeta {
+  flex: none;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The session lens: its own file list (the transcript's edits). */
+.fileList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 6px;
+  list-style: none;
+}
+
+.fileStats {
+  flex: none;
+  font-family: var(--ds-font-family-code);
+  font-size: 10px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.fileStats[data-verdict='running'] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.fileStats[data-verdict='fail'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row {
+    animation: none;
+  }
+}

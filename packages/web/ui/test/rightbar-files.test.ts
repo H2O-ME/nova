@@ -12,7 +12,6 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_TREE_ROWS,
   needsListing,
-  sessionFileRows,
   sortEntries,
   toggleExpanded,
   treeAsk,
@@ -119,22 +118,7 @@ describe('file tree model', () => {
     expect(last).toMatchObject({ kind: 'note' });
   });
 
-  it('lists session logs newest-first, flagging the open one', () => {
-    const rows = sessionFileRows(
-      [
-        { file: '/n/sessions/2.jsonl', title: 'fix bug', mtime: 1_000, workspace: '/w' },
-        { file: '/n/sessions/1.jsonl', title: '', mtime: 999_000_000_000, workspace: '/w' },
-      ],
-      '/n/sessions/2.jsonl',
-      1_000,
-    );
-    expect(rows.map((row) => row.file)).toEqual(['/n/sessions/2.jsonl', '/n/sessions/1.jsonl']);
-    expect(rows[0]).toMatchObject({ current: true, title: 'fix bug' });
-    // A log with no prompt yet still has a row (the sidebar's own rule).
-    expect(rows[1]?.title).toBe('新会话');
-  });
-
   it('is empty, not broken, before the host has answered', () => {
-    expect(sessionFileRows(null, '', 0)).toEqual([]);
+    expect(treeRows({ levels: {}, asking: [] }, '/w', [])).toEqual([]);
   });
 });

@@ -1,0 +1,122 @@
+/*
+ * 文件: the header band, the preview area, and the docked tree's slot.
+ *
+ * Geometry is the reference's (`EditorHost.tsx` / `editorHeader`): a 36px band
+ * with a hairline under it, the file's path on the left (RTL so the NAME
+ * survives the ellipsis), then the mode/save controls and the dock toggle at
+ * the end. The dock owns the window's right edge, so its hairline is on ITS
+ * left and dragging that edge left widens it.
+ */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 4px 0 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+/* The path line: machine text, and it truncates from the LEFT so the file name
+   stays readable (`direction: rtl` + `text-align: left` is the reference's own
+   trick for exactly this line). */
+.path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.pathName {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* No document open yet: the band names what the page is about. */
+.pathDim {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.saveState {
+  flex: none;
+  font: var(--dsw-font-xxxs-11);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.saveState[data-dirty] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.body {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+.dock {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
+  border-left: 1px solid var(--dsw-alias-border-l1);
+}
+
+/* No document open: the dock is not a dock, it is the page. It takes the whole
+   body instead of a remembered strip beside a placeholder nobody is reading. */
+.body[data-tree-full] .dock {
+  flex: 1 1 auto;
+  min-width: 0;
+  border-left: none;
+}
+
+/* The dock's drag edge: 6px of hit area straddling the hairline, no visible box
+   until the pointer is on it. */
+.divider {
+  position: relative;
+  flex: none;
+  width: 6px;
+  margin-left: -3px;
+  margin-right: -3px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+  transition: background-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);
+}
+
+.divider:hover {
+  background: var(--dsw-alias-border-l2);
+}
+
+.dividerActive {
+  background: var(--dsw-alias-interactive-bg-hover-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .divider {
+    transition: none;
+  }
+}
