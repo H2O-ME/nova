@@ -6,7 +6,7 @@
  *
  * One deliberate deviation: the reference's caller always has a reconnect
  * action, so its indicator is always a button. Here `onReconnect` is passed by
- * the shell (App → Sidebar → SidebarFoot → this) and the socket also reconnects
+ * the shell (App → the header's status seat) and the socket also reconnects
  * itself (client.ts, capped backoff), so the prop is optional and the indicator
  * degrades to a readout when a caller omits it — the badge then never becomes a
  * click that has nowhere to go.
@@ -14,14 +14,9 @@
 import { useEffect, useState } from 'react';
 import { AlertIcon, CheckIcon } from '../icons.js';
 import { StateDot } from '../tool/StateDot.js';
-import { cls, indicatorTransition } from './view.js';
+import { cx } from '../composer/cx.js';
+import { indicatorTransition, type ConnectionIndicatorState } from './connection.js';
 import css from './ConnectionIndicator.module.css';
-
-/** Visual state rendered by {@link ConnectionIndicator}. */
-export type ConnectionIndicatorState =
-  | 'disconnected'
-  | 'connecting'
-  | 'recovered';
 
 /**
  * Exit-transition length; keep equal to the `.leaving` transition duration in
@@ -124,7 +119,7 @@ export function ConnectionIndicator({
   if (onReconnect === undefined) {
     return (
       <div
-        className={cls(css.indicator, css.warning, css.readout) + leavingClass}
+        className={cx(css.indicator, css.warning, css.readout) + leavingClass}
         role="status"
         data-phase={view}
         aria-label={connecting ? connectingLabel : disconnectedLabel}
@@ -141,7 +136,7 @@ export function ConnectionIndicator({
   return (
     <button
       type="button"
-      className={`${cls(css.indicator, css.warning)}${leavingClass}`}
+      className={`${cx(css.indicator, css.warning)}${leavingClass}`}
       data-phase={view}
       aria-label={connecting ? restartActionLabel : reconnectActionLabel}
       onClick={onReconnect}

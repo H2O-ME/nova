@@ -94,6 +94,12 @@
   color: inherit;
   font: inherit;
   text-align: left;
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 /* The summary body flows uncapped with the page, so a long checkpoint summary
@@ -159,6 +165,7 @@
   grid-area: 1 / 1;
   align-items: center;
   justify-content: center;
+  transition: opacity 120ms ease;
 }
 
 .compactionDisclosureIcon {

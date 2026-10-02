@@ -22,9 +22,11 @@ const general = (): string =>
       preference="dark"
       fontSize={14}
       disabled={false}
+      transcriptView="standard"
       onPickApproval={() => undefined}
       onPickPreference={() => undefined}
       onPickFontSize={() => undefined}
+      onPickTranscriptView={() => undefined}
     />,
   );
 
@@ -50,6 +52,20 @@ describe('general section', () => {
     const at = (needle: string): number => html.indexOf(needle);
     expect(at(SETTINGS_COPY['permission.title'])).toBeLessThan(at(SETTINGS_COPY['appearance.title']));
     expect(at(SETTINGS_COPY['appearance.title'])).toBeLessThan(at(SETTINGS_COPY['fontSize.title']));
+  });
+
+  it('renders the work-details row with its four modes', () => {
+    // The reference's 通用 page row: a select naming how much tool-call detail
+    // the transcript shows. The static lane renders the trigger CLOSED, so the
+    // markup carries the mode in force; the four option labels are asserted
+    // where they live (the copy table the open menu reads).
+    const html = general();
+    expect(html).toContain(SETTINGS_COPY['transcript.title']);
+    expect(html).toContain(SETTINGS_COPY['transcript.description']);
+    expect(html).toContain('aria-label="工作步骤展示，当前：标准"');
+    for (const key of ['transcript.compact', 'transcript.standard', 'transcript.detailed', 'transcript.verbose'] as const) {
+      expect(SETTINGS_COPY[key]).not.toBe('');
+    }
   });
 });
 

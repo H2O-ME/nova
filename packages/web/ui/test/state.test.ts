@@ -273,7 +273,12 @@ describe('reduce / trace view', () => {
     // disables both 新建文件夹 and 打开 while it is set. A disconnect during a
     // listing therefore left a dead end that only closing and reopening could
     // escape, with no frame able to arrive and clear it.
-    const asked = reduce(opened(), { type: 'directory_ask' });
+    // Opened first: only an OPEN picker can be mid-ask (see the directory
+    // browser's own suite — an answer alone no longer opens it).
+    const asked = reduce(
+      reduce(opened(), { type: 'directory_open', open: true }),
+      { type: 'directory_ask' },
+    );
     expect(asked.directory).toMatchObject({ pending: true });
     const dropped = reduce(asked, { type: 'connection', connected: false });
     expect(dropped.directory).toMatchObject({ pending: false });
@@ -292,6 +297,33 @@ describe('reduce / trace view', () => {
     const switched = reduce(live, { type: 'select_view', view: 'trace' });
     expect(switched.view).toBe('trace');
     expect(texts(switched.blocks)).toEqual(['x']);
+  });
+});
+
+describe('reduce / view follows the session', () => {
+  it('drops a pane view on a session switch — a carried view stacked the new pane under the hero', () => {
+    // The reported overlay: reading 轨迹 (or 上下文), clicking 新会话, and the
+    // new session's pane rendered under the hero — the hero phase hides the
+    // tab strip, so a surviving view had no way back. The view is chrome for
+    // ONE session, so a switch lands on the conversation.
+    const switchTo = readyInfo({ sessionFile: 'D:/proj/other.jsonl' });
+    const fromTrace = reduce(reduce(baselined(), { type: 'select_view', view: 'trace' }), {
+      type: 'ready',
+      info: switchTo,
+    });
+    expect(fromTrace.view).toBe('chat');
+    const fromContext = reduce(reduce(baselined(), { type: 'select_view', view: 'context' }), {
+      type: 'ready',
+      info: switchTo,
+    });
+    expect(fromContext.view).toBe('chat');
+  });
+
+  it('keeps the pane view across a re-attach to the same session', () => {
+    // A reconnect re-baselines the SAME session; it must not kick the reader
+    // out of the pane they were reading.
+    const onTrace = reduce(baselined(), { type: 'select_view', view: 'trace' });
+    expect(reduce(onTrace, { type: 'ready', info: readyInfo() }).view).toBe('trace');
   });
 });
 
@@ -497,6 +529,38 @@ describe('reduce / hints', () => {
   it('surfaces host errors as a warning hint', () => {
     const state = reduce(initialState, { type: 'error', message: 'bad frame' });
     expect(state.blocks[0]).toMatchObject({ kind: 'hint', tone: 'warn' });
+  });
+
+  it('phrases an unknown frame type as "restart the host", not jargon', () => {
+    // An older nova process answers a newer page with this exact sentence.
+    // The reader's fix is restarting the host — the frame name is ours to
+    // know, not theirs to parse.
+    const state = reduce(initialState, { type: 'error', message: 'unknown frame type: shell_read' });
+    expect(state.blocks[0]).toMatchObject({ kind: 'hint', tone: 'warn' });
+    expect((state.blocks[0] as { text: string }).text).toContain('重新启动');
+    expect((state.blocks[0] as { text: string }).text).not.toContain('shell_read');
+
+    // Any other error keeps the host's own words.
+    const other = reduce(initialState, { type: 'error', message: 'git clone failed: 404' });
+    expect((other.blocks[0] as { text: string }).text).toContain('git clone failed: 404');
+  });
+});
+
+describe('reduce / git clone in flight', () => {
+  it('raises the flag on the request and settles it on either reply', () => {
+    // The clone's SUCCESS reply is the re-stated `ready` (it changed what is
+    // open); its failure reply is the ordinary error frame. Both settle.
+    const sent = reduce(initialState, { type: 'sent', frame: { type: 'git_clone', url: 'https://example.com/x.git' } });
+    expect(sent.clonePending).toBe(true);
+
+    const failed = reduce(sent, { type: 'error', message: '仓库 URL 含有控制字符' });
+    expect(failed.clonePending).toBe(false);
+
+    const adopted = reduce(reduce(initialState, { type: 'sent', frame: { type: 'git_clone', url: 'u' } }), {
+      type: 'ready',
+      info: readyInfo(),
+    });
+    expect(adopted.clonePending).toBe(false);
   });
 });
 
@@ -800,6 +864,26 @@ describe('reduce / directory browser', () => {
     const closed = reduce(listed, { type: 'directory_open', open: false });
     expect(closed.directory).toBeNull();
   });
+
+  it('an answer to the TREE’s own ask does not open the picker', () => {
+    // The right panel's 文件 page asks `list_directory` for the session's
+    // workspace, and that answer arrives on the same frame the picker listens
+    // for. Filling the picker's slot from it drew 「选择工作区文件夹」 over a session
+    // that already had a workspace — the reported 「文件页面居然需要我再选择一遍」 —
+    // every time the panel was opened. The tree still gets its level: one frame,
+    // two readers, and only a GESTURE opens a dialog.
+    const listed = reduce(initialState, { type: 'directory', level: LEVEL });
+    expect(listed.directory).toBeNull();
+    expect(listed.tree.levels[LEVEL.path]?.status).toBe('ready');
+    const refused = reduce(initialState, { type: 'directory_error', message: '目录不存在：D:/nope' });
+    expect(refused.directory).toBeNull();
+  });
+
+  it('a mid-ask marker from nowhere cannot conjure the dialog either', () => {
+    // `directory_ask` has exactly one caller (the open dialog's own effect);
+    // anything else dispatching it must not be able to open a dialog.
+    expect(reduce(initialState, { type: 'directory_ask' }).directory).toBeNull();
+  });
 });
 
 describe('reduce / native pick', () => {
@@ -827,6 +911,60 @@ describe('reduce / native pick', () => {
     const asked = reduce(initialState, { type: 'sent', frame: { type: 'pick_directory' } });
     const dropped = reduce(asked, { type: 'connection', connected: false });
     expect(dropped.pickPending).toBe(false);
+  });
+});
+
+describe('reduce / editor documents', () => {
+  const READ = { type: 'read_entry', path: 'D:/w/README.md' } as const;
+
+  it('a read going out opens the document; the answer settles the one already open', () => {
+    // The gesture has ONE owner: the reducer sees the request leave, so the doc
+    // enters as `loading` HERE and the host's `entry` only settles it. Nothing
+    // dispatched an `editor_open` before this, so every tree-row click sent the
+    // frame and opened nothing — the preview beside the tree stayed empty and
+    // the file never appeared (the reported 「点击文件后开启」 failure).
+    const asked = reduce(initialState, { type: 'sent', frame: READ });
+    expect(asked.editor.docs.map((doc) => doc.path)).toEqual(['D:/w/README.md']);
+    expect(asked.editor.active).toBe('D:/w/README.md');
+    expect(asked.editor.docs[0]).toMatchObject({ loading: true, text: '' });
+    const loaded = reduce(asked, {
+      type: 'entry',
+      path: 'D:/w/README.md',
+      text: '# hi',
+      bytes: 4,
+      truncated: false,
+      binary: false,
+    });
+    expect(loaded.editor.docs[0]).toMatchObject({ loading: false, text: '# hi', bytes: 4 });
+  });
+
+  it('an answer for a path nobody opened cannot conjure a document', () => {
+    // The mirror of the rule above: a frame is not a gesture. A read's answer
+    // only ever settles a document that the request already put there.
+    const stray = reduce(initialState, {
+      type: 'entry',
+      path: 'D:/w/other.md',
+      text: 'x',
+      bytes: 1,
+      truncated: false,
+      binary: false,
+    });
+    expect(stray.editor.docs).toEqual([]);
+    const refused = reduce(initialState, { type: 'entry_error', path: 'D:/w/other.md', message: '不在工作区内' });
+    expect(refused.editor.docs).toEqual([]);
+  });
+
+  it('a refusal settles the open document with its reason, and keeps it open', () => {
+    const asked = reduce(initialState, { type: 'sent', frame: READ });
+    const refused = reduce(asked, { type: 'entry_error', path: 'D:/w/README.md', message: '文件过大' });
+    expect(refused.editor.docs[0]).toMatchObject({ loading: false, error: '文件过大' });
+    expect(refused.editor.active).toBe('D:/w/README.md');
+  });
+
+  it('re-reading an open document re-activates it instead of duplicating it', () => {
+    const first = reduce(initialState, { type: 'sent', frame: READ });
+    const again = reduce(first, { type: 'sent', frame: READ });
+    expect(again.editor.docs).toHaveLength(1);
   });
 });
 

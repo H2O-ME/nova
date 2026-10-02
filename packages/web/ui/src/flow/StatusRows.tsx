@@ -8,7 +8,7 @@
  * (`tool/StateDot`, the one dot recipe in this surface), tabular figures for
  * the elapsed column.
  */
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { DisclosureRow } from '../chat/DisclosureRow.js';
 import { ContextGlyph14 } from '../chat/glyphs.js';
 import { TextShimmer } from '../shell/TextShimmer.js';
@@ -83,7 +83,7 @@ function subDot(status: SubRow['status']): StateDotState {
  * interval per running row (never a timer in the reducer — a fresh
  * `job_update` without a timestamp would have to invent what "now" means).
  */
-export function JobRow({ job, onStop }: { job: JobSnapshot; onStop: (id: string) => void }): JSX.Element {
+export const JobRow = memo(function JobRow({ job, onStop }: { job: JobSnapshot; onStop: (id: string) => void }): JSX.Element {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (job.status !== 'running' && job.status !== 'stopping') return;
@@ -118,7 +118,7 @@ export function JobRow({ job, onStop }: { job: JobSnapshot; onStop: (id: string)
       {job.progress !== undefined && <span className={css.progress}>{job.progress}</span>}
     </div>
   );
-}
+});
 
 /**
  * One slash command the user ran (`/compact`) — port of the harness
@@ -133,7 +133,7 @@ export function JobRow({ job, onStop }: { job: JobSnapshot; onStop: (id: string)
  * command has nothing to reveal (the reference's `body !== null` rule), so it
  * renders as a plain summary rather than a control that opens onto itself.
  */
-export function CommandRow({ name, running, text }: { name: string; running: boolean; text?: string }): JSX.Element {
+export const CommandRow = memo(function CommandRow({ name, running, text }: { name: string; running: boolean; text?: string }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const state = running ? 'running' : 'ok';
   const summary = text ?? (running ? '执行中' : '已完成');
@@ -169,7 +169,7 @@ export function CommandRow({ name, running, text }: { name: string; running: boo
       </DisclosureRow>
     </div>
   );
-}
+});
 
 /**
  * A nested subagent: one row per label, rewritten in place. It exists because
@@ -187,7 +187,7 @@ export function CommandRow({ name, running, text }: { name: string; running: boo
  * the harness say 已完成 while the entry is still `inactive`); this row reads the
  * nested loop's own terminal status instead.
  */
-export function SubagentRow({ sub }: { sub: SubRow }): JSX.Element {
+export const SubagentRow = memo(function SubagentRow({ sub }: { sub: SubRow }): JSX.Element {
   const running = sub.status === 'running';
   const usage = sub.usage;
   const tokens = usage === undefined ? 0 : usage.promptTokens + usage.completionTokens;
@@ -221,4 +221,4 @@ export function SubagentRow({ sub }: { sub: SubRow }): JSX.Element {
       )}
     </div>
   );
-}
+});

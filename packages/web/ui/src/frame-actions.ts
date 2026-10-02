@@ -78,7 +78,10 @@ const MAPPERS: Mapper = {
     models: frame.models,
     ...(frame.message !== undefined ? { message: frame.message } : {}),
   }),
-  sessions: (frame) => ({ type: 'sessions', items: frame.items }),
+  // The session list is a host API this surface no longer renders (the session
+  // sidebar is gone): the frame is acknowledged as read and dropped, which is
+  // this table's own way of saying "deliberately ignored".
+  sessions: () => null,
   files: (frame) => ({ type: 'files', query: frame.query, items: frame.items, truncated: frame.truncated }),
   // The level travels whole: `path`/`crumbs`/`roots`/`parent` are the host's own
   // answer and the dialog draws them directly, so nothing is re-derived here.
@@ -104,12 +107,49 @@ const MAPPERS: Mapper = {
   history_earlier: (frame) => ({ type: 'history_earlier', blocks: frame.blocks, total: frame.total }),
   trace: (frame) => ({ type: 'trace', rows: frame.rows, total: frame.total }),
   context: (frame) => ({ type: 'context', timeline: frame.timeline }),
-  // The terminal frame travels as its payload (minus the discriminant): the
-  // slice's fold reads `id`/`status`/`text`/`detail`/`error` whole, and
+  // The editor family: a read's two answers, a save's acknowledgement, and a
+  // structural change (which re-lists one directory rather than patching it).
+  entry: (frame) => ({
+    type: 'entry',
+    path: frame.path,
+    text: frame.text,
+    bytes: frame.bytes,
+    truncated: frame.truncated,
+    binary: frame.binary,
+  }),
+  entry_error: (frame) => ({ type: 'entry_error', path: frame.path, message: frame.message }),
+  entry_saved: (frame) => ({ type: 'entry_saved', path: frame.path, bytes: frame.bytes }),
+  entry_changed: (frame) => ({ type: 'entry_changed', change: frame.change, path: frame.path, dir: frame.dir }),
+  git_status: (frame) => ({
+    type: 'git_status',
+    repo: frame.repo,
+    branch: frame.branch,
+    entries: frame.entries,
+    ...(frame.message !== undefined ? { message: frame.message } : {}),
+  }),
+  git_diff: (frame) => ({
+    type: 'git_diff',
+    path: frame.path,
+    staged: frame.staged,
+    text: frame.text,
+    truncated: frame.truncated,
+    untracked: frame.untracked,
+  }),
+  git_log: (frame) => ({ type: 'git_log', entries: frame.entries }),
+  jobs: (frame) => ({ type: 'jobs', items: frame.items }),
+  // The term frame travels as its payload (minus the discriminant): the
+  // slice's fold reads `data`/`reset`/`status`/`exitCode`/`error` whole, and
   // re-listing the fields here is how a new one gets silently dropped.
-  terminal: (frame) => {
+  term: (frame) => {
     const { type: _frameType, ...payload } = frame;
-    return { type: 'terminal', frame: payload };
+    return { type: 'term', frame: payload };
+  },
+  // The host's shell inventory travels whole: the menu draws the rows as given
+  // and `current` is the one a choiceless terminal starts on — re-listing the
+  // fields here is how a new one gets silently dropped.
+  shells: (frame) => {
+    const { type: _frameType, ...payload } = frame;
+    return { type: 'shells', frame: payload };
   },
   error: (frame) => ({ type: 'error', message: frame.message }),
 };

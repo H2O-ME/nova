@@ -48,6 +48,12 @@
   flex-direction: column;
   gap: 2px;
   opacity: 0;
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .stepper:hover .arrows,
@@ -70,6 +76,12 @@
   background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 75%, transparent);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .arrow:hover:not(:disabled) {

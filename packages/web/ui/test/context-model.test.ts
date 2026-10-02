@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextBreakdown, ContextTimeline } from '../src/types.js';
-import { compositionBar, compositionSlots, occupancy, percentOf, statCells } from '../src/context/context-model.js';
+import { compositionBar, compositionSlots, occupancy, percentOf, staggerStyle, statCells } from '../src/context/context-model.js';
 import { trendChart } from '../src/context/trend-model.js';
+import { visibleMax } from '../src/context/trend-geometry.js';
 import { elementBoard } from '../src/context/element-model.js';
-import { eventChips, eventRow, fileRows } from '../src/context/activity-model.js';
+import { fileRows } from '../src/context/file-model.js';
 
 /** A breakdown with one category filled and the rest zero. */
 function cats(overrides: Partial<ContextBreakdown> = {}): ContextBreakdown {
@@ -100,6 +101,19 @@ describe('occupancy', () => {
   });
 });
 
+describe('stagger slot', () => {
+  it('passes the column index through as the --lc-i slot', () => {
+    expect(staggerStyle(0)).toEqual({ '--lc-i': 0 });
+    expect(staggerStyle(7)).toEqual({ '--lc-i': 7 });
+  });
+
+  it('caps the slot so a long log still settles in about a second', () => {
+    expect(staggerStyle(19)).toEqual({ '--lc-i': 19 });
+    expect(staggerStyle(20)).toEqual({ '--lc-i': 20 });
+    expect(staggerStyle(500)).toEqual({ '--lc-i': 20 });
+  });
+});
+
 describe('trend chart', () => {
   const points = [
     { seq: 1, at: 10, cats: cats({ system: 100 }), total: 100 },
@@ -110,17 +124,26 @@ describe('trend chart', () => {
     expect(trendChart(points).bars.map((bar) => bar.at)).toEqual([10, 20]);
   });
 
-  it('scales every height against the window when it is known', () => {
-    const chart = trendChart(points, 800);
-    expect(chart.scale).toBe(800);
-    expect(chart.bars[0]!.height).toBeCloseTo(0.125);
-    expect(chart.bars[1]!.height).toBeCloseTo(0.5);
-  });
-
-  it('falls back to the tallest request when no window is known', () => {
+  it('scales every height against the tallest request, so the trend shows its own shape', () => {
     const chart = trendChart(points);
     expect(chart.scale).toBe(400);
+    expect(chart.bars[0]!.height).toBeCloseTo(0.25);
     expect(chart.bars[1]!.height).toBe(1);
+    // The model window is NOT the axis: at 1.05M both bars would sit within 2%
+    // of the floor and the chart would say nothing — the regression this pins.
+    expect(chart.ticks[0]!.label).toBe('400');
+  });
+
+  it('rescales to the peak in view when the 自适应 switch overrides it', () => {
+    const chart = trendChart(points, 200);
+    expect(chart.scale).toBe(200);
+    expect(chart.bars[0]!.height).toBeCloseTo(0.5);
+    // A bar taller than the visible peak saturates instead of overflowing.
+    expect(chart.bars[1]!.height).toBe(1);
+  });
+
+  it('ignores an empty override, so a zero-peak window keeps the whole-log scale', () => {
+    expect(trendChart(points, 0).scale).toBe(400);
   });
 
   it('stacks only the categories in use, in reading order', () => {
@@ -135,14 +158,48 @@ describe('trend chart', () => {
   });
 
   it('labels the axis from the scale down to zero', () => {
-    const chart = trendChart(points, 1000);
+    const chart = trendChart(points);
     expect(chart.ticks.map((tick) => tick.frac)).toEqual([1, 0.75, 0.5, 0.25, 0]);
-    expect(chart.ticks[0]!.label).toBe('1K');
+    expect(chart.ticks[0]!.label).toBe('400');
     expect(chart.ticks[4]!.label).toBe('0');
   });
 
   it('survives an all-zero session without dividing by zero', () => {
     expect(trendChart([{ seq: 1, at: 0, cats: cats(), total: 0 }]).bars.map((bar) => bar.height)).toEqual([0]);
+  });
+});
+
+describe('trend visible window', () => {
+  // Columns are 14px boxes on a 16px pitch starting at x=2 (`.trendBar` +
+  // `.chart`), so column i spans [2+16i, 16+16i): 0:[2,16) 1:[18,32) 2:[34,48)
+  // 3:[50,64) 4:[66,80). The tall columns sit at both ends on purpose — a
+  // window that forgets either edge changes the peak.
+  const points = [100, 900, 300, 700, 200].map((total, index) => ({
+    seq: index + 1,
+    at: index,
+    cats: cats(),
+    total,
+  }));
+
+  it('reports the peak of the columns in view, not of the whole log', () => {
+    expect(visibleMax(points, 0, 100)).toBe(900);
+    // [34,68) holds columns 2..4: the 900 at column 1 must not leak in.
+    expect(visibleMax(points, 34, 34)).toBe(700);
+  });
+
+  it('drops a column whose box ends inside the left edge and one starting past the right', () => {
+    // [34,50): column 2 only — column 1 ends at 32, column 3 starts at 50.
+    expect(visibleMax(points, 34, 16)).toBe(300);
+  });
+
+  it('counts a partially visible column — it is what the reader is looking at', () => {
+    // [30,34) overlaps column 1's tail by 2px.
+    expect(visibleMax(points, 30, 4)).toBe(900);
+  });
+
+  it('answers zero when the window holds no column at all', () => {
+    expect(visibleMax(points, 200, 100)).toBe(0);
+    expect(visibleMax([], 0, 100)).toBe(0);
   });
 });
 
@@ -169,33 +226,6 @@ describe('element board', () => {
   it('skips an empty category rather than drawing a card with nothing in it', () => {
     expect(elementBoard([], 0)).toEqual({ groups: [] });
     expect(elementBoard([{ seq: 1, cat: 'tool', label: 'a', tokens: 1 }], 1).groups.map((g) => g.cat)).toEqual(['tool']);
-  });
-});
-
-describe('event rows', () => {
-  it('states what a compaction reclaimed', () => {
-    expect(eventRow({ seq: 3, at: 0, kind: 'compaction', freed: 1200 })).toEqual({
-      label: '压缩',
-      detail: '回收约 1200 tokens',
-    });
-  });
-
-  it('names the new workspace and the goal', () => {
-    expect(eventRow({ seq: 1, at: 0, kind: 'workspace', detail: '/w/two' }).detail).toBe('/w/two');
-    expect(eventRow({ seq: 2, at: 0, kind: 'goal' }).detail).toBe('已清除');
-  });
-});
-
-describe('event chips', () => {
-  it('keeps every kind in reading order, zeros included, so the row never changes shape', () => {
-    const chips = eventChips([
-      { seq: 1, at: 0, kind: 'compaction', freed: 10 },
-      { seq: 2, at: 0, kind: 'compaction', freed: 20 },
-      { seq: 3, at: 0, kind: 'workspace', detail: '/w' },
-    ]);
-    expect(chips.map((chip) => chip.kind)).toEqual(['compaction', 'workspace', 'goal']);
-    expect(chips.map((chip) => chip.count)).toEqual([2, 1, 0]);
-    expect(chips.map((chip) => chip.glyph)).toEqual(['✂', '⌂', '◎']);
   });
 });
 

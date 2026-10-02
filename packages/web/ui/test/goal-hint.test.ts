@@ -18,6 +18,9 @@ import { GOAL_ACTIVE_HINT, GOAL_HINT, claimHint } from '../src/composer/claim-hi
 import { DraftSurface } from '../src/composer/DraftSurface.js';
 import { GoalPanel } from '../src/conversation/GoalPanel.js';
 
+/** The bar's actions never fire in these renders; the socket stub keeps the prop honest. */
+const send = (): void => undefined;
+
 const GOAL: Goal = {
   id: 'goal_1',
   objective: '发布 v1',
@@ -127,7 +130,7 @@ describe('replay: one value drives both surfaces', () => {
   it('restores the panel AND the active hint from ready.goal', () => {
     const state = reduce(initialState, { type: 'ready', info: readyInfo(GOAL) });
     expect(state.goal).toEqual(GOAL);
-    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: state.goal }))).toContain('发布 v1');
+    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: state.goal, send }))).toContain('发布 v1');
     // The line a reload used to lose: with the goal back, the composer no longer
     // invites an objective the command would refuse.
     expect(claimHint('/goal', CATALOG, state.goal !== null)).toBe(GOAL_ACTIVE_HINT);
@@ -137,16 +140,16 @@ describe('replay: one value drives both surfaces', () => {
     const withGoal = reduce(initialState, { type: 'ready', info: readyInfo(GOAL) });
     const switched = reduce(withGoal, { type: 'ready', info: readyInfo(null) });
     expect(switched.goal).toBeNull();
-    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: switched.goal }))).toBe('');
+    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: switched.goal, send }))).toBe('');
     expect(claimHint('/goal', CATALOG, switched.goal !== null)).toBe(GOAL_HINT);
   });
 
   it('a live goal event moves the same two surfaces, and a clear closes them', () => {
     const set = reduce(initialState, { type: 'event', event: { type: 'goal', goal: GOAL } });
-    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: set.goal }))).toContain('发布 v1');
+    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: set.goal, send }))).toContain('发布 v1');
     const cleared = reduce(set, { type: 'event', event: { type: 'goal', goal: null } });
     expect(cleared.goal).toBeNull();
-    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: cleared.goal }))).toBe('');
+    expect(renderToStaticMarkup(createElement(GoalPanel, { goal: cleared.goal, send }))).toBe('');
     expect(claimHint('/goal', CATALOG, cleared.goal !== null)).toBe(GOAL_HINT);
   });
 });

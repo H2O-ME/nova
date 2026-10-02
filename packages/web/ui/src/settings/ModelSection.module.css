@@ -97,6 +97,12 @@
   cursor: pointer;
   font-family: inherit;
   text-align: left;
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 /* The wash is `--dsw-alias-interactive-bg-hover`, not the sidebar's nav wash the
@@ -210,6 +216,12 @@
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-primary);
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .retry:hover {

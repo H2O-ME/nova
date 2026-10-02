@@ -48,12 +48,18 @@
 .more {
   padding: 2px 10px;
   border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: 8px;
+  border-radius: var(--dsw-radius-sm);
   background: transparent;
   color: var(--dsw-alias-label-secondary);
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(20px + var(--dsh-content-font-delta, 0px));
   cursor: pointer;
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .action:hover,
@@ -81,9 +87,13 @@
   gap: 12px;
   padding: 6px 8px;
   margin: 0 -8px;
-  border-radius: 8px;
+  /* The reference cell (ui-trajectory TrajectoryCell): radius-md, one step
+     rounder than the old hand-written 8px so the row highlight matches the
+     card scale around it. */
+  border-radius: var(--dsw-radius-md);
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .row:hover {

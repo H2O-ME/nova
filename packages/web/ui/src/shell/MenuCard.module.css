@@ -113,6 +113,12 @@
   color: inherit;
   text-align: left;
   cursor: pointer;
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .option:hover:not(:disabled),

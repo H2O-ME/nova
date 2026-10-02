@@ -1,0 +1,45 @@
+/*
+ * The crash notice. It has to read as the product's own voice while everything
+ * else may be broken, so it uses the same token layer and the same scale as the
+ * rest of the shell — and nothing from the feature that failed.
+ */
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px;
+  padding: 16px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.title {
+  margin: 0;
+  font: var(--dsw-font-s-14);
+  color: var(--dsw-alias-label-primary);
+}
+
+.note {
+  margin: 0;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-secondary);
+  word-break: break-word;
+}
+
+.reload {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  corner-shape: round;
+  background: var(--dsw-alias-button-elevated-fill);
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  cursor: pointer;
+}
+
+.reload:hover {
+  background: var(--dsw-alias-button-floating-hover);
+}

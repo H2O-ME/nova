@@ -70,9 +70,12 @@
   margin-top: 2px;
   padding: 1px 7px 0;
   border: 0.5px solid var(--dsw-alias-interactive-bg-hover);
-  border-radius: 24px;
+  /* The reference's pill treatment: uncapped radius, so it must opt out of the
+     universal superellipse (styles/corner-shape.css) or the ends square off. */
+  border-radius: 999px;
+  corner-shape: round;
   background: var(--dsw-alias-state-business-tertiary);
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary-bluish);
   font-family: var(--ds-font-family-code);
   font-size: 12px;
   line-height: 18px;

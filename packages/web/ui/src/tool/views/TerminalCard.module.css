@@ -55,7 +55,7 @@
 .header::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .header::-webkit-scrollbar-track {
@@ -171,7 +171,7 @@
 .output::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .output::-webkit-scrollbar-track {

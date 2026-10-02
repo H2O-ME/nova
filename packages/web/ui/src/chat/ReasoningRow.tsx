@@ -10,7 +10,7 @@
  * The running label is announced through the visually-hidden span the harness
  * uses; the settled row's title carries the completion on its own.
  */
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { DisclosureRow } from './DisclosureRow.js';
 import { ThinkGlyph14 } from './glyphs.js';
 import { MarkdownText } from './markdown/MarkdownText.js';
@@ -57,17 +57,25 @@ export interface ReasoningRowProps {
   text: string;
   /** Whether this block is the streaming tail. */
   running: boolean;
+  /** The work-details policy's `settledReasoningPreview`: the 简洁 mode
+   *  withholds the summary, so the row reads as the bare title. */
+  previewAllowed?: boolean | undefined;
 }
 
-export function ReasoningRow({ text, running }: ReasoningRowProps): JSX.Element {
+export const ReasoningRow = memo(function ReasoningRow({
+  text,
+  running,
+  previewAllowed = true,
+}: ReasoningRowProps): JSX.Element {
   const [expanded, setExpanded] = useState(false);
 
   // The harness's summary source: while streaming it is the last completed
   // paragraph's first line (a half-written line is not a summary), once
-  // settled the text's own first line.
+  // settled the text's own first line. The policy's gate names SETTLED rows —
+  // a streaming row's live tail is the progress being watched, not a summary.
   const summaryText = running ? latestCompletedParagraphFirstLine(text) : firstLine(text);
   const summary = summaryText.replaceAll('**', '');
-  const preview = !expanded && summary !== '';
+  const preview = !expanded && summary !== '' && (running || previewAllowed);
 
   return (
     <div
@@ -89,14 +97,14 @@ export function ReasoningRow({ text, running }: ReasoningRowProps): JSX.Element 
         expandable
         expandOnRowClick
         onToggle={() => { setExpanded((value) => !value); }}
-        collapsedContent={(
+        collapsedContent={preview ? (
           <>
             <span className={css.separator} aria-hidden="true" />
             <span className={css.summary} data-streaming={running || undefined}>
               <span className={css.summaryText}>{summary}</span>
             </span>
           </>
-        )}
+        ) : undefined}
       >
         <div className={css.thinkBody}>
           <MarkdownText text={text} streaming={running} variant="compact" />
@@ -104,4 +112,4 @@ export function ReasoningRow({ text, running }: ReasoningRowProps): JSX.Element 
       </DisclosureRow>
     </div>
   );
-}
+});

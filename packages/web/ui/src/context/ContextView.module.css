@@ -2,7 +2,7 @@
    on the shared width axis, the secondary tier for meta text, hairlines, tabular
    numerals) plus the cards this pane adds: the stats strip, the composition bar
    with its hover bubble, the trend chart with its axes and grid, the element
-   board, the event log and the file list.
+   board and the file list.
 
    Colours come from the token layer (static hues for categories, alias tiers for
    chrome) — never a literal. Chart geometry (16px composition bar, 130px plot
@@ -17,6 +17,10 @@
 .root {
   display: flex;
   flex-direction: column;
+  /* The pane's base tier (dsh .lc-root's 13px): a row that declares no size of
+     its own inherits THIS, not the browser's 16px — the trend detail's rows
+     did exactly that and read a size larger than every other row in the pane. */
+  font-size: var(--dsh-content-font-size-secondary, 13px);
 }
 
 /* Same column and side clearance as the transcript and the trace, so switching
@@ -145,7 +149,15 @@
 .slot {
   flex-basis: 0;
   min-width: 0;
-  transition: opacity 0.2s ease;
+  /* dsh .lc-stacked-seg: hover dims recede while the active slot brightens,
+     both easing over the shared duration token. */
+  transition:
+    filter var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+    opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.slotOn {
+  filter: brightness(1.18);
 }
 
 .slotDim {
@@ -164,6 +176,19 @@
   );
 }
 
+/* dsh animate-lc-stacked-in: segments and the free track scaleX-open from
+   their own left edge, staggered in layout order (the `--lc-i` slot comes from
+   the model, capped there). Mount-only — flexGrow is token-proportional, so
+   live hover never replays the sweep. */
+.slot,
+.free {
+  transform-origin: 0 50%;
+  animation: lc-stacked-in 0.4s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 40ms) backwards;
+}
+
+/* dsh-context's in-pane tip chrome (base.css .lc-tip): the bubble follows the
+   THEME (bg-layer-2 + label tokens) — the shell Tooltip's always-dark
+   `tooltip-bg` is chrome vocabulary and mixes to dark-on-dark in light theme. */
 .barTip {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -172,7 +197,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: var(--dsw-alias-tooltip-bg, var(--dsw-alias-bg-layer-2));
+  background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 6px;
   padding: 4px 8px;
@@ -181,16 +206,19 @@
   box-shadow: var(--dsw-shadow-lv3);
   white-space: nowrap;
   pointer-events: none;
+  animation: tip-in 0.15s var(--ds-ease-in-out, ease-in-out);
 }
 
 .barTip span {
   color: var(--dsw-alias-label-secondary);
 }
 
+/* dsh .lc-legend + .lc-chip: a column-aligned grid of chips; hover lights a
+   chip with the interactive bg and rings its swatch. */
 .legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px 14px;
   margin: 10px 0 0;
   padding: 0;
   list-style: none;
@@ -199,13 +227,18 @@
 .legendItem {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
   font-size: var(--dsh-content-font-size-secondary, 13px);
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsw-alias-label-primary);
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .legendItemOn {
-  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
 .legendSwatch {
@@ -213,19 +246,71 @@
   height: 8px;
   border-radius: 2px;
   flex: none;
+  transition: box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.legendItemOn .legendSwatch {
+  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary);
 }
 
 .legendLabel {
+  font-weight: 600;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
-.legendValue,
+.legendValue {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
 .legendPct {
-  color: var(--dsw-alias-label-caption);
+  color: var(--dsw-alias-label-secondary);
   font-variant-numeric: tabular-nums;
 }
 
 /* ── trend ─────────────────────────────────────────────────────────────── */
+
+/* dsh .lc-gran / .lc-trend-adaptive / .lc-gran-btn: the 自适应 switch rides
+   the title's right (margin-right instead of dsh's margin-left: auto, because
+   the card head also carries a trailing reading — the auto margin is what keeps
+   the pair title-adjacent while the reading stays at the far end). */
+.scaleToggle {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  margin-right: auto;
+  padding: 1px;
+  background: var(--dsw-alias-bg-layer-2);
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 6px;
+}
+
+.scaleBtn {
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.scaleBtn:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Declared after the hover rule: the lit chip keeps its fill under the pointer. */
+.scaleBtnOn,
+.scaleBtnOn:hover {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
 
 .chartRow {
   display: flex;
@@ -233,10 +318,11 @@
   align-items: stretch;
 }
 
-/* The axis column: five ticks pinned to the same offsets as the grid lines. */
+/* The axis column: five ticks pinned to the same offsets as the grid lines
+   (dsh .lc-axis: 40px wide, labels right-aligned against the plot). */
 .axis {
   position: relative;
-  width: 44px;
+  width: 40px;
   height: 130px;
   box-sizing: border-box;
   color: var(--dsw-alias-label-caption);
@@ -282,9 +368,14 @@
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
-  padding-bottom: 6px;
+  scrollbar-gutter: stable;
+  padding-bottom: var(--dsh-scrollbar-width, 8px);
 }
 
+/* The bar grid: dsh's own box — fixed 14px columns on a 2px rhythm, packed
+   left to right (NO spreading: a sparse log pools at the left edge and the
+   scroller takes over once the columns outgrow the pane). The tooltip's
+   analytic anchor and the 自适应 measure both read these numbers. */
 .chart {
   position: relative;
   display: flex;
@@ -301,7 +392,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  border-top: 1px dashed var(--dsw-alias-border-l1);
+  border-top: 1px dashed var(--dsw-alias-border-l2);
   pointer-events: none;
 }
 
@@ -321,11 +412,12 @@
   top: 102px;
 }
 
-/* The solid zero baseline, drawn after the dashed guides. */
+/* The solid zero baseline, drawn after the dashed guides — one weight above
+   them (dsh paints it with a neutral mix; l3 is this layer's equivalent). */
 .gridZero {
   top: 130px;
   border-top-style: solid;
-  border-color: var(--dsw-alias-border-l2);
+  border-color: var(--dsw-alias-border-l3);
 }
 
 .trendBar {
@@ -342,7 +434,10 @@
   outline: 1px dashed transparent;
   outline-offset: 1px;
   cursor: pointer;
-  transition: outline-color 0.2s ease;
+  transition:
+    opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+    background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+    outline-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .trendBarHover {
@@ -368,12 +463,27 @@
 .seg {
   flex-basis: 0;
   min-height: 0;
+  transition:
+    filter var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+    opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
+/* dsh animate-lc-bar-in: each stack scaleY-opens from the baseline, staggered
+   left to right (the model's capped `--lc-i` slot). Keyed mounts only — an
+   appended request grows in, bars already on screen never replay it. */
+.trendStack {
+  transform-origin: 50% 100%;
+  animation: lc-bar-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 15ms) backwards;
+}
+
+/* The hover bubble: floats ABOVE the plot, outside the scroller (dsh
+   .lc-chart-tip). left: 0 + the transform the card writes imperatively — the
+   horizontal placement is analytic (column x minus scroll, clamped), so the
+   bubble stays glued to its column while the chart scrolls. */
 .chartTip {
   position: absolute;
   bottom: calc(100% + 4px);
-  transform: translateX(-50%);
+  left: 0;
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -381,7 +491,7 @@
   max-width: 100%;
   box-sizing: border-box;
   overflow-wrap: break-word;
-  background: var(--dsw-alias-tooltip-bg, var(--dsw-alias-bg-layer-2));
+  background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 6px;
   padding: 3px 8px;
@@ -389,6 +499,7 @@
   color: var(--dsw-alias-label-primary);
   box-shadow: var(--dsw-shadow-lv3);
   pointer-events: none;
+  animation: tip-in 0.15s var(--ds-ease-in-out, ease-in-out);
 }
 
 .chartTip span + span {
@@ -396,80 +507,128 @@
 }
 
 .detail {
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--dsw-alias-border-l1);
 }
 
-/* The active bar's identity and usage, then its composition on the next line. */
-.detailHead {
+/* One row per category (dsh .lc-detail-rows): two columns on a wide card, a
+   single one below ~424px — a fixed 1fr 1fr cannot shrink under a row's
+   min-content and would spill. */
+.detailRows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 4px 24px;
+}
+
+/* Padding + matching negative margin: the row's hover highlight paints past
+   the text while the layout stays put. */
+.detailRow {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-bottom: 6px;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 4px;
+  margin: -1px -4px;
+  border-radius: 4px;
+}
+
+.detailRow i {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.detailLabel {
+  min-width: 70px;
+  white-space: nowrap;
   color: var(--dsw-alias-label-secondary);
-  font-size: var(--dsh-font-xxs-12, 12px);
+}
+
+/* The mini track echoes the row's share of this request (dsh .lc-bar-track). */
+.detailTrack {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--dsw-alias-label-secondary) 18%, transparent);
+}
+
+.detailFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.detailNum {
+  width: 52px;
+  text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-.detailWhen {
-  color: var(--dsw-alias-label-primary);
-}
-
-.miniLegend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.miniItem {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+.detailPct {
+  width: 34px;
+  text-align: right;
   color: var(--dsw-alias-label-secondary);
-}
-
-/* ── filter chips (element board / event log) ──────────────────────────── */
-
-.chipRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
-  border-radius: 999px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-secondary);
-  font: inherit;
-  font-size: var(--dsh-font-xxs-12, 11px);
-  line-height: 18px;
-  cursor: pointer;
-  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
-}
-
-.chip:hover {
-  color: var(--dsw-alias-label-primary);
-}
-
-.chipOn {
-  background: var(--dsw-alias-interactive-bg-active);
-  border-color: var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-primary);
-}
-
-.chipN {
   font-variant-numeric: tabular-nums;
-  opacity: 0.7;
+}
+
+/* The signed Δ pill that follows a category row when there is a previous bar.
+   Green for grow, red for shrink — the only two directions a category can move
+   between adjacent requests. */
+.detailDelta {
+  flex: none;
+  min-width: 56px;
+  padding: 0 6px;
+  border-radius: var(--dsw-radius-sm);
+  corner-shape: round;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.detailDelta[data-tone='grow'] {
+  color: var(--dsw-alias-state-success-primary);
+  background: var(--dsw-alias-state-success-tertiary);
+}
+
+.detailDelta[data-tone='shrink'] {
+  color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-state-error-secondary);
+}
+
+/* The 缓存命中 line below the composition: provider-reported cache share of
+   prompt tokens. The reference puts this above the rows; here it lives below
+   because the rows are the panel's main reading and the line is a corollary. */
+.detailCacheHit {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 4px 0 0;
+  border-top: 0.5px solid var(--dsw-alias-border-l1);
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.detailCacheLabel {
+  flex: none;
+}
+
+.detailCacheValue {
+  flex: none;
+  font-family: var(--ds-font-family-code);
+  font-size: 13px;
+  color: var(--dsw-alias-state-success-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.detailCacheMeta {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
 }
 
 /* ── element board ─────────────────────────────────────────────────────── */
@@ -582,6 +741,7 @@
   padding: 4px 6px;
   border-radius: 6px;
   font-size: var(--dsh-content-font-size-secondary, 13px);
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .elementRow:hover {
@@ -621,83 +781,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── event log ─────────────────────────────────────────────────────────── */
-
-.eventList {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.eventRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  margin: 0 -6px;
-  border-radius: 6px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-}
-
-.eventRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.eventGlyph,
-.chipGlyph {
-  flex: none;
-  text-align: center;
-}
-
-.eventGlyph {
-  width: 16px;
-}
-
-/* The kind's tint lives on `color`; the pill WEARS it through currentColor, so
-   one tone class serves the glyph, the chip and the pill. */
-.eventPill {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  font-size: var(--dsh-font-xxs-12, 11px);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.toneCompaction {
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.toneWorkspace {
-  color: var(--dsw-alias-brand-primary);
-}
-
-.toneGoal {
-  color: var(--dsw-alias-state-warn-primary);
-}
-
-.eventDetail {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--dsw-alias-label-caption);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.eventTime {
-  flex: none;
-  margin-left: auto;
-  color: var(--dsw-alias-label-caption);
-  font-variant-numeric: tabular-nums;
-}
-
 /* ── file activity ─────────────────────────────────────────────────────── */
 
 .fileList {
@@ -719,6 +802,7 @@
   margin: 0 -6px;
   border-radius: 6px;
   font-size: var(--dsh-content-font-size-secondary, 13px);
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .fileRow:hover {
@@ -778,4 +862,377 @@
 
 .deltaDown {
   color: var(--dsw-alias-state-error-primary);
+}
+
+/* ── timing card ───────────────────────────────────────────────────────── */
+
+.timingList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.timingRow {
+  display: grid;
+  grid-template-columns: 64px 1fr 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: 6px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-variant-numeric: tabular-nums;
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.timingRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.timingIndex {
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-font-xxs-12, 12px);
+}
+
+.timingCell {
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsh-font-family-mono, monospace);
+  font-size: var(--dsh-font-xxs-12, 12px);
+}
+
+.timingCell[data-tone='ttft'] {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.timingCell[data-tone='duration'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.timingSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-caption);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-variant-numeric: tabular-nums;
+}
+
+.timingSummary [data-tone='ttft'] {
+  color: var(--dsw-alias-brand-primary);
+}
+
+.timingSummary [data-tone='duration'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ── dashboard card (cross-session corpus overview) ────────────────────── */
+
+.dashSpark {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 48px;
+  margin: 4px 0 12px;
+  padding: 0 2px;
+}
+
+.dashSparkBar {
+  flex: 1 1 0;
+  min-width: 4px;
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 70%, transparent);
+  border-radius: 2px 2px 0 0;
+  transition: height var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.dashSparkBar[data-empty='true'] {
+  background: color-mix(in srgb, var(--dsw-alias-label-caption) 24%, transparent);
+}
+
+.dashWorkspaces {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.dashWorkspaceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border-radius: 6px;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.dashWorkspaceRow:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dashWorkspacePath {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--dsh-font-family-mono, monospace);
+  font-size: var(--dsh-font-xxs-12, 12px);
+}
+
+.dashWorkspaceMeta {
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+  font-size: var(--dsh-font-xxs-12, 12px);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashTotals {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-caption);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── dna card (per-request composition as stacked share bar) ───────────── */
+
+.dnaList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.dnaRow {
+  display: flex;
+  flex-direction: column;
+}
+
+.dnaButton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.dnaButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dnaIndex {
+  flex: none;
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--dsh-font-xxs-12, 12px);
+  min-width: 56px;
+}
+
+.dnaStrip {
+  flex: 1 1 auto;
+  display: flex;
+  height: 10px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--dsw-alias-label-caption) 14%, transparent);
+}
+
+.dnaStrip[data-empty='true'] {
+  background: color-mix(in srgb, var(--dsw-alias-label-caption) 14%, transparent);
+}
+
+.dnaSegment {
+  display: block;
+  height: 100%;
+}
+
+/* Category colors map to the SAME static tokens the composition card uses —
+   the panel never re-invents a category palette. */
+.dnaSegment[data-cat='system'] { background: var(--dsw-static-indigo-500, var(--dsw-alias-brand-primary)); }
+.dnaSegment[data-cat='tools'] { background: var(--dsw-static-purple-500, var(--dsw-alias-brand-primary)); }
+.dnaSegment[data-cat='injected'] { background: var(--dsw-static-teal-500, var(--dsw-alias-state-success-primary)); }
+.dnaSegment[data-cat='user'] { background: var(--dsw-alias-label-secondary); }
+.dnaSegment[data-cat='assistant'] { background: var(--dsw-alias-brand-primary); }
+.dnaSegment[data-cat='tool'] { background: var(--dsw-alias-state-warn-primary); }
+
+.dnaBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 8px;
+  padding: 0 6px 0 18px;
+  list-style: none;
+}
+
+.dnaBreakdownRow {
+  display: grid;
+  grid-template-columns: 16px 56px 1fr 96px;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: var(--dsh-font-xxs-12, 12px);
+}
+
+.dnaGlyph {
+  color: var(--dsw-alias-label-caption);
+  text-align: center;
+}
+
+.dnaCat {
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsh-font-family-mono, monospace);
+}
+
+.dnaBar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--dsw-alias-label-caption) 14%, transparent);
+  overflow: hidden;
+}
+
+.dnaBarFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 3px;
+  background: var(--dsw-alias-brand-primary);
+}
+
+.dnaBreakdownRow[data-cat='system'] .dnaBarFill { background: var(--dsw-static-indigo-500, var(--dsw-alias-brand-primary)); }
+.dnaBreakdownRow[data-cat='tools'] .dnaBarFill { background: var(--dsw-static-purple-500, var(--dsw-alias-brand-primary)); }
+.dnaBreakdownRow[data-cat='injected'] .dnaBarFill { background: var(--dsw-static-teal-500, var(--dsw-alias-state-success-primary)); }
+.dnaBreakdownRow[data-cat='user'] .dnaBarFill { background: var(--dsw-alias-label-secondary); }
+.dnaBreakdownRow[data-cat='assistant'] .dnaBarFill { background: var(--dsw-alias-brand-primary); }
+.dnaBreakdownRow[data-cat='tool'] .dnaBarFill { background: var(--dsw-alias-state-warn-primary); }
+
+.dnaValue {
+  color: var(--dsw-alias-label-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── motion (dsh-context's entrance sweeps + tip fade) ─────────────────── */
+
+@keyframes lc-stacked-in {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes lc-bar-in {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot,
+  .free,
+  .trendStack,
+  .barTip,
+  .chartTip {
+    animation: none;
+  }
+}
+
+/* ── 事件 ──────────────────────────────────────────────────────────────── */
+
+.eventList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.eventRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  font: var(--dsw-font-xxs-12);
+  color: var(--dsw-alias-label-secondary);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+}
+
+.eventRow:last-child {
+  border-bottom: none;
+}
+
+.eventGlyph {
+  flex: none;
+  width: 14px;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-tertiary);
+  text-align: center;
+}
+
+.eventChip {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--dsw-radius-sm);
+  corner-shape: round;
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.eventDetail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+}
+
+.eventSpacer {
+  flex: 1 1 auto;
+}
+
+.eventDelta {
+  flex: none;
+  font-family: var(--ds-font-family-code);
+  font-size: 11px;
+}
+
+.eventDelta[data-tone='freed'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.eventTime {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
 }

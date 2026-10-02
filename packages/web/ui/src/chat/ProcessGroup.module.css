@@ -1,12 +1,68 @@
 /* Ported from deepseek-harness ui-chat `ChatGroupSeat.module.css`
    (c) 2026 DeepSeek — MIT License. The reference's group is
-   `.root > [title button] + .body > .content > members`; this port folds the
-   members under the turn's own header, so the header half is not here — the
-   bounded body, its inner scroll container, the reserved gutter and the edge
-   fades are, because those are what a reader sees while a long group scrolls. */
+   `.root > [title button] + .body > .content > members`; this port carries the
+   same two halves — the disclosure header (`.head`, the reference's `.title`
+   without the activity-icon crossfade: this repo's glyph library has no
+   per-activity set, so the chevron leads and rotates) and the bounded body
+   with its inner scroll container, reserved gutter and edge fades. */
 
 .root {
   min-width: 0;
+}
+
+/* The group's own disclosure row: the summary when closed, the running title
+   when live. Secondary words — the members are the evidence, the header only
+   names them. */
+.head {
+  display: flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.head:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.headChevron {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 100ms ease;
+}
+
+/* The reference rotates its chevron open rather than swapping the asset
+   (same convention as the turn header's own disclosure). */
+.head[aria-expanded="true"] .headChevron {
+  transform: rotate(180deg);
+}
+
+.head[aria-expanded="true"] {
+  padding-bottom: 16px;
+}
+
+.headLabel {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .headChevron {
+    transition: none;
+  }
 }
 
 /* A long process group scrolls inside this box rather than growing the

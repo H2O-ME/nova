@@ -31,12 +31,6 @@ export interface ChromeView {
   hidden: number;
   /** The tool call the detail panel is open on (undefined = panel closed). */
   detail: Extract<Block, { kind: 'tool' }> | undefined;
-  /**
-   * The newest tool call in the transcript — what the header corner's expand
-   * control re-opens. Undefined when the session has no tool call at all, in
-   * which case there is nothing for that control to show and it is not rendered.
-   */
-  lastToolCallId: string | undefined;
 }
 
 /**
@@ -94,13 +88,6 @@ export function effectiveCodeMode(state: UiState): PtcMode {
 export function chromeView(state: UiState, openCallId: string | null): ChromeView {
   const idle = isIdle(state);
   const firstUser = state.blocks.find((b) => b.kind === 'user');
-  // Newest first: the target lib predates `findLast`, and the loop reads the
-  // same either way.
-  let lastTool: Extract<Block, { kind: 'tool' }> | undefined;
-  for (let index = state.blocks.length - 1; index >= 0; index -= 1) {
-    const block = state.blocks[index];
-    if (block?.kind === 'tool') { lastTool = block; break; }
-  }
   return {
     rootDir: state.meta?.rootDir ?? '',
     workspace: workspaceLabel(state.meta?.rootDir ?? ''),
@@ -119,7 +106,6 @@ export function chromeView(state: UiState, openCallId: string | null): ChromeVie
       openCallId === null
         ? undefined
         : state.blocks.find((b): b is Extract<Block, { kind: 'tool' }> => b.kind === 'tool' && b.callId === openCallId),
-    lastToolCallId: lastTool?.callId,
   };
 }
 

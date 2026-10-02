@@ -10,6 +10,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { flowRows, turnStatus } from '../src/flow.js';
+import { presentationPolicyFor } from '../src/chat/transcript-view.js';
 import type { Block } from '../src/state.js';
 import type { RunStats } from '../src/types.js';
 
@@ -22,6 +23,7 @@ const options = (over: Partial<Parameters<typeof flowRows>[1]> = {}): Parameters
   openTurns: new Set(),
   onToggleTurn: () => {},
   modelName: null,
+  policy: presentationPolicyFor('standard'),
   ...over,
 });
 
@@ -201,13 +203,99 @@ describe('flowRows turns', () => {
     // group; the answer and its closing footer do not.
     const grouped = rows.filter((row) => row.group !== undefined).map((row) => row.key);
     expect(grouped).toEqual(['c1', 'r1', 't1', 'k1']);
-    expect(rows.find((row) => row.key === 't1')?.group).toEqual({ id: 'group:u1', live: false });
+    expect(rows.find((row) => row.key === 't1')?.group).toEqual({ id: 'group:u1', live: false, summary: '已读取文件' });
     expect(rows.find((row) => row.key === 't2')?.group).toBeUndefined();
     expect(rows.find((row) => row.key === 'tail:u1')?.group).toBeUndefined();
     // Closed: the mid-turn prose is a step, so it folds with the tools and the
     // answer is the only text left standing.
     const closed = flowRows(turn, options());
     expect(keys(closed)).toEqual(['u1', 'turn:u1', 't2', 'tail:u1']);
+  });
+});
+
+describe('flowRows × presentation policy', () => {
+  // One settled turn with a reasoning + tool step, so every mode has something
+  // to fold; a live variant keeps the tool call in flight (no result yet).
+  const tool = (over: Partial<Extract<Block, { kind: 'tool' }>> = {}): Block => ({
+    id: 'k1',
+    kind: 'tool',
+    callId: 'c1',
+    name: 'read_file',
+    args: '{"file_path":"src/a.ts"}',
+    view: { card: 'generic', kind: 'other', title: 'read_file' },
+    ...over,
+  });
+  const turn: Block[] = [
+    { id: 'u1', kind: 'user', text: '问', ts: 1_000 },
+    { id: 'r1', kind: 'reasoning', text: '想', streaming: false },
+    tool(),
+    { id: 't1', kind: 'text', text: '答', streaming: false },
+    { id: 'm1', kind: 'meta', stats: stats() },
+  ];
+  const liveTurn: Block[] = [
+    { id: 'u1', kind: 'user', text: '问', ts: 1_000 },
+    { id: 'r1', kind: 'reasoning', text: '想', streaming: false },
+    tool(),
+  ];
+
+  it('standard folds a settled turn; opening it reveals the group with its summary', () => {
+    expect(keys(flowRows(turn, options()))).toEqual(['u1', 'turn:u1', 't1', 'tail:u1']);
+    const rows = flowRows(turn, options({ openTurns: new Set(['u1']) }));
+    // The group names the turn's ranked work; the answer and its footer are
+    // NOT members.
+    expect(rows.find((row) => row.key === 'r1')?.group).toEqual({ id: 'group:u1', live: false, summary: '已读取文件' });
+    expect(rows.find((row) => row.key === 'k1')?.group).toEqual({ id: 'group:u1', live: false, summary: '已读取文件' });
+    expect(rows.find((row) => row.key === 't1')?.group).toBeUndefined();
+  });
+
+  it('detailed keeps a RUNNING turn ungrouped (steps flat) but folds history', () => {
+    const policy = presentationPolicyFor('detailed');
+    const live = flowRows(liveTurn, options({ runningStatus: { label: '生成中' }, policy }));
+    expect(keys(live)).toEqual(['u1', 'turn:u1', 'r1', 'k1']);
+    expect(live.find((row) => row.key === 'k1')?.group).toBeUndefined();
+    // A settled turn under the same mode still folds behind its header.
+    expect(keys(flowRows(turn, options({ policy })))).toEqual(['u1', 'turn:u1', 't1', 'tail:u1']);
+  });
+
+  it('verbose unfolds everything: settled turns stay open and no groups exist', () => {
+    const rows = flowRows(turn, options({ policy: presentationPolicyFor('verbose') }));
+    expect(keys(rows)).toEqual(['u1', 'turn:u1', 'r1', 'k1', 't1', 'tail:u1']);
+    expect(rows.every((row) => row.group === undefined)).toBe(true);
+    // The header is a plain label here: nothing left to disclose.
+    expect(renderToStaticMarkup(rows.find((row) => row.key === 'turn:u1')!.node)).not.toContain('aria-expanded');
+  });
+
+  it('compact and standard differ only in the LIVE title\'s detail half', () => {
+    const live = (policy: Parameters<typeof presentationPolicyFor>[0]): ReturnType<typeof flowRows> =>
+      flowRows(liveTurn, options({ runningStatus: { label: '生成中' }, policy: presentationPolicyFor(policy) }));
+    // Both fold the running turn's steps into the same box…
+    const compactGroup = live('compact').find((row) => row.key === 'k1')?.group;
+    const standardGroup = live('standard').find((row) => row.key === 'k1')?.group;
+    expect(compactGroup?.id).toBe('group:u1');
+    expect(standardGroup?.id).toBe('group:u1');
+    // …but compact's live title omits the current-action detail, standard's
+    // carries it (the reference's liveProcessDetail flag).
+    expect(compactGroup?.liveTitle).toBe('正在读取文件');
+    expect(standardGroup?.liveTitle).toBe('正在读取文件 · src/a.ts');
+  });
+
+  it('compact withholds the settled reasoning preview that standard shows', () => {
+    const open = { openTurns: new Set(['u1']) };
+    const standardRow = renderToStaticMarkup(flowRows(turn, options(open)).find((row) => row.key === 'r1')!.node);
+    const compactRow = renderToStaticMarkup(
+      flowRows(turn, options({ ...open, policy: presentationPolicyFor('compact') })).find((row) => row.key === 'r1')!.node,
+    );
+    expect(standardRow).toContain('想');
+    expect(compactRow).not.toContain('想');
+    // A streaming row is never gated: its COMPLETED-paragraph tail is the live
+    // cue, not a summary (a lone half-typed line shows none — by design).
+    const streaming = flowRows(
+      [{
+        id: 'u2', kind: 'user', text: '问', ts: 1_000,
+      }, { id: 'r2', kind: 'reasoning', text: '先看结构\n\n想到一半', streaming: true }],
+      options({ runningStatus: { label: '生成中' }, policy: presentationPolicyFor('compact') }),
+    );
+    expect(renderToStaticMarkup(streaming.find((row) => row.key === 'r2')!.node)).toContain('先看结构');
   });
 });
 

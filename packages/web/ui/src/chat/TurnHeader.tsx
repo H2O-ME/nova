@@ -32,7 +32,7 @@
  * failed turns never reach here collapsible — the caller keeps them open,
  * the harness's `turnProcessAlwaysOpen` rule.
  */
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { liveDurationText } from '../format.js';
 import { ChevronDownGlyph14 } from './glyphs.js';
 import a11yCss from './accessibility.module.css';
@@ -54,10 +54,16 @@ export interface TurnHeaderProps {
   messageCount?: number | undefined;
   toolCallCount?: number | undefined;
   subagentCount?: number | undefined;
-  onToggle?: (() => void) | undefined;
+  /**
+   * Receives this row's turn id. The callback rides in UNBOUND (the caller's
+   * stable `onToggleTurn`), so this memo'd row skips a re-render for every
+   * stream delta that does not concern it — a fresh closure here would defeat
+   * exactly that.
+   */
+  onToggleTurn?: ((turnKey: string) => void) | undefined;
 }
 
-export function TurnHeader({
+export const TurnHeader = memo(function TurnHeader({
   label,
   running = false,
   startTs,
@@ -67,7 +73,7 @@ export function TurnHeader({
   messageCount,
   toolCallCount,
   subagentCount,
-  onToggle,
+  onToggleTurn,
 }: TurnHeaderProps): JSX.Element {
   // The live clock ticks here, not in the reducer: elapsed time is the
   // viewer's clock, not session state (the harness runs the same interval).
@@ -108,7 +114,7 @@ export function TurnHeader({
           // place when the disclosure collapses under them (the reference's
           // own rule).
           event.currentTarget.focus();
-          onToggle?.();
+          if (turnKey !== undefined) onToggleTurn?.(turnKey);
         }}
       >
         <span className={css.label}>{text}</span>
@@ -116,4 +122,4 @@ export function TurnHeader({
       </button>
     </>
   );
-}
+});

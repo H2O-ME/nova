@@ -11,6 +11,7 @@ import {
   atFloor,
   floorTop,
   flowTop,
+  lastUserKey,
   readerMoved,
   restoredTop,
 } from '../src/scroll-follow.js';
@@ -86,5 +87,34 @@ describe('flowTop / anchorRow / restoredTop', () => {
     // The row was 110px below the viewport top at click time; the prepend moved
     // it to 610px. The scrollport must move down by the difference.
     expect(restoredTop(900, 610, 110)).toBe(1400);
+  });
+});
+describe('lastUserKey (own-input arrival)', () => {
+  const row = (key: string, kind: string): { key: string; kind: string } => ({ key, kind });
+
+  test('finds the last user row even when a turn header follows it', () => {
+    // The shape that made the old tail-based check never fire: a send appends
+    // the user row AND its turn header in one commit.
+    const rows = [row('b1', 'user'), row('turn:b1', 'process'), row('b2', 'assistant')];
+    expect(lastUserKey(rows)).toBe('b1');
+  });
+
+  test('a prepended older page leaves the key unchanged', () => {
+    // load_earlier put older turns on top; the reader's last own words did not
+    // move, so the arrival check must not jump the viewport.
+    const before = [row('b5', 'user'), row('turn:b5', 'process')];
+    const after = [row('b1', 'user'), row('turn:b1', 'process'), ...before];
+    expect(lastUserKey(after)).toBe(lastUserKey(before));
+  });
+
+  test('a new send moves it — wherever the row landed', () => {
+    const before = [row('b5', 'user'), row('turn:b5', 'process'), row('b6', 'assistant')];
+    const after = [...before, row('b9', 'user'), row('turn:b9', 'process')];
+    expect(lastUserKey(after)).not.toBe(lastUserKey(before));
+  });
+
+  test('no user rows at all reads null', () => {
+    expect(lastUserKey([row('b1', 'assistant'), row('b2', 'notice')])).toBeNull();
+    expect(lastUserKey([])).toBeNull();
   });
 });

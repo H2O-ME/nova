@@ -102,6 +102,7 @@
   cursor: pointer;
   font: inherit;
   text-align: left;
+  transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .expand:hover {

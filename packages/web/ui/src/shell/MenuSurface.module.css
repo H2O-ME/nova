@@ -29,3 +29,29 @@
   backdrop-filter: var(--dsw-menu-backdrop-filter);
   pointer-events: none;
 }
+
+/* Popover entrance, dsh dockkit's `dockHintIn`: the one floating material on
+ * this surface pops with a 140ms fade + settle instead of snapping. dsh's own
+ * menu material enters instantly — the recorded deviation ("菜单浮层入场")
+ * keeps every menu from reading as a hard cut. */
+.surface {
+  animation: menu-surface-in 140ms ease-out;
+}
+
+@keyframes menu-surface-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface {
+    animation: none;
+  }
+}

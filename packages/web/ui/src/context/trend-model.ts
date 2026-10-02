@@ -32,8 +32,6 @@ export interface TrendBar {
   height: number;
   /** The stack, bottom-up in category order; zero categories are dropped. */
   segments: TrendSegment[];
-  /** The hover bubble's anchor, as a percentage of the chart's width. */
-  center: number;
   /** Provider-reported prompt tokens, when the run reported usage. */
   prompt?: number;
   /** Provider-reported tokens served from cache. */
@@ -55,23 +53,28 @@ export interface TrendChart {
 /**
  * The trend chart's bars.
  *
- * Heights share ONE scale so bars are comparable — the window when known (a bar
- * then reads "how full"), else the tallest request. The stack's segments are
- * shares of each bar's OWN total, because a request's composition is a fact
- * about that request, not about the chart.
+ * Heights share ONE scale so bars are comparable — the TALLEST request, in
+ * dsh's own reading (`maxTotal`). Never the model window: a session using 22K of
+ * a 1.05M window would draw every bar as 2% of the axis — flat on the floor,
+ * the chart saying nothing. The stack's segments are shares of each bar's OWN
+ * total, because a request's composition is a fact about that request, not
+ * about the chart.
  *
  * But a stack adds to the bar's height, so the segments' heights are shares of
  * the SCALE while their reported percentages are shares of the bar — the same
  * split the composition card makes, for the same reason.
  * @param points - the fold's requests, in log order.
- * @param window - the model's window, when the host knows it.
+ * @param max - scale override for the 自适应 switch: the peak of the columns
+ * currently in view (`trend-geometry.ts`'s `visibleMax`), so a spike scrolled
+ * out of reach cannot flatten the ones on screen. Absent (or 0) scales to the
+ * whole retained log — the reference's `maxTotal`.
  * @returns the bars (oldest first), the scale and the axis ticks.
  */
-export function trendChart(points: readonly ContextPoint[], window?: number): TrendChart {
+export function trendChart(points: readonly ContextPoint[], max?: number): TrendChart {
   const tallest = points.reduce((top, point) => Math.max(top, point.total), 0);
-  const scale = window !== undefined && window > 0 ? Math.max(window, tallest) : tallest;
+  const scale = max !== undefined && max > 0 ? max : tallest;
   const denominator = scale === 0 ? 1 : scale;
-  const bars = points.map((point, index) => {
+  const bars = points.map((point) => {
     const segments: TrendSegment[] = CATEGORY_ORDER.filter((cat) => (point.cats[cat] ?? 0) > 0).map((cat) => ({
       cat,
       label: categoryLabel(cat),
@@ -86,9 +89,6 @@ export function trendChart(points: readonly ContextPoint[], window?: number): Tr
       total: point.total,
       height: Math.min(1, point.total / denominator),
       segments,
-      // The bar's own column centre: bars are evenly spaced, so the anchor needs
-      // no measurement — and it stays right while the chart scrolls.
-      center: points.length > 1 ? ((index + 0.5) / points.length) * 100 : 50,
       ...(point.prompt !== undefined ? { prompt: point.prompt } : {}),
       ...(point.cached !== undefined ? { cached: point.cached } : {}),
       ...(point.output !== undefined ? { output: point.output } : {}),

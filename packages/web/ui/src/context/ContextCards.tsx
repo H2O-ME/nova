@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import type { ContextCategory, ContextTimeline } from '../types.js';
 import { formatExactTokens } from '../format.js';
-import { compositionBar, occupancy, statCells } from './context-model.js';
+import { compositionBar, occupancy, staggerStyle, statCells } from './context-model.js';
 import css from './ContextView.module.css';
 
 /** The session's shape as four cells: 轮次 / 请求 / 工具调用 / 缓存命中. */
@@ -66,16 +66,22 @@ export function CompositionCard({ timeline, window }: { timeline: ContextTimelin
         <>
           <div className={css.barWrap} onMouseLeave={() => { setHover(null); }}>
             <div className={css.bar} role="img" aria-label="上下文组成">
-              {shown.map((segment) => (
+              {shown.map((segment, index) => (
                 <div
                   key={segment.cat}
-                  className={hover !== null && hover !== segment.cat ? `${css.slot} ${css.slotDim}` : css.slot}
-                  style={{ background: segment.color, flexGrow: segment.tokens }}
+                  className={
+                    hover === segment.cat
+                      ? `${css.slot} ${css.slotOn}`
+                      : hover !== null
+                        ? `${css.slot} ${css.slotDim}`
+                        : css.slot
+                  }
+                  style={{ background: segment.color, flexGrow: segment.tokens, ...staggerStyle(index) }}
                   aria-label={`${segment.label} ${segment.pct}%`}
                   onMouseEnter={() => { setHover(segment.cat); }}
                 />
               ))}
-              {bar.usedPercent < 100 && <div className={css.free} aria-hidden="true" />}
+              {bar.usedPercent < 100 && <div className={css.free} style={staggerStyle(shown.length)} aria-hidden="true" />}
             </div>
             {active !== undefined && (
               <div

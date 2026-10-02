@@ -23,6 +23,9 @@ import { ContextInjectionRow } from './chat/ContextInjectionRow.js';
 import { ReasoningRow } from './chat/ReasoningRow.js';
 import { TurnHeader } from './chat/TurnHeader.js';
 import { TurnUsagePill } from './chat/TurnUsagePill.js';
+import { liveTitleOf, processActivityOf, processTitle } from './chat/process-summary.js';
+import { processSpanOf } from './chat/process-span.js';
+import type { ChatPresentationPolicy } from './chat/transcript-view.js';
 import { ToolRow } from './tool/ToolRow.js';
 import { JobRow, CommandRow, SubagentRow } from './flow/StatusRows.js';
 import type { Block } from './state.js';
@@ -73,6 +76,8 @@ export interface FlowOptions {
   onToggleTurn: (id: string) => void;
   /** The in-force model's display name, for the tail's usage panel. */
   modelName: string | null;
+  /** The 工作步骤展示 policy: how much process detail this transcript shows. */
+  policy: ChatPresentationPolicy;
 }
 
 /** The block kinds a turn's header folds. */
@@ -156,7 +161,32 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
     const isLastSpan = end >= blocks.length;
     const running = options.runningStatus !== null && isLastSpan;
     const turnKey = block.id;
-    const open = running || options.openTurns.has(turnKey);
+    // The work-details policy: a completed turn folds behind its header unless
+    // the mode says everything reads flat (the reference's `foldCompletedTurns`).
+    const open = running || !options.policy.foldCompletedTurns || options.openTurns.has(turnKey);
+    // The reference's `grouped` split: every turn carries the collapsible step
+    // box under `collapsed`; under `history` only the settled ones do (a live
+    // run reads flat); `none` never groups.
+    const stepBox = options.policy.stepGrouping === 'collapsed'
+      || (options.policy.stepGrouping === 'history' && !running);
+    // The disclosure header's two words: a settled group names its ranked work
+    // (概况), a live one names the running activity — with its task detail only
+    // when the policy shows it (the projection lives in `process-span.ts`).
+    const activity = hasProcess ? processActivityOf(processSpanOf(span)) : undefined;
+    const summary = activity !== undefined ? processTitle(activity) : undefined;
+    const liveTitle = running && activity !== undefined
+      ? liveTitleOf(activity, options.policy.liveProcessDetail)
+      : undefined;
+    // The box payload every member row carries; absent when the mode does not
+    // group (the rows then flow flat under the turn header alone).
+    const groupOf = (): ChatFlowRow['group'] => stepBox
+      ? {
+        id: `group:${turnKey}`,
+        live: running,
+        ...(summary !== undefined ? { summary } : {}),
+        ...(liveTitle !== undefined ? { liveTitle } : {}),
+      }
+      : undefined;
     // The turn's tail sits on its LAST settled text (the answer's closing
     // chrome); the latest settled turn reveals it without hover.
     let tailAt = -1;
@@ -185,13 +215,13 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
                 : '已完成工作'}
               running={running}
               startTs={block.ts}
-              collapsible={!running && hasProcess}
+              collapsible={!running && hasProcess && options.policy.foldCompletedTurns}
               open={open}
               turnKey={turnKey}
               messageCount={span.filter((b) => b.kind === 'text' || b.kind === 'user').length}
               toolCallCount={span.filter((b) => b.kind === 'tool').length}
               subagentCount={span.filter((b) => b.kind === 'sub').length}
-              onToggle={() => { options.onToggleTurn(turnKey); }}
+              onToggleTurn={options.onToggleTurn}
             />
           ),
         });
@@ -202,7 +232,7 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
             rows.push({
               key: ctx.id,
               kind: flowKind(ctx),
-              group: { id: `group:${turnKey}`, live: running },
+              ...(stepBox ? { group: groupOf() } : {}),
               node: rowNode(ctx, options),
             });
           }
@@ -219,12 +249,13 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
       // A process row carries its turn's group id; the renderer wraps adjacent
       // members in one bounded box. Tagging (rather than splicing here) keeps
       // this list in LOG ORDER — the answer that arrives between two steps
-      // stays where the log put it.
-      const grouped = isProcessBlock(inner) || (inner.kind === 'text' && !isAnswer);
+      // stays where the log put it. A mode that does not group leaves every
+      // row a direct child of the column.
+      const inBox = isProcessBlock(inner) || (inner.kind === 'text' && !isAnswer);
       rows.push({
         key: inner.id,
         kind: flowKind(inner),
-        ...(grouped ? { group: { id: `group:${turnKey}`, live: running } } : {}),
+        ...(inBox ? { group: groupOf() } : {}),
         node: rowNode(inner, options),
       });
       // The turn's closing chrome follows its answer IMMEDIATELY as its own
@@ -307,7 +338,13 @@ function rowNode(
     case 'text':
       return <AssistantMessage text={block.text} streaming={block.streaming} />;
     case 'reasoning':
-      return <ReasoningRow text={block.text} running={block.streaming} />;
+      return (
+        <ReasoningRow
+          text={block.text}
+          running={block.streaming}
+          {...(options.policy.settledReasoningPreview ? {} : { previewAllowed: false })}
+        />
+      );
     case 'tool':
       return (
         <ToolRow

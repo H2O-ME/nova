@@ -74,6 +74,27 @@ export function anchorRow<T extends { getBoundingClientRect(): { top: number; bo
   return rows[rows.length - 1] ?? null;
 }
 
+/**
+ * The flow's LAST user row, by key — the transcript's own words.
+ *
+ * This is what "the reader just sent something" means, and the reason it is a
+ * scan rather than a look at the tail: a send appends the user row AND the
+ * turn header underneath it in the same commit (flow.tsx), so the tail is
+ * never the user row when the arrival matters. Comparing this key across
+ * commits (the previous key held by the caller) detects an arrival wherever
+ * the row landed; prepends of older turns and in-place streaming rewrites
+ * leave the LAST user key unchanged, so neither can trigger a spurious jump.
+ * @param rows - the flow rows in order.
+ * @returns the last user row's key, or null when the flow holds none.
+ */
+export function lastUserKey(rows: readonly { key: string; kind: string }[]): string | null {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    if (row !== undefined && row.kind === 'user') return row.key;
+  }
+  return null;
+}
+
 /** One row's identity + where it sat when the anchor was taken. */
 export interface ScrollAnchor {
   key: string;

@@ -226,6 +226,37 @@ describe('token ownership', () => {
     }
     expect([...new Set(offenders)].sort()).toEqual([]);
   });
+
+  /**
+   * A docked column draws no elevation.
+   *
+   * The right column's two occupants (the right panel and the tool detail
+   * board) are columns of the page, not floats: the harness gives the level-3
+   * shadow to floating panes only (dockkit's `.float`), and a docked column
+   * that carries it reads as a card hovering over the conversation — the
+   * "floating" the operator reported even after the column reserved its track.
+   * Both sheets said "a column of the page, not a raised surface" while
+   * declaring `box-shadow`; the prose and the declaration were opposites, so
+   * the declaration is what this pins.
+   */
+  it('the docked right column declares no elevation', () => {
+    const docked = ['rightbar/RightbarPanel.module.css', 'tool/ToolPanel.module.css'];
+    const offenders: string[] = [];
+    for (const rel of docked) {
+      const text = stripComments(readFileSync(join(SRC, rel), 'utf8'));
+      // The `.panel` block specifically: the fullscreen/takeover variants and
+      // the sheet's other rules may legitimately differ.
+      const block = /\.panel\s*\{([^}]*)\}/.exec(text)?.[1] ?? '';
+      // Guard against a vacuous match: the block must be the panel shell.
+      expect(block, `${rel}: .panel block not found`).toContain('position: absolute');
+      if (block.includes('box-shadow')) offenders.push(`${rel}: .panel declares box-shadow`);
+    }
+    // The strip's sheet belongs to the same docked column but has no `.panel`
+    // rule to anchor that check, so it is scanned whole.
+    const strip = stripComments(readFileSync(join(SRC, 'rightbar/RightbarStrip.module.css'), 'utf8'));
+    if (strip.includes('box-shadow')) offenders.push('rightbar/RightbarStrip.module.css: declares box-shadow');
+    expect(offenders).toEqual([]);
+  });
 });
 
 /** Each `<svg …>` opening tag in a source file, up to its closing bracket. */

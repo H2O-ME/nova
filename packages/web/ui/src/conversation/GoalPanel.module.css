@@ -1,24 +1,16 @@
-/*
- * The goal panel: a collapsed-by-default card above the input bar, sharing the
- * plan panel's geometry (same computed card width, same 36px header line, same
- * elevation) so the dock reads as one stack rather than two designs.
- *
- * The box is NOT `width: 100%`: a dock card spans the composer's own card minus
- * the side clearances and dock insets, exactly as `TodoPanel` and `QueueDock`
- * compute it. A bare 100% reads wider than the input card it sits on. dsh has no
- * goal panel (its goal UI is a composer bar), so this card is ours — its box
- * follows the ported sibling card rather than inventing a second geometry.
- *
- * The one addition is `.objective`: the goal's text takes the flexible middle of
- * the header, because it is the single thing worth reading at a glance — the plan
- * panel puts its counts there instead.
- */
+/* GoalBar: the second standalone card in the composer context stack — ported
+   from deepseek-harness `ui-goal/src/client/GoalBar.module.css` (c) 2026
+   DeepSeek — MIT License. Its dock column (card cap minus four insets) matches
+   the plan card and the queue panel, so the three read as one stack.
 
-.root {
+   The strip is a single 36px line; 12px (`--dsw-radius-md`) is the reference's
+   own radius. The material rides a `::before` at z-index -1 (menu fill +
+   backdrop blur): the blur then applies to the surface only, and nothing inside
+   the bar becomes a backdrop root. */
+
+.dock {
   box-sizing: border-box;
   flex: none;
-  overflow: hidden;
-  margin: 0 auto;
   width: calc(
     100% -
     var(--dsh-composer-side-clearance) -
@@ -28,53 +20,52 @@
     var(--dsh-composer-dock-inset) -
     var(--dsh-composer-dock-inset)
   );
-  max-width: calc(
-    var(--dsh-composer-card-max-width) -
-    var(--dsh-composer-dock-inset) -
-    var(--dsh-composer-dock-inset) -
-    var(--dsh-composer-dock-inset) -
-    var(--dsh-composer-dock-inset)
-  );
-  border: 0;
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-lg);
-  background: var(--dsw-specific-menu);
-  backdrop-filter: var(--dsw-menu-backdrop-filter);
-  box-shadow: var(--dsw-elevation-panel);
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  margin: 0 auto;
 }
 
-/* 6px vertical is what makes the collapsed card 36px (24px title line + 2×6),
-   matching the plan and queue cards on the same dock. */
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 6px 12px;
-}
-
-.header {
+.bar {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
+  max-width: calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));
+  height: 36px;
+  margin: 0 auto;
+  padding: 4px 5px 4px 12px;
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
+  border-radius: var(--dsw-radius-md);
+  box-shadow: var(--dsw-elevation-panel);
 }
 
-.glyph {
-  display: grid;
+.bar::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  content: '';
+  pointer-events: none;
+}
+
+.goalGlyph {
+  display: inline-flex;
   flex: none;
-  place-items: center;
-  width: 16px;
-  height: 16px;
+  color: var(--dsw-alias-label-tertiary);
 }
 
-.title {
+.goalGlyph svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Matches the plan/queue titles (13/24 medium, primary) so the three
+   composer-stack cards read as one family. */
+.label {
   flex: none;
   font-size: 13px;
   line-height: 24px;
@@ -82,67 +73,79 @@
   color: var(--dsw-alias-label-primary);
 }
 
-/* The objective takes the row's slack and truncates; the round budget to its
-   right stays whole, because "how much longer" must never be the clipped part. */
 .objective {
-  flex: 1 1 auto;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-secondary);
-  white-space: nowrap;
+  color: var(--dsw-alias-label-primary-dimmed);
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.progress {
-  flex: none;
-  max-width: 40%;
-  overflow: hidden;
+/* ---- Inline edit form ---- */
+
+.objectiveInput {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-bg-base);
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-primary);
+  outline: none;
 }
 
-.chevron {
-  display: grid;
-  flex: none;
-  place-items: center;
-  color: var(--dsw-alias-label-tertiary);
+.objectiveInput:focus {
+  border-color: var(--dsw-alias-state-business-primary);
 }
 
-.list {
+.objectiveInput::placeholder {
+  color: var(--dsw-alias-label-caption);
+}
+
+/* ---- Icon actions ---- */
+
+.actions {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-/* Label/value rows: the label is a fixed gutter so the values line up down the
-   fold, which is what makes them scannable as facts rather than sentences. */
-.item {
-  display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
-  min-width: 0;
-  font-size: 13px;
-  line-height: 20px;
+  flex: none;
+}
+
+.iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  corner-shape: round;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition:
+    color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+    background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.iconBtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.iconBtn:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
 }
 
-.label {
-  flex: none;
-  width: 56px;
-  color: var(--dsw-alias-label-tertiary);
-}
-
-.value {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.iconBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }

@@ -30,13 +30,31 @@
 
 .panel {
   position: relative;
+  /* The material layer sits at z-index -1, so it must be isolated from the
+     page's own stacking context (dockkit's rule for the same recipe); the blur
+     then applies to the background only, and nested overlays inside the panel
+     stay free of an ancestor backdrop root. */
+  isolation: isolate;
   overflow: hidden;
   width: 100%;
   padding: 2px 0;
   border-radius: var(--dsw-radius-lg) var(--dsw-radius-lg) 0 0;
-  background: var(--dsw-specific-tip);
+  /* Menu material, not the opaque tip token: the queue panel is a floating
+     surface over the transcript (the reference's `.panel::before`), and the
+     opaque fill read as a flat gray box. */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.panel::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--dsw-specific-menu);
+  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  content: '';
+  pointer-events: none;
 }
 
 .panel::after {
@@ -140,4 +158,28 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   word-break: break-word;
+}
+
+/* The queued-messages dock pops with dsh dockkit's `dockHintIn` entrance
+ * (140ms fade + settle) instead of appearing mid-typing. */
+.dock {
+  animation: queue-dock-in 140ms ease-out;
+}
+
+@keyframes queue-dock-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dock {
+    animation: none;
+  }
 }

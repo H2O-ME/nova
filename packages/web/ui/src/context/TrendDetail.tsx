@@ -1,39 +1,82 @@
 /**
- * The trend chart's detail strip: the ACTIVE bar (hovered, pinned, or the
- * newest one) read out — when it went out, what it cost, what the provider
- * reported, and what it was made of.
+ * The trend chart's detail: the ACTIVE bar's composition (hovered, pinned, or
+ * the newest one — the reference's `activeIdx` fallback), one row per category
+ * with a mini track bar, the estimate and its share, and — when the reader has
+ * hovered or pinned a NON-newest bar — the signed Δ against the previous bar so
+ * a scrub through the trend shows what grew and what shrank.
  *
- * Split from `TrendCard.tsx` because it answers the per-request question while
- * the card answers the over-session one (scale, axes, bars, picking). The
- * strip is the only home of a request's usage figures: the hover bubble carries
- * identity and total only, so one fact is not read in three places.
+ * The reference also surfaces a provider pill above the rows (输入 / 输出 / 缓存命中);
+ * the row form here adds 缓存命中 to the composition because it is the one
+ * provider figure the composition alone cannot derive — everything else on the
+ * provider pill repeats the bubble's tokens count.
  */
+import type { ContextCategory } from '../types.js';
 import type { TrendBar } from './trend-model.js';
-import { cacheHitText, formatClock, formatExactTokens } from '../format.js';
+import { CATEGORY_COLOR, CATEGORY_ORDER, categoryLabel, percentOf } from './context-model.js';
+import { formatExactTokens } from '../format.js';
 import css from './ContextView.module.css';
 
-export function TrendDetail({ bar }: { bar: TrendBar }): JSX.Element {
-  const hit = bar.prompt !== undefined && bar.cached !== undefined ? cacheHitText(bar.cached, bar.prompt) : undefined;
+export interface TrendDetailProps {
+  /** The active bar. */
+  bar: TrendBar;
+  /** The bar BEFORE the active one, when there is one (null for the oldest). */
+  prev?: TrendBar | null;
+}
+
+export function TrendDetail({ bar, prev }: TrendDetailProps): JSX.Element {
+  const cacheHitPct = bar.prompt !== undefined && bar.cached !== undefined && bar.prompt > 0
+    ? Math.round((bar.cached / bar.prompt) * 100)
+    : null;
   return (
     <div className={css.detail}>
-      <div className={css.detailHead}>
-        <span className={css.detailWhen}>
-          {formatClock(bar.at)} · 约 {formatExactTokens(bar.total)} tokens
-        </span>
-        {bar.prompt !== undefined && <span>输入 {formatExactTokens(bar.prompt)}</span>}
-        {bar.output !== undefined && <span>输出 {formatExactTokens(bar.output)}</span>}
-        {hit !== undefined && <span>缓存命中 {hit}%</span>}
+      <div className={css.detailRows}>
+        {CATEGORY_ORDER.map((cat) => {
+          const tokens = bar.segments.find((segment) => segment.cat === cat)?.tokens ?? 0;
+          const pct = percentOf(tokens, bar.total);
+          const delta = prev !== null && prev !== undefined
+            ? (tokens - (prev.segments.find((segment) => segment.cat === cat)?.tokens ?? 0))
+            : null;
+          return (
+            <div key={cat} className={css.detailRow}>
+              <i style={{ background: CATEGORY_COLOR[cat] }} />
+              <span className={css.detailLabel}>{categoryLabel(cat)}</span>
+              <span className={css.detailTrack}>
+                <span className={css.detailFill} style={{ width: `${String(pct)}%`, background: CATEGORY_COLOR[cat] }} />
+              </span>
+              <span className={css.detailNum}>≈{formatExactTokens(tokens)}</span>
+              <span className={css.detailPct}>{pct}%</span>
+              {delta !== null && delta !== 0 && <DeltaPill delta={delta} />}
+            </div>
+          );
+        })}
       </div>
-      <ul className={css.miniLegend}>
-        {bar.segments.map((segment) => (
-          <li key={segment.cat} className={css.miniItem}>
-            <span className={css.legendSwatch} style={{ background: segment.color }} aria-hidden="true" />
-            <span className={css.legendLabel}>{segment.label}</span>
-            <span className={css.legendValue}>{formatExactTokens(segment.tokens)}</span>
-            <span className={css.legendPct}>{segment.pct}%</span>
-          </li>
-        ))}
-      </ul>
+      {cacheHitPct !== null && (
+        <p className={css.detailCacheHit}>
+          <span className={css.detailCacheLabel}>缓存命中</span>
+          <span className={css.detailCacheValue}>{cacheHitPct}%</span>
+          <span className={css.detailCacheMeta}>
+            （{formatExactTokens(bar.cached ?? 0)} / {formatExactTokens(bar.prompt ?? 0)}）
+          </span>
+        </p>
+      )}
     </div>
   );
+}
+
+/** The signed Δ pill that follows a category row (green for grow, red for shrink). */
+function DeltaPill({ delta }: { delta: number }): JSX.Element {
+  const tone: 'grow' | 'shrink' = delta > 0 ? 'grow' : 'shrink';
+  const sign = delta > 0 ? '+' : '−';
+  return (
+    <span className={css.detailDelta} data-tone={tone}>
+      {sign}{formatExactTokens(Math.abs(delta))}
+    </span>
+  );
+}
+
+/** Re-exported for callers that want to compute category deltas directly. */
+export function categoryDelta(prev: TrendBar, next: TrendBar, cat: ContextCategory): number {
+  const a = prev.segments.find((segment) => segment.cat === cat)?.tokens ?? 0;
+  const b = next.segments.find((segment) => segment.cat === cat)?.tokens ?? 0;
+  return b - a;
 }

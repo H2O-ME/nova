@@ -125,29 +125,6 @@ describe('chromeView', () => {
     expect(composerDisabled(asking)).toBe(true);
   });
 });
-describe('lastToolCallId', () => {
-  it('is undefined until the session has a tool call', () => {
-    // The header corner's expand control renders nothing then: an empty panel
-    // is not a surface worth offering a way into.
-    expect(chromeView(ready(), null).lastToolCallId).toBeUndefined();
-  });
-
-  it('names the NEWEST call, even while the panel shows an older one', () => {
-    const state = reduce(ready(), {
-      type: 'event',
-      view: { card: 'terminal', command: 'ls' },
-      event: { type: 'tool_call_start', turn: 1, call: { id: 'c1', name: 'bash', args: {}, rawArgs: '{}' } },
-    });
-    const two = reduce(state, {
-      type: 'event',
-      view: { card: 'terminal', command: 'pwd' },
-      event: { type: 'tool_call_start', turn: 1, call: { id: 'c2', name: 'bash', args: {}, rawArgs: '{}' } },
-    });
-    const view = chromeView(two, 'c1');
-    expect(view.lastToolCallId).toBe('c2');
-    expect(view.detail?.callId).toBe('c1');
-  });
-});
 
 describe('modeControlsLocked', () => {
   it('locks the mode controls for the WHOLE run, not just when an ask is up', () => {

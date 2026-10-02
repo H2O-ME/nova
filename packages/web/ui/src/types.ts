@@ -16,7 +16,10 @@ import type {
   ContextElement,
   ContextEventRecord,
   ContextPoint,
+  ContextPointTiming,
   ContextTimeline,
+  ContextWindowSnapshot,
+  DayBucket,
   FileDiff,
   FileOpRecord,
   Goal,
@@ -34,8 +37,9 @@ import type {
   ToolCallView,
   ToolResultView,
   TurnPhase,
+  WorkspaceBucket,
 } from '@nova-agent/core';
-import type { ClientFrame, ConfiguredModel, ModelCapabilities, ReadyInfo, ServerFrame, SessionListItem, WireBlock, WireDirectoryLevel, WireFileEntry, WireProviderRow, WireRosterEntry, WireSkillEntry, WireTraceRow } from '../../src/protocol';
+import type { ClientFrame, ConfiguredModel, GitLogEntry, GitStatusEntry, ModelCapabilities, ReadyInfo, ServerFrame, SessionListItem, WireBlock, WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow } from '../../src/protocol';
 
 /**
  * One row of the kernel's command catalog, derived from the frame that carries
@@ -54,13 +58,18 @@ export type {
   ContextElement,
   ContextEventRecord,
   ContextPoint,
+  ContextPointTiming,
   ContextTimeline,
+  ContextWindowSnapshot,
+  DayBucket,
   Goal,
   GoalStatus,
   ClientFrame,
   ConfiguredModel,
   FileDiff,
   FileOpRecord,
+  GitLogEntry,
+  GitStatusEntry,
   JobSnapshot,
   KernelEvent,
   ModelCapabilities,
@@ -79,10 +88,13 @@ export type {
   ToolResultView,
   TurnPhase,
   WireBlock,
+  WorkspaceBucket,
   WireDirectoryLevel,
   WireFileEntry,
+  WireJobRow,
   WireProviderRow,
   WireRosterEntry,
+  WireShell,
   WireSkillEntry,
   WireTraceRow,
 };

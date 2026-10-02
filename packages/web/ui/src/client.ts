@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { frameAction } from './frame-actions.js';
 import { reduce, initialState, type Action } from './state.js';
+import { StreamCoalescer } from './stream-coalesce.js';
 import type { ClientFrame, ServerFrame } from './types.js';
 
 /** First reconnect delay: fast enough to feel automatic on a blip. */
@@ -69,6 +70,12 @@ export function useAgent(): AgentClient {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/ws`);
       socketRef.current = ws;
+      // Stream deltas render at FRAME rate, not chunk rate (stream-coalesce.ts):
+      // the buffer releases at most once per painted frame, and any other frame
+      // flushes it first so the reducer still sees the kernel's exact order.
+      const coalescer = new StreamCoalescer((frames) => {
+        for (const flushed of frames) handleFrame(flushed, dispatch);
+      });
       ws.onopen = () => {
         retryMs = RETRY_MIN_MS;
         setConnection('open');
@@ -81,9 +88,15 @@ export function useAgent(): AgentClient {
         } catch {
           return; // foreign bytes on the socket: ignore, never eval
         }
-        handleFrame(frame, dispatch);
+        if (!coalescer.absorb(frame)) {
+          coalescer.flushNow();
+          handleFrame(frame, dispatch);
+        }
       };
       ws.onclose = () => {
+        // The tail the buffer still holds belongs to the transcript that just
+        // ended: land it before the disconnect state reads "the run is over".
+        coalescer.flushNow();
         setConnection('closed');
         // The reducer's `connected` gates every control: a dropped socket must
         // dark them all, not leave buttons that silently do nothing.

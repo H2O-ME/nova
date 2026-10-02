@@ -10,7 +10,7 @@
  * primitive; this port uses the button's `title`, which needs no portal and
  * keeps the accessible name (`aria-label`) intact.
  */
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { writeClipboard } from '../clipboard.js';
 import { BranchGlyph, CheckGlyph, CopyGlyph } from './glyphs.js';
@@ -37,7 +37,7 @@ export interface MessageIconActionsProps {
   usageAction?: ReactNode;
 }
 
-export function MessageIconActions({
+export const MessageIconActions = memo(function MessageIconActions({
   text,
   time,
   clock,
@@ -126,4 +126,4 @@ export function MessageIconActions({
       {endInfo}
     </div>
   );
-}
+});

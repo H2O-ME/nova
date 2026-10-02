@@ -11,7 +11,7 @@
  * card opening above the pill would be cropped the moment the row sat near the
  * scrollport's top edge.
  */
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../shell/anchored-popover.js';
 import { formatExactTokens, formatTokens, cacheHitText } from '../format.js';
@@ -31,10 +31,10 @@ export interface TurnUsagePillProps {
  * @param props - see {@link TurnUsagePillProps}.
  * @returns the usage trigger (plus its panel while open), or null without tokens.
  */
-export function TurnUsagePill(props: TurnUsagePillProps): JSX.Element | null {
+export const TurnUsagePill = memo(function TurnUsagePill(props: TurnUsagePillProps): JSX.Element | null {
   const [open, setOpen] = useState(false);
   return <TurnUsageTrigger {...props} open={open} onToggle={() => { setOpen(!open); }} />;
-}
+});
 
 export interface TurnUsageTriggerProps extends TurnUsagePillProps {
   /** The panel is shown. */

@@ -13,6 +13,7 @@
  * legend and tooltips report shares of the OCCUPIED total (so a percentage
  * answers "of what is in there"). Both are computed here, once.
  */
+import type { CSSProperties } from 'react';
 import type { ContextBreakdown, ContextCategory, ContextTimeline } from '../types.js';
 import { cacheHitText } from '../format.js';
 
@@ -47,6 +48,18 @@ export const CATEGORY_COLOR: Record<ContextCategory, string> = {
 /** A category's drawn label (the legend, the chips, the stack's tooltips). */
 export function categoryLabel(cat: ContextCategory): string {
   return CATEGORY_LABEL[cat];
+}
+
+/**
+ * The entrance cascades' stagger slot (`--lc-i`): sheets delay by
+ * `calc(var(--lc-i, 0) * <step>)`, so elements sweep in left to right. The slot
+ * is CAPPED — a long log must not wait for its column — and the cap lives here
+ * so the composition bar's segments and the trend's bars cascade identically.
+ */
+export const STAGGER_CAP = 20;
+
+export function staggerStyle(index: number): CSSProperties {
+  return { '--lc-i': Math.min(index, STAGGER_CAP) } as CSSProperties;
 }
 
 /** Percent 0..100 of a total, rounded; an empty total reads 0 rather than dividing. */

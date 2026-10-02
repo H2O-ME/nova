@@ -13,7 +13,7 @@
  * unknown tag still renders, in the text form, which is the harness's own rule
  * for a form this build has never seen.
  */
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { DisclosureRow } from './DisclosureRow.js';
 import { InjectionGlyph14 } from './glyphs.js';
 import { CONTEXT_ROW_TITLE, contextLabel } from './context-copy.js';
@@ -81,7 +81,7 @@ function ContextBody({
  * @param props - see ContextInjectionRowProps.
  * @returns the disclosure row.
  */
-export function ContextInjectionRow({
+export const ContextInjectionRow = memo(function ContextInjectionRow({
   tag,
   form,
   sections,
@@ -116,4 +116,4 @@ export function ContextInjectionRow({
       </div>
     </DisclosureRow>
   );
-}
+});

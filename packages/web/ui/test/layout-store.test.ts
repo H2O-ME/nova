@@ -54,8 +54,22 @@ describe('sidebar preference', () => {
 });
 
 describe('right panel preference', () => {
+  it('an open panel reserves its track — three columns, not an overlay', () => {
+    // The rule (the reference's `track = shown && !autoFullscreen`): every
+    // shown panel bids for its track, so the centre makes room. The track used
+    // to be a caller-supplied `false` — the port slip that left the panel
+    // hanging over the conversation — and is now structural: there is no
+    // argument left to get wrong.
+    expect(openRightbar(wide(), false).rightbarTrack).toBe(true);
+    // Fullscreen retains the track beneath the covered frame, so leaving
+    // fullscreen lands on the same conversation width.
+    expect(openRightbar(wide(), true).rightbarTrack).toBe(true);
+    // Hidden is the only trackless state.
+    expect(closeRightbar(openRightbar(wide(), false)).rightbarTrack).toBe(false);
+  });
+
   it('seeds at 45% of the frame on first opening and keeps its px afterwards', () => {
-    const opened = openRightbar(wide(), false, false);
+    const opened = openRightbar(wide(), false);
     expect(opened.rightbarShown).toBe(true);
     expect(opened.rightbar).toBe(720);
     // A frame resize re-solves the tracks but never rewrites the preference.
@@ -64,23 +78,23 @@ describe('right panel preference', () => {
   });
 
   it('leaving fullscreen is instant; entering it is not', () => {
-    const full = openRightbar(openRightbar(wide(), false, false), true, true);
+    const full = openRightbar(openRightbar(wide(), false), true);
     expect(full.rightbarInstant).toBe(false);
-    const restored = openRightbar(full, false, false);
+    const restored = openRightbar(full, false);
     expect(restored.rightbarInstant).toBe(true);
     // Repeating the same presentation keeps the flag as it was; any other
     // geometry action clears it.
-    expect(openRightbar(restored, false, false).rightbarInstant).toBe(true);
+    expect(openRightbar(restored, false).rightbarInstant).toBe(true);
     expect(setSidebar(restored, 300).rightbarInstant).toBe(false);
   });
 
   it('opening on a narrow frame collapses the sidebar first', () => {
     const narrowExpanded = toggleSidebar(setViewportWidth(wide(), 900));
-    expect(openRightbar(narrowExpanded, false, false).narrowExpanded).toBe(false);
+    expect(openRightbar(narrowExpanded, false).narrowExpanded).toBe(false);
   });
 
   it('a drag clamps into [300, 70% of the frame]', () => {
-    const opened = openRightbar(wide(), false, false);
+    const opened = openRightbar(wide(), false);
     expect(setRightbar(opened, 100).rightbar).toBe(300);
     expect(setRightbar(opened, 9999).rightbar).toBe(1120);
   });

@@ -29,10 +29,20 @@
   padding-bottom: 10px;
 }
 
-/* Blank hero/settling: keep the strict Session header mounted without taking
-   column space; the root-owned scrollport and composer remain below it. */
-.headerHidden {
-  display: none;
+/* Blank hero/settling: the header keeps its row (the corner seat lives here)
+   but drops the 76px floor, the foot rule and the bottom inset — the chrome
+   above the hero is the way into the right panel, and nothing else. The
+   reference draws the same line in ConversationRoot.module.css: `.headerBlank`
+   zeroes the height, and its corner keeps `margin-left: auto` so the button
+   parks at the trailing edge of an otherwise empty row. */
+.headerBlank {
+  min-height: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.headerBlank .headerCorner {
+  margin-left: auto;
 }
 
 .titleRow {
@@ -81,6 +91,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
 .crumb:hover:not(:disabled) {

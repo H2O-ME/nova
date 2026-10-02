@@ -12,8 +12,9 @@
  * source's current/last segment, with the workspace path as its tooltip), and
  * the seats render what the product has: `utilities` hosts the source's
  * "open in app" action, which this product has no counterpart for, while
- * `corner` hosts the right panel's expand control (see `PanelExpandButton` for
- * the one product difference it carries). **The model is NOT here** — the
+ * `corner` hosts the right panel's expand control — ONE control, as in the
+ * source: a second glyph beside it is indistinguishable from the first, and the
+ * detail board is opened by its own tool row. **The model is NOT here** — the
  * source keeps it in the composer's model seat, and so do we: a model printed
  * twice has two places to disagree about what is in force. The tab row renders
  * only when more than one view exists (the source's own gate), which today
@@ -61,12 +62,18 @@ export function SessionHeader({
 }: SessionHeaderProps): JSX.Element {
   return (
     <header
-      className={hidden ? `${css.header} ${css.headerHidden}` : css.header}
-      aria-hidden={hidden || undefined}
+      className={hidden ? `${css.header} ${css.headerBlank}` : css.header}
     >
-      {!hidden && (
-        <>
-          <div className={css.titleRow}>
+      <div className={css.titleRow}>
+        {/* The blank phase blanks the CHROME, not the row: the title cluster
+            and utilities go (there is no session to name yet), but the corner
+            seat stays — it hosts the right panel's way in, and a reader who
+            cannot open the sidebar until they have sent a first message has no
+            way to browse the workspace they are about to talk about. The
+            reference draws the same line: `hideChrome` wraps the cluster and
+            utilities, and the corner is rendered outside it. */}
+        {!hidden && (
+          <>
             <div className={css.titleCluster}>
               <nav className={css.crumbs} aria-label="会话层级">
                 <span className={css.crumbSeg}>
@@ -81,25 +88,25 @@ export function SessionHeader({
             <div className={css.headerUtilities}>
               {utilities}
             </div>
-            <div className={css.headerCorner} data-conversation-header-corner="">{corner}</div>
-          </div>
-          {tabs !== undefined && tabs.length > 1 && (
-            <div className={css.tabs} role="tablist">
-              {tabs.map((viewTab) => (
-                <button
-                  key={viewTab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={viewTab.id === activeTabId}
-                  className={viewTab.id === activeTabId ? `${css.tab} ${css.tabActive}` : css.tab}
-                  onClick={() => onSelectTab?.(viewTab.id)}
-                >
-                  {viewTab.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
+          </>
+        )}
+        <div className={css.headerCorner} data-conversation-header-corner="">{corner}</div>
+      </div>
+      {!hidden && tabs !== undefined && tabs.length > 1 && (
+        <div className={css.tabs} role="tablist">
+          {tabs.map((viewTab) => (
+            <button
+              key={viewTab.id}
+              type="button"
+              role="tab"
+              aria-selected={viewTab.id === activeTabId}
+              className={viewTab.id === activeTabId ? `${css.tab} ${css.tabActive}` : css.tab}
+              onClick={() => onSelectTab?.(viewTab.id)}
+            >
+              {viewTab.label}
+            </button>
+          ))}
+        </div>
       )}
     </header>
   );

@@ -22,8 +22,10 @@ import { AppearanceRow } from './AppearanceRow.js';
 import { FontSizeRow } from './FontSizeRow.js';
 import { SettingsRow } from './SettingsRow.js';
 import { SettingsSection } from './Section.js';
+import { TranscriptViewRow } from './TranscriptViewRow.js';
 import type { ApprovalMode } from '../types.js';
 import type { ThemePreference } from '../theme.js';
+import type { TranscriptViewMode } from '../chat/transcript-view.js';
 
 export interface GeneralSectionProps {
   /** The approval tier in force (the select's echo is the host's truth). */
@@ -32,11 +34,14 @@ export interface GeneralSectionProps {
   preference: ThemePreference;
   /** The persisted content font size, in px. */
   fontSize: number;
+  /** The persisted work-details mode (the transcript's detail level). */
+  transcriptView: TranscriptViewMode;
   /** An ask is pending or the socket is down: the tier control refuses. */
   disabled: boolean;
   onPickApproval: (mode: ApprovalMode) => void;
   onPickPreference: (preference: ThemePreference) => void;
   onPickFontSize: (px: number) => void;
+  onPickTranscriptView: (mode: TranscriptViewMode) => void;
 }
 
 /**
@@ -48,10 +53,12 @@ export function GeneralSection({
   approvalMode,
   preference,
   fontSize,
+  transcriptView,
   disabled,
   onPickApproval,
   onPickPreference,
   onPickFontSize,
+  onPickTranscriptView,
 }: GeneralSectionProps): JSX.Element {
   return (
     <SettingsSection>
@@ -60,6 +67,7 @@ export function GeneralSection({
             the card covers the text rows above, never the controls below. */}
         <PermissionSelect value={approvalMode} onPick={onPickApproval} side="above" align="end" disabled={disabled} />
       </SettingsRow>
+      <TranscriptViewRow mode={transcriptView} onPick={onPickTranscriptView} />
       <AppearanceRow preference={preference} onPick={onPickPreference} />
       <FontSizeRow fontSize={fontSize} onPick={onPickFontSize} />
     </SettingsSection>

@@ -46,7 +46,7 @@ export interface UserMessageRowProps {
   onBranch?: (() => void) | undefined;
 }
 
-export function UserMessageRow({ text, time, pending, echo, images, onBranch }: UserMessageRowProps): JSX.Element {
+export const UserMessageRow = memo(function UserMessageRow({ text, time, pending, echo, images, onBranch }: UserMessageRowProps): JSX.Element {
   return (
     <div
       className={css.userRow}
@@ -94,7 +94,7 @@ export function UserMessageRow({ text, time, pending, echo, images, onBranch }: 
       />
     </div>
   );
-}
+});
 
 export interface AssistantMessageProps {
   /** The reply's markdown source (the projection keeps it verbatim). */

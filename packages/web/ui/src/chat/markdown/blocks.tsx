@@ -19,6 +19,7 @@
 import { Fragment, createElement } from 'react';
 import type { ReactNode } from 'react';
 import { CodeBlock } from './CodeBlock.js';
+import { fenceRendererFor } from './fence-renderers.js';
 import { parseInline } from './inline.js';
 import { renderInline } from './inline-view.js';
 import type { MdAlign, MdBlock, MdItem } from './parse.js';
@@ -96,6 +97,16 @@ function renderCode(lang: string | undefined, code: string, key: number, context
         <code className={lang === undefined ? undefined : `language-${lang}`} />
       </pre>
     );
+  }
+  // A plugin-owned fence renderer wins over the code card. Returning null makes
+  // the renderer give up — the code card then renders, the same as an
+  // unregistered language. The streaming flag is forwarded so a fence that is
+  // still growing can keep whatever hook its UI needs (the same fact the code
+  // card receives).
+  const renderer = fenceRendererFor(lang);
+  if (renderer !== undefined) {
+    const node = renderer(code, context.streaming);
+    if (node !== null) return <Fragment key={key}>{node}</Fragment>;
   }
   return (
     <CodeBlock

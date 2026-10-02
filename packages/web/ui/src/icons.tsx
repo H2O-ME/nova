@@ -185,6 +185,20 @@ export const PlayIcon = (p: P): JSX.Element => (
   </Svg>
 );
 
+export const PauseIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M6 3.5v9M10 3.5v9" />
+  </Svg>
+);
+
+/** The goal glyph (harness `IconGoalOutlineRegular`): a target, the objective's own mark. */
+export const GoalIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <circle cx="8" cy="8" r="5.25" />
+    <circle cx="8" cy="8" r="1.75" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
 export const SparkleIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <path d="M8 2.5l1.4 3.6 3.6 1.4-3.6 1.4L8 12.5l-1.4-3.6L3 7.5l3.6-1.4z" fill="currentColor" stroke="none" />
@@ -272,6 +286,14 @@ export const BookIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <path d="M8 3.5C6.4 2.6 4.7 2.4 2.75 2.75v9.7c1.95-.35 3.65-.15 5.25.75 1.6-.9 3.3-1.1 5.25-.75v-9.7C11.3 2.4 9.6 2.6 8 3.5Z" />
     <path d="M8 3.5v9.7" />
+  </Svg>
+);
+
+/** A simple file glyph (the editor strip's leading icon). */
+export const FileIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M4 2.75A.75.75 0 0 1 4.75 2H9l3 3v8.25a.75.75 0 0 1-.75.75h-6.5a.75.75 0 0 1-.75-.75V2.75Z" />
+    <path d="M9 2v3h3" />
   </Svg>
 );
 

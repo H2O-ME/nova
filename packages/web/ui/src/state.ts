@@ -13,17 +13,22 @@
  *    a card this bundle has never seen still renders from its own fields,
  *    because `generic` is always available as the fallback.
  *
- * Frame-level bookkeeping (attach, sessions, pagination, host errors) lives in
+ * Frame-level bookkeeping (attach, pagination, host errors) lives in
  * this file; one case per kernel event lives next door in `state-events.ts`.
  */
 import type {
-  ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, ConfiguredModel, ContextTimeline, Goal, JobSnapshot, KernelEvent, ModelCapabilities, ModelGroup, PtcMode, QuestionRequest, ReadyInfo,
-  RunStats, SessionListItem, SubagentUsage, TodoItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
-  WireDirectoryLevel, WireFileEntry, WireProviderRow, WireRosterEntry, WireSkillEntry, WireTraceRow,
+  ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, ConfiguredModel, ContextTimeline, GitLogEntry, Goal, GitStatusEntry, JobSnapshot, KernelEvent, ModelCapabilities, ModelGroup, PtcMode, QuestionRequest, ReadyInfo,
+  RunStats, SubagentUsage, TodoItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
+  WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow,
 } from './types.js';
 import { reduceEvent } from './state-events.js';
+import { hostErrorText } from './host-messages.js';
 import { treeAsk, treeError, treeLevel, emptyTree, type TreeState } from './rightbar/files-model.js';
-import { emptyTerminal, terminalForSession, upsertTerminal, type TerminalFrameState, type TerminalState } from './rightbar/terminal-model.js';
+import { applyTerm, emptyTerm, termForSession, type TermFrame, type TermState } from './rightbar/terminal-model.js';
+import {
+  activateDoc, closeDoc, docEdited, docError, docLoaded, docSaved, emptyEditor, openDoc,
+  type EditorState,
+} from './rightbar/editor-model.js';
 
 export type Block =
   | {
@@ -235,15 +240,6 @@ export interface UiState {
    * list is not part of it — blanking it would show "loading" on every switch
    * and re-ask for what the sidebar is already holding.
    */
-  sessions: readonly SessionListItem[] | null;
-  /**
-   * The list is worth re-asking (an attach landed, or a switch may have added
-   * a session). The host's answer settles it; a stale list keeps rendering
-   * meanwhile, which is why this is not "sessions = null".
-   */
-  sessionsStale: boolean;
-  /** A `list_sessions` request is in flight (single-flight, same rule as paging). */
-  sessionsPending: boolean;
   /** Baseline blocks the browser holds (from `ready` plus `load_earlier`). */
   historyLoaded: number;
   /** Blocks the baseline has in all — anything above `historyLoaded` is older. */
@@ -257,8 +253,11 @@ export interface UiState {
   historyPending: boolean;
   /**
    * Which view the session pane shows. A view switch is browser state, not
-   * session state: it is not logged, not sent anywhere, and resets with the
-   * baseline like every other per-attach choice.
+   * session state: it is not logged and not sent anywhere. It follows ONE
+   * session — a switch resets it to the conversation (a carried view draws
+   * the new session's pane under the hero), while a re-attach to the same
+   * session keeps it (a reconnect must not kick the reader out of the pane
+   * they were reading).
    */
   view: SessionViewId;
   /**
@@ -290,6 +289,8 @@ export interface UiState {
   directory: DirectoryState | null;
   /** A native-dialog pick (`pick_file` / `pick_directory`) is in flight. */
   pickPending: boolean;
+  /** A `git_clone` is in flight (the answer is a new `ready`, not a frame). */
+  clonePending: boolean;
   /**
    * The last `picked` frame, or null. Kept here (not in a component) because
    * the ask and its answer are frames and the reducer is what sees both.
@@ -305,11 +306,36 @@ export interface UiState {
    */
   tree: TreeState;
   /**
-   * The right panel's terminal: the commands this panel ran and their output so
-   * far. Output arrives as `terminal` frames and is drained (not re-sent), so
-   * this slice is the panel's own screen — see `rightbar/terminal-model.ts`.
+   * The right panel's editor: the open documents and the one on screen. Reads
+   * are asked for here and settled by the host's `entry` / `entry_error`
+   * frames, so the panel and the reply cannot disagree about what is loaded —
+   * `rightbar/editor-model.ts` owns the fold.
    */
-  terminal: TerminalState;
+  editor: EditorState;
+  /**
+   * The 变更 tab's git lens (null until asked). `repo: false` is a reading,
+   * not an error: the workspace simply is not a repository.
+   */
+  git: GitState | null;
+  /**
+   * The 任务 tab's jobs (null until asked). Read-only rows: output is the
+   * model's consuming cursor, so this slice carries status and the sampled
+   * progress line only.
+   */
+  jobs: readonly WireJobRow[] | null;
+  /**
+   * The right panel's terminal: the SESSION's real PTY, as this browser last
+   * saw it. Output is a raw byte stream the emulator consumes, so this slice
+   * only carries status, the exit code and the owed byte batch — see
+   * `rightbar/terminal-model.ts`.
+   */
+  term: TermState;
+  /**
+   * The host's shell inventory (null until asked). The rows are what the
+   * terminal's picker offers — installed only, the environment's default first —
+   * and `current` is the row a choiceless open would start.
+   */
+  shells: { items: readonly WireShell[]; current: string } | null;
   /** Cumulative run numbers for the stats bar (session-scoped, like the kernel's). */
   totals: SessionTotals;
 }
@@ -350,6 +376,38 @@ export interface QqBotTest {
   ok: boolean;
   gateway?: string;
   message?: string;
+}
+
+/** One file's diff as the 变更 tab shows it. */
+export interface GitDiffState {
+  path: string;
+  /** Whether this is the index side. */
+  staged: boolean;
+  text: string;
+  truncated: boolean;
+  /** Git has no diff for this file (untracked): the panel renders it as new. */
+  untracked: boolean;
+}
+
+/** The 变更 tab's git lens: the working tree, the selected diff, the log. */
+export interface GitState {
+  /**
+   * The workspace root this answer was read in.
+   *
+   * The rows are repo-relative, so a reading from another root would decorate
+   * this tree with another repository's status — and nothing in the frames
+   * carries the root, so the reducer stamps it from the state it answered in.
+   */
+  root: string;
+  repo: boolean;
+  branch: string;
+  entries: readonly GitStatusEntry[];
+  /** The last operation's own line (a commit's summary, or why it failed). */
+  message?: string;
+  /** The diff on screen, when one was asked for. */
+  diff: GitDiffState | null;
+  /** Recent commits, when asked for (newest first). */
+  log: readonly GitLogEntry[];
 }
 
 /**
@@ -507,9 +565,6 @@ export const initialState: UiState = {
   turnCount: 0,
   usedTokens: 0,
   contextWindow: null,
-  sessions: null,
-  sessionsStale: false,
-  sessionsPending: false,
   historyLoaded: 0,
   historyTotal: 0,
   historyPending: false,
@@ -519,9 +574,14 @@ export const initialState: UiState = {
   files: null,
   directory: null,
   pickPending: false,
+  clonePending: false,
   pick: null,
   tree: emptyTree,
-  terminal: emptyTerminal,
+  editor: emptyEditor(),
+  git: null,
+  jobs: null,
+  term: emptyTerm,
+  shells: null,
   totals: emptyTotals,
 };
 
@@ -545,19 +605,17 @@ export type Action =
   | { type: 'qqbot_test'; result: QqBotTest }
   /** The operator edited a qqbot field: the probe's answer no longer applies. */
   | { type: 'qqbot_test_clear' }
-  | { type: 'sessions'; items: readonly SessionListItem[] }
   | { type: 'files'; query: string; items: readonly WireFileEntry[]; truncated: boolean }
   | { type: 'directory'; level: WireDirectoryLevel }
   | { type: 'directory_error'; message: string }
   /** The host's native dialog answered (`picked` frame). */
   | { type: 'picked'; kind: 'file' | 'directory'; path?: string; error?: string }
   /**
-   * One `terminal` frame from the right panel's terminal: a job's status plus
-   * the output produced since this client's last read. The fold (append text,
-   * replace state) lives in `rightbar/terminal-model.ts` — the reducer only
-   * routes it to the slice.
+   * One `term` frame from the right panel's terminal: raw pty bytes plus the
+   * pty's own state. The fold lives in `rightbar/terminal-model.ts` — the
+   * reducer only routes it to the slice.
    */
-  | { type: 'terminal'; frame: TerminalFrameState }
+  | { type: 'term'; frame: TermFrame }
   /**
    * The user opened a directory request (navigated, or created a folder). A
    * local action: it marks the request in flight HERE, because the reducer is
@@ -569,6 +627,34 @@ export type Action =
   | { type: 'history_earlier'; blocks: readonly WireBlock[]; total: number }
   | { type: 'trace'; rows: readonly WireTraceRow[]; total: number }
   | { type: 'context'; timeline: ContextTimeline | null }
+  /** One file's content settled a read (the answer to `read_entry`). */
+  | { type: 'entry'; path: string; text: string; bytes: number; truncated: boolean; binary: boolean }
+  /** A read the host refused; the document stays open showing the reason. */
+  | { type: 'entry_error'; path: string; message: string }
+  /** A save landed; the open document of that path is clean again. */
+  | { type: 'entry_saved'; path: string; bytes: number }
+  /**
+   * A structural change (rename/remove/create): the directory it happened in is
+   * marked for re-listing, so the tree refreshes from an answer rather than
+   * from the click — the panel's own `needsListing` effect picks the ask up.
+   */
+  | { type: 'entry_changed'; change: 'renamed' | 'removed' | 'created'; path: string; dir: string }
+  /** The workspace's git status (also the answer to every git mutation). */
+  | { type: 'git_status'; repo: boolean; branch: string; entries: readonly GitStatusEntry[]; message?: string }
+  /** One file's diff, as asked. */
+  | { type: 'git_diff'; path: string; staged: boolean; text: string; truncated: boolean; untracked: boolean }
+  /** Recent commits. */
+  | { type: 'git_log'; entries: readonly GitLogEntry[] }
+  /** The 任务 tab's rows. */
+  | { type: 'jobs'; items: readonly WireJobRow[] }
+  /** The host's shell inventory (the answer to `discover_shells`). */
+  | { type: 'shells'; frame: { items: readonly WireShell[]; current: string } }
+  /** The user picked an open document. */
+  | { type: 'editor_activate'; path: string }
+  /** A keystroke in the open document. */
+  | { type: 'editor_edit'; path: string; text: string }
+  /** The user closed a document. */
+  | { type: 'editor_close'; path: string }
   /**
    * The user picked a view. A local action, not a frame: the host has no
    * opinion about which pane is on screen, and nothing about it is durable.
@@ -616,15 +702,26 @@ export function reduce(state: UiState, action: Action): UiState {
           },
         };
       }
-      if (action.frame.type === 'list_sessions') {
-        // Same rule as the catalog: the request went out, so the answer is
-        // what settles it — and the list stays on screen until it does.
-        return { ...state, sessionsStale: false, sessionsPending: true };
-      }
       if (action.frame.type === 'list_files') {
         // The in-flight flag rides the query: the menu shows its loading row
         // only while the answer on screen is for the text being typed.
         return { ...state, files: { query: action.frame.query, items: [], truncated: false, pending: true } };
+      }
+      if (action.frame.type === 'read_entry') {
+        // The document enters the editor the moment the read goes OUT (it
+        // renders as loading); the host's `entry` / `entry_error` then settles
+        // the doc that is already there. Opening it here, on the request, is
+        // what gives the gesture one owner: every caller of `read_entry` — the
+        // tree row, its kebab menu, anything later — gets an open document,
+        // and an answer for a path nobody asked about still cannot conjure one.
+        return { ...state, editor: openDoc(state.editor, action.frame.path) };
+      }
+      if (action.frame.type === 'git_clone') {
+        // A clone can take a network's worth of seconds; the flag rides the
+        // request so the button says so. It settles on the `ready` the host
+        // broadcasts after adopting the clone (applyReady) or on the `error`
+        // frame a failed clone answers with — both are replies.
+        return { ...state, clonePending: true };
       }
       if (action.frame.type === 'list_directory' && action.frame.dir !== undefined) {
         // The right panel's tree marks the level it is waiting for, so its row
@@ -728,8 +825,6 @@ export function reduce(state: UiState, action: Action): UiState {
       return { ...state, qqbotTest: action.result };
     case 'qqbot_test_clear':
       return { ...state, qqbotTest: null };
-    case 'sessions':
-      return { ...state, sessions: action.items, sessionsStale: false, sessionsPending: false };
     case 'files':
       // A reply for text the user has already typed past is dropped: replacing
       // the rows now would show candidates for a query nobody is asking.
@@ -744,13 +839,15 @@ export function reduce(state: UiState, action: Action): UiState {
         ? { ...state, directory: state.directory ?? { level: null, error: null, pending: false, mode: action.mode ?? 'directory' } }
         : { ...state, directory: null };
     case 'directory_ask':
+      // Only the open picker can be mid-ask (its own effect is the only caller):
+      // a null slot stays null, so no path can conjure the dialog into being.
       return {
         ...state,
-        directory: {
-          level: state.directory?.level ?? null,
+        directory: state.directory === null ? null : {
+          level: state.directory.level ?? null,
           error: null,
           pending: true,
-          mode: state.directory?.mode ?? 'directory',
+          mode: state.directory.mode,
         },
       };
     case 'directory':
@@ -758,37 +855,98 @@ export function reduce(state: UiState, action: Action): UiState {
       // about a different path. The same answer feeds the right panel's tree
       // (keyed by the host's own absolute path): one frame, two readers, and no
       // second ask — the picker and the panel may both have one in flight.
+      //
+      // **The picker's slot is only written while the picker is OPEN.** The tree
+      // asks these same frames for its own levels, and filling the slot from an
+      // answer is what made the dialog appear out of nowhere: opening the right
+      // panel (whose 文件 page asks for the workspace root) drew 「选择工作区文件夹」
+      // over a session that already had a workspace — the reported 「文件页面居然
+      // 需要我再选择一遍」. A dialog is opened by a GESTURE (`directory_open`), never
+      // by an answer to somebody else's question.
       return {
         ...state,
         tree: treeLevel(state.tree, action.level),
-        directory: {
+        directory: state.directory === null ? null : {
           level: action.level,
           error: null,
           pending: false,
-          mode: state.directory?.mode ?? 'directory',
+          mode: state.directory.mode,
         },
       };
     case 'directory_error':
       // The previous level is kept: a failed navigation returns the user to
       // where they were with the reason stated, not to a blank dialog. The tree
       // marks whatever it was waiting for as refused (the frame carries no path;
-      // see `files-model.treeError`).
+      // see `files-model.treeError`). Same rule as the answer above: a refusal
+      // for the tree's own ask must not open the picker.
       return {
         ...state,
         tree: treeError(state.tree, action.message),
-        directory: {
-          level: state.directory?.level ?? null,
+        directory: state.directory === null ? null : {
+          level: state.directory.level,
           error: action.message,
           pending: false,
-          mode: state.directory?.mode ?? 'directory',
+          mode: state.directory.mode,
         },
       };
     case 'picked': {
       const { type: _picked, ...reply } = action;
       return { ...state, pickPending: false, pick: reply };
     }
-    case 'terminal':
-      return { ...state, terminal: upsertTerminal(state.terminal, action.frame) };
+    case 'term':
+      return { ...state, term: applyTerm(state.term, action.frame) };
+    case 'entry':
+      return { ...state, editor: docLoaded(state.editor, action) };
+    case 'entry_error':
+      return { ...state, editor: docError(state.editor, action.path, action.message) };
+    case 'entry_saved':
+      return { ...state, editor: docSaved(state.editor, action.path, action.bytes) };
+    case 'entry_changed': {
+      // The change happened in one directory; marking that level as needing a
+      // fresh read is the whole update — the panel's own effect asks, and the
+      // answer (a `directory` frame) is what the tree renders from. A removed
+      // OPEN document is closed too: its rows would otherwise sit on a file
+      // that no longer exists.
+      const editor = action.change === 'removed' ? closeDoc(state.editor, action.path) : state.editor;
+      return { ...state, editor, tree: treeAsk(state.tree, action.dir) };
+    }
+    case 'git_status':
+      return {
+        ...state,
+        git: {
+          root: state.meta?.rootDir ?? '',
+          repo: action.repo,
+          branch: action.branch,
+          entries: action.entries,
+          ...(action.message !== undefined ? { message: action.message } : {}),
+          // A refreshed status keeps the diff on screen ONLY while its file is
+          // still changed: a committed (or reverted) file's stale diff would
+          // claim work that is no longer pending.
+          diff: state.git?.diff !== null && state.git !== null
+            && action.entries.some((entry) => entry.path === state.git?.diff?.path)
+            ? state.git.diff
+            : null,
+          log: state.git?.log ?? [],
+        },
+      };
+    case 'git_diff':
+      return state.git === null
+        ? state
+        : { ...state, git: { ...state.git, diff: { path: action.path, staged: action.staged, text: action.text, truncated: action.truncated, untracked: action.untracked } } };
+    case 'git_log':
+      return state.git === null
+        ? state
+        : { ...state, git: { ...state.git, log: action.entries } };
+    case 'jobs':
+      return { ...state, jobs: action.items };
+    case 'shells':
+      return { ...state, shells: action.frame };
+    case 'editor_activate':
+      return { ...state, editor: activateDoc(state.editor, action.path) };
+    case 'editor_edit':
+      return { ...state, editor: docEdited(state.editor, action.path, action.text) };
+    case 'editor_close':
+      return { ...state, editor: closeDoc(state.editor, action.path) };
     case 'history_earlier': {
       // Older blocks go in FRONT; the cursor is what the browser now holds.
       let seq = state.seq;
@@ -837,10 +995,10 @@ export function reduce(state: UiState, action: Action): UiState {
       // state on it — otherwise the control it disabled stays disabled forever.
       const seq = (state.manageError?.seq ?? 0) + 1;
       return {
-        ...hint(state, `宿主提示：${action.message}`, 'warn'),
+        ...hint(state, hostErrorText(action.message), 'warn'),
         manageError: { seq, message: action.message },
         historyPending: false,
-        sessionsPending: false,
+        clonePending: false,
         trace: state.trace !== null ? { ...state.trace, pending: false } : null,
       };
     }
@@ -905,15 +1063,6 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     pendingApproval: info.pendingApprovals[0] ?? null,
     pendingQuestion: info.pendingQuestions[0] ?? null,
     queued: [],
-    // A session switch re-baselines everything session-scoped EXCEPT the
-    // sidebar's list: a switch can add a session (the one just created) or
-    // change the current row's highlight, so the list is re-asked — but the
-    // rows already on screen stay, because re-asking is not a reason to blink.
-    // A request that was in flight died with the socket that carried it, so
-    // the flag resets with the attach rather than waiting for a reply that
-    // will never come (which would block every later re-ask).
-    sessionsStale: true,
-    sessionsPending: false,
     usedTokens: info.usedTokens,
     contextWindow: info.contextWindow ?? null,
     blocks: [...history, ...jobs],
@@ -921,6 +1070,13 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     historyLoaded: history.length,
     historyTotal: info.historyTotal,
     historyPending: false,
+    // The pane's view is chrome for ONE session: carried across a switch it
+    // stacked the new session's pane under the hero (the reported 上下文/轨迹 +
+    // 新会话 overlay — the hero phase renders no tab strip, so a surviving
+    // view had no way back), over an empty trace whose rows died with the old
+    // log. A re-attach to the SAME session keeps the view: a reconnect must
+    // not kick the reader out of the pane they were reading.
+    ...(state.meta?.sessionFile !== info.sessionFile ? { view: 'chat' } : {}),
     // The trace window is re-cut on the same attach, so whatever rows the pane
     // held belong to a session that is no longer open: drop them and let an
     // open pane re-read (`traceTotal` says how many there are to read).
@@ -938,10 +1094,23 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     // another directory's contents under this one's path. Dropping it makes the
     // panel ask again (the picker's own slot follows the same rule on open).
     tree: emptyTree,
-    // Terminal commands are owned by a session on the host: keep this panel's
-    // rows while the session is the same (a reconnect must not blank a running
-    // command) and drop them when the reader switched.
-    terminal: terminalForSession(state.terminal, info.sessionFile),
+    // The terminal is owned by a session on the host: keep this panel's state
+    // while the session is the same (a reconnect must not blank a running
+    // shell) and drop it when the reader switched.
+    term: termForSession(state.term, info.sessionFile),
+    // The git reading is the WORKSPACE's, and it is stamped with the root it
+    // answered for (`GitState.root`): a session switch may move the workspace,
+    // and rows from the previous root would decorate this tree with another
+    // repository's status. Dropping it makes the panel ask again.
+    git: null,
+    // Background jobs belong to the session that started them (the host keys
+    // them by session id), so a switch drops the rows rather than showing
+    // another session's work.
+    jobs: null,
+    // The re-baseline IS the clone's success reply (the host adopts the clone
+    // and restates the surface), so an in-flight clone settles here too —
+    // `error` covers the failed direction.
+    clonePending: false,
   };
 }
 

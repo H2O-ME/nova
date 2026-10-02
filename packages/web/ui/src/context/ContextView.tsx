@@ -13,9 +13,12 @@ import { useEffect, useRef } from 'react';
 import type { ContextTimeline } from '../types.js';
 import { scrollportOf } from '../scroll-follow.js';
 import { CompositionCard, StatsStrip } from './ContextCards.js';
+import { DashboardCard } from './DashboardCard.js';
+import { DnaCard } from './DnaCard.js';
 import { ElementCard } from './ElementCard.js';
-import { EventsCard } from './EventCard.js';
+import { EventsCard } from './EventsCard.js';
 import { FilesCard } from './FileCard.js';
+import { TimingCard } from './TimingCard.js';
 import { TrendCard } from './TrendCard.js';
 import css from './ContextView.module.css';
 
@@ -24,11 +27,13 @@ export interface ContextViewProps {
   timeline: ContextTimeline | null;
   /** The model's window, from the SAME reading the composer's ring uses. */
   window?: number;
+  /** Absolute path of the open session log — the DNA card fetches a window by seq. */
+  sessionFile?: string;
   /** Ask the host for a fresh reading (the pane's refresh and open path). */
   onRefresh: () => void;
 }
 
-export function ContextView({ timeline, window, onRefresh }: ContextViewProps): JSX.Element {
+export function ContextView({ timeline, window, sessionFile, onRefresh }: ContextViewProps): JSX.Element {
   const root = useRef<HTMLDivElement | null>(null);
   // Read on mount: opening the view is the request, and re-mounting (switching
   // back to this tab) re-reads so the pane is never a stale snapshot.
@@ -49,14 +54,17 @@ export function ContextView({ timeline, window, onRefresh }: ContextViewProps): 
         ) : (
           <>
             <StatsStrip timeline={timeline} />
+            <DashboardCard />
             <CompositionCard timeline={timeline} {...(window !== undefined ? { window } : {})} />
             <TrendCard
               points={timeline.points}
               truncated={timeline.truncated}
               {...(window !== undefined ? { window } : {})}
             />
+            <TimingCard points={timeline.points} />
+            <DnaCard points={timeline.points} {...(sessionFile !== undefined ? { sessionFile } : {})} />
             <ElementCard timeline={timeline} />
-            <EventsCard events={timeline.events} />
+            <EventsCard timeline={timeline} />
             <FilesCard files={timeline.files} />
           </>
         )}

@@ -60,7 +60,7 @@ const permissionGlyphs = new Map<string, ReactNode>([
 ]);
 
 /** One selectable mode of a menu: the wire value plus the copy it reads as. */
-interface ModeOption<T extends string> {
+export interface ModeOption<T extends string> {
   code: T;
   label: string;
   hint: string;
@@ -87,8 +87,10 @@ interface ModeSelectProps<T extends string> {
  *  shell's Menu primitive: portaled beside the page and placed from the
  *  trigger rect, flipping to whichever side fits — at the composer's foot that
  *  is always upward; in the settings panel the rows sit high enough to open
- *  downward. A pick lands only when it differs from the echo. */
-function ModeSelect<T extends string>({
+ *  downward. A pick lands only when it differs from the echo. Exported for the
+ *  settings rows that share the exact recipe (工作步骤展示) — one trigger
+ *  implementation, two consumers. */
+export function ModeSelect<T extends string>({
   value,
   options,
   name,

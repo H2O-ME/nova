@@ -2,14 +2,15 @@
 /* SidebarRight.module.css's panel shell (`.panel`, its two presentations, the
    28px strip control) re-housed for the tool detail panel, whose header IS its
    own top edge (the harness's panel draws no header — its controls ride the
-   docking kit's tab strip). The one added value is the level-3 elevation, this
-   frontend's convention for a panel hanging over the centre. */
+   docking kit's tab strip). Flat like the harness's docked column: the level-3
+   elevation this frontend used to draw was the overlay era's convention, and it
+   was what made the panel read as a card floating over the conversation. */
 
 /*
  * The panel is anchored to the frame's right edge and slides off it, so opening
  * and closing are one gesture. It is drawn inside the frame's right column,
- * which never moves and never clips, so a zero-width track leaves it hanging
- * over the centre.
+ * which never moves and never clips; the column reserves the panel's track
+ * while it is shown, and the zero-width case is the narrow-frame takeover.
  */
 .panel {
   position: absolute;
@@ -26,7 +27,6 @@
      raised surface. The edge is the hairline the harness draws on this side. */
   background: var(--dsw-alias-bg-base);
   border-left: 0.5px solid var(--dsw-alias-border-l4);
-  box-shadow: var(--dsw-shadow-lv3);
   /* elevated surface: l2 scrollbar pair */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
@@ -71,7 +71,8 @@
   line-height: 1;
   background: transparent;
   border: none;
-  border-radius: 28px;
+  border-radius: 999px;
+  corner-shape: round;
   cursor: pointer;
 }
 
@@ -146,7 +147,7 @@
   margin: 0;
   padding: 10px 12px;
   border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-markdown-code-block);
   font: var(--dsw-font-markdown-code-block-small);
   color: var(--dsw-alias-label-secondary);
@@ -159,7 +160,7 @@
 .pre::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: 6px;
+  border-radius: var(--dsw-radius-sm);
 }
 
 .pre::-webkit-scrollbar-track {

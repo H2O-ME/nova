@@ -9,7 +9,7 @@
  */
 import type { FileOpRecord } from '../types.js';
 import { cx } from '../composer/cx.js';
-import { fileRows } from './activity-model.js';
+import { fileRows } from './file-model.js';
 import css from './ContextView.module.css';
 
 /** One tint per purpose, read through the sheet's own binding. */

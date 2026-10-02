@@ -18,11 +18,11 @@
  * The harness's turn navigator rail, transcript search and host error dialogs
  * are not part of this port.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ChevronDownGlyph14 } from './glyphs.js';
 import { ProcessGroup } from './ProcessGroup.js';
-import { anchorRow, atFloor, floorTop, flowTop, readerMoved, restoredTop, scrollportOf } from '../scroll-follow.js';
+import { anchorRow, atFloor, floorTop, flowTop, lastUserKey, readerMoved, restoredTop, scrollportOf } from '../scroll-follow.js';
 import type { ScrollAnchor } from '../scroll-follow.js';
 import css from './ChatView.module.css';
 
@@ -44,9 +44,11 @@ export interface ChatFlowRow {
    * The bounded process group this row belongs to, when it belongs to one.
    * Adjacent rows sharing an id are drawn inside a single
    * {@link ProcessGroup} — the harness's per-Turn step box. Rows without it
-   * stay direct children of the column.
+   * stay direct children of the column. `summary` / `liveTitle` are the
+   * disclosure header's two words (settled / live); the policy decides which
+   * one carries task detail.
    */
-  group?: { id: string; live: boolean } | undefined;
+  group?: { id: string; live: boolean; summary?: string; liveTitle?: string } | undefined;
 }
 
 /** The live turn's label (the running turn header's words). */
@@ -84,10 +86,11 @@ export function ChatView({
   const [atBottom, setAtBottom] = useState(true);
   /** Last scrollTop written or read — reader input is deviation from it. */
   const observedTopRef = useRef(0);
-  /** Flow head/tail at the last settle: a changed head with the old one still
-   *  present is a prepend; a changed tail is an append. */
+  /** Flow head at the last commit: a changed head with the old one still
+   *  present is a prepend. */
   const headRef = useRef<string | null>(null);
-  const tailRef = useRef<string | null>(null);
+  /** The flow's last user row at the last commit (see `lastUserKey`). */
+  const userKeyRef = useRef<string | null>(null);
   /** Reading position held across an in-flight `load_earlier`. */
   const anchorRef = useRef<ScrollAnchor | null>(null);
 
@@ -173,11 +176,11 @@ export function ChatView({
     const el = port();
     if (box === null || el === null) return;
     const head = rows[0]?.key ?? null;
-    const tail = rows[rows.length - 1]?.key ?? null;
     const previousHead = headRef.current;
-    const previousTail = tailRef.current;
+    const previousUser = userKeyRef.current;
+    const user = lastUserKey(rows);
     headRef.current = head;
-    tailRef.current = tail;
+    userKeyRef.current = user;
     if (previousHead !== null && !rows.some((row) => row.key === previousHead)) {
       // A (re)`ready` replaced the transcript wholesale: nothing to preserve.
       toBottom(el);
@@ -195,9 +198,13 @@ export function ChatView({
       }
       return;
     }
-    // Our own words must be visible (the send lives in the composer, so
-    // arrival is detected here, not armed there).
-    if (tail !== previousTail && rows[rows.length - 1]?.kind === 'user') {
+    // Our own words must be visible. The send lives in the composer, so
+    // arrival is detected here — as the LAST USER ROW changing, not as the
+    // row being the tail: a send appends the user row AND its turn header in
+    // the same commit, so the tail is a process row by the time this runs
+    // (the harness's own-input rule: new submitted input supersedes the
+    // reading position, i.e. it scrolls even when the reader had scrolled up).
+    if (user !== null && user !== previousUser) {
       toBottom(el);
       return;
     }
@@ -258,9 +265,9 @@ export function ChatView({
 }
 
 /** A hint line: quiet secondary prose, or the error tone for a failure. */
-export function ChatHintRow({ text, tone }: { text: string; tone: 'info' | 'warn' }): JSX.Element {
+export const ChatHintRow = memo(function ChatHintRow({ text, tone }: { text: string; tone: 'info' | 'warn' }): JSX.Element {
   return <div className={tone === 'warn' ? css.openError : css.hint}>{text}</div>;
-}
+});
 
 /**
  * Draw the flow, wrapping each run of adjacent rows that share a `group` id in
@@ -328,7 +335,13 @@ function renderFlowRows(
       index += 1;
     }
     out.push(
-      <ProcessGroup key={group.id} live={group.live}>
+      <ProcessGroup
+        key={group.id}
+        live={group.live}
+        grouped
+        {...(group.summary !== undefined ? { summary: group.summary } : {})}
+        {...(group.liveTitle !== undefined ? { liveTitle: group.liveTitle } : {})}
+      >
         {members.map(box)}
       </ProcessGroup>,
     );
