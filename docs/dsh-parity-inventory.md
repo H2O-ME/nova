@@ -210,11 +210,51 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 
 - **对齐取值**：构成条 16px（原 12px）、段间 2px 缝、未占满的窗口画斜纹剩余区；趋势图 130px 画布 + 18px 头、14px 柱宽、2px 节奏、左侧 44px 轴栏、5 档刻度（1/¾/½/¼/0）与虚线网格 + 实线零基线；行/卡节奏沿用 pane 既有（12px 卡内边距、tabular 数字、`--dsw-*` 色）。
 - **对齐词汇**（`locale` 的 key 反查所得）：`当前上下文 / 上下文趋势 / 上下文事件 / 文件活动 / 轮次 / 请求 / 工具调用 / 缓存命中 / 读取 · 写入 · 搜索 / 全部 / 约 N tokens（估算）`。分类名沿用本仓既有（系统提示/工具定义/注入上下文/用户输入/助手回复/工具结果），与 chat 侧一致。
-- **对齐结构**：统计条（新）、当前上下文（大号读数 + 已用百分比 + 悬停联动的图例）、趋势（真图表 + 悬停气泡 + 点击钉住 + 明细行）、**窗口元素**（新卡：构成条的「开箱」，按占用降序 + 类别筛选）、事件（kind 筛选 chips + 着色药丸）、文件（按用途逐枚徽章 + `+增/−删`）。
-- **刻意未移植（数据面不在本仓）**：费用/计价与模型价格表、跨会话仪表盘与热力图、计时 spans、智能体网络图、**轮次条**（会话日志没有 turn/step 坐标——`ContextPoint` 只有 `seq`/`at`）、**自动压缩预留带**（内核按 `autoCompactTokenLimit` 绝对阈值压缩，窗口比例不是本仓的事实；要画得先把它加进 `ready`）、DNA 模式与上下文浏览器（元素列表已上，但正文/头部的 on-demand 历史读取不在本仓协议里）。
+- **对齐结构**：统计条（新）、当前上下文（大号读数 + 已用百分比 + 悬停联动的图例）、趋势（真图表 + 悬停气泡 + 点击钉住 + 明细行）、**窗口元素**（新卡：构成条的「开箱」，一类别一张可折叠卡）、文件（按用途逐枚徽章 + `+增/−删`）。**上下文事件卡**曾在第 9 轮按操作者裁定删除（面板只答两问），**第 14 轮接回**（2026-10-01）——读数一直在 `ContextTimeline.events` 与 fold 里，把「为什么变了」当第三问接回是面板姿态的修正，不是数据面扩张。
+- **第 14 轮继续补齐（2026-10-01，前端纯函数 + SSR 直测，零内核改动）**：① **事件卡**（`EventsCard.tsx`）：倒序一行一条，每 kind 自带字形与中文词（压缩 `✂` / 工作区 `⇆` / 目标 `◎`）；新增 kind 是 fold 一处的改动，不是 UI 重构。② **趋势明细 Δ 与缓存命中**（`TrendDetail.tsx` 扩展）：悬停或钉住非最新请求时，每类别行追加带符号 Δ 药丸（增绿减红）；明细底部一行给缓存命中率（`cached / prompt`，与 chat pill 同算式）。③ **热力图**（`HeatmapCard.tsx`，新）：最近 8 周的请求/token/输出三档按周排列的日格热力图，**单会话**口径（跨会话归并归仪表盘，未做）；格子按当日值对峰值的比值取 0..4 级。（热力图后于第 17 轮按操作者裁定删除。）
+- **第 16 轮补独立测试覆盖（2026-10-01）**：事件卡此前的断言只夹在 `context-view.test.tsx` 的存在性检查里（`data-context-events`），与 Browser/DNA 的独立测试文件不同口径。本次新增 `web/ui/test/events-card.test.tsx`（4 用例：空态提示、倒序、三种 kind 的字形与中文词、`freed > 0` 才出 Δ 且只在压缩行）。仪表盘卡的独立直测在 `dashboard-card.test.tsx`（4 用例：corpus 摘要 + sparkline + 工作区 top-5、leaderboard 上限 5、空语料全空格、加载中不渲染）此前已落地。同轮还给热力图卡写过 3 条直测——第 17 轮删卡时一并移除。
+- **第 17 轮按操作者裁定删两张卡（2026-10-01）**：**上下文浏览器（`BrowserCard`）与活动热力图（`HeatmapCard`）移除**——面板回到更短的列。删的是卡片不是数据面：窗口快照契约（`ContextWindowSnapshot` / `windowAt` / `windowAtSeq`）与只读路由 `GET /api/context-window` 保留，DNA 卡仍按请求拉同一份快照；热力图是纯前端折叠，连同 `ContextView.module.css` 的 `heat*` 段与 `browser*` 段一并删除（共享类不动，样式护栏全绿）。事件卡与 DNA 卡的独立直测保留。
+- **刻意未移植（数据面不在本仓）**：费用/计价与模型价格表、智能体网络图、**轮次条**（会话日志没有 turn/step 坐标——`ContextPoint` 只有 `seq`/`at`）、**自动压缩预留带**（内核按 `autoCompactTokenLimit` 绝对阈值压缩，窗口比例不是本仓的事实；要画得先把它加进 `ready`）。**计时 spans 已落地**（2026-10-01，第 15 轮）：内核 `RunMeter` 记每请求 `startedAt`/`firstTokenAt`/`finishedAt` → `RunStats.requestTimings` → `run/stats` 事件 → fold 用 `afterMessageId` 锚点合并到 `ContextPoint.timing`；前端 `TimingCard.tsx` 一行一请求给 TTFT / 总用时 + 底部平均。**跨会话仪表盘已落地**（2026-10-01，第 15 轮）：内核 `aggregateSessions(root)` 一次走遍 `~/.nova/sessions` 把 `run/stats` 折成按日 / 按工作区桶，`GET /api/dashboard` 把结果返回，前端 `DashboardCard.tsx` 14 天 sparkline + 工作区 top-5 + corpus tokens 合计（挂载时自取；加载中 / 失败 / 空语料时不渲染）。**DNA 卡已落地**（2026-10-01，第 15 轮）：窗口快照契约 `ContextWindowSnapshot` 在 core，`plugin-context` 的 `ContextReading.windowAt(seq)` 是唯一实现（规则与 `compositionBefore(seq)` 同源），再导出 `windowAtSeq`；`web/src/context-window.ts` 加 `GET /api/context-window?session=&seq=` 只读路由（认证门后、会话 id 经 `sessionLogPath` 校验、seq 解析为非负整数），前端 `DnaCard.tsx`（堆叠条 + 类别条；条本身只读 point.cats 不需要宿主，所以测试壳里照画）。同轮的 `BrowserCard.tsx`（按请求折叠、点开拉快照内联展开 cat/label/tokens）后于第 17 轮删除——路由与快照契约由 DNA 继续消费，故保留。**`web` 因此进 `plugin-context` 的依赖白名单**。
 - **不重复读数**：悬停气泡只报「身份 + 总量」，输入/输出/缓存命中归明细行；缓存命中百分比复用 `cacheHitText`（与聊天 pill 同一实现）。
 - **真机量测**（headless Edge + CDP，临时 home + 复制一份真实会话）：六张卡同宽 710 / 同列 x=501（与转录同宽轴）；构成条 680×16；趋势柱 14×112；元素表 19 行；轴刻度 13.4K/10K/6.7K/3.3K/0。变异验证三条：趋势顺序反排、构成条不做饱和、文件徽章退回支配规则——各自立刻变红。
-- **随之修掉的滚动缺陷（用户报告「不能上下滚动，卡在这了」）**：上下文与轨迹两面板在共享 rollport（`[data-conversation-scroll]`）之外各开了一层 `overflow:auto; overscroll-behavior: contain`；面板跟着内容长高，所以那层**永远没有滚动范围**，而 Chrome 对「没有范围 + contain」的元素**就地吞掉滚轮且不链给父级**——整页滚不动。修法：两面板都不再自开滚动条，滚动归共享端口（转录同款 `scrollportOf`）；上下文面板挂载时把端口回锚到顶部。**A/B 实测**：修复前轮滚 → `scrollTop` 恒 0；修复后 → 300；把旧 CSS 注回面板元素 → 又回 0。卡住的三个列表（元素/事件/文件，`max-height: 320px`）也去掉了自写的 `overscroll-behavior-y: contain`，到底后滚轮正常链走（参照实现同样不写）。
+- **随之修掉的滚动缺陷（用户报告「不能上下滚动，卡在这了」）**：上下文与轨迹两面板在共享 rollport（`[data-conversation-scroll]`）之外各开了一层 `overflow:auto; overscroll-behavior: contain`；面板跟着内容长高，所以那层**永远没有滚动范围**，而 Chrome 对「没有范围 + contain」的元素**就地吞掉滚轮且不链给父级**——整页滚不动。修法：两面板都不再自开滚动条，滚动归共享端口（转录同款 `scrollportOf`）；上下文面板挂载时把端口回锚到顶部。**A/B 实测**：修复前轮滚 → `scrollTop` 恒 0；修复后 → 300；把旧 CSS 注回面板元素 → 又回 0。卡住的日志列表（文件活动，`max-height: 320px`）也去掉了自写的 `overscroll-behavior-y: contain`，到底后滚轮正常链走（参照实现同样不写）。
+
+### 动效移植 + tooltip 词汇混用修复（第 10 轮：用户点名「页面 ui 没有动画」「悬浮弹窗是黑的看不清文字」）
+
+- **tooltip 词汇混用（真缺陷）**：上下文面板的 `barTip`/`chartTip` 用了**外壳 chrome 的恒暗底**（`--dsw-alias-tooltip-bg`）配**主题跟随的字**——亮色主题下黑底配深字，读不清（用户截图实证）。dsh 的词汇是两套：外壳 chrome 提示恒暗（`ui-primitives` 的 tooltip），**面板内数据气泡跟随主题**（dsh-context `base.css` 的 `.lc-tip`：`bg-layer-2` 底 + `border-l1` 细边 + `label-primary` 字）。已归位后者；真机双主题读数：暗色 bg `rgb(49,54,56)` / 字 `rgb(229,227,223)`，亮色 bg `rgb(255,255,255)` / 字 `rgb(15,17,21)`，两侧 `tip-in 0.15s` 渐入在。
+- **上下文面板动效整套移植 dsh-context**（样式逐份对照其 `base.css`）：构成条/趋势柱**入场横扫**（`lc-stacked-in 0.4s` scaleX、`lc-bar-in 0.35s` scaleY，逐列延迟 = `--lc-i` 槽位 × 40ms / 15ms，**封顶 20** 让长日志约一秒落定；槽位计算收在 `context-model.ts` 的 `staggerStyle` 唯一一处，killing test + 变异验证）；悬停联动成对（本段 `brightness(1.18)`、邻段压暗、行底色过渡）；图例改 dsh 的 chip 形（网格 `minmax(160px,1fr)`、选中 600 + 品牌描边环、值右对齐）。全部包 `prefers-reduced-motion` 静默档。CDP 实测逐列延迟与图例网格的 computed 值。
+- **全仓动效缺口收口（用户点名「整个 webui 就很缺动画」）**：28 张样式表的可点面（菜单项、设置行、按钮、图标位、宽度把手指示、行 hover）补齐 dsh token 的 hover 过渡（`--ds-transition-duration` + `--ds-ease-in-out`，四属性按需取用）；`MenuSurface` 与 `QueueDock` 补 dockkit 同款浮层入场（`140ms ease-out`，opacity + scale(0.98)）。**刻意偏离（记档）**：dsh 自身的菜单浮层入场是瞬时的（无动画），本仓给它加了渐入——观感更一致，属有意为之而非对齐缺口。全部包 reduced-motion。
+- **量测环境的一课**：headless Edge 154 默认开启**网页自动深色**（WebContentsForceDark）——亮色 token 正确解析（`--dsw-alias-bg-base` computed = 白）而渲染层被整体压暗，`getComputedStyle` 读到的 used value 也被改写。此前三轮「亮色仿真失败」全是它；`--disable-features=WebContentsForceDark` 重启后亮色实测一次通过。**量测环境的渲染层篡改会伪装成应用缺陷**，先排除再定罪。
+
+### 流式渲染与滚动跟随（第 11 轮：用户点名「实时流式卡卡的」（内容/思考/动画）「发送新消息不自动滚动，参考 dsh」）
+
+- **delta 按帧合并（真缺陷，卡顿根因）**：一条 provider chunk = 一条 WS 帧 = 一次全表面重渲（App→flowRows→全行重渲→流式行全文重解析 markdown），无任何节流。修法在 socket 入口（`stream-coalesce.ts`）：缓冲 delta、每个绘制帧至多释放一次（rAF；后台标签页零渲染），**相邻同 kind** 才合并（`text_delta` 另要求同 messageId——两段文本绝不能拼成一条；`reasoning_delta` 无 messageId，core 的形状如此，按 kind 断），**非流帧到达前先 flush** 保序。10 条单测钉边界/顺序/幂等。
+- **行级 memo 补齐（对齐 dsh 的 memo 密度）**：dsh `ui-chat` 的每个 node view 都是 `memo`（`ChatNodeSeat`/`AssistantNodeView`/`AssistantMarkdown`/`ChatNodeList`…），本仓移植时漏了大半——ReasoningRow / TurnHeader / UserMessageRow / MessageIconActions / TurnUsagePill / ContextInjectionRow / JobRow / CommandRow / SubagentRow / ChatHintRow 全部补上；`TurnHeader` 的回调从内联闭包改为传 `turnKey` 的稳定引用（内联闭包会让 memo 永远失效）。`App` 的 `flowRows`/`runningStatus` 提 `useMemo`。一次 delta 只重渲它自己那一行。
+- **发送不自动滚动（真缺陷）**：判据写成「**尾行**是新 user 行」，而 `flowRows` 在 user 行后必然推 turn header——尾行永远是 process，判据**从未成立过**。对齐 dsh `use-chat-scroll.ts` 的 `ownInput` 规则：追踪**最后一条 user 行的 key**（`scroll-follow.ts` 的 `lastUserKey`，扫描而非看尾行），到达即 `toBottom`，**压倒读者的阅读位**（`reading.pending && !ownInput` 才不动——读者的滚动不能拦下自己的发送）；翻页 prepend 不改变 key，故不误触。4 条纯函数断言。
+- **未移植（明记）**：dsh 的 MarkdownText 流式臂把**已定型的块冻结为缓存元素、只重解析尾段**；本仓仍是「按文本 memo + 整段重解析」，靠帧率合并把频率压下来。若将来出现超长单条消息（>50KB）仍卡，这条是下一个优化点。
+
+### 视觉细节对齐（第 12 轮：用户点名「对照 dsh 桌面端仍有廉价感」）
+
+方法：把我们的每张 sheet 与 vendored dsh master 的对应件**机械化对照**（按选择器抽取 radius/背景/描边/投影声明逐条比）。结论先行：**绝大多数表面是逐字一致的**（composer 胶囊、统计条、DisclosureRow、ReasoningRow/ContextInjectionRow/TodoPanel/TurnProcessNodeView/ApprovalPanel、MessageItem 气泡、ChatView、newSession 按钮、会话行、CodeBlock、MenuSurface 材质、AppFrame、scrollbar），偏差集中在下面这些点。
+
+- **目标条（结构级偏差，前提过期）**：目标此前是自造的两层卡，其样式表头注释写着「dsh 没有目标面板（其目标 UI 是 composer bar），所以这张卡是我们自己的」——dsh **有** `ui-goal/GoalBar`，注释的前提是错的。已整体移植为 **36px 单行条**：目标字形 + 阶段词（进行中的目标/已暂停的目标/受阻的目标，`phase.*` 文案）+ 截断的目标文本 + 悬停动作（暂停/恢复/编辑/清除，`action.*` 文案与 Tooltip 一并照搬）；材质是队列面板同款 `::before` 菜单层（menu 填充 + `backdrop-filter`），inline 编辑表单拆在 `GoalEditRow.tsx`。**两条记档偏离**：动作发送与输入框**同一条 `/goal` 命令帧**（参照直呼宿主动词，本仓只有命令缝）；失败原因落在转录的命令行而非条内错误行（答案的单一所有者）。
+- **队列面板材质（真偏差）**：`--dsw-specific-tip`（不透明中性色）→ 菜单材质（`--dsw-specific-menu` + `backdrop-filter: var(--dsw-menu-backdrop-filter)` + `isolation: isolate`）；参照的 `.panel::before` 层一并照搬，否则面板是块没有景深的灰板。
+- **手工圆角值（一类，全仓清扫）**：`ioCard` 12px→`--dsw-radius-lg`；工具卡/详情板内滚条 6px→`--dsw-radius-sm`；详情板 `.pre` 12px→`--dsw-radius-lg`；轨迹行 8px→`--dsw-radius-md`、动作钮→`--dsw-radius-sm`；任务行停止钮 10px→`--dsw-radius-sm`。
+- **未配对的「圆形」半径（corner-shape 陷阱）**：面板展开钮与详情板图标钮写 `28px`（28px 盒子上=正圆），但在全局 `corner-shape: superellipse(1.5)` 下**会被画成方块圆角**——参照的图标钮一律 `999px + corner-shape: round`，已照改；hero 版本徽章 `24px`→`999px + corner-shape: round`，字色改 `--dsw-alias-label-primary-bluish`（参照值）。
+- **上下文环弹窗**补 `min(264px, calc(100vw - 24px))`（参照的钳制）。
+- **未跟（明记）**：`context/ContextView.module.css` 的字面量半径保留——那一组对齐的是第三方 dsh-context 插件（Tailwind：`rounded-lg`/`rounded-md`），不是 master 的桌面端 sheet；截图里 dsh 桌面端工具/步骤行的灰底未能在此版 master 中找到对应规则（master 为透明底），**以 vendored master 为准**，不按截图猜。
+
+### 上下文趋势图（第 13 轮：用户三次点名——「高度不应该动态变化吗」→「明细臃肿/右半留白/自适应冗余」→「效果太差太丑，去对齐 dsh 插件」）
+
+终态 = **全面对齐 dsh 插件**（`components/trendChart.tsx` + `styles/trendChart.css` + `components/requestDetail.tsx`）。中途按操作者意见做过的三条自创规则（柱子 `space-between` 铺满、明细悬停才现、自适应开关删除）实测更差，已全部回退并记档于此，**勿再改回**。
+
+- **轴 = 数据峰值**（参照 `maxTotal`），不是模型窗口：1,050,000 的窗口曾把约 22K 的会话压成 2%（用户第一张截图的贴地线）。窗口只写在卡头。killing test：SSR 直测钉「轴标 4K 而非传入窗口 10K」，把 scale 改回窗口即红。
+- **柱子固定 14px / 2px 节奏 / 左堆叠**（参照 `.lc-bar` + `.chart`，无 `justify-content`）：密了横向滚动，稀疏时右侧留白——这是参照件本身的行为。真机量测：首列 x=2、列距 16、相邻间隙恒 2px。
+- **气泡 = 参照的 `syncTip` 解析定位**：柱心由索引解析（`PLOT_PAD + i*16 + 7`），`left: 0` + transform 在每次提交与滚动时重写，随滚动黏住柱子。曾用 `getBoundingClientRect` 相对宿主算 x（用户截图：气泡脱在左上角）。真机量测：气泡中心与柱心偏差 **0px**。
+- **明细 = 参照的分类行**（8px 色点 + 标签 + 5px 轨道条 + `≈N` + 占比，两列自适应网格）。**身份行按操作者裁定删除**：`第 N 次请求 / 输入 / 输出 / 缓存命中`（参照在明细头部常驻这些药丸）与悬浮气泡、转录用量药丸重复，卡里不再出现——**本仓记名偏离**。行跟随「悬停 → 钉住 → 最新一条」（参照 `activeIdx` 的回落），所以卡片高度不随指针变化。
+- **自适应开关 = 参照的 `.lc-gran` chip**（默认关）：开启后轴按可视柱峰值重算并随滚动（`trend-visible` 纯函数 `visibleMax` + `use-visible-max.ts` 绑定）。中途曾按「冗余」意见删除，随「全面对齐」恢复。
+- **字号收进面板基级**：明细行曾未声明 font-size、继承浏览器默认 16px（用户点名「比其他 UI 大一圈」）。面板根补 `.root { font-size: 13px }`（参照 `.lc-root` 的基级）。真机量测：明细行/图例行/尾注 13px、卡题 14px、轴刻度 11px。
+- **参照未跟（数据面不在本仓，明记）**：轮次条与步/轮粒度（会话日志无 turn/step 坐标）、步旗与 ✂ 事件标记（无 per-request 事件）、总量/变化模式、明细里的第二条 stacked bar（卡头「当前上下文」已有构成条，不重复）。**DNA 模式已落地**（2026-10-01，第 15 轮——见上）；同轮的上下文浏览器后按操作者裁定删除（第 17 轮）。几何取值逐项对回参照：130px 画布 + 18px 头、40px 轴栏、14px 柱宽、2px 节奏与内边距、5 档刻度（1/¾/½/¼/0）。
 
 ## 差异清单（既有条目）
 - **`ui-user-questions` 的草稿查表崩溃（真 bug，`?? fallback` 缺陷类的第 10 处）**：`decisions.ts` 的四处 `drafts[question.id] ?? EMPTY_DRAFT` 都**挡不住原型链**——问题 id 是**模型给的**（`parseQuestions` 只限长度、不排除 `constructor`），而草稿表是对象字面量，于是 `drafts['constructor']` 取到继承来的 `Object` 函数、`??` 回退**永远不触发**，`isComplete` 拿函数去读 `.length` 抛 `TypeError`，**整张问题卡崩掉**。实测四个函数（`allComplete` / `firstIncomplete` / `buildAnswer` / `isComplete`）全部抛错。修法：`decisions.ts` 新增**唯一**的安全查表 `draftOf(drafts, id)`（`Object.hasOwn`），四处调用点全部改走它；`QuestionPanel.tsx` 的同名写法也一并收口。回归测试用五个继承成员名（`constructor`/`toString`/`valueOf`/`__proto__`/`hasOwnProperty`）钉住，并做变异验证（恢复 `??` 写法后 2 条测试立刻变红）。
@@ -259,3 +299,82 @@ dsh-TUI 是 Ink（React 19 + react-reconciler）+ 约 28 个运行时依赖 + �
 ### 复用的那条既有结论
 
 `ui-user-questions` 的两个真 bug（原型链查表、Skip 死路）在终端面**同样的形状会再犯一次**，因此 `tui-app/src/question.ts` 是 `web/ui/src/question/decisions.ts` 的**一对一移植**并按同一份规则收口：`draftOf` 走 `Object.hasOwn`、`isComplete = answered || skipped`。这不是巧合而是一条纪律——**同一个交互语义在两个 surface 上分叉，等于同一个按键在两处做不同的事**。终端面的回归测试同样带原型污染用例与「全跳过批次可提交」用例。
+
+## 工作步骤展示（转录过程折叠，`ui-chat` 参照，2026-10-01）
+
+参照件：dsh `ui-chat` 的 `chat-settings.ts`（`TRANSCRIPT_VIEW_MODES`）、`presentation-policy.ts`（`ChatPresentationPolicy` 与四档表）、`ChatGroupSeat.tsx`（组框与闭标题）、`process-activity.ts`（分类/排名/live 细节）、`step-process.ts`（闭标题组词）、`TranscriptViewRow.tsx` + `PreferenceRow.tsx`（设置行）。**只读**。
+
+### 已对齐
+
+- **四档模式与 policy 表逐字段一致**：`compact`/`standard`/`detailed`/`verbose` → `{foldCompletedTurns, stepGrouping, liveProcessDetail, settledReasoningPreview}`，默认 `standard`（`web/ui/src/chat/transcript-view.ts` 是唯一定义处；`flow.tsx` 只读 policy，不自己判断档位）。
+- **组框语义**：`stepGrouping: 'collapsed'` 每个回合都带可折叠组框（**运行中也设上限**，与参照 `ChatGroupSeat` 一致）；`'history'` 只有已完成的回合带（运行中的平铺）；`'none'` 从不成组。组框默认**闭合**（参照 `useDisclosure` 默认关），闭标题即概况。
+- **闭标题组词**：类别计数降序（同数按首次出现）取前三；一个直呼、两个「并」、三个及以上逗号、**超过三个类别才补「等」**；**只有两个标签都以「已」开头才削第二个的「已」**（参照 `sharedPrefix` 的两侧判定，此前实现只判第二个，已按参照修正）；空活动读「已完成分析」。
+- **live 标题**：`RUNNING_LABEL` + `liveProcessDetail` 门控的任务细节（`DETAIL_KEYS` 优先级、160 码点截断、畸形参数回落工具名）；无在途调用时回落思考的**最后一段已完成段落**（去 `**`），此时类别留空、渲染读作「正在分析请求」（参照 `?? 'thinking'`）。
+- **上限与遮罩**：`min(400px, 50vh)` + 组内自滚 + 两端 24px 渐变（`use-capped-edges.ts` 的滚动/内容增长双信号），「被裁掉」与「到头了」可区分。
+- **设置行**：标题「工作步骤展示」+ 描述「选择希望看到多少工具调用细节」，四项文案与参照的 `transcript.*` 同义。
+
+### 记名偏离（不装成已对齐）
+
+1. **组头不带每类活动图标**：参照 `ChatGroupSeat` 的 `.leading` 按活动类别给图标，本仓组头只有 chevron + 标题（`ProcessGroupHead.tsx` 头注释记档）。若后续对齐，落点是 `ProcessGroupHead` 的 leading 位。
+2. **无 shimmer 最短展示时长守卫**：参照对 `TextShimmer` 有最短展示时长以免闪烁；本仓直接复用现有 shimmer 组件，不另加计时。
+3. **偏好落 localStorage**（`nova.transcriptView`）而非宿主设置文档：nova 没有 per-plugin 设置通道（设置面板只有 enable/disable），四档是纯前端呈现偏好，故与 `nova.theme` / 列表视图偏好同档。
+4. **live 细节的来源不同**：参照从自己的 step 事件流取「当前调用」，本仓从 flow 块投影（`chat/process-span.ts`）——**工具块结果未落地即在途**，因为 nova reducer 的工具块没有 `running` 标志。语义等价，取值路径不同。
+
+## 真实侧边栏（better-sidebar 融入主程序，2026-10-01；2026-10-02 整体重写）
+
+参照件：`DSH-better-sidebar-main` 与 deepseek-harness `ui-sidebar-right`（changes-review / files / terminal 三个页面）。**只读**。本轨不作为插件，**直接并入主程序**——此前 nova 的右栏只有「变更 / 文件 / 终端」三页且文件页不能编辑/不能新建/不能改 git，距离 dsh 的真实侧边栏差一整圈。
+
+**2026-10-02 整体重写（第 18 轮）**：操作者报障五条——「工作区改动 正在读取 git 状态…性能不佳」「视觉效果不好，没有对齐 dsh」「文件页面我已经在当前会话工作区了为什么还有在选择一遍选择工作区文件夹」「文件预览是在工作区文件目录点击文件后开启而不是直接和文件目录并排显示」「终端和任务面板的 ui 设计全是一坨」。裁定是**重写而不是打补丁**（前后端都是），旧实现整体删除（`FilesWindow` / `FilesPanel` / `TreePanel` / `TreeMenu` / `ChangesPanel` / `GitLens` / `EditorPanel` / `TerminalPanel` / `TasksPanel` / `terminal-model` / `tree-menu-model` / `tree-rows` / `session-files` / `web/src/terminal-frames.ts`）。两条报障的根因都是**归约纪律**问题，各配 killing test：①选择器每次开面板都弹，是因为文件页自己问的 `list_directory` 答案被工作区选择器当成了自己的答案——现在 `directory` 槽位只在手势（`directory_open`）之后存在；②预览点开没反应，是因为 `editor_open` 动作**全仓没有派发者**——现在「打开」由请求出发处拥有（`read_entry` 一发出，`sent` 归约就把文档放进编辑器）。git 卡顿的根因是每次开页冷启一次 `git status`，现在走 `GitStatusCache`（TTL 2s + 单飞去重 + 写动作 `invalidate`）。终端从「一次性 `run_terminal`」换成**持久 shell**（`cd` 保留、游标式输出流、退出后可被下一条命令替换）。
+
+**第 18 轮追加（2026-10-02，操作者再报两条）**：「经常报错宿主提示：unknown frame type: git_status / shell_read」「如果工作区没有git就显示类似图中vscode的功能啊（附 VSCode 源代码管理空态截图）」。①`unknown frame type` 的根因是**界面比正在运行的 nova 进程新**（server.ts 每请求重读静态产物，旧进程照常服务新 bundle，旧进程内存里的帧校验器不认识新帧名）——宿主提示经 `host-messages.ts` 的 `hostErrorText` 转写成「请停止当前 nova 进程并重新启动」，killing test 钉住「裸帧名不再直出、其余错误保持原话」。②无 git 空态对齐 VSCode 的源代码管理卡：`GitSetup.tsx`（源代码管理 + 说明 + 打开文件夹 / 克隆仓库两钮），打开文件夹复用 hero 的原生对话框选择器；克隆仓库展开 URL 表单发**新客户端帧 `git_clone`**（上限 `MAX_GIT_CLONE_URL_CHARS = 2048`）。**`git_clone` 走 session-target 族而不是 git-frames**：它改变「打开的是什么」，答复是重述的 `ready`（克隆进当前工作区的父目录成兄弟目录 → `setWorkspace` → 广播基线，面板落在新仓库上不需第二次手势）；core 侧克隆独立成 `git-clone.ts`（`gitClone` / `repoNameOf`——「弄来一个仓库」与「操作一个仓库」分居，argv-only + `--` 分隔 + `isSafeDirectoryName` 目录名门 + 10 分钟墙钟）。
+
+**第 18 轮追加二（2026-10-02，操作者贴 dsh 编辑器截图对比变更页点文件效果：「这也达不到预期效果啊」）**：对照参照 `dsh-better-sidebar` 的 `changes/DiffPane.tsx` 与 `diff/highlight.ts`（只读）逐条对齐三件事——①**未跟踪文件按「全部新增」渲染**（参照的 untracked full-addition fallback）：`git diff` 对未跟踪路径什么都不打，宿主的 `git_diff` 现在换成 core `gitUntrackedDiff` 的合成 hunk（`@@ -0,0 +1,N @@` + 全 `+` 行；有界读 1 MiB、二进制/超限答空文本，面板仅在那时才显示「用文件页打开」的说明——不再把内容一推了之）；②**diff 行语法高亮**：`rightbar/diff-highlight.ts`（纯函数）复用聊天代码块的零依赖扫描器 `chat/markdown/highlight.ts`——整文件内容**一次扫描**再按行 zip 回 diff 行（块注释跨行状态不断，逐行扫描会丢），未知语言与结构性行（hunk/表头/折叠标记）照旧纯文本；③**行悬停「打开编辑器」动词**（参照右键菜单的 openEditor 提到悬停位）：发 `read_entry` + 切到文件页编辑器，打开仍由请求出发处拥有。**编辑器本身保持记名偏离**：参照是 CodeMirror 6，本仓不引编辑器依赖（纯 textarea、无高亮编辑），这是有意的边界而不是待办。
+
+**第 19 轮（2026-10-02，操作者三条报障 + 三张 dsh 截图）**：①文件页「会出现这里被遮挡，左边这一大块白色空着，整体设计就不合理浪费」——悬停动词压住文件名，且无文档时仍画一个空编辑器；②任务页「任务板块 ui 简陋落后」；③终端「你看看这是人话吗，我要的是真实的命令执行环境，不是让你给我造个假的」——第 18 轮的管道 + 哨兵标记被判定不可接受，**换真 PTY**（`node-pty` + xterm.js，本仓第一次引入第三方运行时依赖，服务端仍按缺席降级）；④随后贴 dsh 右栏三张截图：「我希望侧边栏做成 dsh 一样的开屏页面和标签页视觉 ui 效果」——按参照的 tab bar 与 `GuideBody` 逐值重画（见下「标签条 + 开始页」）。四条的根因分类：①②是纯观感（照抄参照取值），③是能力造假（协议与实现一起换），④是**结构早已对齐、差在视觉细节**——本仓的 strip 早就是「已开页 + `+` 菜单 + 空标签回落开始页」，这轮补的是几何与墨色，不是新形状。
+
+### 已对齐
+
+- **标签条 + 开始页（第 19 轮，2026-10-02）**：`rightbar/tabs.ts` 定义**可开的四页**（变更 / 文件 / 任务 / 终端，顺序与 dsh `guide` 一致），`RightbarStrip.tsx` 画**已开的页**——一页一枚标签（图标 + 标题 + ×），几何照抄参照 `dsh-better-sidebar` 的 tab bar：34px 一条、标签上限 160px 走省略号、右邻 1px hairline、活动标签用 `--dsw-alias-interactive-bg-active` **填充**而不是下划线、`+` 菜单 sticky 在滚动口右缘（只列未打开的页）。**标签条就是面板的上边缘**，不再另画标题行。标签全关时正文是 `StartView.tsx`：56px 罗盘水印（`--dsw-static-neutral-200` / 暗档 `-700`，纯灰阶——label 别名都带蓝调，在这个尺寸上会显出来）+ 四张 380px 入口胶囊（26px 图标盒 / 14px 标题 / 11px 说明 / `--dsw-radius-xl` / 0.5px `border-l3`），逐条照抄参照 `ui-sidebar-right/tabs/guide/GuideBody.module.css`，含 `.guide::after { flex: 0 1 10% }` 的「上移 5%」。**状态面**：`App.tsx` 持 `rightbarTabs`（已开集合）+ `rightbarTab`（在前的一枚，`null` = 开始页），`openRightbarTab` 一个入口保证「已开则置前、未开则加入并记住」。**编辑器页并入文件页**：树停靠在页内，点文件就在树旁边打开（这正是参照件自己的形状，`builtins/tabs.ts` 的编辑器页就是文件窗），「找文件」与「读文件」不再分居两个页签、每开一个文件都付一次切换；记住的旧 `editor` 页偏好归默认页。
+- **文件页不遮挡、不空转（第 19 轮）**：树行的悬停动词不再压住文件名——`TreeDock` 的动词轨 `display:none`，hover / focus-within / 菜单展开才显现并 `margin-left:auto` 顶到右端（参照 `.explorerRef` 的同一条规则）；**没有文档打开时树占满整页**（`data-tree-full`），`PreviewPane` 无文档返回 `null`，不再画一个空编辑器占住左半页。
+- **任务页卡片化（第 19 轮）**：两行卡片（StateDot + kind 药丸 + 进度行 + 先武装后击发的停止钮），空态是一张居中的说明卡（`data-tasks-empty`）。
+- **内核侧**：core 新增 `file-io.ts`（绝对路径规范化、realpath 规范化后的越界检查、原子写 tmp+rename、符号链接跟穿拦截）与 `git.ts`（仓库探测 / porcelain -z 含 R/C 重命名 / 分支探测 / stage / unstage / commit / log）。`plugins/src/builtin/fs.ts` 改为从 core 引入这些原语（消除两份实现）。
+- **wire 协议**：客户端帧新增 13 条（`read_entry` / `write_entry` / `rename_entry` / `remove_entry` / `new_entry` / `open_entry` / `git_status` / `git_diff` / `git_stage` / `git_unstage` / `git_commit` / `git_log` / `list_jobs`），终端 4 条（`term_open` / `term_input` / `term_resize` / `term_kill`，第 19 轮随真 PTY 重做替换了此前的 `shell_run` / `shell_read` / `shell_stop`）。第 18 轮追加 `git_clone`（无 git 空态卡的克隆入口）。新增 wire 上限：`MAX_EDITOR_BYTES = 192 KiB`（**线上预算**而非磁盘上限——大文件用本地编辑器编辑）、`MAX_GIT_PATHS = 200`、`MAX_COMMIT_MESSAGE_CHARS = 2000`、`MAX_GIT_LOG = 100`、`MAX_GIT_CLONE_URL_CHARS = 2048`、`MAX_TERM_INPUT_CHARS = 16384`、`MAX_TERM_COLS = 500`、`MAX_TERM_ROWS = 500`。
+- **服务端**：`entry-frames.ts` / `git-frames.ts` / `job-frames.ts` / `term-frames.ts` 各自收一类帧；任何写动作都用一条新的 `git_status`（或 `entry_changed`）作答——**答复即状态**（不存在 `notice` 帧）。删除/重命名会把打开在编辑器里的同路径文档一起关掉；目录被改后工作区树按「该层需要重读」标记（`treeAsk`），下次 effect 自动补问。`list_jobs` 直接读内核 `host.jobs.list(sessionId)`，行里只带状态/进度——输出是模型的 `jobs` 工具的消费游标，第二个消费者会和它竞争。`git_status` 的读取走 `GitStatusCache`（TTL 2000ms、并发单飞、写后失效），因为 git 是子进程、每次开页都冷启一次正是「正在读取 git 状态…」的来源。`git_clone` 不在 `git-frames.ts`：它改变「打开的是什么」，与 `set_workspace` / `delete_session` 同族走 `session-frames.ts`，答复即新基线。
+- **终端是真 PTY（第 19 轮，2026-10-02 替换此前的管道模拟）**：`term-session.ts` 经 `node-pty`（**惰性 import**——原生插件缺席时 `term-frames.ts` 答 `unavailable` 而不崩服务器）spawn `sessionEnv().shell` 的**交互 shell**，与模型命令共用同一份 shell 解析（`resolveShellName`），Windows 上带 `.exe`（ConPTY 不解析裸名）。stdin 是真键盘、stdout 是真 ANSI 字节流，**vim / top / Ctrl-C 全部真实工作**；`cd` 与后台 job 因进程常驻而保留。**宿主不解析终端序列**：输出按 chunk 原样广播（`term` 帧的 `data`），只在字节间拆散了 UTF-8 代理对时由 `holdSplitSurrogate` 收尾；256 KiB ring 保留 scrollback，`term_open` 以应答重放（`reset:true`）让重挂/重载整屏重建。**退出的 pty 绝不静默替换**——那份 scrollback 是「为什么死」的最后读数，重启是显式的 `term_kill` + `term_open`。
+- **前端**：`rightbar/kit.tsx` 原语（28px IconButton / 22px chip / 28px 段头 / 文本 Notice / StateDot 环）之上，一页一文件：`FilesView`（并排预览 + 可拖 `TreeDock`）、`ChangesView`（未暂存/已暂存双树 + diff 面板 + 提交条 + 最近提交 + 「本会话」透镜；无 git 工作区时是 `GitSetup` 的源代码管理空态卡——VSCode 同款两钮，克隆的进行中态挂 `clonePending`）、`TasksView`（停止按钮先武装后击发，占用固定列）、`TerminalView`（xterm.js 屏 + 终止态状态条 + kill-then-open 重开手势；`@xterm/xterm` + addon-fit 走**动态 import** 进懒加载 chunk，SSR 测试车道零 DOM 不受累。纯折模型 `terminal-model.ts` 只管 bytes 进 `feed` 槽按 `seq` 递增与 status/exitCode/error 三读数，**不再渲染文本**——模拟器才是屏）。编辑器是多文档 strip + `<textarea>`（无重编辑器依赖）；Ctrl/Cmd+S 保存；markdown 文件带「预览」开关（复用转录的元素树渲染器，零 `innerHTML`）；二进制 / 超限 / 读取失败三种情况各自一句话，不和「文件是空的」混为一谈。文件页含「新建文件 / 新建文件夹 / 重命名 / 删除 / 在文件管理器中显示 / 复制路径 / 引用」，新建/重命名走内联输入（Enter 提交、Escape 取消），删除走 `window.confirm`。
+- **右栏是真三分，不是悬浮层（2026-10-01 修正，操作者报告「为什么悬浮在主页面之上」）**：参照件 `ui-layout` 的规则是 `track = shown && !autoFullscreen`——正常打开的右栏**必占自己的网格轨道**，中间列让位。nova 从 WebUI 首版起恒定上报 `openRightbar(false, false)`（`track` 从未为真），于是 `cols.rightbar` 恒为 0、面板以 `position:absolute` 悬在会话之上。修法：`layout-store.ts` 的 `openRightbar(state, fullscreen)` 自己把 `rightbarTrack` 置真——**`track` 参数整个删掉**（shown ⇒ 必占轨；全屏保留轨道，退出落回同一会话宽度），调用方没有传错的地方；`App.tsx` 的打开路径与全屏切换都走这一个入口。killing test 在 `layout-store.test.ts`（`openRightbar(wide(), false).rightbarTrack === true`，改回假即红）。面板宽度与轨道同源求解，拖拽手柄正落在轨道边界；窄到轨道放不下时由 `computeColumns` 解出 0 轨、面板转 `takeover` 占满——不需要参照件的 `autoFullscreen` 标志。**投影也去掉了**：两块面板（`RightbarPanel` / `ToolPanel`）曾带 `box-shadow: var(--dsw-shadow-lv3)`，而参照件把阴影只给浮动窗口（dockkit `.float`）、停靠列是平的——去掉后悬浮感才真正消失；`style-guard.test.ts` 新增「停靠列不得声明投影」的护栏（加回即红）。
+
+### 记名偏离（不装成已对齐）
+
+1. **docking kit 只搬了外观、没搬机器**：dsh 的 `ui-sidebar-right` 是一个可拖动、可浮动、可分裂的对接树；本仓第 19 轮搬的是它的**标签条长相**（34px / 160px 上限 / hairline / 填充式活动标签 / sticky `+`），机器仍是固定顺序的单行 strip——**无拖拽换序、无中键关闭、无右键菜单、无多 pane 分裂**。理由不变：那套机器服务于十几页可插拔的 tab 类型，本仓只有四个固定页。
+2. **编辑器是纯文本编辑器**：无语法高亮、无 LSP、无 diff view 的 side-by-side/wrap 工具栏。本仓不引编辑器依赖（Monaco/CodeMirror 都不在 deps），二进制/超限文件给出一句解释而非半截内容；dsh 的编辑器页是个真正的 IDE 视图。
+3. **每会话单一终端，且没有宿主侧屏幕恢复**（第 19 轮：真 PTY 落地后，原记名偏离「终端无 PTY」作废——vim / top / Ctrl-C 现在都是真的）。仍偏离的两点：参照件与 dsh 宿主都是**多标签**终端，本仓 `term-session.ts` 的 registry 按会话键，一个会话一个 pty；dsh 宿主侧的 headless 屏幕恢复（把终端状态序列化在宿主）未移植——**屏幕归浏览器侧的 xterm.js 持有**，重挂靠 `term_open` 重放保留的 scrollback 整屏重建。
+4. **文件页无 watch**：工作区按需重读，不监听文件系统变更——内核未暴露目录 watch，轮询会在线上空耗 socket。
+5. **任务页签的行不带输出**：和 dsh 不同（dsh 任务面板展示最近一段输出），本仓刻意不展示——`list_jobs` 的答复只带状态/进度，输出交给模型的 `jobs` 工具消费，避免与模型争游标。
+6. **git diff 是 unified 单栏**：不带 dsh 的 split/wrap 工具栏，也没有面板内的拖拽手柄；diff 体很小，单栏已够。
+7. **提交框单行文本**：不带 dsh 的多行 + 模板选择；保持 `MAX_COMMIT_MESSAGE_CHARS = 2000` 上限内的单行输入。
+8. **开始页胶囊不挂快捷键 chip**（第 19 轮）：参照 `GuideBody` 的每枚胶囊右侧画一个 `ShortcutKeys`（截图里的 Ctrl+P / Ctrl+\` / Ctrl+T），本 surface **没有全局快捷键系统**——画一枚按了没反应的药丸比不画更糟，所以胶囊止于文字。若日后接进键位系统，落点是 `StartView` 的 `entry` 行尾 + `RIGHTBAR_COPY` 的键位文案。
+
+## dsh-genui 内核缺口（六条缝，2026-10-01）
+
+参照件：dsh 的 `gen-ui` 主示例插件与 deepseek-harness `ui-chat` 的 markdown / hook / asset 三条接入面。**只读**。本轨是「把为 genui 风格第三方插件开的内核缝接齐」——之前 nova 的内核没有一条缝能把第三方插件的用户界面能力拉进同一个面板，而 dsh 的 genui 示范了六条互补的接入位（spec、校验态、typed payload、提示词 section、将停注入、资产路由 + 浏览器装载）。**全部落地**（`.changeset/genui-kernel-seams.md`，core/plugins/web 三包 minor）。
+
+### 已对齐
+
+- **工具结果 `meta`**（核心类型，缝 1）：`ToolResultMessage` 增可选 `meta?: Record<string, unknown>`，由 `ToolDefinition.resultMeta?(args, content)` 在 `completeToolCall` 末尾（`afterToolResult` 钩子与截断**之后**）填入——把一份只给 surface 看的结构化数据（genui spec、校验态、typed payload）挂在结果消息上。**绝不进模型可见面**：只随结果帧下发，不改 prompt 前缀、不沾缓存键。两个内置工具今天都不声明，行为零变。直测钉「meta 进日志、content 不动」（撤掉 meta 写就会红）。
+- **per-plugin 系统提示 section**（缝 2）：`buildSystemPrompt(sections)` 把插件 section 追加在 persona 之后、各自 `## <name>` 小标题；同名后写覆盖**正文**但**保留首次出现的位置**；空正文/空列表退化为裸 persona。section 在**装配时**一次性解析（`createEnvironment` 喂 `opts.systemPromptSections`），不是每请求重算——否则前缀字节能被一次钩子改写、命中缓存契约当场作废。`CreateKernelOptions.systemPromptSections` 是新的可选注入点。实现按职责分文件：`system-prompt.ts` 拥有 persona，`prompt-sections.ts` 拥有 section 注册表。直测四条。
+- **fence 渲染注册表**（前端，缝 3）：`chat/markdown/fence-renderers.ts` 是 `Map<lang, FenceRenderer>`——markdown parser 已经把 info string 小写化，注册表对小写键查找，未注册的语言回落到 `<pre><code>`（注册零个 = 逐字节复现之前的页面）。`blocks.tsx` 的 `renderCode` 在 CodeBlock 之前先问注册表；返回 `null` 表示放弃（renderer 自己判定 spec 不能用），同样回落。**这是插件 UI 能力的接口**：把插件组件拉进 markdown 叶子会倒置包依赖方向，registry 让叶层插件无关、插件从自己的模块注册自己。直测四条。
+- **turn-stopping 钩子**（事件 `turn/before-end`，缝 4）：`agent/loop.ts` 在「无 toolCalls、即将 `done`」前先跑 `ctx.serial(beforeTurnEnd, …)`；插件返回 `{ action: 'steer', message }` 即追加一条 user/assistant 消息继续回合（受 `turn < maxTurns` 配额保护，配额耗尽仍按 `done` 收尾）。返回 `void` 即弃权，旧路径逐字不变。`AgentSession.prompt()` 之外有了「**回合将停**」的注入位（goal 的跨轮续做、genui 的「再问一句」都走这条），不依赖 surface 配合——服务端钩子在装配点接线，无人值守 surface 也吃得到。直测两条。
+- **插件资产路由**（`routes` 服务键 + Web `RouteRegistry`，缝 5）：`capabilities.ts` 增 `routes: ServiceKey<RouteRegistry>` + `PluginRoute`/`PluginRouteHandler`/`RouteRegistry` 接口；`plugins/services.ts` 的 `routeRegistryProvider(registry)` 把宿主建好的实例 provide 进容器；`web/route-registry.ts` 的 `WebRouteRegistry` 实现 register/routes/handlerFor（前缀精确与嵌套都匹配、**反向注册序**派发——同前缀后注册的胜，与容器 replace-by-key 同语义）。`web-mode.ts` 在 boot 时实例化并经 `routeRegistryProvider` 进 `extraPlugins`、同时随 `launchWeb({ routes })` 透传给 server。`server.ts` 的 `handleHttp` 在认证门**之后**、图片/静态**之前**问 `registry.handlerFor(relPath)`——**插件路由仍然是私有读**（与品牌资产例外不同），命中即交由 handler、未命中回落静态。headless（exec / qqbot）不 provide 这个键，插件 UI 能力按「读不到就降级」收场。直测五条（注册表单元）+ 一条 HTTP 端到端。
+- **浏览器侧插件装载器**（boot graph + script injection，缝 6）：`PluginRosterEntry.clientBundle?` 与 `WireRosterEntry.clientBundle?`（`{ path?, rev? }`）作为 boot graph——`roster-wire.ts` 把它从 kernel 透传到 wire；`web/ui/plugins/client-loader.ts` 是浏览器侧装载器：`buildBundleUrl`（编码名字、默认 `client.js`、`rev` 转 `?rev=` 缓存击穿）+ `loadClientPlugin`（每个 `<name>` 一条 `<script>` 注入，记入 `window.__NovaPlugins__[name]`、按页记忆化、失败一次即终态不再重试）+ `loadBootGraph`（并行装载所有声明了 `clientBundle` 的启用插件，单个失败不阻塞其他）+ `registerClientPlugin`（host 内置插件短路）。**纯逻辑与 DOM 分层**：DOM 触碰只落在 `injectScript` 一处，其余全是纯函数/UI 测试车道（node 环境、无 jsdom）直测——装载器有 15 条直测覆盖 URL 构建、记忆化、失败终态、boot graph 走查；DOM 注入器经 `setScriptInjector` 可换。
+
+### 闭环
+
+插件 server 半经 `routes` 注册 `/plugins/<name>/*` 资产前缀 + 声明 `clientBundle.rev`，浏览器挂载时走 `loadBootGraph(roster)` 即发现并装载该插件的 client bundle，bundle 写到全局即被注册——六条缝（meta/prompt-section/fence/turn-stopper/asset-route/client-loader）至此全部就位。
+
+### 记名偏离（不装成已对齐）
+
+1. **路由是 host-owned**：只有跑着 HTTP 服务器的宿主（web surface）才 provide `routes`；headless（exec / qqbot）不 provide，插件读到 undefined 即降级。`surfaces` 是装配即存在，`routes` 是宿主可选——刻意不同。
+2. **boot graph 而非 dsh 的运行时发现**：dsh 的装载走组件挂载时的运行时 import；本仓用声明式 `clientBundle` 作为 boot graph，挂载时一次性装载所有启用插件，单个失败不阻塞其他。
+3. **client-loader 是单向注入**：bundle 写到 `window.__NovaPlugins__[name]` 后由 host 读取；不支持热替换、不支持回滚——重启浏览器是新装载的唯一路径。
+4. **fence renderer 不带运行时降级链**：一个语言键只能注册一个 renderer，后注册的覆盖先注册的（与容器 replace-by-key 同语义）；没有 dsh 的「主 renderer 失败回落备用 renderer」链。
