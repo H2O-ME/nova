@@ -17,6 +17,7 @@
     "gates": "node scripts/dep-direction.mjs && node scripts/structure-budget.mjs",
     "gates:update": "node scripts/structure-budget.mjs --update",
     "check": "pnpm lint && pnpm gates && vitest run --changed",
+    "clean": "node scripts/clean-test-temp.mjs",
     "changeset": "changeset",
     "release": "changeset version && node scripts/sync-root-version.mjs && git add -A && git commit -m \"chore(release): bump versions via changesets\" && changeset tag",
     "release:status": "changeset status",
@@ -24,7 +25,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "node-pty"
     ]
   },
   "devDependencies": {

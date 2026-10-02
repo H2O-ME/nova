@@ -29,7 +29,10 @@ const ALLOW = {
   'plugin-subagent': ['core'],
   'plugin-context': ['core'],
   'plugin-ptc': ['core'],
-  web: ['core', 'plugins'],
+  // web 引入 plugin-context 是为了 Browser/DNA 路由复用同一个窗口折叠
+  // （`windowAtSeq`），而不是各写一份会漂的元素分类。它在路由里静态 import，
+  // 与 live 路径经能力键拿到 fold 是两条独立通道——live 走容器，只读路由走纯函数。
+  web: ['core', 'plugins', 'plugin-context'],
   // cli 是产品壳：静态依赖只有内核三件 + WebUI 后端（web）。qqbot 是扩展，经
   // `qqbot-api.ts` **一处动态 import** 装载（包缺席即降级）——它仍在名单里，因为
   // 名单管「允许引用的包」，动态边也是边。其余 surface 一律配置行（`surfaces`）

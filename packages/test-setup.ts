@@ -19,13 +19,20 @@
  * narrows the window further — it no longer has to be the thing that saves the
  * developer's data.
  *
- * The directory is left behind deliberately (the OS temp reaper owns it): a
- * failed run's state is then still inspectable, which is exactly when a test
- * author wants it.
+ * DISPOSAL — green runs clean up after themselves; red runs leave the scene:
+ * every test file (each setup-file invocation) used to leave its home behind
+ * "for the OS temp reaper", and 76,000+ directories later that premise is dead
+ * — Windows does not reap %TEMP%. A green run removes its own home (afterAll
+ * below); a failing file's home SURVIVES, because a failed run's state is
+ * exactly what a test author wants to inspect. Other `nova-*` temp families
+ * created inside individual test files are reaped by `pnpm clean`
+ * (scripts/clean-test-temp.mjs), which only touches directories older than a
+ * few hours so a concurrent session's live run is never swept.
  */
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { afterAll, afterEach } from 'vitest';
 
 const home = mkdtempSync(path.join(tmpdir(), 'nova-test-home-'));
 process.env['USERPROFILE'] = home;
@@ -35,3 +42,18 @@ process.env['HOME'] = home;
 // lookup cannot fall back to the real profile through those instead.
 delete process.env['HOMEDRIVE'];
 delete process.env['HOMEPATH'];
+
+// One failed test in the file keeps the whole home (all files of the run may
+// have written into theirs) — this is the inspection window, not a leak.
+let fileFailed = false;
+afterEach((ctx) => {
+  if (ctx?.task?.result?.state === 'fail') fileFailed = true;
+});
+afterAll(() => {
+  if (fileFailed) return;
+  try {
+    rmSync(home, { recursive: true, force: true, maxRetries: 3 });
+  } catch {
+    /* a lingering handle is not worth failing a green suite over */
+  }
+});
