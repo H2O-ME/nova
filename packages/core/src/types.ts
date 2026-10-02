@@ -94,6 +94,15 @@ export interface ToolResultMessage extends BaseMessage {
   content: string;
   /** set when content was truncated and the full output was offloaded to disk */
   truncatedRef?: string;
+  /**
+   * Structured post-call metadata a tool attaches to its own result so a
+   * surface can render a richer view than the string the model sees (a genui
+   * spec, a validated form, a typed payload). Optional and tool-owned: absent
+   * on every built-in tool today; never sent to the model (it joins only the
+   * surface wire), so adding it cannot change the prompt prefix or cache key.
+   * The host treats it as opaque JSON-safe data and never inspects its shape.
+   */
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -216,6 +225,19 @@ export interface ToolDefinition {
     args: Record<string, unknown>,
     content: string,
   ): import('./presentation.js').ToolResultView | undefined;
+  /**
+   * Structured metadata to attach to the result message a tool produces, so a
+   * surface can render a richer view than the string the model sees (a genui
+   * spec, a validated form, a typed payload). Optional and tool-owned: the host
+   * persists it onto the `ToolResultMessage.meta` field and forwards it over
+   * the surface wire — never onto the model-visible request, so it does not
+   * perturb the prefix-stable prompt or the cache key.
+   *
+   * Pure and synchronous (mirrors `presentResult`): called once per settled
+   * call, after `execute` resolves. Returning `undefined` is the same as not
+   * declaring the hook — the message ships without `meta`.
+   */
+  resultMeta?(args: Record<string, unknown>, content: string): Record<string, unknown> | undefined;
 }
 
 /**
@@ -359,7 +381,38 @@ export interface AgentHooks {
   beforeToolCall?(call: ToolCall): Promise<ToolCallVerdict>;
   /** Transform a tool result before it enters the message log. */
   afterToolResult?(call: ToolCall, result: string): Promise<string>;
+  /**
+   * Fired once at the moment the model would end the run naturally — an
+   * assistant turn with NO tool calls, just before the loop yields `done`.
+   * NOT fired on `max_turns`, on user abort, or after the host has decided to
+   * end the run programmatically: it is the natural-end boundary only.
+   *
+   * A plugin returns `{ action: 'steer', message }` to inject a synthetic
+   * agent-visible message and force the loop to take another turn instead of
+   * terminating (a genui plugin repairing a malformed spec the model just
+   * emitted steers the model back with "the spec was malformed: <reason>");
+   * returning `undefined`, `null`, or `{ action: 'stop' }` lets the run end.
+   * The first plugin in the chain that steers wins; the rest do not run.
+   */
+  beforeTurnEnd?(ctx: BeforeTurnEndContext): Promise<BeforeTurnEndVerdict | void>;
 }
+
+/** Argument the loop passes to `beforeTurnEnd` hooks. */
+export interface BeforeTurnEndContext {
+  /** The turn that just completed (1-based). */
+  turn: number;
+  /** The append-only message log so far — read-only view; mutations are
+   * reserved for the loop. */
+  messages: readonly AgentMessage[];
+}
+
+/** Verdict a `beforeTurnEnd` hook returns. */
+export type BeforeTurnEndVerdict =
+  | { action: 'stop' }
+  // The steer message MUST be user- or assistant-visible (system and tool
+  // messages are not part of the surface's chat bubbles), so the verdict's
+  // shape narrows here rather than at every consumer.
+  | { action: 'steer'; message: AssistantMessage | UserMessage };
 
 /** Events yielded by the agent loop for consumers (REPL, browser UI, CI runner). */
 export type AgentEvent =
@@ -371,7 +424,7 @@ export type AgentEvent =
    * observability only, so the provider prefix cache stays stable.
    */
   | { type: 'reasoning_delta'; text: string }
-  | { type: 'message'; message: AssistantMessage }
+  | { type: 'message'; message: AssistantMessage | UserMessage }
   | { type: 'tool_call_start'; turn: number; call: ToolCall }
   | { type: 'tool_call_result'; turn: number; call: ToolCall; result: ToolResultMessage }
   | { type: 'usage'; usage: Usage; stats: UsageStats }

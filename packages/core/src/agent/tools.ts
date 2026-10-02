@@ -358,6 +358,12 @@ async function completeToolCall(
     rawResult = await opts.hooks.afterToolResult(call, rawResult);
   }
   const { content, truncatedRef } = await storeToolResult(rawResult, maxBytes, opts);
+  const tool = toolByName.get(call.name);
+  // Tool-owned metadata is attached AFTER the afterToolResult hook and AFTER
+  // truncation, so the meta describes the SETTLED result the surface renders,
+  // not the in-flight string. The hook is pure and synchronous; absent or
+  // undefined-returning tools add no field and the message ships unchanged.
+  const meta = tool?.resultMeta?.(call.args, content);
   return {
     id: newId('msg'),
     ts: Date.now(),
@@ -366,6 +372,7 @@ async function completeToolCall(
     name: call.name,
     content,
     ...(truncatedRef ? { truncatedRef } : {}),
+    ...(meta !== undefined ? { meta } : {}),
   };
 }
 

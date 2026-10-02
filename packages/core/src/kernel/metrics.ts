@@ -17,10 +17,29 @@
  *   - `retries` counts in-flight re-requests (`llm_retry`), which is why the
  *     reported duration can exceed the sum of the parts.
  *
+ * Per-request timings (`RequestTiming`) record the same milestones PER LOOP
+ * ITERATION — started/firstToken/finished — so a Timing card can draw a
+ * TTFT/response-duration series across one run's requests without re-deriving
+ * it from the event stream. They are produced ONLY when each milestone fires:
+ * a request that produced no tokens has no `firstTokenAt`; a request whose
+ * `usage` never came back (provider drop, abort) has no `finishedAt`.
+ *
  * Token counters sum the run's per-request `usage` reports. Nothing here is
  * model-visible or persisted: stats ride a `run_stats` event and die with the
  * surface (a resumed session starts counting at its own first run).
  */
+
+/** One loop iteration's three timings, drawn as one row on a Timing card. */
+export interface RequestTiming {
+  /** The loop iteration this request belongs to (1-based, matches `turn_start.turn`). */
+  turn: number;
+  /** ms epoch when `turn_start` fired — the provider request began. */
+  startedAt: number;
+  /** ms epoch when the FIRST streamed token arrived; absent if none did. */
+  firstTokenAt?: number;
+  /** ms epoch when the request's `usage` closed it; absent if it never closed. */
+  finishedAt?: number;
+}
 
 /**
  * One run's timing and token summary. Emitted when the run ends — after
@@ -46,6 +65,14 @@ export interface RunStats {
   promptTokens: number;
   completionTokens: number;
   cachedTokens: number;
+  /**
+   * Per-request timings, one per loop iteration in the run (so length ===
+   * `requests` when every request closed cleanly). A surface renders TTFT
+   * and response-duration series from this; absent on old logs that predate
+   * the field (a missing array reads as "no per-request timings" — the card
+   * simply does not appear).
+   */
+  requestTimings?: readonly RequestTiming[];
 }
 
 /** Accumulates one run's timings. Injectable clock keeps it testable. */
@@ -53,6 +80,9 @@ export class RunMeter {
   private startedAt = 0;
   private firstTokenAt: number | undefined;
   private requestStartAt: number | undefined;
+  private currentTurn = 0;
+  private currentFirstTokenAt: number | undefined;
+  private readonly requestTimings: RequestTiming[] = [];
   private llmMs = 0;
   private toolMs = 0;
   private readonly toolStarts = new Map<string, number>();
@@ -70,6 +100,9 @@ export class RunMeter {
     this.startedAt = this.now();
     this.firstTokenAt = undefined;
     this.requestStartAt = undefined;
+    this.currentTurn = 0;
+    this.currentFirstTokenAt = undefined;
+    this.requestTimings.length = 0;
     this.llmMs = 0;
     this.toolMs = 0;
     this.toolStarts.clear();
@@ -84,10 +117,14 @@ export class RunMeter {
   /** Fold one event into the run's numbers (called once, in consume()). */
   observe(event: { type: string } & Record<string, unknown>): void {
     switch (event.type) {
-      case 'turn_start':
+      case 'turn_start': {
+        const turn = (event['turn'] as number | undefined) ?? this.currentTurn + 1;
+        this.currentTurn = turn;
         this.requests += 1;
         this.requestStartAt = this.now();
+        this.currentFirstTokenAt = undefined;
         break;
+      }
       case 'usage': {
         const usage = event['usage'] as { promptTokens: number; completionTokens: number; cachedTokens: number };
         this.promptTokens += usage.promptTokens;
@@ -96,15 +133,28 @@ export class RunMeter {
         // The request this usage belongs to is over; a usage event with no
         // open request (a replay, a provider that reports late) adds nothing.
         if (this.requestStartAt !== undefined) {
-          this.llmMs += this.now() - this.requestStartAt;
+          const finishedAt = this.now();
+          this.llmMs += finishedAt - this.requestStartAt;
+          this.requestTimings.push({
+            turn: this.currentTurn,
+            startedAt: this.requestStartAt,
+            ...(this.currentFirstTokenAt !== undefined ? { firstTokenAt: this.currentFirstTokenAt } : {}),
+            finishedAt,
+          });
           this.requestStartAt = undefined;
         }
         break;
       }
       case 'text_delta':
-      case 'reasoning_delta':
-        this.firstTokenAt ??= this.now();
+      case 'reasoning_delta': {
+        const now = this.now();
+        this.firstTokenAt ??= now;
+        // Record the first token of the CURRENT provider request (its TTFT),
+        // not just the run's. The check is per-request: a request that
+        // streams no tokens (a function-call-only response) stays without one.
+        if (this.requestStartAt !== undefined) this.currentFirstTokenAt ??= now;
         break;
+      }
       case 'tool_call_start': {
         const call = event['call'] as { id: string };
         this.toolCalls += 1;
@@ -133,6 +183,17 @@ export class RunMeter {
   /** The run's summary. Safe to call at any point (a failed run reports partials). */
   finish(): RunStats {
     const endedAt = this.now();
+    // If a provider request is still in flight when the run ends (abort, the
+    // last request streamed tokens but never reported usage), record it so
+    // the per-request series is not silently shorter than `requests`.
+    const timings = [...this.requestTimings];
+    if (this.requestStartAt !== undefined) {
+      timings.push({
+        turn: this.currentTurn,
+        startedAt: this.requestStartAt,
+        ...(this.currentFirstTokenAt !== undefined ? { firstTokenAt: this.currentFirstTokenAt } : {}),
+      });
+    }
     return {
       startedAt: this.startedAt,
       durationMs: Math.max(0, endedAt - this.startedAt),
@@ -145,6 +206,7 @@ export class RunMeter {
       promptTokens: this.promptTokens,
       completionTokens: this.completionTokens,
       cachedTokens: this.cachedTokens,
+      requestTimings: timings,
     };
   }
 }

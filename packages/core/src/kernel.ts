@@ -15,7 +15,7 @@ export * from './kernel/protocol.js';
 export * from './kernel/model.js';
 export * from './kernel/model-control.js';
 export { EventPump } from './kernel/pump.js';
-export { RunMeter, type RunStats } from './kernel/metrics.js';
+export { RunMeter, type RunStats, type RequestTiming } from './kernel/metrics.js';
 export {
   AgentSession,
   type AgentSessionDeps,

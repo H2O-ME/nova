@@ -97,6 +97,23 @@ export interface ContextPoint {
   cached?: number;
   /** Provider-reported completion tokens. */
   output?: number;
+  /**
+   * This request's three timings, joined from the `run/stats` event whose
+   * `afterMessageId` matches the assistant message this point is built from.
+   * Absent on old logs that predate per-request timings (a Timing card then
+   * hides itself rather than drawing zeroes).
+   */
+  timing?: ContextPointTiming;
+}
+
+/** One request's started/firstToken/finished milestones, joined onto a point. */
+export interface ContextPointTiming {
+  /** ms epoch — `turn_start` for the iteration that produced this point. */
+  startedAt: number;
+  /** ms epoch — first streamed token; absent when the request produced none. */
+  firstTokenAt?: number;
+  /** ms epoch — when the request's `usage` closed it; absent if it never closed. */
+  finishedAt?: number;
 }
 
 /** Why the window changed, in the order a reader asks. */
@@ -167,6 +184,26 @@ export interface ContextTimeline {
 export interface ContextSurface {
   system?: string;
   tools?: readonly { name: string; description?: string; parameters?: unknown }[];
+}
+
+/**
+ * A frozen window snapshot at one request's position — what the Browser/DNA
+ * cards read to draw "what was in the window when this request ran". Same
+ * composition rule as `compositionBefore(seq)`: an element is in this window
+ * iff it entered before `seq` AND had not been removed by a compaction whose
+ * own position is `<= seq`.
+ */
+export interface ContextWindowSnapshot {
+  /** Log position the snapshot was taken at (the request's own point seq). */
+  seq: number;
+  /** Window elements in entry order. The Browser card renders them as rows. */
+  elements: readonly ContextElement[];
+  /** Per-category totals across `elements` — the DNA card's stacked bar. */
+  cats: ContextBreakdown;
+  /** Sum of `cats` — the window's estimated size at this request. */
+  total: number;
+  /** The point at this seq, if one was produced (absent for a seq without a request). */
+  point?: ContextPoint;
 }
 
 /**

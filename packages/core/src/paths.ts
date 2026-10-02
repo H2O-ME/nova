@@ -24,6 +24,21 @@ export function sessionsRoot(homedir: string = os.homedir()): string {
 }
 
 /**
+ * `~/.nova/plugins/` — the USER plugin root: a plain package directory (its own
+ * `package.json`, its own `node_modules/`) where a user installs third-party
+ * plugins without touching wherever the product itself lives — `nova plugin
+ * add <pkg>`, or `pnpm add` run in this directory.
+ *
+ * Bare specifiers in `plugins.extra` / `surfaces` are looked up here as a
+ * FALLBACK (see `plugins/src/module-spec.ts`): a name the product can already
+ * resolve keeps resolving where it did, so installing here never shadows a
+ * bundled package by accident.
+ */
+export function userPluginsDir(homedir: string = os.homedir()): string {
+  return path.join(novaHome(homedir), 'plugins');
+}
+
+/**
  * `<base>/.agents/skills` — the standard skills root and the ONLY definition of
  * the `.agents` layout. `base` is a home for the user level, a project root for
  * the project level; both levels read the same convention.

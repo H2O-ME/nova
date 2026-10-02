@@ -120,6 +120,50 @@ describe('runAgent', () => {
     });
   });
 
+  it('attaches a tool-owned resultMeta to the logged tool message', async () => {
+    // A genui-style tool publishes its rendered spec alongside the plain-text
+    // answer the model sees. Killing test: removing the `meta` write in
+    // completeToolCall makes this red (the field disappears from the log).
+    const genuiTool: ToolDefinition = {
+      name: 'render_ui',
+      description: 'render a plugin UI',
+      parameters: { type: 'object' },
+      execute: async () => '已渲染界面',
+      resultMeta: (args) => ({ spec: { title: 'genui', items: [], args } }),
+    };
+    const provider = scriptedProvider([
+      [
+        { type: 'tool_call_delta', index: 0, id: 'c1', name: 'render_ui', argsDelta: '{"k":1}' },
+        { type: 'finish', finishReason: 'tool_calls' },
+      ],
+      [{ type: 'text_delta', text: 'done' }, { type: 'finish', finishReason: 'stop' }],
+    ]);
+    const messages: AgentMessage[] = [];
+    await collect(runAgent({ provider, messages, rootDir: '.', tools: [genuiTool] }));
+    const result = messages.find((m): m is ToolResultMessage => m.role === 'tool');
+    expect(result?.meta).toEqual({ spec: { title: 'genui', items: [], args: { k: 1 } } });
+    // The model-visible content is unchanged — meta rides alongside, not into.
+    expect(result?.content).toBe('已渲染界面');
+  });
+
+  it('omits meta when the tool does not declare resultMeta', async () => {
+    // Built-in tools today declare no resultMeta; their messages must not grow
+    // an extra field. Killing test: adding an unconditional `meta: {}` write
+    // makes this red.
+    const provider = scriptedProvider([
+      [
+        { type: 'tool_call_delta', index: 0, id: 'c1', name: 'get_time', argsDelta: '{"time' },
+        { type: 'tool_call_delta', index: 0, argsDelta: 'zone":"UTC"}' },
+        { type: 'finish', finishReason: 'tool_calls' },
+      ],
+      [{ type: 'text_delta', text: 'ok' }, { type: 'finish', finishReason: 'stop' }],
+    ]);
+    const messages: AgentMessage[] = [];
+    await collect(runAgent({ provider, messages, rootDir: '.', tools: [getTimeTool] }));
+    const result = messages.find((m): m is ToolResultMessage => m.role === 'tool');
+    expect(result?.meta).toBeUndefined();
+  });
+
   it('forwards tool progress chunks to onToolProgress', async () => {
     const streamingTool: ToolDefinition = {
       name: 'stream_out',
@@ -1016,5 +1060,70 @@ describe('stale-todo nag', () => {
     const logged = messages.filter((m): m is ToolResultMessage => m.role === 'tool');
     expect(logged).toHaveLength(4);
     expect(logged.every((r) => r.content === 'ok')).toBe(true);
+  });
+
+  it('steers into another turn when a beforeTurnEnd hook returns steer', async () => {
+    // Killing test: removing the `beforeTurnEnd` branch in the loop makes this
+    // red — the run ends after turn 1 with stop_reason 'complete' and never
+    // sees the steered message.
+    const provider = scriptedProvider([
+      [{ type: 'text_delta', text: 'done' }, { type: 'finish', finishReason: 'stop' }],
+      [{ type: 'text_delta', text: ' after steer' }, { type: 'finish', finishReason: 'stop' }],
+    ]);
+    const messages: AgentMessage[] = [];
+    let fired = 0;
+    const events = await collect(
+      runAgent({
+        provider,
+        messages,
+        rootDir: '.',
+        hooks: {
+          beforeTurnEnd: async () => {
+            fired += 1;
+            // Steer on the FIRST natural end only — second end returns stop so
+            // the run terminates and does not loop until maxTurns.
+            if (fired === 1) {
+              return { action: 'steer' as const, message: { role: 'user' as const, id: 'steer-1', ts: Date.now(), content: '继续' } };
+            }
+            return { action: 'stop' as const };
+          },
+        },
+      }),
+    );
+    expect(fired).toBe(2);
+    // The steer message landed in the log and the run took another turn.
+    expect(messages.some((m) => m.role === 'user' && m.content === '继续')).toBe(true);
+    const done = events.find((e): e is Extract<AgentEvent, { type: 'done' }> => e.type === 'done');
+    expect(done?.stopReason).toBe('complete');
+  });
+
+  it('does not steer past maxTurns even if the hook keeps returning steer', async () => {
+    // Killing test: removing the `turn < maxTurns` guard makes the loop trust
+    // the hook forever (or until the model emits a tool call). The guard caps
+    // runaway steering at the operator-set quota.
+    const provider = scriptedProvider([
+      [{ type: 'text_delta', text: 'a' }, { type: 'finish', finishReason: 'stop' }],
+      [{ type: 'text_delta', text: 'b' }, { type: 'finish', finishReason: 'stop' }],
+    ]);
+    const messages: AgentMessage[] = [];
+    let fired = 0;
+    await collect(
+      runAgent({
+        provider,
+        messages,
+        rootDir: '.',
+        maxTurns: 1,
+        hooks: {
+          beforeTurnEnd: async () => {
+            fired += 1;
+            return { action: 'steer' as const, message: { role: 'user' as const, id: 'steer', ts: Date.now(), content: 'x' } };
+          },
+        },
+      }),
+    );
+    // Hook fires once (at the natural end of turn 1); the quota guard refuses
+    // the steer and the run ends — no second turn, no infinite loop.
+    expect(fired).toBe(1);
+    expect(messages.some((m) => m.role === 'user' && m.content === 'x')).toBe(false);
   });
 });

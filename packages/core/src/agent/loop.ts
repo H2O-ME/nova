@@ -117,6 +117,21 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
       yield { type: 'message', message: assistant };
 
       if (toolCalls.length === 0) {
+        // The natural end boundary: the model answered without taking action.
+        // `beforeTurnEnd` is fired here and ONLY here — not on `max_turns`, on
+        // abort, or after a programmatic stop — so a plugin that wants to
+        // repair the model's output (a genui fence the host rejected, a spec
+        // that failed validation) gets exactly one chance per natural end to
+        // steer the loop into another turn. The first plugin in the chain
+        // that returns `{ action: 'steer' }` wins; the loop pushes its
+        // message, broadcasts it, and continues. A quota guard prevents run
+        // away: `beforeTurnEnd` cannot push the run past `maxTurns`.
+        const verdict = await opts.hooks?.beforeTurnEnd?.({ turn, messages: opts.messages });
+        if (verdict !== undefined && verdict !== null && verdict.action === 'steer' && turn < maxTurns) {
+          opts.messages.push(verdict.message);
+          yield { type: 'message', message: verdict.message };
+          continue;
+        }
         yield { type: 'done', stopReason: 'complete' };
         return;
       }

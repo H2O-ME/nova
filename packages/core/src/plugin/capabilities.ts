@@ -21,7 +21,7 @@
  *    provider happens to have.
  */
 import type { DecideResult, PermissionPort } from '../approval.js';
-import type { ChatRequest, ToolCall, ToolCallVerdict, ToolDefinition, ToolPermissionKind } from '../types.js';
+import type { BeforeTurnEndContext, BeforeTurnEndVerdict, ChatRequest, ToolCall, ToolCallVerdict, ToolDefinition, ToolPermissionKind } from '../types.js';
 import type { CompactedSession, CompactSessionOptions } from '../compact.js';
 import type { JobRegistry } from '../jobs.js';
 import type { AgentSession } from '../kernel/session.js';
@@ -307,6 +307,58 @@ export interface SurfaceRows {
 export const contextInsights: ServiceKey<import('../context-insights.js').ContextInsights> =
   key<import('../context-insights.js').ContextInsights>('contextInsights');
 
+/* ── HTTP route registry ──────────────────────────────────────────────── */
+
+/**
+ * One HTTP route a plugin has registered. The handler receives the parsed URL
+ * and the raw request/response and answers however it likes (a static asset,
+ * a JSON payload, a redirect). The host always stands the auth gate in FRONT
+ * of plugin routes — a plugin cannot expose an unauthenticated endpoint — and
+ * never inspects the response, so plugin responses ride the same origin as the
+ * host WebUI behind the host's cookie.
+ *
+ * `prefix` is matched against the request path's leading characters after the
+ * leading slash (`/plugins/<name>/assets` matches every path that starts with
+ * it). The first registered prefix that matches wins; the host falls through
+ * to its own handlers otherwise.
+ */
+export interface PluginRoute {
+  /** Path prefix this route answers, with a leading slash (e.g. `/plugins/genui/assets`). */
+  prefix: string;
+  /** Handler invoked when the prefix matches. */
+  handler: PluginRouteHandler;
+}
+
+/** A route handler answers one HTTP request. */
+export type PluginRouteHandler = (
+  req: import('node:http').IncomingMessage,
+  res: import('node:http').ServerResponse,
+  url: URL,
+) => Promise<void>;
+
+/**
+ * The route-registry service a host (the WebUI server today) publishes for
+ * plugins to extend. Plugins register prefixes from their `apply(ctx)`; the
+ * host queries the registry on each request before falling back to its own
+ * handlers. A kernel without a host (exec / qqbot today) does not provide it,
+ * so plugins that ship UI capabilities degrade gracefully when run headless.
+ */
+export interface RouteRegistry {
+  /** Append one route. Routes added later in the roster take precedence. */
+  register(route: PluginRoute): void;
+  /** All currently-registered routes, in registration order. */
+  routes(): readonly PluginRoute[];
+  /**
+   * Resolve a handler for one request path. Returns the FIRST matching route
+   * searching REVERSE registration order, so a plugin loaded later overrides
+   * an earlier plugin's prefix. `undefined` means "no plugin answered" — the
+   * caller falls through to its own handlers.
+   */
+  handlerFor?(pathname: string): PluginRouteHandler | undefined;
+}
+
+export const routes: ServiceKey<RouteRegistry> = key<RouteRegistry>('routes');
+
 /* ── lifecycle events ──────────────────────────────────────────────────── */
 
 /**
@@ -338,3 +390,16 @@ export const beforeToolCall: EventKey<[ToolCall], ToolCallVerdict | undefined> =
  * may then adjust further.
  */
 export const afterToolResult: EventKey<[ToolCall, string], string | undefined> = event('tool/after');
+
+/**
+ * Decide whether the run should continue past its natural end (an assistant
+ * turn with no tool calls). **Serial, first decisive verdict wins**: the first
+ * hook that returns `{ action: 'steer', message }` injects its message and
+ * forces another turn; `{ action: 'stop' }` and `undefined` pass.
+ *
+ * Fired ONLY at the natural end — not on `max_turns`, abort, or any
+ * programmatic stop — so a plugin repairing the model's last output (a genui
+ * fence the host rejected) gets exactly one chance per natural end. A quota
+ * guard in the loop (`turn < maxTurns`) caps runaway steering.
+ */
+export const beforeTurnEnd: EventKey<[BeforeTurnEndContext], BeforeTurnEndVerdict | undefined> = event('turn/before-end');
