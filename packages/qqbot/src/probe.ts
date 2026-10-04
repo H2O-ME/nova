@@ -1,13 +1,13 @@
 /**
  * The qqbot connection probe: token grant, then gateway lookup.
  *
- * Split from `web-mode.ts` because it is the ONE thing that surface does on
- * behalf of a plugin, and it needs the qqbot package's client while the rest of
- * `web-mode.ts` assembles the web surface. It is also the only piece that talks
- * to real QQ endpoints, so keeping it apart makes "what reaches the network from
- * this process" a file you can read in full.
+ * The row's own `test` action calls this, and it is the only piece of the
+ * package that reaches QQ purely to ASK a question — the gateway state machine
+ * and the REST client are the channel's own traffic. Keeping it apart makes
+ * "what this package sends on behalf of a settings page" a file you can read in
+ * full.
  */
-import { AccessTokenManager } from '../protocol.js';
+import { AccessTokenManager } from './protocol.js';
 
 /**
  * Prove the credentials work end to end and return the gateway URL.
@@ -20,7 +20,7 @@ import { AccessTokenManager } from '../protocol.js';
  * @returns the gateway URL the credentials resolved to.
  * @throws when the grant fails or the gateway answer is unusable.
  */
-export async function testQqBotConnection(opts: { appId: string; clientSecret: string }): Promise<string> {
+export async function probeQqBotConnection(opts: { appId: string; clientSecret: string }): Promise<string> {
   const manager = new AccessTokenManager(opts.appId, opts.clientSecret, globalThis.fetch);
   const token = await manager.get();
   if (token.length === 0) throw new Error('empty access token');

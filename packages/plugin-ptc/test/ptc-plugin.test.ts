@@ -13,8 +13,10 @@ import type {
   ToolExecuteContext,
 } from '@nova-agent/core';
 import { builtinPlugins, PluginHost, registerTool } from '@nova-agent/plugins';
-import { ptcPlugin, RUN_CODE_NAME } from '../src/index.js';
+import { pluginConfig as pluginConfigKey, pluginRpc as pluginRpcKey } from '@nova-agent/core';
+import { plugin as ptcPlugin, RUN_CODE_NAME } from '../src/index.js';
 import type { PtcMode } from '../src/index.js';
+import type { CommandDefinition } from '@nova-agent/core';
 
 function fakeTool(name: string, opts: { parallel?: boolean } = {}): ToolDefinition {
   return {
@@ -30,17 +32,32 @@ function fakeTool(name: string, opts: { parallel?: boolean } = {}): ToolDefiniti
   };
 }
 
+/**
+ * The row's settings travel as the entry's `config` now — the plugin reads its
+ * own mode, so a test mounts it the way the tree does (`sync` with an id and a
+ * config) rather than by calling a factory the host used to construct.
+ */
 async function hostWith(mode: PtcMode, tools: ToolDefinition[]): Promise<PluginHost> {
   const host = new PluginHost('.');
-  for (const tool of tools) {
-    host.use({
-      name: `t-${tool.name}`,
-      inject: ['tools'],
-      apply: (ctx: Context) => registerTool(ctx, tool, 'read'),
-    });
-  }
-  host.use(ptcPlugin({ mode }));
-  await host.activate();
+  // The two seams the row's settings page uses (the shipped provider plugins own
+  // the real ones): this test never answers an operation, it only needs the row
+  // to activate with its own config.
+  host.context.provide(pluginRpcKey, {
+    register: () => () => undefined,
+    invoke: () => Promise.resolve(undefined),
+  });
+  host.context.provide(pluginConfigKey, { setEntry: () => Promise.resolve() });
+  await host.sync([
+    ...tools.map((tool) => ({
+      id: `t-${tool.name}`,
+      plugin: {
+        name: `t-${tool.name}`,
+        inject: ['tools'],
+        apply: (ctx: Context) => registerTool(ctx, tool, 'read'),
+      },
+    })),
+    { id: 'ptc', plugin: ptcPlugin, config: { mode } },
+  ]);
   return host;
 }
 
@@ -106,6 +123,52 @@ describe('ptc presentation', () => {
     // The factory itself still registers the transport when applied directly.
     const host = await hostWith('ptc', []);
     expect(host.tools.some((tool) => tool.name === RUN_CODE_NAME)).toBe(true);
+  });
+});
+
+/**
+ * `/mode` is the ROW's command, registered by this plugin and travelling with
+ * its fiber — the host no longer looks this package up by name and no longer
+ * keeps a copy of the three mode labels (that duplication was the "add a plugin,
+ * edit the core" pattern). These cases pin the contract that replaced it.
+ */
+describe('/mode command', () => {
+  /** The `/mode` command as the container sees it, or a loud failure. */
+  function modeCommand(host: PluginHost): CommandDefinition {
+    const entry = host.commandEntries.find((item) => item.command.name === 'mode');
+    if (entry === undefined) throw new Error('/mode was not registered by the ptc row');
+    return entry.command;
+  }
+
+  function linesOf(host: PluginHost): string[] {
+    const out: string[] = [];
+    void modeCommand(host).run('', { rootDir: '.', log: (m) => out.push(m) });
+    return out;
+  }
+
+  it('is registered by the plugin itself and reports the row’s own mode', async () => {
+    const host = await hostWith('ptc', []);
+    const lines = linesOf(host);
+    expect(lines[0]).toContain('PTC');
+    // The three-mode table, with the arrow on the mode this row is in force with.
+    expect(lines.some((line) => line.includes('❯') && line.includes('PTC'))).toBe(true);
+    expect(lines.some((line) => line.includes('普通'))).toBe(true);
+    expect(lines.some((line) => line.includes('混合'))).toBe(true);
+  });
+
+  it('still answers when the row is native — that readout is how the operator finds the switch', async () => {
+    const host = await hostWith('native', []);
+    const lines = linesOf(host);
+    expect(lines[0]).toContain('普通');
+    expect(lines.some((line) => line.includes('❯') && line.includes('普通'))).toBe(true);
+  });
+
+  it('disappears with the row: a disabled ptc leaves no /mode behind', async () => {
+    const host = new PluginHost('.');
+    host.context.provide(pluginRpcKey, { register: () => () => undefined, invoke: () => Promise.resolve(undefined) });
+    host.context.provide(pluginConfigKey, { setEntry: () => Promise.resolve() });
+    await host.sync([{ id: 'ptc', plugin: ptcPlugin, config: { mode: 'ptc' }, disabled: true }]);
+    expect(host.commandEntries.some((item) => item.command.name === 'mode')).toBe(false);
   });
 });
 

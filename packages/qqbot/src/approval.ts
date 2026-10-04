@@ -1,15 +1,15 @@
 /**
  * 一条审批请求的**推送 + 兜底**：发到 QQ、超时必定拒绝（fail-closed）。
  *
- * 从 `peer.ts` 拆出，因为它是另一个问题：那边讲**一轮怎么跑**（会话编排、
+ * 从对端编排（`peers.ts`）拆出，因为它是另一个问题：那边讲**一轮怎么跑**（会话编排、
  * 遥控指令落地、结果收敛），这里讲**一条审批没人理时怎么收敛**（问出去的措辞、
  * 到点自动拒绝、结论到了撤定时器）。前者每个对端一个实例、跟着会话走；后者是单条
  * 请求的生命周期、跟着审批 id 走。
  */
 import type { AgentSession } from '@nova-agent/core';
-import type { Peer } from '../types.js';
+import type { Peer } from './types.js';
 import { REMOTE_APPROVAL_TIMEOUT_MS } from './remote.js';
-import type { PeerNotifier } from './peer.js';
+import type { PeerNotifier } from './peers.js';
 
 /**
  * One outstanding ask, from "sent to QQ" to "resolved or timed out".
@@ -56,5 +56,18 @@ export class ApprovalForwarder {
     if (timer === undefined) return;
     clearTimeout(timer);
     this.timers.delete(id);
+  }
+
+  /**
+   * Drop every outstanding timer.
+   *
+   * The channel is a plugin now, so switching its row off must leave nothing
+   * running: a must-deny timer surviving its fiber would fire into a session
+   * nobody is serving, and would be exactly the "remembered teardown" this
+   * refactor removes. The peer's own ask is left to the session's teardown.
+   */
+  dispose(): void {
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
   }
 }

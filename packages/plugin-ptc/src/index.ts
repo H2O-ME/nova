@@ -13,23 +13,43 @@
  * to the system prompt; under `'both'` native calls stay available beside the
  * program transport. The projection is deterministic, so the appended section
  * is byte-stable and the prefix cache survives.
+ *
+ * The mode itself is the ROW's config, not a host projection: the plugin reads
+ * its own settings (`settings.ts` owns the shape, the page and the budgets), so
+ * `native` is a statement about this row and nothing else in the product has to
+ * know what a code mode is.
  */
 
 import { errMessage } from '@nova-agent/core';
 import {
   beforeLlmCall,
+  pluginConfig as pluginConfigKey,
+  pluginRpc as pluginRpcKey,
   tools as toolsKey,
+  type Context,
   type Plugin,
   type ToolDefinition,
   type ToolDispatchResult,
   type ToolExecuteContext,
 } from '@nova-agent/core';
-import { registerTool, typeStrippingAvailable } from '@nova-agent/core';
+import { registerCommand, registerTool, typeStrippingAvailable } from '@nova-agent/core';
 import { snapshotJson } from './json.js';
 import type { JsonValue } from './json.js';
-import { resolveCodeRuntimeConfig, runCode } from './code-runtime.js';
+import { runCode } from './code-runtime.js';
 import type { CodeRunResult, CodeRuntimeConfig } from './code-runtime.js';
 import { renderToolsSdk, RUN_CODE_NAME } from './sdk.js';
+import {
+  Config,
+  DEFAULT_MAX_PARALLEL_SUB_CALLS,
+  PTC_PLUGIN_NAME,
+  type PtcMode,
+  ptcModeReport,
+  ptcPage,
+  ptcRuntimeConfig,
+  ptcSaveSettings,
+  type PtcPluginConfig,
+  type PtcRuntimeOutcome,
+} from './settings.js';
 
 // The package's own modules are public here, mirroring what the plugins
 // package re-exported before the plugin moved out: the JSON helpers, the SDK
@@ -38,20 +58,178 @@ import { renderToolsSdk, RUN_CODE_NAME } from './sdk.js';
 export * from './json.js';
 export * from './sdk.js';
 export * from './code-runtime.js';
+export * from './settings.js';
 
-/** How the tool registry is presented to the model. */
-export type { PtcMode } from '@nova-agent/core';
-import type { PtcMode } from '@nova-agent/core';
+/**
+ * PTC as a standard plugin.
+ *
+ * The mode lives in THIS row's config (`plugins.entries[].config`), not in a
+ * host-side `tools.code` projection: the host no longer knows what a code mode
+ * is, it only knows the row and hands the plugin its settings. `native` means
+ * "this row is off" — nothing is registered — but the settings namespace still
+ * answers, because that page is the only way the mode comes back.
+ */
+export const plugin: Plugin<PtcPluginConfig> = {
+  name: PTC_PLUGIN_NAME,
+  manifest: {
+    title: 'PTC 代码模式',
+    description: '让模型写一段 TypeScript 程序批量调工具（run_code），程序在受限 worker 里运行。',
+    tier: 'advanced',
+    // Declared because the row answers a settings `page` (registered below, even
+    // for `native` rows — that page is the only way the mode comes back). The
+    // navigation is derived from the live roster, so an undeclared page is an
+    // unreachable page.
+    page: true,
+  },
+  Config,
+  inject: [toolsKey, pluginRpcKey, pluginConfigKey],
+  apply: (ctx: Context, config: PtcPluginConfig): void => {
+    const mode: PtcMode = config.mode ?? 'both';
+    const maxParallel = Math.max(1, Math.trunc(config.maxParallelSubCalls ?? DEFAULT_MAX_PARALLEL_SUB_CALLS));
+    const outcome = ptcRuntimeAvailability(config);
 
-export interface PtcPluginOptions {
-  /** `'both'` when the plugin is loaded without an explicit mode. */
-  mode?: PtcMode;
-  /** Overlap cap for parallel-classified sub-calls (1 restores serial dispatch). */
-  maxParallelSubCalls?: number;
-  computeMs?: number;
-  maxWallMs?: number;
-  maxOutputBytes?: number;
-  maxOldGenerationSizeMb?: number;
+    // `/mode` belongs to THIS plugin: the mode is its own vocabulary, so the
+    // command that explains it is registered here and lives exactly as long as
+    // this row does. The host used to own it (a `codeModeInForce` that looked
+    // this package up BY NAME and a copy of the three mode labels in a
+    // `lines.ts`) — that is the "add a plugin, edit the core" pattern the
+    // refactor deletes. Registered for every mode, including `native`: the
+    // readout is the most useful thing a switched-off row can still say.
+    registerCommand(ctx, {
+      name: 'mode',
+      description: '查看三种执行模式的区别与当前模式（本行 plugins.entries 的 mode）',
+      run: (_args, runCtx) => {
+        for (const line of ptcModeReport(mode)) runCtx.log(line);
+      },
+    });
+
+    // Registered BEFORE the mode check: `native` rows and rows the environment
+    // cannot run still have a page, and that page is where the operator fixes
+    // exactly that. Failing activation instead would take the page down with it.
+    ctx.effect(
+      () =>
+        ctx.must(pluginRpcKey).register(PTC_PLUGIN_NAME, async (op, payload) => {
+          switch (op) {
+            case 'page':
+              return ptcPage(config, outcome);
+            case 'save': {
+              const merged = ptcSaveSettings(config, submittedFields(payload));
+              await ctx.must(pluginConfigKey).setEntry(PTC_PLUGIN_NAME, { enabled: true, config: merged });
+              return ptcPage(merged, ptcRuntimeAvailability(merged), true);
+            }
+            default:
+              throw new Error(`ptc: unknown operation "${op}"`);
+          }
+        }),
+      `rpc(${PTC_PLUGIN_NAME})`,
+    );
+
+    if (mode === 'native') return;
+    if (!outcome.ok) {
+      // Unusable budgets or a Node without type stripping: the model gets no
+      // run_code at all rather than a tool that fails every call — a `ptc` row
+      // whose only tool always refuses would leave the model with nothing.
+      ctx.log('warn', `ptc: run_code is not available: ${outcome.message}`);
+      return;
+    }
+    const runtimeConfig = outcome.config;
+    registerTool(
+      ctx,
+      {
+        name: RUN_CODE_NAME,
+        description: RUN_CODE_DESCRIPTION,
+        parameters: {
+          type: 'object',
+          properties: {
+            code: { type: 'string', description: 'The program: the body of an async TypeScript function.' },
+            description: { type: 'string', description: DESCRIPTION_PARAM },
+          },
+          required: ['code', 'description'],
+          additionalProperties: false,
+        },
+        // The approval popup shows what the program actually says, not a
+        // truncated args blob (preview(args) contract, edit_file precedent).
+        preview: (args) => {
+          const description = typeof args['description'] === 'string' ? args['description'] : '';
+          const code = typeof args['code'] === 'string' ? args['code'] : '';
+          const lines = code.split('\n');
+          const shown = lines.slice(0, 12);
+          const more = lines.length > shown.length ? [`// … ${lines.length - shown.length} more lines`] : [];
+          return [`run_code: ${description}`, '```ts', ...shown, ...more, '```'].join('\n');
+        },
+        execute: (args, c) => runCodeProgram(() => [...ctx.must(toolsKey).all()], runtimeConfig, maxParallel, args, c),
+      },
+      // The trust posture is deliberately bash-equal: the worker contains
+      // runaway programs but is NOT a security boundary, so the program
+      // itself goes through the execute gate, and every sub-call through
+      // its own tool's gate via ctx.dispatch.
+      'execute',
+    );
+
+    let sdkSection: string | undefined;
+    let sdkFingerprint = '';
+    ctx.on(beforeLlmCall, async (req, next) => {
+      const all = req.tools ?? [];
+      // No run_code in the outgoing request (e.g. a summarizer call without
+      // tools): nothing to project onto — delegate untouched.
+      if (!all.some((tool) => tool.name === RUN_CODE_NAME)) return next();
+      // Fingerprint the toolset by name: a plugin activating AFTER the first
+      // request (skills loading, host rebuild) changes the set, and a
+      // one-shot cache would silently serve an SDK that omits the newcomers.
+      const fingerprint = `${mode}\u0000${all.map((tool) => tool.name).join('\u0001')}`;
+      if (sdkSection === undefined || fingerprint !== sdkFingerprint) {
+        // `both` mode: native schemas already carry full parameter types,
+        // so the SDK binding only lists names + one-line summaries (slim).
+        // `ptc` mode: the SDK is the only tool surface, so full types.
+        const sdk = renderToolsSdk(all, { slim: mode === 'both' });
+        sdkSection = mode === 'ptc' ? `${PTC_ONLY_NOTE}\n\n${sdk}` : sdk;
+        sdkFingerprint = fingerprint;
+      }
+      const tools = mode === 'ptc' ? all.filter((tool) => tool.name === RUN_CODE_NAME) : all;
+      // `next(rewritten)`: the projection composes instead of winning the
+      // chain outright — a later hook still sees (and may adjust) the
+      // projected request, and its answer is what returns.
+      return next({ ...req, tools, systemPrompt: `${req.systemPrompt ?? ''}\n\n${sdkSection}` });
+    });
+  },
+};
+
+export default plugin;
+
+/**
+ * Can this row run a program right now?
+ *
+ * Two independent facts, reported the same way because the operator's next step
+ * is the same for both (fix the settings or switch the mode): the budgets must
+ * resolve, and the runtime must be able to strip types. Neither is allowed to
+ * throw — see the `apply` comment.
+ * @param config - the row's settings.
+ * @returns the usable budgets, or why there are none.
+ */
+function ptcRuntimeAvailability(config: PtcPluginConfig): PtcRuntimeOutcome {
+  if (!typeStrippingAvailable()) {
+    return {
+      ok: false,
+      message: 'PTC 需要 Node.js >= 22.19（node:module stripTypeScriptTypes 不可用）：升级 Node，或把这一行的 mode 设为 native。',
+    };
+  }
+  return ptcRuntimeConfig(config);
+}
+
+/** `save` 的 payload → 提交的字段表；缺 `fields` 是契约违背，点名拒绝。 */
+function submittedFields(payload: unknown): Record<string, string> {
+  const fields = payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)['fields']
+    : undefined;
+  if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+    throw new Error('ptc: "save" needs a "fields" object of strings');
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fields as Record<string, unknown>)) {
+    if (typeof value !== 'string') throw new Error(`ptc: setting "${key}" must be a string`);
+    out[key] = value;
+  }
+  return out;
 }
 
 const RUN_CODE_DESCRIPTION =
@@ -310,87 +488,4 @@ async function runCodeProgram(
   } finally {
     c.signal?.removeEventListener('abort', onOuterAbort);
   }
-}
-
-export function ptcPlugin(options?: PtcPluginOptions): Plugin {
-  const mode: PtcMode = options?.mode ?? 'both';
-  const runtimeConfig = resolveCodeRuntimeConfig({
-    ...(options?.computeMs !== undefined ? { computeMs: options.computeMs } : {}),
-    ...(options?.maxWallMs !== undefined ? { maxWallMs: options.maxWallMs } : {}),
-    ...(options?.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
-    ...(options?.maxOldGenerationSizeMb !== undefined ? { maxOldGenerationSizeMb: options.maxOldGenerationSizeMb } : {}),
-  });
-  const maxParallel = Math.max(1, Math.trunc(options?.maxParallelSubCalls ?? 10));
-
-  return {
-    name: 'ptc',
-    description: 'PTC mode (Code Mode): run_code programs the tool registry in TypeScript under a contained worker runtime.',
-    inject: [toolsKey],
-    apply: (ctx) => {
-      if (mode === 'native') return; // guarded by the loader; never silent-half-loaded
-      if (!typeStrippingAvailable()) {
-        throw new Error(
-          'PTC mode requires Node.js >= 22.19 (node:module stripTypeScriptTypes); upgrade Node or set tools.code.mode to "native"',
-        );
-      }
-      registerTool(
-        ctx,
-        {
-          name: RUN_CODE_NAME,
-          description: RUN_CODE_DESCRIPTION,
-          parameters: {
-            type: 'object',
-            properties: {
-              code: { type: 'string', description: 'The program: the body of an async TypeScript function.' },
-              description: { type: 'string', description: DESCRIPTION_PARAM },
-            },
-            required: ['code', 'description'],
-            additionalProperties: false,
-          },
-          // The approval popup shows what the program actually says, not a
-          // truncated args blob (preview(args) contract, edit_file precedent).
-          preview: (args) => {
-            const description = typeof args['description'] === 'string' ? args['description'] : '';
-            const code = typeof args['code'] === 'string' ? args['code'] : '';
-            const lines = code.split('\n');
-            const shown = lines.slice(0, 12);
-            const more = lines.length > shown.length ? [`// … ${lines.length - shown.length} more lines`] : [];
-            return [`run_code: ${description}`, '```ts', ...shown, ...more, '```'].join('\n');
-          },
-          execute: (args, c) => runCodeProgram(() => [...ctx.must(toolsKey).all()], runtimeConfig, maxParallel, args, c),
-        },
-        // The trust posture is deliberately bash-equal: the worker contains
-        // runaway programs but is NOT a security boundary, so the program
-        // itself goes through the execute gate, and every sub-call through
-        // its own tool's gate via ctx.dispatch.
-        'execute',
-      );
-
-      let sdkSection: string | undefined;
-      let sdkFingerprint = '';
-      ctx.on(beforeLlmCall, async (req, next) => {
-        const all = req.tools ?? [];
-        // No run_code in the outgoing request (e.g. a summarizer call without
-        // tools): nothing to project onto — delegate untouched.
-        if (!all.some((tool) => tool.name === RUN_CODE_NAME)) return next();
-        // Fingerprint the toolset by name: a plugin activating AFTER the first
-        // request (skills loading, host rebuild) changes the set, and a
-        // one-shot cache would silently serve an SDK that omits the newcomers.
-        const fingerprint = `${mode}\u0000${all.map((tool) => tool.name).join('\u0001')}`;
-        if (sdkSection === undefined || fingerprint !== sdkFingerprint) {
-          // `both` mode: native schemas already carry full parameter types,
-          // so the SDK binding only lists names + one-line summaries (slim).
-          // `ptc` mode: the SDK is the only tool surface, so full types.
-          const sdk = renderToolsSdk(all, { slim: mode === 'both' });
-          sdkSection = mode === 'ptc' ? `${PTC_ONLY_NOTE}\n\n${sdk}` : sdk;
-          sdkFingerprint = fingerprint;
-        }
-        const tools = mode === 'ptc' ? all.filter((tool) => tool.name === RUN_CODE_NAME) : all;
-        // `next(rewritten)`: the projection composes instead of winning the
-        // chain outright — a later hook still sees (and may adjust) the
-        // projected request, and its answer is what returns.
-        return next({ ...req, tools, systemPrompt: `${req.systemPrompt ?? ''}\n\n${sdkSection}` });
-      });
-    },
-  };
 }

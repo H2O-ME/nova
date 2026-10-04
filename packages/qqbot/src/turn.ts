@@ -1,12 +1,12 @@
 /**
  * 跑一次提示词，收敛到「这一轮结束」，返回要发回去的文本。
  *
- * 从 `peer.ts` 拆出，因为它是另一个问题：那边讲**谁跑哪一轮**（对端 → 会话
+ * 从对端编排（`peers.ts`）拆出，因为它是另一个问题：那边讲**谁跑哪一轮**（对端 → 会话
  * 的编排：懒建、复用、激活、遥控旁路），这里讲**一轮内部怎么收尾**（订阅哪些事件、
  * 回复取哪条、失败怎么抛）。前者是路由，后者是单轮的执行语义。
  */
 import type { AgentSession, KernelEvent } from '@nova-agent/core';
-import type { Peer } from '../types.js';
+import type { Peer } from './types.js';
 import type { ApprovalForwarder } from './approval.js';
 
 /**

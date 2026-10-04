@@ -8,7 +8,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { ApprovalMode, AskResult } from '@nova-agent/core';
-import { awaitRemoteAnswer, runRemoteCommand, type RemoteContext } from '../src/surface/remote.js';
+import { awaitRemoteAnswer, runRemoteCommand, type RemoteContext } from '../src/remote.js';
 
 /** 一个记下所有动作的假内核 + 假会话。`mode: undefined` 模拟没有权限服务的会话。 */
 function makeCtx(opts: { mode?: ApprovalMode; noPermissionService?: boolean; pending?: { id: string; call: { name: string } }[] } = {}) {

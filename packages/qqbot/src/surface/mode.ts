@@ -1,143 +1,47 @@
 /**
- * `nova qqbot` 的 surface 内容：无人值守 QQ 机器人模式——开放平台 WebSocket 通道
- * 入站消息经每个对端独立 AgentSession 跑一遍内核轮次（`never` 审批策略、
- * perRequestCompact 与 exec 同一通道），最终回答作为被动回复发回。
+ * `nova qqbot`：无人值守 QQ 机器人形态的 surface。
  *
- * 从 cli 迁入本包（2026-10-01）：产品形态（对端会话编排、启动前置、凭据校验的
- * 文案）属于这个示范包；cli 只注入两个问题——「凭据从哪读」（raw 文档，含
- * `{env:NAME}` 的兑现判定）与「`[qqbot]` 行怎么上色」。
+ * **通道不在这里建**。它随 `@nova-agent/qqbot` 那一行插件一起启停（见 `plugin.ts`）：
+ * 行开着才有 socket，关掉即收走。这个 surface 因此只剩两件事——认领 `qqbot` 这个
+ * 子命令（argv 形状必须在 cli 侧同步可答），以及常驻。
+ *
+ * 常驻前先问一次通道在不在（`runningQqBotChannel`）：行没开或凭据没填时，干等是一个
+ * **无法诊断**的挂起，而那句原因正是操作者要的下一步。这也让这个 surface 不假称自己
+ * 拥有通道：它只是「谁在服务这次 argv」的答案。
+ *
+ * 审批策略钉 `never`（与 `exec` 同款，确定性拒绝）：无人值守的进程里，远端 QQ 对端
+ * 不该成为提权入口。桌面那边（`nova --web`）不钉——那里有人，对端的 `/approve`
+ * 可以照常被转发。
  */
-import path from 'node:path';
+import type { AgentSurface, AgentSurfaceRuntime } from '@nova-agent/core';
+import { runningQqBotChannel } from '../plugin.js';
 
-import {
-  sessionsRoot,
-  type AgentSession,
-  type AgentSurface,
-  type KernelEvent,
-  type Plugin,
-} from '@nova-agent/core';
-import type { Kernel } from '@nova-agent/plugins';
-import { createQqBotChannel, type QqBotChannel } from '../runtime.js';
-import type { Peer } from '../types.js';
-
-/**
- * cli 侧的注入缝：包**不**读 `~/.nova/config.json`（那是宿主配置层），也**不**决定
- * 终端颜色（那是编排方的呈现）。两个读法都必须读 RAW 文档：`loadConfig` 展开后的
- * 快照看不出 `{env:NAME}` 能不能兑现，也看不到进程运行中刚写进的凭据。
- */
-export interface QqBotSurfaceDeps {
-  /** 「存的东西能不能用」的一句话；undefined = 可用（`config-read.ts` 的规则）。 */
-  credentialsProblem(): Promise<string | undefined>;
-  /** 当下可用的凭据（读 raw 文档并展开引用）；未配置 = undefined。 */
-  readCredentials(): Promise<{ appId: string; clientSecret: string } | undefined>;
-  /** `[qqbot]` 行的呈现（cli 注入调色板；测试注入收集器）。 */
-  log(line: string): void;
-}
-
-/** 装配前置交给内核的东西（cli 把 `SurfaceBoot` 贡献接在这上面）。 */
-export interface QqBotSurfaceContribution {
-  extraPlugins: readonly Plugin[];
-  sessionDir: string;
-  perRequestCompact: boolean;
-}
-
-export interface QqBotSurfaceParts {
-  /** 认领与启动的契约面（cli 用自己的 claim 包一层后注册进注册表）。 */
-  surface: AgentSurface;
-  /** 装配前置：校验凭据、建通道；返回内核贡献。 */
-  prepare(): Promise<QqBotSurfaceContribution>;
-  /** 装配完成后回填内核（brain 懒取；cli 随后把策略钉成 `never`）。 */
-  attach(kernel: Kernel): void;
-}
-
-export function createQqBotSurface(deps: QqBotSurfaceDeps): QqBotSurfaceParts {
-  const peerAgents = new Map<string, AgentSession>();
-  const holder: { kernel?: Kernel } = {};
-  /** 对端会话与启动期的初始会话同归档在 qqbot 子目录（与交互会话隔离）。 */
-  const sessionDir = path.join(sessionsRoot(), 'qqbot');
-  let channel: QqBotChannel | undefined;
-  let appId = '';
-
-  async function runPeerTurn(text: string, peer: Peer): Promise<string> {
-    const kernel = holder.kernel;
-    if (kernel === undefined) throw new Error('qqbot：内核尚未就绪');
-    let agent = peerAgents.get(peer.peerId);
-    if (agent === undefined) {
-      agent = await kernel.newAgentSession({ sessionDir });
-      peerAgents.set(peer.peerId, agent);
+export const qqbotSurface: AgentSurface = {
+  name: 'qqbot',
+  claim: (request) => request.flags.positional[0] === 'qqbot',
+  start: async (runtime: AgentSurfaceRuntime): Promise<void> => {
+    const channel = runningQqBotChannel();
+    if (channel === undefined) {
+      throw new Error(
+        'QQ 机器人通道未启动：请在插件管理里打开 @nova-agent/qqbot 这一行'
+          + '（配置文件的 plugins.entries），并在它的 config 里填写 appId 与 clientSecret'
+          + '（密钥可用 {env:NAME} 引用）。',
+      );
     }
-    // 全局串行调用（通道契约）：current 重绑让审计/job/压缩目标跟随本轮对端；
-    // provider 的缓存亲和由 sessions 服务在 activate 时一并重绑。
-    kernel.activateSession(agent);
-
-    let reply = '';
-    let failure: string | undefined;
-    const finished = new Promise<void>((resolve) => {
-      const unsubscribe = agent.subscribe((event: KernelEvent) => {
-        // 最终 assistant 回复捕获为被动回复正文（"model-visible means
-        // logged" 由内核落账，这里只是对端的呈现面）。
-        if (event.type === 'message' && event.message.role === 'assistant' && event.message.content.trim().length > 0) {
-          reply = event.message.content.trim();
-        } else if (event.type === 'run_failed') {
-          failure = event.message;
-        } else if (event.type === 'notice' || (event.type === 'compaction' && event.progress.state === 'done')) {
-          deps.log(
-            `[qqbot] ${event.type === 'notice' ? event.text : `已自动压缩 — 保留 ${event.progress.retained ?? 0} 条最近消息`}`,
-          );
-        }
-        if (event.type === 'phase' && event.phase === 'idle') {
-          unsubscribe();
-          resolve();
-        }
-      });
-    });
-    await agent.prompt(text);
-    await finished;
-    if (failure !== undefined) throw new Error(failure); // 报错上抛给通道层回复
-    return reply;
-  }
-
-  return {
-    surface: {
-      name: 'qqbot',
-      claim: (request) => request.flags.positional[0] === 'qqbot',
-      start: async () => {
-        if (channel === undefined) throw new Error('qqbot：装配未产生通道（prepare 未运行）');
-        deps.log(`[qqbot] appId ${appId} · 对端独立会话 · 审批 never（read-only 只读工具可用）`);
-        deps.log('[qqbot] Ctrl+C 退出（进行中的回复完成当前条后结束）');
-        await channel.start();
-        const shutdown = (): void => {
-          channel?.stop();
-          void holder.kernel?.jobs.dispose().catch(() => undefined);
-        };
-        process.on('SIGINT', () => {
-          shutdown();
-          process.exit(0);
-        });
-        // 常驻：等待通道生命周期结束（目前只有 stop/进程退出）。
-        await new Promise<never>(() => undefined);
-      },
-    },
-    prepare: async () => {
-      // 「能不能用」先于「是什么」：`credentialsProblem` 看得见未兑现的 `{env:NAME}`，
-      // 而直接去读会把它当成字面量送去换 token、再报一个看不懂的鉴权失败。
-      const problem = await deps.credentialsProblem();
-      if (problem !== undefined) throw new Error(problem);
-      const creds = await deps.readCredentials();
-      if (creds === undefined) {
-        throw new Error('qqbot 模式需要在 ~/.nova/config.json 配置 qqbot.appId 与 qqbot.clientSecret（密钥可用 {env:NAME} 引用）');
-      }
-      appId = creds.appId;
-      channel = createQqBotChannel({
-        appId: creds.appId,
-        clientSecret: creds.clientSecret,
-        brain: runPeerTurn,
-        log: deps.log,
-      });
-      return { extraPlugins: [channel.plugin], sessionDir, perRequestCompact: true };
-    },
-    attach: (kernel) => {
-      holder.kernel = kernel;
-    },
-  };
-}
+    // No human at this end: sees the read-only tools, everything else refused
+    // before it is even asked. The peer can still change its own tier with
+    // /perm, which is a tier the gate holds — not a bypass of the policy.
+    runtime.kernel.agent.setApprovalPolicy('never');
+    console.log('[qqbot] 通道已随插件启动：对端独立会话 · 审批 never（read-only 只读工具可用）· Ctrl+C 退出');
+    // Shutdown goes through the kernel's own teardown, not through a stop() this
+    // surface remembers to call: disposing the host unwinds the plugin fibers,
+    // and the channel's effect closes the socket on the way out.
+    const shutdown = (): void => {
+      void runtime.kernel.dispose().finally(() => process.exit(0));
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+    // 常驻：socket 自己持有事件循环，这个等待只是「这个 surface 不结束」。
+    await new Promise<never>(() => undefined);
+  },
+};

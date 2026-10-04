@@ -1,12 +1,12 @@
 /**
- * 遥控指令的纯解析器（`qqbot-remote-parse.ts`）。
+ * 遥控指令的纯解析器（`src/remote-parse.ts`）。
  *
  * 这是整个遥控面的**唯一语法来源**：QQ 那边输入的是文本，所以「这句话是指令还是普通
  * 提示词」必须能被穷举。纪律与前端斜杠菜单一致——**认不得的原样当提示词**，因为把
  * 操作者的话悄悄吞掉是比「没听懂」严重得多的失败。
  */
 import { describe, expect, it } from 'vitest';
-import { parseRemoteCommand } from '../src/surface/remote-parse.js';
+import { parseRemoteCommand } from '../src/remote-parse.js';
 
 /** 这条输入被认成了什么指令（不是指令则返回「prompt」）。 */
 function kindOf(text: string): string {

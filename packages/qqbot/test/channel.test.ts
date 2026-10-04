@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PluginHost } from '@nova-agent/plugins';
 import { createQqBotChannel } from '../src/runtime.js';
+import { qqbotSendTool } from '../src/tool.js';
 import type { GatewaySocket } from '../src/protocol.js';
 
 function jsonResponse(status: number, body: unknown): { ok: boolean; status: number; json: () => Promise<unknown> } {
@@ -120,12 +120,12 @@ describe('createQqBotChannel', () => {
     });
     await new Promise((r) => setTimeout(r, 10));
 
-    // Mount the plugin the way the host does (Core `{ name, inject, apply }`
-    // registry) and read the tool back from the live container.
-    const host = new PluginHost('.');
-    host.use(channel.plugin);
-    await host.activate();
-    const sendTool = host.tools.find((tool) => tool.name === 'qqbot_send')!;
+    // The tool is the plugin's registration, bound to this live channel: the
+    // passive window it reads is the channel's own inbound bookkeeping.
+    const sendTool = qqbotSendTool({
+      send: (peer, content, msgId) => channel.send(peer, content, msgId),
+      lastMsgIdOf: (peer) => channel.lastMsgIdOf(peer),
+    });
 
     // No recent traffic for an unknown peer → honest failure.
     expect(await sendTool.execute({ peer: 'group:GHOST', content: 'x' })).toContain('passive-reply window');

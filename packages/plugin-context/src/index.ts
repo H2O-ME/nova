@@ -11,9 +11,10 @@
  * provider IS the on/off switch: there is no second flag, and no way for a
  * settings row and the data to disagree about whether the feature is on.
  *
- * It is `advanced` (off until `plugins.enable` names it) for the same reason
- * `subagent` and `ptc` are: nothing a fresh install needs, and its absence
- * costs a reader only a tab that is not drawn.
+ * It is `advanced` (off until a `plugins.entries` row enables it), declared in the
+ * manifest below rather than described here — the same reason `subagent` and `ptc`
+ * are: nothing a fresh install needs, and its absence costs a reader only a tab
+ * that is not drawn.
  */
 import { contextInsights as contextInsightsKey, type Plugin } from '@nova-agent/core';
 import { contextInsightsOf, windowAtSeq } from './fold.js';
@@ -27,7 +28,20 @@ export { windowAtSeq };
 export const contextPlugin: Plugin = {
   name: 'context',
   description: 'Folds a session log into a context reading: composition, per-request trend, events and file activity.',
+  // The tier lives HERE, in the plugin's own manifest. With no manifest at all,
+  // `manifestOf` fail-opens the row to `standard` — so this provider used to
+  // ship ON while its own docstring said it ships off.
+  manifest: {
+    title: '上下文洞察',
+    description: '把一个会话日志折叠成一次上下文读数：构成、逐请求趋势、事件与文件活动。',
+    tier: 'advanced',
+  },
   apply(ctx): void {
     ctx.provide(contextInsightsKey, contextInsightsOf());
   },
 };
+
+// The shape a spec-loaded module must present: the plugin tree unwraps `default`
+// (or `plugin`) and validates it, so a package that exports only a NAMED object
+// is a package the tree cannot load.
+export default contextPlugin;

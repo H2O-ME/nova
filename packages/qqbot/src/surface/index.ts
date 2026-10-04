@@ -1,15 +1,10 @@
 /**
- * The surface half of this package: the `AgentSurface` a host registers under
- * name `qqbot`, the bridge a `nova --web` process runs in-band, the settings
- * page's live-channel seam, and the credential probe.
+ * The surface half of this package, now down to one thing: `nova qqbot`.
  *
- * These four were cli files until 2026-10-01 — the product shape (peer turns,
- * credentials policy, the three-step save path) is this demo package's story,
- * not the shell's. A host supplies exactly two reads: where credentials come
- * from (a raw-document reader, because `{env:NAME}` resolvability is a config
- * rule) and how a `[qqbot]` line is painted.
+ * The four files that used to live here (a bridge the Web surface started, a
+ * settings-page seam, a credential probe, an activation step) existed because the
+ * HOST drove the channel — and that is precisely what the plugin now owns, so they
+ * were folded into the plugin (`src/plugin.ts`, `src/settings.ts`, `src/probe.ts`)
+ * instead of surviving as a second way to start one.
  */
-export * from './activate.js';
-export * from './bridge.js';
 export * from './mode.js';
-export * from './probe.js';

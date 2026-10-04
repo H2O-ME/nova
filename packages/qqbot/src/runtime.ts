@@ -1,16 +1,15 @@
 import { AccessTokenManager, QqApi, QqGateway, type CredentialSource, type FetchLike, type SocketFactory } from './protocol.js';
 import { InboundHandler, type InboundHandlerOptions } from './inbound.js';
-import { qqbotPlugin } from './plugin.js';
 import { defaultSocketFactory } from './socket.js';
 import type { Peer, QqBotChannelStats } from './types.js';
-import type { Plugin } from '@nova-agent/core';
 
 /**
  * 把协议层装配成一个完整通道：WebSocket 事件 →（去重、被动窗口缓存）→
- * brain（agent 侧回调，运行方提供）→ REST 被动回复。返回的 `plugin` 装上
- * 宿主后，agent 还能用 `qqbot_send` 工具在被动窗口内主动发消息。
+ * brain（agent 侧回调，运行方提供）→ REST 被动回复。
  *
- * 入站消息「怎么处理」在 `inbound.ts`；本文件只管「怎么装起来、怎么启停」。
+ * 通道**不认识宿主**：它不是插件、也不注册工具。谁把它装起来、工具叫 `qqbot_send`
+ * 还是别的，都是插件那一半的事（`plugin.ts`）；这里只管一条 WebSocket 通道的
+ * 装配与启停，另外把「被动窗口里的最近一条 msg_id」与「BOT 是谁」这两件读数交出去。
  */
 
 export interface QqBotChannelOptions {
@@ -42,7 +41,6 @@ export interface QqBotChannelOptions {
 }
 
 export interface QqBotChannel {
-  plugin: Plugin;
   api: QqApi;
   start(): Promise<void>;
   stop(): void;
@@ -54,15 +52,17 @@ export interface QqBotChannel {
    */
   reading(): Promise<QqBotChannelReading>;
   /**
-   * 主动往一个对端发一条（`msgId` 缺省时用被动窗口里的最近一条）。
+   * 主动往一个对端发一条。
    *
-   * 用途是**运行中**的旁路消息：审批问题要在某一轮还没结束时先推出去，而那一步
-   * `reply`（被动回复的正确落点）还攥在那一轮手里。
+   * `msgId` 是**被动回复窗口**的凭据：平台的主动外发受严格限流，所以真正的落点是
+   * 「回复最近一条入站消息」，而窗口的判定只有通道知道（`lastMsgIdOf`）。缺省即不等
+   * 窗口的裸发——那多半会被平台拒，工具因此总是先取窗口再传进来。
    * @param peerId - `group:<id>` / `c2c:<id>`。
    * @param content - 文本。
+   * @param msgId - 被动回复的 msg_id（缺省 = 不带窗口）。
    * @returns 发送确认（与工具同形）。
    */
-  send(peerId: string, content: string): Promise<string>;
+  send(peerId: string, content: string, msgId?: string): Promise<string>;
   /** 该对端被动回复窗口里的最近 msg_id（过期即 undefined）。 */
   lastMsgIdOf(peerId: string): string | undefined;
 }
@@ -123,7 +123,6 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
   let started = false;
 
   return {
-    plugin: qqbotPlugin({ send, lastMsgIdOf: (peerId) => inbound.msgIdOf(peerId) }),
     api,
     send,
     lastMsgIdOf: (peerId) => inbound.msgIdOf(peerId),

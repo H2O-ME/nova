@@ -1,14 +1,16 @@
 /**
  * 遥控：把一条认得的指令**真的接到内核上**（`remote-parse.ts` 只负责认字）。
  *
- * 每一件事都复用既有接缝，这里不新造第二套系统：
+ * Functionally it consumes exactly three seams, so it works for whoever holds
+ * them; a channel plugin holds the per-peer session and whatever seats the host
+ * published, and every seat it does NOT hold answers honestly instead of
+ * pretending a switch landed:
  *  - **权限档** → `AgentSession.setApprovalMode()`
  *  - **审批** → 不自动拒绝：把请求发到 QQ、等对端回 `/approve` / `/deny`，走
  *    `pendingApprovals()` / `resolveApproval()`。超时**必定拒绝**（fail-closed）。
- *  - **换模型** → `Kernel.models.select()`（它内部就是 `ChatProvider.setModel()` +
- *    `announceModel()`，与设置页同一个门）
- *  - **工作区** → `Kernel.setWorkspace()`（校验与拒绝都归内核，这里只把结果翻成人话）
- *  - **会话** → `Kernel.newAgentSession()`，由调用方 `activateSession` 并换掉绑定
+ *  - **换模型** → 模型座位（有才有，没有就说没有）
+ *  - **工作区** → 工作区座位（同上；校验与拒绝归内核）
+ *  - **会话** → 注入的 `newSession()`，由调用方换掉自己那份对端表
  *
  * 全部依赖注入，所以每一条都能对着假实现直接驱动，不需要网络也不需要真内核。
  */
@@ -17,20 +19,26 @@ import type { AgentSession, ApprovalMode, AskResult } from '@nova-agent/core';
 import type { RemoteCommand, RemotePerm } from './remote-parse.js';
 
 /**
- * The kernel capabilities remote control needs — exactly the ones in the module
- * header and nothing else.
+ * The kernel capabilities remote control needs — exactly the seats named in the
+ * module header and nothing else.
  *
- * Narrow on purpose: a missing capability should be a type error here, not a
- * silent refusal at runtime. `models` keeps the SAME optionality as the kernel's
- * own seat (`Kernel.models`): it is absent when the assembly had no
- * `modelCatalog` or the provider cannot retarget, and a remote `/model` must then
- * say so rather than pretend the switch landed.
+ * `models` and `setWorkspace` are OPTIONAL because a plugin is handed
+ * capabilities, not the kernel: no capability moves the workspace today, so a
+ * peer's `/ws` must say so rather than claim a move that never happened. Absent
+ * is a fact to report, not a silent no-op — the same discipline `/model` already
+ * followed for a process with no model seat.
  */
 export interface RemoteKernelPort {
-  /** Validates and refuses inside the kernel; the rejection propagates. */
-  setWorkspace(dir: string): Promise<unknown>;
+  /** Move the workspace, when this process has a seat for it. Absent = it does not. */
+  setWorkspace?(dir: string): Promise<unknown>;
   rootDir(): string;
-  /** The model seat, when this kernel has one (see `Kernel.models`). */
+  /**
+   * The model id in force — a READ, separate from the switching seat below.
+   * A process can know which model it is sending without being able to change
+   * it, and `/status` must be able to say so.
+   */
+  model?(): string | undefined;
+  /** The model switching seat (list + select), when this process has one. */
   models?: {
     current(): string;
     list(): Promise<readonly { models: readonly { id: string }[] }[]>;
@@ -63,18 +71,33 @@ const PERM_LABEL: Readonly<Record<RemotePerm, string>> = {
   full: '全放行',
 };
 
-/** `/help` 的清单：词汇表本身就是说明书。 */
-export const REMOTE_HELP = [
-  '可用遥控指令：',
-  '/status — 看当前工作区 / 模型 / 权限 / 待审批',
-  '/perm read-only|auto-edit|full — 切换权限档',
-  '/model — 列出可选模型；/model <id> — 切换',
-  '/ws — 看当前工作区；/ws <目录> — 切换',
-  '/new — 为这个对话开一个新会话',
-  '/approve — 允许待审批的命令；/deny — 拒绝',
-  '/help — 这份清单',
-  '（不认得的 / 开头行、以及所有其它文本，都原样作为提示词发给 agent。）',
-].join('\n');
+/**
+ * `/help`: the vocabulary IS the manual.
+ *
+ * Built from the seats this process actually has, because a help line for a
+ * command that can only answer "this process has no seat for that" teaches the
+ * peer a command that will not work. The commands that always work (permission
+ * tier, approvals, a new session) are always listed.
+ * @param kernel - the seats in force.
+ * @returns the help text.
+ */
+export function remoteHelp(kernel: RemoteKernelPort): string {
+  const lines = [
+    '可用遥控指令：',
+    '/status — 看当前工作区 / 模型 / 权限 / 待审批',
+    '/perm read-only|auto-edit|full — 切换权限档',
+  ];
+  if (kernel.models !== undefined) lines.push('/model — 列出可选模型；/model <id> — 切换');
+  lines.push('/ws — 看当前工作区');
+  if (kernel.setWorkspace !== undefined) lines.push('/ws <目录> — 切换工作区');
+  lines.push(
+    '/new — 为这个对话开一个新会话',
+    '/approve — 允许待审批的命令；/deny — 拒绝',
+    '/help — 这份清单',
+    '（不认得的 / 开头行、以及所有其它文本，都原样作为提示词发给 agent。）',
+  );
+  return lines.join('\n');
+}
 
 /**
  * Wait for a remote approval answer.
@@ -132,7 +155,7 @@ function statusText(ctx: RemoteContext): string {
   const mode = ctx.session.approvalMode();
   const label = mode === undefined ? '未知' : (PERM_LABEL[mode] ?? mode);
   const pending = ctx.session.pendingApprovals().length;
-  const model = ctx.kernel.models?.current() ?? '未知（本进程没有模型座位）';
+  const model = ctx.kernel.models?.current() ?? ctx.kernel.model?.() ?? '未知（本进程没有模型读数）';
   return [
     `工作区：${ctx.kernel.rootDir()}`,
     `模型：${model}`,
@@ -153,7 +176,7 @@ function statusText(ctx: RemoteContext): string {
 export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContext): Promise<RemoteOutcome> {
   switch (command.kind) {
     case 'help':
-      return { reply: REMOTE_HELP };
+      return { reply: remoteHelp(ctx.kernel) };
     case 'status':
       return { reply: statusText(ctx) };
     case 'perm': {
@@ -180,8 +203,13 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
       return { reply: `可选模型：\n${ids.map((id) => `- ${id}`).join('\n')}\n用 /model <id> 切换。` };
     }
     case 'workspace': {
+      const seat = ctx.kernel.setWorkspace;
+      // No seat: the honest answer. Saying "已切换" here would be the exact
+      // failure this command family exists to avoid — a reply that reads as
+      // done while the kernel never moved.
+      if (seat === undefined) return { reply: '这个进程没有工作区座位，换工作区请在界面里操作。' };
       try {
-        await ctx.kernel.setWorkspace(command.dir ?? '');
+        await seat(command.dir ?? '');
       } catch (err) {
         // The kernel owns validation (missing / not a directory / inside
         // `~/.nova`); this only phrases its refusal for a chat window.
