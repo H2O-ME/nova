@@ -20,12 +20,62 @@
  * The terminal block is driven through the real handler with a SCRIPTED pty —
  * the pty session's own rules are `term-session.test.ts`, and the real PTY's
  * end-to-end behaviour is the live smoke run's subject.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE GIT FIXTURES ARE ASYNC, SHARED, AND BUDGETED — measured, not guessed.
+ *
+ * Every git case below shells out to a real `git`. On this development box
+ * (i5-10210U, 4 physical cores / 8 logical, 1.6GHz) one spawn measured IDLE:
+ *
+ *     git --version 291-353ms   git init 456ms    git config 269ms
+ *     git add 322ms             git commit 703ms  git status 425ms
+ *
+ * and measured like this WHILE THE LANE WAS RUNNING (vitest's default seven
+ * file workers on those four physical cores):
+ *
+ *     git --version 1757-2165ms   git init 3179-5353ms
+ *     git config 863-2443ms       git commit 2838-4380ms
+ *
+ * — a seven-to-tenfold multiplier, because every spawn is a whole new process
+ * image competing for the same cores. `bootRepo()` was five spawns, so a case
+ * could not have finished inside vitest's default 5000ms budget even if the
+ * code under test were instantaneous. The failures were exactly that:
+ * `Test timed out in 5000ms` on cases that rotate (whichever spawn lost the
+ * race), each followed by `EBUSY ... rmdir` on its temp directory — Windows
+ * saying a handle from the last spawn had not been released yet.
+ *
+ * Three consequences, all of them about the FIXTURE rather than the subject:
+ *
+ *  1. The spawns are ASYNC (`execFile` + `promisify`). `execFileSync` blocks
+ *     the worker's event loop, so the worker could not honour its own timers
+ *     while git ran and a merely-slow case read as a hang.
+ *  2. The repository is built ONCE (`beforeAll`) instead of per case. The git
+ *     cases here mutate it only by staging files they own, so one repository
+ *     serves all five and the lane pays five spawns instead of twenty-five —
+ *     which matters to the OTHER files in the lane too, because a process
+ *     storm is machine-wide, not file-local.
+ *  3. The cases that use it carry an explicit budget (`GIT_TEST_TIMEOUT_MS`).
+ *     This is the same reason `core/src/git.ts` gives `git` itself
+ *     `GIT_TIMEOUT_MS = 15s`: the wall clock here belongs to the environment
+ *     (process creation on a loaded four-core box), not to the code under
+ *     test, whose own job is two or three subprocess calls plus arithmetic.
+ *     The budget still catches a HANG — 60s is ~12x the idle cost of the
+ *     heaviest case and ~4x its cost under the contention measured above — and
+ *     it cannot hide a slow SUBJECT, because the subject's subprocess budget
+ *     is still enforced by `GIT_TIMEOUT_MS` in `core/src/git.ts`. No assertion
+ *     changed.
+ *
+ * The cleanup retries for the same reason: `EBUSY` on `rmdir` is a Windows
+ * property (a handle is released asynchronously), and runs before this fix
+ * left their `nova-rightbar-frames-*` directories — reparse points included —
+ * behind.
  */
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { promisify } from 'node:util';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { handleEntryFrame, type EntryFrameHost } from '../src/entry-frames.js';
 import { GitStatusCache, handleGitFrame, type GitFrameHost } from '../src/git-frames.js';
 import { handleJobFrame } from '../src/job-frames.js';
@@ -34,12 +84,64 @@ import { TermRegistry, type PtyHandle, type PtySpawner } from '../src/term-sessi
 import type { ClientFrame, ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 
+const runGit = promisify(execFile);
+
+/** Wall clock one FIXTURE git invocation may take (see the header). */
+const GIT_FIXTURE_TIMEOUT_MS = 30_000;
+/** Budget for the cases whose own body uses git (see the header). */
+const GIT_TEST_TIMEOUT_MS = 60_000;
+
+/** One temp workspace per case. Deliberately NOT a repository: see `repoRoot`. */
 let root: string;
 beforeEach(async () => {
   root = await mkdtemp(path.join(tmpdir(), 'nova-rightbar-frames-'));
 });
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
+  // `maxRetries` is Node's own Windows remedy for a handle that has not been
+  // released yet; a bare `rm` is what produced the `EBUSY rmdir` failures.
+  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+});
+
+/**
+ * The one repository the git cases below share.
+ *
+ * Built once for the file (five spawns) rather than once per case (twenty-five)
+ * — the header has the measurements that make that difference the point. The
+ * cases only ever ADD to it (`src/c.ts`, `blob.bin`, all untracked or staged
+ * files of their own), never commit and never reset, so no case can observe
+ * another's change as a difference in what it asserts (`repo: true`, "this
+ * path is untracked", "a fresh read is a new object with the same paths").
+ *
+ * `repoReady` false means git is absent or refused to build the repository —
+ * the same condition the old `gitAvailable()` probe reported, and the git cases
+ * below return early on it exactly as they did before.
+ */
+let repoRoot = '';
+let repoReady = false;
+
+beforeAll(async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'nova-rightbar-frames-repo-'));
+  try {
+    await runGit('git', ['init', '-q', '-b', 'main'], { cwd: dir, timeout: GIT_FIXTURE_TIMEOUT_MS });
+    await runGit('git', ['config', 'user.email', 't@t'], { cwd: dir, timeout: GIT_FIXTURE_TIMEOUT_MS });
+    await runGit('git', ['config', 'user.name', 't'], { cwd: dir, timeout: GIT_FIXTURE_TIMEOUT_MS });
+    await mkdir(path.join(dir, 'src'), { recursive: true });
+    await writeFile(path.join(dir, 'src', 'a.ts'), 'export const a = 1;\n', 'utf8');
+    await writeFile(path.join(dir, 'src', 'b.ts'), 'export const b = 2;\n', 'utf8');
+    await runGit('git', ['add', 'src/a.ts'], { cwd: dir, timeout: GIT_FIXTURE_TIMEOUT_MS });
+    await runGit('git', ['commit', '-q', '-m', 'init'], { cwd: dir, timeout: GIT_FIXTURE_TIMEOUT_MS });
+    repoRoot = dir;
+    repoReady = true;
+  } catch {
+    // git is not available in every sandbox (or refused): leave nothing behind
+    // and let the git cases return early.
+    await rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}, GIT_FIXTURE_TIMEOUT_MS * 2);
+
+afterAll(async () => {
+  if (repoRoot === '') return;
+  await rm(repoRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 class FakeConn implements WsConnection {
@@ -55,44 +157,18 @@ class FakeConn implements WsConnection {
 }
 
 const entryHost = (): EntryFrameHost => ({ rootDir: root });
-/** One cache per call, so a test's reads cannot be served by another's. */
-const gitHost = (cache = new GitStatusCache()): GitFrameHost => ({ rootDir: root, cache });
+/**
+ * One cache per call, so a test's reads cannot be served by another's.
+ * @param dir - the workspace git runs in; defaults to the shared repository
+ *   (the `repo: false` case passes the plain temp workspace instead).
+ */
+const gitHost = (dir: string = repoRoot, cache = new GitStatusCache()): GitFrameHost => ({ rootDir: dir, cache });
 
 /** Frame a wire-string into a typed ClientFrame (the route the controller takes). */
 function frame(json: string): ClientFrame {
   const parsed = JSON.parse(json) as ClientFrame;
   return parsed;
 }
-
-/** Build a git repo in `root` with one staged + one untracked file. */
-async function bootRepo(): Promise<void> {
-  // git may not be available in every sandbox; tests below skip when it is not.
-  try {
-    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: root });
-    execFileSync('git', ['config', 'user.email', 't@t'], { cwd: root });
-    execFileSync('git', ['config', 'user.name', 't'], { cwd: root });
-  } catch {
-    return;
-  }
-  await mkdir(path.join(root, 'src'), { recursive: true });
-  await writeFile(path.join(root, 'src', 'a.ts'), 'export const a = 1;\n', 'utf8');
-  await writeFile(path.join(root, 'src', 'b.ts'), 'export const b = 2;\n', 'utf8');
-  try {
-    execFileSync('git', ['add', 'src/a.ts'], { cwd: root });
-    execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: root });
-  } catch {
-    // ignore — the repo-state assertions below just see whatever git produced.
-  }
-}
-
-const gitAvailable = (): boolean => {
-  try {
-    execFileSync('git', ['--version'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 describe('handleEntryFrame', () => {
   it('reads a workspace file into an `entry` answer', async () => {
@@ -121,16 +197,15 @@ describe('handleGitFrame', () => {
   it('answers `git_status` with `repo: false` outside a git workspace', async () => {
     const conn = new FakeConn();
     // root is a plain temp dir — no .git
-    await handleGitFrame(conn, frame(JSON.stringify({ type: 'git_status' })), gitHost());
+    await handleGitFrame(conn, frame(JSON.stringify({ type: 'git_status' })), gitHost(root));
     const status = conn.last('git_status');
     expect(status).toBeDefined();
     if ('repo' in status!) expect(status!.repo).toBe(false);
   });
 
   it('answers stage with a refreshed `git_status` (answer is state, not ok)', async () => {
-    if (!gitAvailable()) return; // skip when git is absent (sandboxed CI)
-    await bootRepo();
-    await writeFile(path.join(root, 'src', 'c.ts'), 'export const c = 3;\n', 'utf8');
+    if (!repoReady) return; // skip when git is absent (sandboxed CI)
+    await writeFile(path.join(repoRoot, 'src', 'c.ts'), 'export const c = 3;\n', 'utf8');
     const conn = new FakeConn();
     await handleGitFrame(
       conn,
@@ -140,11 +215,11 @@ describe('handleGitFrame', () => {
     const status = conn.last('git_status');
     expect(status).toBeDefined();
     if ('repo' in status!) expect(status!.repo).toBe(true);
-  });
+  }, GIT_TEST_TIMEOUT_MS);
 
   it('answers an untracked file with its own content as an all-added diff', async () => {
-    if (!gitAvailable()) return;
-    await bootRepo(); // src/b.ts is written but never added — untracked
+    if (!repoReady) return;
+    // src/b.ts is committed-to-nothing: written, never added — untracked.
     const conn = new FakeConn();
     await handleGitFrame(conn, frame(JSON.stringify({ type: 'git_diff', path: 'src/b.ts', staged: false })), gitHost());
     const diff = conn.last('git_diff');
@@ -156,12 +231,11 @@ describe('handleGitFrame', () => {
     expect(diff!.text).toContain('@@ -0,0 +1,1 @@');
     expect(diff!.text).toContain('+export const b = 2;');
     expect(diff!.truncated).toBe(false);
-  });
+  }, GIT_TEST_TIMEOUT_MS);
 
   it('keeps the empty text for a binary untracked file (no invented content)', async () => {
-    if (!gitAvailable()) return;
-    await bootRepo();
-    await writeFile(path.join(root, 'blob.bin'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
+    if (!repoReady) return;
+    await writeFile(path.join(repoRoot, 'blob.bin'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
     const conn = new FakeConn();
     await handleGitFrame(conn, frame(JSON.stringify({ type: 'git_diff', path: 'blob.bin', staged: false })), gitHost());
     const diff = conn.last('git_diff');
@@ -169,7 +243,7 @@ describe('handleGitFrame', () => {
     if (!('text' in diff!)) return;
     expect(diff!.untracked).toBe(true);
     expect(diff!.text).toBe('');
-  });
+  }, GIT_TEST_TIMEOUT_MS);
 });
 
 describe('handleTermFrame', () => {
@@ -301,27 +375,25 @@ describe('handleJobFrame', () => {
 
 describe('GitStatusCache', () => {
   it('serves a fresh reading from the cache, and a mutation’s own read is new', async () => {
-    if (!gitAvailable()) return; // skip when git is absent (sandboxed CI)
-    await bootRepo();
+    if (!repoReady) return; // skip when git is absent (sandboxed CI)
     const cache = new GitStatusCache();
-    const first = await cache.read(root);
+    const first = await cache.read(repoRoot);
     // Same object within the TTL: the panel's three asks in a second are one scan.
-    expect(await cache.read(root)).toBe(first);
+    expect(await cache.read(repoRoot)).toBe(first);
     // A mutation invalidates; the fresh read is a new object with the same shape.
-    cache.invalidate(root);
-    const next = await cache.read(root);
+    cache.invalidate(repoRoot);
+    const next = await cache.read(repoRoot);
     expect(next).not.toBe(first);
     expect(next.entries.map((entry) => entry.path)).toEqual(first.entries.map((entry) => entry.path));
-  });
+  }, GIT_TEST_TIMEOUT_MS);
 
   it('dedupes concurrent readers onto one scan', async () => {
-    if (!gitAvailable()) return;
-    await bootRepo();
+    if (!repoReady) return;
     const cache = new GitStatusCache();
-    const [a, b, c] = await Promise.all([cache.read(root), cache.read(root), cache.read(root)]);
+    const [a, b, c] = await Promise.all([cache.read(repoRoot), cache.read(repoRoot), cache.read(repoRoot)]);
     expect(a).toBe(b);
     expect(b).toBe(c);
-  });
+  }, GIT_TEST_TIMEOUT_MS);
 });
 
 describe('matchShell', () => {

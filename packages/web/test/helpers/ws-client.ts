@@ -91,13 +91,37 @@ export function wsHandshake(
   });
 }
 
-/** Collect frames for `ms`, then close. Convenience for "send and observe". */
+/** What a caller is waiting for on the wire (see {@link exchange}). */
+export interface ExchangeOptions {
+  /** How long to collect when no `until` predicate is given. */
+  collectMs?: number;
+  /**
+   * Stop as soon as the frames collected so far satisfy this.
+   *
+   * A case that ASSERTS on a reply must use this. `collectMs` is a wall-clock
+   * guess about how fast the server can answer, and under a loaded lane the
+   * guess is wrong in the direction that reads as a product failure: the
+   * `sessions` case below needed >250ms for one `list_sessions` round trip and
+   * reported `expected false to be true` on an assertion instead.
+   */
+  until?: (frames: ServerFrame[]) => boolean;
+  /** Ceiling for an `until` wait: a wrong guess must fail an assertion, not the clock. */
+  deadlineMs?: number;
+}
+
+/**
+ * Send `frames` and collect replies until `until` holds (or `deadlineMs` runs
+ * out), then close. Without `until` it keeps the old fixed `collectMs` window —
+ * use that only for "send and observe whatever arrives".
+ */
 export async function exchange(
   port: number,
   cookie: string,
   frames: unknown[],
-  ms = 250,
+  options: ExchangeOptions = {},
 ): Promise<ServerFrame[]> {
+  const collectMs = options.collectMs ?? 250;
+  const deadlineMs = options.deadlineMs ?? 10_000;
   const client = await wsHandshake(port, '/ws', cookie);
   const received: ServerFrame[] = [];
   // Drain into `received` as frames arrive; `nextFrame()` resolves `undefined`
@@ -110,7 +134,20 @@ export async function exchange(
     }
   })();
   for (const frame of frames) client.send(JSON.stringify(frame));
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await new Promise<void>((resolve) => {
+    const started = Date.now();
+    const tick = (): void => {
+      const elapsed = Date.now() - started;
+      // Polled rather than raced against an event: the drain loop owns the
+      // socket, and a promise race would leave frames decoded-but-unread.
+      const done = options.until !== undefined
+        ? options.until(received) || elapsed >= deadlineMs
+        : elapsed >= collectMs;
+      if (done) resolve();
+      else setTimeout(tick, 10);
+    };
+    tick();
+  });
   client.destroy();
   await drained;
   return received;

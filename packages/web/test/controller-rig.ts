@@ -1,36 +1,41 @@
 /**
- * 测试侧的装配器：按「壳」的形状先装内核，再交给 controller。
+ * Test-side assembly: build a kernel the way the shell does, then hand it to the
+ * controller.
  *
- * 生产里的装配只有一处（`cli/kernel-boot.ts` 的 `bootKernel`，P4 起 web 也走它）；
- * web 测试不依赖 cli，所以这里做同一件事的最小版——两步（内核 → controller），
- * 壳侧选项（rootDir / provider / config / modelCatalog / persistConfig / …）与
- * controller 选项（persistModel / qqbot 缝 / …）在这一处分流。后续接口变化只改
- * 这一处，测试文件不必各自抄装配。
+ * Production has exactly ONE assembly (`cli/kernel-boot.ts`'s `bootKernel`, which
+ * web also goes through), and the web tests do not depend on `cli` — so this is
+ * the minimal version of the same two steps (kernel → controller). The shell-side
+ * options (rootDir / provider / config / modelCatalog / persist / …) and the
+ * controller options split here, so a future interface change is fixed in ONE
+ * place instead of being hand-copied by every test file.
+ *
+ * The option names must match `CreateKernelOptions` exactly: a rig field the
+ * kernel does not know is silently dropped (tests are not typechecked), which is
+ * how three of these files kept driving options that had been deleted.
  */
 import {
   unconfiguredProvider,
   type ChatProvider,
   type ModelCatalogPort,
-  type Plugin,
+  type PluginEntryOptions,
   type SurfaceRows,
 } from '@nova-agent/core';
 import { createAgentKernel, type CreateKernelOptions } from '@nova-agent/plugins';
 import { WebController } from '../src/controller.js';
 import type { ControllerOptions } from '../src/options.js';
 
-/** 壳侧装配选项（测试用到的子集）。 */
+/** The shell-side assembly options (the subset these tests use). */
 export interface KernelRigOptions {
   rootDir: string;
   provider?: ChatProvider;
   config?: CreateKernelOptions['config'];
   resumeFile?: string;
   sessionDir?: string;
-  extraPlugins?: readonly Plugin[];
+  extraPlugins?: readonly PluginEntryOptions[];
   surfaces?: SurfaceRows;
   modelCatalog?: ModelCatalogPort;
-  persistConfig?: CreateKernelOptions['persistConfig'];
-  /** 扩展包的 spec 覆写（测试注入缺失模块，见 `extensions.ts`）。 */
-  extensionSpecs?: CreateKernelOptions['extensionSpecs'];
+  /** The config file, as this kernel may touch it (`plugins.entries` writes). */
+  persist?: CreateKernelOptions['persist'];
 }
 
 export type ControllerRigOptions = Omit<ControllerOptions, 'kernel'> & KernelRigOptions;
@@ -46,24 +51,23 @@ export async function bootController(opts: ControllerRigOptions): Promise<WebCon
     extraPlugins,
     surfaces,
     modelCatalog,
-    persistConfig,
-    extensionSpecs,
+    persist,
     ...controllerOpts
   } = opts;
   const kernel = await createAgentKernel({
     rootDir,
     provider: provider ?? unconfiguredProvider(),
     config,
-    // 浏览器是有人的界面（与壳的 web-mode 同一条声明）：ask_user_question
-    // 在这里必须可答，否则提问轮会停在无人应答的等待里。
+    // The browser is a surface WITH a person (the same declaration the shell's
+    // web-mode makes): `ask_user_question` must be answerable here, or a run
+    // parks in a wait no card can release.
     userQuestions: true,
     ...(resumeFile !== undefined ? { resumeFile } : {}),
     ...(sessionDir !== undefined ? { sessionDir } : {}),
     ...(extraPlugins !== undefined ? { extraPlugins: [...extraPlugins] } : {}),
     ...(surfaces !== undefined ? { surfaces } : {}),
     ...(modelCatalog !== undefined ? { modelCatalog } : {}),
-    ...(persistConfig !== undefined ? { persistConfig } : {}),
-    ...(extensionSpecs !== undefined ? { extensionSpecs } : {}),
+    ...(persist !== undefined ? { persist } : {}),
   });
   return WebController.create({ kernel, ...controllerOpts });
 }

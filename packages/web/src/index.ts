@@ -14,7 +14,7 @@ export { startWebServer, type WebServerHandle, type StartWebServerOptions } from
 export { createLaunchAuth, cookieHeader, cookieValue, verifyCookie, AUTH_COOKIE, type LaunchAuth } from './auth.js';
 export { loadLaunchAuth } from './auth-store.js';
 export { readPreferredPort, writePreferredPort } from './port.js';
-export { serializeServerFrame, MAX_CLIENT_FRAME_BYTES, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_TERM_INPUT_CHARS, MAX_TEXT_FIELD_CHARS, type ApprovalMode, type ClientFrame, type PtcMode, type ServerFrame, type ReadyInfo, type SessionListItem, type WireBlock, type WireTraceRow, type WireSkillEntry } from './protocol.js';
+export { serializeServerFrame, MAX_CLIENT_FRAME_BYTES, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_TERM_INPUT_CHARS, MAX_TEXT_FIELD_CHARS, type ApprovalMode, type ClientFrame, type ServerFrame, type ReadyInfo, type SessionListItem, type WireBlock, type WireTraceRow, type WireSkillEntry } from './protocol.js';
 export { parseClientFrame } from './client-frame.js';
 export { reject, type FrameRejection } from './reject.js';
 export { projectTranscript } from './transcript.js';

@@ -50,7 +50,6 @@ export function assembleReady(opts: {
     model: seat.model,
     ...(named ? { modelName: seat.name } : {}),
     approvalMode: agent.approvalMode ?? 'read-only',
-    codeMode: kernel.codeMode(),
     history: cuts.history,
     historyTotal: cuts.historyTotal,
     // The whole log's runs, not just this page's: a resumed session's stats bar

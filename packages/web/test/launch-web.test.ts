@@ -89,7 +89,13 @@ describe('launchWeb option forwarding', () => {
     const cookie = await launchCookie(handle.url);
     // A model switch is the only observable proving the hook arrived: the
     // controller would have nowhere to send it if the option had been dropped.
-    const frames = await exchange(handle.port, cookie, [{ type: 'set_model', model: 'm2' }]);
+    // The wait is conditioned on the hook itself: the frame router awaits
+    // `select` (which announces a `model` frame) and only THEN awaits
+    // `persistModel`, so no single frame proves the hook ran. `saved` is the
+    // hook, and an error frame is the fail-fast signal — neither is a timer.
+    const frames = await exchange(handle.port, cookie, [{ type: 'set_model', model: 'm2' }], {
+      until: (received) => saved.length > 0 || received.some((f) => f.type === 'error'),
+    });
     expect(saved).toEqual(['m2']);
     expect(frames.some((f) => f.type === 'error')).toBe(false);
   });
@@ -110,7 +116,12 @@ describe('launchWeb option forwarding', () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('Nova');
     // And the controller got a usable baseline over the socket it opened.
-    const frames = await exchange(handle.port, cookie, [{ type: 'list_sessions' }]);
+    // Conditioned on the answer, not on a fixed window: `list_sessions` is a
+    // real disk round trip, and a 250ms window turned a slow lane into
+    // `expected false to be true` on the assertion below.
+    const frames = await exchange(handle.port, cookie, [{ type: 'list_sessions' }], {
+      until: (received) => received.some((f) => f.type === 'sessions' || f.type === 'error'),
+    });
     expect(frames.some((f) => f.type === 'sessions')).toBe(true);
   });
 });

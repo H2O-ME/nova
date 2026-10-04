@@ -11,6 +11,7 @@
  * free to outlive a rename on the assembly side, and a host that predates a field
  * simply omits it (the optionals on the row say so).
  */
+import type { PluginClientBundle } from '@nova-agent/core';
 import type { WireRosterEntry } from './roster-entry.js';
 
 /** What the builder reads from one `Kernel.roster()` entry. */
@@ -25,8 +26,17 @@ export interface RosterSourceEntry {
   title?: string;
   /** Why an enabled-but-unloadable extension has no fiber (see the row's field). */
   error?: string;
-  /** The plugin's client bundle (boot-graph entry); absent when server-only. */
-  clientBundle?: { path?: string; rev?: string };
+  /** Whether the plugin answers a settings `page` operation (see the row's field). */
+  page?: boolean;
+  /**
+   * The plugin's client bundle (boot-graph entry); absent when server-only.
+   *
+   * The leaf shape is core's DECLARED `PluginClientBundle`, not a second inline
+   * one: with a mirror, renaming `rev` would still compile on every side while
+   * the browser's only reader (`buildBundleUrl`) read `undefined` — cache
+   * busting would silently stop working with no type error anywhere.
+   */
+  clientBundle?: PluginClientBundle;
 }
 
 /**
@@ -45,6 +55,7 @@ export function toWireRosterEntry(entry: RosterSourceEntry): WireRosterEntry {
     ...(entry.tier !== undefined ? { tier: entry.tier } : {}),
     ...(entry.title !== undefined ? { title: entry.title } : {}),
     ...(entry.error !== undefined ? { error: entry.error } : {}),
+    ...(entry.page !== undefined ? { page: entry.page } : {}),
     ...(entry.clientBundle !== undefined ? { clientBundle: entry.clientBundle } : {}),
   };
 }

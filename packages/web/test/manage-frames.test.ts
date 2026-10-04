@@ -1,28 +1,37 @@
 /**
  * The settings panel's management frames (`manage-frames.ts`): the plugin
- * manager's switch, the Skill 中心's rows and switch, the qqbot page.
+ * manager's switch, the Skill 中心's rows and switch.
  *
  * Driven through a REAL `WebController`, so these cover the whole path a click
- * takes — validated frame → router → kernel → persisted list → answer frame.
- * The claims worth pinning:
+ * takes — validated frame → router → kernel → persisted row → answer frame. The
+ * claims worth pinning:
  *
- *  - the answer is STATE (a fresh roster / row list), never an optimistic echo;
+ *  - the answer is STATE (a fresh roster / row list), never an optimistic echo,
+ *    and the row it reports is the row the live container really has;
+ *  - ONE field per row is written: a flip goes through the row's own `enabled`,
+ *    the same field the boot path reads — there is no second list and no
+ *    tier-routed writer left to disagree with it;
+ *  - `ready` carries the live roster (the settings nav derives its pages from
+ *    it), so a cold start does not need a second ask;
+ *  - a refusal is an `error` frame and NOTHING is written — neither for a
+ *    load-bearing (`core`) row nor for a name that is in no row;
+ *  - an extension row whose module cannot load reads `state: 'failed'` WITH its
+ *    reason, because every failed treatment in the panel keys off that state;
+ *  - a persister failure is an `error` frame, not a crash, and the host keeps
+ *    serving;
  *  - a DISABLED skill is still in the answer, marked off — the regression that
  *    made the Skill 中心's switch one-way, since a row read from the filtered
- *    list vanishes on the very flip that disables it;
- *  - `list_skills` reports the real disable list rather than an empty one;
- *  - the qqbot snapshot never carries the secret;
- *  - a refusal is an `error` frame, and nothing is written.
+ *    list vanishes on the very flip that disables it.
  */
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { ChatProvider, ChatRequest, KernelEvent, StreamEvent } from '@nova-agent/core';
+import type { ChatProvider, ChatRequest, PluginEntryOptions, StreamEvent } from '@nova-agent/core';
 import { createAgentKernel } from '@nova-agent/plugins';
+import type { PluginEntryConfig } from '@nova-agent/plugins';
 import { parseClientFrame } from '../src/client-frame.js';
 import { WebController } from '../src/controller.js';
-import { bootController } from './controller-rig.js';
 import type { ClientFrame, ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 
@@ -47,25 +56,6 @@ class FakeConn implements WsConnection {
     }
     return undefined;
   }
-  events(): KernelEvent[] {
-    return this.frames.filter((f) => f.type === 'event').map((f) => (f as { event: KernelEvent }).event);
-  }
-}
-
-async function withFakeHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
-  const home = await mkdtemp(path.join(tmpdir(), 'nova-manage-home-'));
-  const prevProfile = process.env['USERPROFILE'];
-  const prevHome = process.env['HOME'];
-  process.env['USERPROFILE'] = home;
-  process.env['HOME'] = home;
-  try {
-    return await fn(home);
-  } finally {
-    if (prevProfile === undefined) delete process.env['USERPROFILE'];
-    else process.env['USERPROFILE'] = prevProfile;
-    if (prevHome === undefined) delete process.env['HOME'];
-    else process.env['HOME'] = prevHome;
-  }
 }
 
 /** Write one skill under `<root>/.nova/skills/name/SKILL.md`. */
@@ -75,120 +65,85 @@ async function writeSkill(root: string, name: string, description: string): Prom
   await writeFile(path.join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${description}\n---\nBODY`, 'utf8');
 }
 
+/** One write the "config file" received: the row id and the fields patched. */
+interface EntryWrite {
+  id: string;
+  patch: { enabled?: boolean; config?: unknown };
+}
+
 interface Rig {
+  kernel: Awaited<ReturnType<typeof createAgentKernel>>;
   controller: WebController;
   conn: FakeConn;
-  /** The lists the injected persister holds (the "config file"). */
-  pluginsOff: string[];
-  pluginsOn: string[];
-  skillsOff: string[];
-  sent: unknown[];
+  /** The frames the attach itself produced (the `ready` baseline). */
+  attachFrames: readonly ServerFrame[];
+  /** Every row write, in order — the ONE field a switch is allowed to touch. */
+  writes: EntryWrite[];
+  /** The config file as the persister left it (the rows the roster reads). */
+  rows: (PluginEntryConfig & { config?: Record<string, unknown> })[];
 }
 
 async function makeRig(opts: {
+  /** The operator's `plugins.entries`, as the file would hold them at boot. */
+  entries?: PluginEntryConfig[];
   skills?: boolean;
-  qqBot?: boolean;
+  /** Make the config file unwritable, i.e. a save that fails. */
   persistThrows?: boolean;
-  /** Boot the kernel with PTC on, i.e. an advanced row already opted in. */
-  codeMode?: 'ptc';
-  /** Provide a live-channel runtime whose `stop` lands in `sent` (see the qqbot-off test). */
-  liveQqBot?: boolean;
-  /** Keep the attach frames (the rig clears them so flip tests read only flip answers). */
-  keepFrames?: boolean;
-  /** Boot with these plugins switched off in the config, as a restart would. */
-  bootDisable?: string[];
-  /** Boot with one enabled extension whose module is missing (see `extensions.ts`). */
-  failedExtension?: boolean;
+  /** Boot with NO config port at all (a headless assembly with no file). */
+  noPersist?: boolean;
+  /** Rows the shell contributes at assembly (a plugin the operator did not name). */
+  extraPlugins?: readonly PluginEntryOptions[];
 } = {}): Promise<Rig> {
   const root = await mkdtemp(path.join(tmpdir(), 'nova-manage-root-'));
   if (opts.skills === true) {
     await writeSkill(root, 'alpha', 'first skill');
     await writeSkill(root, 'beta', 'second skill');
   }
-  const pluginsConfig = {
-    ...(opts.bootDisable !== undefined ? { disable: [...opts.bootDisable] } : {}),
-    ...(opts.failedExtension === true ? { enable: ['context'] } : {}),
-  };
-  const pluginsOff: string[] = [];
-  const pluginsOn: string[] = [];
+  const rows: Rig['rows'] = (opts.entries ?? []).map((entry) => ({ ...entry }));
+  const writes: EntryWrite[] = [];
   const skillsOff: string[] = [];
-  const sent: unknown[] = [];
   const kernel = await createAgentKernel({
     rootDir: root,
     provider: provider(),
-    config: {
-      approval: 'read-only',
-      ...(opts.codeMode !== undefined ? { code: { mode: opts.codeMode } } : {}),
-      ...(Object.keys(pluginsConfig).length > 0 ? { plugins: pluginsConfig } : {}),
-    },
-    ...(opts.failedExtension === true
-      ? { extensionSpecs: { context: path.join(root, 'missing-ext.mjs') } }
-      : {}),
-    persistConfig: {
-      setPluginEnabled: (name, enabled) => {
-        if (opts.persistThrows === true) throw new Error('disk is on fire');
-        if (enabled) {
-          const at = pluginsOff.indexOf(name);
-          if (at >= 0) pluginsOff.splice(at, 1);
-        } else if (!pluginsOff.includes(name)) pluginsOff.push(name);
-        return Promise.resolve([...pluginsOff]);
-      },
-      // The OPT-IN half: `advanced` rows write this list, never `disable`
-      // (`disable` wins over `enable`, so writing an opt-in there would be a
-      // one-way door).
-      setPluginEnabledList: (names) => {
-        if (opts.persistThrows === true) throw new Error('disk is on fire');
-        pluginsOn.splice(0, pluginsOn.length, ...names);
-        return Promise.resolve([...pluginsOn]);
-      },
-      setSkillEnabled: (name, enabled) => {
-        if (opts.persistThrows === true) throw new Error('disk is on fire');
-        if (enabled) {
-          const at = skillsOff.indexOf(name);
-          if (at >= 0) skillsOff.splice(at, 1);
-        } else if (!skillsOff.includes(name)) skillsOff.push(name);
-        return Promise.resolve([...skillsOff]);
-      },
-    },
-    ...(opts.liveQqBot === true
-      ? {
-          // The real shell injects its qqbot plugin via `extraPlugins` (the
-          // bridge's plugin joins the roster at assembly); without a row named
-          // qqbot the flip is refused as unknown before `stop` could matter.
-          extraPlugins: [{ name: 'qqbot', apply: () => {} }],
-        }
-      : {}),
-  });
-  const controller = await WebController.create({
-    kernel,
-    providerModelLabel: 'test-model',
-    ...(opts.qqBot === true
-      ? {
-          persistQqBot: (saved: { appId?: string; clientSecret?: string }) => { sent.push(saved); },
-          qqBotConfig: { appId: '1024', hasClientSecret: true, clientSecretRef: 'QQ_SECRET' },
-          testQqBot: (probe: { appId: string; clientSecret: string }) => {
-            sent.push(probe);
-            return probe.clientSecret === 'good' ? Promise.resolve('wss://gw') : Promise.reject(new Error('bad token'));
-          },
-        }
-      : {}),
-    ...(opts.liveQqBot === true
-      ? {
-          qqBotRuntime: {
-            running: () => false,
-            // The seam this test pins: turning the row OFF must reach the
-            // gateway hang-up (the recorder makes that observable frame-out).
-            stop: () => {
-              sent.push('qqbot-stopped');
+    // `rows` IS the operator's `plugins.entries`, and every write below lands in
+    // it: the row list the kernel resolves its tree from is the one thing both
+    // the boot path and a save read, so a flip that only recorded a write
+    // somewhere else would be a flip nothing re-rostered on. (That the kernel
+    // currently resolves from the list captured at ASSEMBLY is a live defect with
+    // its own tripwire, `packages/plugins/test/runtime-switch.test.ts`.)
+    config: { approval: 'read-only', plugins: { entries: rows } },
+    ...(opts.extraPlugins !== undefined ? { extraPlugins: [...opts.extraPlugins] } : {}),
+    ...(opts.noPersist === true
+      ? {}
+      : {
+          persist: {
+            // The reference-preserving reader: one row, as the document holds it.
+            readPluginEntry: (id: string) => Promise.resolve(rows.find((row) => row.id === id)),
+            setPluginEntry: (id: string, patch: EntryWrite['patch']) => {
+              if (opts.persistThrows === true) throw new Error('disk is on fire');
+              writes.push({ id, patch });
+              const row = rows.find((candidate) => candidate.id === id);
+              if (row === undefined) rows.push({ id, ...patch });
+              else Object.assign(row, patch);
+              return Promise.resolve();
+            },
+            setSkillEnabled: (name: string, enabled: boolean) => {
+              if (opts.persistThrows === true) throw new Error('disk is on fire');
+              const at = skillsOff.indexOf(name);
+              if (enabled) {
+                if (at >= 0) skillsOff.splice(at, 1);
+              } else if (at < 0) skillsOff.push(name);
+              return Promise.resolve([...skillsOff]);
             },
           },
-        }
-      : {}),
+        }),
   });
+  const controller = await WebController.create({ kernel, providerModelLabel: 'test-model' });
   const conn = new FakeConn();
   controller.attach(conn);
-  if (opts.keepFrames !== true) conn.frames.length = 0;
-  return { controller, conn, pluginsOff, pluginsOn, skillsOff, sent };
+  const attachFrames = [...conn.frames];
+  conn.frames.length = 0;
+  return { kernel, controller, conn, attachFrames, writes, rows };
 }
 
 async function drive(controller: WebController, conn: FakeConn, json: unknown): Promise<void> {
@@ -197,138 +152,142 @@ async function drive(controller: WebController, conn: FakeConn, json: unknown): 
   await controller.handle(conn, frame as ClientFrame);
 }
 
+/** The `ready` baseline of an attach, typed. */
+function readyOf(rig: Rig): Extract<ServerFrame, { type: 'ready' }> {
+  const ready = rig.attachFrames.find((frame) => frame.type === 'ready');
+  if (ready?.type !== 'ready') throw new Error('no ready frame');
+  return ready;
+}
+
 describe('plugin manager frames', () => {
   it('carries the live roster in the ready baseline, without a roster ask', async () => {
     // The cold-start defect: the settings NAV derives which pages exist from the
     // roster, but the `roster` frame is only requested by the plugins panel. A
     // restart followed by opening 设置 therefore drew the page of a plugin the
     // operator had switched off — so the baseline itself has to say so.
-    await withFakeHome(async () => {
-      // `liveQqBot` supplies the shell's qqbot plugin row (the same
-      // `extraPlugins` seam `nova --web` uses); without a row there would be
-      // nothing for the baseline to report.
-      const { conn } = await makeRig({ keepFrames: true, liveQqBot: true, bootDisable: ['qqbot'] });
-      const ready = conn.frames.find((frame) => frame.type === 'ready');
-      expect(ready).toBeDefined();
-      // The row is present and reads OFF: absence would be the wrong answer too
-      // — an unknown row must not hide a page (`?? true` in the nav).
-      const row = ready?.info.roster?.find((entry) => entry.name === 'qqbot');
-      expect(row).toBeDefined();
-      expect(row?.enabled).toBe(false);
-      expect(ready?.info.configPath).toBeTruthy();
-      // And no `roster` frame was ever requested: this is the baseline alone.
-      expect(conn.frames.some((frame) => frame.type === 'roster')).toBe(false);
-    });
+    const rig = await makeRig({ entries: [{ id: 'todo', enabled: false }] });
+    const ready = readyOf(rig);
+    const row = ready.info.roster?.find((entry) => entry.name === 'todo');
+    // The row is present and reads OFF: absence would be the wrong answer too —
+    // an unknown row must not hide a page. A switched-off row is drawn from the
+    // resolved tree, not from the live container it left no fiber in.
+    expect(row).toBeDefined();
+    expect(row?.enabled).toBe(false);
+    expect(ready.info.configPath).toBeTruthy();
+    // And no `roster` frame was ever requested: this is the baseline alone.
+    expect(rig.conn.frames.some((frame) => frame.type === 'roster')).toBe(false);
   });
 
-  it('answers a flip with the new roster AND the list in force', async () => {
-    await withFakeHome(async () => {
-      // `todo` is `standard` (its switch writes `plugins.disable`) and
-      // `subagent` is `advanced` (its switch writes `plugins.enable`): the two
-      // directions are different lists, so one test covers each.
-      const { controller, conn, pluginsOff, pluginsOn } = await makeRig();
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
-      const answer = conn.last('plugins');
-      expect(answer).toBeDefined();
-      expect(answer?.disable).toContain('todo');
-      // The row is still there and reads OFF, so the same page can turn it back.
-      const row = answer?.entries.find((entry) => entry.name === 'todo');
-      expect(row).toBeDefined();
-      expect(row?.enabled).toBe(false);
-      expect(pluginsOff).toEqual(['todo']);
+  it('answers a flip with the new roster, and the row really went off', async () => {
+    const rig = await makeRig();
+    const { controller, conn } = rig;
+    await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
+    const answer = conn.last('plugins');
+    expect(answer).toBeDefined();
+    expect(answer?.disable).toContain('todo');
+    // The row is still there and reads OFF, so the same page can turn it back.
+    expect(answer?.entries.find((entry) => entry.name === 'todo')?.enabled).toBe(false);
+    // "Off" is literal: the tool the row registers is gone from the container.
+    expect(rig.kernel.host.tools.some((tool) => tool.name === 'todo_write')).toBe(false);
 
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: true });
-      const back = conn.last('plugins');
-      expect(back?.disable).not.toContain('todo');
-      expect(back?.entries.find((entry) => entry.name === 'todo')?.enabled).toBe(true);
+    await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: true });
+    const back = conn.last('plugins');
+    expect(back?.disable).not.toContain('todo');
+    expect(back?.entries.find((entry) => entry.name === 'todo')?.enabled).toBe(true);
+    expect(rig.kernel.host.tools.some((tool) => tool.name === 'todo_write')).toBe(true);
 
-      // The advanced direction: it was never in `disable` to begin with, and
-      // opting in appends to `enable` instead.
-      expect(answer?.entries.find((entry) => entry.name === 'subagent')?.enabled).toBe(false);
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'subagent', enabled: true });
-      expect(pluginsOn).toEqual(['subagent']);
-      expect(pluginsOff).toEqual([]);
-      expect(conn.last('plugins')?.entries.find((entry) => entry.name === 'subagent')?.enabled).toBe(true);
-    });
+    // Both directions wrote the row's OWN `enabled` field and nothing else: one
+    // field, addressed by row id, which is the same field the boot path reads.
+    expect(rig.writes).toEqual([
+      { id: 'todo', patch: { enabled: false } },
+      { id: 'todo', patch: { enabled: true } },
+    ]);
   });
 
   it('carries tier and Chinese title on both the roster and the flip answer', async () => {
     // Two paths build these rows (the `roster` frame and the `plugins` answer);
     // the panel's first paint reads the first and every flip reads the second,
     // so a field missing from either is a page that changes language mid-use.
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig();
-      await drive(controller, conn, { type: 'roster' });
-      const roster = conn.last('roster');
-      const fsRead = roster?.entries.find((entry) => entry.name === 'fs-read');
-      expect(fsRead?.tier).toBe('core');
-      expect(fsRead?.title).toBe('读取文件');
+    const rig = await makeRig();
+    const { controller, conn } = rig;
+    await drive(controller, conn, { type: 'roster' });
+    const roster = conn.last('roster');
+    const fsRead = roster?.entries.find((entry) => entry.name === 'fs-read');
+    expect(fsRead?.tier).toBe('core');
+    expect(fsRead?.title).toBe('读取文件');
 
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
-      const answer = conn.last('plugins');
-      expect(answer?.entries.find((entry) => entry.name === 'subagent')?.tier).toBe('advanced');
-      expect(answer?.entries.find((entry) => entry.name === 'fs-read')?.title).toBe('读取文件');
+    await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
+    const answer = conn.last('plugins');
+    // The extension row ships OFF and says so, with the words its own manifest
+    // declares — the host has no table of plugin labels any more.
+    expect(answer?.entries.find((entry) => entry.name === '@nova-agent/plugin-ptc'))
+      .toMatchObject({ tier: 'advanced', enabled: false, title: 'PTC 代码模式' });
+    expect(answer?.entries.find((entry) => entry.name === 'fs-read')?.title).toBe('读取文件');
+  });
+
+  it('carries a plugin-declared client bundle onto the wire, and omits it otherwise', async () => {
+    // The boot graph's PRODUCER half. The browser loads a plugin's browser-side
+    // bundle only because the plugin's own manifest declared one, and the roster
+    // row is how that declaration reaches the page. Both consumers existed (the
+    // wire builder downstream, `loadBootGraph` upstream) while nothing wrote the
+    // field at all, so every roster row said "server-only" no matter what the
+    // plugin declared.
+    const bundled: PluginEntryOptions['plugin'] = {
+      name: 'bundled-probe',
+      manifest: {
+        title: '带浏览器半的插件',
+        description: 'ships a browser-side bundle',
+        tier: 'standard',
+        clientBundle: { rev: 'r1' },
+      },
+      apply: () => undefined,
+    };
+    const serverOnly: PluginEntryOptions['plugin'] = {
+      name: 'server-only-probe',
+      manifest: { title: '纯服务端插件', description: 'declares no browser bundle', tier: 'standard' },
+      apply: () => undefined,
+    };
+    const rig = await makeRig({
+      extraPlugins: [
+        { id: 'bundled-probe', plugin: bundled },
+        { id: 'server-only-probe', plugin: serverOnly },
+      ],
     });
+    const roster = readyOf(rig).info.roster ?? [];
+    // Verbatim, and nothing invented: the `path` default belongs to the loader
+    // that builds the URL, not to the row that carries the declaration.
+    expect(roster.find((entry) => entry.name === 'bundled-probe')?.clientBundle).toEqual({ rev: 'r1' });
+    // Absence, not an empty object — a plugin that ships no bundle must not claim
+    // one. (Checked with `in` because the row crosses the socket as JSON, where an
+    // `undefined`-valued key and a missing key are the same bytes but not the same
+    // contract for a reader asking which plugins have a browser half.)
+    const plain = roster.find((entry) => entry.name === 'server-only-probe');
+    if (plain === undefined) throw new Error('the server-only probe row is missing');
+    expect('clientBundle' in plain).toBe(false);
+    // The projection is total: no other row invented one either.
+    expect(roster.filter((entry) => entry.clientBundle !== undefined).map((entry) => entry.name))
+      .toEqual(['bundled-probe']);
   });
 
   it('refuses a load-bearing plugin as an error frame and writes nothing', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, pluginsOff } = await makeRig();
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'toolbox', enabled: false });
-      const err = conn.last('error');
-      expect(err?.message).toMatch(/load-bearing/u);
-      expect(pluginsOff).toEqual([]);
-      // No roster frame either: a refusal is not a state change.
-      expect(conn.last('plugins')).toBeUndefined();
-    });
+    const rig = await makeRig();
+    const { controller, conn } = rig;
+    // `fs-read` is the agent's reach: a `core` row has no switch to flip.
+    await drive(controller, conn, { type: 'set_plugin_enabled', name: 'fs-read', enabled: false });
+    const err = conn.last('error');
+    expect(err?.message).toMatch(/load-bearing/u);
+    expect(rig.writes).toEqual([]);
+    // No roster frame either: a refusal is not a state change.
+    expect(conn.last('plugins')).toBeUndefined();
+    // …and the row is untouched in the file, so a restart still finds it on.
+    expect(rig.rows.find((row) => row.id === 'fs-read')?.enabled).toBeUndefined();
   });
 
-  it('turns the advanced ptc row off through the frame, mode and all', async () => {
-    // The browser is where a reader actually hits the one-way door: `ptc` has a
-    // second opt-in the frame cannot reach by name alone (a non-`native`
-    // `code.mode` becomes an `enable` entry), so a flip that only edited the
-    // enable list left the plugin loaded and answered with an `error` frame
-    // instead of a roster. Driven frame-in/frame-out because that is the
-    // contract the panel depends on.
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig({ codeMode: 'ptc' });
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'ptc', enabled: false });
-      // An ANSWER, not a refusal: the switch worked.
-      expect(conn.last('error')).toBeUndefined();
-      const answer = conn.last('plugins');
-      expect(answer?.entries.find((entry) => entry.name === 'ptc')?.enabled).toBe(false);
-      // And its row survives, so the same page can turn it back on.
-      expect(answer?.entries.some((entry) => entry.name === 'ptc')).toBe(true);
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'ptc', enabled: true });
-      expect(conn.last('plugins')?.entries.find((entry) => entry.name === 'ptc')?.enabled).toBe(true);
-    });
-  });
-
-  it('hangs up the live gateway when the qqbot row is turned off', async () => {
-    // The reported defect: the gateway lives in the shell's bridge, NOT inside
-    // the plugin's effects, so the roster flip alone unregisters the tools and
-    // leaves the socket open — the page said 已关闭 while QQ peers still reached
-    // the agent. Only the qqbot OFF direction may touch the channel.
-    await withFakeHome(async () => {
-      const { controller, conn, sent } = await makeRig({ liveQqBot: true });
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'qqbot', enabled: false });
-      expect(sent).toContain('qqbot-stopped');
-      // Re-enabling never dials the hang-up again, and other rows stay away.
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'qqbot', enabled: true });
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
-      expect(sent.filter((entry) => entry === 'qqbot-stopped')).toHaveLength(1);
-      // And the flip still answered a roster, not a refusal.
-      expect(conn.last('plugins')?.entries.find((entry) => entry.name === 'qqbot')?.enabled).toBe(true);
-    });
-  });
-
-  it('refuses an unknown plugin name', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, pluginsOff } = await makeRig();
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'nope', enabled: false });
-      expect(conn.last('error')?.message).toMatch(/unknown plugin/u);
-      expect(pluginsOff).toEqual([]);
-    });
+  it('refuses an unknown plugin name and writes nothing', async () => {
+    const rig = await makeRig();
+    await drive(rig.controller, rig.conn, { type: 'set_plugin_enabled', name: 'nope', enabled: false });
+    expect(rig.conn.last('error')?.message).toMatch(/unknown plugin/u);
+    expect(rig.writes).toEqual([]);
   });
 
   it('carries a failed extension row with its reason (state failed, not merely off)', async () => {
@@ -337,176 +296,87 @@ describe('plugin manager frames', () => {
     // (group count, sort-to-top, 失败 label) keys off that state, and without
     // `error` the reader sees a switch that is on with nothing loaded and no
     // explanation.
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig({ failedExtension: true });
-      await drive(controller, conn, { type: 'roster' });
-      const answer = conn.last('roster');
-      const row = answer?.entries.find((entry) => entry.name === 'context');
-      expect(row).toBeDefined();
-      expect(row?.state).toBe('failed');
-      expect(row?.enabled).toBe(false);
-      expect(row?.error).toBeTruthy();
-    });
+    const missing = path.join(await mkdtemp(path.join(tmpdir(), 'nova-manage-missing-')), 'missing-ext.mjs');
+    const rig = await makeRig({ entries: [{ id: missing, enabled: true }] });
+    // The baseline the panel first paints from carries it too…
+    const baseline = readyOf(rig).info.roster?.find((entry) => entry.name === missing);
+    expect(baseline?.state).toBe('failed');
+    expect(baseline?.error).toBeTruthy();
+    // …and so does an explicit ask.
+    await drive(rig.controller, rig.conn, { type: 'roster' });
+    const row = rig.conn.last('roster')?.entries.find((entry) => entry.name === missing);
+    expect(row).toBeDefined();
+    expect(row?.state).toBe('failed');
+    expect(row?.enabled).toBe(false);
+    expect(row?.error).toBeTruthy();
   });
 
   it('surfaces a persister failure as an error frame, not a crash', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig({ persistThrows: true });
-      // `todo` (standard → the disable writer) and `subagent` (advanced → the
-      // enable-list writer) are BOTH failures the reader must hear about; a
-      // surface that only wired one writer would swallow the other.
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
-      expect(conn.last('error')?.message).toMatch(/disk is on fire/u);
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'subagent', enabled: true });
-      expect(conn.last('error')?.message).toMatch(/disk is on fire/u);
-    });
+    const rig = await makeRig({ persistThrows: true });
+    await drive(rig.controller, rig.conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
+    // The write throws BEFORE anything reloads, so the answer names the failure
+    // and no half-applied state is reported as if it had landed.
+    expect(rig.conn.last('error')?.message).toMatch(/disk is on fire/u);
+    expect(rig.conn.last('plugins')).toBeUndefined();
+    // The host is still serving: the panel's next read answers.
+    await drive(rig.controller, rig.conn, { type: 'roster' });
+    expect(rig.conn.last('roster')).toBeDefined();
   });
 });
 
 describe('Skill 中心 frames', () => {
   it('lists every discovered skill, with its real switch state', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig({ skills: true });
-      await drive(controller, conn, { type: 'list_skills' });
-      const answer = conn.last('skills');
-      expect(answer?.items.map((item) => item.name).sort()).toEqual(['alpha', 'beta']);
-      expect(answer?.disable).toEqual([]);
-      expect(answer?.items.every((item) => item.enabled)).toBe(true);
-    });
+    const rig = await makeRig({ skills: true });
+    await drive(rig.controller, rig.conn, { type: 'list_skills' });
+    const answer = rig.conn.last('skills');
+    expect(answer?.items.map((item) => item.name).sort()).toEqual(['alpha', 'beta']);
+    expect(answer?.disable).toEqual([]);
+    expect(answer?.items.every((item) => item.enabled)).toBe(true);
   });
 
   it('keeps a DISABLED skill in the answer so the switch is reversible', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, skillsOff } = await makeRig({ skills: true });
-      await drive(controller, conn, { type: 'set_skill_enabled', name: 'alpha', enabled: false });
-      const answer = conn.last('skills');
-      // The regression this pins: the rows used to be built from `kernel.skills`
-      // — the FILTERED list — with `enabled` hardcoded true. So this flip removed
-      // alpha from the answer entirely and the panel could never turn it back on.
-      expect(answer?.items.map((item) => item.name).sort()).toEqual(['alpha', 'beta']);
-      expect(answer?.items.find((item) => item.name === 'alpha')?.enabled).toBe(false);
-      expect(answer?.items.find((item) => item.name === 'beta')?.enabled).toBe(true);
-      expect(answer?.disable).toEqual(['alpha']);
-      expect(skillsOff).toEqual(['alpha']);
-    });
+    const rig = await makeRig({ skills: true });
+    await drive(rig.controller, rig.conn, { type: 'set_skill_enabled', name: 'alpha', enabled: false });
+    const answer = rig.conn.last('skills');
+    // The regression this pins: the rows used to be built from `kernel.skills`
+    // — the FILTERED list — with `enabled` hardcoded true. So this flip removed
+    // alpha from the answer entirely and the panel could never turn it back on.
+    expect(answer?.items.map((item) => item.name).sort()).toEqual(['alpha', 'beta']);
+    expect(answer?.items.find((item) => item.name === 'alpha')?.enabled).toBe(false);
+    expect(answer?.items.find((item) => item.name === 'beta')?.enabled).toBe(true);
+    expect(answer?.disable).toEqual(['alpha']);
+    // …and the model-visible list really dropped it, so "off" is not just a label.
+    expect(rig.kernel.skills.map((skill) => skill.name)).toEqual(['beta']);
   });
 
   it('reports the disable list on a plain re-list, not an empty one', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig({ skills: true });
-      await drive(controller, conn, { type: 'set_skill_enabled', name: 'beta', enabled: false });
-      // A fresh open of the section: the panel must learn beta is off, or it
-      // draws it as on and the operator's next click is a no-op.
-      await drive(controller, conn, { type: 'list_skills' });
-      const answer = conn.last('skills');
-      expect(answer?.disable).toEqual(['beta']);
-      expect(answer?.items.find((item) => item.name === 'beta')?.enabled).toBe(false);
-    });
+    const rig = await makeRig({ skills: true });
+    await drive(rig.controller, rig.conn, { type: 'set_skill_enabled', name: 'beta', enabled: false });
+    // A fresh open of the section: the panel must learn beta is off, or it
+    // draws it as on and the operator's next click is a no-op.
+    await drive(rig.controller, rig.conn, { type: 'list_skills' });
+    const answer = rig.conn.last('skills');
+    expect(answer?.disable).toEqual(['beta']);
+    expect(answer?.items.find((item) => item.name === 'beta')?.enabled).toBe(false);
   });
 
   it('refuses an unknown skill name and leaves the index alone', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, skillsOff } = await makeRig({ skills: true });
-      await drive(controller, conn, { type: 'set_skill_enabled', name: 'ghost', enabled: false });
-      expect(conn.last('error')?.message).toMatch(/unknown skill/u);
-      expect(skillsOff).toEqual([]);
-      await drive(controller, conn, { type: 'list_skills' });
-      expect(conn.last('skills')?.items.map((item) => item.name).sort()).toEqual(['alpha', 'beta']);
-    });
-  });
-});
-
-describe('qqbot frames', () => {
-  it('answers with the snapshot and NEVER the secret', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig({ qqBot: true });
-      await drive(controller, conn, { type: 'qqbot' });
-      const answer = conn.last('qqbot');
-      expect(answer).toMatchObject({ appId: '1024', hasClientSecret: true, clientSecretRef: 'QQ_SECRET' });
-      // The wire frame must not carry a credential field at all.
-      expect(JSON.stringify(answer)).not.toMatch(/clientSecret"/u);
-    });
-  });
-
-  it('routes a save to the persister and echoes the new snapshot', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, sent } = await makeRig({ qqBot: true });
-      await drive(controller, conn, { type: 'save_qqbot', appId: '2048', clientSecret: 'sekret' });
-      expect(sent).toContainEqual({ appId: '2048', clientSecret: 'sekret' });
-      expect(conn.last('qqbot')?.appId).toBe('2048');
-    });
-  });
-
-  it('treats an empty secret field as "keep what is stored"', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, sent } = await makeRig({ qqBot: true });
-      await drive(controller, conn, { type: 'save_qqbot', appId: '2048', clientSecret: '' });
-      // The browser never holds the stored secret, so it cannot send it back —
-      // an empty field must not blank the credential the operator kept.
-      expect(sent).toContainEqual({ appId: '2048' });
-      expect(sent).not.toContainEqual({ appId: '2048', clientSecret: '' });
-      expect(conn.last('qqbot')?.hasClientSecret).toBe(true);
-    });
-  });
-
-  it('refuses an empty appId', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, sent } = await makeRig({ qqBot: true });
-      await drive(controller, conn, { type: 'save_qqbot', appId: '   ', clientSecret: 'x' });
-      expect(conn.last('error')?.message).toMatch(/appId/u);
-      expect(sent).toEqual([]);
-    });
-  });
-
-  it('reports a failed connection test as a qqbot_test frame, not an error', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn } = await makeRig({ qqBot: true });
-      await drive(controller, conn, { type: 'test_qqbot', appId: '1', clientSecret: 'bad' });
-      // "The credentials are wrong" is an ANSWER to the probe, not a protocol
-      // failure: the page shows it beside the button it came from.
-      expect(conn.last('qqbot_test')).toMatchObject({ ok: false });
-      expect(conn.last('qqbot_test')?.ok === false ? conn.last('qqbot_test')?.message : '').toMatch(/bad token/u);
-      expect(conn.last('error')).toBeUndefined();
-    });
-  });
-
-  it('reports a successful probe with the gateway URL and stores nothing', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, sent } = await makeRig({ qqBot: true });
-      await drive(controller, conn, { type: 'test_qqbot', appId: '1', clientSecret: 'good' });
-      expect(conn.last('qqbot_test')).toEqual({ type: 'qqbot_test', ok: true, gateway: 'wss://gw' });
-      // A test is a probe: the candidate secret must not reach persistence.
-      expect(sent).toContainEqual({ appId: '1', clientSecret: 'good' });
-      expect(sent).toHaveLength(1);
-    });
-  });
-
-  it('refuses a probe with a missing field without calling the transport', async () => {
-    await withFakeHome(async () => {
-      const { controller, conn, sent } = await makeRig({ qqBot: true });
-      await drive(controller, conn, { type: 'test_qqbot', appId: '1', clientSecret: '' });
-      expect(conn.last('error')?.message).toMatch(/appId 与密钥/u);
-      expect(sent).toEqual([]);
-    });
+    const rig = await makeRig({ skills: true });
+    await drive(rig.controller, rig.conn, { type: 'set_skill_enabled', name: 'ghost', enabled: false });
+    expect(rig.conn.last('error')?.message).toMatch(/unknown skill/u);
+    await drive(rig.controller, rig.conn, { type: 'list_skills' });
+    expect(rig.conn.last('skills')?.items.map((item) => item.name).sort()).toEqual(['alpha', 'beta']);
   });
 });
 
 describe('management frames with no persistence wired', () => {
   it('refuses a flip instead of pretending it landed', async () => {
-    await withFakeHome(async () => {
-      const root = await mkdtemp(path.join(tmpdir(), 'nova-manage-nop-'));
-      const controller = await bootController({
-        rootDir: root,
-        provider: provider(),
-        config: { approval: 'read-only' },
-        providerModelLabel: 'test-model',
-      });
-      const conn = new FakeConn();
-      controller.attach(conn);
-      conn.frames.length = 0;
-      await drive(controller, conn, { type: 'set_plugin_enabled', name: 'subagent', enabled: false });
-      expect(conn.last('error')?.message).toMatch(/persist/u);
-      expect(conn.last('plugins')).toBeUndefined();
-    });
+    // A headless assembly (or an embedded kernel) has no config file of the
+    // operator's to patch: the switch must say so rather than report a state the
+    // next boot would not find.
+    const rig = await makeRig({ noPersist: true });
+    await drive(rig.controller, rig.conn, { type: 'set_plugin_enabled', name: 'todo', enabled: false });
+    expect(rig.conn.last('error')?.message).toMatch(/writable config file/u);
+    expect(rig.conn.last('plugins')).toBeUndefined();
   });
 });

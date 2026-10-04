@@ -30,6 +30,7 @@ import { pickNativePath } from './native-picker.js';
 import { handleSessionFrame } from './session-frames.js';
 import { handleHumanAnswer } from './human-frames.js';
 import { handleManageFrame } from './manage-frames.js';
+import { handlePluginFrame } from './plugin-frames.js';
 import { toWireRosterEntry } from './roster-wire.js';
 import { handleProviderFrame } from './provider-frames.js';
 import { sessionRows } from './session-rows.js';
@@ -172,14 +173,15 @@ export async function handleFrame(
         // Both halves at once: the live session switches now, and every later
         // session starts here.
         //
-        // DELIBERATELY allowed mid-run, unlike `set_code_mode` below. The tier is
-        // a single field on the permission service (`PermissionService.setMode`),
-        // read fresh on every `autoAllows` call — it is not part of the cached
-        // prefix, it does not re-roster the tool registry, and it does not touch
-        // the request already in flight. What it changes is the NEXT tool call
-        // that needs adjudicating, which is exactly what the operator reaches for
-        // when a run turns out to need more (or less) rope. Refusing here made
-        // the setting unreachable for the entire duration of a long run.
+        // DELIBERATELY allowed mid-run, unlike an operation that rebuilds the
+        // toolset. The tier is a single field on the permission service
+        // (`PermissionService.setMode`), read fresh on every `autoAllows` call —
+        // it is not part of the cached prefix, it does not re-roster the tool
+        // registry, and it does not touch the request already in flight. What it
+        // changes is the NEXT tool call that needs adjudicating, which is exactly
+        // what the operator reaches for when a run turns out to need more (or
+        // less) rope. Refusing here made the setting unreachable for the entire
+        // duration of a long run.
         //
         // This is also the safe direction of asymmetry: tightening takes effect
         // immediately, and loosening cannot retroactively un-gate a call that was
@@ -188,18 +190,13 @@ export async function handleFrame(
         host.setApprovalDefault(frame.mode);
         host.broadcastState();
         break;
-      case 'set_code_mode':
-        // Still refused mid-run, and for a different reason than the tier above:
-        // the mode picks the TOOLSET, and the toolset is part of the cached
-        // prefix (`beforeLlmCall` rejects widening), so swapping it under a live
-        // request invalidates the cache that request is built on. The refusal
-        // says which of the two the operator hit.
-        if (agent.running) {
-          client.send(serialize({ type: 'error', message: '运行中不能切换执行模式（它会重建工具集）；请等本轮结束' }));
-          break;
-        }
-        await kernel.setCodeMode(frame.mode);
-        host.broadcastState();
+      case 'plugin_request':
+        // Every plugin operation goes through here, and the host adds nothing:
+        // the request names its own plugin, the registry finds it, the plugin
+        // answers or refuses. A page whose plugin is switched off gets `ok: false`
+        // and a sentence, which is the honest answer — and the reason one broken
+        // plugin cannot take the settings panel with it.
+        await handlePluginFrame(client, frame, host.pluginRpc);
         break;
       case 'list_models':
         client.send(serialize({ type: 'models', ...(await host.seat.list()) }));
@@ -283,24 +280,16 @@ export async function handleFrame(
       case 'list_skills':
       case 'list_model_config':
       case 'save_models':
-      case 'qqbot':
-      case 'save_qqbot':
-      case 'test_qqbot':
         // The settings panel's management frames share one discipline (persist
         // first, reload, answer with state) and live together in
-        // `manage-frames.ts`.
+        // `manage-frames.ts`. A PLUGIN's own page is not here: it goes through
+        // `plugin_request` above, because the host does not know what any plugin's
+        // settings are.
         await handleManageFrame(client, frame, {
           agent,
           kernel,
           broadcast: host.broadcast,
           broadcastState: host.broadcastState,
-          persistQqBot: host.persistQqBot,
-          qqBotSnapshot: host.qqBotSnapshot,
-          setQqBotSnapshot: host.setQqBotSnapshot,
-          testQqBot: host.testQqBot,
-          recheckQqBot: host.recheckQqBot,
-          // Live channel: what makes a save actually dial out, without a restart.
-          qqBotRuntime: host.qqBotRuntime,
           persistModels: host.persistModels,
           readModels: host.readModels,
         });

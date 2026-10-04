@@ -24,7 +24,6 @@ describe('parseClientFrame', () => {
     }
     expect(frame({ type: 'resume', file: '/home/u/.nova/sessions/2026/09/19/sess_x.jsonl' })).toMatchObject({ type: 'resume' });
     expect(frame({ type: 'set_approval_mode', mode: 'auto-edit' })).toMatchObject({ mode: 'auto-edit' });
-    expect(frame({ type: 'set_code_mode', mode: 'ptc' })).toMatchObject({ mode: 'ptc' });
     expect(frame({ type: 'load_earlier', have: 0 })).toEqual({ type: 'load_earlier', have: 0 });
     expect(frame({ type: 'load_trace', have: 0 })).toEqual({ type: 'load_trace', have: 0 });
     expect(frame({ type: 'stop_job', id: 'bash-1' })).toEqual({ type: 'stop_job', id: 'bash-1' });
@@ -114,9 +113,8 @@ describe('parseClientFrame', () => {
     expect(frame({ type: 'resume', file: 'C:' + String.fromCharCode(10) + 'b.jsonl' })).toMatchObject({ ok: false });
   });
 
-  it('mode frames reject unknown modes', () => {
+  it('the approval-mode frame rejects an unknown mode', () => {
     expect(frame({ type: 'set_approval_mode', mode: 'yolo' })).toMatchObject({ ok: false });
-    expect(frame({ type: 'set_code_mode', mode: 'quantum' })).toMatchObject({ ok: false });
   });
 
   it('model frames take an id and refuse junk ids', () => {

@@ -9,8 +9,7 @@
 import type { AgentSession, ApprovalMode, ConfiguredModel, SessionListing } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import type { GitStatusCache } from './git-frames.js';
-import type { ManageHost, QqBotSnapshot } from './manage-frames.js';
-import type { ProviderHost } from './provider-frames.js';
+import type { PluginFrameHost } from './plugin-frames.js';import type { ProviderHost } from './provider-frames.js';
 import type { PickFn } from './picker-frames.js';
 import type { ModelSeat } from './model-seat.js';
 import type { SessionPages } from './session-pages.js';
@@ -44,21 +43,14 @@ export interface FrameHost {
   /** The operator's model list: its writer, and its on-demand reader. */
   persistModels: ((models: readonly ConfiguredModel[]) => void | Promise<void>) | undefined;
   readModels: () => Promise<readonly ConfiguredModel[]>;
-  /** The qqbot page's config writer/snapshot/probe (absent with no home). */
-  persistQqBot: ((opts: { appId?: string; clientSecret?: string }) => void | Promise<void>) | undefined;
-  qqBotSnapshot(): QqBotSnapshot;
-  setQqBotSnapshot(snapshot: QqBotSnapshot): void;
-  testQqBot: ((opts: { appId: string; clientSecret: string }) => Promise<string>) | undefined;
-  /** Re-derive the qqbot problem from disk after a save (see `ManageHost`). */
-  recheckQqBot: (() => Promise<string | undefined>) | undefined;
   /**
-   * The live QQ channel this process runs, when it runs one.
+   * Every plugin's operations, addressed by the id its config row uses.
    *
-   * `recheckQqBot` answers "are the stored credentials usable" — a question about
-   * the file. This one answers the two the file cannot: whether the gateway is up
-   * (the page reads 未配置 / 已配置但未启动 / 运行中), and what a save does next.
+   * One port rather than a per-plugin one: the settings panel (and anything else
+   * a plugin wants to answer) reaches a plugin through the kernel's own registry,
+   * so a new plugin needs no new collaborator here.
    */
-  qqBotRuntime: ManageHost['qqBotRuntime'];
+  pluginRpc: PluginFrameHost;
   /**
    * The BYOK provider list: its writer, its on-demand reader, and the stored-key
    * lookup a probe or a switch reuses (the browser never holds a key).
@@ -79,7 +71,7 @@ export interface FrameHost {
   broadcast(text: string): void;
   /** The current baseline frame, serialized. */
   readyFrame(): string;
-  /** Re-state the model and both modes to every client. */
+  /** Re-state the model and the approval tier to every client. */
   broadcastState(): void;
   /** Replace the live session (a fresh log, or a resumed one). */
   switchSession(opts: { resumeFile?: string }): Promise<void>;

@@ -107,36 +107,7 @@ export class WebController {
      * tests and in any surface with no durable home for the choice.
      */
     private readonly persistModel: ((model: string) => void | Promise<void>) | undefined,
-    /**
-     * The qqbot page's config writer + snapshot + probe. The snapshot travels
-     * OUT on every `qqbot` ask (never the secret); the writer runs on save; the
-     * probe runs on test. Injected by the shell for the same reason as
-     * `persistModel` — only the shell knows the config file.
-     */
-    private readonly persistQqBot: ((opts: { appId?: string; clientSecret?: string }) => void | Promise<void>) | undefined,
-    /**
-     * The qqbot connection snapshot the page reads. NOT readonly: a save is
-     * echoed back by replacing it, so the page's next open reflects what was
-     * just stored rather than the boot-time value (the host never returns the
-     * secret, so re-reading the file would not be equivalent).
-     */
-    private qqBotSnapshot: ControllerOptions['qqBotConfig'],
-    private readonly testQqBot: ((opts: { appId: string; clientSecret: string }) => Promise<string>) | undefined,
-    /**
-     * Re-derive the qqbot problem from disk after a save (see `ManageHost`).
-     * Absent with no durable home, like the other config writers.
-     */
-    private readonly recheckQqBot: (() => Promise<string | undefined>) | undefined,
-    /**
-     * The live QQ channel this process runs, when it runs one.
-     *
-     * A different question from `recheckQqBot` above: that one reads the FILE,
-     * this one reports whether the gateway is actually up and what a save does
-     * about it. Storing credentials is not connecting them, and the channel was
-     * built at boot when the file was still empty — so without this seam a save
-     * would keep writing the config and nothing would dial out.
-     */
-    private readonly qqBotRuntime: ControllerOptions['qqBotRuntime'],
+
     /** The operator's model list: its writer, and its on-demand reader. */
     private readonly persistModels: ((models: readonly ConfiguredModel[]) => void | Promise<void>) | undefined,
     /**
@@ -172,17 +143,6 @@ export class WebController {
       new ModelSeat(kernel.models, opts.providerModelLabel, opts.contextWindow, opts.providerModelName),
       opts.version,
       opts.persistModel,
-      opts.persistQqBot,
-      // The qqbot diagnostic rides its own snapshot: a plugin whose `{env:NAME}`
-      // did not resolve (or an absent extension) is reported in the panel that
-      // owns it, never as a startup failure.
-      {
-        ...opts.qqBotConfig,
-        ...(opts.pluginDiagnostics?.['qqbot'] !== undefined ? { error: opts.pluginDiagnostics['qqbot'] } : {}),
-      },
-      opts.testQqBot,
-      opts.recheckQqBot,
-      opts.qqBotRuntime,
       opts.persistModels,
       opts.readModels ?? (async () => []),
       opts.persistProviders,
@@ -232,13 +192,20 @@ export class WebController {
       gitCache: this.gitCache,
       context: this.context,
       persistModel: this.persistModel,
-      persistQqBot: this.persistQqBot,
-      qqBotSnapshot: () => this.qqBotSnapshot ?? {},
-      setQqBotSnapshot: (snapshot) => { this.qqBotSnapshot = { ...snapshot }; },
-      testQqBot: this.testQqBot,
-      recheckQqBot: this.recheckQqBot,
-      qqBotRuntime: this.qqBotRuntime,
       persistModels: this.persistModels,
+      // Every plugin operation goes through the kernel's own registry: the host
+      // neither knows the plugin nor validates the operation, which is what keeps
+      // a plugin's page out of this package. A plugin that is switched off has no
+      // namespace registered, so it answers nothing — an answer, not an outage.
+      pluginRpc: {
+        invoke: (plugin, op, payload) => {
+          const rpc = this.kernel.pluginRpc();
+          if (rpc === undefined) {
+            return Promise.reject(new Error('this assembly has no plugin registry'));
+          }
+          return rpc.invoke(plugin, op, payload);
+        },
+      },
       readModels: this.readModels,
       persistProviders: this.persistProviders,
       readProviders: this.readProviders,
@@ -382,7 +349,6 @@ export class WebController {
     this.clients.broadcast(serialize({
       type: 'state',
       approvalMode: this.agent.approvalMode ?? 'read-only',
-      codeMode: this.kernel.codeMode(),
       model: this.seat.model,
       // Only when there IS a catalog name: the field means "metadata exists",
       // so a reader can fall back to the id without re-deriving the rule.

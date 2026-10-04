@@ -23,7 +23,6 @@ import type {
   KernelEvent,
   ModelCapabilities,
   ModelGroup,
-  PtcMode,
   QuestionRequest,
   RunStats,
   TodoItem,
@@ -80,7 +79,6 @@ export type ServerFrame =
   | {
       type: 'state';
       approvalMode: ApprovalMode;
-      codeMode: PtcMode;
       /** The id in force (what a switch retargets). */
       model: string;
       /** The surface's display name for it, when the catalog knows one. */
@@ -151,34 +149,27 @@ export type ServerFrame =
    */
   | { type: 'skills'; items: readonly WireSkillEntry[]; disable: readonly string[] }
   /**
-   * The qqbot connection snapshot (answer to `qqbot` / `save_qqbot`): what the
-   * page may show without ever seeing the secret. `hasClientSecret` says one is
-   * stored; `clientSecretRef` names the variable when the stored value is
-   * exactly one `{env:NAME}` reference.
+   * One plugin operation's answer (to `plugin_request`), carrying the browser's
+   * own `id` back so a page with several requests in flight can match them.
+   *
+   * The `plugin` and `op` are echoed for the same reason: a page that asks two
+   * plugins the same question must not render one's answer as the other's.
+   *
+   * A failure is a NORMAL answer here (`ok: false` + `error`), not a transport
+   * error frame: "this plugin is switched off" and "that operation does not
+   * exist" are facts about the plugin, and the page renders them in place. That
+   * is also what isolates one plugin's fault: a broken plugin answers its own
+   * request with a reason instead of taking the socket down.
    */
   | {
-      type: 'qqbot';
-      appId?: string;
-      hasClientSecret?: boolean;
-      clientSecretRef?: string;
-      /**
-       * Why this plugin cannot connect right now, when the shell loaded its
-       * config with an unresolved reference — a sentence to show as-is. Absent
-       * means nothing is known to be wrong.
-       *
-       * It rides this snapshot rather than the `ready` baseline because it is a
-       * fact about ONE plugin: the page that owns the plugin is the only place
-       * it is actionable, and putting it on `ready` would make every client
-       * carry a problem only one panel can render.
-       */
+      type: 'plugin_response';
+      id: number;
+      plugin: string;
+      op: string;
+      ok: boolean;
+      result?: unknown;
       error?: string;
     }
-  /**
-   * The qqbot connection probe's answer (to `test_qqbot`): success carries the
-   * gateway URL the credentials resolved to; failure carries the reason. Either
-   * way nothing is stored.
-   */
-  | { type: 'qqbot_test'; ok: boolean; gateway?: string; message?: string }
   /**
    * A batch of trace rows: the newest `TRACE_TAIL` when `have` was 0, else the
    * batch immediately older than what the client holds. Rows arrive oldest
@@ -423,7 +414,6 @@ export interface ReadyInfo {
   /** The surface's display name for it (the trigger's label when it has one). */
   modelName?: string;
   approvalMode: ApprovalMode;
-  codeMode: PtcMode;
   /**
    * The NEWEST slice of the durable log's projection — the replay baseline.
    * Older blocks are fetched with `load_earlier`; `historyTotal` says how many

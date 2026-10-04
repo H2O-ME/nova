@@ -605,17 +605,23 @@ describe('WebController', () => {
       expect(result).toMatchObject({ resultView: { card: 'terminal', exitCode: 0 } });
       await controller.dispose();
     });
-  });
+    // The outer budget is the backstop for the wait above, not a second
+    // deadline: this case spawns a REAL shell, and its own `waitFor` already
+    // declares 15s for that spawn on a busy lane (see the comment there). At
+    // vitest's 5000ms default the case was killed before its own wait could
+    // report what actually went wrong. 20s sits just above the inner budget so
+    // the inner (informative) failure still wins. Nothing here hides a slow
+    // subject: the subject is the server-side view resolver, and its cost is
+    // the shell's cold start, not its own work.
+  }, 20_000);
 
-  it('mode switches are echoed to every client as a state frame', async () => {
+  it('an approval-mode switch is echoed to every client as a state frame', async () => {
     await withFakeHome(async () => {
       const { controller } = await makeController([TEXT_TURN]);
       const conn = new FakeConn();
       controller.attach(conn);
       await handle(controller, conn, { type: 'set_approval_mode', mode: 'full' });
       expect(conn.frames.at(-1)).toMatchObject({ type: 'state', approvalMode: 'full' });
-      await handle(controller, conn, { type: 'set_code_mode', mode: 'ptc' });
-      expect(conn.frames.at(-1)).toMatchObject({ type: 'state', codeMode: 'ptc' });
       await controller.dispose();
     });
   });

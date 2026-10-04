@@ -18,7 +18,6 @@ import {
   MAX_TERM_COLS,
   MAX_TERM_INPUT_CHARS,
   MAX_TERM_ROWS,
-  MAX_TEXT_FIELD_CHARS,
   type ClientFrame,
 } from './protocol.js';
 import { parseFsFrame, type FsFrameType } from './fs-frame-parse.js';
@@ -30,12 +29,28 @@ import { reject, type FrameRejection } from './reject.js';
 /** Ids crossing the wire (approval/session ids) are kernel-generated ASCII tokens. */
 const ID_RE = /^[A-Za-z0-9_.-]{1,128}$/;
 /**
- * Plugin/skill names crossing the wire (`set_plugin_enabled`, `set_skill_enabled`):
- * the roster's own names (lowercase words, digits, `-`/`_`/`.`). Checked here so
- * a hostile frame cannot reach the config patcher with a name the kernel would
- * never contain (path separators and `..` included).
+ * Skill names crossing the wire (`set_skill_enabled`): a plain identifier.
+ *
+ * A plugin ROW id deliberately does NOT use this grammar — see `PLUGIN_ID_RE`,
+ * which a row id shares with `plugin_request` because it addresses the same
+ * thing. An `[a-z0-9]`-anchored pattern silently excluded every extension row
+ * (a scoped package specifier, or a relative module path), so the settings panel
+ * could not switch one on or off and the refusal blamed the operator's input
+ * rather than the validator.
  */
-const SWITCH_NAME_RE = /^[a-z0-9][a-z0-9_.-]{0,127}$/;
+const SKILL_NAME_RE = /^[a-z0-9][a-z0-9_.-]{0,127}$/;
+/**
+ * A plugin ID as `plugin_request` carries it.
+ *
+ * Broader than a switch name on purpose: an entry id is either a built-in's name
+ * or a module specifier, and a specifier legitimately holds `@scope/name`, a
+ * relative path, or a Windows absolute path. So the check is "printable, no
+ * spaces, bounded" rather than a package-name grammar the host would have to keep
+ * in step with the resolver's three cases.
+ */
+const PLUGIN_ID_RE = /^[^\s"'\\]{1,256}$/;
+/** An operation name: an identifier the owning plugin chose. */
+const OP_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 // Session files: absolute paths to JSONL under ~/.nova — length-capped, and
 // control characters are rejected via core's `hasControlChars` (a
 // `\u0000-\u001f` range in the literal would trip no-control-regex lint).
@@ -105,41 +120,48 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'new_session':
     case 'roster':
     case 'list_skills':
-    case 'qqbot':
     case 'pick_file':
     case 'pick_directory':
     case 'list_jobs':
       return { type: obj['type'] } as ClientFrame;
     case 'set_plugin_enabled':
     case 'set_skill_enabled': {
-      // The switch's name is the kernel's own vocabulary (a roster/skill name),
-      // validated like a command name: a hostile frame must not reach the
-      // config patcher with a name the kernel would never contain.
+      // A plugin ROW id or a skill name, each with its own grammar: a row id may
+      // be a module specifier, a skill name is a plain identifier. Both are
+      // validated here so a hostile frame cannot reach the config patcher with a
+      // name the kernel would never contain.
       const name = obj['name'];
       const enabled = obj['enabled'];
-      if (typeof name !== 'string' || !SWITCH_NAME_RE.test(name)) {
-        return reject(`${String(obj['type'])}.name must be a plugin/skill name`);
+      const pattern = obj['type'] === 'set_plugin_enabled' ? PLUGIN_ID_RE : SKILL_NAME_RE;
+      if (typeof name !== 'string' || !pattern.test(name)) {
+        return reject(`${String(obj['type'])}.name must be a plugin${obj['type'] === 'set_plugin_enabled' ? ' row id' : '/skill name'}`);
       }
       if (typeof enabled !== 'boolean') return reject(`${String(obj['type'])}.enabled must be a boolean`);
       return { type: obj['type'], name, enabled } as ClientFrame;
     }
-    case 'save_qqbot':
-    case 'test_qqbot': {
-      // Credentials-shaped fields: bounded text, no control junk. The secret is
-      // tested, never stored (save stores only what the operator confirms; test
-      // stores nothing) — the bound keeps a pasted key from becoming a DoS.
-      const appId = obj['appId'] ?? '';
-      const clientSecret = obj['clientSecret'] ?? '';
-      if (typeof appId !== 'string' || appId.length > MAX_TEXT_FIELD_CHARS) {
-        return reject(`${String(obj['type'])}.appId must be a string of at most ${MAX_TEXT_FIELD_CHARS} chars`);
+    case 'plugin_request': {
+      // Bounded here and validated no further: what an operation MEANS belongs to
+      // the plugin that implements it, and the host deliberately has no opinion.
+      // The bounds that do belong here are the transport's: a correlation id that
+      // fits in a double, a namespace/op short enough to log, and a payload that
+      // cannot exceed the frame budget (the socket's own size limit is the real
+      // guard; this names the field so the reason is readable).
+      const id = obj['id'];
+      const plugin = obj['plugin'];
+      const op = obj['op'];
+      if (typeof id !== 'number' || !Number.isSafeInteger(id) || id < 0) {
+        return reject('plugin_request.id must be a non-negative safe integer');
       }
-      if (typeof clientSecret !== 'string' || clientSecret.length > MAX_TEXT_FIELD_CHARS) {
-        return reject(`${String(obj['type'])}.clientSecret must be a string of at most ${MAX_TEXT_FIELD_CHARS} chars`);
+      if (typeof plugin !== 'string' || !PLUGIN_ID_RE.test(plugin)) {
+        return reject('plugin_request.plugin must be a plugin id');
       }
-      if (hasControlChars(appId) || hasControlChars(clientSecret)) {
-        return reject(`${String(obj['type'])} fields contain control characters`);
+      if (typeof op !== 'string' || !OP_NAME_RE.test(op)) {
+        return reject('plugin_request.op must be an operation name');
       }
-      return { type: obj['type'], appId, clientSecret } as ClientFrame;
+      const payload = obj['payload'];
+      return payload === undefined
+        ? { type: 'plugin_request', id, plugin, op }
+        : { type: 'plugin_request', id, plugin, op, payload };
     }
     case 'command': {
       const name = obj['name'];
@@ -270,11 +292,6 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
       const mode = obj['mode'];
       if (mode !== 'read-only' && mode !== 'auto-edit' && mode !== 'full') return reject('set_approval_mode.mode invalid');
       return { type: 'set_approval_mode', mode };
-    }
-    case 'set_code_mode': {
-      const mode = obj['mode'];
-      if (mode !== 'native' && mode !== 'ptc' && mode !== 'both') return reject('set_code_mode.mode invalid');
-      return { type: 'set_code_mode', mode };
     }
     case 'set_model': {
       const model = obj['model'];

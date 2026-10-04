@@ -9,7 +9,7 @@
  * is long enough to be read on its own).
  */
 /** Mode vocabularies are core's (the config schema and the engine speak them). */
-export type { ApprovalMode, PtcMode } from '@nova-agent/core';
+export type { ApprovalMode } from '@nova-agent/core';
 /** The command catalog's row shape is the kernel assembly's (`Kernel.commands`). */
 export type { CommandSummary } from '@nova-agent/plugins';
 /** The model catalog's shapes are core's too (the picker's contract). */

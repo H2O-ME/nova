@@ -6,31 +6,63 @@
  * lands on the new repository without a second gesture. These tests pin the
  * three outcomes a reader can hit — the clone lands and the workspace moves,
  * a drive root refuses with a named reason, and a failed clone moves NOTHING.
+ *
+ * THE FIXTURES ARE ASYNC AND BUDGETED, for the reasons measured in
+ * `rightbar-frames.test.ts`'s header (git spawns 291-353ms idle but
+ * 1.7-3.2s while the lane is busy, because every spawn is a new process image
+ * on a four-core box). Two of the three cases below run real `git`; they carry
+ * an explicit budget so a spawn cannot be mistaken for a hang, and their
+ * fixture calls are awaited rather than blocking the worker's event loop. The
+ * drive-root case deliberately keeps the DEFAULT budget: it refuses before
+ * touching git, so there is no environment cost for a budget to excuse — which
+ * is exactly what makes the other two honest. No assertion changed.
  */
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { handleSessionFrame, type SessionFrameHost } from '../src/session-frames.js';
 import type { ClientFrame, ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
 
+const runGit = promisify(execFile);
+
+/** Wall clock one fixture git invocation may take (see rightbar-frames.test.ts). */
+const GIT_FIXTURE_TIMEOUT_MS = 30_000;
+/** Budget for the cases whose own body runs `git` (see the header above). */
+const GIT_TEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Whether `git` can run at all, probed ONCE for the file.
+ *
+ * `it.skipIf` needs the answer at COLLECTION time, so this cannot be async —
+ * but it can be asked once. It used to run once per case, i.e. two extra
+ * process creations paid before a single test started.
+ */
+let probedGit: boolean | undefined;
 const gitAvailable = (): boolean => {
-  try {
-    execFileSync('git', ['--version'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  probedGit ??= (() => {
+    try {
+      execFileSync('git', ['--version'], { stdio: 'ignore', timeout: GIT_FIXTURE_TIMEOUT_MS });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  return probedGit;
 };
 
 let root: string;
-beforeEach(() => {
-  root = mkdtempSync(path.join(tmpdir(), 'nova-session-frames-'));
+beforeEach(async () => {
+  root = await mkdtemp(path.join(tmpdir(), 'nova-session-frames-'));
 });
-afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+afterEach(async () => {
+  // `maxRetries` is Node's own Windows remedy for a handle that has not been
+  // released yet (`EBUSY rmdir` is what a bare `rm` produced).
+  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 class FakeConn implements WsConnection {
@@ -66,14 +98,14 @@ describe('handleSessionFrame / git_clone', () => {
     // there would collide with the destination git is about to create.
     const sourceRoot = path.join(root, 'source');
     const source = path.join(sourceRoot, 'src-repo');
-    mkdirSync(source, { recursive: true });
-    execFileSync('git', ['init', '-q', source]);
-    execFileSync('git', ['config', 'user.email', 't@t'], { cwd: source });
-    execFileSync('git', ['config', 'user.name', 't'], { cwd: source });
-    execFileSync('git', ['commit', '-q', '--allow-empty', '-m', 'init'], { cwd: source });
+    await mkdir(source, { recursive: true });
+    await runGit('git', ['init', '-q', source], { timeout: GIT_FIXTURE_TIMEOUT_MS });
+    await runGit('git', ['config', 'user.email', 't@t'], { cwd: source, timeout: GIT_FIXTURE_TIMEOUT_MS });
+    await runGit('git', ['config', 'user.name', 't'], { cwd: source, timeout: GIT_FIXTURE_TIMEOUT_MS });
+    await runGit('git', ['commit', '-q', '--allow-empty', '-m', 'init'], { cwd: source, timeout: GIT_FIXTURE_TIMEOUT_MS });
 
     const workspace = path.join(root, 'ws');
-    mkdirSync(workspace);
+    await mkdir(workspace);
     const host = hostFor(workspace);
     const conn = new FakeConn();
 
@@ -87,7 +119,7 @@ describe('handleSessionFrame / git_clone', () => {
     expect(vi.mocked(host.setWorkspace).mock.calls[0]?.[0]).toBe(cloned);
     expect(host.sendSessions).toHaveBeenCalledTimes(1);
     expect(host.broadcastReady).toHaveBeenCalledTimes(1);
-  });
+  }, GIT_TEST_TIMEOUT_MS);
 
   it.skipIf(!gitAvailable())('refuses a drive root by name, before touching git', async () => {
     const driveRoot = path.parse(root).root;
@@ -103,7 +135,7 @@ describe('handleSessionFrame / git_clone', () => {
 
   it.skipIf(!gitAvailable())('moves nothing when the clone itself fails', async () => {
     const workspace = path.join(root, 'ws');
-    mkdirSync(workspace);
+    await mkdir(workspace);
     const host = hostFor(workspace);
     const conn = new FakeConn();
 
@@ -115,5 +147,5 @@ describe('handleSessionFrame / git_clone', () => {
     // Validate-before-mutate: a failed clone leaves the workspace where it was.
     expect(host.setWorkspace).not.toHaveBeenCalled();
     expect(host.broadcastReady).not.toHaveBeenCalled();
-  });
+  }, GIT_TEST_TIMEOUT_MS);
 });

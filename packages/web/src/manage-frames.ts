@@ -1,6 +1,6 @@
 /**
- * The settings panel's management frames: the plugin manager's switches, the
- * Skill 中心's switches, and the qqbot connection page.
+ * The settings panel's management frames: the plugin manager's switches and the
+ * Skill 中心's switches.
  *
  * Split from `frame-router.ts` the way `fs-frames.ts` already is: the routing
  * table grows with every new frame, and this family shares one discipline —
@@ -11,18 +11,11 @@
 import { errMessage, type AgentSession, type ConfiguredModel } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import { handleModelConfigFrame } from './model-config-frames.js';
-import { handleQqBotFrame, type QqBotRuntime, type QqBotSnapshot } from './qqbot-frames.js';
 import { toWireRosterEntry } from './roster-wire.js';
 import type { WireRosterEntry } from './roster-entry.js';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
 import type { WsConnection } from './ws.js';
-
-// The qqbot snapshot and live-channel shapes live with the frames that consume
-// them (`qqbot-frames.ts`, the same arrangement as `provider-frames.ts`), and are
-// re-exported here so the controller, the frame host and the router keep reading
-// every settings-family type from one place.
-export type { QqBotRuntime, QqBotSnapshot } from './qqbot-frames.js';
 
 /** The collaborators the management frames read, supplied by the controller. */
 export interface ManageHost {
@@ -30,37 +23,8 @@ export interface ManageHost {
   kernel: Kernel;
   /** Send every attached client this text (a broadcast, not a reply). */
   broadcast(text: string): void;
-  /**
-   * Re-broadcast the chrome `state` frame (model / approval tier / code mode) to
-   * every attached client. A `ptc` flip follows the live code mode (closing the
-   * row returns it to `native` — see `runtime-switch.ts`), and the composer's
-   * mode chip reads that mode from this broadcast: a flip that skipped it left
-   * the chips showing a mode whose plugin is gone.
-   */
+  /** Re-broadcast the chrome `state` frame (model / approval tier). */
   broadcastState(): void;
-  /** The qqbot page's config writer/snapshot/probe (absent with no home). */
-  persistQqBot: ((opts: { appId?: string; clientSecret?: string }) => void | Promise<void>) | undefined;
-  qqBotSnapshot(): QqBotSnapshot;
-  setQqBotSnapshot(snapshot: QqBotSnapshot): void;
-  testQqBot: ((opts: { appId: string; clientSecret: string }) => Promise<string>) | undefined;
-  /**
-   * Re-derive the qqbot diagnostic from what is now on disk, after a save.
-   *
-   * The rule for "is this stored value usable" lives in the shell (it owns the
-   * config file and the `{env:NAME}` reference rule), so the panel asks instead
-   * of re-implementing it: a save that stores ANOTHER unresolved reference must
-   * keep reporting the problem, and one that stores a real secret must stop.
-   * Absent with no durable home — the panel then leaves the snapshot alone.
-   */
-  recheckQqBot?: (() => Promise<string | undefined>) | undefined;
-  /**
-   * The LIVE channel in this process, when the shell runs one.
-   *
-   * Absent with no channel (tests, or a shell that has no qqbot at all): the page
-   * then reads exactly as it did before this seam existed — a stored credential
-   * is all it can know. See `QqBotRuntime` for why a save needs more than a writer.
-   */
-  qqBotRuntime?: QqBotRuntime | undefined;
   /** The operator's model list; the model-list frames live in their own module. */
   persistModels: ((models: readonly ConfiguredModel[]) => void | Promise<void>) | undefined;
   readModels: () => Promise<readonly ConfiguredModel[]>;
@@ -114,9 +78,6 @@ export async function handleManageFrame(
     | { type: 'list_skills' }
     | { type: 'list_model_config' }
     | { type: 'save_models' }
-    | { type: 'qqbot' }
-    | { type: 'save_qqbot' }
-    | { type: 'test_qqbot' }
   >,
   host: ManageHost,
 ): Promise<void> {
@@ -131,18 +92,14 @@ export async function handleManageFrame(
           client.send(serialize({ type: 'error', message: '运行中不能切换插件开关' }));
           break;
         }
+        // The flip itself is the whole story now: a plugin's resources live in
+        // its own fiber, so dropping the row tears them down. There is no
+        // per-plugin "also stop the socket" step to forget here — that step
+        // existed because the channel used to be started by the shell.
         const disable = await kernel.setPluginEnabled(frame.name, frame.enabled);
-        // Turning qqbot's row OFF must hang up the gateway too: it lives in the
-        // shell's bridge, not inside the plugin's effects, so the flip alone
-        // unregisters the tools and leaves the socket open — the page would say
-        // 已关闭 while QQ peers still reach the agent.
-        if (frame.name === 'qqbot' && !frame.enabled) host.qqBotRuntime?.stop?.();
         // The answer IS the new roster: the panel re-renders from it rather
         // than flipping its own row optimistically.
         client.send(serialize({ type: 'plugins', entries: rosterEntries(kernel), disable: [...disable] }));
-        // The flip may have moved the live code mode (a `ptc` close returns it
-        // to `native`), and every mode chip reads that mode from the state
-        // broadcast — skipping this left the chips one flip behind the roster.
         host.broadcastState();
         break;
       }
@@ -171,14 +128,7 @@ export async function handleManageFrame(
         // flipped switch).
         await handleModelConfigFrame(client, frame, host);
         break;
-      case 'qqbot':
-      case 'save_qqbot':
-      case 'test_qqbot':
-        // The qqbot family lives in its own module: same settings discipline,
-        // but a save also has to make the channel RUN, which the plugin and
-        // Skill rows never do (see `qqbot-frames.ts`).
-        await handleQqBotFrame(client, frame, host);
-        break;
+
     }
   } catch (err) {
     errorTo(client, err);

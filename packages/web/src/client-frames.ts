@@ -14,7 +14,6 @@ import type {
   AskUserQuestionAnswer,
   ConfiguredModel,
   ImageAttachmentRef,
-  PtcMode,
 } from '@nova-agent/core';
 import type { WireProviderInput } from './provider-wire.js';
 
@@ -127,9 +126,10 @@ export type ClientFrame =
    */
   | { type: 'roster' }
   /**
-   * Flip one plugin's switch. The host persists `plugins.disable`, re-rosters
-   * in place, and answers with a fresh `plugins` frame — the panel re-renders
-   * from that answer, never from the click. Refused while a run is live.
+   * Flip one plugin's switch. The host writes that row's own `enabled` in
+   * `plugins.entries`, re-rosters in place, and answers with a fresh
+   * `plugins` frame — the panel re-renders from that answer, never from the
+   * click. Refused while a run is live.
    */
   | { type: 'set_plugin_enabled'; name: string; enabled: boolean }
   /**
@@ -144,25 +144,21 @@ export type ClientFrame =
    */
   | { type: 'list_skills' }
   /**
-   * Ask for the qqbot connection snapshot (appId presence, secret presence,
-   * reference name — NEVER the secret). Sent when the qqbot page opens.
+   * Run one operation on ONE plugin, addressed by the id its config row uses.
+   *
+   * This is the whole browser↔plugin seam: a plugin that owns a settings page, a
+   * status readout or a probe registers a namespace with the `plugin-rpc` service
+   * and answers here. The host is deliberately absent from the conversation — it
+   * neither knows the plugin nor validates the operation, so a new plugin ships a
+   * page without a host change. A plugin that is switched off has no namespace
+   * registered, so it answers nothing and the request fails with a reason.
+   *
+   * `id` is the browser's own correlation token, echoed back on the response: the
+   * page may have several requests in flight, and an answer must not be matched to
+   * the wrong form.
    */
-  | { type: 'qqbot' }
-  /**
-   * Save the qqbot connection block. An empty `clientSecret` keeps the stored
-   * value (the browser never holds it, so it cannot send it back); a non-empty
-   * one overwrites verbatim — including an `{env:NAME}`-shaped value, which the
-   * load path expands. The answer is a fresh `qqbot` snapshot.
-   */
-  | { type: 'save_qqbot'; appId?: string; clientSecret?: string }
-  /**
-   * Probe candidate qqbot credentials end to end (token grant + gateway
-   * lookup). The candidate secret travels in this frame only — it is tested,
-   * never stored. The answer is a `qqbot_test` frame, success or reason.
-   */
-  | { type: 'test_qqbot'; appId?: string; clientSecret?: string }
+  | { type: 'plugin_request'; id: number; plugin: string; op: string; payload?: unknown }
   | { type: 'set_approval_mode'; mode: ApprovalMode }
-  | { type: 'set_code_mode'; mode: PtcMode }
   /**
    * Load the model catalog. Sent when the seat's menu opens (and by its Retry):
    * the endpoint is asked on demand rather than at boot, so a slow or

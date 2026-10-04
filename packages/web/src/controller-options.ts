@@ -1,11 +1,10 @@
 import type { ConfiguredModel, RouteRegistry } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
-import type { QqBotRuntime } from './qqbot-frames.js';
 import type { PickFn } from './picker-frames.js';
 import type { WireProviderInput, WireProviderRow } from './provider-wire.js';
 
 /**
- * 控制器选项：**谁提供**、以及内核之外的四个持久化缝（模型、BYOK、插件开关、qqbot）。
+ * 控制器选项：**谁提供**、以及内核之外的三个持久化缝（模型、BYOK、插件开关）。
  *
  * 从 `options.ts` 拆出，是为了让那个文件只留「启动这一层需要什么」，而把「哪些
  * 数据由宿主落盘」这组**同一条纪律**的注入缝放在这里——它们全都是「只有壳知道配置
@@ -46,24 +45,21 @@ export interface ProviderSeams {
 }
 
 /**
- * The settings panel's config writers (the plugin manager's + Skill 中心's
- * switches). The shell owns the config file, so it injects the raw-document
- * patchers; absent in tests and in any surface with no durable home for the
- * choice, and the switch methods then throw instead of pretending to persist.
+ * The settings panel's own config writers: 插件管理's switches and Skill 中心's.
+ *
+ * The shell owns the config file, so it injects the raw-document patchers;
+ * absent in tests and in any surface with no durable home for the choice, and
+ * the switch methods then throw instead of pretending to persist.
+ *
+ * One plugin writer, not two. There used to be a pair here (one editing
+ * `plugins.disable`, one replacing `plugins.enable`) because the config kept two
+ * lists meaning opposite things; with ONE `plugins.entries` list a row owns its
+ * own switch, so the distinction — and the "same name in both tables" trap the
+ * pair existed to describe — is gone.
  */
 export interface PersistConfigSeams {
+  /** Flip one roster row's own switch; returns the disabled ids now in force. */
   setPluginEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
-  /**
-   * Replace the `plugins.enable` list wholesale.
-   *
-   * Distinct from `setPluginEnabled` (which edits `plugins.disable`) because the
-   * two lists mean opposite things: `disable` is a veto, `enable` is an opt-in for
-   * a tier that defaults to off. An advanced plugin is switched ON by being in
-   * `enable` and OFF by being ABSENT from it — writing it into `disable` instead
-   * would leave the same name in both tables, and the veto would win, so the
-   * operator's "on" would silently do nothing.
-   */
-  setPluginEnabledList?(names: readonly string[]): Promise<readonly string[]>;
   setSkillEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
 }
 
@@ -120,62 +116,6 @@ export interface ControllerOptions extends ProviderSeams {
    * durable home", and the page then shows the endpoint's catalog only.
    */
   readModels?: () => Promise<readonly ConfiguredModel[]>;
-  /**
-   * The qqbot snapshot the panel starts from: the app id, whether a secret is
-   * stored, and the `{env:NAME}` reference when the stored text is one. It is an
-   * OPTION rather than something the controller reads, because reading the raw
-   * config text is the shell's job (see `pluginDiagnostics`); the secret itself
-   * never appears here — only whether one exists.
-   */
-  qqBotConfig?: {
-    appId?: string;
-    hasClientSecret?: boolean;
-    clientSecretRef?: string;
-  };
-  /**
-   * Write the qqbot section (config `qqbot`). `clientSecret` absent means "keep
-   * the stored one" — the browser never holds it, so it cannot send it back.
-   */
-  persistQqBot?: (opts: { appId?: string; clientSecret?: string }) => void | Promise<void>;
-  /**
-   * Probe the qqbot credentials end to end (token grant + gateway lookup) and
-   * resolve with the gateway URL. The browser can only test what the operator
-   * typed (it never holds the stored secret), so the candidate secret travels
-   * in the request frame and never lands on disk unless the operator saves.
-   */
-  testQqBot?: (opts: { appId: string; clientSecret: string }) => Promise<string>;
-  /**
-   * Re-derive the qqbot problem from what is now on disk (the sentence, or
-   * undefined when usable). Asked after a save instead of duplicating the
-   * `{env:NAME}` rule in the panel: storing ANOTHER unresolved reference leaves
-   * the bot just as unusable, so the complaint must not be cleared blindly.
-   */
-  recheckQqBot?: () => Promise<string | undefined>;
-  /**
-   * The LIVE QQ channel in this process, when the shell runs one (see
-   * `QqBotRuntime`).
-   *
-   * `recheckQqBot` above answers "are the stored credentials usable", a question
-   * about the FILE. This one answers the two the file cannot: is the gateway up
-   * (the page draws 未配置 / 已配置但未启动 / 运行中), and what happens AFTER a
-   * save — storing credentials is not connecting them, and the channel was built
-   * at boot when the file was still empty. Absent (tests, or a shell with no
-   * channel) leaves both readings off, as the page rendered before this existed.
-   */
-  qqBotRuntime?: QqBotRuntime;
-  /**
-   * Non-fatal config problems, keyed by the PLUGIN-OWNED config section they
-   * belong to (`qqbot` today), as ready-to-show sentences.
-   *
-   * These exist so a plugin's misconfiguration does not stop the surface: the
-   * shell resolves `{env:NAME}` references at load, and an unset one inside a
-   * plugin-owned section becomes a diagnostic instead of a startup failure. The
-   * browser is the only place with room to say what is wrong and which file to
-   * edit, so the sentences travel here already written; the key lets the panel
-   * that owns a plugin claim its own problem, and keeps the CLI (which owns the
-   * user-facing copy) from knowing anything about frames or panels.
-   */
-  pluginDiagnostics?: Readonly<Record<string, string>>;
   /**
    * Override the host's native file/folder dialog (`pick_file` /
    * `pick_directory`). Absent in production — the real dialog from
