@@ -35,7 +35,7 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 | 18 | `ui-open-in-app` | 25 / 2110 | — | **N/A**（N3） |
 | 19 | `ui-permission-presets` | 19 / 2602 | `conversation/PermissionSelect.tsx`、`settings/GeneralSection.tsx` | 部分 |
 | 20 | `ui-plan` | 22 / 1681 | `conversation/TodoPanel.tsx`、`chat/CompactionItem.tsx` | 部分 |
-| 21 | `ui-plugin-manager` | 22 / 8178 | `settings/{PluginsSection,PluginRow,plugin-state,use-flip-feedback}`、`plugins/{plugin-tier,runtime-switch,runtime-roster}` | 对齐（开关真生效并跨重启持久；第二录取口 `ptc`/`qqbot` 双写 disable；关掉的插件页从导航消失） |
+| 21 | `ui-plugin-manager` | 22 / 8178 | `settings/{PluginsSection,PluginRow,plugin-state,use-flip-feedback,PluginPageSection}`、`plugins/{runtime-switch,runtime-roster}` | 对齐（开关真生效并跨重启持久；`enabled` 是**唯一**开关，行里的 `config` 归插件自己的 `Config` schema；插件自带设置页由 `manifest.page` + `PluginPageDescriptor` 描述、`PluginPageSection` 通用渲染，导航从活 roster 的 `page` 行派生，关掉的插件页从导航消失） |
 | 22 | `ui-primitives` | 191 / 27013 | `shell/{Menu,MenuCard,MenuSurface,Tooltip,anchored-popover,modal-layer,focus,use-escape}`、`styles/`、`icons.tsx` | 部分 |
 | 23 | `ui-reference` | 7 / 1056 | `composer/reference-menu.ts`（`@` 引用） | 部分 |
 | 24 | `ui-renderer` | 25 / 6397 | `main.tsx` | **N/A**（N1） |
@@ -85,8 +85,8 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 1. **`ui-shortcuts`**：快捷键参考与本地自定义。Nova 的按键处理散在 `composer-keys.ts` / `shell/use-escape.ts`，**没有可发现的快捷键清单**。可先做只读参考表（列出已实现的键位），不需要新协议。
 2. **`ui-sidebar` 的会话操作**：重命名 / 归档 / 置顶 / 行内菜单 / 拖拽排序 / 手动排序。Nova 的会话行只有**删除**，且标题是**从日志头扫描派生**的（`core/session-peek.ts`，首条提示词前 120 字），**不是存储字段**。dsh 对应 `ui-workspace/src/client/rows/Rows.tsx`、中文文案在 `ui-workspace/src/client/locales.ts`（`menu.fork` 分叉会话 / `menu.archiveSession` 归档会话 / `menu.pinSession` 置顶会话 …）。**需要新协议帧**（内核 + web + UI 三层），是当前最大的一块缺口。
 3. **`ui-skill`**：`/` 菜单缺少 skill 源。内核已把 skills 索引注入了上下文，`ui-skill` 只是把它接进 `/` 触发源；Nova 的 `command-menu.ts` 已有「注册表认得 `/name` 就发命令帧」的分发点，**接一个源即可**。
-4. **`ui-settings-*` 五个配置页**（shell / agent-loop / subagent / web-search / plugin-inventory）：Nova 的内核**已有**对应可配置项（`tools.bash.timeoutMs`、`tools.bash.shellPath`、`tools.code.*`、`maxTurns`、`autoCompactTokenLimit`、`projectDocMaxTokens`、`notify`），但**前端一个都改不了**——`packages/web/src/protocol.ts` 的 `ClientFrame` **没有任何配置读写帧**，`ready` 也只带一个 `configPath` 字符串。这是「后端有、前端没有」的典型缺口。
-5. **`ui-plugin-manager`**：Nova 的 `PluginsSection` 是**只读花名册**（名字/状态/注入的服务）。`plugins.disable` / `plugins.extra` 已是正式配置入口，因此可做成可写。
+4. **`ui-settings-*` 五个配置页**（shell / agent-loop / subagent / web-search / plugin-inventory）：Nova 的内核**已有**对应可配置项（`tools.bash.timeoutMs`、`tools.bash.shellPath`、`maxTurns`、`autoCompactTokenLimit`、`projectDocMaxTokens`、`notify`，以及**每个插件行自己的 `config`**），但**前端只能改插件那部分**——插件自带设置页（`manifest.page` + `PluginPageDescriptor` + `plugin_request`/`plugin_response`）已能读写某一行的 `config`，而 `packages/web/src/protocol.ts` 的 `ClientFrame` 对**核心段**仍没有任何读写帧，`ready` 也只带一个 `configPath` 字符串。所以今天剩的是「核心配置有、前端没有」这块缺口（`tools.code` 已随重构删除，执行模式现在是 `@nova-agent/plugin-ptc` 那一行 `config.mode` 的事，归插件自己的设置页）。
+5. **`ui-plugin-manager`**：Nova 的 `PluginsSection` 是**只读花名册**（名字/状态/注入的服务）。`plugins.entries` 已是唯一的正式配置入口（`enabled` 单一开关、行里 `config` 归插件自己的 schema），因此可做成可写。
 
 ### B. 需要新内核能力（大块工程）
 
@@ -186,23 +186,25 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 
 - **Skill 开关是单向的（真 bug，最严重）**：`loadWorkspace()` 把**过滤后**的列表写进 `env.state.skills`，`kernel.skills` 返回的正是它，而 `manage-frames.ts` 的 `skillRows()` 就从这个列表建行、`enabled` **硬编码为 `true`**，`list_skills` 还硬编码 `disable: []`。后果：把一个 Skill 关掉 → 它从面板里**消失** → 面板再也点不回来（`skills.disable` 只能在配置文件里手改）。参照实现把「发现的全部」与「生效的」分开。已补 `env.state.allSkills`（未过滤发现）、`kernel.allSkills`、`kernel.disabled`，`skillRows(kernel, disable)` 按开关集合算 `enabled`，`list_skills` 读真实 disable 表。**变异验证**：把 `allSkills` 改回 `skills` → 3 条测试变红；`list_skills` 改回 `[]` → 1 条变红。
 - **`clientSecretRef` 永远是 `undefined`（真 bug，死代码）**：`web-mode.ts` 用 `loadConfig()` 的返回值去匹配 `/^\{env:(...)\}$/`，但加载会跑 `expandDeep()`——`{env:QQ_SECRET}` 这时**已经是明文密钥**，正则永远不匹配。于是面板永远显示「已配置（不再显示）」而不是「引用环境变量 QQ_SECRET」，读的人无从知道密钥是从哪来的。已加 `readQqBotSecretRef(homedir?)`（`config-write.ts`，读**原始文档**，与所有写入者同一份纪律）并接进 `web-mode.ts`，删掉死掉的 `refName()`。**变异验证**：让正则永远匹配不到 → 2 条测试变红。
-- **被拒绝的开关会永久卡死整页（真 bug，同一根因在三个组件里各一次）**：`SkillsSection` / `PluginsSection` / `QqbotSection` 都用「下一个快照到达 ⇒ 清掉 in-flight」的写法，注释还写着「拒绝会走 error 帧，另一处处理」。但**那个「另一处」不存在**：`error` 分支只写转录 hint，**不碰 `skills` / `plugins` / `qqbot`**，所以拒绝时快照永远不变、`switching` / `busy` **永远是那个值**，控件（以及两个 Section 里**整页所有**开关）从此永久禁用，只能关掉面板再打开。已在 reducer 的 `error` 分支加 `manageError: { seq, message }`（计数器而非布尔，同一句拒绝第二次仍可观测；`ready` 重连时清空），三个组件各补一条 `useEffect` 监听它。**变异验证**：去掉 reducer 那一行 → 3 条测试变红。
-- **QQ 机器人页的主按钮不可读 + 违反样式护栏（真 bug，已被门禁抓住）**：`.primary` 用了 `--dsw-alias-interactive-bg-active`（一个**半透明 hover 浮层**色，不是实心填充）配字面 `#fff`。两处都错：前者在浅色模式下几乎无对比度，后者直接违反「组件 CSS 零字面色」护栏（`style-guard.test.ts` 报 `QqbotSection.module.css: #fff`）。已改用全仓统一的实心按钮配方（`--dsw-alias-button-primary-fill` + `--dsw-alias-label-primary-foreground`，与 `ApprovalPanel` / `DirectoryBrowser` / `QuestionPanel` / `DeleteSessionDialog` 同一对）。**顺带**：改正后护栏又报了一次同一个 `#fff`——因为它出现在我**新写的 CSS 注释里**，而护栏扫注释。注释已改写。
+- **被拒绝的开关会永久卡死整页（真 bug，同一根因在三个组件里各一次）**：`SkillsSection` / `PluginsSection` / `QqbotSection`（**`QqbotSection` 已随插件架构重构删除**，见 AGENTS.md §5 插件设置页；当时三处各犯一次）都用「下一个快照到达 ⇒ 清掉 in-flight」的写法，注释还写着「拒绝会走 error 帧，另一处处理」。但**那个「另一处」不存在**：`error` 分支只写转录 hint，**不碰 `skills` / `plugins` / `qqbot`**，所以拒绝时快照永远不变、`switching` / `busy` **永远是那个值**，控件（以及两个 Section 里**整页所有**开关）从此永久禁用，只能关掉面板再打开。已在 reducer 的 `error` 分支加 `manageError: { seq, message }`（计数器而非布尔，同一句拒绝第二次仍可观测；`ready` 重连时清空），三个组件各补一条 `useEffect` 监听它。**变异验证**：去掉 reducer 那一行 → 3 条测试变红。**这条纪律今天仍适用**：任何「等下一个快照清 in-flight」的控件都必须同时听 `manageError`，因为拒绝**不会**产生新快照——插件设置页的表单也一样。
+- **QQ 机器人页的主按钮不可读 + 违反样式护栏（真 bug，已被门禁抓住）**：`.primary` 用了 `--dsw-alias-interactive-bg-active`（一个**半透明 hover 浮层**色，不是实心填充）配字面 `#fff`。两处都错：前者在浅色模式下几乎无对比度，后者直接违反「组件 CSS 零字面色」护栏（`style-guard.test.ts` 报 `QqbotSection.module.css: #fff`）。已改用全仓统一的实心按钮配方（`--dsw-alias-button-primary-fill` + `--dsw-alias-label-primary-foreground`，与 `ApprovalPanel` / `DirectoryBrowser` / `QuestionPanel` / `DeleteSessionDialog` 同一对）。**顺带**：改正后护栏又报了一次同一个 `#fff`——因为它出现在我**新写的 CSS 注释里**，而护栏扫注释。注释已改写。（`QqbotSection.module.css` 这个文件已随该组件删除；配方规矩不变。）
 - **结构棘轮一次抓出 15 个超限文件**：并行会话的功能改动让 15 个文件越过行数天花板（`config-write.ts` 从 49 涨到 205，**4 倍**）。按 AGENTS.md「单文件超长是设计失败，按职责拆」拆了两处真正混了职责的：`config-write.ts` → `config-doc.ts`（**怎么改**：原始文档读写、原子替换、拒改不可解析文件）+ `config-write.ts`（**改什么**）；`runtime-types.ts` → `runtime-assembly.ts`（surface 要**提供**什么）+ `runtime-types.ts`（surface 会**消费**什么，并 re-export 前者以保住唯一的导入缝）。其余 15 个是功能驱动的正常增长，走 `pnpm gates:update` 显式 `RAISED` 落账。
 - **旧测试里一条脆弱断言**：`plugins.intro` 文案带上了「并写入配置文件」，与断言「未加载时不渲染 `config.title`（=配置文件）」**子串相撞**而变红。产品的文案没错，是断言粒度太粗——已改断言 `config.copy`（复制路径按钮，加载态下不可能出现），这才是「那一行没渲染」的无歧义标志。
-- **`QqbotSection` 此前零测试**：已补 5 条静态渲染测试，其中一条钉住该页自己的承诺（文案「密钥永不回显」）：有引用时显示**变量名**而非值、字面密钥只显示「已配置」、输入框在有密钥时仍为**空**。另有一条**反向**断言：这两个输入框**不应**声明 `data-modal-escape-owner`——该属性是「Escape 归本字段」的让渡，只在字段**真的会处理**该键时才成立（插件搜索框会清空、路径框会跳转），QQ 页的字段什么都不做，声明它反而是**吞掉** Escape、把读者锁在鼠标上。**我最初把这条测试写成了正向断言（以为该补上），是测试先红才让我发现该行为本就不该存在。**
+- **`QqbotSection` 此前零测试**：已补 5 条静态渲染测试，其中一条钉住该页自己的承诺（文案「密钥永不回显」）：有引用时显示**变量名**而非值、字面密钥只显示「已配置」、输入框在有密钥时仍为**空**。另有一条**反向**断言：这两个输入框**不应**声明 `data-modal-escape-owner`——该属性是「Escape 归本字段」的让渡，只在字段**真的会处理**该键时才成立（插件搜索框会清空、路径框会跳转），QQ 页的字段什么都不做，声明它反而是**吞掉** Escape、把读者锁在鼠标上。**我最初把这条测试写成了正向断言（以为该补上），是测试先红才让我发现该行为本就不该存在。**（组件与测试都已随重构删除；**那条反向断言的教训被 `PluginPageSection` 继承**：通用渲染器只在字段类型真的声明了键盘行为时才让渡 Escape。）
 
 ### 插件不得阻塞主线程（第 8 轮：用户报告的启动失败）
 
 用户报告：`nova` 直接退出，只打印 `config references environment variable {env:QQ_SECRET} but it is not set`。**用户诊断完全正确**——「插件不应该阻塞主线程运作，就是没配置也只应该在 webui 和设置卡片显示插件报错」。
 
 - **根因**：`loadConfig` 对**整份**文档跑 `expandDeep`，任何未解析的 `{env:NAME}` 一律抛错。而 `qqbot` 是**第三方渠道插件**（AGENTS.md §4 原文：「`qqbot` 第三方插件编写示范」），它的凭据只有 `nova qqbot` 用得上——浏览器界面、REPL、`exec` 全都**不读这个值**，却一起被它拖死。一个插件把整个产品带下水。
-- **修法**：把「展开」按**归属**切片（新增 `config-expand.ts`）。核心段（`provider`）保持**加载即抛**——没有可用的 provider 凭据，任何 surface 都跑不了一轮，这不是诊断而是「起了也没用」；插件自有段则**保持字面并记录诊断**。名单是**插件白名单**而非核心黑名单：以后新增的段默认仍属核心、仍会大声失败，除非有人显式把它交给某个插件。
+- **修法**：把「展开」按**归属**切片（新增 `config-expand.ts`）。核心段（`provider`）保持**加载即抛**——没有可用的 provider 凭据，任何 surface 都跑不了一轮，这不是诊断而是「起了也没用」；插件行里的引用则**保持字面并记录诊断**。**归属判据后来从「插件白名单」改成结构性的**（`plugins.entries[].config` 里的未解析引用归那一行，见 AGENTS.md §3）：旧的 `PLUGIN_OWNED_SECTIONS = new Set(['qqbot'])` 是**宿主源码点名插件**，重构时已删除；今天新增一个插件不需要改宿主任何一行，它的 `{env:NAME}` 自动归它自己。
 - **不留空串**：未解析的引用**保留字面**而不是替换成 `''`。空串回退正是当初被废掉的坑（空凭据发到网上换回一个没头没尾的 401）；留字面至少自解释，而拥有者能在**发请求之前**按名字拒绝它。
-- **失败移到真正需要它的地方**：`nova qqbot` 在启动时检查并**明确指出是哪个字段、哪个变量**（`qqBotConfigProblem`，读**原始文档**）；浏览器面把诊断挂在该插件自己的「QQ 机器人」页上（`qqbot` 快照新增 `error` 字段），页面上任何其他功能都不受影响。
-- **保存后重新判定**：`recheckQqBot` 从磁盘重新推导，而不是保存即清除——存进**另一个**未解析引用同样不可用，清掉提示等于谎报修好了。
-- **测试**：`config.test.ts` 新增 11 条（插件段降级 + 核心段仍致命 + 混合文档 + 每变量只报一次 + 从磁盘取判定）。**变异验证**：把 `qqbot` 移出插件白名单 → **4 条立刻变红**。另加 UI 静态渲染测试（有 error 时显示、健康时不显示）。
+- **失败移到真正需要它的地方**：`nova qqbot` 在启动时检查并**明确指出是哪个字段、哪个变量**；浏览器面把诊断挂在该插件自己的设置页上（`page` 描述符的 `status` / `note` 字段），页面上任何其他功能都不受影响。
+- **保存后重新判定**：从磁盘重新推导，而不是保存即清除——存进**另一个**未解析引用同样不可用，清掉提示等于谎报修好了。
+- **测试**：`config.test.ts` 新增 11 条（插件段降级 + 核心段仍致命 + 混合文档 + 每变量只报一次 + 从磁盘取判定）。
 - **归档**：`config-write.ts` 按职责拆出 `config-doc.ts`（**怎么改**）与 `config-read.ts`（**读什么**：存的是哪个变量引用、现在能不能用），`config-write.ts` 只留「改什么」。
+
+> **本节两条机制已随插件架构重构改写**（见 AGENTS.md §3/§5）：①「插件白名单」改成**结构归属**（`plugins.entries[].config` 的引用归那一行，`PLUGIN_OWNED_SECTIONS` 已删除），所以「把 `qqbot` 移出白名单 → 4 条变红」那条变异验证不再有对应代码；②QQ 专用的帧与设置页（`qqbot` / `save_qqbot` / `test_qqbot` 帧、`qqbot` 快照的 `error` 字段、`recheckQqBot`、`QqbotSection` / `QqbotGuide` / `qqbot-view.ts`）**全部删除**，取而代之的是**一对通用帧** `plugin_request` / `plugin_response`（`packages/web/src/plugin-frames.ts`）与一个通用渲染器 `PluginPageSection.tsx`——插件自己回一个 `PluginPageDescriptor` 描述它的状态与字段。**这几条改动的净效果是本节想要的那个结果**：一个插件的配置问题只让那一行报错，不再拖死整份启动。
 
 ### 上下文视图按 `dsh-context` 重做（第 9 轮：用户点名「插件显示页面有些简陋，没达到」）
 
@@ -317,7 +319,7 @@ dsh-TUI 是 Ink（React 19 + react-reconciler）+ 约 28 个运行时依赖 + �
 
 1. **组头不带每类活动图标**：参照 `ChatGroupSeat` 的 `.leading` 按活动类别给图标，本仓组头只有 chevron + 标题（`ProcessGroupHead.tsx` 头注释记档）。若后续对齐，落点是 `ProcessGroupHead` 的 leading 位。
 2. **无 shimmer 最短展示时长守卫**：参照对 `TextShimmer` 有最短展示时长以免闪烁；本仓直接复用现有 shimmer 组件，不另加计时。
-3. **偏好落 localStorage**（`nova.transcriptView`）而非宿主设置文档：nova 没有 per-plugin 设置通道（设置面板只有 enable/disable），四档是纯前端呈现偏好，故与 `nova.theme` / 列表视图偏好同档。
+3. **偏好落 localStorage**（`nova.transcriptView`）而非宿主设置文档：四档是纯前端呈现偏好，与 `nova.theme` / 列表视图偏好同档——**宿主确实有 per-plugin 设置通道**（`manifest.page` + `PluginPageDescriptor` + `plugin_request` / `plugin_response`，见 AGENTS.md §5 插件设置页），但那条通道属于**插件自己的设置**；界面观感偏好不是任何插件的设置，所以仍留在浏览器侧。
 4. **live 细节的来源不同**：参照从自己的 step 事件流取「当前调用」，本仓从 flow 块投影（`chat/process-span.ts`）——**工具块结果未落地即在途**，因为 nova reducer 的工具块没有 `running` 标志。语义等价，取值路径不同。
 
 ## 真实侧边栏（better-sidebar 融入主程序，2026-10-01；2026-10-02 整体重写）
@@ -359,24 +361,40 @@ dsh-TUI 是 Ink（React 19 + react-reconciler）+ 约 28 个运行时依赖 + �
 
 ## dsh-genui 内核缺口（六条缝，2026-10-01）
 
-参照件：dsh 的 `gen-ui` 主示例插件与 deepseek-harness `ui-chat` 的 markdown / hook / asset 三条接入面。**只读**。本轨是「把为 genui 风格第三方插件开的内核缝接齐」——之前 nova 的内核没有一条缝能把第三方插件的用户界面能力拉进同一个面板，而 dsh 的 genui 示范了六条互补的接入位（spec、校验态、typed payload、提示词 section、将停注入、资产路由 + 浏览器装载）。**全部落地**（`.changeset/genui-kernel-seams.md`，core/plugins/web 三包 minor）。
+参照件：dsh 的 `gen-ui` 主示例插件与 deepseek-harness `ui-chat` 的 markdown / hook / asset 三条接入面。**只读**。本轨是「把为 genui 风格第三方插件开的内核缝接齐」——之前 nova 的内核没有一条缝能把第三方插件的用户界面能力拉进同一个面板，而 dsh 的 genui 示范了六条互补的接入位（spec、校验态、typed payload、提示词 section、将停注入、资产路由 + 浏览器装载）。**六条落地**（`.changeset/genui-kernel-seams.md`，core/plugins/web 三包 minor）。缝 6 收口用了**两轮**：第一轮补消费端（`App` 读 roster 上的 `clientBundle`），第二轮才发现**生产者那半从未存在**（见「闭环」一节）——这正是本仓「假闭环」缺陷族在同一处连栽两次的样本。
 
 ### 已对齐
 
-- **工具结果 `meta`**（核心类型，缝 1）：`ToolResultMessage` 增可选 `meta?: Record<string, unknown>`，由 `ToolDefinition.resultMeta?(args, content)` 在 `completeToolCall` 末尾（`afterToolResult` 钩子与截断**之后**）填入——把一份只给 surface 看的结构化数据（genui spec、校验态、typed payload）挂在结果消息上。**绝不进模型可见面**：只随结果帧下发，不改 prompt 前缀、不沾缓存键。两个内置工具今天都不声明，行为零变。直测钉「meta 进日志、content 不动」（撤掉 meta 写就会红）。
+- **工具结果 `meta`**（核心类型，缝 1）：`ToolResultMessage` 增可选 `meta?: Record<string, unknown>`，由 `ToolDefinition.resultMeta?(args, content)` 在 `completeToolCall` 末尾（`afterToolResult` 钩子与截断**之后**）填入——把一份只给 surface 看的结构化数据（genui spec、校验态、typed payload）挂在结果消息上。**绝不进模型可见面**：它不改 prompt 前缀、不沾缓存键。传输上它**随 `tool_call_result` 事件对象整体到达浏览器**（`wireFrame` 只附 `view`/`resultView`，不剥 `result`），所以这不是「只下发到某个接收方」，而是「**到得了、但仓内今天没人读**」——**没有任何消费者**（`web/ui/src` 零 `result.meta` 读取，repl / exec 也没有），读取方是**第三方的 client bundle**；声明 `resultMeta` 的工具在仓内同样是**零个**。两个内置工具今天都不声明，行为零变。直测钉「meta 进日志、content 不动」（撤掉 meta 写就会红）。
 - **per-plugin 系统提示 section**（缝 2）：`buildSystemPrompt(sections)` 把插件 section 追加在 persona 之后、各自 `## <name>` 小标题；同名后写覆盖**正文**但**保留首次出现的位置**；空正文/空列表退化为裸 persona。section 在**装配时**一次性解析（`createEnvironment` 喂 `opts.systemPromptSections`），不是每请求重算——否则前缀字节能被一次钩子改写、命中缓存契约当场作废。`CreateKernelOptions.systemPromptSections` 是新的可选注入点。实现按职责分文件：`system-prompt.ts` 拥有 persona，`prompt-sections.ts` 拥有 section 注册表。直测四条。
 - **fence 渲染注册表**（前端，缝 3）：`chat/markdown/fence-renderers.ts` 是 `Map<lang, FenceRenderer>`——markdown parser 已经把 info string 小写化，注册表对小写键查找，未注册的语言回落到 `<pre><code>`（注册零个 = 逐字节复现之前的页面）。`blocks.tsx` 的 `renderCode` 在 CodeBlock 之前先问注册表；返回 `null` 表示放弃（renderer 自己判定 spec 不能用），同样回落。**这是插件 UI 能力的接口**：把插件组件拉进 markdown 叶子会倒置包依赖方向，registry 让叶层插件无关、插件从自己的模块注册自己。直测四条。
-- **turn-stopping 钩子**（事件 `turn/before-end`，缝 4）：`agent/loop.ts` 在「无 toolCalls、即将 `done`」前先跑 `ctx.serial(beforeTurnEnd, …)`；插件返回 `{ action: 'steer', message }` 即追加一条 user/assistant 消息继续回合（受 `turn < maxTurns` 配额保护，配额耗尽仍按 `done` 收尾）。返回 `void` 即弃权，旧路径逐字不变。`AgentSession.prompt()` 之外有了「**回合将停**」的注入位（goal 的跨轮续做、genui 的「再问一句」都走这条），不依赖 surface 配合——服务端钩子在装配点接线，无人值守 surface 也吃得到。直测两条。
+- **turn-stopping 钩子**（事件 `turn/before-end`，缝 4）：`agent/loop.ts` 在「无 toolCalls、即将 `done`」前先跑 `ctx.serial(beforeTurnEnd, …)`；插件返回 `{ action: 'steer', message }` 即追加一条 user/assistant 消息继续回合（受 `turn < maxTurns` 配额保护，配额耗尽仍按 `done` 收尾）。返回 `void` 即弃权，旧路径逐字不变。`AgentSession.prompt()` 之外有了「**回合将停**」的注入位，不依赖 surface 配合——服务端钩子在装配点接线，无人值守 surface 也吃得到。**机制五端齐备**（键 `capabilities.ts:549`、派发 `loop.ts:129`、组合 `hooks.ts:77` 的 `ctx.serial`、类型 `types.ts:389`、`test/agent.test.ts` 两条直测），但**仓内今天零生产者**：`ctx.on(beforeTurnEnd, …)` 在全部 `packages/*/src` 里一次也没有，那两条直测是**直接注入 `AgentHooks` 对象**、绕过容器与 `ctx.serial` 的。所以它是**为第三方插件留的缝**，**不是**任何内置实现的现役路径——**`goal` 的跨轮续做走的是 `beforeLlmCall`**（`builtin/goal.ts:261`；`beforeTurnEnd` 在该文件零命中）。
 - **插件资产路由**（`routes` 服务键 + Web `RouteRegistry`，缝 5）：`capabilities.ts` 增 `routes: ServiceKey<RouteRegistry>` + `PluginRoute`/`PluginRouteHandler`/`RouteRegistry` 接口；`plugins/services.ts` 的 `routeRegistryProvider(registry)` 把宿主建好的实例 provide 进容器；`web/route-registry.ts` 的 `WebRouteRegistry` 实现 register/routes/handlerFor（前缀精确与嵌套都匹配、**反向注册序**派发——同前缀后注册的胜，与容器 replace-by-key 同语义）。`web-mode.ts` 在 boot 时实例化并经 `routeRegistryProvider` 进 `extraPlugins`、同时随 `launchWeb({ routes })` 透传给 server。`server.ts` 的 `handleHttp` 在认证门**之后**、图片/静态**之前**问 `registry.handlerFor(relPath)`——**插件路由仍然是私有读**（与品牌资产例外不同），命中即交由 handler、未命中回落静态。headless（exec / qqbot）不 provide 这个键，插件 UI 能力按「读不到就降级」收场。直测五条（注册表单元）+ 一条 HTTP 端到端。
-- **浏览器侧插件装载器**（boot graph + script injection，缝 6）：`PluginRosterEntry.clientBundle?` 与 `WireRosterEntry.clientBundle?`（`{ path?, rev? }`）作为 boot graph——`roster-wire.ts` 把它从 kernel 透传到 wire；`web/ui/plugins/client-loader.ts` 是浏览器侧装载器：`buildBundleUrl`（编码名字、默认 `client.js`、`rev` 转 `?rev=` 缓存击穿）+ `loadClientPlugin`（每个 `<name>` 一条 `<script>` 注入，记入 `window.__NovaPlugins__[name]`、按页记忆化、失败一次即终态不再重试）+ `loadBootGraph`（并行装载所有声明了 `clientBundle` 的启用插件，单个失败不阻塞其他）+ `registerClientPlugin`（host 内置插件短路）。**纯逻辑与 DOM 分层**：DOM 触碰只落在 `injectScript` 一处，其余全是纯函数/UI 测试车道（node 环境、无 jsdom）直测——装载器有 15 条直测覆盖 URL 构建、记忆化、失败终态、boot graph 走查；DOM 注入器经 `setScriptInjector` 可换。
+- **浏览器侧插件装载器**（boot graph + script injection，缝 6）：**声明点是插件自己的 manifest**——`PluginManifest.clientBundle?`（core `plugin/types.ts`，形状 `PluginClientBundle`）→ `describePlugins` 逐字段照抄到 `PluginRosterEntry.clientBundle?`（缺席即纯服务端插件，键**不出现**而非 `null`）→ `roster-wire.ts` 透传到 `WireRosterEntry.clientBundle?`；`web/ui/plugins/client-loader.ts` 是浏览器侧装载器：`buildBundleUrl`（编码名字、默认 `client.js`、`rev` 转 `?rev=` 缓存击穿）+ `loadClientPlugin`（每个 `<name>` 一条 `<script>` 注入，记入 `window.__NovaPlugins__[name]`、按页记忆化、失败一次即终态不再重试）+ `loadBootGraph`（并行装载所有声明了 `clientBundle` 的启用插件，单个失败不阻塞其他）+ `registerClientPlugin`（host 内置插件短路）。**纯逻辑与 DOM 分层**：DOM 触碰只落在 `injectScript` 一处，其余全是纯函数/UI 测试车道（node 环境、无 jsdom）直测——装载器有 15 条直测覆盖 URL 构建、记忆化、失败终态、boot graph 走查；DOM 注入器经 `setScriptInjector` 可换。
 
 ### 闭环
 
-插件 server 半经 `routes` 注册 `/plugins/<name>/*` 资产前缀 + 声明 `clientBundle.rev`，浏览器挂载时走 `loadBootGraph(roster)` 即发现并装载该插件的 client bundle，bundle 写到全局即被注册——六条缝（meta/prompt-section/fence/turn-stopper/asset-route/client-loader）至此全部就位。
+**六条缝的机制都已落地，但今天仓内没有一条被插件真的用起来。** 逐条核对，宿主侧 / 机制侧确实都在（工具结果带 meta 到得了浏览器、section 在装配点进 persona、fence 注册表被 `renderCode` 查询、`turn/before-end` 由 `agent/loop.ts` 派发、`server.ts` 的 `handleHttp` 真的问 `registry.handlerFor()`、`describePlugins` 真的投影 `clientBundle`）——**但这些只证明「管道通了」，不证明「有插件用过」**。按本节自己的判据「它在真实路径上被用了一次」，逐条的**插件侧那一端今天都是空的**：
+
+1. **`meta`（缝 1）**：传输完整（随 `tool_call_result` 事件对象到浏览器），**零消费者**——`web/ui/src` 零 `result.meta` 读取；声明 `resultMeta` 的工具也是**零个**。
+2. **`prompt-section`（缝 2）**：`buildSystemPrompt` 在装配点折叠 section（`runtime-env.ts:170` 读 `opts.systemPromptSections`），**零生产者**——全仓没有任何调用点传 `systemPromptSections`（直测只直调纯函数 `buildSystemPrompt`，不经过装配点）。
+3. **`fence`（缝 3）**：注册表与查询都在（`blocks.tsx:22` 问 `fenceRendererFor`），**零生产者**——`registerFenceRenderer` 只被它自己的直测调用。
+4. **`turn-stopper`（缝 4）**：五端齐备（键 / 派发 / 组合 / 类型 / 直测），**零生产者**——`ctx.on(beforeTurnEnd, …)` 全仓零命中。
+5. **`asset-route`（缝 5）**：宿主 provide + server 查询（`web-mode.ts:133`、`server.ts:153`），**零生产者**——`ctx.must(routes).register(…)` 只出现在注释与直测里；且它是**宿主可选缝**（headless 不 provide，读到 undefined 即降级）。
+6. **`clientBundle`（缝 6）**：投影 + 透传 + 浏览器装载都完整（`runtime-roster.ts:170`、`roster-wire.ts:59`、`App.tsx:184`），**零声明者**——没有任何插件在自己的 manifest 里写 `clientBundle`。
+
+所以「六条缝全部闭环」这句话只在**机制**这一层成立，在**使用**这一层**一条也不成立**——六条都是为第三方 genui 风格插件留的缝；缝 6 的真机验收用的是**临时写的**声明方，不是仓内任何插件。这正是本仓「判据是『真实路径上被用了一次』，不是『类型/字段齐了』」那句纪律的**仓库级样本**。
+
+缝 6 的收口分了两轮，而**第二轮证明第一轮的「已闭环」是假的**：
+
+1. 第一轮补**消费端**：`App.tsx` 在 `[connection, rosterEntries]` 上单飞调一次 `loadBootGraph(rosterEntries)`。此前 `loadBootGraph` / `entriesToLoad` 全仓只被 `web/ui/test/client-loader.test.ts` 调用。
+2. 第二轮才发现**生产者那一半从未存在**：`describePlugins` 只写 `title/description/tier/page` 四个键，`PluginManifest` 也没有 `clientBundle` 可声明。于是 `roster-wire.ts` 的透传永远拿到 `undefined`、`entriesToLoad` **恒为空**、`loadBootGraph` 恒为空转——「机制齐、接线缺」只是换了缺的那一头。补法是给插件一个**声明点**（`PluginManifest.clientBundle?`）并让 `describePlugins` 照传，**不是**在宿主里按插件名硬编码。
+
+教训写在这里，因为它是本仓高频缺陷族的**双踩**样本：「只写不读 / 假闭环」在第一轮以「没人调装载器」现形，在第二轮以「没人写字段」再次现形；两轮的静态证据（类型齐全、`grep clientBundle` 有 15 处、直测全绿、`pnpm gates` 绿）**长得一模一样**。两轮的真判据都只有一条：**一个有浏览器半的插件真的被浏览器取了一次**。第二轮的真机验收（临时 home + `NOVA_WEB_PORT` 固定 + headless Edge/CDP）：roster 行带 `{"path":"client.js","rev":"rev-r1"}` → `ready` 帧原样带出 → 浏览器自己发出 `GET /plugins/<name>/client.js?rev=rev-r1`（HTTP 200，插件自己的 handler 记到 hit）→ `window.__NovaPlugins__["<name>"]` 被填；没声明的对照插件（`todo`）键缺席、路径 404。
 
 ### 记名偏离（不装成已对齐）
 
 1. **路由是 host-owned**：只有跑着 HTTP 服务器的宿主（web surface）才 provide `routes`；headless（exec / qqbot）不 provide，插件读到 undefined 即降级。`surfaces` 是装配即存在，`routes` 是宿主可选——刻意不同。
-2. **boot graph 而非 dsh 的运行时发现**：dsh 的装载走组件挂载时的运行时 import；本仓用声明式 `clientBundle` 作为 boot graph，挂载时一次性装载所有启用插件，单个失败不阻塞其他。
+2. **boot graph 而非 dsh 的运行时发现**：dsh 的装载走组件挂载时的运行时 import；本仓用声明式 `clientBundle`（写在插件自己的 manifest 里）作为 boot graph，挂载时一次性装载所有启用插件、单个失败不阻塞其他。**管道已闭合且真机验过**（见上面「闭环」）——但要读准这句话的范围：验的是**机制链**（`manifest.clientBundle` → `describePlugins` 投影 → `roster-wire` 透传 → `App` 装载 → 浏览器取回），**声明方是验收时临时写的**，不是仓内任何插件；仓内今天仍然**零个插件声明 `clientBundle`**。
 3. **client-loader 是单向注入**：bundle 写到 `window.__NovaPlugins__[name]` 后由 host 读取；不支持热替换、不支持回滚——重启浏览器是新装载的唯一路径。
 4. **fence renderer 不带运行时降级链**：一个语言键只能注册一个 renderer，后注册的覆盖先注册的（与容器 replace-by-key 同语义）；没有 dsh 的「主 renderer 失败回落备用 renderer」链。

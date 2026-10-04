@@ -37,8 +37,8 @@ pnpm release       # changeset version + sync root version + commit + tag
 
 - `nova` → **浏览器界面**（`@nova-agent/web`，默认）：单 Node 进程 = HTTP 静态托管 + 单 WebSocket 事件流。启动打印**一次性带 launch token 的 localhost URL**，校验后落 HttpOnly 签名 cookie；绑定地址强制回环。`NOVA_WEB_PORT` 可固定端口（前端开发流：先 `nova --web`，再在 `packages/web/ui` 跑 `pnpm dev`，http/ws 全代理）；未设时**记住上次绑定端口**、下次优先复用（占用即回落临时端口）——origin 因此跨重启稳定，配合持久化配对 cookie，**WebUI 可作为 PWA 安装**（manifest 与图标由 `web/ui/public/` 下发）。`--web` 是这个默认形态的**显式拼法**，不是另一个 surface。
 - `nova --repl` → readline 终端形态（非 TTY 自动回落；`--repl` 是「强制回落」而非兼容 no-op）。
-- `nova qqbot` → QQ 机器人（需 `qqbot.appId` / `clientSecret`；对端独立会话，永不交互审批）。
-- `nova plugin add|remove|list` → 第三方插件的安装/卸载/清单（装到 `~/.nova/plugins`，写回 `plugins.extra`）。**不经配置加载**，所以配置被坏插件搞坏时它仍可用（见 §3）。
+- `nova qqbot` → QQ 机器人（**要求配置里有一行 `plugins.entries` 指名 `@nova-agent/qqbot` 并填好它自己 `config` 里的 `appId` / `clientSecret`**；对端独立会话，永不交互审批）。这个包**不在随产品发行的三个扩展包里**——它是第三方编写示范，行不给就没有通道，`nova qqbot` 会点名拒绝而不是挂起（见 §3、§4）。
+- `nova plugin add|remove|list` → 第三方插件的安装/卸载/清单（装到 `~/.nova/plugins`，**写回 `plugins.entries` 里的一行**）。**不经配置加载**，所以配置被坏插件搞坏时它仍可用（见 §3）。
 - `nova exec "<task>" --json` → 非交互单次执行（JSONL 事件流；未放行的审批自动拒绝）。`--json` 下另有控制行 `run_error` 与 `notice`；SIGINT 优雅中止。
 
 ## 3. 配置（唯一来源 `~/.nova/config.json`）
@@ -73,33 +73,32 @@ pnpm release       # changeset version + sync root version + commit + tag
   "autoCompactTokenLimit": 60000,     // 可选：上轮 prompt tokens 超限自动压缩
   "projectDocMaxTokens": 8000,        // 可选：AGENTS.md 链 token 预算（按 token 非字节）
   "ui": { "theme": "dark" },          // 可选：REPL 外观（NO_COLOR 恒定无色）
-  "plugins": {                        // 可选：插件 roster（配置层扩展点）
-    "disable": ["todo"],              // 关掉的内置插件（核心功能不可关，见 §5 插件分层）
-    "enable": ["subagent"],           // 开启的进阶插件（advanced 默认关；关闭＝从此表移除）
-    "extra": ["./my-plugin.mjs"]      // 额外插件源（路径或包名；加载失败即启动失败）
+  "plugins": {                        // 可选：插件树——唯一的插件配置入口（见下）
+    "entries": [                      // 一行一个插件；id 是内置插件的名字，或一个模块 spec
+      { "id": "todo", "enabled": false },
+      { "id": "./my-plugin.mjs" },                          // 加一个插件＝加一行
+      { "id": "@nova-agent/plugin-ptc", "config": { "mode": "both" } },
+      { "id": "@nova-agent/qqbot",      "config": { "appId": "xxx",
+                                        "clientSecret": "{env:QQBOT_SECRET}" } }
+    ]
   },
   "skills": { "disable": [] },        // 可选：Skill 中心关掉的技能（按名；项目级/用户级同名一并关）
   "tools": {
-    "bash": { "enabled": true, "timeoutMs": 60000, "shellPath": "C:/Program Files/Git/bin/bash.exe" },
-    "code": {                          // 可选：PTC 模式（native|ptc|both，缺省 native = 关闭）
-      "mode": "ptc",
-      "maxParallelSubCalls": 10,       // 单 run_code 内并行子调用上限（≤100）
-      "computeMs": 30000, "maxWallMs": 60000,
-      "maxOutputBytes": 1048576, "maxOldGenerationSizeMb": 256
-    }
+    "bash": { "enabled": true, "timeoutMs": 60000, "shellPath": "C:/Program Files/Git/bin/bash.exe" }
   },
-  "qqbot": { "appId": "xxx", "clientSecret": "{env:QQBOT_SECRET}" },
   "surfaces": ["./my-surface.mjs"]    // 可选：动态 surface 插件模块 spec（包名或 ./rel.mjs）；加载失败即启动失败
 }
 ```
 
-**`surfaces` 是 `plugins.extra` 的 surface 版**（§4）：每行一个模块 spec，由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`。模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**——与 `plugins.extra` 同一条纪律：静默忽略一个扩展比坏掉的启动更糟。**cli 源码不静态依赖任何 surface 包**：`surfaces` 行点名谁就加载谁，加一个 surface 是改配置，不是改 cli 源码。
+**`plugins.entries` 是插件树，也是唯一的插件配置入口**：不改源码即可关掉任一内置插件或加载自写插件。每行 `{ id, enabled?, config? }`——`id` 是一个**内置插件的名字**，或**一个模块 spec**（`plugins/src/plugin-tree.ts` 的 `buildTree` 先放全部进程内内置插件，其余 id 一律按**同一处** spec 规则解析）。`enabled` 是**唯一**的开关：行开着（或按它自己 manifest 的 tier 默认开着）就加载，关着就只留一行给面板。**没有第二张表、没有推导**——曾经 `disable`/`enable`/`extra` 三处表达同一件事，于是两张表能互相矛盾，而配置推导（`tools.code.mode`、`qqbot` 块）又能越过两张表把关掉的插件复活；现在启动路径与设置面板写的是同一个字段（`cli/src/config-write.ts` 的 `setPluginEntry`），所以一次开关不可能与一次重启给出两个答案。
 
-**`plugins` 是配置层扩展点的正式入口**：不改源码即可关掉任一内置插件或加载自写插件。`extra` 模块须以 `default`（或 `plugin`）导出一个 core `Plugin`（`{ name, inject?, Config?, apply(ctx) }`，`apply` 可用 `registerTool` / `registerCommand` 注册工具与命令），走与内置插件**完全相同**的容器 API 与审批门。拼错的 `disable` 名会告警；加载失败的 `extra` 直接让启动失败——静默忽略的扩展比坏掉的启动更糟。
+**行里的 `config` 归那个插件自己**：由它的 `Config` schema 校验（core 的 `objectConfig`，一个结构化的 standard-schema，见 `core/src/plugin/schema.ts`），内核不知道 bash 有没有超时，也不该知道。schema 里每个字段都是**可选**的（`{}` 是合法的一行，"缺省"永远是插件自己的默认值而不是校验失败），但**未知键一律点名拒绝**——一个被静默丢掉的键就是「设置看起来存下了、其实什么都没做」。`{env:NAME}` 展开仍然逐行生效（`cli/src/config-expand.ts`），且**只有插件行里的未解析引用降级成诊断**：核心段的引用照旧致命，而某一行的 `{env:QQ_SECRET}` 没设置只让那一行报错，不再把浏览器界面、REPL 与 `exec` 一起拖死。
 
-**`extra`（与 `surfaces`）的每一行是一个模块 spec，解析规则只有一处**（`plugins/src/module-spec.ts`）：路径按**工作目录**解析；裸包名先交给 Node（随产品解析）；**只有产品解析不到的名字**才落到**用户插件根** `~/.nova/plugins/node_modules/`。用户根是**回退而非遮蔽**——产品能解析的名字永不被用户根里的旧副本顶掉（否则一次升级会被几个月前装的同名副本来个静默失效）。第三方插件的安装路径是 `nova plugin add <包名>`（`cli/src/plugin-command.ts`）：npm 装进用户插件根 → 用 boot **同款**检查（`loadExtraPlugins`）确认真的导出了插件 → **最后**才写 `plugins.extra`，任一步失败都不留配置行；`remove` 顺序相反（先撤行、后卸包，剩下的包是惰性的、剩下的行会让下次启动失败）。该命令**在建内核之前、加载配置之前**执行——它要修的就是「配置坏了导致启动失败」这件事，所以它不能依赖一次成功的启动。
+**`surfaces` 是插件行的 surface 版**（§4）：每行一个模块 spec，由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`。模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**——与 `plugins.entries` 里加载不起来的行同一条纪律：静默忽略一个扩展比坏掉的启动更糟。**cli 源码不静态依赖任何 surface 包**：`surfaces` 行点名谁就加载谁，加一个 surface 是改配置，不是改 cli 源码。
 
-**插件分三层**（`plugins/plugin-tier.ts`）：**core** 不可关且不渲染开关（注册表与服务、`fs-read`/`fs-write`/`search`/`ask-user`）；**standard** 默认开、可关（`bash`/`jobs`/`todo`/`goal`/`workspace`）；**advanced** 默认关、写 `plugins.enable` 才加载（`subagent`/`ptc`/`qqbot`/`context`）。生效规则只有一个函数 `enabledByTier`：`disable` 命中→关（**disable 优先**，安全侧）→ `enable` 命中→开 → tier 默认。未知名字 fail-open 到 standard——把第三方划进 core 会让它**永久不可关**。持久化分工：standard 写 `disable`，advanced 写 `enable`（关闭＝移出）。**有两个录取口的行是例外**：`ptc`（`code.mode !== 'native'` 即录取）与 `qqbot`（配置里有 `qqbot` 块即录取）——推导经 `plugin-tier.ts` 的 `impliedOptIns` **让位于显式 `disable`**（boot `kernel-config.ts` 与 live `runtime-roster.ts` 的 `codeModeOptIn` 走同一规则），所以这两行**两个方向都写**：关闭也写 `disable`，否则推导在下次启动把它复活，开关「自动打开」。`ptc` 关闭同时把生效 `codeMode` 归回 `native`（boot 侧在 `kernel-config.ts` 投影、live 侧在 `runtime-switch.ts` 跟随；文件保留操作者自己的 `tools.code.mode`，重新打开该行即恢复），且 `runtime-facade.ts` 的 `setCodeMode` 在 `ptc` 行被关时**拒绝**非 `native` 模式——插件没加载的模式绝不运行。
+**`plugins.entries` 与 `surfaces` 的每一行是一个模块 spec，解析规则只有一处**（`plugins/src/module-spec.ts`）：路径按**工作目录**解析；裸包名先交给 Node（随产品解析）；**只有产品解析不到的名字**才落到**用户插件根** `~/.nova/plugins/node_modules/`。用户根是**回退而非遮蔽**——产品能解析的名字永不被用户根里的旧副本顶掉（否则一次升级会被几个月前装的同名副本来个静默失效）。第三方插件的安装路径是 `nova plugin add <包名>`（`cli/src/plugin-command.ts`）：npm 装进用户插件根 → 用 boot **同款**检查（`loadPluginModule` + 一个用完即弃的宿主，`plugin-probe.ts`）确认这个模块真的能作为一个插件跑起来 → **最后**才写 `plugins.entries` 的那一行，任一步失败都不留配置行；`remove` 顺序相反（先撤行、后卸包，剩下的包是惰性的、剩下的行会让下次启动失败）。该命令**在建内核之前、加载配置之前**执行——它要修的就是「配置坏了导致启动失败」这件事，所以它不能依赖一次成功的启动。**`plugin add` 写的是与设置面板同一个字段**：旧 `plugins.extra` 列表是第二道门，装好的插件可以在那里列着却别处关着，于是 `nova plugin list` 与面板能对「什么在跑」各说各话。
+
+**插件分三层，档位归插件自己的 manifest**（`core/src/plugin/types.ts` 的 `PluginManifest.tier`）：**core** 不可关且不渲染开关（注册表与服务、`fs-read`/`fs-write`/`search`/`ask-user`）；**standard** 默认开、可关（`bash`/`jobs`/`todo`/`goal`/`workspace`）；**advanced** 默认关，写出这一行并 `enabled: true` 才加载（`subagent`/`context`/`ptc`）。默认态只有两个函数（`enabledByDefault(tier)` / `isRequiredTier(tier)`），**没有按名字的中心名单**：插件自己说「我叫什么、我什么档」，宿主从来不认识它。没有 manifest 的插件按 `standard` **fail-open**——把第三方划进 core 会让它**永久不可关**。**「缺席＝关」是唯一读法**：没有任何推导录取口，`plugins.entries` 里没提到的行就按它的 tier 默认，行里 `enabled: false` 就关，两个方向都是**同一个字段**，所以开关不会「自动打开」。
 
 Skills 的发现根按优先级：项目 `.agents/skills/` → 项目 `.nova/skills/`（向后兼容）→ 用户 `~/.agents/skills/` → 用户 `~/.nova/skills/`（向后兼容）；目录包 `<name>/SKILL.md` 与扁平 `<name>.md` 都认。frontmatter 仅 `name` / `description`（**支持 YAML 块标量** `>-` / `|`），同名时**项目级优先**。
 
@@ -113,7 +112,7 @@ pnpm monorepo，依赖方向由 `pnpm gates` 机检。工作区 **10 个成员**
 | `plugins` | **插件世界与内核装配**：工具宿主（core `{ name, inject, apply }` 协议）、审批引擎、内置工具（含 `ask_user_question`）、skills、**命令目录唯一生产者**、`createAgentKernel`、roster、surface 注册表、AGENTS.md 读链与 `/init` 模板、`context` 折叠器 |
 | `ai` | OpenAI 兼容手写客户端：fetch + SSE 流式、工具调用、重试与断流自愈、usage/缓存命中提取 |
 | `web` | **浏览器 surface 后端**（产品的富界面）：HTTP 静态托管 + 单 WS 事件流；launch token → HMAC 签名 HttpOnly cookie；自写 RFC6455（**零第三方依赖**） |
-| `qqbot` | QQ 机器人接入插件（**第三方插件编写示范**，只依赖 core/plugins 公共 API）：`src/surface/` 是它的 surface 半——`AgentSurface` 工厂、web 桥、设置页活通道缝、凭据探针，cli 经一处动态装载使用 |
+| `qqbot` | QQ 机器人接入插件（**第三方插件编写示范**，只依赖 core/plugins 公共 API）：插件体自持通道（凭据、拨号、探针、设置页、`qqbot_send` 工具全在 `src/plugin.ts` 起的 fiber 内），`src/surface/mode.ts` 只是 `nova qqbot` 的认领行 + 常驻；cli 经一处动态装载使用。**不在 `SHIPPED_PACKAGES` 里**——要用它得自己在 `plugins.entries` 写一行 |
 | `plugin-subagent` | 扩展出包（advanced 档，只依赖 core）：`subagent` 工具——隔离子代理 |
 | `plugin-context` | 扩展出包（advanced 档，只依赖 core）：上下文洞察折叠器（`contextInsights` 服务）与窗口快照（`windowAtSeq` —— Browser/DNA 卡共用） |
 | `plugin-ptc` | 扩展出包（advanced 档，只依赖 core）：PTC / code mode（`run_code` + spawn-only worker 入口） |
@@ -128,15 +127,15 @@ core: []                              ai: [core]
 plugins: [core, plugin-subagent, plugin-context, plugin-ptc]
 qqbot: [core, plugins]                plugin-subagent: [core]
 plugin-context: [core]                plugin-ptc: [core]
-web: [core, plugins]
+web: [core, plugins, plugin-context]
 cli: [plugins, ai, core, qqbot, web]
 ```
 
-（`plugins` 对三个扩展包的边是 **spec 表 + 运行时 `import()`**，源码不 import 实现——名字仍须在名单里，机检扫的是包名文本；三个扩展包只依赖 core，所以 `plugins` 声明它们为依赖时不成环。）
+（`plugins` 对三个扩展包的边是 **spec 表 + 运行时 `import()`**，源码不 import 实现——名字仍须在名单里，机检扫的是包名文本；三个扩展包只依赖 core，所以 `plugins` 声明它们为依赖时不成环。`web` 多一条到 `plugin-context` 的静态边：只读路由 `GET /api/context-window` 复用同一个窗口折叠（`windowAtSeq`），而不是各写一份会漂的元素分类——live 路径仍经容器拿 fold，两条通道互不替代。）
 
 脚本用正则扫各包 `src/` 的**全文件文本**（不是 `package.json`；注释与字符串里的包名同样算违规）。`core` 零上游；**surface 层（web / qqbot / repl / exec）地位相同**，都用 core/plugins 公共 API。**`web` 永不 import `cli`。**
 
-> **`cli` 的白名单 = 内核三件 + 内置 web 后端 + qqbot 的「动态边」**（`plugins` / `ai` / `core` / `web` / `qqbot`）：web 的入口要 `launchWeb`——这是**真实的静态依赖**，不是疏漏；`repl` / `exec` 是自带的纯 argv 形状 surface；**qqbot 已去静态化**——cli 对包的引用只剩 `cli/src/qqbot-api.ts` 一处动态装载（名字仍进白名单：机检扫的是包名文本，动态 `import()` 的字符串也算边），`qqbot-surface.ts` 只对**结构性镜像**编程，包缺席时 `nova qqbot` 报「扩展不可用」、`nova --web` 降级（见 §7.7）。内置四家的认领判据都是 argv 形状本身（子命令、`--web`、`--repl`、非 TTY 回落），所以**认领行留在 cli**（必须同步可答），产品形态各归其主。其余 surface 一律是**配置驱动的动态插件**（`~/.nova/config.json` 的 `surfaces` 行点名模块），cli 源码不点名；机检红线（`dep-direction.mjs`）只覆盖 `@nova-agent` 命名空间（非本 scope 的包名扫不到）。所以「加一个 surface 是改配置」对**第三方 surface** 成立、对内置默认形态（web）不成立。
+> **`cli` 的白名单 = 内核三件 + 内置 web 后端 + qqbot 的「动态边」**（`plugins` / `ai` / `core` / `web` / `qqbot`）：web 的入口要 `launchWeb`——这是**真实的静态依赖**，不是疏漏；`repl` / `exec` 是自带的纯 argv 形状 surface；**qqbot 已去静态化**——cli 对包的引用只剩 `cli/src/qqbot-surface.ts` 里的一处 `await import('@nova-agent/qqbot')`（名字仍进白名单：机检扫的是包名文本，动态 `import()` 的字符串也算边），该文件只对**结构性镜像**编程，包缺席时 `nova qqbot` 报「扩展不可用」、`nova --web` 降级（见 §7.7）。内置四家的认领判据都是 argv 形状本身（子命令、`--web`、`--repl`、非 TTY 回落），所以**认领行留在 cli**（必须同步可答），产品形态各归其主。其余 surface 一律是**配置驱动的动态插件**（`~/.nova/config.json` 的 `surfaces` 行点名模块），cli 源码不点名；机检红线（`dep-direction.mjs`）只覆盖 `@nova-agent` 命名空间（非本 scope 的包名扫不到）。所以「加一个 surface 是改配置」对**第三方 surface** 成立、对内置默认形态（web）不成立。
 
 **包输出形态**：每个包 `exports` 只有 `"."`（`dist/index.*`），tsdown 单入口 `src/index.ts`。两个例外：① `plugins` 另有两个 **spawn-only worker 入口**（`ptc/worker.ts`、`builtin/search-worker.ts`）——固定输出文件名是 `new URL('./worker.mjs', import.meta.url)` 的解析前提，但**不是公共 API**；② `cli/src/index.ts` **零 `export`**，`"."` 是一个只执行 `main()` 的 bin 脚本，公共面在 `config.ts` / `surfaces.ts` / `command-runner.ts`。
 
@@ -144,10 +143,14 @@ cli: [plugins, ai, core, qqbot, web]
 
 surface 是「同一内核事件流的人类端消费者」。**契约只有一份**——`core/src/surface.ts` 的 `AgentSurface { name; interactive?; answersQuestions?; claim(request); onWorkspaceChanged?(dir,skillCount); start(runtime) }`，配套 `AgentSurfaceRequest`（argv + 交互性 + host-owned flags）、`AgentSurfaceRuntime`（装配好的 kernel + host 借出的命令端口 + 表现值）、`AgentSurfaceKernel`（**结构性**——真实 `Kernel` 满足它，所以 surface 包只对 core 类型）、`AgentSurfaceCommands` / `AgentSurfaceUi`（host 借出 / surface 自有）。**纯类型，零实现**——core 不认识任何具体 surface。**内置四家与配置加载的 surface 都实现它**：claim 只读 `AgentSurfaceRequest`，start 收装配好的 `AgentSurfaceRuntime`——「一份契约」不再有例外。
 
+> **`AgentSurfaceKernel` 带 `roster()`**（结构性镜像 `AgentSurfacePluginRow`：`{ name, state, enabled, error? }`）。surface 必须能如实回答「我依赖的那一行现在是什么状态」，而这与宿主「不认识任何插件名」并不冲突：surface 问的是**它自己关心的那个行 id**，判定逻辑全在 `cli/src/plugin-report.ts`（`pluginRowState` 按行 id 查 roster，顺序即语义——**加载失败优先于关着**，因为一条失败的行也读 `enabled: false`）。这条缝有两个消费者：启动时的失败行报告（`repl` / `exec`）与 `nova qqbot` 的四种成因拒绝（没有这一行 / 有但关着 / 开着但加载失败 / 加载了但凭据没填——**只有真的没有或真的关着才谈「去打开这一行」**，第四种是 `qqbot` 包自己的通道读数）。
+>
+> **失败行的原因必须被念出来，且不可注入**。启动横幅的「插件」一列只列**贡献了工具**的行，于是加载不了的行在那句里无声缺席——「只有剔除、没有失败提示」曾是真实缺陷。现在 `repl`（含非 TTY 回落）与 `exec` 在起跑前逐行念出每一个失败行（点名行 id + 原因，一行一个，不合并也不只报第一个），`/plugins` 的行也带上 ` — <原因>`（**关着的行不带**——健康地关着没有要解释的事）。失败**不阻断启动**：这是「插件出错是数据，不是崩溃」在呈现层的同一句话。行 id 与原因都来自插件界面的数据，落到终端前一律经 `oneLineText`（控制码点转成可见转义）——**这份实现只有一份，住在 `core/src/text.ts`**（core 零上游，所以它只能在那里；`cli/src/lines.ts` 只是**再导出**它，对外 API 不变），所以一个 `\r` 覆盖不掉已经打印的字、ANSI 序列也改不了终端状态。同一条纪律管到**出口**：core 的日志出口（`core/plugin/context.ts` 的 `defaultLog`）在写 stderr 前转义 `message`，于是 `plugin "<id>" failed to load: <插件自己抛的文本>` 与「监听器抛错」这两条相邻的日志不会一行安全、一行可注入。`nova plugin add|remove|list` 的终端输出（`cli/src/plugin-command.ts`）也已纳入同一条纪律。
+
 surface 有**两类来源**，地位相同：
 
-- **内置 surface**（`exec.ts` / `repl.ts` / `web-mode.ts` 各自导出 `AgentSurface` 工厂；qqbot 的工厂在 `@nova-agent/qqbot` 包的 `src/surface/mode.ts`，cli 侧只有 `qqbot-surface.ts` 的认领 + 凭据端口适配，由 `cli/src/surfaces.ts` 的 `builtinSurfaces` 分成 `head`（`qqbot` / `exec`）与 `tail`（`web` / `repl`））。**认领行在 cli**（判据就是 argv 形状本身：子命令、`--web`、`--repl`、非 TTY 回落——必须同步可答），**实现在哪**与认领无关：qqbot 的产品形态属于它自己的包。
-- **动态 surface 插件**（`~/.nova/config.json` 的 `surfaces` 行）：每行一个模块 spec（包名或 `./rel.mjs`），由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`——模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**（与 `plugins.extra` 同一条纪律：静默忽略一个扩展比坏掉的启动更糟）。cli 源码**不点名任何 surface 包**，只在配置 `surfaces` 行写谁才加载谁。
+- **内置 surface**（`exec.ts` / `repl.ts` / `web-mode.ts` 各自导出 `AgentSurface` 工厂；qqbot 的工厂在 `@nova-agent/qqbot` 包的 `src/surface/mode.ts`，cli 侧只有 `qqbot-surface.ts` 的认领 + 装配贡献，由 `cli/src/surfaces.ts` 的 `builtinSurfaces` 分成 `head`（`qqbot` / `exec`）与 `tail`（`web` / `repl`））。**认领行在 cli**（判据就是 argv 形状本身：子命令、`--web`、`--repl`、非 TTY 回落——必须同步可答），**实现在哪**与认领无关：qqbot 的产品形态属于它自己的包。**认领 ≠ 启动通道**：QQ 的通道是那一行插件自己的 fiber（行关着就没有 socket），所以这个 surface 只认领并常驻，起来后先问「通道在不在」，不在就报出该开哪一行、该填哪些字段。
+- **动态 surface 插件**（`~/.nova/config.json` 的 `surfaces` 行）：每行一个模块 spec（包名或 `./rel.mjs`），由 `plugins/src/surface-registry.ts` 的 `loadSurfacePlugins` 动态 `import()`——模块以 `default`（或 `surface` 具名）导出一个 `AgentSurface`，校验 `{ name, claim, start }` 三件齐备，缺一即**启动失败**（与 `plugins.entries` 同一条纪律：静默忽略一个扩展比坏掉的启动更糟）。cli 源码**不点名任何 surface 包**，只在配置 `surfaces` 行写谁才加载谁。
 
   解析**只有一次 `registry.resolve(request)`**——内置与动态是同一个注册表里的行，**注册顺序即优先级**：`head` → 动态 `surfaces`（配置顺序）→ `tail`，**第一个 `claim(request)` 为真的胜出**，赢家同时被记录（`registry.current()`）。所以动态 surface 是**加层**而非改道：子命令仍最高，`--repl` 仍强过任何 opt-in，浏览器默认仍在最后兜底。
 
@@ -159,14 +162,18 @@ surface 有**两类来源**，地位相同：
 
   `interactive = stdout.isTTY && stdin.isTTY`。**claim 必须覆盖交互与非交互两种 stdio**：`nova --web` 一走管道也必须被 web 认领（真机 smoke 就是这么跑的），否则会被 REPL 抢走。此判据由 `cli/test/surfaces.test.ts` 直测钉住（按 `head → 配置 → tail` 亲历注册，注册一个 fake surface 钉死动态层的优先级与回落——配置的 surface 压过浏览器默认、让位 `--repl`、自带 TTY 守卫时管道下回落内置；并钉住「赢家被记录进 `current()`」对内置与配置同样成立）。
 
+  **关掉的行不进注册表（2026-10-01 修）**：`registry.resolve()` 发生在**装配内核之前**（`cli/src/index.ts:76-89`——先注册内置 `head`，再由 `loadDynamicSurfaces` 注册配置的 surface，再注册 `tail`，最后才 `resolve`），所以注册表是**认领集合**（「这次可能由谁服务」），不是「谁被配置了」。因此 `cli/src/surfaces.ts:91` 先问那一行是否启用，为真才注册：`if (surfaceRowEnabled(surface, registry, entries)) registry.register(surface)`；`surfaceRowEnabled`（`plugins/src/surface-registry.ts:167-173`）用装配期**同一份** `surfacePlugin(surface, registry)` 造出那一行、套 `manifestOf`，再交给 core 的 `rowEnabled` 裁决。于是 `enabled: false` 的 surface **只留面板行、不进注册表**（行仍在 `plugins.entries` 里，所以面板还能把它再打开）——旧路径只产出 `options.disabled`（不建 fiber、不跑 `apply`），**没有任何东西把它从注册表移除**，于是面板显示「已关闭」、重启后照样被认领并 `start()`——与「关掉插件后 nova 启动时还在用它」**同族**（同一个「开关只决定面板显示、不决定谁在跑」的形状），但**不是那一个实例**：用户报告的那条路是**插件树 fiber**（`plugins.entries` 的行 → `plugin-tree.ts` 判定 → 不建 fiber → 无 socket），**不受这道门管辖**——本次管的是**配置声明并加载的 `surfaces` 行**。三条边界在这里写明：① **下次启动生效**——`resolve()` 每个进程只选一次，运行期关掉**正在服务**的那个 surface **不会**热停（这是明写的边界，不是缺陷）；② `register` 按**实例身份**幂等（`surface-registry.ts:58`），同一实例不会在表里出现两次——否则卸载时 disposer 的 `indexOf` 会摘掉**另一份**，把一个已 `resolve` 并启动的 surface 静默摘出；③ 去重**按身份、不按名字**：两个不同 surface 重名是配置错误，应当被解析器看见，不该被静默吸收。
+
+  **`rowEnabled(manifest, override?)` 是「一行是否启用」的唯一定义处**（`core/src/plugin/types.ts:278-279`：`isRequiredTier(tier) ? true : (override?.enabled ?? enabledByDefault(tier))`；结构化单行开关 `PluginSwitch` 在 `:258`）。`plugins/src/plugin-tree.ts:200,272,311` 与 cli 的装配前判定都调它（经 `core/plugin/index.ts:43` 导出），**不许在调用点重写这个表达式**——再写一份就是本仓反复拆掉的「同一件事两处各算各的」。
+
   **argv 解析与「谁来服务它」分成两处**：`cli/src/cli-args.ts` 拥有 `ParsedArgs` + `parseArgs`，`cli/src/index.ts` 把 flags 交给唯一一次 `registry.resolve`，认领判据住在各 mode 文件的工厂里。前者问「这行命令是什么意思」，后者问「谁来执行它」——`surfaces.ts` 只是注册表接线与优先级排序。
 
-  > **`surfaces` 是 `plugins.extra` 的 surface 版**：同一套动态加载原语（`resolveModuleSpec`）、同一套「校验失败即启动失败」的纪律。区别只在 `extra` 加载的是内核插件（core `Plugin`：`{ name, inject?, Config?, apply(ctx) }`），`surfaces` 加载的是 surface 插件（`{ name, claim, start }`）——两者都不许在 host 源码里点名。
+  > **`surfaces` 是插件行的 surface 版**：同一套动态加载原语（`resolveModuleSpec`）、同一套「校验失败即启动失败」的纪律。区别只在 `plugins.entries` 加载的是内核插件（core `Plugin`：`{ name, manifest?, inject?, Config?, apply(ctx) }`），`surfaces` 加载的是 surface 插件（`{ name, claim, start }`）——两者都不许在 host 源码里点名。
 
 ### 内核装配只有一个调用点（2026-10-01 装配合一后）
 
 - **唯一入口**：`createAgentKernel` 在生产代码里只被 `cli/src/kernel-boot.ts` 的 `bootKernel` 调用一次；`cli/src/surface-host.ts` 的 `buildSurfaceRuntime()` 是通往它的唯一路径——**任何 surface（内置四家或配置加载）都经它装配**，装配完成后 `runSurface()` 才调 `surface.start(runtime)`。历史：曾有三个调用点（web 自装、动态 surface 自装），自装 web 的理由「`BootOptions` 装不下 `modelCatalog`」在字段补齐后失效——三个调用点曾是「新选项被静默丢掉」的温床。
-- 内置四家的差异以 **`SurfaceBoot` 贡献**表达：`exec` 贡献 `perRequestCompact` + 装配后 `setPolicy('never')`；`qqbot` 的贡献由包内 `prepare()` 产出（通道插件 + `sessionsRoot()/qqbot` 会话桶 + perRequestCompact），`qqbot-surface.ts` 把它接上 `SurfaceBoot` 并在装配后回填内核、钉同一条策略；web 贡献模型目录、设置页写回器与「未配置端点」的占位 provider；配置的 surface 没有贡献，拿共享的那份。`WebController.create` / `launchWeb` 收装配好的 `kernel`。
+- 内置四家的差异以 **`SurfaceBoot` 贡献**表达：`exec` 贡献 `perRequestCompact` + 装配后 `setPolicy('never')`（`cli/src/exec.ts` 的 `afterBoot`）；`qqbot` 的贡献由 **cli** 的 `qqbot-surface.ts` 给出——`boot.kernel` 里先**迟装载**包（缺包要在建会话日志之前失败），成功后贡献 `sessionDir: sessionsRoot()/qqbot`（对端会话与交互会话隔离）与 `perRequestCompact`；**不存在包内 `prepare()`**，装配后也不再由 cli 回填或钉策略——审批策略由包自己的 `mode.ts` 在 `start(runtime)` 里钉 `agent.setApprovalPolicy('never')`（与它「先问通道在不在」的拒绝相邻，因为「无人值守」是那个形态自己的性质，不是宿主的补贴）。web 贡献模型目录、设置页写回器与「未配置端点」的占位 provider；配置的 surface 没有贡献，拿共享的那份。`WebController.create` / `launchWeb` 收装配好的 `kernel`。
 - 「装配期间的活回调」由这里的 holder 绑定：`workspace.onChange` 引用尚未存在的内核，holder 延迟解析；换工作区的反馈经 `surface.onWorkspaceChanged` 交回**在役 surface**——契约成员从此有实现方（`repl`）。
 
   **`userQuestions` 的单一来源**：推导规则只有一个——core 的 `deriveUserQuestions(caps)` 返回 `answersQuestions ?? interactive ?? false`，fail-closed。`runtime-env.ts` 的服务端 provider 每次调用时对 `registry.current()` 求值——而注册表现在对**每一类** surface 都有赢家（内置四家也注册在里面），所以「这次是谁在服务、他能不能问人」全仓只有一个答案；`buildSurfaceRuntime` 传的 `deriveUserQuestions(surface)` 只覆盖「没有注册表的装配」（内核测试 / 嵌入方）。该 flag 默认 **false 且是 fail-closed**（无人值守的 exec / qqbot 若拿到 answerer，run 会停在提问里直到被 abort，而没有任何卡片能释放它）。有人者在自己的 `AgentSurface` 上声明一次（`repl` / `web` 靠 `interactive: true` 推导即真），否则 `ask_user_question` 直接回一句 `no user-questions answerer accepted the request` 给模型——工具在、UI 在、提问永远不会发生。
@@ -183,12 +190,38 @@ surface 有**两类来源**，地位相同：
 - **waterfall**：监听器返回非 `undefined` 即胜出；调 `next(...)` 委派并可改写参数；不委派也不返回 = 弃权。
 - **serial / bail**：第一个决定性裁决即胜出——审批门是 `priority: 1000` 的监听器，所以权限总是先被裁定。
 - **effect 撤销**：一切注册走 `ctx.effect()`，返回的 disposer 在插件卸载时**逆序**执行——**正确拆除是构造出来的，不是记得做的**。
-- **一份插件协议**：`core/plugin/types.ts` 的 `Plugin`（`{ name?, inject?, Config?, apply(ctx) }` + 函数 / 类两种形式）是**唯一**的公共插件 API——内置、surface 自带、`plugins.extra` 第三方走同一条。`apply(ctx)` 里经 `registerTool(ctx, def, permission)` / `registerCommand(ctx, def)` 注册工具与命令（两个原语住在 `core/src/plugin/registration.ts`、与键相邻——扩展插件包因此只依赖 core，`plugins` 原样再导出），每个注册都变成容器 effect，于是正确拆除是构造出来的（插件卸载时 disposer 逆序执行）。**没有兼容门面、没有第二种插件形态**——历史上 `{ name, activate(ctx) }` 门面已随 `PluginContext` 一并删除。
-- **roster 组装**在 `plugins/runtime-roster.ts`：内置 + surface 自带 + `extra` − `disable`，随后追加 `kernelCommandsPlugin` 与（非空时）`skillsPlugin`。`host.reset()` **复用同一个 registry**——重 roster 时工具服务不消失又回来，审批门看不到服务闪断。
+- **一份插件协议**：`core/plugin/types.ts` 的 `Plugin`（`{ name?, manifest?, inject?, Config?, apply(ctx, config) }` + 函数 / 类两种形式）是**唯一**的公共插件 API——内置、surface 自带、`plugins.entries` 第三方走同一条。`apply(ctx)` 里经 `registerTool(ctx, def, permission)` / `registerCommand(ctx, def)` 注册工具与命令（两个原语住在 `core/src/plugin/registration.ts`、与键相邻——扩展插件包因此只依赖 core，`plugins` 原样再导出），每个注册都变成容器 effect，于是正确拆除是构造出来的（插件卸载时 disposer 逆序执行）。**没有兼容门面、没有第二种插件形态**——历史上 `{ name, activate(ctx) }` 门面已随 `PluginContext` 一并删除（`plugin-tree.ts` 的加载器还会对旧写法点名报错，而不是静默什么都不注册）。
+- **一行插件 = 一个稳定 Entry**（`core/plugin/loader.ts` 的 `PluginLoader`）：`id` 是身份，跨 reconcile 不变，配置、开关、fiber 都挂在 Entry 上。于是重 roster（换工作区、一次开关、一次保存）是一次 **diff 而不是重建**：plugin 与 config 都没变的行保留它的 fiber，它的工具、服务与监听器**不会被拆掉再装一遍**。行关着时（`disabled`）**不创建 fiber、不跑 `apply`**，但行仍在 `list()` 里——管理面板要能把它再打开，而「关掉的行什么也不启动」是字面意义上的（没有 socket、没有 worker、没有定时器）。
+- **行是插件的，不是宿主的**：roster 组装在 `plugins/runtime-roster.ts`（`buildTree` 决定有哪些行、`PluginHost.sync` 把树交给 loader），行从**插件自己的 manifest** 取得标题/描述/档位。曾经这里有三张按名字的表（`CORE_PLUGINS`/`ADVANCED_PLUGINS`/显示标签）与一个按名字 switch 的扩展工厂，于是「加一个插件」等于改 `plugins` 的源码；现在宿主**不认识任何插件名**，只认识「一行」。
+- **插件不是客人**：`PluginLoader` 本身是 `loader` 服务（`PluginHost` 构造时 provide 到根 context），所以插件拿到的是与宿主**同一组**操作——`create` / `update` / `remove` / `reconcile` / `transaction`。配合下面 `Context.scope` 的 isolate / intercept，这就是全部扩展模型：一个插件可以替换或包裹任何服务、把自己的子树挂进来、再整个收走，而不需要宿主为每项能力准备一套精选 API。
+- **插件出错是数据，不是崩溃**：导入与激活失败**记在该行的 `error` 上并写日志**，绝不从 `create` / `update` / `reconcile` 抛出来（dsh `vendor/loader/src/config/entry.ts` 的 `_init()` 同一条：catch 住并 log）。所以一个坏插件既不能挡住启动、也不能挡住别的行，更不能把进程带走——操作者看到的是**那一行带原因**，这就是「插件运行出错不能影响主程序」在代码里的落法。**只有编程错误才抛**：未知 id、重复 id、未知父行、一个没有插件的 group 行——这些是宿主自己的 bug，静默才是错的。
 
-**能力服务缝**（`core/plugin/capabilities.ts` 是**唯一定义处**）：13 个服务键 `llm` / `tools` / `commands` / `approval` / `sessions` / `compaction` / `jobs` / `spill` / `skills` / `userQuestions` / `surfaces` / `contextInsights` / `routes`，4 个事件键 `beforeLlmCall`(`llm/before`)、`beforeToolCall`(`tool/before`)、`afterToolResult`(`tool/after`)、`beforeTurnEnd`(`turn/before-end`)。（`pluginLoaded` 死缝已删，见 §7.5。）
+**能力服务缝**（`core/plugin/capabilities.ts` 是**唯一定义处**）：18 个服务键 `loader` / `llm` / `executionEnvironment` / `tools` / `commands` / `approval` / `sessions` / `compaction` / `jobs` / `shell` / `spill` / `skills` / `userQuestions` / `surfaces` / `contextInsights` / `routes` / `pluginRpc` / `pluginConfig`，4 个事件键 `beforeLlmCall`(`llm/before`)、`beforeToolCall`(`tool/before`)、`afterToolResult`(`tool/after`)、`beforeTurnEnd`(`turn/before-end`)。（`pluginLoaded` 死缝已删，见 §7.5。）
 
-> **13 个服务键里 12 个有提供者；`routes` 是宿主可选缝。** `surfaces` 当初是无提供者的「刻意死缝」——注册表在 plugins（`surface-registry.ts`），契约被 surface 包消费，但它**不进容器**：注册表必须在内核装配之前就存在（先决定哪个 surface 服务这次 argv，才装内核），而容器是内核装配的产物。这条「先得有、再装配」的时序约束依然成立——**注册表对象先于容器**——装配方把已加载的 surfaces 连同注册表一起交给 `createAgentKernel({ surfaces })`，容器经 `runtime-env.ts` 的 `surfaceRegistryProvider` 把**同一个**注册表实例 provide 成 `surfaces` 服务，于是 surface 变成一条普通插件行（出现在 `/plugins`、落 tier 表、可开关）。它**有提供者**，只是提供的是「容器外的同一实例」，不是新建的。`routes` 走同一条「容器外实例」的路线：宿主（`web-mode.ts`）建一个 `WebRouteRegistry`，经 `routeRegistryProvider` 进 `extraPlugins`、把同一个实例 provide 成 `routes` 服务；插件经 `ctx.must(routes)` 注册自己的资产前缀。**与 `surfaces` 不同的是 `routes` 是 host-owned**：只有跑着 HTTP 服务器的宿主（web surface）才 provide 它；headless（exec / qqbot）不 provide，插件读到 undefined 即降级（genui 在终端没有面板要渲染，资产路由自然也不需要）。
+**`shell` 缝替掉了「宿主按名字读 bash 那一行」**：上下文片段要告诉模型「你在什么 shell 里工作」（`shell=<name>`），而这个答案只有**跑命令的那个插件**知道。此前宿主在 `runtime-env.ts` 里 `entries.find(e => e.id === 'bash')` 去读它的 `shellPath`——那是宿主源码里的插件名，而且操作者一改 `shellPath`（或换掉这个插件）就会与实际执行不一致。现在 bash 在自己 `apply(ctx, config)` 里 `ctx.provide(shell, { name, path })`，宿主读服务、没有 provider 就回落到探测环境（与终端面板同一条）。**行关掉即服务消失**，因为 provide 挂在 fiber 上。
+
+**键的四个新成员就是「插件与宿主同权」的落地**（`plugin-services.ts` 与 `host.ts` 各自只是提供者）：
+
+- **`loader` → `PluginLoader`**：`create` / `update` / `remove` / `reconcile` / `transaction`——一个插件能在运行时管理**别的行**。它随 `PluginHost` 构造即 provide，所以拿到的实例与宿主**是同一个**。键定义搬进 `capabilities.ts`（原先在 `loader.ts`），为的是「这个文件是键的唯一定义处」这条不变量继续成立。
+- **`pluginRpc` → `PluginRpc`**：插件**声明自己的命名空间**（`register(name, handler)`，disposer 挂在它自己的 fiber 上），界面侧 `invoke(name, op, payload)` 调用。**被关掉的插件没有命名空间**，所以它什么也不回答——宿主因此不需要为任何插件准备请求族，一个通用的 `plugin_request` / `plugin_response` 帧对就够了（`web/src/plugin-frames.ts`）。payload 是 `unknown`，因为只有那个插件知道自己的操作是什么意思。
+- **`pluginConfig` → `PluginConfigPort`**：`readEntry(id)` 返回**文件里写的那一份**（`{env:NAME}` 因此能按**名字**回显，而不是把密钥漏出去），`setEntry(id, patch)` upsert 那一行——`config` **逐键合并**（表单只提交它拥有的字段：省略＝保持原样，`null`＝删掉这个键，于是操作者手写的 `{env:NAME}` 引用不会被展开后的密钥顶掉），写完**立刻重 roster**。放在端口里而不是每个调用点，是为了让「存了却没生效」不可能发生：保存与生效是一步。
+- **`executionEnvironment` → `ExecutionEnvironment`**：活的 provider、活的工具注册表、组合后的钩子、persona、工作区根与进度汇（都按调用时求值，不是装配时快照），供 `subagent` / `ptc` 这类**执行类插件**用。于是它们从「内核点名构造的工厂」变成「`inject` 一个服务的普通包」——宿主不再需要认识它们。
+- **`Context.scope({ isolate, intercept })` 与 `Context.labelled(id)`**（`core/plugin/context.ts`，转写 dsh `vendor/loader/src/config/isolate.ts`）：`isolate` 给一个服务名分叉出私有 provider（子树读到自己的那份，别的子树不受影响），`intercept` 包裹任意服务的实现（替换或仅做观测）。**刻意没有「可拦截服务」的白名单**——store 里每一个键都能被包裹，工具与 agent 循环自己的缝也不例外，因为它们就是普通服务。
+
+> **18 个服务键里 17 个有提供者；`routes` 是宿主可选缝。** `surfaces` 当初是无提供者的「刻意死缝」——注册表在 plugins（`surface-registry.ts`），契约被 surface 包消费，但它**不进容器**：注册表必须在内核装配之前就存在（先决定哪个 surface 服务这次 argv，才装内核），而容器是内核装配的产物。这条「先得有、再装配」的时序约束依然成立——**注册表对象先于容器**——装配方把已加载的 surfaces 连同注册表一起交给 `createAgentKernel({ surfaces })`，容器经 `runtime-env.ts` 的 `surfaceRegistryProvider` 把**同一个**注册表实例 provide 成 `surfaces` 服务，于是 surface 变成一条普通插件行（出现在 `/plugins`、落 tier 表、可开关）。它**有提供者**，只是提供的是「容器外的同一实例」，不是新建的。`routes` 走同一条「容器外实例」的路线：宿主（`web-mode.ts`）建一个 `WebRouteRegistry`，经 `routeRegistryProvider` 进 `extraPlugins`、把同一个实例 provide 成 `routes` 服务；插件经 `ctx.must(routes)` 注册自己的资产前缀。**与 `surfaces` 不同的是 `routes` 是 host-owned**：只有跑着 HTTP 服务器的宿主（web surface）才 provide 它；headless（exec / qqbot）不 provide，插件读到 undefined 即降级（genui 在终端没有面板要渲染，资产路由自然也不需要）。
+
+### 插件设置页（插件自带，宿主只画）
+
+插件的设置**不问宿主**：插件在 `manifest` 里声明 `page: true`（`core/plugin/types.ts`），于是浏览器侧的 roster 行带上 `page?: boolean`，导航就多出它一节；点进去时界面发一条通用 `plugin_request`，`op` 为 `page`，插件回一个 `PluginPageDescriptor`（`core/src/plugin/settings-page.ts` 的 `{ title, intro?, guide?, status?, fields?, actions? }`）——字段是四种原语的数组（`text` / `secret` / `select` / `switch`），行为是具名动作。
+
+- **宿主只提供一个渲染器**：`web/ui/src/settings/PluginPageSection.tsx` 把描述符画出来，`pagePlugins(rows)`（`settings/plugin-state.ts`）从**活 roster** 里筛出 `page === true && enabled !== false && state === 'active'` 的行；导航因此与「谁真的开着」同源，不存在一处写死的页清单。判据是**白名单而不是 `state !== 'failed'` 黑名单**：一节页要靠那个插件自己的 `pluginRpc` 命名空间回答 `page`，而命名空间**挂在 fiber 上**——`pending` / `loading` 还没跑 `apply`、`disposed` 已拆、未知相位同样证明没有命名空间，所以「没报故障」不等于「有活 fiber」，只有 `active` 能答。两个字段答两个问题：`enabled` 是**操作者意图**的事实（关掉的行 `enabled: false`，而 `apply()` 抛错的行 `enabled` **仍是 `true`**——操作者确实要它开），`state` 是**活性**事实；所以「关着」与「开着但坏了」是两件事，**面板必须能说出后者**，而导航只给活着的页。
+- **读写都走同一对端口**：`pluginConfig` 读那一行的原样 config（`{env:NAME}` 按名字回显），保存时提交**它自己拥有的那些键**——逐键合并，所以「表单没提到的字段」不会被抹掉。谁拥有哪个键由插件自己的 `Config` schema 说了算，界面不认识任何插件的字段名。
+- **一个插件做示范**：QQ 通道的凭据、拨号、探针、状态读数全在它自己的 `page` 回复里，所以删掉 `QqbotSection` / `qqbot-view.ts` / `save_qqbot` 帧之后行为不缩水——**界面里没有一行按插件名分支的代码**。这也意味着第三方插件能给出与本仓内置插件同等质量的设置面板，而不需要改宿主的任何源码。
+- **答得了 `page` 不等于进得了导航**：页面可见的**必要条件**是那个插件**在自己的 manifest 里声明 `page: true`**（另两条见上一行：没被关掉、且 `state === 'active'`；今天 `qqbot` 与 `plugin-ptc` 各自声明一次）。RPC 命名空间注册得再全，缺这条声明就是一片不可达的页——曾经两行都只注册命名空间、都不声明，于是 QQ 与 PTC 的设置页在真实产品里根本不出现，而手写 fixture 的测试照样绿（夹具替生产者作证）。所以**加一条 `page` 回复时，同一处必须补上声明**；宿主不留「谁有页」的名单。判据一句话：**一个能力的证据，是它在真实路径上被用了一次——不是类型里有这个字段，也不是夹具里有这个值。**
+
+### 装载器的能力边界（写下来，免得被当成缺陷）
+
+`PluginLoader` reconcile 的是**配置树**：行的增删改、服务的替换与包裹、fiber 的挂载与卸载。**它不做 Node 模块代码热替换**——模块解析、`import()` 缓存失效、旧模块实例的回收都不在它的职责里（`core/src/plugin/loader.ts` 头部明确写着这条边界）。所以「改一行插件的 `config` 或开关立刻生效」与「改一个插件模块的源码后不重启就生效」是两件事，只有前者成立。**写下这条的理由**：把「配置重载」误读成「代码热载」，会让人以为改完源码立刻能被验收——而真相是 `pnpm dev` 之外的场景必须重启进程。
 
 ### 内核协议（`AgentSession` + `KernelEvent`）
 
@@ -199,7 +232,7 @@ surface 有**两类来源**，地位相同：
 **一个 surface 只需 `switch (event.type)` 就能驱动整个产品**——凡不在协议里的都不可观测，这既让 surface 可替换，也让它们能针对同一个 reducer 直测。
 
 - **`AgentSession`**（`core/kernel/session.ts`）是 surface 拿到的**唯一句柄**：`events`；`session` / `messages` / `status` / `running` / `currentPhase` / `lastUsage` / `lastPromptTokens` / `queued` / `approvalMode`；方法 `usageSnapshot()` / `setApprovalMode()` / `setApprovalPolicy()` / `pendingApprovals()` / `pendingQuestions()` / `subscribe()` / `notice()` / `announceCommand()` / `announceModel()` / `observeSubagent()` / `observeJob()` / `jobSnapshots()` / `stopJob()` / `prompt()` / `abort()` / `resolveApproval()` / `resolveQuestion()` / `cancelQuestion()` / `compact()` / `dispose()`。surface 不自己跑生成器、不自己落盘——「model-visible means logged」由内核 `consume()` 保证。
-- **`Kernel`**（`plugins/runtime-types.ts`）：`agent` / `hooks` / `host` / `llm` / `models?` / `commands` / `runCommand()` / `permission` / `jobs` / `skills` / `systemPrompt` / `rootDir()` / `sessionEnv()` / `buildFragment()` / `codeMode()` / `roster()` / `newAgentSession()` / `activateSession()` / `setWorkspace()` / `setCodeMode()` / `dispose()`。实现是 `runtime-facade.ts` 的活读门面（`models` 在没有 `modelCatalog` 时**整个键不出现**，而非空 object）。
+- **`Kernel`**（`plugins/runtime-types.ts`）：`agent` / `hooks` / `host` / `llm` / `models?` / `commands` / `runCommand()` / `permission` / `jobs` / `skills` / `allSkills` / `disabled` / `systemPrompt` / `rootDir()` / `sessionEnv()` / `buildFragment()` / `roster()` / `newAgentSession()` / `activateSession()` / `setWorkspace()` / `setPluginEnabled()` / `setSkillEnabled()` / **`pluginConfig(id)`** / **`pluginRpc()`** / `dispose()`。实现是 `runtime-facade.ts` 的活读门面（`models` 在没有 `modelCatalog` 时**整个键不出现**，而非空 object）。**契约里没有 `codeMode()` / `setCodeMode()`**：执行模式是 `@nova-agent/plugin-ptc` 那一行自己的 `config`（`pluginConfig(id)` 读它），一个插件的能力不该住进每个 surface 都要实现的契约——cli 的 `/mode` 就是这样按行 id 读回来的（`cli/src/command-runner.ts` 的 `codeModeInForce`，其显示词汇是 cli 自己的三态文案，因为它的依赖白名单里没有那个包）。
 - **`EventPump`**（`kernel/pump.ts`）：`MAX_LAG = 2000`；落后消费者的窗口被清空并替换为一条 `surface_lagged` 通知；**抛错的监听器被隔离**（`listener_failed`）而不是把进程带走。
 - **量测**：`RunMeter` / `RunStats`（`kernel/metrics.ts`）——`startedAt` / `durationMs` / `firstTokenMs?` / `llmMs` / `toolMs` / `requests` / `toolCalls` / `retries` / `promptTokens` / `completionTokens` / `cachedTokens`。
 
@@ -217,24 +250,26 @@ REPL 壳保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有�
 
 ### 呈现意图词汇表（core 拥有形状，surface 拥有观感）
 
-`core/presentation.ts`：`ToolCallKind`（`read|edit|write|search|execute|job|plan|other`）+ `card` 判别的 `ToolCallView` / `ToolResultView`。**core 只拥有调用的形状与语义**（无文案、无颜色、无列宽），**文案 / 颜色 / 列宽 / 降级档位一律归各 surface**。
+`core/presentation.ts`：`ToolCallKind`（`read|edit|write|search|execute|job|subagents|plan|question|other`）+ `card` 判别的 `ToolCallView` / `ToolResultView`。**core 只拥有调用的形状与语义**（无文案、无颜色、无列宽），**文案 / 颜色 / 列宽 / 降级档位一律归各 surface**。
+
+**`kind` 在每一张 call view 上**（不只是 `generic`）：专用卡说的是「怎么画」（终端转录 / diff / 命中列表），`kind` 说的是「它做了什么」，而任何要**归类或汇总**工作的消费者（WebUI 的过程分组标题）需要的是后者。曾经 `kind` 只长在 `generic` 上，于是想要 bash 归类的汇总代码只能写 `name === 'bash'`——那就是同一张表的第二份、会漂的实现（它甚至猜了两个本仓不存在的工具名，并漏掉 `list_dir` / `jobs` / `get_time`）。
 
 工具经 `ToolDefinition.presentCall?(args)` / `presentResult?(args, content)` 声明自己是什么，界面 `switch (view.card)` 消费，**不按工具名特判**。两者都是纯函数，且 `presentCall` **不得读盘**（它在授权前被调用，审批弹窗要能为尚不存在的文件画出 diff），故签名里没有 `ctx`。未声明的工具（含第三方、`jobs`、`run_code`）自动落 `generic` 卡——**永远不会不可渲染，只是不够具体**。
 
 **视图解析归宿主，不归界面**：`callViewOf(tools, call)` / `resultViewOf(tools, call, content)` 从**活工具表**取声明，控制器在出站前把 `view` / `resultView` 附在帧上，`ready` 回放时对每个历史工具块做同一件事。于是浏览器侧零按名特判、零失败启发式。
 
-**工具结果 `meta` 是一条单方向的缝**（2026-10-01，为 dsh-genui 风格插件开）：`ToolResultMessage` 增可选 `meta?: Record<string, unknown>`，由 `ToolDefinition.resultMeta?(args, content)` 在 `completeToolCall` 末尾（`afterToolResult` 钩子与截断**之后**）填入——把一份只给 surface 看的结构化数据（genui spec、校验态、typed payload）挂在结果消息上。**绝不进模型可见面**：它只随结果帧下发，不改 prompt 前缀、不沾缓存键。两个内置工具今天都不声明，行为零变；声明了的工具，直测钉住「meta 进日志、content 不动」（撤掉 meta 写就会红）。
+**工具结果 `meta` 是一条单方向的缝**（2026-10-01，为 dsh-genui 风格插件开）：`ToolResultMessage` 增可选 `meta?: Record<string, unknown>`，由 `ToolDefinition.resultMeta?(args, content)` 在 `completeToolCall` 末尾（`afterToolResult` 钩子与截断**之后**）填入——把一份只给 surface 看的结构化数据（genui spec、校验态、typed payload）挂在结果消息上。**绝不进模型可见面**：它不改 prompt 前缀、不沾缓存键。传输上它**随 `tool_call_result` 事件对象整体到达浏览器**（`wireFrame` 只附 `view` / `resultView`，不剥 `result`），所以这不是「只下发到某个接收方」，而是「到得了、但没人读」——**仓内今天没有任何消费者**（`web/ui/src` 零 `result.meta` 读取，repl / exec 也没有），读取方是**第三方的 client bundle**。两个内置工具今天都不声明它，行为零变；声明了的工具，直测钉住「meta 进日志、content 不动」（撤掉 meta 写就会红）。
 
 ### 内核缝：插件 UI 能力（genui 准备）
 
-为 dsh-genui 风格的第三方插件留的六条缝（2026-10-01，侦察报告的六项已全部落地）：
+为 dsh-genui 风格的第三方插件留的六条缝（2026-10-01，侦察报告的六项已全部落地；每条的判据都是「它在真实路径上被用了一次」，不是「类型/字段齐了」）：
 
 - **系统提示 section 注册表**：`buildSystemPrompt(sections)` 把插件 section 追加在 persona 之后、各自 `## <name>` 小标题；同名后写覆盖**正文**但**保留首次出现的位置**（再注册读作更新而非搬家）；空正文/空列表退化为裸 persona。**关键约束**：section 在**装配时**一次性解析（`createEnvironment` 把 `opts.systemPromptSections` 喂进来），不是每请求重算——否则前缀字节能被一次钩子改写、命中缓存契约当场作废。`CreateKernelOptions.systemPromptSections` 是新的可选注入点。实现按职责分文件：`system-prompt.ts` 拥有 persona（「代理是什么」），`prompt-sections.ts` 拥有 section 注册表（「插件这次挂了什么」）。
 - **fence 渲染注册表（前端）**：`chat/markdown/fence-renderers.ts` 是一个 `Map<lang, FenceRenderer>`——markdown parser 已经把 info string 小写化，注册表对小写键查找，未注册的语言回落到 `<pre><code>`（注册零个 = 逐字节复现之前的页面）。`blocks.tsx` 的 `renderCode` 在 CodeBlock 之前先问注册表；返回 `null` 表示放弃（renderer 自己判定 spec 不能用），同样回落。**这是插件 UI 能力的接口**：把插件组件拉进 markdown 叶子会倒置包依赖方向，registry 让叶层插件无关、插件从自己的模块注册自己。
-- **turn-stopping 钩子（`turn/before-end` 事件）**：`agent/loop.ts` 在「无 toolCalls、即将 `done`」前先跑 `ctx.serial(beforeTurnEnd, …)`；插件返回 `{ action: 'steer', message }` 即追加一条 user/assistant 消息继续回合（受 `turn < maxTurns` 配额保护，配额耗尽仍按 `done` 收尾）。返回 `void` 即弃权，旧路径逐字不变。`AgentSession.prompt()` 之外有了「**回合将停**」的注入位（goal 的跨轮续做、genui 的「再问一句」都走这条），不依赖 surface 配合——服务端钩子在装配点接线，无人值守 surface 也吃得到。
+- **turn-stopping 钩子（`turn/before-end` 事件）**：`agent/loop.ts` 在「无 toolCalls、即将 `done`」前先跑 `ctx.serial(beforeTurnEnd, …)`；插件返回 `{ action: 'steer', message }` 即追加一条 user/assistant 消息继续回合（受 `turn < maxTurns` 配额保护，配额耗尽仍按 `done` 收尾）。返回 `void` 即弃权，旧路径逐字不变。`AgentSession.prompt()` 之外有了「**回合将停**」的注入位，不依赖 surface 配合——服务端钩子在装配点接线，无人值守 surface 也吃得到。**机制五端齐备**（键 `capabilities.ts:549`、派发 `loop.ts:129`、组合 `hooks.ts:77` 的 `ctx.serial`、类型 `types.ts:389`、`test/agent.test.ts` 两条直测），但**仓内今天零生产者**：`ctx.on(beforeTurnEnd, …)` 在全部 `packages/*/src` 里一次也没有，那两条直测是**直接注入 `AgentHooks` 对象**、绕过容器与 `ctx.serial` 的。所以它是一条**为第三方插件留的缝**（与 `clientBundle` / `routes` 同族），**不是**任何内置实现的现役路径——`goal` 的跨轮续做走的是 `beforeLlmCall`（`builtin/goal.ts:261`；`beforeTurnEnd` 在该文件零命中）。按本节的判据，这一条**恰恰是又一个「类型/字段齐了、真实路径上还没被用一次」的例证**。
 - **插件资产路由（`routes` 服务键 + `RouteRegistry`）**：`capabilities.ts` 增 `routes: ServiceKey<RouteRegistry>` + `PluginRoute`/`PluginRouteHandler`/`RouteRegistry` 接口；`plugins/services.ts` 的 `routeRegistryProvider(registry)` 把宿主建好的实例 provide 进容器；`web/route-registry.ts` 的 `WebRouteRegistry` 实现 register/routes/handlerFor（前缀精确与嵌套都匹配、**反向注册序**派发——同前缀后注册的胜，与容器 replace-by-key 同语义）。`web-mode.ts` 在 boot 时实例化并经 `routeRegistryProvider` 进 `extraPlugins`、同时随 `launchWeb({ routes })` 透传给 server。`server.ts` 的 `handleHttp` 在认证门**之后**、图片/静态**之前**问 `registry.handlerFor(relPath)`——**插件路由仍然是私有读**（与 `/manifest.webmanifest` / `/favicon.svg` / `/icons/*` 品牌资产例外不同），命中即交由 handler、未命中回落静态。headless（exec / qqbot）不 provide 这个键，插件 UI 能力按「读不到就降级」收场。
-- **工具结果 meta 是一条单方向的缝**：`ToolResultMessage.meta` 只随结果帧下发到 surface，**绝不进模型可见面**；`ToolDefinition.resultMeta?(args, content)` 在 `completeToolCall` 内、`afterToolResult` 钩子之后调用——genui 的 spec、结构化校验态、typed payload 都走这条。两个内置工具今天都不声明它，行为零变。
-- **浏览器侧插件装载器（boot graph + script injection）**：`PluginRosterEntry.clientBundle?` 与 `WireRosterEntry.clientBundle?`（`{ path?, rev? }`）作为 boot graph——`roster-wire.ts` 把它从 kernel 透传到 wire；`web/ui/plugins/client-loader.ts` 是浏览器侧装载器：`buildBundleUrl`（编码名字、默认 `client.js`、`rev` 转 `?rev=` 缓存击穿）+ `loadClientPlugin`（每个 `<name>` 一条 `<script>` 注入，记入 `window.__NovaPlugins__[name]`、按页记忆化、失败一次即终态不再重试）+ `loadBootGraph`（并行装载所有声明了 `clientBundle` 的启用插件，单个失败不阻塞其他）+ `registerClientPlugin`（host 内置插件短路）。**纯逻辑与 DOM 分层**：DOM 触碰只落在 `injectScript` 一处，其余全是纯函数 / UI 测试车道（node 环境、无 jsdom）直测——装载器有 15 条直测覆盖 URL 构建、记忆化、失败终态、boot graph 走查；DOM 注入器经 `setScriptInjector` 可换，让测试用 resolver helper 驱动结算。**完整闭环**：插件 server 半经 `routes` 注册 `/plugins/<name>/*` 资产前缀 + 声明 `clientBundle.rev`，浏览器挂载时走 `loadBootGraph(roster)` 即发现并装载该插件的 client bundle，bundle 写到全局即被注册——六条缝至此全部就位。
+- **工具结果 meta 是一条单方向的缝**：`ToolResultMessage.meta` **绝不进模型可见面**；它随 `tool_call_result` 事件对象整体到达浏览器，但**仓内零消费者**（读取方是第三方 client bundle）；`ToolDefinition.resultMeta?(args, content)` 在 `completeToolCall` 内、`afterToolResult` 钩子之后调用——genui 的 spec、结构化校验态、typed payload 都走这条。两个内置工具今天都不声明它，行为零变。
+- **浏览器侧插件装载器（boot graph + script injection）**：声明点是插件自己的 manifest —— `PluginManifest.clientBundle?`（core `plugin/types.ts`，`{ path?, rev? }`），**照抄到** `PluginRosterEntry.clientBundle?`（`runtime-roster.ts` 的 `describePlugins` 逐字段映射，缺席即纯服务端插件、键**不出现**而非 `null`）与 `WireRosterEntry.clientBundle?`——`roster-wire.ts` 再把它从 kernel 透传到 wire；`web/ui/plugins/client-loader.ts` 是浏览器侧装载器：`buildBundleUrl`（编码名字、默认 `client.js`、`rev` 转 `?rev=` 缓存击穿）+ `loadClientPlugin`（每个 `<name>` 一条 `<script>` 注入，记入 `window.__NovaPlugins__[name]`、按页记忆化、失败一次即终态不再重试）+ `loadBootGraph`（并行装载所有声明了 `clientBundle` 的启用插件，单个失败不阻塞其他）+ `registerClientPlugin`（host 内置插件短路）。**纯逻辑与 DOM 分层**：DOM 触碰只落在 `injectScript` 一处，其余全是纯函数 / UI 测试车道（node 环境、无 jsdom）直测——装载器有 15 条直测覆盖 URL 构建、记忆化、失败终态、boot graph 走查；DOM 注入器经 `setScriptInjector` 可换，让测试用 resolver helper 驱动结算。**生产入口已接上**：`App.tsx` 在 `[connection, rosterEntries]` 上单飞调一次 `loadBootGraph(rosterEntries)`，逐个报告 `error` 的走 `console.error`（此前装载器与它的 15 条直测都在，但 `loadBootGraph` 只被测试调用，`App` 从不读 roster 上的 `clientBundle`——「机制齐、接线缺」的假闭环）。所以插件 server 半经 `routes` 注册 `/plugins/<name>/*` 并在**自己的 manifest 里**声明 `clientBundle.rev`，浏览器在首次 `ready` 后就会去取它并注册到全局。**这一条曾第二次踩同一个坑**：消费端（`App`）与透传端（`roster-wire`）都在，而**生产者根本不存在**——`describePlugins` 从不写这个字段，于是 `entriesToLoad` 恒为空、`loadBootGraph` 恒为空转，`pnpm gates` 与手写 fixture 的直测都照样绿。判据是「一个有浏览器半的插件真的被浏览器取了一次」，不是「字段在类型里」。六条缝（meta / prompt-section / fence / turn-stopper / asset-route / boot graph）都已落地，但**每条的判据都同上**：它在真实路径上被用了一次——不是类型里有字段，也不是夹具里有值（`page` 是反例：投影端、消费端、帧透传端三处都在，生产者缺席了很久）。
 
 ### Web surface
 
@@ -287,7 +322,7 @@ REPL 壳保留自己的 `COMMAND_SPECS`（`/theme` / `/clear` / `/exit` 只有�
 
 > **统计条不因缺 `usage` 而整行消失**（本仓曾如此）：轮/步计数由 `run_stats` 独立供给，量测项各自决定在不在。缺 `usage` 时该缺席的是**缓存命中那一段**，不是整行——让一个可选字段决定必需信息的存亡，等于丢掉本来拿得到的事实。
 
-**「工作步骤展示」是设置项，不是固定设计**（dsh `presentation-policy.ts` 的移植）：设置 → 通用里的四档（简洁 / 标准 / 详细 / 完全展开）各对应一条 `ChatPresentationPolicy`（`chat/transcript-view.ts` 是**唯一**的 policy 表，`flow.tsx` 只读它），落在 localStorage（未知值回落标准）。四档的差异只有四个开关：`foldCompletedTurns`（已完成回合是否折进 header）、`stepGrouping`（`collapsed`=所有回合都带组框 / `history`=只有已完成的带、运行中的平铺 / `none`=从不成组）、`liveProcessDetail`（运行中标题是否带任务细节）、`settledReasoningPreview`（已落定思考行是否留一行预览；**流式尾行不受此门控**——它是正在被看的进度，不是摘要）。组框的闭标题由 `chat/process-summary.ts` 从回合成语料**纯推导**：按类别计数降序排名（Map 保首次出现序）取前三，一个直呼其名、两个用「并」连接（**两个都以「已」开头才削第二个的前缀**）、三个及以上用逗号连接、**超过三个类别才补「等」**；空活动读「已完成分析」。运行中的标题读 `RUNNING_LABEL` 加当前调用的任务细节（`DETAIL_KEYS` 优先级取第一个有值键、160 码点截断、畸形参数回落工具名）。`flow.tsx` 经 `chat/process-span.ts` 投影（**工具块的结果未落地即在途**——reducer 的工具块没有 `running` 标志）。**记名偏离**：组头不带每类活动图标（参照的 `ChatGroupSeat` 有）；无参照的 shimmer 最短展示时长守卫；偏好落 localStorage 而非宿主设置文档（nova 无 per-plugin 设置通道）。
+**「工作步骤展示」是设置项，不是固定设计**（dsh `presentation-policy.ts` 的移植）：设置 → 通用里的四档（简洁 / 标准 / 详细 / 完全展开）各对应一条 `ChatPresentationPolicy`（`chat/transcript-view.ts` 是**唯一**的 policy 表，`flow.tsx` 只读它），落在 localStorage（未知值回落标准）。四档的差异只有四个开关：`foldCompletedTurns`（已完成回合是否折进 header）、`stepGrouping`（`collapsed`=所有回合都带组框 / `history`=只有已完成的带、运行中的平铺 / `none`=从不成组）、`liveProcessDetail`（运行中标题是否带任务细节）、`settledReasoningPreview`（已落定思考行是否留一行预览；**流式尾行不受此门控**——它是正在被看的进度，不是摘要）。组框的闭标题由 `chat/process-summary.ts` 从回合成语料**纯推导**：按类别计数降序排名（Map 保首次出现序）取前三，一个直呼其名、两个用「并」连接（**两个都以「已」开头才削第二个的前缀**）、三个及以上用逗号连接、**超过三个类别才补「等」**；空活动读「已完成分析」。运行中的标题读 `RUNNING_LABEL` 加当前调用的任务细节（`DETAIL_KEYS` 优先级取第一个有值键、160 码点截断、畸形参数回落工具名）。`flow.tsx` 经 `chat/process-span.ts` 投影（**工具块的结果未落地即在途**——reducer 的工具块没有 `running` 标志）。**记名偏离**：组头不带每类活动图标（参照的 `ChatGroupSeat` 有）；无参照的 shimmer 最短展示时长守卫；该偏好落 localStorage 而非宿主设置文档——它是**界面观感**而不是插件设置，插件设置走行自己的 `config` 与自己的设置页（见 §5 插件设置页）。
 
 ### 上下文洞察（`context` 插件 + 上下文视图）
 
@@ -344,7 +379,7 @@ ask 路径的每次决定写入 `approval` 审计事件（log-only，可回放�
 
 ### PTC / Code Mode（对标 Cloudflare/dsh run_code 简化版）
 
-`tools.code.mode` 三态 `native|ptc|both`（`PtcMode` 定义在 core——config/host/纯视图层共用，避免跨层依赖）。开启后模型获得 `run_code {code, description}`：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计事件。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算。
+**执行模式是插件自己的一项设置，不是宿主的配置段**：`native|ptc|both` 三态（`PtcMode` 定义在 `packages/plugin-ptc/src/settings.ts`，与它自己的 `Config`、`PTC_SETTING_KEYS`、`ptcPage(...)` 同处）住在 `plugins.entries` 里 `@nova-agent/plugin-ptc` 那一行的 `config.mode`。宿主因此不认识「代码模式」这个词：没有 `tools.code` 段、core 里没有 `PtcMode`、`Kernel` 契约里没有 `codeMode()`，`/mode` 按**那一行的 id** 读回它的 config（`cli/src/command-runner.ts` 的 `codeModeInForce`）。插件按 mode 决定注册不注册 `run_code`，并在**自己的设置页**渲染那个下拉（模式为 `native` 时 RPC 命名空间**先注册再返回**——关掉工具不等于连设置也不能改）。开启后模型获得 `run_code {code, description}`：写一段 async TypeScript 程序，`await tools.name(args)` 即子调用，**穿过与原生调用完全相同的管线**（审批门 + 钩子 + 超时/中断）。只有程序 print/return 的策展输出进入上下文，中间结果只落 `code-dispatch` 审计事件。执行基底是**每 run 全新 worker 线程**（信任姿态等同 bash）：剥型、空环境、堆/busy-time/墙钟/输出四类预算。
 
 ### Subagent（隔离子代理）
 
@@ -416,15 +451,17 @@ Skills 只把 name+description 注入索引，命中触发词才加载正文—�
 **版本现状**：**0.4.0 已发行**（附注标签 `v0.4.0`；锁步组基线 0.4.0；`qqbot` 独立升到 **0.3.0**，记录在其自身 CHANGELOG）。0.y.z 期破坏性变更升次版本（§8）。**TUI 源码已删除（工作区；v0.4.0 仍含 TUI，删除随下一版发行落地）**（`packages/tui` / `packages/tui-app` 源码与 `--tui` flag、引导错误已移除，磁盘残留的 `dist/` + `node_modules/` 随后清理）：恢复后仍受三件事拖累——渲染层与产品逻辑纠缠、TTY 归属接缝反复出洞、真机验收无法自动化，而浏览器界面已是富界面，终端保留 readline REPL 即可。**`docs/` 只放对齐清单 `dsh-parity-inventory.md`，其余会漂移的副本不要加。**
 
 1. **OpenAI 兼容接口缓存语义不一致**：DeepSeek 自动前缀缓存、部分网关需显式参数。已落地 usage/命中率统计；按 provider 的能力探测表留待后续。
-2. **外部插件加载**：`plugins.extra` 已可加载本地路径/包名模块；尚无 registry 与 git URL 安装。
+2. **外部插件加载**：`plugins.entries` 的一行即可加载本地路径或包名模块，`nova plugin add` 负责安装与写行；尚无 registry 与 git URL 安装。
 3. **容器化建议**：v1 不做进程沙箱，重隔离建议容器化运行。
 4. **（已解决，待下一版发行落地）TUI 源码已删除**：`packages/tui` / `packages/tui-app` 的源码（工作区已删、v0.4.0 仍含）与 `--tui` flag、引导错误一并移除，「帧真的画对了、退出真的还原了终端」这类无法自动化验收的问题随包消失；`pnpm smoke:web` 是唯一真机档。若未来重做终端全屏界面，应作为第三方 surface 插件另立包（`surfaces` 配置行即可加载），不回本仓。
 5. **（已解决）`pluginLoaded` 死缝已删除（2026-10-01）**：它自始只有声明、全仓无 `ctx.on`/`ctx.emit` 的消费者；按「新增能力键的前提是已经有人消费它」的纪律，随本批 minor 删除（`EventKey` 导出与 `plugin/loaded` 事件名一并移除）。`surfaces` 服务键**有提供者**（见 §5 能力服务缝）。
 6. **装配点的一致性（`userQuestions` / `onSubagentProgress`）已收口**（装配合一后全仓只有一个调用点，见 §4）：`userQuestions` 的**推导规则**收成一个 core 纯函数 `deriveUserQuestions(caps)`（`answersQuestions ?? interactive ?? false`），`runtime-env.ts` 的服务端 provider 每次调用对 `registry.current()` 求值——注册表现在对每一类 surface 都有赢家，所以规则的唯一读者就是它；`buildSurfaceRuntime` 的同名调用只覆盖没有注册表的装配（内核测试 / 嵌入方）。`onSubagentProgress` 已由 `runtime-builtins.ts` 的 `kernelPlugins()` 在装配点接线（§5 Subagent）。**剩余**：没有注册表的装配仍回落到 `opts.userQuestions`（内核测试 / 嵌入方显式传），这是「嵌入方的规则」而不是「装配点的规则」，不是缺陷。
 
-7. **插件发行模型迁移（进行中，2026-10-01 定规）**：基础能力（`bash` / `jobs` / `todo` / `goal` 等）**留主程序**——可开关、不可删除；扩展能力（`subagent` / `ptc` / `context` / `qqbot`）**按第三方对待**——独立包、按 spec 装载、缺失不影响整体应用。**进展**：`subagent` / `context` / `ptc` 已出包（`@nova-agent/plugin-*`）并由 `extensions.ts` 的 spec 表容错装载（缺包只在该行留 `error`，不伤启动）；`qqbot` 去静态化且**产品形态整体入包**（cli 对包零静态依赖，`qqbot-api.ts` 一处动态装载 + `qqbot-surface.ts` 一处适配；缺失时 `nova qqbot` 报错、`nova --web` 降级并在设置页显示原因）；`SurfaceRegistry.resolve` 生产者已补（适配器认领经注册表裁决并记录赢家）；web 装配合一（并入 `bootKernel`，见 §4）；surface 契约归一与注册表唯一解析（见第 8 条）。
+7. **插件发行模型迁移（进行中，2026-10-01 定规）**：基础能力（`bash` / `jobs` / `todo` / `goal` 等）**留主程序**——可开关、不可删除；扩展能力（`subagent` / `ptc` / `context` / `qqbot`）**按第三方对待**——独立包、按 spec 装载、缺失不影响整体应用。**进展**：`subagent` / `context` / `ptc` 已出包（`@nova-agent/plugin-*`），由 `plugin-tree.ts` 的 `SHIPPED_PACKAGES` 声明为随产品发行，装载失败只在该行留 `error`、不伤启动；**QQ 包刻意移出这份名单**——它是第三方编写示范，包只依赖 core（不是 plugins 反过来依赖它），凭据与设置住在它自己那一行的 `config` 里，所以 `nova qqbot` **要求配置里有那一行**（行不给就点名拒绝，见 §2/§3）；cli 对包零静态依赖（`qqbot-surface.ts` 里一处 `await import('@nova-agent/qqbot')`，缺失时 `nova qqbot` 报错、`nova --web` 降级）；`SurfaceRegistry.resolve` 生产者已补（适配器认领经注册表裁决并记录赢家）；web 装配合一（并入 `bootKernel`，见 §4）；surface 契约归一与注册表唯一解析（见第 8 条）。
 
-8. **surface 合流已完成（2026-10-01 第二批）**：内置四家实现同一份 `AgentSurface`（各工厂），`SurfaceEntry` 形状删除；全部 surface 注册进同一注册表、解析只剩一次 `registry.resolve`（赢家记录进 `current()`，`userQuestions` 由此单一来源）；`onWorkspaceChanged` 接线（`repl` 首个实现方）、`CommandPorts` 并入 `AgentSurfaceUi`；装配收敛为唯一入口（见 §4）。**qqbot 物理搬包已落地（第三批）**：10 个界面文件（mode / bridge / activate / peer / approval / turn / wiring / remote / remote-parse / probe）迁入 `packages/qqbot/src/surface/`，以 `AgentSurface` 形态导出（`createQqBotSurface` / `startQqBotBridge` / `qqBotRuntimeSeam` / `testQqBotConnection`）；cli 只剩 `qqbot-api.ts`（结构性镜像，一处动态装载）与 `qqbot-surface.ts`（凭据端口 + 认领 + web 桥适配）——凭据的 raw 文档读法留在 cli（那是配置层的规则）。**本项无剩余**。（设置页「扩展缺失」行内提示、`pluginLoaded` 死缝删除与设置页连接读数平铺→嵌套的存量修复均已在同批完成。）
+8. **surface 合流已完成（2026-10-01 第二批）**：内置四家实现同一份 `AgentSurface`（各工厂），`SurfaceEntry` 形状删除；全部 surface 注册进同一注册表、解析只剩一次 `registry.resolve`（赢家记录进 `current()`，`userQuestions` 由此单一来源）；`onWorkspaceChanged` 接线（`repl` 首个实现方）、`CommandPorts` 并入 `AgentSurfaceUi`；装配收敛为唯一入口（见 §4）。**qqbot 物理搬包已落地（第三批）**：surface 半只剩 `packages/qqbot/src/surface/mode.ts`（认领 + 常驻 + 「通道没起来」的点名拒绝），通道本体、凭据、探针、设置页与 `qqbot_send` 工具全在包内的 `src/plugin.ts`；cli 只剩 `qqbot-surface.ts`（一处动态装载 + 认领 + 装配贡献）——凭据的 raw 文档读法留在 cli（那是配置层的规则）。**本项无剩余**。（设置页「扩展缺失」行内提示、`pluginLoaded` 死缝删除与设置页连接读数平铺→嵌套的存量修复均已在同批完成。）
+
+9. **（记入待办、未立项）带真实凭据的 QQ 通道在外部网络失败时以 `exit 13` 退出**。**现象**：`plugins.entries` 里有 `@nova-agent/qqbot` 这一行、且它的 `config` 里 `appId` / `clientSecret` 非空（真实凭据）时，`nova qqbot` 在拨号拿不到可用 token / 网关的情况下，打印完横幅后以 **`exit code 13`** 结束——Node 的 *unsettled top-level await* 检出（验收方照抄的输出：`Warning: Detected unsettled top-level await at …cli/dist/index.mjs:4053` 紧跟 `await main();`，即 `packages/cli/src/index.ts:115` 的那一句），而不是给出一句可读的错误；那次真机日志里唯一的相关提示是 `[nova:warn] qqbot: access token request failed (200)`（`packages/qqbot/src/token.ts:108`）——**读法上的一个细节**：这句 warn 是 `token.ts:107` 的判据之一，`200` 说明 HTTP 回了 200、而响应体里没有可用的 `access_token`，所以它**不等价于**「TCP 连接被拒」；验收方对这一格的定性是「外部网络失败」，观测到的却是这一条 warn。**机制**：`packages/qqbot/src/surface/mode.ts:45` 的常驻是 `await new Promise<never>(() => undefined)`——它**故意永不 settle**，靠通道的 socket 持有事件循环（`mode.ts:44` 的注释就是这么写的）；而凭据非空时通道对象确实存在（`plugin.ts:227` 那道门只问「凭据填了没有」——非空、`{env:NAME}` 已兑现，判定在 `settings.ts:64` 的 `qqBotCredentialProblem`；`token.ts` 自身完全不校验，`credentials()` 只在字面值与 getter 之间选），`plugin.ts:244-260` 随即登记 `activeChannel` 并异步 `channel.start()`，**拨号失败只是页面读数**（`started.failure` + 一条 warn），既不卸载通道也不解绕常驻。于是这一格是「通道进入了失败态：既不退出，也没有 socket 守事件循环」，Node 的 unsettled-top-level-await 检出因此接管。**它与哪些已知行为不同**：凭据**空/未设**时走的是另一条路，且那条**是对的**——`plugin.ts:227` 直接返回 → 不建通道 → `runningQqBotChannel()` 为 `undefined` → cli 侧 `qqbot-surface.ts:84` 与包内 `mode.ts:24-30` 点名拒绝 → `runSurface` 拆掉这次装配（`surface-host.ts:101-106`）→ 一句可读的中文错误；**只有「凭据非空 + 网络失败」这一格**是这个形状。**状态：记入待办、未立项**——它是「常驻靠永久 pending 的 await、由 socket 持有事件循环」这一**已声明设计**在**外部网络失败**这一外部条件下的表现，真实部署有网即常驻，且不在本轮交付范围内；所以它**不是**「缺陷已修」（没修），也**不是**被证据判定的缺陷——证据只够说明「这个形状存在」。**证据强度**：本条出自**独立验收方的真机观测**（真凭据、该变体真的尝试了拨号），**未经编排者用真凭据复现**，也**没有回归测试**，请读作**观测事实**而非复现过的回归。**若要收口，方向**是让「通道进入了失败态」这件事**令常驻解绕**（以可读原因退出），而不是依赖事件循环被 socket 意外持有。
 
 ## 8. 版本与发布（SemVer 2.0.0）
 
@@ -435,12 +472,12 @@ Skills 只把 name+description 注入索引，命中触发词才加载正文—�
 凡改变以下任一面的可观察行为或签名，即为公共 API 变更；未列入清单的内部实现（模块私有函数、错误文案、事件内部字段等）不构成版本约束。
 
 1. **CLI 用法与参数**：`nova` / `nova exec` / `nova qqbot` 的全部 flags 与形态、`--json` 事件流 schema、进程退出码。
-2. **配置 schema**：`~/.nova/config.json` 的字段名、类型与语义（§3 清单，含 `models[]`、`{env:NAME}` 引用形式与 `plugins.disable` / `plugins.extra` 的加载语义）。
+2. **配置 schema**：`~/.nova/config.json` 的字段名、类型与语义（§3 清单，含 `models[]`、`{env:NAME}` 引用形式与 `plugins.entries` 每行 `{ id, enabled?, config? }` 的加载语义）。
 3. **JSONL 会话日志 v2 格式与投影语义**：`SessionEvent` 的 10 个事件类型、字段结构、`deriveMessages()` 投影规则、压缩语义。
-4. **插件 API**：core `Plugin`（`{ name, inject?, Config?, apply(ctx) }` + 函数 / 类两种形式）、`registerTool(ctx, def, permission)` / `registerCommand(ctx, def)`、`ToolDefinition`（含 `presentCall` / `presentResult` / `preview`）、`ToolExecuteContext`、钩子签名、审批档位与 `permission` 声明；**容器公共面**（`Context` / `ctx.provide` / `key<T>()` / `ctx.on` / `ctx.effect`）与 `plugins.extra` 能加载的插件形态。
-5. **内核协议（surface 契约）**：`AgentSession` 句柄的方法集、`KernelEvent` 的变体与字段、`Kernel` 的成员（含 `models?` / `commands` / `runCommand()` / `roster()`）、`createAgentKernel` 的装配签名——凡实现一个 surface（官方或第三方）所依赖的都是公共面。
+4. **插件 API**：core `Plugin`（`{ name, manifest?, inject?, Config?, apply(ctx, config) }` + 函数 / 类两种形式）、`PluginManifest`（`title` / `description` / `tier` / `page?`）与 `PluginPageDescriptor`、`registerTool(ctx, def, permission)` / `registerCommand(ctx, def)`、`ToolDefinition`（含 `presentCall` / `presentResult` / `preview`）、`ToolExecuteContext`、钩子签名、审批档位与 `permission` 声明；**容器公共面**（`Context` / `ctx.provide` / `ctx.scope({isolate, intercept})` / `ctx.labelled` / `key<T>()` / `ctx.on` / `ctx.effect`）、**能力服务键**（`loader` / `pluginRpc` / `pluginConfig` / `executionEnvironment` 与既有键的语义）与 `plugins.entries` 能加载的插件形态。
+5. **内核协议（surface 契约）**：`AgentSession` 句柄的方法集、`KernelEvent` 的变体与字段、`Kernel` 的成员（含 `models?` / `commands` / `runCommand()` / `roster()` / `pluginConfig()` / `pluginRpc()`）、`createAgentKernel` 的装配签名——凡实现一个 surface（官方或第三方）所依赖的都是公共面。
    > **`surfaces` 服务键已有提供者**（§5 能力服务缝）：注册表在容器之外先于内核装配存在（`plugins/src/surface-registry.ts`），装配方把它连同已加载的 surfaces 交给 `createAgentKernel({ surfaces })`，容器把**同一个**实例 provide 成 `surfaces` 服务——所以 `AgentSurface` / `AgentSurfaceKernel` **是行为契约**（有人实现、有人加载、有人装配）。`pluginLoaded` 事件键已删除（2026-10-01，见 §7.5）。它们仍是 `core` 的导出，签名变更照样要升位。
-6. **各 `@nova-agent/*` 包公开导出**：每个包 `exports` 只有 `"."`。`core`（agent 循环 / 消息模型 / 会话 / kernel 句柄与事件协议 / 审批与呈现词汇表 / 插件容器 / 模型 id 对账与目录选择规则 / 文件与目录枚举 / 跨会话活动聚合 `aggregateSessions`；**`session-peek.ts` 不在其中**）、`ai`（`client` + `sse`）、`plugins`（容器门面 / 审批 / 内置工具 / 命令目录与 runner / 内核装配；`fs.ts` 与 `bash.ts` 只做**窄化具名再导出**）、`web`（surface 后端与帧协议：`list_models` / `set_model` / `list_model_config` / `save_models` / `command` / `load_earlier` / `load_trace` / `set_workspace` / `delete_session` / `list_files` / `list_directory` / `create_directory` / `pick_file` / `pick_directory` 客户端帧与 `parseClientFrame` 判据、`models` / `model_config` / `state` / `sessions` / `files` / `directory` / `directory_error` / `picked` / `ready` 的字段、`server.ts` 的静态缓存策略与 `GET`/`POST /api/image` 字节路由、`GET /api/dashboard` 的 `aggregate` 字段、`GET /api/context-window` 的 `snapshot` 字段）、`qqbot`（渠道插件示范，含 surface 半：`createQqBotSurface` / `startQqBotBridge` / `qqBotRuntimeSeam` / `testQqBotConnection` 与 `QqBotLiveReading` 等类型）、`cli`（`config` / `surfaces` / `command-runner`——**`"."` 是 bin 脚本，零 export**）。
+6. **各 `@nova-agent/*` 包公开导出**：每个包 `exports` 只有 `"."`。`core`（agent 循环 / 消息模型 / 会话 / kernel 句柄与事件协议 / 审批与呈现词汇表 / 插件容器与能力键 / 插件 manifest、设置页描述符与 `objectConfig` / 模型 id 对账与目录选择规则 / 文件与目录枚举 / 跨会话活动聚合 `aggregateSessions`；**`session-peek.ts` 不在其中**）、`ai`（`client` + `sse`）、`plugins`（容器门面 / 审批 / 内置工具 / 命令目录与 runner / 内核装配；`fs.ts` 与 `bash.ts` 只做**窄化具名再导出**）、`web`（surface 后端与帧协议：`list_models` / `set_model` / `list_model_config` / `save_models` / `command` / `load_earlier` / `load_trace` / `set_workspace` / `delete_session` / `list_files` / `list_directory` / `create_directory` / `pick_file` / `pick_directory` / `set_plugin_enabled` / **`plugin_request`** 客户端帧与 `parseClientFrame` 判据、`models` / `model_config` / `state` / `sessions` / `files` / `directory` / `directory_error` / `picked` / `roster` / **`plugin_response`** / `ready` 的字段、`server.ts` 的静态缓存策略与 `GET`/`POST /api/image` 字节路由、`GET /api/dashboard` 的 `aggregate` 字段、`GET /api/context-window` 的 `snapshot` 字段）、`qqbot`（渠道插件示范：默认导出即 `Plugin`（凭据 schema、`qqbot_send`、探针与设置页描述符全在包内），surface 半只余 `src/surface/mode.ts` 的认领与常驻）、`cli`（`config` / `surfaces` / `command-runner`——**`"."` 是 bin 脚本，零 export**）。
 
 ### 升位映射
 
