@@ -18,7 +18,6 @@
  * way `runAgent` takes a `ChatProvider` interface. The concrete `Kernel` the
  * host passes structurally satisfies `AgentSurfaceKernel`.
  */
-import type { PtcMode } from './types.js';
 import type { ToolViewSource } from './presentation.js';
 
 export interface AgentSurface {
@@ -97,7 +96,37 @@ export interface AgentSurfaceRuntime {
  * concrete bundle is the plugins package' `Kernel`, widened here so any
  * surface package can type against core only (the host passes a real `Kernel`,
  * which structurally satisfies this).
+ *
+ * What is NOT here is as deliberate: no execution mode, no model seat, no
+ * workspace-provider vocabulary. Which code modes exist is one plugin's business
+ * and its settings live in its own config row, so a surface that wants to show or
+ * change one asks for a plugin operation (`pluginRpc`), not for a kernel member
+ * named after that plugin. A member here would be core holding one plugin's
+ * vocabulary in the contract every surface must implement.
  */
+/**
+ * One plugin row as `AgentSurfaceKernel.roster()` reports it — the structural
+ * slice of the kernel's own roster entry that a surface may read.
+ *
+ * Mirrored structurally for the same reason the rest of this file is: a surface
+ * package types against `core` only, and core learns no plugin's name from it.
+ * What matters to a surface is the four facts the reader needs — which ROW, what
+ * state, is it switched on, and (when it is not up) why.
+ */
+export interface AgentSurfacePluginRow {
+  /** The row id as the operator's `plugins.entries` writes it. */
+  readonly name: string;
+  /** Container state: `active` / `disabled` / `failed` / `pending` / `loading`. */
+  readonly state: string;
+  /**
+   * Whether the row is loaded. A FAILED row reads `false` here too — it has no
+   * fiber — which is exactly why `error` has to be consulted first.
+   */
+  readonly enabled: boolean;
+  /** Why the row has no fiber although it should have one. Absent when healthy. */
+  readonly error?: string;
+}
+
 export interface AgentSurfaceKernel {
   readonly agent: import('./kernel/session.js').AgentSession;
   readonly skills: readonly { readonly name: string }[];
@@ -105,9 +134,19 @@ export interface AgentSurfaceKernel {
     readonly toolEntries: readonly { readonly plugin: string; readonly tool: ToolViewSource }[];
   };
   readonly jobs: { dispose(): Promise<void> };
+  /**
+   * Every plugin row as the roster reports it — failed and switched-off rows
+   * included.
+   *
+   * A surface must be able to be honest about the rows it depends on: `nova
+   * qqbot` has to tell the operator whether its row is missing, off, or
+   * unloadable (three different next actions), and a terminal surface has to name
+   * the row that did not come up instead of silently dropping it from its banner.
+   * Both answers are the same read, and it names no plugin: the surface asks for
+   * the row IT cares about by id.
+   */
+  roster(): readonly AgentSurfacePluginRow[];
   rootDir(): string;
-  codeMode(): PtcMode;
-  setCodeMode(mode: PtcMode): Promise<void>;
   setWorkspace(dir: string): Promise<readonly { readonly name: string }[]>;
   dispose(): Promise<void>;
 }
@@ -138,6 +177,4 @@ export interface AgentSurfaceUi {
   /** The surface's own model picker: the chosen id, or undefined when cancelled. */
   pickModel(models: readonly string[]): Promise<string | undefined>;
   exit(): void | Promise<void>;
-  /** How THIS surface switches modes, appended to the `/mode` header. */
-  readonly modeHint: string;
 }

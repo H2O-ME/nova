@@ -27,6 +27,7 @@ export type ToolCallKind =
   | 'job'
   | 'subagents'
   | 'plan'
+  | 'question'
   | 'other';
 
 /** A spot in a file the user can jump to (`line` 1-based, absent = whole file). */
@@ -45,6 +46,17 @@ export interface FileDiff {
   newText: string;
 }
 
+/**
+ * Every call view carries `kind`, not just the generic one.
+ *
+ * The specialized cards say *how to draw* a call (a terminal transcript, a diff,
+ * a hit list); `kind` says *what it did*, and a surface that groups or
+ * summarises work (the WebUI's process title) needs the second without
+ * re-deriving it from the tool's NAME. Before this, `kind` existed only on the
+ * generic card, so a summarizer that wanted a bash call's category had to
+ * hard-code `name === 'bash'` — a second, drifted copy of `BUILTIN_TOOL_KINDS`.
+ */
+
 /** Fallback call card: enough to render a line for any tool, ever. */
 export interface GenericCallView {
   card: 'generic';
@@ -56,14 +68,17 @@ export interface GenericCallView {
 }
 export interface TerminalCallView {
   card: 'terminal';
+  kind: ToolCallKind;
   command: string;
 }
 export interface DiffCallView {
   card: 'diff';
+  kind: ToolCallKind;
   diffs: FileDiff[];
 }
 export interface SearchCallView {
   card: 'search';
+  kind: ToolCallKind;
   query: string;
   mode: 'content' | 'name';
 }
@@ -145,6 +160,7 @@ export const BUILTIN_TOOL_KINDS: Record<string, ToolCallKind> = {
   edit_file: 'edit',
   jobs: 'job',
   todo_write: 'plan',
+  ask_user_question: 'question',
   subagent: 'subagents',
   get_time: 'other',
 };

@@ -43,14 +43,21 @@ describe('isFailureContent', () => {
 });
 
 describe('tool call kinds', () => {
-  it('every built-in kind is a member of the vocabulary', () => {
-    // Kept as a literal list rather than derived from the union: the point is
-    // that ADDING a kind to the union without deciding the surfaces' copy for it
-    // fails here, which a `keyof`-derived set could not catch.
-    const known = new Set(['read', 'edit', 'write', 'search', 'execute', 'job', 'subagents', 'plan', 'other']);
-    for (const kind of Object.values(BUILTIN_TOOL_KINDS)) {
-      expect(known.has(kind)).toBe(true);
+  it('reaches every table entry through the public classifier', () => {
+    // A round trip, not a copy of the vocabulary. This test used to restate the
+    // union as a literal set and check membership — a second implementation that
+    // had to be edited by hand whenever the union grew, in a file `tsc` does not
+    // even read (`tsconfig.json` includes only `src`). The invariant that
+    // actually matters is that the table the classifier consults is the table
+    // this file reads, and that it answers for every name in it.
+    const entries = Object.entries(BUILTIN_TOOL_KINDS);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [name, kind] of entries) {
+      expect(toolCallKind(name)).toBe(kind);
     }
+    // A kind added to the union without a label for it is caught where the label
+    // lives: the surfaces key their copy maps by `ToolCallKind`
+    // (`Record<ToolCallKind, string>`), and those files ARE typechecked.
   });
 
   it('unknown tools classify as other instead of throwing', () => {

@@ -30,6 +30,20 @@ import type { AskQuestionsFn } from '../user-question.js';
 import { event, type EventKey } from './events.js';
 import { key, type ServiceKey } from './types.js';
 
+/* ── loader ────────────────────────────────────────────────────────────── */
+
+/**
+ * The plugin tree itself, as a service.
+ *
+ * A plugin holding this reaches the same row lifecycle the host does — `create`,
+ * `update`, `remove` — so a plugin can contribute its own subtree at runtime
+ * instead of asking the host for a named extension point. It sits here with the
+ * other keys rather than next to its implementation because this file is the one
+ * place that says WHAT can be replaced; `loader.ts` only says how loading works.
+ */
+export const loader: ServiceKey<import('./loader.js').PluginLoader> =
+  key<import('./loader.js').PluginLoader>('loader');
+
 /* ── llm ───────────────────────────────────────────────────────────────── */
 
 /**
@@ -55,6 +69,111 @@ export interface LlmService {
 }
 
 export const llm: ServiceKey<LlmService> = key<LlmService>('llm');
+
+/* ── execution-environment ─────────────────────────────────────────────── */
+
+/**
+ * The shared facts an EXECUTION plugin runs on.
+ *
+ * A plugin that runs agent work of its own (`subagent`, `ptc`) needs the live
+ * provider, the live tool registry, the composed hooks, the persona and the
+ * workspace root. Publishing them as one service is what lets such a plugin be
+ * an ordinary package: it declares `inject` and reads this, instead of the host
+ * constructing it through a per-package factory the kernel has to name.
+ *
+ * Every function member is a LIVE read. The registry grows as rows load and the
+ * root moves when the workspace does, so a snapshot taken at provider-activation
+ * time would serve stale facts to every later turn.
+ */
+export interface ExecutionEnvironment {
+  readonly provider: import('../types.js').ChatProvider;
+  /** The tools registered right now (the loop's own view). */
+  tools(): ToolDefinition[];
+  /** The composed hook chain of the current roster. */
+  hooks(): import('../types.js').AgentHooks;
+  readonly systemPrompt: string;
+  rootDir(): string;
+  /** The turn cap in force, when the kernel has one. */
+  readonly maxTurns?: number;
+  /** Report a delegated run's lifecycle to the session in force. */
+  onSubagentProgress(progress: import('../tools/subagent.js').SubagentProgress): void;
+}
+
+export const executionEnvironment: ServiceKey<ExecutionEnvironment> =
+  key<ExecutionEnvironment>('execution-environment');
+
+/* ── plugin-rpc ────────────────────────────────────────────────────────── */
+
+/**
+ * Namespaced plugin operations, for the plugins that own a settings page or a
+ * runtime status.
+ *
+ * A plugin registers handlers under its own namespace and gets a disposer, so
+ * the operations disappear with its fiber: a switched-off plugin cannot answer,
+ * and the host needs no per-plugin request family. The payload stays `unknown`
+ * on purpose — the owning plugin is the only thing that knows what its
+ * operations mean, so it validates them itself.
+ */
+export interface PluginRpc {
+  /** Claim one namespace; the returned disposer releases it (tie it to a fiber). */
+  register(name: string, handler: (op: string, payload: unknown) => Promise<unknown>): import('./types.js').Dispose;
+  /** Run one operation. Throws when no loaded plugin owns the namespace. */
+  invoke(name: string, op: string, payload: unknown): Promise<unknown>;
+}
+
+export const pluginRpc: ServiceKey<PluginRpc> = key<PluginRpc>('plugin-rpc');
+
+/* ── plugin-config ─────────────────────────────────────────────────────── */
+
+/**
+ * The durable plugin tree, as a PLUGIN is allowed to touch it.
+ *
+ * A plugin that owns settings has to be able to save them, and the previous
+ * answer was a named writer per first-party plugin on the surface side
+ * (`saveQqBotConfig`, `setPluginsEnabled`) — which is the "adding a plugin means
+ * editing the host" defect in its purest form. With this port a plugin writes
+ * ITS OWN row: the panel says "this row looks like that now", and the shape
+ * inside `config` stays the plugin's business.
+ *
+ * Absent in assemblies with no durable config (headless runs, kernel tests): a
+ * plugin that wants to persist then reports that it cannot, instead of pretending.
+ *
+ * The port writes to the RAW document, so `{env:NAME}` references the operator
+ * wrote survive a toggle rather than being replaced by their expanded secrets.
+ */
+export interface PluginConfigPort {
+  /**
+   * One row's settings AS WRITTEN in the config document.
+   *
+   * Deliberately the raw text, not the value the plugin was applied with: the
+   * load path expands `{env:NAME}` references, so a plugin handed its resolved
+   * config cannot tell a literal secret from a reference to one. A settings page
+   * that echoes the reference NAME (rather than the secret) needs the raw form,
+   * and a save that leaves a field alone must leave its reference alone.
+   * @param id - the row's id.
+   * @returns the stored config, or undefined when the row has none.
+   */
+  readEntry(id: string): Promise<unknown>;
+  /**
+   * Upsert one row's switch and/or its own settings.
+   *
+   * A field left absent is left as stored, so the row switch and a plugin's
+   * settings page never blank each other's work. `config` is merged ONE KEY AT A
+   * TIME into what is already stored: a settings form submits the fields it owns,
+   * and everything else in the row — including a `{env:NAME}` reference the
+   * operator wrote for a field the form did not touch — survives. A key whose
+   * value is `null` is removed, which is how a form clears an optional field.
+   *
+   * The merge is deliberately shallow: a nested object is a value, not a tree to
+   * reconcile, so a plugin that owns a structured setting still writes it whole
+   * and does not have to reason about what the host did to its sub-keys.
+   * @param id - the row's id (a built-in's name or a module specifier).
+   * @param patch - the fields to write.
+   */
+  setEntry(id: string, patch: { enabled?: boolean; config?: unknown }): Promise<void>;
+}
+
+export const pluginConfig: ServiceKey<PluginConfigPort> = key<PluginConfigPort>('plugin-config');
 
 /* ── tools ─────────────────────────────────────────────────────────────── */
 
@@ -171,6 +290,31 @@ export const compaction: ServiceKey<CompactionService> = key<CompactionService>(
 
 /** Background work (background bash, subagents). The registry is the seam. */
 export const jobs: ServiceKey<JobRegistry> = key<JobRegistry>('jobs');
+
+/* ── shell ─────────────────────────────────────────────────────────────── */
+
+/**
+ * The shell commands actually run in, as resolved by the plugin that runs them.
+ *
+ * This exists so the host never has to know WHICH plugin executes commands. The
+ * context fragment tells the model what shell it is working in
+ * (`shell=<name>`), and that value has to come from whoever owns shell
+ * execution — otherwise the prompt and the tool disagree the moment an operator
+ * points `shellPath` at a different binary, or swaps the shell plugin for
+ * another one. The previous answer was the host reading the `bash` row's config
+ * BY NAME, which is the coupling this seam removes.
+ *
+ * Optional by nature: a kernel with no shell-executing row has no provider, and
+ * the consumer falls back to probing the environment.
+ */
+export interface ShellService {
+  /** The shell's display name, e.g. `bash`, `pwsh`. */
+  readonly name: string;
+  /** The resolved binary path (what a terminal or a subprocess would spawn). */
+  readonly path: string;
+}
+
+export const shell: ServiceKey<ShellService> = key<ShellService>('shell');
 
 /* ── spill ─────────────────────────────────────────────────────────────── */
 

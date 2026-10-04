@@ -15,8 +15,9 @@
  */
 import { EventRegistry, type EventKey, type Listener, type OnOptions, type Logger } from './events.js';
 import { errMessage } from '../errors.js';
+import { oneLineText } from '../text.js';
 import { Fiber, type Runtime } from './fiber.js';
-import { ServiceStore, ServiceUnavailable } from './store.js';
+import { ServiceStore, ServiceUnavailable, type InterceptMap, type ServiceInterceptor } from './store.js';
 import {
   resolvePlugin,
   type AnyPlugin,
@@ -28,7 +29,9 @@ export interface ContextInit {
   runtime: Runtime;
   fiber?: Fiber | undefined;
   symbols: Record<string, symbol>;
+  intercepts?: InterceptMap | undefined;
   root?: Context | undefined;
+  entryId?: string | undefined;
 }
 
 export class Context {
@@ -36,12 +39,27 @@ export class Context {
   readonly runtime: Runtime;
   readonly fiber: Fiber | undefined;
   readonly symbols: Record<string, symbol>;
+  /**
+   * The interceptor chain this scope reads through. Inherited by prototype, so
+   * the NEAREST scope that declares one for a name decides for its subtree.
+   */
+  readonly intercepts: InterceptMap | undefined;
+  /**
+   * Which plugin row owns this context, when one does.
+   *
+   * A plugin that installs or removes other rows names this as the parent, so
+   * what it contributes lands under its own row (and under its own isolation)
+   * rather than beside it at the root.
+   */
+  readonly entryId: string | undefined;
 
   private constructor(init: ContextInit) {
     this.runtime = init.runtime;
     this.fiber = init.fiber;
     this.symbols = init.symbols;
+    this.intercepts = init.intercepts;
     this.root = init.root ?? this;
+    this.entryId = init.entryId;
   }
 
   /** The top-level assembly context: no owning plugin, permanent registrations. */
@@ -74,19 +92,18 @@ export class Context {
 
   /** Read a service; undefined when no live provider supplies it. */
   get<T>(key: ServiceKey<T> | string): T | undefined {
-    const impl = this.runtime.store.resolve(this.symbols, nameOf(key));
-    return impl?.value as T | undefined;
+    return this.runtime.store.read(this.symbols, nameOf(key), this.intercepts, this) as T | undefined;
   }
 
   /** Read a required service; a miss names both the service and the reader. */
   must<T>(key: ServiceKey<T> | string): T {
     const name = nameOf(key);
-    const impl = this.runtime.store.resolve(this.symbols, name);
-    if (impl === undefined) {
+    const value = this.runtime.store.read(this.symbols, name, this.intercepts, this);
+    if (value === undefined) {
       const who = this.fiber === undefined ? 'the assembly' : `plugin "${this.fiber.name}"`;
       throw new ServiceUnavailable(name, who);
     }
-    return impl.value as T;
+    return value as T;
   }
 
   /** Register a service for as long as the owning plugin lives. */
@@ -121,8 +138,12 @@ export class Context {
    * Load a plugin. Returns its fiber; a body that awaits nothing has already
    * activated, and `fiber.ready` settles the attempt either way (rejecting
    * with the plugin's own error).
+   *
+   * `entryId` names the ROW this plugin belongs to when a loader is creating
+   * one, so the plugin can address its own row (install sub-rows under it,
+   * read its own settings) without the host passing a handle around.
    */
-  plugin<T>(plugin: AnyPlugin | AnyPlugin[], config?: T, name?: string): Fiber {
+  plugin<T>(plugin: AnyPlugin | AnyPlugin[], config?: T, name?: string, entryId?: string): Fiber {
     const chosen = Array.isArray(plugin) ? plugin[0] : plugin;
     const resolved = resolvePlugin(chosen as AnyPlugin, name ?? 'anonymous');
     const fiber = new Fiber(
@@ -130,7 +151,14 @@ export class Context {
       resolved,
       this.symbols,
       this.fiber,
-      (f) => new Context({ runtime: this.runtime, fiber: f, symbols: this.symbols, root: this.root }),
+      (f) => new Context({
+        runtime: this.runtime,
+        fiber: f,
+        symbols: this.symbols,
+        intercepts: this.intercepts,
+        root: this.root,
+        entryId,
+      }),
       config ?? {},
     );
     fiber.start();
@@ -176,7 +204,64 @@ export class Context {
   isolate(name: string): Context {
     const symbols: Record<string, symbol> = Object.create(this.symbols);
     symbols[name] = Symbol(name);
-    return new Context({ runtime: this.runtime, fiber: this.fiber, symbols, root: this.root });
+    return new Context({
+      runtime: this.runtime,
+      fiber: this.fiber,
+      symbols,
+      intercepts: this.intercepts,
+      root: this.root,
+      entryId: this.entryId,
+    });
+  }
+
+  /**
+   * A child scope that reads a DIFFERENT set of implementations.
+   *
+   * This is the mechanism behind a plugin row that isolates or wraps services:
+   * `isolate` gives the name a fresh key (so the subtree's provider is private
+   * to it and replaces what callers see), and `intercept` wraps whatever the
+   * name otherwise resolves to (so the subtree reads through the plugin's own
+   * code). Both are inherited by prototype, so a nested row can refine its
+   * parent's choice rather than restating it.
+   * @param options - the names to fork and the wrappers to install.
+   * @returns the child scope.
+   */
+  scope(options: {
+    isolate?: readonly string[] | undefined;
+    intercept?: Readonly<Record<string, ServiceInterceptor>> | undefined;
+  }): Context {
+    const symbols: Record<string, symbol> = Object.create(this.symbols);
+    for (const name of options.isolate ?? []) symbols[name] = Symbol(`${name}#${this.entryId ?? 'scope'}`);
+    const intercepts: InterceptMap = Object.create(this.intercepts ?? null) as InterceptMap;
+    for (const [name, wrap] of Object.entries(options.intercept ?? {})) intercepts[name] = wrap;
+    return new Context({
+      runtime: this.runtime,
+      fiber: this.fiber,
+      symbols,
+      intercepts: Object.keys(intercepts).length > 0 ? intercepts : undefined,
+      root: this.root,
+      entryId: this.entryId,
+    });
+  }
+
+  /**
+   * This same scope, labelled with the row it serves.
+   *
+   * The loader stamps a row's context so the plugin can address its own row —
+   * install sub-rows under it, read its own settings — without being handed a
+   * handle. Nothing about resolution changes.
+   * @param id - the owning row's id.
+   * @returns a context identical to this one, reporting `id` as its row.
+   */
+  labelled(id: string): Context {
+    return new Context({
+      runtime: this.runtime,
+      fiber: this.fiber,
+      symbols: this.symbols,
+      intercepts: this.intercepts,
+      root: this.root,
+      entryId: id,
+    });
   }
 
   /** Declared services that no live provider supplies — the boot check. */
@@ -220,13 +305,33 @@ async function runReverse(disposers: readonly Dispose[]): Promise<void> {
   }
 }
 
-
 const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
 
+/**
+ * The core log exit — the ONE place a core log line becomes stderr bytes.
+ *
+ * The escaping happens HERE, at the exit, not at each call site. `message` is
+ * routinely built out of external data: `loader.ts` writes
+ * `plugin "<id>" failed to load: <the plugin's own thrown message>`, `events.ts`
+ * writes a throwing listener's message, and neither the row id nor that text is
+ * the host's to trust. A per-call-site rule is a rule every future call site has
+ * to remember, and the sibling path in cli (its startup report) already states
+ * the discipline that the upstream is never assumed clean; one exit makes
+ * "nothing core prints can rewrite the terminal" a property of the writer
+ * instead of a habit.
+ *
+ * The cost is chosen knowingly: redirected to a FILE — or read by a test — the
+ * bytes are now the visible sequence `\x1b` rather than the raw control
+ * character. That is the point, not a regression: a log line is displayed by
+ * tools and terminals that must not be rewritten by the text they carry, and
+ * `\x1b[31m` in a log tells a human exactly what was there (dropping it would
+ * hide an injection attempt). Only `message` is escaped — the `[nova:<level>] `
+ * prefix is this file's own literal.
+ */
 const defaultLog: Logger = (level, message) => {
   const threshold = process.env.NOVA_LOG === undefined ? LEVELS.warn : thresholdFor(process.env.NOVA_LOG);
   if (LEVELS[level] < threshold) return;
-  process.stderr.write(`[nova:${level}] ${message}\n`);
+  process.stderr.write(`[nova:${level}] ${oneLineText(message)}\n`);
 };
 
 function thresholdFor(setting: string): number {

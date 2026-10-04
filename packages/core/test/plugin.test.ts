@@ -471,4 +471,46 @@ describe('loud failures', () => {
     await expect(fiber.ready).rejects.toThrow('late boom');
     expect(fiber.state).toBe('failed');
   });
+
+  /**
+   * The stderr EXIT, not the escape helper: `Context.createRoot()` with no `log`
+   * option is the default writer every surface inherits, and this drives it.
+   *
+   * The message is the shape `loader.ts` writes — a row id plus the plugin's own
+   * thrown text, i.e. external data on both halves. Removing the `oneLineText`
+   * call in `context.ts` leaves live control code points in these bytes and this
+   * test goes red.
+   */
+  it('escapes control code points at the stderr exit', () => {
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string) => {
+      written.push(chunk);
+      return true;
+    }) as typeof process.stderr.write);
+    try {
+      const root = Context.createRoot();
+      root.log('error', 'plugin "bad\u001b[31m" failed to load: boom \u001b[31mRED\rOVERWRITTEN\u0007\u009b31m\u007fend\nSECOND');
+    } finally {
+      spy.mockRestore();
+    }
+    const nova = written.filter((line) => line.startsWith('[nova:'));
+    expect(nova).toHaveLength(1);
+    const line = nova[0] as string;
+    // The static prefix is this file's own literal — only `message` is escaped.
+    expect(line.startsWith('[nova:error] plugin "bad')).toBe(true);
+    expect(line.endsWith('\n')).toBe(true);
+    // Each hazard as a VISIBLE escape: `\r` cannot overwrite, ANSI cannot recolour.
+    expect(line).toContain('\\x1b[31m');
+    expect(line).toContain('\\r');
+    expect(line).toContain('\\x07');
+    expect(line).toContain('\\x9b');
+    expect(line).toContain('\\x7f');
+    expect(line).toContain('\\nSECOND');
+    // No live control code point survives to stderr (the terminator excepted).
+    const live = Array.from(line.slice(0, -1)).some((ch) => {
+      const code = ch.codePointAt(0) ?? 0x20;
+      return code < 0x20 || code === 0x7f || (code >= 0x80 && code <= 0x9f);
+    });
+    expect(live).toBe(false);
+  });
 });

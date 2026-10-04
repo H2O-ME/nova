@@ -247,14 +247,6 @@ export interface ToolDefinition {
  */
 export type ToolPermissionKind = 'read' | 'read-external' | 'write' | 'execute' | 'network';
 
-/**
- * Execution mode for the code (PTC) runtime: native tool calls only, run_code
- * only, or both. Lives here because the config schema, the plugin host and
- * every surface all speak it — defining it in plugins would make a view-only
- * consumer depend on a package two tiers above it.
- */
-export type PtcMode = 'native' | 'ptc' | 'both';
-
 /** Events emitted by a ChatProvider during a single completion stream. */
 export type StreamEvent =
   | { type: 'text_delta'; text: string }

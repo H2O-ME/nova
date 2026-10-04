@@ -29,7 +29,7 @@ export function sessionsRoot(homedir: string = os.homedir()): string {
  * plugins without touching wherever the product itself lives — `nova plugin
  * add <pkg>`, or `pnpm add` run in this directory.
  *
- * Bare specifiers in `plugins.extra` / `surfaces` are looked up here as a
+ * Bare specifiers in `plugins.entries` / `surfaces` are looked up here as a
  * FALLBACK (see `plugins/src/module-spec.ts`): a name the product can already
  * resolve keeps resolving where it did, so installing here never shadows a
  * bundled package by accident.
