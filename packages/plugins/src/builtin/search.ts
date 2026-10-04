@@ -1,8 +1,10 @@
-import { errMessage, isFailureContent, SKIP_DIRS, tools as toolsKey } from '@nova-agent/core';
+import { errMessage, isFailureContent, objectConfig, SKIP_DIRS, tools as toolsKey } from '@nova-agent/core';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import type {
+  ConfigSchema,
+  Context,
   FileLocation,
   Plugin,
   SearchCallView,
@@ -29,7 +31,6 @@ import { intArg, strArg } from './args.js';
  * compiled by globToRegExp and cannot backtrack.
  */
 
-
 /** Content search never reads more than this per file (bounds regex cost). */
 const SCAN_MAX_BYTES = 1024 * 1024;
 const DEFAULT_MAX_RESULTS = 200;
@@ -40,7 +41,14 @@ const MAX_RESULTS_CAP = 1000;
 const REGEX_MAX_LENGTH = 512;
 const REGEX_MAX_QUANTIFIERS = 32;
 
-export interface SearchPluginOptions {
+/**
+ * The `search` row's OWN settings, validated by the row's own schema.
+ *
+ * Distinct from `SearchRuntimeOptions` below: these are what an operator writes
+ * in the row's `config`, so the host never reads them by name — a new setting is
+ * a change to THIS file alone.
+ */
+export interface SearchPluginSettings {
   /** Wall-clock ceiling for one content_regex worker run. Default 30s. */
   wallMs?: number;
   /**
@@ -50,8 +58,19 @@ export interface SearchPluginOptions {
    * both paths.
    */
   worker?: boolean;
-  /** Extra auto-readable roots outside the workspace (spill directory). */
-  trustedReadRoots?: string[];
+}
+
+/**
+ * The kernel facts `search` is built with — NOT operator settings.
+ *
+ * `rootDir` and `trustedReadRoots` are live readers of kernel state (the
+ * workspace in force; the spill directory, which is a SERVICE another row
+ * provides), so they cannot come from the row's `config`: they are thunks the
+ * assembly binds, and `trustedReadRoots` in particular must stay lazy because
+ * the providing row activates AFTER the built-ins are constructed.
+ */
+export interface SearchRuntimeOptions {
+  trustedReadRoots?: () => readonly string[];
   /**
    * The LIVE workspace root. A thunk, not a string: the approval classifier
    * grades every call against the root in force, and `switch_workspace`
@@ -327,9 +346,9 @@ const SEARCH_NOTE_RE = /^（(?:已达结果上限|搜索已中止)/;
 /** Render intent for a search call: which pattern, and matched against what. */
 function searchCallView(args: Record<string, unknown>): SearchCallView | undefined {
   const content = strArg(args, 'content_regex');
-  if (content !== undefined) return { card: 'search', query: content, mode: 'content' };
+  if (content !== undefined) return { card: 'search', kind: 'search', query: content, mode: 'content' };
   const glob = strArg(args, 'name_glob');
-  if (glob !== undefined) return { card: 'search', query: glob, mode: 'name' };
+  if (glob !== undefined) return { card: 'search', kind: 'search', query: glob, mode: 'name' };
   return undefined;
 }
 
@@ -364,19 +383,30 @@ function searchResultView(args: Record<string, unknown>, content: string): Searc
   };
 }
 
-export function searchPlugin(options: SearchPluginOptions): Plugin {
-  const wallMs = options.wallMs ?? 30_000;
-  const trustedReadRoots = options.trustedReadRoots ?? [];
+/**
+ * The `search` row's settings schema — the operator's half of the split above.
+ */
+export const Config: ConfigSchema<SearchPluginSettings> = objectConfig<SearchPluginSettings>({
+  wallMs: { type: 'number' },
+  worker: { type: 'boolean' },
+});
+
+export function searchPlugin(options: SearchRuntimeOptions): Plugin<SearchPluginSettings> {
+  const trustedReadRoots = options.trustedReadRoots ?? (() => []);
   const rootDir = options.rootDir;
-  // The source world runs this file through native type stripping, so the
-  // .ts worker entry only loads on runtimes that support it; without it the
-  // in-process path stays available (pre-flight screen still applies).
-  const wantWorker = options.worker !== false && typeStrippingAvailable();
   return {
     name: 'search',
     description: 'Recursive file/content search inside the workspace.',
+    manifest: { title: '搜索', description: '按文件名或内容递归检索工作区。', tier: 'core' },
+    Config,
     inject: [toolsKey],
-    apply: (ctx) => {
+    apply: (ctx: Context, config: SearchPluginSettings): void => {
+      const settings = config ?? {};
+      const wallMs = settings.wallMs ?? 30_000;
+      // The source world runs this file through native type stripping, so the
+      // .ts worker entry only loads on runtimes that support it; without it the
+      // in-process path stays available (pre-flight screen still applies).
+      const wantWorker = settings.worker !== false && typeStrippingAvailable();
       registerTool(ctx, {
         name: 'search_files',
         description:
@@ -394,7 +424,7 @@ export function searchPlugin(options: SearchPluginOptions): Plugin {
         },
         /** Same sandbox classification as the read tools. */
         permissionFor(args) {
-          return rootPermissionKind(rootDir(), strArg(args, 'path') ?? '.', trustedReadRoots);
+          return rootPermissionKind(rootDir(), strArg(args, 'path') ?? '.', trustedReadRoots());
         },
         execute: (args, c) => executeSearch(args, c, wallMs, wantWorker),
         presentCall(args) {

@@ -1,127 +1,73 @@
 /**
- * The roster: which plugins load into the tool host, and how config changes it.
+ * The roster: turn the desired plugin tree into loaded plugins.
  *
- * A rebuild (workspace switch, PTC-mode change) re-rosters onto the SAME registry
- * — `host.reset()` unloads the plugins but keeps the tool service provided — so
- * consumers and the approval gate never see the registry disappear and come
- * back. The old implementation built a fresh host and dropped the previous one
- * on the floor, leaving its tools reachable through any captured reference.
+ * The heavy lifting lives elsewhere on purpose:
  *
- * Two lists, and the ROSTER is where they are assembled into one verdict:
- * `plugins.disable` (off, wins) and `plugins.enable` (on against the tier
- * default). Both are read from the panel's LIVE state, seeded from the boot
- * config: the manager flips them mid-process, and a flip must survive the next
- * workspace switch — reading the boot document again would undo it and would
- * make a boot-time entry impossible to clear. The verdict itself is ONE call
- * (`loadableRoster` → `enabledByTier`), applied to every source in one pass:
- * the surface's own plugins, this build's built-ins, the spec-loaded
- * extensions, and `plugins.extra` alike.
- * `extra` used to be spread into the host raw, which is why a third-party
- * module could not be switched off.
+ *  - `plugin-tree.ts` decides WHICH rows exist and whether each one is on,
+ *    from the plugins' own manifests plus the operator's `plugins.entries`;
+ *  - core's `PluginLoader` owns activation, diffing and teardown.
  *
- * The MANIFEST is built from every candidate, INCLUDING one whose tier is off
- * right now. That is deliberate: a disabled plugin leaves no fiber, so the
- * manifest is the only place its row can still come from — build it from the
- * loadable set instead and a turned-off plugin vanishes from the very page that
- * turns it back on (the one-way-switch bug `allSkills` already fixed for
- * skills).
+ * What is left here is the one thing neither of them can know: how to build the
+ * in-process plugins for THIS kernel (their options are bound to live kernel
+ * facts), and which of them must be rebuilt when the workspace changes.
+ *
+ * ## Why the candidates are cached
+ *
+ * The loader diffs by PLUGIN IDENTITY: same object + same config = same
+ * activation, so the fiber is kept. Rebuilding the built-in plugins on every
+ * roster would therefore replace every row on every workspace switch — exactly
+ * the rebuild-everything behaviour the entry tree exists to end. So the
+ * in-process objects are built ONCE per kernel and cached on the environment;
+ * their options read live state through thunks (`rootDir`, the skill list, the
+ * goal reader) precisely so that caching them is correct.
  */
 import {
   compaction as compactionKey,
-  pluginName,
   sessions as sessionsKey,
   type Plugin,
 } from '@nova-agent/core';
-import { PluginHost } from './host.js';
+import { PluginHost, TOOLBOX_ENTRY_ID } from './host.js';
 import { kernelCommandsPlugin } from './kernel-commands.js';
+import { permissionGatePlugin } from './hooks.js';
 import { kernelPlugins } from './runtime-builtins.js';
-import { enabledByTier, impliedOptIns, labelFor, pluginTier } from './plugin-tier.js';
 import { skillsPlugin } from './skills.js';
 import { wrapHeadlessCompact } from './headless-compact.js';
-import { loadExtraPlugins } from './roster.js';
-import { loadableRoster, unknownDisabled } from './roster-filter.js';
-import { extensionDescriptor, extensionNames, loadExtensions } from './extensions.js';
+import { buildTree, type PluginRow } from './plugin-tree.js';
 import { surfacePlugin } from './surface-registry.js';
-import type { CreateKernelOptions, PluginDescriptor, PluginOrigin } from './runtime-types.js';
+import type { CreateKernelOptions, PluginDescriptor, PluginRosterEntry } from './runtime-types.js';
 import type { Environment } from './runtime-env.js';
 
-/** (Re)build the tool host and load the roster for the current state. */
+/** (Re)build the tool host and load the tree for the current state. */
 export async function reroster(env: Environment, opts: CreateKernelOptions): Promise<void> {
   const host = env.state.host ?? new PluginHost(env.state.rootDir, env.root);
   env.state.host = host;
-  await host.reset();
-  // Reload docs + skills for the new root BEFORE the roster: the skills plugin
-  // is part of it, and the context fragment reads the same list.
+  // The operator's rows are re-read from the document BEFORE the tree is built,
+  // whenever this kernel has one to read. The file is the truth: a settings flip
+  // wrote it, so the roster that follows the write must see the write. Building
+  // from the assembly-time SNAPSHOT instead re-rostered the pre-flip tree, which
+  // made every panel switch fail against its own stale answer — in both
+  // directions, for every row.
+  const live = opts.persist?.readPluginEntries;
+  if (live !== undefined) env.state.pluginEntries = await live();
+  // Docs + skills are re-read BEFORE the tree: the skills plugin is part of it
+  // and the context fragment reads the same list.
   await env.loadWorkspace();
-  // The panel flips these lists mid-process (see `runtime-switch.ts`), and
-  // `state.pluginsDisable` is SEEDED from the boot config (`runtime-env.ts`), so
-  // the live list is the whole truth. Reading `opts.config.plugins.disable` again
-  // here used to union the boot snapshot back in, which made it immortal: a plugin
-  // disabled at BOOT could never be switched back on in that process — the flip
-  // cleared the entry from the file and from the state, and this line re-disabled
-  // it, so the enable flip threw "did not load after enabling" against a row the
-  // operator had just switched on.
-  const effectiveDisable = [...new Set(env.state.pluginsDisable)];
-  const enable = [...new Set([...env.state.pluginsEnable, ...codeModeOptIn(env, effectiveDisable)])];
-  const surfacePlugins = opts.extraPlugins ?? [];
-  const builtins = kernelPlugins(env, opts);
-  const extra = await loadExtraPlugins(opts.config.plugins?.extra ?? [], process.cwd());
-  // The EXTENSION plugins load from their OWN packages (spec table) and only
-  // when enabled: a disabled or absent extension costs nothing, and one that
-  // fails to load becomes a warning + an `error` on its row instead of killing
-  // boot/re-roster. `enable` already carries the derived opt-ins (`codeModeOptIn`).
-  const extensionRows = extensionNames();
-  const extensions = await loadExtensions(
-    extensionRows.filter((name) => enabledByTier(name, { enable, disable: effectiveDisable })),
-    env,
-    opts,
-  );
-  // Configured surfaces load as ORDINARY PLUGIN ROWS into the same registry the
-  // resolver reads (see `surfacePlugin`): that is what puts a surface in
-  // `/plugins`, in the tier table, and under the switch, instead of leaving it
-  // outside the container. The caller has already imported them (it has to, to
-  // answer "which surface claims this argv"), so this wraps those same objects —
-  // one import, one identity.
-  const surfaceRows = opts.surfaces;
-  const surfaces =
-    surfaceRows === undefined
-      ? []
-      : surfaceRows.loaded.map((surface) => surfacePlugin(surface, surfaceRows.registry));
-  const typo = unknownDisabled(
-    [...builtins, ...surfacePlugins, ...extra, ...surfaces],
-    effectiveDisable,
-    extensionRows,
-  );
-  if (typo.length > 0) {
-    env.root.log('warn', `plugins.disable names no known plugin: ${typo.join(', ')}`);
-  }
-  // The manifest: every KNOWN plugin's name + origin + tier + Chinese label.
-  // Built from the CANDIDATES, not the loadable subset — see the file header.
-  const extensionErrors = new Map(extensions.failed.map((failure) => [failure.name, failure.error]));
-  env.state.manifest = [
-    ...surfacePlugins.map((plugin) => describe(plugin, 'surface')),
-    ...builtins.map((plugin) => describe(plugin, 'builtin')),
-    // Every extension keeps a row whether or not it loaded: a disabled, absent
-    // or failed row must stay visible on the page that switches it.
-    ...extensionRows.map((name) => extensionDescriptor(name, extensionErrors.get(name))),
-    ...extra.map((plugin) => describe(plugin, 'extra')),
-    ...surfaces.map((plugin) => describe(plugin, 'surface')),
-  ];
   const skills = env.state.skills;
-  const candidates: Plugin[] = [
-    ...surfacePlugins,
-    ...builtins,
-    ...extensions.plugins,
-    ...extra,
-    ...surfaces,
-    // Kernel-executable commands (a surface's `/` menu reads its registry).
-    kernelCommandsPlugin(env),
+  const builtins = [
+    ...env.state.providers,
+    ...cachedBuiltins(env, opts),
+    ...surfaceRows(env, opts),
+    cachedKernelCommands(env),
     ...(skills.length > 0 ? [skillsPlugin(skills)] : []),
+    permissionGatePlugin,
   ];
-  for (const plugin of loadableRoster(candidates, { enable, disable: effectiveDisable })) {
-    host.use(plugin);
-  }
-  await host.activate();
+  const rows = await buildTree(builtins, env.state.pluginEntries, opts);
+  env.state.rows = rows;
+  // Every row goes to the loader, switched-off ones included: `disabled` keeps
+  // its place on the panel without creating a fiber, which is exactly what
+  // "off" means. A row that could not even be IMPORTED has nothing to activate
+  // and is left out — its reason is reported from the tree instead.
+  await host.sync(rows.filter((row) => row.error === undefined).map((row) => row.options));
   if (opts.config.autoCompactTokenLimit !== undefined && opts.perRequestCompact === true) {
     wrapHeadlessCompact(env.hooks(), {
       limit: opts.config.autoCompactTokenLimit,
@@ -134,36 +80,127 @@ export async function reroster(env: Environment, opts: CreateKernelOptions): Pro
 }
 
 /**
- * The live PTC mode as an `enable` entry. `setCodeMode` is the settings page's
- * other door onto the SAME question the ptc row's switch asks, and a mode of
- * anything but `native` IS the operator asking for the plugin — so it is
- * translated here rather than becoming a second rule inside the gate. It yields
- * to `disable` (`impliedOptIns`): a row the operator switched off stays off even
- * while a mode they set earlier still says otherwise, which is what makes the
- * switch answer the click instead of the config.
- * @param env - the live environment.
- * @param disable - the disable list in force for this roster.
- * @returns `['ptc']` when PTC is on and not switched off, else nothing.
+ * This build's in-process plugins, built ONCE for the kernel's lifetime.
+ *
+ * The loader diffs by plugin identity, so handing it freshly built objects on
+ * every roster would replace every row on every workspace switch — exactly the
+ * rebuild-everything behaviour the entry tree exists to end. Everything the
+ * built-ins read (the workspace root, the trusted roots, the goal, the answerer)
+ * is a live thunk over kernel state, and their own SETTINGS now arrive through
+ * each row's `config` (`apply(ctx, config)`), which the loader diffs itself — so
+ * a stable object per row is both correct and sufficient. There is no longer a
+ * fingerprint to compare and no list of "configurable" plugin names to keep.
  */
-function codeModeOptIn(env: Environment, disable: readonly string[]): string[] {
-  return env.state.codeMode === 'native' ? [] : impliedOptIns(['ptc'], disable);
+function cachedBuiltins(env: Environment, opts: CreateKernelOptions): readonly Plugin[] {
+  env.state.builtins ??= kernelPlugins(env, opts);
+  return env.state.builtins;
+}
+
+/** The kernel's own slash commands: bound to live registries, so also reused. */
+function cachedKernelCommands(env: Environment): Plugin {
+  env.state.kernelCommands ??= kernelCommandsPlugin(env);
+  return env.state.kernelCommands;
 }
 
 /**
- * One descriptor for the manifest. The LABEL table supplies the Chinese title
- * and description; a name the table does not know keeps its own identifier and
- * the plugin's own MODEL-facing description (see `labelFor`).
+ * The configured surfaces, wrapped as ordinary plugin rows.
+ *
+ * EVERY loaded surface gets a row, switched-off ones included: the row is what
+ * the panel draws and what the operator switches back on, so dropping a closed
+ * surface here would hide it forever. Whether the row is ON is decided by the
+ * tree from the operator's `plugins.entries` (core's `rowEnabled`), and a closed
+ * row creates no fiber — so its `apply` never runs and it never re-registers
+ * itself onto the registry. An OPEN row does register the same instance again
+ * (the shell already put it there before this kernel existed); the registry
+ * absorbs that by identity, so `all()` lists the surface once and its
+ * precedence slot stays where the shell put it. Disposal therefore cannot
+ * unseat a surface that already resolved and started this invocation — a row
+ * flip takes effect on the NEXT start, for the serving surface and for any
+ * other alike.
+ *
+ * Cached per surface object for the same identity reason as the built-ins: the
+ * loader must see the SAME row plugin across rosters, or a workspace switch
+ * would unregister and re-register the surface registry on every move.
  */
-function describe(plugin: Plugin, origin: PluginOrigin): PluginDescriptor {
-  const name = pluginName(plugin, 'anonymous');
-  const label = labelFor(name);
-  const own = plugin.description;
-  const description = label.description.length > 0 ? label.description : own;
-  return {
-    name,
-    origin,
-    tier: pluginTier(name),
-    title: label.title,
-    ...(description !== undefined && description.length > 0 ? { description } : {}),
-  };
+export function surfaceRows(env: Environment, opts: CreateKernelOptions): readonly Plugin[] {
+  const rows = opts.surfaces;
+  if (rows === undefined) return [];
+  env.state.surfacePlugins ??= rows.loaded.map((surface) => surfacePlugin(surface, rows.registry));
+  return env.state.surfacePlugins;
 }
+
+/**
+ * Every known row, loaded or not, as the management panel reads it.
+ *
+ * A switched-off or unloadable row has no fiber, so its row comes from the tree
+ * the roster built — build this from the LIVE plugins instead and a turned-off
+ * plugin would vanish from the very page that turns it back on.
+ *
+ * The live half is read from the LOADER by row id, not from `root.roster()`.
+ * Those two keyings differ for every spec-loaded package: the container knows a
+ * fiber by the plugin's own `name` (`context`), while the ROW — the thing the
+ * operator's config names, switches, and reads errors from — is keyed by the
+ * entry id (`@nova-agent/plugin-context`). Matching on the container's key made
+ * an active plugin report `disabled`, which then hid its settings page (nav is
+ * derived from `page && enabled`) and made its switch unverifiable.
+ * @param env - the live environment.
+ * @returns one entry per row, with its live container state when it has one.
+ */
+export function describePlugins(env: Environment): PluginRosterEntry[] {
+  return env.state.rows.map((row) => {
+    const live = env.state.host?.entry(row.id);
+    const fiber = live?.fiber;
+    // A row can fail twice over: the module never imported (the tree knows) or
+    // the body threw while applying (the loader knows). Both are the same fact to
+    // the operator, and the loader's answer is the live one — a plugin that
+    // started failing on a reload must not keep reporting its boot-time reason.
+    const error = live?.error ?? row.error;
+    const base: PluginDescriptor = {
+      name: row.id,
+      origin: row.origin,
+      tier: row.manifest.tier,
+      // `manifestOf` copies a DECLARED manifest through verbatim, so neither
+      // field below may be assumed present. `title` is a slot every row fills, so
+      // it falls back to the row id — the same fallback `manifestOf` applies to a
+      // plugin with no manifest at all. `description` is a SUPPLEMENT, not a slot,
+      // so a missing one stays ABSENT (the `clientBundle` discipline below), and
+      // the guard keeps its pre-refactor form because the declared `string` is a
+      // promise the runtime cannot hold a JS plugin to.
+      title: row.manifest.title ?? row.id,
+      ...(row.manifest.description !== undefined && row.manifest.description.length > 0 ? { description: row.manifest.description } : {}),
+      ...(error !== undefined ? { error } : {}),
+      ...(row.manifest.page === true ? { page: true } : {}),
+      // The boot graph's producer half: a plugin that declares a browser bundle
+      // is copied through verbatim, and one that declares none keeps the field
+      // ABSENT. `undefined` would be the same JSON on the wire but a different
+      // fact for every reader that asks `'clientBundle' in row`.
+      ...(row.manifest.clientBundle !== undefined ? { clientBundle: row.manifest.clientBundle } : {}),
+    };
+    if (fiber === undefined) {
+      // An enabled row with no fiber is FAILED, not off: the panel's failed
+      // treatment (group count, sort-to-top, 失败 label) is what the reader
+      // needs, with `error` saying why.
+      return {
+        ...base,
+        state: error !== undefined ? 'failed' : 'disabled',
+        inject: [],
+        enabled: false,
+      };
+    }
+    return {
+      ...base,
+      state: fiber.state,
+      inject: fiber.inject,
+      enabled: true,
+    };
+  });
+}
+
+/** One row's tree entry, for callers that need the plugin object (surfaces). */
+export function rowOf(env: Environment, id: string): PluginRow | undefined {
+  if (id === TOOLBOX_ENTRY_ID) return undefined;
+  return env.state.rows.find((row) => row.id === id);
+}
+
+/** The toolbox is not a configurable row; expose its id so callers can skip it. */
+export { TOOLBOX_ENTRY_ID };

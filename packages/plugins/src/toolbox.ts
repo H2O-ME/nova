@@ -23,6 +23,7 @@ import {
 
 export const toolboxPlugin: Plugin = {
   name: 'toolbox',
+  manifest: { title: '工具注册表', description: '宿主工具注册表的唯一持有者；一切工具都注册在它上面。', tier: 'core' },
   apply: (ctx: Context): void => {
     const entries: ToolEntry[] = [];
     let snapshot: ToolDefinition[] | undefined;

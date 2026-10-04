@@ -4,15 +4,21 @@
  *
  * Split from `runtime-roster.ts` because the two answer different questions.
  * This module answers "how are `BuiltinOptions` derived from config + live
- * state"; the roster answers "which of the candidates are in force, and in what
- * order". The split also carries a contract: this returns CANDIDATES — the
- * manager's rows for switched-off plugins come from the manifest, and the
- * roster is what filters.
+ * state"; the roster answers "which rows are in force" (from the plugins' own
+ * manifests) and hands them to the loader.
  *
- * The `advanced` EXTENSION plugins (subagent / context / ptc) are NOT here:
- * they load from their own packages only when enabled (`extensions.ts`), so
- * this file is the base roster and nothing in it needs a module that could be
- * absent.
+ * The optional PACKAGES (subagent / context / ptc / qqbot) are NOT here: they
+ * live in their own packages and load by specifier (`plugin-tree.ts`), so this
+ * file is the in-process base tree and nothing in it needs a module that could
+ * be absent.
+ *
+ * ## Row config
+ *
+ * A built-in's settings come from ITS entry in `plugins.entries` (`config`), not
+ * from a kernel-shaped field: the kernel does not know that bash has a timeout.
+ * Only the two built-ins that actually take settings read one here, and the
+ * roster rebuilds this list only when one of those settings CHANGES — otherwise
+ * the loader would see new plugin objects on every roster and reload every row.
  */
 import { sessions as sessionsKey, spill as spillKey, userQuestions as userQuestionsKey } from '@nova-agent/core';
 import type { Plugin } from '@nova-agent/core';
@@ -23,26 +29,48 @@ import type { Environment } from './runtime-env.js';
 /**
  * Every built-in plugin this build could load, in load order.
  *
- * `BuiltinOptions` derivation lives here and nowhere else: options are always
- * supplied so the base roster is unconditional, and "may this row run" stays a
- * pure lookup in `roster-filter.ts` (tier + `plugins.enable`) — two answerers
- * would drift.
+ * ## No cache key, and no list of names
+ *
+ * The in-process plugins are built ONCE and reused for the kernel's lifetime.
+ * They used to be rebuilt whenever a fingerprint of a hand-kept list of
+ * "configurable" plugin names changed (`CONFIGURED_BUILTINS`) — because each
+ * configurable builtin received its settings as constructor arguments. That put
+ * a list of plugin names in host code whose only job was to know when to
+ * rebuild, and it made "add a configurable setting" a host change.
+ *
+ * Settings now reach the plugin the way they reach a third-party one: through
+ * the row's own `config`, validated by the plugin's own `Config` schema and
+ * handed to `apply(ctx, config)`. The loader already diffs on config, so an
+ * edited setting re-runs exactly that row's body and nothing else — no
+ * fingerprint, no name list, and a stable plugin object per row (which is what
+ * keeps a workspace switch from replacing every row).
+ *
+ * `BuiltinOptions` derivation still lives here and nowhere else: kernel facts
+ * are always supplied so the base tree is unconditional, and "may this row run"
+ * is decided in ONE place (`plugin-tree.ts`, from the plugin's own manifest and
+ * the operator's entry) — two answerers would drift.
+ * @param env - the live environment.
+ * @param opts - the assembly options.
+ * @returns the built-in plugins, ready for the loader.
  */
 export function kernelPlugins(env: Environment, opts: CreateKernelOptions): Plugin[] {
-  const { config } = opts;
   return builtinPlugins({
     // The live root, not a snapshot: `switch_workspace` re-points it and every
     // workspace-bound tool must grade against the directory now in force.
     rootDir: () => env.state.rootDir,
-    spillReadRoot: env.root.must(spillKey).dir(),
+    // Read LAZILY, through the container: the spill directory is provided by a
+    // row of the tree, and this function builds the tree — so an eager read asks
+    // a store that is empty by construction and throws `ServiceUnavailable`
+    // before the providing row has ever run. `read` (not `must`) because a
+    // kernel may legitimately have no spill provider; an absent one then simply
+    // contributes no trusted root.
+    trustedReadRoots: () => {
+      const spill = env.root.get(spillKey);
+      return spill === undefined ? [] : [spill.dir()];
+    },
     ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
-    bash:
-      config.bash === false
-        ? false
-        : {
-            ...(config.bash?.timeoutMs !== undefined ? { timeoutMs: config.bash.timeoutMs } : {}),
-            ...(config.bash?.shellPath !== undefined ? { shellPath: config.bash.shellPath } : {}),
-          },
+    // NOTE: no `bash` / `search` here. Each configurable builtin owns its own
+    // `Config` schema and reads its row's settings in `apply(ctx, config)`.
     // Read through the container, lazily (see `userQuestions` in core's
     // capabilities and `userQuestionsProvider`): "can this surface ask a human?"
     // is a SERVICE, so a surface declares it instead of every assembly site

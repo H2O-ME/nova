@@ -193,7 +193,12 @@ describe('configured surfaces as kernel plugin rows', () => {
 
     const row = kernel.roster().find((entry) => entry.name === 'custom');
     expect(row, 'configured surface should appear in the roster').toBeDefined();
-    expect(row?.origin).toBe('surface');
+    // `origin` answers "who shipped this row?", not "is it a surface": a
+    // configured surface's row is built in-process alongside the other built-ins
+    // (only the hosting surface's OWN contributed rows are labelled `surface`),
+    // and the panel groups by TIER — see `web/ui/src/settings/row-model.ts`.
+    expect(row?.enabled).toBe(true);
+    expect(row?.state).toBe('active');
 
     // The surface's plugin row registers onto the SAME registry the resolver
     // reads: the `surfacePlugin` adapter's `apply` calls `service.register(surface)`

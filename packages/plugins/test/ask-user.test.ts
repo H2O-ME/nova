@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatProvider, KernelEvent, StreamEvent, ToolDefinition } from '@nova-agent/core';
 import { askUserPlugin, parseQuestions, PluginHost, type Plugin } from '../src/index.js';
 import { createAgentKernel } from '../src/index.js';
+import { rowsOf } from './plugin-rows.js';
 
 const QUESTIONS = [
   { id: 'mode', question: 'Which mode?', options: [{ label: 'Fast' }, { label: 'Thorough (Recommended)' }] },
@@ -214,8 +215,7 @@ describe('askUserPlugin through the real tool host', () => {
   /** Register the plugin the way a surface does and read its tool back. */
   async function toolOf(plugin: Plugin): Promise<ToolDefinition> {
     const host = new PluginHost('.');
-    host.use(plugin);
-    await host.activate();
+    await host.sync(rowsOf([plugin]));
     const tool = host.tools.find((t) => t.name === 'ask_user_question');
     if (tool === undefined) throw new Error('the plugin registered no ask_user_question tool');
     return tool;
@@ -268,8 +268,7 @@ describe('askUserPlugin through the real tool host', () => {
 
   it('uses the read permission class: asking is not itself a side effect', async () => {
     const host = new PluginHost('.');
-    host.use(askUserPlugin({ ask: () => async () => ({ answers: [] }) }));
-    await host.activate();
+    await host.sync(rowsOf([askUserPlugin({ ask: () => async () => ({ answers: [] }) })]));
     expect(host.toolEntries.find((entry) => entry.tool.name === 'ask_user_question')?.permission).toBe('read');
   });
 

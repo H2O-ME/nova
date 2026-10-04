@@ -7,25 +7,9 @@
  * this one by whoever calls `createAgentKernel`, that one by every caller of
  * the resulting handle.
  */
-import type { ChatProvider, ModelCatalogPort, Plugin, PtcMode, SubagentProgress, SurfaceRows } from '@nova-agent/core';
+import type { ChatProvider, ModelCatalogPort, PluginEntryOptions, SubagentProgress, SurfaceRows } from '@nova-agent/core';
+import type { PluginEntryConfig } from './plugin-tree.js';
 import type { ApprovalMode } from './permission.js';
-
-/**
- * The PTC config as the KERNEL sees it: a structural mirror of the extension
- * plugin's options (the PTC extension package). Deliberately not imported from
- * there — the extension package can be absent, and a config type must not be
- * what makes the main program fail to compile without it. The two shapes are
- * kept in step by the plugin's own runtime validation
- * (`resolveCodeRuntimeConfig`) and by the P3 tests.
- */
-export interface CodeModeConfig {
-  mode?: PtcMode;
-  maxParallelSubCalls?: number;
-  computeMs?: number;
-  maxWallMs?: number;
-  maxOutputBytes?: number;
-  maxOldGenerationSizeMb?: number;
-}
 
 /** The surface-independent slice of `~/.nova/config.json` the kernel needs. */
 export interface KernelConfig {
@@ -40,35 +24,25 @@ export interface KernelConfig {
    * than a constant: a large operator handbook wants more than the default.
    */
   projectDocMaxTokens?: number;
-  /** false disables bash; object tunes it (mirrors config.tools.bash). */
-  bash?: false | { timeoutMs?: number; shellPath?: string };
-  /** PTC config (mirrors config.tools.code); mode drives the tool projection. */
-  code?: CodeModeConfig;
   /**
-   * Which plugins load. `disable` names plugins to leave out (the name is the
-   * plugin's own, as `/plugins` prints it); `extra` lists modules to load
-   * instead, by absolute path, path relative to the working directory, or bare
-   * package name — each must export a plugin as `default` (or `plugin`).
+   * The plugin tree, as the operator wrote it.
    *
-   * `enable` is the OTHER direction, and it exists because a default is not a
-   * ceiling: an `advanced` plugin (`subagent` / `ptc` / `qqbot`) is off on a
-   * fresh install, and this list is how an operator asks for it back. Writing
-   * `disable` for that would be actively wrong — `disable` WINS over `enable`
-   * (the safe side, see `enabledByTier`), so a name in both lists can never be
-   * turned on again. The two lists are therefore disjoint by construction:
-   * `disable` carries `standard` rows, `enable` carries `advanced` ones.
+   * One list, one field per row: `{ id, enabled?, config? }`. The id is a
+   * built-in plugin's name or a module specifier, and `enabled` is the ONLY
+   * switch — there is deliberately no second list, because two lists that can
+   * disagree are how a switched-off plugin used to come back on (`disable`
+   * beating `enable`, plus a config-derived opt-in that outvoted both).
    *
-   * This is the config-level extension point: an operator changes what the
-   * product does without editing source, and a typo fails the boot loudly
-   * instead of silently doing nothing.
+   * A row's `config` is validated by THAT plugin's own `Config` schema, so the
+   * kernel never learns what a plugin's settings look like.
    */
-  plugins?: { disable?: readonly string[]; enable?: readonly string[]; extra?: readonly string[] };
+  plugins?: { entries?: readonly PluginEntryConfig[] };
   /**
    * Skills the Skill 中心 turned off (`skills.disable`): by name, both levels.
    * Applied where the index is built (the workspace loader), so a disabled
    * skill is absent from the `<available_skills>` block AND from the `skill`
-   * tool — one rule, not two. A name matching nothing warns at assembly (the
-   * `plugins.disable` typo discipline).
+   * tool — one rule, not two. A name matching nothing is refused by the switch
+   * rather than written as a dead entry.
    */
   skillsDisable?: readonly string[];
 }
@@ -90,8 +64,19 @@ export interface CreateKernelOptions {
   modelCatalog?: ModelCatalogPort;
   /** Resume an existing JSONL log for the FIRST session handle. */
   resumeFile?: string;
-  /** Plugins the owning surface contributes (e.g. the qqbot send tool). */
-  extraPlugins?: Plugin[];
+  /** Plugins the owning surface contributes, each with the id its config uses. */
+  extraPlugins?: readonly PluginEntryOptions[];
+  /**
+   * The HOST APPLICATION's own module URL (`import.meta.url`), used as the anchor
+   * for bare module specs in `plugins.entries` / `surfaces`.
+   *
+   * It has to be supplied by the caller, because the product's own packages are
+   * siblings of the EXECUTABLE, not of this library: the QQ channel package
+   * ships with `cli`, so a library-level anchor cannot resolve it and a config
+   * row naming it could never load. Omit it and the anchor stays at the library
+   * (`module-spec.ts`) — the behaviour embedded kernels and kernel tests keep.
+   */
+  appModulesUrl?: string;
   /**
    * Wires the model-facing `switch_workspace` tool. Provide the runner-side
    * callback (which typically calls `kernel.setWorkspace` plus its own
@@ -135,25 +120,38 @@ export interface CreateKernelOptions {
   /** Session-file bucket override (qqbot archives under sessionsRoot()/qqbot). */
   sessionDir?: string;
   /**
-   * The surface's config writers for the settings panel's switches. Absent in
-   * headless/test assemblies (whose config is not the operator's file): the
-   * switch methods then throw instead of pretending to persist. The writers
-   * patch the RAW document (never the expanded `Config`), so `{env:NAME}`
-   * references survive a toggle. Lives beside the other surface injections
-   * (`extraPlugins`, `workspace`, `onSubagentProgress`).
+   * The config file, as this kernel is allowed to touch it.
+   *
+   * Absent in headless/test assemblies (whose config is not the operator's
+   * file): a write then throws instead of pretending to persist. The writer
+   * patches the RAW document (never the expanded `Config`), so `{env:NAME}`
+   * references survive a toggle.
+   *
+   * `setPluginEntry` is addressed by row ID and says nothing about any plugin:
+   * the kernel has no per-plugin writer, which is what lets a third-party plugin
+   * keep settings without a host change. Plugins reach it through the
+   * `plugin-config` service; the kernel itself uses it for the row switches.
    */
-  persistConfig?: {
-    setPluginEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
-    setSkillEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
+  persist?: {
+    /** One row's config AS WRITTEN (references intact). */
+    readPluginEntry(id: string): Promise<unknown>;
     /**
-     * Replace the `plugins.enable` list wholesale — the `advanced` half of the
-     * two-list split (see `KernelConfig.plugins`). Optional so a surface that
-     * predates it still assembles: an advanced flip then fails with a clear
-     * "cannot persist" error rather than silently writing the wrong list.
-     * @param names - the names that should be ON, sorted and de-duplicated.
-     * @returns the enable list now in force.
+     * The plugin tree AS LOADED — every `plugins.entries` row, expanded.
+     *
+     * This is a live read for the same reason `readModels` is one: the shell
+     * owns the config file, so it owns the read, and a copy cached at assembly
+     * goes stale the moment the operator flips a switch. Without it a flip wrote
+     * the file while the tree was rebuilt from the boot-time SNAPSHOT, so the
+     * kernel re-rostered the pre-flip tree and then reported the flip as failed —
+     * both directions. It must be the EXPANDED form (the same one `config` gets),
+     * or a re-roster would hand a plugin the literal `{env:NAME}` reference that
+     * the writer deliberately preserved on disk.
      */
-    setPluginEnabledList?(names: readonly string[]): Promise<readonly string[]>;
+    readPluginEntries?(): Promise<readonly PluginEntryConfig[]>;
+    /** Upsert one row of the durable plugin tree (fields merged, not replaced). */
+    setPluginEntry(id: string, patch: { enabled?: boolean; config?: unknown }): Promise<void>;
+    /** Rewrite `skills.disable`; returns the list now in force. */
+    setSkillEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
   };
   /**
    * The surfaces this kernel serves, as one bundle: the REGISTRY the resolver
@@ -161,8 +159,8 @@ export interface CreateKernelOptions {
    * (`loadSurfacePlugins`).
    *
    * The roster turns each one into an ordinary plugin ROW (`surfacePlugin`), so
-   * a surface appears in `/plugins`, sits in the tier table and can be switched
-   * off by name — the same shape every other capability has. The registry is
+   * a surface appears in `/plugins`, carries its own manifest and can be
+   * switched off by id — the same shape every other plugin has. The registry is
    * passed in rather than built here because it must outlive the kernel and be
    * shared by the resolver and the container service.
    *
@@ -174,13 +172,5 @@ export interface CreateKernelOptions {
    * hand.
    */
   surfaces?: SurfaceRows;
-  /**
-   * Override the extension plugins' module specifiers (name → spec), merged
-   * over the built-in table (`extensions.ts`). Two uses: a test points one
-   * name at a nonexistent module to prove an absent extension cannot take the
-   * app down, and an operator swaps an implementation without touching source.
-   * Only the KNOWN extension names are honored; extra keys are ignored.
-   */
-  extensionSpecs?: Readonly<Record<string, string>>;
 }
 

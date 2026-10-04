@@ -96,8 +96,13 @@ export async function readSkillBody(skill: SkillMetadata): Promise<string> {
  */
 export function skillsPlugin(skills: SkillMetadata[]): Plugin {
   return {
-    name: 'skills',
+    name: 'skill-tool',
     description: 'On-demand loading of project/user skills (SKILL.md instructions).',
+    manifest: {
+      title: '技能工具',
+      description: '让模型按名加载技能的完整指令。技能索引不可用时整行不加载。',
+      tier: 'core',
+    },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(ctx, {

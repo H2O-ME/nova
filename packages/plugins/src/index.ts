@@ -2,21 +2,22 @@
  * The plugin world: the container-backed tool host, the built-in plugins, the
  * kernel assembly, and the capability providers that fill the seams.
  *
- * ONE plugin shape is public here: core's `Plugin` (`{ name, inject?, apply }`),
- * loaded onto a `Context`. Built-ins and third parties write against exactly the
- * same contract; capability services are declared in `inject` and read with
- * `ctx.must(key)`, so replacing a provider reloads its consumers instead of
- * stranding them on a captured handle.
+ * ONE plugin shape is public here: core's `Plugin`
+ * (`{ name, manifest?, Config?, inject?, apply(ctx, config) }`), loaded onto a
+ * `Context` by core's `PluginLoader`. Built-ins, optional packages and third
+ * parties write against exactly the same contract — a plugin declares its own
+ * row (manifest), its own config schema and the services it injects, so adding
+ * one is never a change to this package.
  */
 export * from './permission.js';
 export * from './host.js';
 export * from './toolbox.js';
 export * from './hooks.js';
 export * from './services.js';
-export * from './roster.js';
-export * from './roster-filter.js';
+export * from './plugin-services.js';
+export * from './plugin-tree.js';
+export { resolveModuleSpec, resolvableFromProduct } from './module-spec.js';
 export * from './surface-registry.js';
-export * from './plugin-tier.js';
 export * from './headless-compact.js';
 export * from './builtin/index.js';
 export * from './runtime.js';
@@ -47,4 +48,3 @@ export {
 export type { ShellCandidate, ShellFamily } from './builtin/shell-select.js';
 export type { BashJobRequest } from './builtin/bash.js';
 export * from './skills.js';
-export * from './extensions.js';

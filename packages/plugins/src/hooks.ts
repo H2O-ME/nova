@@ -94,6 +94,7 @@ function buildHooks(ctx: Context): AgentHooks {
  */
 export const permissionGatePlugin: Plugin = {
   name: 'approval-gate',
+  manifest: { title: '审批门', description: '在工具执行前按权限档位裁定放行、拒绝或询问；优先级最高。', tier: 'core' },
   inject: [toolsKey, approvalKey],
   apply: (ctx: Context): void => {
     const registry = ctx.must(toolsKey);

@@ -12,6 +12,7 @@ export function jobsPlugin(): Plugin {
   return {
     name: 'jobs',
     description: 'Inspect and control background jobs started with the bash tool.',
+    manifest: { title: '后台任务', description: '查看与控制 bash 启动的后台任务。', tier: 'standard' },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(ctx, {

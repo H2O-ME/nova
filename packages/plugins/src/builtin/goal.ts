@@ -153,6 +153,7 @@ export function goalPlugin(options: GoalPluginOptions): Plugin {
   return {
     name: 'goal',
     description: '维护跨轮持续的目标，并在预算内自动继续推进。',
+    manifest: { title: '长期目标', description: '维护跨轮的持续目标并在预算内自动续做。', tier: 'standard' },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(ctx, {

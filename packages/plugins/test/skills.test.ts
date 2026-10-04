@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatProvider, StreamEvent } from '@nova-agent/core';
 import { agentsSkillsRoot } from '@nova-agent/core';
 import { createAgentKernel, PluginHost, loadSkills, parseSkillFrontmatter, readSkillBody, skillsPlugin } from '../src/index.js';
+import { rowsOf } from './plugin-rows.js';
 
 async function writeSkill(root: string, name: string, content: string): Promise<void> {
   const dir = path.join(root, name);
@@ -147,8 +148,7 @@ describe('skillsPlugin', () => {
     await writeSkill(root, 'deploy-check', '---\nname: deploy-check\ndescription: checks\n---\n1. Run pnpm verify');
     const skills = await loadSkills([{ dir: root, level: 'project' }]);
     const host = new PluginHost(root);
-    host.use(skillsPlugin(skills));
-    await host.activate();
+    await host.sync(rowsOf([skillsPlugin(skills)]));
 
     expect(host.tools.map((t) => t.name)).toEqual(['skill']);
     expect(await host.permissionFor('skill')).toBe('read');

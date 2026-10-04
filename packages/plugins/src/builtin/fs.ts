@@ -42,7 +42,7 @@ function escapeRegExp(text: string): string {
 export async function rootPermissionKind(
   rootDir: string,
   raw: unknown,
-  trustedReadRoots: string[] = [],
+  trustedReadRoots: readonly string[] = [],
 ): Promise<ToolPermissionKind> {
   try {
     const file = await resolveReal(rootDir, raw);
@@ -285,7 +285,7 @@ function writeCallView(args: Record<string, unknown>): DiffCallView | undefined 
   const content = strArg(args, 'content');
   if (target === undefined || content === undefined) return undefined;
   // oldText: null = "no prior text to match", i.e. create/overwrite.
-  return { card: 'diff', diffs: [{ path: target, oldText: null, newText: content }] };
+  return { card: 'diff', kind: 'write', diffs: [{ path: target, oldText: null, newText: content }] };
 }
 
 function editCallView(args: Record<string, unknown>): DiffCallView | undefined {
@@ -293,7 +293,7 @@ function editCallView(args: Record<string, unknown>): DiffCallView | undefined {
   const oldText = strArg(args, 'old_string');
   const newText = strArg(args, 'new_string');
   if (target === undefined || oldText === undefined || newText === undefined) return undefined;
-  return { card: 'diff', diffs: [{ path: target, oldText, newText }] };
+  return { card: 'diff', kind: 'edit', diffs: [{ path: target, oldText, newText }] };
 }
 
 /** Same intended mutations, now tagged with whether the tool reported success. */
@@ -337,8 +337,17 @@ function listViewResultView(args: Record<string, unknown>, content: string): Rea
 }
 
 export interface FsReadPluginOptions {
-  /** Roots outside the workspace that are read without an approval prompt. */
-  trustedReadRoots?: string[];
+  /**
+   * Roots outside the workspace that are read without an approval prompt.
+   *
+   * A thunk for the same reason `rootDir` is one, and with one more: these roots
+   * come from SERVICES (the spill directory is a service the tree provides), and a
+   * plugin may not read a service at assembly time — the row that provides it
+   * activates later, so an eager read throws `ServiceUnavailable` before the tree
+   * has loaded. Reading it inside the classifier is also what keeps it correct
+   * when a provider is replaced underneath.
+   */
+  trustedReadRoots?: () => readonly string[];
   /**
    * The LIVE workspace root. A thunk, not a string: the approval classifier runs
    * before every call and `switch_workspace` re-points the root underneath it,
@@ -349,11 +358,12 @@ export interface FsReadPluginOptions {
 }
 
 export function fsReadPlugin(options: FsReadPluginOptions): Plugin {
-  const trustedReadRoots = options.trustedReadRoots ?? [];
+  const trustedReadRoots = options.trustedReadRoots ?? (() => []);
   const rootDir = options.rootDir;
   return {
     name: 'fs-read',
     description: 'Read files and list directories inside the workspace.',
+    manifest: { title: '读取文件', description: '读取工作区内文件与列目录；越界需审批。', tier: 'core' },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(ctx, {
@@ -372,7 +382,7 @@ export function fsReadPlugin(options: FsReadPluginOptions): Plugin {
         },
         /** In-root reads are free; out-of-root reads cross the sandbox boundary. */
         permissionFor(args) {
-          return rootPermissionKind(rootDir(), args['path'], trustedReadRoots);
+          return rootPermissionKind(rootDir(), args['path'], trustedReadRoots());
         },
         async execute(args, c: ToolExecuteContext) {
           return executeReadFile(args, c);
@@ -398,7 +408,7 @@ export function fsReadPlugin(options: FsReadPluginOptions): Plugin {
           additionalProperties: false,
         },
         permissionFor(args) {
-          return rootPermissionKind(rootDir(), strArg(args, 'path') ?? '.', trustedReadRoots);
+          return rootPermissionKind(rootDir(), strArg(args, 'path') ?? '.', trustedReadRoots());
         },
         async execute(args, c: ToolExecuteContext) {
           return executeListDir(args, c);
@@ -484,6 +494,7 @@ export function fsWritePlugin(options: { rootDir: () => string }): Plugin {
   return {
     name: 'fs-write',
     description: 'Create, overwrite and edit files inside the workspace.',
+    manifest: { title: '写入文件', description: '在工作区内创建、覆盖与编辑文件。', tier: 'core' },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(ctx, {

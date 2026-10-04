@@ -1,29 +1,27 @@
 /**
- * `PluginHost` — the kernel's plugin host, on top of the container.
+ * `PluginHost` — the kernel's view of the plugin tree.
  *
- * There is ONE plugin protocol: core's `Plugin` (`{ name, inject?, apply(ctx) }`),
- * the same shape the container loads and the same shape a third-party module
- * exports. Historically a second, Nova-specific vocabulary (`{ name,
- * activate(ctx) }` over a `PluginContext` with `registerTool` / `registerCommand`
- * / `registerHook`) lived here and this file adapted it onto the container. That
- * facade is gone: it was a second way to say the same thing, its hook
- * composition silently dropped every hook but the last one, and it kept
- * capability keys from being declared in `inject` (so a plugin could not be
- * reloaded when its provider was replaced).
+ * There is ONE plugin protocol: core's `Plugin`
+ * (`{ name, manifest?, Config?, inject?, apply(ctx, config) }`), the same shape
+ * the container loads and the same shape a third-party module exports. Lifecycle
+ * belongs to `PluginLoader` (core), which reconciles a tree of stable entries.
  *
- * What remains is a thin, useful wrapper: it owns the shared root `Context`,
- * keeps the toolbox registry alive across re-rosters, and projects the
- * container's registries into the handful of read shapes the loop and the
- * surfaces consume.
+ * This class is a thin projection: it owns the shared root `Context` and the
+ * loader, provides the loader AS a service (so a plugin can add, restart and drop
+ * rows itself), and exposes the registries the loop and the surfaces read. It
+ * owns no activation logic of its own — an entry that is not in the tree is not
+ * loaded, and a disabled entry starts nothing.
  */
 import {
   commands as commandsKey,
+  loader as loaderKey,
   tools as toolsKey,
   Context,
+  PluginLoader,
   type AgentHooks,
   type CommandEntry,
-  type Fiber,
-  type Plugin,
+  type PluginEntry,
+  type PluginEntryOptions,
   type ToolDefinition,
   type ToolEntry,
   type ToolPermissionKind,
@@ -31,66 +29,65 @@ import {
 import { composeHooks } from './hooks.js';
 import { toolboxPlugin } from './toolbox.js';
 
+/** The registry every plugin registers into: always the first row of the tree. */
+export const TOOLBOX_ENTRY_ID = 'toolbox';
+
 export class PluginHost {
   /** The container this host speaks for — the kernel shares this root. */
   readonly context: Context;
-  private readonly pending: Plugin[] = [];
-  private readonly fibers = new Set<Fiber>();
+  private readonly loader: PluginLoader;
 
   constructor(
     readonly rootDir: string,
     context?: Context,
   ) {
     this.context = context ?? Context.createRoot();
-    // The registry every plugin registers into — one per host, unloaded with
-    // the host, so the next host on the same container can provide it again.
-    const toolbox = this.context.plugin(toolboxPlugin, {}, 'toolbox');
-    this.fibers.add(toolbox);
-    if (toolbox.state === 'failed') throw toolbox.error;
-  }
-
-  /** Queue a plugin; nothing runs until `activate()`. */
-  use(plugin: Plugin): this {
-    this.pending.push(plugin);
-    return this;
+    this.loader = new PluginLoader(this.context);
+    // The loader is a SERVICE, not a host-private object: a plugin that wants to
+    // contribute rows at runtime, restart a misbehaving neighbour, or ship an
+    // installable capability uses exactly the operations the host does. There is
+    // no separate "plugin API" for plugins to be limited by.
+    this.context.provide(loaderKey, this.loader);
   }
 
   /**
-   * Load every queued plugin, each as its own fiber. A plugin that throws
-   * rejects here with its own error and leaves nothing behind — the fiber
-   * unwinds whatever it had registered before the failure.
+   * Converge on an EXPLICIT tree.
+   *
+   * Entries carry the stable ids the config uses, so a workspace switch or a
+   * settings flip is a diff against the previous tree rather than a rebuild of
+   * all of it. Never rejects for a plugin's own failure: the failing row keeps
+   * its place with a reason (see `PluginLoader`).
    */
-  async activate(): Promise<void> {
-    for (const plugin of this.pending.splice(0)) {
-      const fiber = this.context.plugin(plugin);
-      this.fibers.add(fiber);
-      await fiber.ready;
-    }
+  sync(entries: readonly PluginEntryOptions[]): Promise<void> {
+    return this.loader
+      .reconcile([{ id: TOOLBOX_ENTRY_ID, plugin: toolboxPlugin }, ...entries])
+      .then(() => undefined);
   }
 
-  /** Unload every plugin this host loaded, newest first. */
-  async dispose(): Promise<void> {
-    this.pending.length = 0;
-    for (const fiber of [...this.fibers].reverse()) await fiber.dispose();
-    this.fibers.clear();
+  /** Unload every row, newest first. */
+  dispose(): Promise<void> {
+    return this.loader.dispose();
+  }
+
+  /** One row's failure reason, when it has one — what a switch reports. */
+  errorOf(id: string): string | undefined {
+    return this.loader.get(id)?.error;
   }
 
   /**
-   * Unload the plugins but keep the registry. A workspace switch or a PTC-mode
-   * change re-rosters the same registry: the tool service stays provided (so
-   * consumers and the approval gate never see it vanish and reappear) while
-   * every tool the old roster registered is really gone.
+   * One row as the LOADER holds it, addressed by the id the config uses.
+   *
+   * Distinct from `roster()`: that is keyed by the plugin's own `name`, a ROW by
+   * its entry id — different for every spec-loaded package (`…plugin-context` vs
+   * `context`). Anything reporting on a row must ask here, or an active plugin
+   * reads as missing. `entries()` is the whole list, off and failed rows too.
    */
-  async reset(): Promise<void> {
-    const all = [...this.fibers];
-    // The toolbox was loaded first, and it is the one nothing re-creates.
-    const [toolbox] = all;
-    for (const fiber of all.reverse()) {
-      if (fiber !== toolbox) await fiber.dispose();
-    }
-    this.pending.length = 0;
-    this.fibers.clear();
-    if (toolbox !== undefined) this.fibers.add(toolbox);
+  entry(id: string): PluginEntry | undefined {
+    return this.loader.get(id);
+  }
+
+  entries(): readonly PluginEntry[] {
+    return this.loader.list();
   }
 
   get tools(): ToolDefinition[] {
@@ -114,7 +111,7 @@ export class PluginHost {
   /**
    * Compose the live chains into the `AgentHooks` the loop consumes. The
    * approval gate is not passed in: it is a plugin (`permissionGatePlugin`)
-   * loaded by the roster, so it reloads with its providers instead of being
+   * loaded by the tree, so it reloads with its providers instead of being
    * re-wired by hand on every assembly.
    */
   agentHooks(): AgentHooks {

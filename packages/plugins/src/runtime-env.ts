@@ -20,6 +20,7 @@ import {
   novaHome,
   deriveUserQuestions,
   sessions as sessionsKey,
+  shell as shellKey,
   spill as spillKey,
   tools as toolsKey,
   type AgentHooks,
@@ -28,7 +29,7 @@ import {
   type ChatProvider,
   type CompactedSession,
   type CompactSessionOptions,
-  type PtcMode,
+  type Plugin,
   type QuestionBroker,
   type SessionEnvInfo,
 } from '@nova-agent/core';
@@ -38,9 +39,12 @@ import { PluginHost } from './host.js';
 import { composeHooks } from './hooks.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { loadSkills, type SkillMetadata, type SkillRoot } from './skills.js';
-import type { CreateKernelOptions, PluginDescriptor, PluginRosterEntry } from './runtime-types.js';
+import type { CreateKernelOptions, PluginRosterEntry } from './runtime-types.js';
+import type { PluginEntryConfig } from './plugin-tree.js';
+import type { PluginRow } from './plugin-tree.js';
 import { jobListener } from './job-listener.js';
 import { makeApprovalWiring, makeQuestionBridge, openAgentSession, type PermissionService } from './runtime-session.js';
+import { executionEnvironmentProvider, pluginConfigProvider, pluginRpcProvider } from './plugin-services.js';
 import {
   approvalProvider,
   compactionProvider,
@@ -56,7 +60,6 @@ import {
 /** What the assembly mutates: the parts a workspace/mode change re-points. */
 export interface State {
   rootDir: string;
-  codeMode: PtcMode;
   projectDocs: string[];
   /**
    * The skills in force: discovery MINUS `skillsDisable`. This is what the
@@ -80,26 +83,46 @@ export interface State {
    */
   skillsDisable: string[];
   /**
-   * Plugins the plugin manager turned off (`plugins.disable`). Mutable for the
-   * same reason; `reroster` reads it instead of the boot-time config, so a
-   * mid-process flip survives the NEXT workspace switch too.
+   * The plugin tree as last resolved, including rows that are off or could not
+   * be loaded. The management panel reads THIS: a switched-off row leaves no
+   * fiber, so the tree is the only place its row can still come from — reading
+   * the live container instead would make a switch one-way.
    */
-  pluginsDisable: string[];
+  rows: PluginRow[];
   /**
-   * Plugins the manager has turned ON against their tier default
-   * (`plugins.enable`) — the `advanced` half of the two-list split. Mutable and
-   * read by `reroster` for the same reason as `pluginsDisable`: a switch made
-   * mid-process must survive the next workspace switch. The two lists are
-   * disjoint: a flip writes ONE of them, chosen by tier (`runtime-switch.ts`).
+   * The operator's `plugins.entries`, as the tree is built from.
+   *
+   * Mutable, and re-read on every roster when the assembly has a config file
+   * (`persist.readPluginEntries`): the file is the truth, so a switch that wrote
+   * it must be visible to the very next `reroster`. Seeded from the assembly's
+   * snapshot for headless/embedded kernels, which have no file to re-read.
    */
-  pluginsEnable: string[];
+  pluginEntries: readonly PluginEntryConfig[];
+  /** Where `pluginEntries` is re-read from, when there is a config file. */
+  readPluginEntries: (() => Promise<readonly PluginEntryConfig[]>) | undefined;
   /**
-   * Every known plugin's name + origin + description. Loaded plugins report
-   * live from the container; disabled ones leave no fiber, so their rows come
-   * from this manifest — otherwise a turned-off plugin would vanish from the
-   * very page that turns it back on. Refreshed on every roster.
+   * This build's in-process plugins, built ONCE per kernel.
+   *
+   * The loader diffs by plugin identity, so rebuilding them per roster would
+   * replace every row on every workspace switch. Kernel facts reach them as
+   * thunks over live state and each row's own settings arrive through `config`,
+   * which is what makes a single build correct for the kernel's lifetime.
    */
-  manifest: PluginDescriptor[];
+  builtins: readonly Plugin[] | undefined;
+  /** The kernel's own slash commands; cached for the same identity reason. */
+  kernelCommands: Plugin | undefined;
+  /** The configured surfaces wrapped as rows; cached for the same reason. */
+  surfacePlugins: readonly Plugin[] | undefined;
+  /**
+   * The skill writer, when this invocation has a config file. Read by
+   * `setSkillEnabled`; absent means a flip refuses rather than pretends.
+   */
+  persistSkills: ((name: string, enabled: boolean) => Promise<readonly string[]>) | undefined;
+  /**
+   * The capability providers, published through the same tree as every other
+   * row (they head it, so a consumer always finds its service).
+   */
+  providers: readonly Plugin[];
 }
 
 /** The assembled pieces every other assembly file reaches for. */
@@ -145,18 +168,21 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
   const root = Context.createRoot();
   const jobs = new JobRegistry();
   const systemPrompt = opts.systemPrompt ?? buildSystemPrompt(opts.systemPromptSections ?? []);
-  const shellPath = typeof config.bash === 'object' ? config.bash.shellPath : undefined;
   const state: State = {
     rootDir: opts.rootDir,
-    codeMode: config.code?.mode ?? 'native',
     projectDocs: [],
     skills: [],
     allSkills: [],
     host: undefined,
     skillsDisable: [...(config.skillsDisable ?? [])],
-    pluginsDisable: [...(config.plugins?.disable ?? [])],
-    pluginsEnable: [...(config.plugins?.enable ?? [])],
-    manifest: [],
+    rows: [],
+    pluginEntries: config.plugins?.entries ?? [],
+    readPluginEntries: opts.persist?.readPluginEntries,
+    builtins: undefined,
+    kernelCommands: undefined,
+    surfacePlugins: undefined,
+    persistSkills: opts.persist?.setSkillEnabled,
+    providers: [],
   };
 
   const { bridge, permission } = makeApprovalWiring({
@@ -179,7 +205,11 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
     sessionEnv: () => ({
       platform: process.platform,
       cwd: state.rootDir,
-      shell: modelShell(shellPath).name,
+      // Read LIVE from the ROW that owns shell execution, by SERVICE — the host
+      // does not know which plugin that is. No provider means no
+      // shell-executing row is loaded, and probing the environment is then the
+      // honest answer (and the one the terminal panel already uses).
+      shell: root.get(shellKey)?.name ?? modelShell(undefined).name,
       // Local date, matching the session bucket: a UTC slice calls every
       // evening run west of the meridian "yesterday".
       today: localDateKey().join('-'),
@@ -192,47 +222,57 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
     openCurrent: (sessionOpts) => root.must(sessionsKey).open(sessionOpts),
     reroster: () => reroster(env, opts),
     describePlugins: () => describePlugins(env),
-    setPluginEnabled: (name, enabled) => setPluginEnabled(env, opts, name, enabled),
-    setSkillEnabled: (name, enabled) => setSkillEnabled(env, opts, name, enabled),
+    setPluginEnabled: (name, enabled) => setPluginEnabled(env, name, enabled),
+    setSkillEnabled: (name, enabled) => setSkillEnabled(env, name, enabled),
   };
 
-  // ── capability providers: one plugin per seam, replaceable by key ────────
-  root.plugin(approvalProvider(permission), {}, 'approval');
-  root.plugin(llmProvider({ provider, model: opts.model ?? '' }), {}, 'llm');
-  // `jobs-service`, not `jobs`: the model-facing `jobs` TOOL plugin owns that
-  // name, and a shared name made the tool's switch unsheddable (see
-  // `jobsProvider`). The service key is still `jobs`.
-  root.plugin(jobsProvider(jobs), {}, "jobs-service");
-  root.plugin(spillProvider(), {}, 'spill');
-  root.plugin(compactionProvider(), {}, 'compaction');
-  root.plugin(skillsProvider(() => state.skills, () => loadWorkspace(env, config.projectDocMaxTokens)), {}, 'skills');
-  root.plugin(sessionsProvider(env.openSession), {}, 'sessions');
-  // The surface registry, provided INTO the container. The instance is built by
-  // the caller (see `surfaceRegistryProvider`): it has to exist before the
-  // kernel so the roster loads surface plugins into the registry the resolver
-  // will read. Providing it is what makes a surface an ordinary row.
-  if (opts.surfaces !== undefined) {
-    root.plugin(surfaceRegistryProvider(opts.surfaces.registry), {}, 'surfaces');
-  }
-  // The answerer seam the ask tool reads per call. This is the ONE source now:
-  // "does the surface in force have a human?" is answered from the registry,
-  // lazily, so no assembly site hand-copies a boolean and no surface with a
-  // human can be forgotten again. A registry that has not resolved yet (or a
-  // surface with no human) answers false → the tool reports NO_PROVIDER instead
-  // of parking a run no card can release.
+  // ── capability providers: one plugin per seam ───────────────────────────
   //
-  // The legacy `opts.userQuestions` boolean is still honoured for assemblies
-  // that supply neither a registry nor a surface plugin (kernel tests, embedders
-  // that wire the ask tool by hand). It is ORed, never required.
-  root.plugin(
+  // Registered through the SAME tree as every other row (the roster puts them
+  // first). They are not a second lifecycle: a provider that loaded outside the
+  // loader could neither be diffed against the previous roster nor torn down
+  // with it, which is how the old assembly ended up wiring the container twice.
+  //
+  // Order is a contract: a consumer activated before its provider would find the
+  // service absent, so these stay at the head of the tree.
+  const providers: Plugin[] = [
+    executionEnvironmentProvider(env, opts),
+    pluginRpcProvider(),
+    // The port that writes the durable tree re-rosters through the SAME path the
+    // settings panel uses, so a plugin's save and a panel switch cannot disagree
+    // about what "applied" means.
+    pluginConfigProvider(opts, () => reroster(env, opts)),
+    approvalProvider(permission),
+    llmProvider({ provider, model: opts.model ?? '' }),
+    // `jobs-service`, not `jobs`: the model-facing `jobs` TOOL plugin owns that
+    // name, and a shared name made the tool's switch unsheddable (see
+    // `jobsProvider`). The service key is still `jobs`.
+    jobsProvider(jobs),
+    spillProvider(),
+    compactionProvider(),
+    skillsProvider(() => state.skills, () => loadWorkspace(env, config.projectDocMaxTokens)),
+    sessionsProvider(env.openSession),
+    // The surface registry, provided INTO the container. The instance is built
+    // by the caller (see `surfaceRegistryProvider`): it has to exist before the
+    // kernel so the roster loads surface plugins into the registry the resolver
+    // will read. Providing it is what makes a surface an ordinary row.
+    ...(opts.surfaces !== undefined ? [surfaceRegistryProvider(opts.surfaces.registry)] : []),
+    // The answerer seam the ask tool reads per call. This is the ONE source:
+    // "does the surface in force have a human?" is answered from the registry,
+    // lazily, so no assembly site hand-copies a boolean and no surface with a
+    // human can be forgotten again. A registry that has not resolved yet (or a
+    // surface with no human) answers false → the tool reports NO_PROVIDER
+    // instead of parking a run no card can release.
+    //
+    // `opts.userQuestions` is the fallback for assemblies that supply no
+    // registry (kernel tests, embedders): it is ORed, never required.
     userQuestionsProvider(questions.asker, () => {
       const current = opts.surfaces?.registry.current();
       if (current !== undefined) return deriveUserQuestions(current);
       return opts.userQuestions === true;
     }),
-    {},
-    'user-questions',
-  );
+  ];
+  state.providers = providers;
   return env;
 }
 
@@ -302,8 +342,9 @@ async function loadWorkspace(env: Environment, maxDocTokens?: number): Promise<S
   // both see the filtered list, so one rule governs both doors. The UNFILTERED
   // discovery is kept alongside it so the panel can still list — and therefore
   // re-enable — a skill this filter removed. A name matching nothing warns at
-  // assembly (the `plugins.disable` typo discipline), not here: this runs on
-  // every workspace switch, where warning every time would spam.
+  // assembly (the same typo discipline a plugin row's own config gets), not
+  // here: this runs on every workspace switch, where warning every time would
+  // spam.
   const off = new Set(env.state.skillsDisable);
   env.state.allSkills = all;
   env.state.skills = all.filter((skill) => !off.has(skill.name));
@@ -336,5 +377,5 @@ function skillRoots(rootDir: string): SkillRoot[] {
  * `reroster` value — a one-way runtime edge with a type-only import back, so
  * there is no evaluation cycle.
  */
-import { describePlugins, setPluginEnabled, setSkillEnabled } from './runtime-switch.js';
-import { reroster } from './runtime-roster.js';
+import { setPluginEnabled, setSkillEnabled } from './runtime-switch.js';
+import { describePlugins, reroster } from './runtime-roster.js';

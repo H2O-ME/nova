@@ -211,6 +211,7 @@ export function askUserPlugin(options: AskUserPluginOptions = {}): Plugin {
   return {
     name: 'ask-user',
     description: 'Ask the user a question and wait for the answer.',
+    manifest: { title: '向人提问', description: '向用户提问并等待答复；无人值守的界面直接给出拒绝。', tier: 'core' },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(
@@ -246,7 +247,7 @@ export function askUserPlugin(options: AskUserPluginOptions = {}): Plugin {
             const questions = parseQuestions(args['questions']);
             return {
               card: 'generic',
-              kind: 'other',
+              kind: 'question',
               title: typeof questions === 'string' ? 'ask_user_question' : (questions[0]?.question ?? 'ask_user_question'),
             };
           },

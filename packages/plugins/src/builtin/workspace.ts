@@ -27,6 +27,7 @@ export function workspacePlugin(options: WorkspacePluginOptions): Plugin {
   return {
     name: 'workspace',
     description: 'Switch the workspace root the tools operate on.',
+    manifest: { title: '切换工作区', description: '把工具的工作根切到另一个目录。', tier: 'standard' },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(

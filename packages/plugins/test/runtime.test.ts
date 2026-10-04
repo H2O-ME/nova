@@ -14,6 +14,7 @@ import {
   type ChatProvider,
   type ChatRequest,
   type KernelEvent,
+  type PluginEntryOptions,
   type StreamEvent,
 } from '@nova-agent/core';
 import { createAgentKernel, registerCommand, registerTool, type Plugin } from '../src/index.js';
@@ -140,7 +141,7 @@ describe('createAgentKernel', () => {
       provider: provider([answerScript]),
       config: baseConfig,
       sessionDir: await tmp(),
-      extraPlugins: [probe],
+      extraPlugins: [{ id: 'jobs-probe', plugin: probe }],
     });
     // The probe reads through the container; the facade must hand back the
     // SAME instance — a second registry would fork background-job state.
@@ -303,7 +304,7 @@ describe('createAgentKernel', () => {
       provider: provider([askToolScript, answerScript]),
       config: baseConfig,
       sessionDir: await tmp(),
-      extraPlugins: [probePlugin(log)],
+      extraPlugins: [{ id: 'probe', plugin: probePlugin(log) }],
     });
     const events: KernelEvent[] = [];
     kernel.agent.subscribe((e) => events.push(e));
@@ -351,7 +352,7 @@ describe('createAgentKernel', () => {
       provider: provider([askToolScript, answerScript]),
       config: baseConfig,
       sessionDir: await tmp(),
-      extraPlugins: [probePlugin(log)],
+      extraPlugins: [{ id: 'probe', plugin: probePlugin(log) }],
     });
     kernel.permission.setPolicy('never');
     const events: KernelEvent[] = [];
@@ -366,41 +367,6 @@ describe('createAgentKernel', () => {
     expect(denial?.result.content).toContain('Permission denied');
   });
 
-  it('setCodeMode rebuilds the host (run_code joins, grants survive)', async () => {
-    const kernel = await createAgentKernel({
-      rootDir: await tmp(),
-      provider: provider([answerScript]),
-      config: { ...baseConfig, code: { mode: 'native' } },
-      sessionDir: await tmp(),
-    });
-    expect(kernel.host.tools.some((t) => t.name === 'run_code')).toBe(false);
-    await kernel.setCodeMode('ptc');
-    expect(kernel.host.tools.some((t) => t.name === 'run_code')).toBe(true);
-    expect(kernel.codeMode()).toBe('ptc');
-    // rebuild rebinds the composed hooks the agent and subagent share
-    expect(kernel.hooks.beforeLLMCall).toBeTypeOf('function');
-  });
-
-  it('setCodeMode refuses a mode whose plugin the operator switched off', async () => {
-    // Two doors onto one question: the ptc row's switch and the mode chip. An
-    // explicit close lives in `plugins.disable` and the roster derivation
-    // yields to it — so the mode door must refuse too, or the kernel would
-    // run a mode whose plugin never loaded ("the switch flips itself on").
-    const kernel = await createAgentKernel({
-      rootDir: await tmp(),
-      provider: provider([answerScript]),
-      config: { ...baseConfig, code: { mode: 'native' }, plugins: { disable: ['ptc'] } },
-      sessionDir: await tmp(),
-    });
-    expect(kernel.host.tools.some((t) => t.name === 'run_code')).toBe(false);
-    await expect(kernel.setCodeMode('ptc')).rejects.toThrowError(/PTC/u);
-    await expect(kernel.setCodeMode('both')).rejects.toThrowError(/PTC/u);
-    // A refused pick changes nothing: the mode stays where it was.
-    expect(kernel.codeMode()).toBe('native');
-    // The one mode that needs no plugin is still accepted.
-    await kernel.setCodeMode('native');
-    expect(kernel.codeMode()).toBe('native');
-  });
 });
 
 describe('createAgentKernel · model control', () => {
@@ -504,7 +470,10 @@ describe('createAgentKernel · commands', () => {
     },
   };
 
-  async function withCommands(scripts: StreamEvent[][], extraPlugins: Plugin[] = [echoPlugin]) {
+  async function withCommands(
+    scripts: StreamEvent[][],
+    extraPlugins: readonly PluginEntryOptions[] = [{ id: 'echo-command', plugin: echoPlugin }],
+  ) {
     const kernel = await createAgentKernel({
       rootDir: await tmp(),
       provider: provider(scripts),
@@ -556,7 +525,7 @@ describe('createAgentKernel · commands', () => {
         });
       },
     };
-    const { kernel, events } = await withCommands([answerScript], [failing]);
+    const { kernel, events } = await withCommands([answerScript], [{ id: 'failing-command', plugin: failing }]);
     await kernel.runCommand('boom', '');
     expect(events.filter((e) => e.type === 'command').at(-1)).toMatchObject({
       phase: 'done',
@@ -614,7 +583,7 @@ describe('createAgentKernel · commands', () => {
       provider: provider([gateScript, answerScript]),
       config: baseConfig,
       sessionDir: await tmp(),
-      extraPlugins: [blocker],
+      extraPlugins: [{ id: 'blocker', plugin: blocker }],
     });
     const events: KernelEvent[] = [];
     kernel.agent.subscribe((e) => events.push(e));

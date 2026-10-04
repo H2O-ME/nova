@@ -11,11 +11,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolDefinition } from '@nova-agent/core';
 import { PluginHost, builtinPlugins } from '../src/index.js';
+import { rowsOf } from './plugin-rows.js';
 
 async function builtins(): Promise<Map<string, ToolDefinition>> {
   const host = new PluginHost('.');
-  for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
-  await host.activate();
+  await host.sync(rowsOf(builtinPlugins({ rootDir: () => host.rootDir })));
   return new Map(host.tools.map((tool) => [tool.name, tool]));
 }
 
@@ -26,6 +26,10 @@ describe('bash', () => {
     const bash = (await builtins()).get('bash');
     expect(bash?.presentCall?.({ command: 'pnpm test --reporter=dot' })).toEqual({
       card: 'terminal',
+      // `kind` rides EVERY call view (`BUILTIN_TOOL_KINDS`), not just the generic
+      // one: a surface that summarises work groups by what a call DID, and must
+      // not re-derive that from the tool's name.
+      kind: 'execute',
       command: 'pnpm test --reporter=dot',
     });
   });
@@ -80,10 +84,12 @@ describe('write_file / edit_file', () => {
     const tools = await builtins();
     expect(tools.get('write_file')?.presentCall?.({ path: 'a.ts', content: 'hello' })).toEqual({
       card: 'diff',
+      kind: 'write',
       diffs: [{ path: 'a.ts', oldText: null, newText: 'hello' }],
     });
     expect(tools.get('edit_file')?.presentCall?.({ path: 'a.ts', old_string: 'x', new_string: 'y' })).toEqual({
       card: 'diff',
+      kind: 'edit',
       diffs: [{ path: 'a.ts', oldText: 'x', newText: 'y' }],
     });
   });
@@ -123,11 +129,13 @@ describe('search_files', () => {
     const search = (await builtins()).get('search_files');
     expect(search?.presentCall?.({ content_regex: 'runAgent' })).toEqual({
       card: 'search',
+      kind: 'search',
       query: 'runAgent',
       mode: 'content',
     });
     expect(search?.presentCall?.({ name_glob: '**/*.ts' })).toEqual({
       card: 'search',
+      kind: 'search',
       query: '**/*.ts',
       mode: 'name',
     });

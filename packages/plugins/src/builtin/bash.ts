@@ -1,8 +1,10 @@
-import { errMessage, tools as toolsKey } from '@nova-agent/core';
+import { errMessage, objectConfig, shell as shellKey, tools as toolsKey } from '@nova-agent/core';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { commandInvocation, modelShell } from './shell-select.js';
 import type {
+  ConfigSchema,
+  Context,
   JobRegistry,
   JobSnapshot,
   Plugin,
@@ -560,15 +562,43 @@ function bashCommand(args: Record<string, unknown>): string | undefined {
   return typeof command === 'string' && command.trim().length > 0 ? command : undefined;
 }
 
-export function bashPlugin(options?: BashPluginOptions): Plugin {
-  const defaultTimeoutMs = options?.timeoutMs ?? DEFAULT_BASH_TIMEOUT_MS;
-  const maxOutputBytes = options?.maxOutputBytes ?? DEFAULT_BASH_OUTPUT_BYTES;
+/**
+ * The `bash` row's own settings, validated by the row's own schema.
+ *
+ * These live on the PLUGIN, not in a host-side options bag: the loader hands
+ * every row its `config` from `plugins.entries` and the fiber validates it
+ * against `Config` below, so the host never reads bash's config by name — and a
+ * new configurable setting is a change to THIS file alone.
+ */
+export const Config: ConfigSchema<BashPluginOptions> = objectConfig<BashPluginOptions>({
+  timeoutMs: { type: 'number' },
+  shellPath: { type: 'string' },
+  maxOutputBytes: { type: 'number' },
+});
 
+export function bashPlugin(): Plugin<BashPluginOptions> {
   return {
     name: 'bash',
     description: 'Run shell commands in the workspace root (POSIX shell on Windows via Git Bash, PowerShell fallback).',
+    manifest: { title: '终端命令', description: '在工作区根目录执行 shell 命令，支持后台任务。', tier: 'standard' },
+    Config,
     inject: [toolsKey],
-    apply: (ctx) => {
+    apply: (ctx: Context, config: BashPluginOptions): void => {
+      // Read HERE rather than at construction: a config edit reaches the row
+      // through the loader's own diff (`apply` runs again), so nothing needs to
+      // fingerprint the settings to know when to rebuild the plugin object.
+      const settings = config ?? {};
+      const defaultTimeoutMs = settings.timeoutMs ?? DEFAULT_BASH_TIMEOUT_MS;
+      const maxOutputBytes = settings.maxOutputBytes ?? DEFAULT_BASH_OUTPUT_BYTES;
+      // Publish WHICH shell commands run in, because this row is what owns that
+      // answer: the context fragment tells the model the shell it is working in,
+      // and reading bash's config from the host would put this row's name in host
+      // code — and would go stale the moment the operator set `shellPath` or
+      // swapped this plugin for another. `ctx.provide` ties the value to this
+      // fiber, so switching the row off withdraws it and the consumer falls back
+      // to probing the environment.
+      const resolved = modelShell(settings.shellPath);
+      ctx.provide(shellKey, { name: resolved.name, path: resolved.path });
       registerTool(ctx, {
         name: 'bash',
         description:
@@ -586,10 +616,10 @@ export function bashPlugin(options?: BashPluginOptions): Plugin {
           required: ['command'],
           additionalProperties: false,
         },
-        execute: (args, c) => executeBash(args, c, defaultTimeoutMs, maxOutputBytes, options?.shellPath),
+        execute: (args, c) => executeBash(args, c, defaultTimeoutMs, maxOutputBytes, settings.shellPath),
         presentCall(args): TerminalCallView | undefined {
           const command = bashCommand(args);
-          return command === undefined ? undefined : { card: 'terminal', command };
+          return command === undefined ? undefined : { card: 'terminal', kind: 'execute', command };
         },
         presentResult(_args, content) {
           return bashResultView(content);

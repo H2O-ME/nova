@@ -30,11 +30,27 @@ import {
   type Context,
   type JobRegistry,
   type Plugin,
+  type PluginManifest,
   type RouteRegistry,
   type SkillInfo,
   type SurfaceRegistry,
 } from '@nova-agent/core';
 import type { SkillMetadata } from './skills.js';
+
+/**
+ * The manifest of a load-bearing row: registries and capability providers.
+ *
+ * `core` means the panel draws no switch and the switch refuses. It is declared
+ * HERE, by the plugin, rather than listed by name in a host-side table — a table
+ * is what made "is this row switchable" a thing the kernel had to know about
+ * every plugin.
+ * @param title - the operator-facing title.
+ * @param description - one line about what the row does.
+ * @returns the manifest to attach to the provider.
+ */
+function coreManifest(title: string, description: string): PluginManifest {
+  return { title, description, tier: 'core' };
+}
 
 /**
  * The model end. `bindSession` is what keeps the provider cache-affinity header
@@ -82,6 +98,8 @@ export function llmProvider(p: {
 export function jobsProvider(registry: JobRegistry): Plugin {
   return {
     name: 'jobs-service',
+    description: 'Background job registry shared by bash and the jobs tools.',
+    manifest: coreManifest('后台任务服务', '后台任务注册表，供 bash 与 jobs 工具共享。'),
     apply: (ctx: Context): void => {
       ctx.provide(jobsKey, registry);
     },
@@ -92,6 +110,8 @@ export function jobsProvider(registry: JobRegistry): Plugin {
 export function spillProvider(): Plugin {
   return {
     name: 'spill',
+    description: 'Spills oversized tool output to the session cache directory.',
+    manifest: coreManifest('输出落盘', '超大工具结果溢出到会话缓存目录。'),
     apply: (ctx: Context): void => {
       ctx.provide(spillKey, { dir: (sessionId) => toolOutputsDir(sessionId) });
     },
@@ -102,6 +122,8 @@ export function spillProvider(): Plugin {
 export function compactionProvider(run?: (options: CompactSessionOptions) => Promise<CompactedSession>): Plugin {
   return {
     name: 'compaction',
+    description: 'Summarises history when the context window is exceeded.',
+    manifest: coreManifest('上下文压缩', '超限时总结历史，原始日志不改写。'),
     apply: (ctx: Context): void => {
       ctx.provide(compactionKey, { run: run ?? compactSession });
     },
@@ -116,6 +138,8 @@ export function compactionProvider(run?: (options: CompactSessionOptions) => Pro
 export function approvalProvider(service: ApprovalService): Plugin {
   return {
     name: 'approval',
+    description: 'Holds the approval tier and the remembered always-allow grants.',
+    manifest: coreManifest('审批服务', '审批档位与「总是允许」授权的唯一持有者。'),
     apply: (ctx: Context): void => {
       ctx.provide(approvalKey, service);
     },
@@ -132,6 +156,8 @@ export function sessionsProvider(open: (options?: { resumeFile?: string; session
   let current: AgentSession | undefined;
   return {
     name: 'sessions',
+    description: 'Owns which session is current and rebinds cache affinity.',
+    manifest: coreManifest('会话生命周期', '维护当前会话与缓存亲和的重绑定。'),
     // The affinity binding lives here because *this* is what knows which
     // session is current: a peer switch (`activate`) has to re-bind exactly
     // like an open does, or the cache-routing header keeps pointing at the
@@ -168,7 +194,9 @@ export function skillsProvider(
   reload: () => Promise<readonly SkillMetadata[]>,
 ): Plugin {
   return {
-    name: 'skills',
+    name: 'skills-service',
+    description: 'Publishes the skill index; bodies load on demand.',
+    manifest: coreManifest('技能索引', '技能索引；正文按需加载。'),
     apply: (ctx: Context): void => {
       ctx.provide(skillsKey, {
         all: () => source().map(toInfo),
@@ -198,6 +226,8 @@ function toInfo(skill: SkillMetadata): SkillInfo {
 export function userQuestionsProvider(asker: AskQuestionsFn, answers: () => boolean): Plugin {
   return {
     name: 'user-questions',
+    description: 'Publishes the answerer seam the ask tool reads per call.',
+    manifest: coreManifest('提问能力', '向模型开放提问能力的接线：没有人的界面就不提供。'),
     apply: (ctx: Context): void => {
       ctx.provide(userQuestionsKey, { answerer: () => (answers() ? asker : undefined) });
     },
@@ -215,6 +245,8 @@ export function userQuestionsProvider(asker: AskQuestionsFn, answers: () => bool
 export function surfaceRegistryProvider(registry: SurfaceRegistry): Plugin {
   return {
     name: 'surfaces',
+    description: 'The surface registry the resolver and the container share.',
+    manifest: coreManifest('界面注册表', '人类端界面的注册表，决定这次调用由哪个界面服务。'),
     apply: (ctx: Context): void => {
       ctx.provide(surfacesKey, registry);
     },
@@ -232,6 +264,8 @@ export function surfaceRegistryProvider(registry: SurfaceRegistry): Plugin {
 export function routeRegistryProvider(registry: RouteRegistry): Plugin {
   return {
     name: 'routes',
+    description: 'The HTTP route registry a UI-carrying host provides.',
+    manifest: coreManifest('资产路由', '插件注册自己的资产前缀；无 HTTP 宿主的形态不提供。'),
     apply: (ctx: Context): void => {
       ctx.provide(routesKey, registry);
     },

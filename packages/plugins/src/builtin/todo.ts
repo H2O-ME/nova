@@ -32,6 +32,7 @@ export function todoPlugin(): Plugin {
   return {
     name: 'todo',
     description: 'Maintain a durable task checklist for the current session.',
+    manifest: { title: '任务清单', description: '维护当前会话的任务清单。', tier: 'standard' },
     inject: [toolsKey],
     apply: (ctx) => {
       registerTool(ctx, {

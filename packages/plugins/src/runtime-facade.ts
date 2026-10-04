@@ -10,6 +10,7 @@
 import {
   jobs as jobsKey,
   llm as llmKey,
+  pluginRpc as pluginRpcKey,
   sessions as sessionsKey,
   type AgentHooks,
   type AgentSession,
@@ -65,13 +66,17 @@ export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kerne
       return env.state.allSkills;
     },
     get disabled(): { plugins: readonly string[]; skills: readonly string[] } {
-      return { plugins: env.state.pluginsDisable, skills: env.state.skillsDisable };
+      return {
+        plugins: env.state.rows.filter((row) => !row.enabled).map((row) => row.id),
+        skills: env.state.skillsDisable,
+      };
     },
     systemPrompt: env.systemPrompt,
     rootDir: () => env.state.rootDir,
     sessionEnv: () => env.sessionEnv(),
     buildFragment: env.buildFragment,
-    codeMode: () => env.state.codeMode,
+    pluginConfig: (id) => env.state.rows.find((row) => row.id === id)?.config,
+    pluginRpc: () => env.root.get(pluginRpcKey),
     newAgentSession: (sessionOpts) => env.openCurrent(sessionOpts),
     activateSession: (agent) => {
       env.root.must(sessionsKey).activate(agent);
@@ -81,18 +86,6 @@ export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kerne
     setPluginEnabled: (name, enabled) => env.setPluginEnabled(name, enabled),
     setSkillEnabled: (name, enabled) => env.setSkillEnabled(name, enabled),
     setWorkspace: (dir) => setWorkspace(env, dir),
-    setCodeMode: async (mode) => {
-      // The ptc row's switch and the mode chip are two doors onto ONE
-      // question, and an explicit close must win through both: the switch
-      // writes `disable` (dual-write in `runtime-switch.ts`), the roster
-      // derivation yields to it, and a mode that ignored it would run a mode
-      // whose plugin never loaded — the switch "flipping itself on".
-      if (mode !== 'native' && env.state.pluginsDisable.includes('ptc')) {
-        throw new Error('PTC 插件已在「插件管理」中关闭，请先开启它的开关再切换代码模式');
-      }
-      env.state.codeMode = mode;
-      await env.reroster();
-    },
     dispose: () => host().dispose(),
   };
 }

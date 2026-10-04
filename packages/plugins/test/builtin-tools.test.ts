@@ -2,8 +2,9 @@ import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { JobRegistry, typeStrippingAvailable, type TodoItem } from '@nova-agent/core';
+import { JobRegistry, shell as shellKey, typeStrippingAvailable, type TodoItem } from '@nova-agent/core';
 import { PluginHost, builtinPlugins, READ_MAX_BYTES } from '../src/index.js';
+import { configuredRowsOf, rowsOf } from './plugin-rows.js';
 import { bashOnPath } from '../src/builtin/shell-select.js';
 import { BudgetedBuffer } from '../src/builtin/bash.js';
 import { screenContentRegex } from '../src/builtin/search.js';
@@ -12,15 +13,13 @@ async function activatedHost(): Promise<{ host: PluginHost; jobs: JobRegistry; e
   const host = new PluginHost('.');
   const jobs = new JobRegistry();
   const emitted: unknown[] = [];
-  for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
-  await host.activate();
+  await host.sync(rowsOf(builtinPlugins({ rootDir: () => host.rootDir })));
   return { host, jobs, emitted };
 }
 
 async function fsHostAt(root: string): Promise<PluginHost> {
   const host = new PluginHost(root);
-  for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
-  await host.activate();
+  await host.sync(rowsOf(builtinPlugins({ rootDir: () => host.rootDir })));
   return host;
 }
 
@@ -128,13 +127,32 @@ describe('BudgetedBuffer (bash output head+tail capture)', () => {
 } );
 
 describe('bash plugin', () => {
+  it('publishes the shell it runs commands in, and withdraws it when the row goes', async () => {
+    // The `shell` seam exists so the host never names the plugin that executes
+    // commands. The context fragment tells the model `shell=<name>`, so that
+    // value has to come from whoever OWNS shell execution: reading bash's config
+    // from the host would go stale the moment `shellPath` changes (or the plugin
+    // is swapped). Two claims: the service reflects THIS row's config, and it
+    // disappears with the row because `ctx.provide` is a fiber effect.
+    const host = new PluginHost('.');
+    // A deliberately bogus path: the point is that the published name follows the
+    // ROW's setting, not the machine's PATH probe.
+    const configured = path.join('C:', 'custom-tools', 'my-shell.exe');
+    await host.sync(configuredRowsOf(builtinPlugins({ rootDir: () => host.rootDir }), { bash: { shellPath: configured } }));
+    expect(host.context.get(shellKey)).toEqual({ name: 'my-shell', path: configured });
+
+    // Switching the row off must take the service with it — otherwise the prompt
+    // would keep claiming a shell that no longer runs anything.
+    await host.sync(rowsOf(builtinPlugins({ rootDir: () => host.rootDir })).filter((row) => row.id !== 'bash'));
+    expect(host.context.get(shellKey)).toBeUndefined();
+  });
+
   it.runIf(bashOnPath())('the result names the directory the command ran in', async () => {
     // The cwd is the one fact a result cannot imply: when it ever disagrees
     // with <environment> cwd, every relative command answered about the wrong
     // tree — and a result that omits it cannot show the difference.
     const host = new PluginHost('.');
-    for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    await host.sync(rowsOf(builtinPlugins({ rootDir: () => host.rootDir })));
     const tool = host.tools.find((t) => t.name === 'bash')!;
 
     const result = await tool.execute({ command: 'echo hi' }, { rootDir: process.cwd() });
@@ -144,8 +162,7 @@ describe('bash plugin', () => {
   it.runIf(bashOnPath())('foreground runOnce keeps the most recent output past the cap', async () => {
     const host = new PluginHost('.');
     // Tiny cap so a 500-line seq overflows: head 60% + tail 40% ring.
-    for (const plugin of builtinPlugins({ bash: { maxOutputBytes: 200 }, rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    await host.sync(configuredRowsOf(builtinPlugins({ rootDir: () => host.rootDir }), { bash: { maxOutputBytes: 200 } }));
     const tool = host.tools.find((t) => t.name === 'bash')!;
 
     const result = await tool.execute({ command: 'seq 1 500' }, { rootDir: '.' });
@@ -156,8 +173,7 @@ describe('bash plugin', () => {
   // Requires a POSIX shell (Git Bash on Windows); PowerShell has no `sleep`.
   it.runIf(bashOnPath())('kills a command past the timeout and settles deterministically', async () => {
     const host = new PluginHost('.');
-    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 }, rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    await host.sync(configuredRowsOf(builtinPlugins({ rootDir: () => host.rootDir }), { bash: { timeoutMs: 1000 } }));
     const tool = host.tools.find((t) => t.name === 'bash')!;
 
     const started = Date.now();
@@ -175,8 +191,7 @@ describe('bash plugin', () => {
     // leave the stdio pipes held by grandchildren, and a done promise waiting
     // on `close` alone would hang `jobs.dispose()` at teardown forever.
     const host = new PluginHost('.');
-    for (const plugin of builtinPlugins({ bash: { timeoutMs: 1000 }, rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    await host.sync(configuredRowsOf(builtinPlugins({ rootDir: () => host.rootDir }), { bash: { timeoutMs: 1000 } }));
     const tool = host.tools.find((t) => t.name === 'bash')!;
     const jobs = new JobRegistry();
 
@@ -266,8 +281,10 @@ describe('fs sandbox', () => {
     const spill = await mkdtemp(path.join(tmpdir(), 'nova-spill-'));
     await writeFile(path.join(spill, 'full.txt'), 'the full spill', 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins({ spillReadRoot: spill, rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    // The auto-readable roots are ONE live list: the spill directory is an
+    // ordinary member of it (it comes from a service row, hence the thunk), not a
+    // special case of its own.
+    await host.sync(rowsOf(builtinPlugins({ trustedReadRoots: () => [spill], rootDir: () => host.rootDir })));
     const read = host.tools.find((t) => t.name === 'read_file')!;
     expect(await read.permissionFor?.({ path: path.join(spill, 'full.txt') })).toBe('read');
     expect(await read.execute({ path: path.join(spill, 'full.txt') }, { rootDir: root })).toBe('the full spill');
@@ -433,8 +450,7 @@ describe('search_files', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-search-'));
     await writeFile(path.join(root, 'a.txt'), `${'a'.repeat(40)}b\n`, 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins({ rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    await host.sync(rowsOf(builtinPlugins({ rootDir: () => host.rootDir })));
     const search = host.tools.find((t) => t.name === 'search_files')!;
     // (a+)+b — quantifier inside a quantified group: the textbook shape.
     const screened = await search.execute({ content_regex: '(a+)+b' }, { rootDir: root });
@@ -456,8 +472,7 @@ describe('search_files', () => {
     // no match, so every split path is explored.
     await writeFile(path.join(root, 'bomb.txt'), `${'a'.repeat(28)}x\n`, 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins({ search: { wallMs: 800 }, rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    await host.sync(configuredRowsOf(builtinPlugins({ rootDir: () => host.rootDir }), { search: { wallMs: 800 } }));
     const search = host.tools.find((t) => t.name === 'search_files')!;
 
     const started = Date.now();
@@ -473,8 +488,7 @@ describe('search_files', () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-search-abort-'));
     await writeFile(path.join(root, 'slow.txt'), `${'a'.repeat(28)}x\n`, 'utf8');
     const host = new PluginHost(root);
-    for (const plugin of builtinPlugins({ search: { wallMs: 30_000 }, rootDir: () => host.rootDir })) host.use(plugin);
-    await host.activate();
+    await host.sync(configuredRowsOf(builtinPlugins({ rootDir: () => host.rootDir }), { search: { wallMs: 30_000 } }));
     const search = host.tools.find((t) => t.name === 'search_files')!;
 
     const controller = new AbortController();

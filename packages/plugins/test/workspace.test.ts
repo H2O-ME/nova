@@ -4,11 +4,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PluginHost } from '../src/host.js';
 import { workspacePlugin } from '../src/builtin/workspace.js';
+import { rowsOf } from './plugin-rows.js';
 
 async function hostAt(root: string, onChange: (dir: string) => Promise<void>): Promise<PluginHost> {
   const host = new PluginHost(root);
-  host.use(workspacePlugin({ onChange }));
-  await host.activate();
+  await host.sync(rowsOf([workspacePlugin({ onChange })]));
   return host;
 }
 

@@ -1,10 +1,10 @@
 import { type Plugin } from '@nova-agent/core';
 import { askUserPlugin, type AskUserPluginOptions } from './ask-user.js';
-import { bashPlugin, type BashPluginOptions } from './bash.js';
+import { bashPlugin } from './bash.js';
 import { fsReadPlugin, fsWritePlugin } from './fs.js';
 import { goalPlugin, type GoalPluginOptions } from './goal.js';
 import { jobsPlugin } from './jobs.js';
-import { searchPlugin, type SearchPluginOptions } from './search.js';
+import { searchPlugin } from './search.js';
 import { todoPlugin } from './todo.js';
 import { workspacePlugin, type WorkspacePluginOptions } from './workspace.js';
 
@@ -18,36 +18,17 @@ export interface BuiltinOptions {
    * reading and writing the directory the session has already left.
    */
   rootDir: () => string;
-  /** false disables the bash tool plugin; an object customizes it. */
-  bash?: boolean | BashPluginOptions;
-  /** false disables the background-jobs tools plugin. */
-  jobs?: boolean;
-  /** false disables the todo tool plugin. */
-  todo?: boolean;
-  /** false disables the switch_workspace tool; an object wires the runner callback (tool registered only when provided). */
-  workspace?: false | WorkspacePluginOptions;
-  /** Customizes the search tool (worker isolation budget etc.). */
-  search?: Omit<SearchPluginOptions, 'rootDir' | 'trustedReadRoots'>;
   /**
-   * Root directory of the tool-output spill cache (~/.nova/cache/tool-outputs).
-   * Paths inside it are classified as auto-allowed 'read' instead of
-   * 'read-external', so truncated tool results referenced in the message log
-   * can be read back freely without tripping the approval gate every turn.
-   */
-  spillReadRoot?: string;
-  /**
-   * Extra auto-readable roots outside the workspace. Listed separately from
-   * `spillReadRoot` because the two roots are owned by different subsystems and
-   * either can be absent.
+   * The auto-readable roots outside the workspace, as ONE live list.
    *
-   * NOTE: no caller passes this today — the spill root is the only trusted read
-   * root in force. There is deliberately no uploads tree to name here: pasted
-   * images live under the content-addressed `images/` store (request-side bytes,
-   * never opened by a tool), and a file that has a path crosses as `@path` text
-   * instead of being copied. Kept as the seam for a future surface that stages
-   * its own bytes.
+   * A thunk, not an array, because a root can come from a service: the spill
+   * directory is provided by a row of the plugin tree, and the built-ins are
+   * constructed BEFORE that tree loads. Reading it eagerly would ask a store that
+   * is still empty by construction — which is exactly the `ServiceUnavailable`
+   * crash this thunk prevents. The spill root is an ordinary member of the list,
+   * not a special case of it, so fs and search both receive one array.
    */
-  trustedReadRoots?: readonly string[];
+  trustedReadRoots?: () => readonly string[];
   /**
    * The model's question tool. Always registered — a surface with no human to ask
    * gets the typed `NO_PROVIDER` refusal rather than a silently missing tool, so
@@ -65,38 +46,38 @@ export interface BuiltinOptions {
    * cannot persist one.
    */
   goal?: GoalPluginOptions;
+  /**
+   * Wires the model-facing `switch_workspace` tool. The tool is registered only
+   * when a runner-side callback is supplied, because without one it would
+   * validate a switch and then silently do nothing — worse than absent.
+   */
+  workspace?: WorkspacePluginOptions;
 }
 
 /**
- * The auto-readable roots, as one list. The spill root is one of them, not a
- * special case of it: this concatenates the two sources so the fs and search
- * plugins receive the single array they already understand, with empties dropped
- * (an empty root would match every path).
- * @param options - the build's options.
- * @returns the roots, in the order they should be consulted.
+ * First-party tool plugins; loaded through the same API as third-party ones.
+ *
+ * Every row here is unconditional: whether it LOADS is the operator's entry in
+ * the plugin tree (`{ id, enabled }`), not an option of this function. A
+ * built-in is therefore always buildable, and the loader is the only thing that
+ * decides if it runs.
+ * @param options - the build's options (live kernel facts and row settings).
+ * @returns the built-in plugins, in load order.
  */
-function trustedRoots(options: BuiltinOptions): string[] {
-  return [
-    ...(options.spillReadRoot !== undefined ? [options.spillReadRoot] : []),
-    ...(options.trustedReadRoots ?? []),
-  ].filter((root) => root.length > 0);
-}
-
-/** First-party tool plugins; loaded through the same API as third-party ones. */
 export function builtinPlugins(options: BuiltinOptions): Plugin[] {
   const rootDir = options.rootDir;
-  const trustedReadRoots = trustedRoots(options);
+  // Filtered at READ time, not here: an empty root would match every path, and
+  // the list is live so "which roots are in force" is only known per call.
+  const trustedReadRoots = (): readonly string[] =>
+    (options.trustedReadRoots?.() ?? []).filter((root) => root.length > 0);
   const plugins: Plugin[] = [
     fsReadPlugin({ trustedReadRoots, rootDir }),
     fsWritePlugin({ rootDir }),
-    searchPlugin({ ...options.search, trustedReadRoots, rootDir }),
+    searchPlugin({ trustedReadRoots, rootDir }),
+    bashPlugin(),
+    jobsPlugin(),
+    todoPlugin(),
   ];
-  const bash = options.bash;
-  if (bash !== false) {
-    plugins.push(bashPlugin(bash === true || bash === undefined ? undefined : bash));
-  }
-  if (options.jobs !== false) plugins.push(jobsPlugin());
-  if (options.todo !== false) plugins.push(todoPlugin());
   // Present only when the assembly supplied a live-goal reader and a log writer
   // (see `BuiltinOptions.goal`): without them the tools could report a goal no
   // resume would ever recover.
@@ -105,13 +86,11 @@ export function builtinPlugins(options: BuiltinOptions): Plugin[] {
   // way to learn that this surface has no answerer.
   plugins.push(askUserPlugin(options.askUser ?? {}));
   const workspace = options.workspace;
-  // Opt-in only: without a runner-side onChange callback the tool would
-  // validate a switch and then silently do nothing — worse than absent.
-  if (workspace !== undefined && workspace !== false) {
+  if (workspace !== undefined) {
     plugins.push(workspacePlugin(workspace));
   }
-  // The three `advanced` EXTENSION plugins (subagent / context / ptc) are NOT
-  // here: they load from their own packages by specifier (see `extensions.ts`),
-  // because they must be absentable — this file is the base roster.
+  // The optional PACKAGES (subagent / context / ptc) are NOT here: they load from
+  // their own packages by specifier (see `plugin-tree.ts`), because they must be
+  // absentable — this file is the in-process base tree.
   return plugins;
 }
