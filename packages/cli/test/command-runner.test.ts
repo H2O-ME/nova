@@ -10,7 +10,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AgentSession, AgentSurfaceUi, PtcMode } from '@nova-agent/core';
+import type { AgentSession, AgentSurfaceUi } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import { runAgentCommand, type CommandPorts } from '../src/command-runner.js';
 import type { ThemeName } from '../src/command-core.js';
@@ -22,7 +22,6 @@ interface Harness {
   runCommandCalls: Array<[string, string]>;
   cleared: number;
   exited: number;
-  mode(): PtcMode;
 }
 
 function harness(over: Partial<CommandPorts> & { ui?: Partial<AgentSurfaceUi> } = {}): Harness {
@@ -32,7 +31,6 @@ function harness(over: Partial<CommandPorts> & { ui?: Partial<AgentSurfaceUi> } 
   const state = {
     cleared: 0,
     exited: 0,
-    mode: 'native' as PtcMode,
     approval: 'read-only' as const,
     theme: 'dark' as ThemeName,
   };
@@ -57,7 +55,6 @@ function harness(over: Partial<CommandPorts> & { ui?: Partial<AgentSurfaceUi> } 
       },
     },
     host: { toolEntries: [], commandEntries: [] },
-    codeMode: () => state.mode,
     rootDir: () => '/work',
     newAgentSession: async () => ({ session: { id: 'sess_2', file: '/home/.nova/sessions/2026/09/19/sess_2.jsonl' } }) as unknown as AgentSession,
     // The live registry catalog + the one kernel runner: /compact 与 /goal
@@ -82,7 +79,6 @@ function harness(over: Partial<CommandPorts> & { ui?: Partial<AgentSurfaceUi> } 
     clear: () => {
       state.cleared += 1;
     },
-    modeHint: '（测试壳）',
     exit: () => {
       state.exited += 1;
     },
@@ -112,7 +108,6 @@ function harness(over: Partial<CommandPorts> & { ui?: Partial<AgentSurfaceUi> } 
     get exited() {
       return state.exited;
     },
-    mode: () => state.mode,
   } as Harness & { cleared: number; exited: number };
 }
 
@@ -120,7 +115,6 @@ describe('the shared command runner', () => {
   it('cycles the approval level on the kernel, not in the shell', async () => {
     const h = harness();
     expect(await runAgentCommand('/approvals', h.ports)).toBe('handled');
-    expect(h.mode()).toBe('native'); // untouched
     expect(h.lines.join('\n')).toContain('自动编辑');
   });
 
@@ -194,13 +188,18 @@ describe('the shared command runner', () => {
     expect(text).toContain('压缩上下文'); // /compact 行来自活目录，壳清单已不再持有
   });
 
-  it('exits through the shell, and reports mode with the shell’s own hint', async () => {
+  it('exits through the shell, and does not own /mode any more', async () => {
     const h = harness();
     expect(await runAgentCommand('/exit', h.ports)).toBe('exit');
     expect(h.exited).toBe(1);
 
+    // `/mode` is registered by the PTC plugin itself (`registerCommand`), so it
+    // travels with that row: the shell neither knows the mode vocabulary nor
+    // holds a copy of its three labels. A kernel whose live catalog does not
+    // list it gets the honest answer, not a mode report from a second source.
     await runAgentCommand('/mode', h.ports);
-    expect(h.lines.at(-1)).toContain('（测试壳）');
+    expect(h.lines.at(-1)).toContain('未知命令');
+    expect(h.runCommandCalls).toEqual([]);
   });
 
   it('names an unknown command instead of guessing', async () => {

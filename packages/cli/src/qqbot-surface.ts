@@ -1,60 +1,69 @@
 /**
- * qqbot 在 cli 侧的装配缝：凭据从哪读、surface 怎么包、web 桥怎么起。
+ * `nova qqbot` 的**认领行**：argv 的形状留在这里（必须同步可答），产品形态全在
+ * `@nova-agent/qqbot` 包里。
  *
- * qqbot 是一档扩展能力，实现在它自己的包里（cli 只经 `loadQqBot` 动态装载，
- * 包缺席即降级）；cli 在这里只做三件事：
+ * 通道不再由宿主拨号：它随那一行插件一起启停（行开才有 socket，行关即收走），
+ * 所以这个文件只剩四件事——认领 `qqbot` 这个子命令、把包里的 `qqbotSurface` 接上
+ * 唯一那段装配、两条**宿主才知道**的装配贡献（对端会话桶与按请求自动压缩），以及
+ * 在常驻之前**按 roster 说清通道为什么没起来**。
  *
- *  1. **凭据端口**：raw 文档的读法（`config-read` / `qqbot-credentials`）。
- *     「`{env:NAME}` 能不能兑现」是配置层的规则，不是那个包的规则，所以读法由
- *     宿主注入——同样一份端口喂给 surface 与 web 桥，两条路径的判定不可能分叉。
- *  2. **内置 surface 包装**：认领（`positional[0] === 'qqbot'`）与启动在 cli
- *     （claim 必须同步可答），产品形态（对端会话编排、启动前置）在包里。装配经
- *     `boot.kernel` 贡献通道插件 + 会话目录 + perRequestCompact，`afterBoot`
- *     回填内核并钉 `never` 策略（无人值守，确定性拒绝，与 exec 同款）。
- *  3. **web 集成**：`nova --web` 进程内的第二条入站通道（设置页保存后拨号），
- *     以及设置页「测试连接」的探针。
+ * 最后那件是本文件唯一一次点名一个插件 id，也是本仓唯一被允许点名 qqbot 的地方
+ * （`AGENTS.md` §4：认领判据必须同步可答，所以认领行住在 cli）。判定逻辑本身是通用的
+ * ——`plugin-report.ts` 按**行 id**读 roster 的 `error` / `state` / `enabled`，这里只把
+ * 「缺席 / 加载失败 / 关着 / 活着但没通道」翻成四句各带下一步动作的中文。把这些成因
+ * 合并成一句「请打开这一行」正是要被修掉的那个缺陷：已经照做过的操作者被叫去再做一遍，
+ * 而真实成因是模块加载失败。
  *
- * 包缺席的一切路径都以 `loadQqBot()` 的失败收场：`nova qqbot` 报「扩展不可用」，
- * web 侧整条缝降级（没有桥、没有插件行，原因挂到设置页的诊断面上）。
+ * 包仍是**动态边**：`@nova-agent/qqbot` 缺席时 cli 必须照常编译、照常起别的形态，
+ * 所以引用只有这一处 `await import()`，装载失败换一句点名「扩展不可用」的中文错误。
+ * 装载挂在 `boot.kernel` 而不是 `start`：启动前置跑在装配**之前**，缺包因此落在
+ * 一个**早于任何会话日志**的启动错误上。
+ *
+ * 而「行关着 / 行加载失败」这两种成因**只能**在装配后才问得出来（它要 roster），
+ * 所以它们留在 `start` 里拒绝——代价由宿主兜住：`surface-host.ts` 的 `runSurface`
+ * 在 `start` 抛错时拆掉内核，并在「这次新建的会话还空着」时把那条日志删掉
+ * （`discardRefusedBoot`）。于是拒绝照样不留垃圾会话。
  */
-import type { Kernel } from '@nova-agent/plugins';
-import type { Config } from './config.js';
-import { qqBotConfigProblem } from './config-read.js';
-import { resolvePaint } from './lines.js';
-import { loadQqBot, type QqBotBridgeLike, type QqBotCredentialPortLike, type QqBotSurfacePartsLike } from './qqbot-api.js';
-import { readQqBotCredentials } from './qqbot-credentials.js';
+import path from 'node:path';
+import { errMessage, sessionsRoot, type AgentSurface } from '@nova-agent/core';
+import { pluginRowState, type PluginRowState } from './plugin-report.js';
 import type { BuiltinSurface } from './surface-host.js';
 
-/** 包不读 `~/.nova/config.json`：凭据的两个读法由宿主注入（两条路径共用这一份）。 */
-export function qqbotCredentialPort(): QqBotCredentialPortLike {
-  return {
-    credentialsProblem: () => qqBotConfigProblem(),
-    readCredentials: () => readQqBotCredentials(),
-  };
+/** 这一行的 id，也是动态导入用的模块 spec（一个身份，一处定义）。 */
+const QQ_BOT_ROW_ID = '@nova-agent/qqbot';
+
+/** 包交给宿主的两个读数：surface 本身，以及「通道在不在」。 */
+interface QqBotModule {
+  readonly surface: AgentSurface;
+  /** 本进程此刻在跑的通道；行关着或凭据没填都是 undefined。 */
+  channel(): unknown;
 }
 
 /**
- * `nova qqbot` 的 surface 行：claim 在 cli（argv 形状，同步可答），产品形态在包。
+ * `nova qqbot` 的 surface 行。
  *
- * 包**迟装载**：注册表构建时只需要 claim，而包的装载是异步的；claimed 之后
- * `boot.kernel` 才真正 `createQqBotSurface(...).prepare()`——缺包时这条命令落在
- * 「扩展不可用」的启动错误上，而不是被别的 surface 悄悄接走。
- * @param config - 壳配置（`ui.theme` 决定 `[qqbot]` 行的调色板）。
+ * claim 同步可答（判据是 argv 形状本身），包的装载迟到 `boot.kernel`：注册表构建
+ * 时只需要 claim，而这条命令缺包时必须报「扩展不可用」，不能被 web / repl 悄悄接走。
  * @returns the built-in row the shell registers.
  */
-export function qqbotBuiltinSurface(config: Config): BuiltinSurface {
-  const paint = resolvePaint(config.ui?.theme ?? 'dark');
-  let parts: QqBotSurfacePartsLike | undefined;
+export function qqbotBuiltinSurface(): BuiltinSurface {
+  let loaded: QqBotModule | undefined;
 
-  async function ensureParts(): Promise<QqBotSurfacePartsLike> {
-    if (parts !== undefined) return parts;
-    const qqbot = await loadQqBot();
-    parts = qqbot.createQqBotSurface({
-      ...qqbotCredentialPort(),
-      // 包只交出一行原文；上色是编排方的呈现（`lines.ts` 的单源调色板）。
-      log: (line) => console.log(paint.dim(line)),
-    });
-    return parts;
+  /** 包（迟装载 + 记忆化；包缺席即一句可读的启动错误）。 */
+  async function qqbotModuleOf(): Promise<QqBotModule> {
+    if (loaded !== undefined) return loaded;
+    let module: Record<string, unknown>;
+    try {
+      module = (await import(QQ_BOT_ROW_ID)) as Record<string, unknown>;
+    } catch (err) {
+      throw new Error(`QQ 机器人扩展不可用（无法加载 ${QQ_BOT_ROW_ID}）：${errMessage(err)}`);
+    }
+    const surface = module['qqbotSurface'];
+    if (!isAgentSurface(surface)) {
+      throw new Error(`${QQ_BOT_ROW_ID} 没有导出 surface（qqbotSurface）：这个包与本版 cli 不匹配`);
+    }
+    loaded = { surface, channel: channelReader(module) };
+    return loaded;
   }
 
   return {
@@ -62,34 +71,88 @@ export function qqbotBuiltinSurface(config: Config): BuiltinSurface {
       name: 'qqbot',
       claim: (request) => request.flags.positional[0] === 'qqbot',
       start: async (runtime) => {
-        const loaded = await ensureParts();
-        await loaded.surface.start(runtime);
+        // 先问 roster，再问包：行层面的成因（没有 / 关着 / 加载失败）与「通道在不在」
+        // 无关，而包自己的 `start` 只会说一句「通道未启动」——那正是要换掉的提示。
+        // 这三句拒绝发生在装配之后（roster 只有装配完才有），所以宿主在 `start` 抛错时
+        // 负责收拾：`runSurface` 会拆内核并删掉这次留下的空会话日志（见文件头）。
+        const refusal = refusalFor(pluginRowState(runtime.kernel.roster(), QQ_BOT_ROW_ID));
+        if (refusal !== undefined) throw new Error(refusal);
+        const qqbot = await qqbotModuleOf();
+        // 行活着却仍没有通道，只剩一个通用成因：它自己的凭据没填（包在读不通的凭据上
+        // 不建通道，见 qqbot/src/plugin.ts）。这是**读**，不是启动通道：谁拨号永远只有
+        // fiber 一个答案。
+        if (qqbot.channel() === undefined) throw new Error(credentialRefusal());
+        await qqbot.surface.start(runtime);
       },
     },
     boot: {
-      kernel: async () => (await ensureParts()).prepare(),
-      afterBoot: (kernel) => {
-        const loaded = parts;
-        if (loaded === undefined) throw new Error('qqbot：装配前置未运行（boot.kernel 未产出 parts）');
-        loaded.attach(kernel);
-        // 无人值守：'never' 策略确定性拒绝（连询问器都不派发，exec 同款）。
-        kernel.permission.setPolicy('never');
+      kernel: async () => {
+        // 先装载：缺包要在这里失败，早于任何会话日志被创建。
+        await qqbotModuleOf();
+        return {
+          // 对端会话与交互会话隔离，归档到 sessionsRoot()/qqbot——包内的对端轮次
+          // 用同一个桶（它自己算的也是这一条路径）。
+          sessionDir: path.join(sessionsRoot(), 'qqbot'),
+          // 这一档一次跑完整个任务，自动压缩按请求门控（与 exec 同一条理由）。
+          perRequestCompact: true,
+        };
       },
     },
   };
 }
 
-/** `nova --web` 进程内的 QQ 桥：通道随进程活，设置页保存后经 seam 拨号。 */
-export async function startQqBotWebBridge(kernel: () => Kernel | undefined): Promise<QqBotBridgeLike> {
-  const qqbot = await loadQqBot();
-  return qqbot.startQqBotBridge(qqbotCredentialPort(), kernel);
+/**
+ * 四句拒绝，四种成因，四个下一步动作。
+ *
+ * 只有真的没有这一行、真的关着，才谈「去打开这一行」；加载失败的那一支**必须**贴出
+ * 该行的 `error` 并让人去修加载，因为「打开一行已经开着的行」不是一个动作。
+ * @param state - the row's state, read from the live roster by row id.
+ * @returns the refusal to show, or undefined when the row itself is loaded.
+ */
+function refusalFor(state: PluginRowState): string | undefined {
+  switch (state.kind) {
+    case 'active':
+      return undefined;
+    case 'absent':
+      return `QQ 机器人通道未启动：配置文件的 plugins.entries 里没有「${QQ_BOT_ROW_ID}」这一行，`
+        + '这个包不会因此被加载。请在插件管理里加上这一行'
+        + '（id 与包名同为 @nova-agent/qqbot，enabled: true），并在它的 config 里填写 appId 与 clientSecret。';
+    case 'off':
+      return `QQ 机器人通道未启动：「${QQ_BOT_ROW_ID}」这一行在 plugins.entries 里，但它是关着的`
+        + '（enabled: false）——关着的行不建 socket。请在插件管理里打开这一行。';
+    case 'failed':
+      return `QQ 机器人通道未启动：「${QQ_BOT_ROW_ID}」这一行开着，但它没能加载——${state.error}。`
+        + '这一行不是「没开」：请按上面的原因修好它的加载（模块装不上就重装或改这一行的 id，'
+        + 'config 校验失败就按点到的键改配置），通道才会起来。';
+  }
+}
+
+/** 行活着、模块也加载了，通道却不在：只剩下「凭据没填」这一个通用成因。 */
+function credentialRefusal(): string {
+  return `QQ 机器人通道未启动：「${QQ_BOT_ROW_ID}」这一行已打开且加载成功，但通道没有起来`
+    + '——它的 config 里 appId / clientSecret 还没填，或引用的 {env:NAME} 没有设置。'
+    + '请在它的插件设置页里填好凭据并用「测试连接」验证：凭据被网关拒绝时，答复也在那一页上。';
 }
 
 /**
- * 设置页「测试连接」：拿操作者刚敲的凭据走一次真实往返（token + gateway）。
+ * 包自己的通道读数（`runningQqBotChannel`）。
  *
- * 独立于桥存在与否：桥建不起来（包缺席）时这里也会抛，设置页把原因当答复显示。
+ * 缺这个导出＝这个包与本版 cli 不匹配，与缺 `qqbotSurface` 是同一类事实，所以在这里
+ * 点名拒绝，而不是把「问不到」悄悄当成「没有通道」——那会把一句不匹配说成「凭据没填」。
+ * @param module - the loaded package namespace.
+ * @returns a reader for the process's live channel.
  */
-export async function testQqBotConnection(opts: { appId: string; clientSecret: string }): Promise<string> {
-  return (await loadQqBot()).testQqBotConnection(opts);
+function channelReader(module: Record<string, unknown>): () => unknown {
+  const read = module['runningQqBotChannel'];
+  if (typeof read !== 'function') {
+    throw new Error(`${QQ_BOT_ROW_ID} 没有导出 runningQqBotChannel：这个包与本版 cli 不匹配`);
+  }
+  return () => (read as () => unknown)();
+}
+
+/** 包导出的东西必须是 surface 契约面（`{ name, claim, start }` 三件齐备）。 */
+function isAgentSurface(value: unknown): value is AgentSurface {
+  if (typeof value !== 'object' || value === null) return false;
+  const shape = value as { name?: unknown; claim?: unknown; start?: unknown };
+  return typeof shape.name === 'string' && typeof shape.claim === 'function' && typeof shape.start === 'function';
 }

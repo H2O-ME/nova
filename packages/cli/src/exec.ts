@@ -4,6 +4,7 @@ import {
   type KernelEvent,
 } from '@nova-agent/core';
 import { createNotifier } from './notify.js';
+import { failedPluginLines } from './plugin-report.js';
 import {
   emptyCompletionNotice,
   plainPaint,
@@ -65,6 +66,13 @@ export async function runExec(runtime: AgentSurfaceRuntime, config: Config, opts
     startedAt: Date.now(),
     exitCode: 0,
   };
+
+  // 失败行不阻断这一次执行，但绝不静默：`--json` 面用既有的 `notice` 控制行（消费者
+  // 已经认识的那一类），人类面同一句话走在任务回显之前。一行一个、点名 id + 原因，
+  // 不合并也不只报第一个——启动横幅里它们本来只是无声缺席（缺陷 A）。
+  for (const line of failedPluginLines(kernel.roster())) {
+    emitControl(ctx, { type: 'notice', text: line });
+  }
 
   // SIGINT unwinds gracefully: the kernel aborts fail-closed (pending
   // approvals deny, the abandoned turn's log is repaired before run_failed),

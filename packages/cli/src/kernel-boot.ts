@@ -13,7 +13,7 @@ import {
   type CreateKernelOptions,
   type Kernel,
 } from '@nova-agent/plugins';
-import type { ChatProvider, ModelCatalogPort, Plugin, SurfaceRows } from '@nova-agent/core';
+import type { ChatProvider, ModelCatalogPort, PluginEntryOptions, SurfaceRows } from '@nova-agent/core';
 import type { Config } from './config.js';
 import { createProvider, configuredModel, toKernelConfig } from './kernel-config.js';
 
@@ -30,8 +30,8 @@ export interface BootOptions {
   sessionDir?: string;
   /** 单次执行形态：整个任务一次 run，自动压缩按请求门控（exec/qqbot）。 */
   perRequestCompact?: boolean;
-  /** surface 自带插件（qqbot 的 send 工具）。 */
-  extraPlugins?: Plugin[];
+  /** The surface's own plugin rows (each carrying the id its config uses). */
+  extraPlugins?: readonly PluginEntryOptions[];
   /**
    * Configured surfaces already loaded (by `loadDynamicSurfaces`), forwarded so
    * the kernel adopts them as ordinary plugin rows — a configured surface shows
@@ -48,7 +48,7 @@ export interface BootOptions {
    * 设置页开关的写回器（web 面用）。原样透传：写的是操作者的配置文件，
    * 所以只有掌握该文件的界面才会提供。
    */
-  persistConfig?: CreateKernelOptions['persistConfig'];
+  persist?: CreateKernelOptions['persist'];
   /** 模型侧 `switch_workspace` 入口；不给就不注册该工具。由 `buildSurfaceRuntime` 以 holder 包裹后传入。 */
   workspace?: { onChange: (dir: string) => void | Promise<void> };
   /**
@@ -77,9 +77,14 @@ export async function bootKernel(opts: BootOptions): Promise<Kernel> {
     ...(opts.sessionDir !== undefined ? { sessionDir: opts.sessionDir } : {}),
     ...(opts.perRequestCompact !== undefined ? { perRequestCompact: opts.perRequestCompact } : {}),
     ...(opts.extraPlugins !== undefined ? { extraPlugins: opts.extraPlugins } : {}),
+    // The anchor for bare module specs: the app's OWN module URL, never the
+    // resolver library's. A row may name a package this product ships, and those
+    // are siblings of this executable (`@nova-agent/qqbot` is a cli dependency,
+    // not a plugins one) — see plugins/src/module-spec.ts.
+    appModulesUrl: import.meta.url,
     ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),
     ...(opts.modelCatalog !== undefined ? { modelCatalog: opts.modelCatalog } : {}),
-    ...(opts.persistConfig !== undefined ? { persistConfig: opts.persistConfig } : {}),
+    ...(opts.persist !== undefined ? { persist: opts.persist } : {}),
     ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
     ...(opts.userQuestions !== undefined ? { userQuestions: opts.userQuestions } : {}),
   });

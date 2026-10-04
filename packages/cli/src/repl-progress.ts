@@ -32,12 +32,12 @@ export class ReplProgress {
   private progressTail = '';
   private progressLive = false;
   /**
-   * 最近一次前台 `subagent` 父调用 id：只有它绑定期间子代理进度才成行
-   * （其他父工具的嵌套调用——如 PTC run_code 派发 read_file——不得借道
+   * 在飞的那次前台工具调用的 id：只有它进行期间嵌套进度才成行
+   * （父调用之外到达的进度——比如派发队列里别的调用的子代理——不得借道
    * 显形）。tool_call_start 钉上、tool_call_result 解除；标签会重复，
    * 调用 id 不会。
    */
-  private subagentCallId: string | undefined;
+  private nestedCallId: string | undefined;
 
   constructor(private readonly deps: ReplProgressDeps) {}
 
@@ -73,11 +73,15 @@ export class ReplProgress {
     this.reasoningLive = true;
   }
 
-  /** 工具调用开始：擦推理行尾、停表、清输出尾、重绑子代理门闩。 */
-  onToolCallStart(name: string, callId: string): void {
+  /** 工具调用开始：擦推理行尾、停表、清输出尾、重绑嵌套进度门闩。 */
+  onToolCallStart(_name: string, callId: string): void {
     this.beforeRow();
     this.progressTail = '';
-    this.subagentCallId = name === 'subagent' ? callId : undefined;
+    // 门闩绑在**在飞的那次调用**上，不绑在工具名上：嵌套进度（子代理、以及任何
+    // 插件工具自己派发的进度）只在该调用进行期间落行，调用一结束就静默。按工具名
+    // 判定会让「哪个插件会派发嵌套进度」成为宿主的硬编码知识——第三方插件注册一个
+    // 会开子代理的工具时，它的进度就会被静默丢掉，而宿主连它叫什么都不该知道。
+    this.nestedCallId = callId;
   }
 
   /** bash 实时输出尾行：与推理行同一契约（单物理行、clearLine 可擦）。 */
@@ -92,16 +96,16 @@ export class ReplProgress {
     this.progressLive = true;
   }
 
-  /** 工具调用结束：擦输出尾行、解除子代理门闩。 */
+  /** 工具调用结束：擦输出尾行、解除嵌套进度门闩。 */
   onToolCallEnd(): void {
     this.clearProgress();
-    this.subagentCallId = undefined;
+    this.nestedCallId = undefined;
   }
 
-  /** 嵌套子代理进度：一次生命周期一行暗色（门闩未绑定期整体静默）。 */
+  /** 嵌套进度（子代理等）：一次生命周期一行暗色（门闩未绑定期整体静默）。 */
   onSubagentProgress(progress: SubagentProgress): void {
     const { useColor, paint, writeln } = this.deps;
-    if (!useColor || this.subagentCallId === undefined) return;
+    if (!useColor || this.nestedCallId === undefined) return;
     if (progress.type === 'start') {
       writeln(paint().dim(`  ◈ 子代理 ${progress.label} 启动…`));
     } else if (progress.type === 'tool_call') {

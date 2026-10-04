@@ -6,11 +6,16 @@
  * 这里只是配置面的降维与构造，读者与失败模式都不同——配置降维漏字段是「静默少
  * 传」，装配写错是「surface 之间不一致」。
  *
+ * **降维现在是直通**：插件的开关与设置就是内核读的那一份（`plugins.entries`），
+ * 所以这里没有「把 A 字段翻译成 B 名单」的投影，也就没有投影漂移的地方。曾经这里
+ * 做三件事——把 `tools.code.mode` 折算成 `ptc` 的录取、把 `qqbot` 块折算成 `qqbot`
+ * 的录取、再让这些推导去和 `plugins.disable` 较劲——那三处正是「关掉的插件自己复活」
+ * 的来源。
+ *
  * 会话亲和不在这里绑定：内核的 `llm` 服务在会话建立时绑定（/new、会话切换、
- * qqbot 对端切换同一通道）。
+ * 对端切换同一通道）。
  */
 import { OpenAICompatClient } from '@nova-agent/ai';
-import { impliedOptIns } from '@nova-agent/plugins';
 import type { ApprovalMode, KernelConfig } from '@nova-agent/plugins';
 import type { Config } from './config.js';
 import { NO_PROVIDER_MESSAGE, resolveProvider } from './provider-store.js';
@@ -28,52 +33,7 @@ export function toKernelConfig(config: Config, approvalOverride?: ApprovalMode):
   if (config.maxTurns !== undefined) kernel.maxTurns = config.maxTurns;
   if (config.autoCompactTokenLimit !== undefined) kernel.autoCompactTokenLimit = config.autoCompactTokenLimit;
   if (config.projectDocMaxTokens !== undefined) kernel.projectDocMaxTokens = config.projectDocMaxTokens;
-  const bash = config.tools?.bash;
-  if (bash !== undefined) {
-    kernel.bash =
-      bash.enabled === false
-        ? false
-        : {
-            ...(bash.timeoutMs !== undefined ? { timeoutMs: bash.timeoutMs } : {}),
-            ...(bash.shellPath !== undefined ? { shellPath: bash.shellPath } : {}),
-          };
-  }
-  const disable = config.plugins?.disable ?? [];
-  const code = config.tools?.code;
-  // A non-`native` code mode IS a second opt-in for `ptc` (see `implied` below), so
-  // `mode: "ptc"` next to `plugins.disable: ["ptc"]` asks for two things at once.
-  // The off-switch wins and this PROJECTION follows it: the kernel never runs a mode
-  // whose plugin was switched off, so the mode selector and the tool surface read one
-  // fact. The file keeps the operator's own `mode` — what the row returns to when
-  // they switch it back on. (`runtime-switch.ts` holds the live half of this rule.)
-  if (code !== undefined) {
-    kernel.code =
-      code.mode !== undefined && code.mode !== 'native' && disable.includes('ptc')
-        ? { ...code, mode: 'native' }
-        : code;
-  }
-  // `enable` is DERIVED as well as passed through, so a config written before the
-  // field existed keeps behaving exactly as it did: a non-`native` code mode IS the
-  // operator asking for `ptc`, and a `qqbot` block IS an opted-in channel (both
-  // `advanced`, off by default — without the derivation an existing config would
-  // silently stop starting them on upgrade). Pure derivation, never a write-back:
-  // the file stays the operator's own document. `workspace` is deliberately NOT
-  // derived: it ships on, so an entry here could never change an outcome. Every
-  // derived name yields to an explicit `disable` entry (`impliedOptIns`) — a second
-  // door that outvotes the switch is what makes a closed plugin reopen by itself.
-  const implied = impliedOptIns(
-    [
-      ...(code?.mode !== undefined && code.mode !== 'native' ? ['ptc'] : []),
-      ...(config.qqbot !== undefined ? ['qqbot'] : []),
-    ],
-    disable,
-  );
-  if (config.plugins !== undefined || implied.length > 0) {
-    // The operator's own list is passed through and the derived names are merged
-    // INTO it — replacing it would drop a `plugins.enable` entry.
-    const enable = [...new Set([...(config.plugins?.enable ?? []), ...implied])];
-    kernel.plugins = { ...config.plugins, ...(implied.length > 0 ? { enable } : {}) };
-  }
+  if (config.plugins !== undefined) kernel.plugins = { entries: config.plugins.entries ?? [] };
   if (config.skills?.disable !== undefined) kernel.skillsDisable = config.skills.disable;
   return kernel;
 }

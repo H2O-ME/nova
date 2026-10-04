@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createModelListCache, mergedCommandSpecs, modeOverviewRows, COMMAND_SPECS } from '../src/commands.js';
+import { createModelListCache, mergedCommandSpecs, COMMAND_SPECS } from '../src/commands.js';
 import { parseApprovalAnswer } from '../src/repl.js';
 import {
   agentsMdWrittenLine,
@@ -59,25 +59,6 @@ describe('createModelListCache', () => {
     await cached();
     await cached();
     expect(calls).toBe(2);
-  });
-});
-
-describe('modeOverviewRows', () => {
-  // /mode 曾在命令目录里声明却没被 readline 实现接住（落「未知命令」）——
-  // 行构造收进 commands.ts 后，此用例钉住三态行语义。
-  it('marks exactly the current mode and renders all three hints', () => {
-    const rows = modeOverviewRows('ptc');
-    expect(rows.map((r) => r.current)).toEqual([false, true, false]);
-    expect(rows[0]!.text).toContain('普通');
-    expect(rows[1]!.text).toContain('❯');
-    expect(rows[1]!.text).toContain('PTC');
-    expect(rows[2]!.text).toContain('run_code 与原生调用并存');
-  });
-
-  it('defaults marker to native when asked', () => {
-    const rows = modeOverviewRows('native');
-    expect(rows[0]!.current).toBe(true);
-    expect(rows[0]!.text).toContain('❯');
   });
 });
 

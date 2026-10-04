@@ -11,7 +11,7 @@ import {
   type ApprovalMode,
   type SkillMetadata,
 } from '@nova-agent/plugins';
-import { APPROVAL_ORDER, approvalLabel, padDisplay } from './lines.js';
+import { APPROVAL_ORDER, approvalLabel, oneLineText, padDisplay } from './lines.js';
 
 /** /approvals：循环切换到下一档位（只读 → 自动编辑 → 全部放行 → 只读…）。 */
 export function nextApprovalMode(current: ApprovalMode): ApprovalMode {
@@ -117,12 +117,12 @@ export function pluginReportLines(opts: {
   tools: { plugin: string; name: string; permission: string }[];
   commands: { plugin: string; name: string; description: string }[];
   /**
-   * The live roster (name / state / declared deps) — what actually loaded.
-   * Without it `/plugins` could only show registered tools, so a plugin that
-   * failed to activate (or one whose provider is missing) was invisible: the
-   * exact thing you open this command to find out.
+   * The live roster (name / state / declared deps / failure reason) — what
+   * actually loaded. Without it `/plugins` could only show registered tools, so a
+   * plugin that failed to activate (or one whose provider is missing) was
+   * invisible: the exact thing you open this command to find out.
    */
-  roster?: readonly { name: string; state: string; inject: readonly string[] }[];
+  roster?: readonly { name: string; state: string; inject: readonly string[]; error?: string }[];
 }): string[] {
   return [
     `审批档位：${approvalLabel(opts.approvalMode)}${opts.override ? '（来自 --approval）' : ''}`,
@@ -138,14 +138,35 @@ export function pluginReportLines(opts: {
   ];
 }
 
-/** One roster row: name, state, and what it declared it needs. */
+/**
+ * One roster row: name, state, what it declared it needs, and — for a row that
+ * failed — WHY.
+ *
+ * The reason was the missing half: the roster entry has carried `error` all
+ * along, but this line dropped it, so `/plugins` showed a bare `failed` with no
+ * way to act on it. A disabled row must NOT show a reason (it has none, and a
+ * healthy row that is simply off has nothing to explain), so the suffix is
+ * driven by the data — `error` present, or a `failed` state that owes an answer.
+ *
+ * The text is sanitized (`oneLineText`): a module or config error is plugin-side
+ * data, and a `\r` or an ANSI sequence in it must not be able to rewrite the
+ * terminal state around this report.
+ */
 export function pluginRosterLine(entry: {
   name: string;
   state: string;
   inject: readonly string[];
+  error?: string;
 }): string {
-  const deps = entry.inject.length > 0 ? ` ◂ ${entry.inject.join(', ')}` : '';
-  return `${padDisplay(entry.name, 18)}${entry.state}${deps}`;
+  const deps = entry.inject.length > 0 ? ` ◂ ${entry.inject.map(oneLineText).join(', ')}` : '';
+  const reason =
+    entry.error !== undefined && entry.error.length > 0
+      ? oneLineText(entry.error)
+      : entry.state === 'failed'
+        ? '（没有提供原因）'
+        : undefined;
+  const why = reason === undefined ? '' : ` — ${reason}`;
+  return `${padDisplay(oneLineText(entry.name), 18)}${entry.state}${deps}${why}`;
 }
 export function modelListError(err: unknown): string {
   return `模型列表获取失败：${errMessage(err)}`;

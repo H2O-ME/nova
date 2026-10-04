@@ -135,8 +135,8 @@ describe('ReplProgress bash 输出尾行', () => {
   });
 });
 
-describe('ReplProgress 子代理门闩', () => {
-  it('未绑定 subagent 调用时进度静默；绑定后每次生命周期一行暗色', () => {
+describe('ReplProgress 嵌套进度门闩', () => {
+  it('未绑定调用时进度静默；绑定后每次生命周期一行暗色', () => {
     const { prog, logged } = makeFix();
     prog.onSubagentProgress({ type: 'start', label: 'scout' } as SubagentProgress);
     expect(logged).toEqual([]);
@@ -153,15 +153,17 @@ describe('ReplProgress 子代理门闩', () => {
     expect(logged[1]).toContain('scout › read_file');
     expect(logged[2]).toMatch(/scout 完成 · 3 轮 · 2 工具 · 140 tok · 1\.5s/);
   });
-  it('其他工具的嵌套调用不借道显形；tool_call_end 解除门闩', () => {
+
+  it('门闩认的是「有没有调用在飞」，不是工具名——第三方工具派发的进度一视同仁', () => {
+    // 宿主不该知道哪个插件会开子代理：按工具名判定就等于把「subagent」写死进
+    // cli，某个第三方插件注册了会派发嵌套进度的工具时会被静默丢掉。
     const { prog, logged } = makeFix();
-    prog.onToolCallStart('run_code', 'call-1');
+    prog.onToolCallStart('some-plugin-tool', 'call-1');
     prog.onSubagentProgress({ type: 'start', label: 'x' } as SubagentProgress);
-    expect(logged).toEqual([]);
-    prog.onToolCallStart('subagent', 'call-2');
+    expect(logged).toHaveLength(1);
     prog.onToolCallEnd();
     prog.onSubagentProgress({ type: 'start', label: 'x' } as SubagentProgress);
-    expect(logged).toEqual([]);
+    expect(logged).toHaveLength(1);
   });
 });
 

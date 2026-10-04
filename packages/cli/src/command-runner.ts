@@ -30,8 +30,8 @@ import {
   themeUnknownMessage,
   unknownCommandParts,
 } from './command-core.js';
-import { mergedCommandSpecs, modeOverviewRows } from './commands.js';
-import { codeModeLabel, permissionLabel } from './lines.js';
+import { mergedCommandSpecs } from './commands.js';
+import { permissionLabel } from './lines.js';
 
 /**
  * What the runner needs beyond the surface: the kernel, the two host-side
@@ -40,10 +40,9 @@ import { codeModeLabel, permissionLabel } from './lines.js';
  * `AgentSurfaceUi` and nothing else.
  *
  * This used to be a parallel interface re-declaring the Ui members
- * (`note` / `clear` / `theme` / `pickModel` / `bindSession` / `modeHint` /
- * `exit`) beside it — the audit's "hand-copied second shape". Now there is ONE
- * presentation contract: the runner speaks `AgentSurfaceUi`, every surface
- * implements it.
+ * (`note` / `clear` / `theme` / `pickModel` / `bindSession` / `exit`) beside
+ * it — the audit's "hand-copied second shape". Now there is ONE presentation
+ * contract: the runner speaks `AgentSurfaceUi`, every surface implements it.
  */
 export interface CommandPorts {
   kernel: Kernel;
@@ -122,16 +121,6 @@ export async function runAgentCommand(input: string, ports: CommandPorts): Promi
       ports.ui.note(approvalSwitchLine(next));
       return 'handled';
     }
-    case '/mode': {
-      const mode = ports.kernel.codeMode();
-      ports.ui.note(
-        [
-          `执行模式：${codeModeLabel(mode)}${ports.ui.modeHint}`,
-          ...modeOverviewRows(mode).map((row) => `  ${row.text}`),
-        ].join('\n'),
-      );
-      return 'handled';
-    }
     case '/clear':
       ports.ui.clear();
       return 'handled';
@@ -155,6 +144,16 @@ export async function runAgentCommand(input: string, ports: CommandPorts): Promi
     }
   }
 }
+
+/**
+ * `/mode` is NOT here: the execution mode is the PTC plugin's own vocabulary,
+ * so the command that explains it is registered by that plugin and travels with
+ * its row (`registerCommand`). The host used to own it — a `codeModeInForce()`
+ * that looked the plugin up by name plus a copy of the three mode labels in
+ * `lines.ts` — which meant the host had to be edited every time a plugin's
+ * vocabulary changed. There is nothing left to keep in sync: this file never
+ * learns what a code mode is.
+ */
 
 /** `/new`: the kernel builds the log and re-points current; the shell follows. */
 async function newSession(ports: CommandPorts): Promise<CommandResult> {

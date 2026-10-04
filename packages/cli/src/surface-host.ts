@@ -21,7 +21,7 @@ import type {
   AgentSurfaceUi,
   ChatProvider,
   ModelCatalogPort,
-  Plugin,
+  PluginEntryOptions,
   SurfaceRows,
 } from '@nova-agent/core';
 import type { CreateKernelOptions, Kernel } from '@nova-agent/plugins';
@@ -31,6 +31,7 @@ import { mergedCommandSpecs, createModelListCache } from './commands.js';
 import type { Config, ConfigDiagnostic } from './config.js';
 import { bootKernel, createProvider } from './kernel-boot.js';
 import { createModelMetaStore } from './model-meta.js';
+import { discardRefusedBoot } from './surface-teardown.js';
 
 /** The resolved invocation the shell assembles for: everything but "who claims it". */
 export interface SurfaceRequest {
@@ -52,8 +53,8 @@ export interface SurfaceRequest {
 /**
  * What a BUILT-IN surface contributes to the one assembly, beyond the shared
  * options: extra kernel options (`exec`'s per-request compaction, `qqbot`'s
- * channel plugin + session bucket, web's model catalog + config writers) and
- * post-assembly adjustments (unattended policy).
+ * session bucket, web's model catalog + config writer) and post-assembly
+ * adjustments (unattended policy).
  *
  * Configured surfaces contribute nothing: their runtime is the shared one, and
  * the contract stays free of cli-side boot knobs. Deliberately an explicit
@@ -70,11 +71,12 @@ export interface SurfaceBoot {
 /** The kernel options a built-in may contribute (a reviewed subset). */
 export interface SurfaceKernelContribution {
   provider?: ChatProvider;
-  extraPlugins?: readonly Plugin[];
+  /** Rows the surface brings, each carrying the id its config uses. */
+  extraPlugins?: readonly PluginEntryOptions[];
   sessionDir?: string;
   perRequestCompact?: boolean;
   modelCatalog?: ModelCatalogPort;
-  persistConfig?: CreateKernelOptions['persistConfig'];
+  persist?: CreateKernelOptions['persist'];
 }
 
 /** A built-in surface plus the shell-side facts only the shell knows about it. */
@@ -92,9 +94,23 @@ export async function runSurface(
 ): Promise<void> {
   const runtime = await buildSurfaceRuntime(surface, m, argv, boot);
   // The surface owns its teardown (`app.stop()` before kernel/jobs dispose); the
-  // host stops here once `start` resolves.
-  await surface.start(runtime);
+  // host stops here once `start` resolves. A surface that REFUSES the invocation
+  // throws instead, and the host is then the one that has to undo the boot: the
+  // assembly opened a session on its way here, and "I will not run" must not
+  // leave that session behind (see `discardRefusedBoot`).
+  try {
+    await surface.start(runtime);
+  } catch (err) {
+    await discardRefusedBoot(runtime.kernel, m.parsed.resumeFile);
+    throw err;
+  }
 }
+
+/**
+ * Undo a boot that ended in a refusal — the mirror of the assembly, and the
+ * reason a surface saying no leaves no blank session behind. See
+ * `surface-teardown.ts`, which owns that job and the reasoning for it.
+ */
 
 export async function buildSurfaceRuntime(
   surface: AgentSurface,
@@ -120,7 +136,7 @@ export async function buildSurfaceRuntime(
     ...(contributed.sessionDir !== undefined ? { sessionDir: contributed.sessionDir } : {}),
     ...(contributed.extraPlugins !== undefined ? { extraPlugins: [...contributed.extraPlugins] } : {}),
     ...(contributed.modelCatalog !== undefined ? { modelCatalog: contributed.modelCatalog } : {}),
-    ...(contributed.persistConfig !== undefined ? { persistConfig: contributed.persistConfig } : {}),
+    ...(contributed.persist !== undefined ? { persist: contributed.persist } : {}),
     ...(m.surfaces !== undefined ? { surfaces: m.surfaces } : {}),
     // Fail-closed by default; the registry's recorded winner is the ONE source
     // (see `runtime-env.ts`'s provider) — this value only covers a caller that

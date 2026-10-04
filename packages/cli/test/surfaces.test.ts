@@ -5,15 +5,20 @@
  * provider has a single source for built-ins and configured surfaces alike.
  *
  * Pure — no surface is started; the fake `custom` stands where a
- * `~/.nova/config.json` `surfaces` row would sit.
+ * `~/.nova/config.json` `surfaces` row would sit. The last case goes through the
+ * real `loadDynamicSurfaces` with a real row module on disk, because THAT is the
+ * seam where a closed row must stop claiming.
  */
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AgentSurface, AgentSurfaceRequest } from '@nova-agent/core';
+import type { AgentSurface, AgentSurfaceRequest, SurfaceRows } from '@nova-agent/core';
 import { createSurfaceRegistry } from '@nova-agent/plugins';
 import { parseArgs } from '../src/cli-args.js';
 import type { Config } from '../src/config.js';
 import { toFlags } from '../src/surface-host.js';
-import { builtinSurfaces } from '../src/surfaces.js';
+import { builtinSurfaces, loadDynamicSurfaces } from '../src/surfaces.js';
 
 const config = { provider: { baseURL: 'https://x/v1', apiKey: 'k', model: 'm' } } as unknown as Config;
 
@@ -137,5 +142,62 @@ describe('the registry records the winner for every kind of surface', () => {
   it('leaves current() undefined before any resolve (fail-closed)', () => {
     const registry = createSurfaceRegistry();
     expect(registry.current()).toBeUndefined();
+  });
+});
+
+/**
+ * The shell's own wiring (`cli/index.ts`): `head` → the configured rows (loaded
+ * from a real module spec) → `tail`, into ONE registry.
+ */
+async function wireConfigured(
+  cfg: Config,
+  cwd: string,
+): Promise<{ registry: ReturnType<typeof createSurfaceRegistry>; rows: SurfaceRows }> {
+  const registry = createSurfaceRegistry();
+  const builtins = builtinSurfaces({ config: cfg, diagnostics: [] });
+  for (const entry of builtins.head) registry.register(entry.surface);
+  const rows = await loadDynamicSurfaces(cfg, cwd, registry);
+  for (const entry of builtins.tail) registry.register(entry.surface);
+  return { registry, rows };
+}
+
+describe('a closed surface row stops claiming, but keeps its place on the panel', () => {
+  it('leaves a closed row out of the registry while `loaded` still carries it, and lists an open row once', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-cli-surface-'));
+    const file = path.join(dir, 'surf-x.mjs');
+    await writeFile(
+      file,
+      `export default {
+  name: 'surf-x',
+  interactive: true,
+  claim: (request) => request.flags.web === true && request.interactive === true,
+  start: async () => {},
+};
+`,
+      'utf8',
+    );
+    // The settings panel's switch is exactly this row in `plugins.entries`,
+    // keyed by the surface's own name — the id the roster builds for it.
+    const closed = { ...config, surfaces: [file], plugins: { entries: [{ id: 'surf-x', enabled: false }] } } as unknown as Config;
+    const off = await wireConfigured(closed, dir);
+    // R3: the row survives for the panel — deleting it from `loaded` would hide
+    // the very switch that turns it back on.
+    expect(off.rows.loaded.map((surface) => surface.name)).toEqual(['surf-x']);
+    // R1: it is not in the registry, so it cannot claim (and `start()` cannot
+    // run): `--web` falls through to the built-in default instead.
+    expect(off.registry.all().map((entry) => entry.name)).not.toContain('surf-x');
+    expect(off.registry.resolve(request('--web', true))?.name).toBe('web');
+
+    const open = { ...config, surfaces: [file], plugins: { entries: [{ id: 'surf-x' }] } } as unknown as Config;
+    const on = await wireConfigured(open, dir);
+    const surface = on.rows.loaded[0];
+    expect(surface).toBeDefined();
+    expect(on.registry.resolve(request('--web', true))?.name).toBe('surf-x');
+    // R4: the row's own fiber registers the SAME instance again when it
+    // activates; one surface must stay one list entry, and `resolve` must keep
+    // picking a surface (not a hole).
+    on.registry.register(surface as AgentSurface);
+    expect(on.registry.all().filter((entry) => entry.name === 'surf-x')).toHaveLength(1);
+    expect(on.registry.resolve(request('--web', true))?.name).toBe('surf-x');
   });
 });

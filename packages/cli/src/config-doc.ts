@@ -119,8 +119,8 @@ export function sortedUnique(names: readonly string[]): string[] {
 /**
  * The named string-list member, created (and normalized) in place. A non-array
  * value is replaced by an empty list rather than trusted: this is the only
- * place a `plugins.disable` / `skills.disable` entry is born, so it must not
- * carry a hand-edited non-list forward.
+ * place a `skills.disable` entry is born, so it must not carry a hand-edited
+ * non-list forward.
  * @param obj - the object owning the list.
  * @param key - the list's key.
  * @returns the live array to mutate.

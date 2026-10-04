@@ -1,19 +1,36 @@
 /**
- * Surgical persistence for the config fields a running surface may change:
- * the model seat (`provider.model`) and the settings panel's management seats
- * (`plugins.disable`, `skills.disable`, `qqbot`).
+ * Surgical persistence for the config fields a running surface may change: the
+ * model seat (`provider.model`), one plugin ROW (`plugins.entries`), one skill
+ * (`skills.disable`).
  *
  * WHAT to change lives here; HOW a change is made safely (raw-document
  * read-modify-write, atomic replace, abort-on-unparseable) lives in
  * `config-doc.ts`. Every writer below goes through that one patcher, so the
  * "never leak a secret reference" property has a single test target.
  *
+ * ## One row, one writer
+ *
+ * A plugin row is addressed by its ID and patched field-by-field, so this file
+ * needs to know nothing about any plugin: the panel says "row X is off" or "row
+ * X's config is this object", and the shape inside `config` belongs to the
+ * plugin whose schema validates it. That is what lets a third-party plugin keep
+ * settings without a host change — the previous design had a named writer per
+ * first-party plugin (`saveQqBotConfig`), which is exactly the "adding a plugin
+ * means editing the host" defect.
+ *
  * One invariant is local to this file: strings the operator typed into a text
  * field are stored VERBATIM — even an `{env:NAME}`-shaped value — because the
- * LOAD path expands references. Writing such a string wants
- * `qqbot.clientSecret` to mean "read this variable", not to embed a literal.
+ * LOAD path expands references. Writing such a string wants `clientSecret` to
+ * mean "read this variable", not to embed a literal.
  */
-import { docFile, ensureList, patchConfig, plainMember, sortedUnique } from './config-doc.js';
+import { docFile, ensureList, patchConfig, plainMember, readDoc, sortedUnique } from './config-doc.js';
+
+/** One plugin row as the durable document stores it. */
+interface StoredEntry {
+  id: string;
+  enabled?: boolean;
+  config?: unknown;
+}
 
 /**
  * Rewrite `provider.model` atomically, preserving every other field and
@@ -36,123 +53,136 @@ export async function saveModelChoice(model: string, homedir?: string): Promise<
 }
 
 /**
- * Set the enabled state of one plugin (`plugins.disable`). Enabling removes the
- * name; disabling adds it. The list is kept sorted and de-duplicated so the file
- * stays readable after repeated panel toggles. A missing `plugins` object is
- * created; an existing `extra` array is never touched.
- * @param name - the plugin's roster name.
- * @param enabled - whether it should load.
+ * Upsert one plugin ROW: its `enabled` switch and/or its own `config` object.
+ *
+ * A field left absent is left AS STORED, so the two writers (the switch and a
+ * plugin's own settings page) never blank each other's work. A row whose only
+ * content would be the default is dropped entirely rather than persisted as
+ * noise: "no entry" and "an entry with nothing to say" mean the same thing, and
+ * the first keeps a hand-written file readable.
+ *
+ * `config` is merged ONE KEY AT A TIME. A settings form submits the fields it
+ * owns; everything else in the row survives — which is what keeps a
+ * `{env:NAME}` reference the operator wrote from being replaced by the expanded
+ * secret the plugin was applied with (the form left that field alone, so the raw
+ * text stays). A key whose value is `null` is REMOVED: that is how a form clears
+ * an optional field, since omitting it means "leave it".
+ *
+ * @param id - the row's id (a built-in's name or a module specifier).
+ * @param patch - the fields to write; an absent field is left as stored.
  * @param homedir - Override for tests; defaults to the real home.
- * @returns the disable list now in force.
  */
-export async function setPluginEnabled(name: string, enabled: boolean, homedir?: string): Promise<readonly string[]> {
-  return flipSwitch('plugins', name, enabled, homedir);
+export async function setPluginEntry(
+  id: string,
+  patch: { enabled?: boolean; config?: unknown },
+  homedir?: string,
+): Promise<void> {
+  await patchConfig((doc) => {
+    const owner = plainMember(doc, 'plugins') ?? (() => {
+      const created: Record<string, unknown> = {};
+      doc['plugins'] = created;
+      return created;
+    })();
+    const entries = ensureEntries(owner);
+    let row = entries.find((candidate) => candidate.id === id);
+    if (row === undefined) {
+      row = { id };
+      entries.push(row);
+    }
+    if (patch.enabled !== undefined) row.enabled = patch.enabled;
+    if (patch.config !== undefined) row.config = mergeConfig(row.config, patch.config);
+    // An entry that only restates the default is not worth keeping: the row's
+    // absence already means "as the plugin ships". Deleting it here is what
+    // keeps a panel toggle from growing the file forever.
+    if (row.enabled === undefined && row.config === undefined) {
+      const index = entries.indexOf(row);
+      entries.splice(index, 1);
+    }
+    if (entries.length === 0) delete owner['entries'];
+    else owner['entries'] = entries;
+  }, homedir);
+}
+
+/**
+ * One row's config, merged key by key.
+ *
+ * A patch that is not a plain object REPLACES (the plugin is setting a scalar or
+ * a list, and there is nothing to merge it into). `null` removes one key;
+ * `undefined` means "leave it" and is what an omitted form field reads as.
+ * @param stored - what the document holds now.
+ * @param patch - what the writer submitted.
+ * @returns the merged value, or undefined when nothing is left.
+ */
+function mergeConfig(stored: unknown, patch: unknown): unknown {
+  if (patch === null) return undefined;
+  if (typeof patch !== 'object' || Array.isArray(patch)) return patch;
+  const base =
+    stored !== null && typeof stored === 'object' && !Array.isArray(stored)
+      ? { ...(stored as Record<string, unknown>) }
+      : {};
+  for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
+    if (value === undefined) continue;
+    if (value === null) delete base[key];
+    else base[key] = value;
+  }
+  return Object.keys(base).length > 0 ? base : undefined;
+}
+
+/**
+ * One row's config AS WRITTEN in the document.
+ *
+ * The load path expands `{env:NAME}` references, so a plugin applied with its
+ * resolved config cannot tell a literal secret from a reference to one. A page
+ * that echoes the reference NAME rather than the secret, and a save that must not
+ * destroy it, both need this raw form.
+ * @param id - the row's id.
+ * @param homedir - Override for tests; defaults to the real home.
+ * @returns the stored config, or undefined when the row (or its config) is absent.
+ */
+export async function readPluginEntryConfig(id: string, homedir?: string): Promise<unknown> {
+  const doc = await readDoc(docFile(homedir)).catch(() => undefined);
+  const entries = plainMember(doc, 'plugins')?.['entries'];
+  if (!Array.isArray(entries)) return undefined;
+  for (const raw of entries) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue;
+    const candidate = raw as Record<string, unknown>;
+    if (candidate['id'] === id) return candidate['config'];
+  }
+  return undefined;
+}
+
+/**
+ * Remove one plugin row outright (its switch AND its settings).
+ *
+ * Used by `nova plugin remove`: the module it named is going away, so a row
+ * pointing at it would make the next boot report a package that is not there.
+ * @param id - the row's id.
+ * @param homedir - Override for tests; defaults to the real home.
+ */
+export async function removePluginEntry(id: string, homedir?: string): Promise<void> {
+  await patchConfig((doc) => {
+    const owner = plainMember(doc, 'plugins');
+    if (owner === undefined) return;
+    const entries = ensureEntries(owner).filter((candidate) => candidate.id !== id);
+    if (entries.length === 0) delete owner['entries'];
+    else owner['entries'] = entries;
+  }, homedir);
 }
 
 /**
  * Set the enabled state of one skill (`skills.disable`, by name, both levels).
- * Same list discipline as `setPluginEnabled`; a missing `skills` object is
- * created.
+ * A missing `skills` object is created.
  * @param name - the skill's name.
  * @param enabled - whether it should be injected and callable.
  * @param homedir - Override for tests; defaults to the real home.
  * @returns the disable list now in force.
  */
 export async function setSkillEnabled(name: string, enabled: boolean, homedir?: string): Promise<readonly string[]> {
-  return flipSwitch('skills', name, enabled, homedir);
-}
-
-/**
- * Replace the whole `plugins.enable` list — the OPT-IN half of the plugin
- * roster.
- *
- * Why a separate list rather than reusing `disable`: the two express opposite
- * defaults. `disable` means "this ships on; leave it out" (the `standard` tier).
- * `enable` means "this ships OFF; turn it on" (the `advanced` tier, e.g.
- * `subagent`). Writing an advanced name into `disable` would be a one-way door,
- * because `disable` WINS over `enable` when the roster decides — so a plugin
- * switched off that way could never be switched back on by any later click.
- *
- * An EMPTY list DELETES the key rather than storing `[]`: "no advanced plugin
- * opted in" is the absence of the list, the same discipline the provider list
- * follows, and it keeps a first-run file free of noise the operator never wrote.
- *
- * @param names - the names that should be ON against their tier default.
- * @param homedir - Override for tests; defaults to the real home.
- * @returns the enable list now in force (empty when the key was removed).
- */
-export async function setPluginsEnabled(names: readonly string[], homedir?: string): Promise<readonly string[]> {
-  const next = sortedUnique(names);
-  await patchConfig((doc) => {
-    const owner = plainMember(doc, 'plugins') ?? (() => {
-      const created: Record<string, unknown> = {};
-      doc['plugins'] = created;
-      return created;
-    })();
-    if (next.length === 0) delete owner['enable'];
-    else owner['enable'] = next;
-  }, homedir);
-  return next;
-}
-
-/**
- * Add one module spec to `plugins.extra` (the list is created when absent).
- *
- * Idempotent and order-preserving: the same module listed twice would be loaded
- * twice, and the operator's own ordering is the loading order.
- * @param spec - a module specifier (package name or path), stored verbatim.
- * @param homedir - Override for tests; defaults to the real home.
- * @returns the extra list now in force.
- */
-export async function addExtraPlugin(spec: string, homedir?: string): Promise<readonly string[]> {
   let result: readonly string[] = [];
   await patchConfig((doc) => {
-    const owner = plainMember(doc, 'plugins') ?? (() => {
+    const owner = plainMember(doc, 'skills') ?? (() => {
       const created: Record<string, unknown> = {};
-      doc['plugins'] = created;
-      return created;
-    })();
-    const extra = ensureList(owner, 'extra');
-    result = extra.includes(spec) ? [...extra] : [...extra, spec];
-    owner['extra'] = [...result];
-  }, homedir);
-  return result;
-}
-
-/**
- * Drop one module spec from `plugins.extra`; an EMPTY list DELETES the key, the
- * same discipline `setPluginsEnabled` follows ("no extra plugins" is the
- * absence of the list, not `[]`). A document with no `plugins` object is left
- * untouched rather than created.
- * @param spec - the exact row to remove.
- * @param homedir - Override for tests; defaults to the real home.
- * @returns the extra list now in force (empty when nothing was left).
- */
-export async function removeExtraPlugin(spec: string, homedir?: string): Promise<readonly string[]> {
-  let result: readonly string[] = [];
-  await patchConfig((doc) => {
-    const owner = plainMember(doc, 'plugins');
-    if (owner === undefined) return;
-    const next = ensureList(owner, 'extra').filter((entry) => entry !== spec);
-    result = next;
-    if (next.length === 0) delete owner['extra'];
-    else owner['extra'] = next;
-  }, homedir);
-  return result;
-}
-
-/** The shared body of the two switches: one list, one discipline. */
-async function flipSwitch(
-  section: 'plugins' | 'skills',
-  name: string,
-  enabled: boolean,
-  homedir?: string,
-): Promise<readonly string[]> {
-  let result: readonly string[] = [];
-  await patchConfig((doc) => {
-    const owner = plainMember(doc, section) ?? (() => {
-      const created: Record<string, unknown> = {};
-      doc[section] = created;
+      doc['skills'] = created;
       return created;
     })();
     const disable = ensureList(owner, 'disable');
@@ -164,25 +194,28 @@ async function flipSwitch(
 }
 
 /**
- * Replace the `qqbot` connection block. `clientSecret` is stored verbatim —
- * including an `{env:NAME}`-shaped value, which the load path expands to the real
- * secret (the panel's field says exactly this). An absent block is created;
- * passing `undefined` for a field leaves the stored value alone so a "test only"
- * round-trip does not blank credentials the operator kept.
- * @param opts - the fields to write; an absent field is left as stored.
- * @param homedir - Override for tests; defaults to the real home.
+ * The `plugins.entries` array, normalized in place.
+ *
+ * A hand-edited non-array is replaced rather than trusted, and rows that are not
+ * objects or carry no string id are dropped: this is the only place a row is
+ * born, so it must not carry a malformed one forward.
+ * @param owner - the `plugins` object.
+ * @returns the live array to mutate.
  */
-export async function saveQqBotConfig(
-  opts: { appId?: string; clientSecret?: string },
-  homedir?: string,
-): Promise<void> {
-  await patchConfig((doc) => {
-    const qqbot = plainMember(doc, 'qqbot') ?? (() => {
-      const created: Record<string, unknown> = {};
-      doc['qqbot'] = created;
-      return created;
-    })();
-    if (opts.appId !== undefined) qqbot['appId'] = opts.appId;
-    if (opts.clientSecret !== undefined) qqbot['clientSecret'] = opts.clientSecret;
-  }, homedir);
+function ensureEntries(owner: Record<string, unknown>): StoredEntry[] {
+  const current = owner['entries'];
+  const rows: StoredEntry[] = [];
+  if (Array.isArray(current)) {
+    for (const raw of current) {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue;
+      const candidate = raw as Record<string, unknown>;
+      if (typeof candidate['id'] !== 'string' || candidate['id'].length === 0) continue;
+      const row: StoredEntry = { id: candidate['id'] };
+      if (typeof candidate['enabled'] === 'boolean') row.enabled = candidate['enabled'];
+      if (candidate['config'] !== undefined) row.config = candidate['config'];
+      rows.push(row);
+    }
+  }
+  owner['entries'] = rows;
+  return rows;
 }

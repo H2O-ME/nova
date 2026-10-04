@@ -28,8 +28,8 @@ usage:
 
 options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
-  qqbot           QQ 机器人模式（需配置 qqbot.appId / qqbot.clientSecret）
-  plugin          add <包名> | remove <包名> | list——第三方插件装到 ~/.nova/plugins 并写入 plugins.extra（不经配置加载，配置坏了也能修）
+  qqbot           QQ 机器人模式（需在插件管理里打开 @nova-agent/qqbot 这一行，并在它的 config 里填凭据）
+  plugin          add <包名> | remove <包名> | list——第三方插件装到 ~/.nova/plugins 并写入 plugins.entries（不经配置加载，配置坏了也能修）
   --web           浏览器界面（本机 HTTP+WS 单进程，打印带 token 的 URL；NOVA_WEB_PORT 固定端口）——交互运行的默认形态
   --repl          改用 readline 终端形态（非 TTY 自动回落）
   --resume        续接历史会话文件
@@ -39,7 +39,7 @@ options:
   --help/-h       显示本帮助
 
 运行于当前工作目录（即工作区，nova 不会在项目里创建或读取任何文件）；配置唯一
-来源是 ~/.nova/config.json（plugins.disable / plugins.extra 可在配置层增删插件）；
+来源是 ~/.nova/config.json（plugins.entries 可在配置层增删插件）；
 会话按日期归档在 ~/.nova/sessions/YYYY/MM/DD/，溢出缓存在 ~/.nova/cache/。
 技能按 用户级 → 项目级 两级解析。`;
 
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   if (parsed === undefined) return;
   // `nova plugin …` runs BEFORE the config is loaded (outside the try below, on
   // purpose): the rows it rewrites are the ones the next boot reads, and a
-  // `plugins.extra` row that cannot load is exactly what fails a boot — a repair
+  // plugin row that cannot load is exactly what fails a boot — a repair
   // tool that needs a working config cannot repair a broken one.
   if (parsed.positional[0] === 'plugin') {
     process.exitCode = await runPluginCommand(parsed.positional.slice(1));

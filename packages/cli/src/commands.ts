@@ -1,8 +1,5 @@
 /** 斜杠命令目录（壳自有命令）：/help 与 surface 命令端口共用。 */
 
-import type { PtcMode } from '@nova-agent/core';
-import { CODE_MODE_HINT, codeModeLabel, padDisplay } from './lines.js';
-
 export interface CommandSpec {
   /** 命令名（含开头的 /），例如 '/model'。 */
   name: string;
@@ -16,7 +13,10 @@ export const COMMAND_SPECS: CommandSpec[] = [
   { name: '/init', usage: '/init', description: '扫描工作区并生成 AGENTS.md' },
   { name: '/model', usage: '/model [name]', description: '打开模型选择面板（从站点目录切换模型）；带参数时直接切换/回退到指定模型' },
   { name: '/approvals', usage: '/approvals', description: '循环切换审批档位（只读 → 自动编辑 → 全部放行）' },
-  { name: '/mode', usage: '/mode', description: '查看三种执行模式的区别与当前模式（新会话按 Tab 切换）' },
+  // `/mode` 不在壳清单里：它是 PTC 插件自己注册的命令（模式是该插件的词汇），所以它经
+  // 下面 `mergedCommandSpecs` 的注册表分支进入目录——描述也是那一行自己写的。那一行关着
+  // 时 `/mode` 就不该存在（没有 run_code 就没有模式可报），而壳清单写一条就等于让它永远
+  // 留在菜单里。
   { name: '/theme', usage: '/theme [name]', description: '查看或切换界面主题：dark（默认）/ light（亮背景）/ plain（无色）' },
   { name: '/plugins', usage: '/plugins', description: '列出插件、工具与权限级别' },
   { name: '/skill', usage: '/skill <name>', description: '加载指定技能的完整指令并立即执行' },
@@ -38,20 +38,6 @@ export function mergedCommandSpecs(registry: readonly { readonly name: string; r
       .filter((command) => !COMMAND_SPECS.some((spec) => spec.name === `/${command.name}`))
       .map((command) => ({ name: `/${command.name}`, usage: `/${command.name}`, description: command.description })),
   ];
-}
-
-/** /mode 的单行：current 标记决定调用方如何上色。 */
-export interface ModeOverviewRow {
-  current: boolean;
-  text: string;
-}
-
-/** /mode 的三态行（无色）：❯ 标当前模式，后跟一行语义提示。 */
-export function modeOverviewRows(current: PtcMode): ModeOverviewRow[] {
-  return (['native', 'ptc', 'both'] as PtcMode[]).map((m) => ({
-    current: m === current,
-    text: `${m === current ? '❯' : ' '} ${padDisplay(codeModeLabel(m), 6)} ${CODE_MODE_HINT[m]}`,
-  }));
 }
 
 /**

@@ -11,7 +11,6 @@ import {
   DEFAULT_MAX_TURNS,
   isFailureContent,
   toolCallKind,
-  type PtcMode,
   type ToolCall,
   type UsageStats,
 } from '@nova-agent/core';
@@ -116,6 +115,26 @@ export function toolArgSummary(rawArgs: string, maxCols: number): string {
   return clipToCols(flat, maxCols);
 }
 
+/**
+ * 一行终端文本的卫生：控制码点变成可见转义，绝不原样落到终端上。
+ *
+ * 转义而不是丢弃：`\r` 与 `\u001b` 是**注入**，不是排版——原样输出就能用回车覆盖掉
+ * 前面已经打印的字，或用 ANSI 序列把终端的颜色/标题/光标状态改掉。而丢弃会让「为什么」
+ * 少一截，读的人以为原因本来就是那样。所以 `\n` → `\\n`、`\t` → `\\t`、ESC 与其余
+ * C0 / DEL / C1 控制码 → `\\xNN`，全是**可读文本**，一个字都不生效。
+ *
+ * 实现**只有一份，住在 core**（`core/src/text.ts` 的 `oneLineText`）：把它留在这里等于
+ * 让内核的日志出口（`core/plugin/context.ts` 的 defaultLog，每个 surface 都经它写
+ * stderr）要么看不见它、要么在 core 里再抄一份。依赖方向是 `cli → core`，所以本文件
+ * **再导出**而不是自己实现——**对外 API 不变**（`oneLineText` 的名字与签名原样），
+ * 本包所有调用点（`command-core.ts` / `plugin-report.ts`）以及第三方 surface 的导入
+ * 一句都不用改。
+ *
+ * 这些字来自插件界面的数据（模块加载错误、config 校验错误：名字与内容都不由宿主决定），
+ * 所以每一个把它们画进终端行的调用点都必须先过这里，而不是指望上游「大概是干净的」。
+ */
+export { oneLineText } from '@nova-agent/core';
+
 /** 工具开始行：`  ⠙ 命令 git status`（运行帧由调用方给）。 */
 export function toolStartLine(p: Paint, call: ToolCall, budget = 72): string {
   const label = p.bold(toolLabel(call.name));
@@ -164,17 +183,6 @@ const PERMISSION_LABELS: Record<string, string> = {
 export function permissionLabel(kind: string): string {
   return Object.hasOwn(PERMISSION_LABELS, kind) ? PERMISSION_LABELS[kind] as string : kind;
 }
-
-/** 执行模式标签与 /mode 一行语义。 */
-export function codeModeLabel(m: PtcMode): string {
-  return m === 'native' ? '普通' : m === 'ptc' ? 'PTC' : '混合';
-}
-
-export const CODE_MODE_HINT: Record<PtcMode, string> = {
-  native: '原生工具调用',
-  ptc: '模型只见 run_code，其余工具以 TS 程序编排',
-  both: 'run_code 与原生调用并存',
-};
 
 /** Pad to display width (CJK counts 2); overlong input passes through. */
 export function padDisplay(text: string, width: number): string {

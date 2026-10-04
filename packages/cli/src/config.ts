@@ -101,51 +101,41 @@ const configSchema = z.object({
         })
         .strict()
         .optional(),
-      /**
-       * PTC 模式（Cloudflare Code Mode，dsh 简化版）：模型针对工具注册表
-       * 写 TypeScript 程序经 run_code 在 worker 线程内执行。mode "native"
-       * 或缺省=关闭；"ptc"=只暴露 run_code（其余工具降为程序内 SDK 绑定）；
-       * "both"=原生调用与程序并存。需要 Node >= 22.19。
-       */
-      code: z
-        .object({
-          mode: z.enum(['native', 'ptc', 'both']).optional(),
-          maxParallelSubCalls: z.number().int().positive().max(100).optional(),
-          computeMs: z.number().int().positive().optional(),
-          maxWallMs: z.number().int().positive().optional(),
-          maxOutputBytes: z.number().int().positive().optional(),
-          maxOldGenerationSizeMb: z.number().int().positive().optional(),
-        })
-        .strict()
-        .optional(),
     })
     .strict()
     .optional(),
   /**
-   * 插件 roster（M11 批10）：disable 列出**不加载**的内置插件（名字即
-   * `/plugins` 打印的那个），extra 列出额外加载的插件模块（绝对路径、
-   * 相对工作目录的路径，或包名）——模块须以 default（或 plugin）导出
-   * `{ name, activate }` 形态的插件。这是配置层扩展点：不改源码就能选择、
-   * 替换或扩展能力；拼错的 disable 名会告警，加载失败的 extra 直接让启动
-   * 失败（静默忽略的扩展比坏掉的启动更糟）。
+   * 插件树：唯一的插件配置入口。
    *
-   * `enable` 是**反方向**：默认关闭的进阶插件（subagent / ptc / qqbot）靠它按需
-   * 开启。两张表**按 tier 分工、永不重叠**——disable 收 standard 行，enable 收
-   * advanced 行；`disable` 在判定中**优先**（安全侧），所以同名同时出现在两边等于
-   * 永远关不上（见 `plugins/src/plugin-tier.ts` 的 `enabledByTier`）。
+   * 每行 `{ id, enabled?, config? }`——`id` 是内置插件的名字或一个模块 spec，
+   * `enabled` 是**唯一的**开关。曾经有 `disable` / `enable` 两张表加若干
+   * 「推导录取口」，三处判定同一件事，于是关掉的插件会被别处复活：两张表能
+   * 互相矛盾，而配置推导（`tools.code.mode`、`qqbot` 块）又能越过两张表。
+   * 现在只有一份真相：启动路径与设置面板写的是同一个字段。
+   *
+   * 行的 `config` 由**那个插件自己的** `Config` schema 校验——内核不知道
+   * bash 有没有超时，也不该知道。
    */
   plugins: z
     .object({
-      disable: z.array(z.string().min(1)).optional(),
-      enable: z.array(z.string().min(1)).optional(),
-      extra: z.array(z.string().min(1)).optional(),
+      entries: z
+        .array(
+          z
+            .object({
+              id: z.string().min(1),
+              enabled: z.boolean().optional(),
+              config: z.unknown().optional(),
+            })
+            .strict(),
+        )
+        .optional(),
     })
     .strict()
     .optional(),
   /**
    * Skills 开关（设置面板「Skill 中心」的可视写入面）：disable 按 skill 名全局
    * 关闭——项目级与用户级同名 skill 一律不再注入 `<available_skills>` 索引与
-   * `skill` 工具。拼错的名字在装配时告警（与 plugins.disable 同一条纪律）。
+   * `skill` 工具。拼错的名字在装配时告警（与 plugins.entries 里点错 id 同一条纪律）。
    */
   skills: z
     .object({
@@ -154,21 +144,10 @@ const configSchema = z.object({
     .strict()
     .optional(),
   /**
-   * QQ 机器人模式（nova qqbot）：腾讯机器人开放平台 WebSocket 通道。凭据在
-   * q.qq.com 管理端获取；clientSecret 支持 {env:NAME} 引用避免明文入库。
-   */
-  qqbot: z
-    .object({
-      appId: z.string().min(1),
-      clientSecret: z.string().min(1),
-    })
-    .strict()
-    .optional(),
-  /**
    * 表面插件（surface 插件）——配置层动态加载的人机界面入口。每条是一个
    * 模块规格（绝对路径 / 相对工作目录的路径 / 裸包名），由 `loadSurfacePlugins`
    * 动态 `import()`，其 `default`（或 `surface`）导出须是 `AgentSurface`。与
-   * `plugins.extra` 同一套解析规则（见 `roster.ts` 的 `resolveModuleSpec`）。
+   * `plugins.entries` 同一套解析规则（见 `module-spec.ts`）。
    *
    * cli 源码不依赖任何 surface 包——这里只是配置声明模块 id，第三方
    * surface 写法相同：写一行包名即可替换或新增界面，不必改源码。
@@ -176,7 +155,7 @@ const configSchema = z.object({
   surfaces: z.array(z.string().min(1)).optional(),
 })
 // Strict at every level: a typo'd key ("apporval", "temprature",
-// "tools.code.modee") is a silent no-op on a lenient schema and a confusing
+// "plugins.entrys") is a silent no-op on a lenient schema and a confusing
 // wrong-way run. Fail at load with the offending key named.
 .strict();
 

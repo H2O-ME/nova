@@ -29,6 +29,7 @@ import {
   type Paint,
 } from './lines.js';
 import { createNotifier } from './notify.js';
+import { failedPluginLines } from './plugin-report.js';
 import { ReplProgress } from './repl-progress.js';
 import { Spinner } from './spinner.js';
 import { cliVersion } from './version.js';
@@ -150,6 +151,12 @@ export async function startRepl(
     rootDir,
     version: cliVersion(),
   });
+  // 失败行必须被念出来。横幅的「插件」一列只列**贡献了工具**的行，于是加载不了的
+  // 行在那句里无声缺席——「只有剔除、没有失败提示」正是要被修掉的那件事。逐行点名
+  // id + 原因，走 stderr（不是横幅的一部分），且**不阻断启动**：REPL 照常进。
+  for (const line of failedPluginLines(kernel.roster())) {
+    console.error(paint.yellow(`  ⚠ ${line}`));
+  }
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   const lines = new LineSource(rl, process.stdin.isTTY === true);
@@ -387,7 +394,6 @@ export async function startRepl(
       console.clear();
       console.log('（已清屏，会话记录保留在磁盘）');
     },
-    modeHint: '（repl 遵循 config.json 的 tools.code.mode；PTC 插件被关闭时回落原生）',
     exit: async () => {
       // 优雅收尾：轮在跑就先中断并等它解绕（挂起审批 fail-close、半截日志
       // 修复都在内核 abort 路径里）——退出绝不把进行中的轮丢在半路。
