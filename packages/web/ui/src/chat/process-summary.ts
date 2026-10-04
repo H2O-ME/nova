@@ -10,6 +10,7 @@
  * Both are pure derivations of the turn's span — the flow hands them over, no
  * renderer classifies tool calls itself.
  */
+import type { ToolCallKind, ToolCallView } from '../types.js';
 
 /** The flow block kinds a turn's span carries (the reducer's union). */
 export interface ProcessSpanBlock {
@@ -17,16 +18,25 @@ export interface ProcessSpanBlock {
   /** `tool` blocks: the call's name and its raw JSON arguments. */
   name?: string | undefined;
   args?: string | undefined;
+  /** `tool` blocks: the host-resolved render intent, which carries the call's `kind`. */
+  view?: ToolCallView | undefined;
   /** A tool call still in flight (no result yet). */
   running?: boolean | undefined;
   /** `reasoning` blocks: the streamed thought. */
   text?: string | undefined;
 }
 
-/** The work categories a group's title can name (the reference's union). */
-export type ProcessActivity =
-  | 'read' | 'search' | 'write' | 'edit' | 'commands' | 'code'
-  | 'webSearch' | 'webFetch' | 'subagents' | 'plan' | 'questions' | 'tools';
+/**
+ * The work categories a group's title can name.
+ *
+ * This IS core's `ToolCallKind` — not a second union of the same idea. It used to
+ * be a 12-member local union fed by an `if (name === 'bash') …` chain, which had
+ * already drifted from the table core owns (it guessed `web_search`/`web_fetch`
+ * tools this product does not ship, and missed `list_dir`, `jobs` and
+ * `get_time`). A summary that names work must read what the tool DECLARED, so a
+ * third-party plugin's tool is classified as well as a built-in's.
+ */
+export type ProcessActivity = ToolCallKind;
 
 /** Ranked distinct-call categories plus the live task evidence. */
 export interface ProcessActivitySummary {
@@ -41,14 +51,12 @@ const DONE_LABEL: Record<ProcessActivity, string> = {
   search: '已搜索代码',
   write: '已写入文件',
   edit: '修改了文件',
-  commands: '执行了命令',
-  code: '运行了代码',
-  webSearch: '已搜索网页',
-  webFetch: '已访问网页',
+  execute: '执行了命令',
+  job: '已处理后台任务',
   subagents: '已协调子智能体',
   plan: '更新了计划',
-  questions: '向用户提出了问题',
-  tools: '已调用工具',
+  question: '向用户提出了问题',
+  other: '已调用工具',
 };
 
 /** Running labels, one per category (the reference's step-process vocabulary). */
@@ -57,14 +65,12 @@ export const RUNNING_LABEL: Record<ProcessActivity, string> = {
   search: '正在搜索代码',
   write: '正在写入文件',
   edit: '正在编辑文件',
-  commands: '正在运行命令',
-  code: '正在运行代码',
-  webSearch: '正在搜索网页',
-  webFetch: '正在访问网页',
+  execute: '正在运行命令',
+  job: '正在处理后台任务',
   subagents: '正在协调子智能体',
   plan: '正在更新计划',
-  questions: '等待你的操作',
-  tools: '正在调用工具',
+  question: '等待你的操作',
+  other: '正在调用工具',
 };
 
 /** Title fragments (the reference's `joinTwo` / `comma` / `more` / shared prefix). */
@@ -73,20 +79,17 @@ const COMMA = '，';
 const MORE = '{title}等';
 const SHARED_PREFIX = '已';
 
-/** Which category a tool call belongs to, by the tool's name. */
-function activityOf(name: string): ProcessActivity {
-  if (name === 'read_file') return 'read';
-  if (name === 'search_files') return 'search';
-  if (name === 'write_file') return 'write';
-  if (name === 'edit_file') return 'edit';
-  if (name === 'bash') return 'commands';
-  if (name === 'run_code') return 'code';
-  if (name === 'web_search') return 'webSearch';
-  if (name === 'web_fetch') return 'webFetch';
-  if (name === 'subagent' || name.startsWith('subagent_')) return 'subagents';
-  if (['todo_write', 'create_goal', 'update_goal'].includes(name)) return 'plan';
-  if (name === 'ask_user_question') return 'questions';
-  return 'tools';
+/**
+ * The category a tool call belongs to — read off the call's own declared view.
+ *
+ * No tool name appears here, deliberately: the host already resolved
+ * `callViewOf` from the live tool table, so a call from a third-party plugin
+ * carries the same kind a built-in's does. A block without a view (an older
+ * frame, or a call the host could not resolve) falls back to the generic
+ * category rather than guessing from the name.
+ */
+function activityOf(view: ToolCallView | undefined): ProcessActivity {
+  return view?.kind ?? 'other';
 }
 
 /** Characters kept of a live task detail. */
@@ -138,12 +141,12 @@ export function processActivityOf(span: readonly ProcessSpanBlock[]): ProcessAct
   let running: ProcessActivity | undefined;
   let runningDetail = '';
   for (const block of span) {
-    if (block.kind !== 'tool' || block.name === undefined) continue;
-    const kind = activityOf(block.name);
+    if (block.kind !== 'tool') continue;
+    const kind = activityOf(block.view);
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
     if (block.running === true) {
       running = kind;
-      runningDetail = liveDetailOf(block.name, block.args);
+      runningDetail = liveDetailOf(block.name ?? '', block.args);
     }
   }
   if (running === undefined) {

@@ -5,10 +5,9 @@
  * have been lost in a refactor without a test noticing.
  */
 import { describe, expect, it } from 'vitest';
-import { chromeView, composerDisabled, effectiveCodeMode, modeControlsLocked, ptcPluginOff, workspaceLabel } from '../src/chrome-view.js';
+import { chromeView, composerDisabled, modeControlsLocked, workspaceLabel } from '../src/chrome-view.js';
 import { initialState, reduce, type UiState } from '../src/state.js';
 import type { ReadyInfo } from '../../src/protocol.js';
-import type { WireRosterEntry } from '../../src/roster-entry.js';
 import { emptyTotals } from '../../src/totals.js';
 
 function ready(over: Partial<ReadyInfo> = {}): UiState {
@@ -19,7 +18,6 @@ function ready(over: Partial<ReadyInfo> = {}): UiState {
       sessionFile: 'D:/proj/s.jsonl',
       model: 'test-model',
       approvalMode: 'read-only',
-      codeMode: 'native',
       history: [],
       historyTotal: 0,
       traceTotal: 0,
@@ -105,7 +103,6 @@ describe('chromeView', () => {
     expect(chromeView(initialState).workspace).toBe('');
   });
 
-
   it('gates the composer on the socket and on a pending approval', () => {
     expect(composerDisabled(initialState)).toBe(true);
     expect(composerDisabled(ready())).toBe(false);
@@ -148,44 +145,5 @@ describe('modeControlsLocked', () => {
     const offline = reduce(ready(), { type: 'connection', connected: false });
     expect(composerDisabled(offline)).toBe(true);
     expect(modeControlsLocked(offline)).toBe(true);
-  });
-});
-
-describe('effectiveCodeMode', () => {
-  /** One roster row, shaped like the wire's (the panel draws exactly these). */
-  const row = (enabled: boolean): WireRosterEntry => ({
-    name: 'ptc', state: enabled ? 'active' : 'disabled', inject: [], enabled, tier: 'advanced', title: 'PTC',
-  });
-
-  it('publishes 原生 once the ptc plugin is switched off', () => {
-    // The defect this pins: the plugin manager's `ptc` switch writes `disable`,
-    // but a `code.mode` picked earlier survives it. The settings page projected
-    // that away and the composer chip did NOT, so a switched-off plugin left the
-    // chip offering a mode whose tool does not exist — and the kernel refuses.
-    const on: UiState = { ...ready(), roster: { entries: [row(true)], configPath: 'C:/x/.nova/config.json' }, codeMode: 'ptc' };
-    expect(effectiveCodeMode(on)).toBe('ptc');
-
-    const off: UiState = { ...on, roster: { entries: [row(false)], configPath: 'C:/x/.nova/config.json' } };
-    expect(effectiveCodeMode(off)).toBe('native');
-  });
-
-  it('does not hide a mode just because the roster has not arrived', () => {
-    // Absent rows mean "not answered yet", not "off": the same `?? true` reading
-    // the plugin switch and the settings nav use. Flipping this to a default-off
-    // would blank the picker on every cold start.
-    const cold: UiState = { ...ready(), roster: null, plugins: null, codeMode: 'ptc' };
-    expect(ptcPluginOff(cold)).toBe(false);
-    expect(effectiveCodeMode(cold)).toBe('ptc');
-  });
-
-  it('reads a flip answer as well as the first-paint snapshot', () => {
-    // Both channels state the same fact; the manager's answer is the fresher one.
-    const flipped: UiState = {
-      ...ready(),
-      roster: { entries: [row(true)], configPath: 'C:/x/.nova/config.json' },
-      plugins: { entries: [row(false)], disable: ['ptc'] },
-      codeMode: 'both',
-    };
-    expect(effectiveCodeMode(flipped)).toBe('native');
   });
 });

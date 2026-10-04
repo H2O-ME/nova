@@ -124,7 +124,7 @@ describe('flowRows turns', () => {
     const turn: Block[] = [
       { id: 'u1', kind: 'user', text: '看一下', ts: 1_000 },
       { id: 't1', kind: 'text', text: '我先看一下', streaming: false, ts: 2_000 },
-      { id: 'k1', kind: 'tool', callId: 'c1', name: 'read_file', args: '{}', view: { card: 'generic', kind: 'other', title: 'read_file' } },
+      { id: 'k1', kind: 'tool', callId: 'c1', name: 'read_file', args: '{}', view: { card: 'generic', kind: 'read', title: 'read_file' } },
       { id: 'm1', kind: 'meta', stats: stats() },
     ];
     const rows = flowRows(turn, options());
@@ -191,7 +191,7 @@ describe('flowRows turns', () => {
       { id: 'u1', kind: 'user', text: '第一问', ts: 1_000 },
       { id: 'r1', kind: 'reasoning', text: '想', streaming: false },
       { id: 't1', kind: 'text', text: '先说明一下', streaming: false },
-      { id: 'k1', kind: 'tool', callId: 'c1', name: 'read_file', args: '{}', view: { card: 'generic', kind: 'other', title: 'read_file' } },
+      { id: 'k1', kind: 'tool', callId: 'c1', name: 'read_file', args: '{}', view: { card: 'generic', kind: 'read', title: 'read_file' } },
       { id: 't2', kind: 'text', text: '真正的答案', streaming: false },
       { id: 'm1', kind: 'meta', stats: stats() },
     ];
@@ -220,7 +220,7 @@ describe('flowRows × presentation policy', () => {
     callId: 'c1',
     name: 'read_file',
     args: '{"file_path":"src/a.ts"}',
-    view: { card: 'generic', kind: 'other', title: 'read_file' },
+    view: { card: 'generic', kind: 'read', title: 'read_file' },
     ...over,
   });
   const turn: Block[] = [

@@ -12,7 +12,6 @@ import { GeneralSection } from '../src/settings/GeneralSection.js';
 import { ModelSection } from '../src/settings/ModelSection.js';
 import { PluginRow } from '../src/settings/PluginRow.js';
 import { PluginsSection } from '../src/settings/PluginsSection.js';
-import { QqbotSection } from '../src/settings/QqbotSection.js';
 import { SETTINGS_COPY } from '../src/settings/copy.js';
 
 const general = (): string =>
@@ -36,10 +35,10 @@ describe('general section', () => {
     expect(html).toContain(SETTINGS_COPY['permission.title']);
     expect(html).toContain(SETTINGS_COPY['permission.description']);
     expect(html).toContain('aria-label="访问模式，当前：只读"');
-    // The execution mode is a per-SESSION choice made on the hero's composer
-    // chip, not a standing preference: as a settings row it could only promise a
-    // default it did not keep (it re-rostered the live kernel), and "next boot's
-    // default" would write the PTC plugin's own second opt-in door.
+    // The execution mode is not a standing preference. Which execution modes
+    // exist is the providing PLUGIN's own business, and that plugin renders its
+    // control on its own settings page — a host row here would mean the general
+    // page keeping a vocabulary (and a frame) for a plugin it must not know.
     expect(html).not.toContain('执行模式');
   });
 
@@ -277,143 +276,5 @@ describe('plugins section', () => {
       <PluginsSection roster={{ entries: [], configPath: 'C:\\cfg.json' }} plugins={null} disabled={false} manageError={null} send={() => undefined} />,
     );
     expect(empty).not.toContain('data-modal-escape-owner');
-  });
-});
-
-describe('qqbot section', () => {
-  it('never renders the stored secret, only how it was stored', () => {
-    // The section's own promise (copy.ts: 密钥永不回显). The wire type has no
-    // secret field for a leak to travel in, so this pins the other half: that
-    // the page reports the REFERENCE or a bare "configured", never a value.
-    const referenced = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{ appId: '1024', hasClientSecret: true, clientSecretRef: 'QQ_SECRET' }}
-        test={null}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    expect(referenced).toContain('QQ_SECRET');
-    expect(referenced).toContain(SETTINGS_COPY['qqbot.secretRef']);
-    // A ref is not a stored value: the input must start EMPTY even when a
-    // secret exists, or the field would be a second place a secret lives.
-    expect(referenced).toContain(SETTINGS_COPY['qqbot.appIdPlaceholder']);
-    expect(referenced).not.toMatch(/value="[^"]{8,}"/u);
-  });
-
-  it('says 已配置 without naming a variable when the secret is a literal', () => {
-    const literal = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{ appId: '1024', hasClientSecret: true }}
-        test={null}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    expect(literal).toContain(SETTINGS_COPY['qqbot.secretSet']);
-    expect(literal).not.toContain(SETTINGS_COPY['qqbot.secretRef']);
-  });
-
-  it('reads 未配置 before anything is stored', () => {
-    const fresh = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{ hasClientSecret: false }}
-        test={null}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    expect(fresh).toContain(SETTINGS_COPY['qqbot.secretUnset']);
-    expect(fresh).toContain(SETTINGS_COPY['qqbot.statusOff']);
-  });
-
-  it('shows the probe verdict beside the button that asked for it', () => {
-    const failed = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{ appId: '1', hasClientSecret: true }}
-        test={{ ok: false, message: 'invalid appid or secret' }}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    expect(failed).toContain(SETTINGS_COPY['qqbot.testFail']);
-    // The host's own words, so the operator sees WHY rather than just "failed".
-    expect(failed).toContain('invalid appid or secret');
-
-    const ok = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{ appId: '1', hasClientSecret: true }}
-        test={{ ok: true, gateway: 'wss://api.sgroup.qq.com/websocket' }}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    expect(ok).toContain(SETTINGS_COPY['qqbot.testOk']);
-    // A success is NOT presented as proof that messages flow — the note says so.
-    expect(ok).toContain(SETTINGS_COPY['qqbot.liveNote']);
-  });
-
-  it('reports the plugin\'s own config problem instead of hiding it', () => {
-    const broken = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{
-          appId: '1024',
-          hasClientSecret: true,
-          clientSecretRef: 'QQ_SECRET',
-          error: 'qqbot.clientSecret 引用了环境变量 {env:QQ_SECRET}，但它未设置；请在 shell 里设置它',
-        }}
-        test={null}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    expect(broken).toContain(SETTINGS_COPY['qqbot.configError']);
-    // The host's sentence verbatim: it names the field AND the variable, which
-    // is exactly what the reader has to act on.
-    expect(broken).toContain('{env:QQ_SECRET}');
-    // A healthy page says nothing — the status must not be decorative.
-    const healthy = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{ appId: '1024', hasClientSecret: true }}
-        test={null}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    expect(healthy).not.toContain(SETTINGS_COPY['qqbot.configError']);
-  });
-
-  it('leaves Escape to the chrome rather than claiming a key it cannot use', () => {
-    const loaded = renderToStaticMarkup(
-      <QqbotSection
-        snapshot={{ appId: '1', hasClientSecret: true }}
-        test={null}
-        disabled={false}
-        manageError={null}
-        send={() => undefined}
-        onClearTest={() => undefined}
-      />,
-    );
-    // `data-modal-escape-owner` makes the shell YIELD Escape to the field, which
-    // is only sound while the field then acts on the key (the plugins search box
-    // clears itself; DirectoryBrowser's path box navigates). These two fields do
-    // nothing with Escape, so claiming it would swallow the key and leave the
-    // reader with no way out but the mouse. Absent is the correct contract — the
-    // first press closes the panel.
-    expect(loaded).not.toContain('data-modal-escape-owner');
   });
 });

@@ -1,7 +1,6 @@
 /**
  * The settings panel's management state: the plugin manager's snapshot, the
- * Skill 中心's rows, the qqbot page, and the refusal signal that releases an
- * in-flight switch.
+ * Skill 中心's rows, and the refusal signal that releases an in-flight switch.
  *
  * The two things worth pinning here, both of which were broken:
  *
@@ -70,37 +69,6 @@ describe('skills frame', () => {
   });
 });
 
-describe('qqbot frames', () => {
-  it('replaces the snapshot and clears a probe that belonged to older fields', () => {
-    const state = fold([
-      { type: 'qqbot', appId: '1', hasClientSecret: true },
-      { type: 'qqbot_test', ok: false, message: 'bad' },
-      // A save lands: the previous probe tested credentials that are no longer
-      // the ones on screen.
-      { type: 'qqbot', appId: '2', hasClientSecret: true },
-    ]);
-    expect(state.qqbot?.appId).toBe('2');
-    expect(state.qqbotTest).toBeNull();
-  });
-
-  it('never carries a secret field through the wire type', () => {
-    const state = fold([{ type: 'qqbot', appId: '1', hasClientSecret: true, clientSecretRef: 'QQ_SECRET' }]);
-    expect(state.qqbot).toEqual({ appId: '1', hasClientSecret: true, clientSecretRef: 'QQ_SECRET' });
-    // The snapshot is exactly what the page may show; a credential key must not
-    // be able to ride along unnoticed.
-    expect(Object.keys(state.qqbot ?? {})).not.toContain('clientSecret');
-  });
-
-  it('clears a probe on request', () => {
-    // `qqbot_test_clear` is a LOCAL action (the page clears a stale result when
-    // the operator edits a field), so it has no server frame — dispatch it
-    // directly rather than routing it.
-    const withTest = reduce(initialState, { type: 'qqbot_test', result: { ok: true, gateway: 'wss://gw' } });
-    expect(withTest.qqbotTest?.ok).toBe(true);
-    expect(reduce(withTest, { type: 'qqbot_test_clear' }).qqbotTest).toBeNull();
-  });
-});
-
 describe('management refusals', () => {
   it('records an error frame as the last refusal', () => {
     const state = reduce(initialState, { type: 'error', message: '运行中不能切换插件开关' });
@@ -128,7 +96,6 @@ describe('management refusals', () => {
         sessionFile: '/s.jsonl',
         model: 'm',
         approvalMode: 'read-only',
-        codeMode: 'native',
         modelSwitching: false,
         commands: [],
         history: [],
@@ -172,8 +139,7 @@ describe('management actions keep the reducer exhaustive', () => {
     const cases: readonly ServerFrame[] = [
       { type: 'plugins', entries: [], disable: [] },
       { type: 'skills', items: [], disable: [] },
-      { type: 'qqbot' },
-      { type: 'qqbot_test', ok: true, gateway: 'wss://gw' },
+      { type: 'plugin_response', id: 1, plugin: 'demo', op: 'page', ok: true },
     ];
     for (const frame of cases) {
       const action: Action | null = frameAction(frame);

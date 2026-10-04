@@ -43,7 +43,6 @@ function readyInfo(goal: Goal | null): ReadyInfo {
     sessionFile: 'D:/proj/s.jsonl',
     model: 'test-model',
     approvalMode: 'read-only',
-    codeMode: 'native',
     history: [],
     historyTotal: 0,
     traceTotal: 0,

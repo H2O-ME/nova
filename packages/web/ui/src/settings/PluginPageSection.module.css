@@ -1,0 +1,180 @@
+/* A plugin's own settings page, rendered from its descriptor. The page head
+ * (`.heading` / `.intro`) is the reference pair at this section column's scale;
+ * the rest is the settings cell rhythm every other section uses, so a plugin
+ * page and a built-in page read as the same product. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.intro {
+  margin: 0;
+  padding-top: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* A refused operation: the plugin's own sentence, not a generic apology. It is
+ * inline (not a toast) because the page that asked is the page that must explain
+ * what to do about it. */
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-state-error-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.failureReason {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.guide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.guideTitle {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.guideList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0 0;
+}
+
+.statusRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.statusTerm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 96px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.statusValue {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.label {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.input:disabled {
+  opacity: 0.6;
+}
+
+.fieldHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.primary,
+.plain {
+  padding: 7px 14px;
+  border-radius: var(--dsw-radius-md);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.plain {
+  border-color: var(--dsw-alias-border-l3);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.primary:disabled,
+.plain:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}

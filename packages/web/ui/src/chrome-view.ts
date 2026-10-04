@@ -4,7 +4,7 @@
  * deciding, which keeps two things honest: the rules below are asserted in
  * tests rather than inferred from JSX, and the components stay projections.
  */
-import type { PtcMode, TurnPhase, ApprovalMode } from './types.js';
+import type { TurnPhase, ApprovalMode } from './types.js';
 import type { UiState } from './state.js';
 
 export interface ChromeView {
@@ -24,7 +24,6 @@ export interface ChromeView {
   /** What the composer reflects: an approval supersedes the reported phase. */
   phase: TurnPhase | 'disconnected';
   approvalMode: ApprovalMode;
-  codeMode: PtcMode;
   canCompact: boolean;
   compactBusy: boolean;
   /** Baseline blocks the host holds that this browser has not loaded yet. */
@@ -47,42 +46,6 @@ export function isIdle(state: UiState): boolean {
     && (state.phase === 'idle' || state.phase === 'disconnected');
 }
 
-/**
- * Is the `ptc` plugin switched off in the live roster?
- *
- * Only an EXPLICIT `enabled: false` counts: the rows are absent until a
- * `roster`/`plugins` frame lands, and an unknown row must not hide a control
- * (the same `?? true` reading `PluginRow` draws its switch from and the settings
- * nav derives its pages by).
- * @param state - the reducer state.
- * @returns whether the manager shows the PTC plugin as off.
- */
-export function ptcPluginOff(state: UiState): boolean {
-  const rows = state.plugins?.entries ?? state.roster?.entries ?? [];
-  return rows.some((row) => row.name === 'ptc' && row.enabled === false);
-}
-
-/**
- * The execution mode actually IN FORCE, as every surface must publish it.
- *
- * With the `ptc` plugin off there is no `run_code` tool to expose, and the
- * kernel refuses a non-`native` pick (`runtime-facade.ts`). The live
- * `state.codeMode` can nevertheless still name one — the plugin manager's own
- * switch writes `disable`, and a mode picked earlier survives it. Reading the raw
- * field therefore published a mode the kernel would not run, and it did so on
- * ONE surface only: the settings page projected it while the composer chip did
- * not, so a switched-off plugin left the chip offering PTC.
- *
- * It lives here, once, because both surfaces read it — two call sites deriving
- * "which mode is in force" independently is exactly how those two came to
- * disagree.
- * @param state - the reducer state.
- * @returns the mode to display and to pre-select in the picker.
- */
-export function effectiveCodeMode(state: UiState): PtcMode {
-  return ptcPluginOff(state) ? 'native' : state.codeMode;
-}
-
 export function chromeView(state: UiState): ChromeView {
   const idle = isIdle(state);
   const firstUser = state.blocks.find((b) => b.kind === 'user');
@@ -96,7 +59,6 @@ export function chromeView(state: UiState): ChromeView {
       ? 'waiting_approval'
       : state.pendingQuestion !== null ? 'waiting_question' : state.phase,
     approvalMode: state.approvalMode,
-    codeMode: effectiveCodeMode(state),
     canCompact: state.connected,
     compactBusy: state.phase === 'compacting',
     hidden: Math.max(0, state.historyTotal - state.historyLoaded),

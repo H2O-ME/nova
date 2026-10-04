@@ -17,7 +17,7 @@
  * this file; one case per kernel event lives next door in `state-events.ts`.
  */
 import type {
-  ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, ConfiguredModel, ContextTimeline, GitLogEntry, Goal, GitStatusEntry, JobSnapshot, KernelEvent, ModelCapabilities, ModelGroup, PtcMode, QuestionRequest, ReadyInfo,
+  ApprovalMode, ApprovalRequest, ClientFrame, CommandSummary, ConfiguredModel, ContextTimeline, GitLogEntry, Goal, GitStatusEntry, JobSnapshot, KernelEvent, ModelCapabilities, ModelGroup, QuestionRequest, ReadyInfo,
   RunStats, SessionListItem, SubagentUsage, TodoItem, ToolCallView, ToolResultView, TurnPhase, WireBlock,
   WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow,
 } from './types.js';
@@ -127,7 +127,6 @@ export interface UiState {
   connected: boolean;
   meta: ReadyInfo | null;
   approvalMode: ApprovalMode;
-  codeMode: PtcMode;
   /** The model in force (`ready`/`state`, and the kernel's `model` event). */
   model: string;
   /**
@@ -163,8 +162,7 @@ export interface UiState {
    */
   skills: SkillsSnapshot | null;
   /**
-   * Why the last management request (a plugin or skill switch, a qqbot save or
-   * probe) was refused, or null when nothing is outstanding. A refusal arrives
+   * Why the last management request (a plugin or skill switch) was refused, or null when nothing is outstanding. A refusal arrives
    * as an `error` frame, NOT as a fresh snapshot — so a section waiting on "the
    * next answer settles my in-flight control" would wait forever, leaving that
    * control disabled. This is that missing signal.
@@ -174,16 +172,15 @@ export interface UiState {
    */
   manageError: { readonly seq: number; readonly message: string } | null;
   /**
-   * The qqbot page's connection snapshot (answer to `qqbot` / `save_qqbot`) —
-   * never the secret. Null until the page's first ask lands.
+   * Every plugin operation's answer, keyed by `plugin` and then by the
+   * correlation id the browser sent.
+   *
+   * One map for every plugin, because the browser does not know what any of them
+   * are: a page renders its own answer and nothing else. Entries are dropped when
+   * a later answer for the same plugin supersedes them, so the map cannot grow
+   * with every click.
    */
-  qqbot: QqBotSnapshot | null;
-  /**
-   * The qqbot probe's last answer (to `test_qqbot`). Cleared whenever the page
-   * re-asks or the operator edits a field — a result belongs to the exact
-   * credentials it tested.
-   */
-  qqbotTest: QqBotTest | null;
+  pluginAnswers: Readonly<Record<string, PluginRequestAnswer | undefined>>;
   /** The operator's editable model list (null until asked). */
   modelConfig: ModelConfigSnapshot | null;
   /**
@@ -365,25 +362,20 @@ export interface PluginsSnapshot {
   disable: readonly string[];
 }
 
-/** The qqbot page's connection snapshot (never the secret — see protocol.ts). */
-export interface QqBotSnapshot {
-  appId?: string;
-  hasClientSecret?: boolean;
-  clientSecretRef?: string;
-  /**
-   * Why the bot cannot connect right now, when the host loaded its config with
-   * an unresolved `{env:NAME}` — a sentence to show as-is. This is how a
-   * misconfigured PLUGIN reports itself: the shell still starts, and the panel
-   * that owns the plugin is where the reader learns about it.
-   */
-  error?: string;
-}
-
-/** The qqbot probe's last answer (success carries the gateway URL). */
-export interface QqBotTest {
-  ok: boolean;
-  gateway?: string;
-  message?: string;
+/**
+ * One plugin operation's answer, as the page that asked reads it.
+ *
+ * `pending` exists so a control can disable itself while its own request is in
+ * flight without the panel tracking a request per control: the section sends, the
+ * reducer parks the ask, the answer replaces it.
+ */
+export interface PluginRequestAnswer {
+  readonly id: number;
+  readonly op: string;
+  readonly ok: boolean;
+  readonly result?: unknown;
+  readonly error?: string;
+  readonly pending?: boolean;
 }
 
 /** One file's diff as the 变更 tab shows it. */
@@ -547,7 +539,6 @@ export const initialState: UiState = {
   connected: false,
   meta: null,
   approvalMode: 'read-only',
-  codeMode: 'native',
   model: '',
   modelName: null,
   modelSwitching: false,
@@ -556,8 +547,7 @@ export const initialState: UiState = {
   plugins: null,
   skills: null,
   manageError: null,
-  qqbot: null,
-  qqbotTest: null,
+  pluginAnswers: {},
   modelConfig: null,
   providers: null,
   providerProbe: null,
@@ -603,19 +593,44 @@ export type Action =
   | { type: 'sent'; frame: ClientFrame }
   | { type: 'ready'; info: ReadyInfo }
   | { type: 'event'; event: KernelEvent; view?: ToolCallView; resultView?: ToolResultView }
-  | { type: 'state'; approvalMode: ApprovalMode; codeMode: PtcMode; model: string; modelName?: string }
+  | { type: 'state'; approvalMode: ApprovalMode; model: string; modelName?: string }
   | { type: 'models'; groups: readonly ModelGroup[]; current: string; error?: string }
   | { type: 'roster'; entries: readonly WireRosterEntry[]; configPath: string }
   | { type: 'plugins'; entries: readonly WireRosterEntry[]; disable: readonly string[] }
   | { type: 'skills'; items: readonly WireSkillEntry[]; disable: readonly string[] }
-  | { type: 'qqbot'; snapshot: QqBotSnapshot }
+
   | { type: 'model_config'; models: readonly ConfiguredModel[]; published: readonly string[]; automatic: Readonly<Record<string, ModelCapabilities>> }
   | { type: 'providers'; providers: readonly WireProviderRow[]; activeId?: string }
   /** The host's answer to `probe_provider` (success or reason), same shape. */
   | { type: 'provider_probe'; baseURL: string; ok: boolean; models: readonly string[]; message?: string }
-  | { type: 'qqbot_test'; result: QqBotTest }
-  /** The operator edited a qqbot field: the probe's answer no longer applies. */
-  | { type: 'qqbot_test_clear' }
+  /**
+   * One plugin operation's answer. `pending` marks the browser's own ask so a
+   * control can disable itself while its request is in flight.
+   */
+  | {
+      type: 'plugin_answer';
+      plugin: string;
+      id: number;
+      op: string;
+      ok: boolean;
+      result?: unknown;
+      error?: string;
+    }
+  /**
+   * The browser asked a plugin for something: recorded IMMEDIATELY so the page's
+   * own control can disable itself while the answer is in flight, without the
+   * panel tracking a request per control. The answer (`plugin_answer`) replaces
+   * it, keyed by the same plugin — a page that has several requests in flight
+   * only ever needs its latest answer.
+   */
+  | { type: 'plugin_ask'; plugin: string; id: number; op: string }
+  /**
+   * The operator edited a field on a plugin's page: whatever the last ACTION
+   * answered no longer describes what is on screen (a probe result belongs to the
+   * exact text it tested). The `page` descriptor is kept — dropping it would
+   * blank the form the operator is typing into.
+   */
+  | { type: 'plugin_edit' }
   | { type: 'sessions'; items: readonly SessionListItem[] }
   | { type: 'files'; query: string; items: readonly WireFileEntry[]; truncated: boolean }
   | { type: 'directory'; level: WireDirectoryLevel }
@@ -770,7 +785,6 @@ export function reduce(state: UiState, action: Action): UiState {
       return {
         ...state,
         approvalMode: action.approvalMode,
-        codeMode: action.codeMode,
         model: action.model,
         // No name in the frame means the host has none for this model: keeping
         // the previous model's would label the new one with the old one's name.
@@ -828,14 +842,29 @@ export function reduce(state: UiState, action: Action): UiState {
       };
     case 'skills':
       return { ...state, skills: { items: action.items, disable: action.disable } };
-    case 'qqbot':
-      // A save/re-ask settles the probe: the result belonged to the credentials
-      // on screen before this answer, not after.
-      return { ...state, qqbot: action.snapshot, qqbotTest: null };
-    case 'qqbot_test':
-      return { ...state, qqbotTest: action.result };
-    case 'qqbot_test_clear':
-      return { ...state, qqbotTest: null };
+    case 'plugin_answer': {
+      const answer: PluginRequestAnswer = {
+        id: action.id,
+        op: action.op,
+        ok: action.ok,
+        ...(action.result !== undefined ? { result: action.result } : {}),
+        ...(action.error !== undefined ? { error: action.error } : {}),
+      };
+      return { ...state, pluginAnswers: { ...state.pluginAnswers, [action.plugin]: answer } };
+    }
+    case 'plugin_edit': {
+      // Only ACTION answers are dropped: `page` describes the plugin and stays
+      // until the plugin itself replaces it.
+      const kept: Record<string, PluginRequestAnswer | undefined> = {};
+      for (const [plugin, answer] of Object.entries(state.pluginAnswers)) {
+        if (answer !== undefined && answer.op === 'page') kept[plugin] = answer;
+      }
+      return { ...state, pluginAnswers: kept };
+    }
+    case 'plugin_ask': {
+      const answer: PluginRequestAnswer = { id: action.id, op: action.op, ok: false, pending: true };
+      return { ...state, pluginAnswers: { ...state.pluginAnswers, [action.plugin]: answer } };
+    }
     case 'sessions':
       return { ...state, sessions: action.items, sessionsStale: false, sessionsPending: false };
     case 'files':
@@ -1026,7 +1055,6 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     connected: true,
     meta: info,
     approvalMode: info.approvalMode,
-    codeMode: info.codeMode,
     model: info.model,
     modelName: info.modelName ?? null,
     modelSwitching: info.modelSwitching,
@@ -1043,8 +1071,7 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     // A re-baseline is a fresh page: a refusal from the previous one must not
     // keep a switch disabled after the reconnect that re-baselined it.
     manageError: null,
-    qqbot: null,
-    qqbotTest: null,
+    pluginAnswers: {},
     // The model list lives in the config file, not in the session, so a
     // re-baseline does not invalidate it — but the panel re-asks on open anyway
     // (the operator may have hand-edited the file between opens).

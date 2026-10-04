@@ -3,7 +3,7 @@
  *
  * It was a single 119-line literal. Splitting it is not cosmetic: the settings
  * page now has three independently-owned sections (general/appearance,
- * models+providers, plugins+skills+qqbot) and each one is edited on its own, so
+ * models+providers, plugins+skills+a plugin's own page) and each one is edited on its own, so
  * one file per owner means two people changing two sections never touch the
  * same file. `SETTINGS_COPY` keeps its name and stays the only thing the panel
  * imports, so no component knows the table has parts.

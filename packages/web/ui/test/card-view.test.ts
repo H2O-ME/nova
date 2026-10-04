@@ -15,7 +15,7 @@ function model(input: Partial<CardInput> & Pick<CardInput, 'view'>): ReturnType<
 
 describe('call state', () => {
   it('a call with no result is running; the same call idle is stale', () => {
-    const view = { card: 'terminal' as const, command: 'ls' };
+    const view = { card: 'terminal' as const, kind: 'execute' as const, command: 'ls' };
     expect(model({ view }).state).toBe('running');
     expect(model({ view, idle: true }).state).toBe('stale');
   });
@@ -28,13 +28,13 @@ describe('call state', () => {
   });
 
   it('without a result the args are the body, flattened to one line', () => {
-    const body = model({ view: { card: 'terminal', command: 'ls' }, args: '{\n  "command": "ls"\n}' }).body;
+    const body = model({ view: { card: 'terminal', kind: 'execute', command: 'ls' }, args: '{\n  "command": "ls"\n}' }).body;
     expect(body).toEqual({ kind: 'args', text: '{ "command": "ls" }' });
   });
 });
 
 describe('terminal card', () => {
-  const call = { card: 'terminal' as const, command: 'pnpm test' };
+  const call = { card: 'terminal' as const, kind: 'execute' as const, command: 'pnpm test' };
 
   it('headline is the command, monospace', () => {
     const m = model({ view: call });
@@ -80,21 +80,21 @@ describe('diff card', () => {
   ];
 
   it('one file names the file; several count them', () => {
-    expect(model({ view: { card: 'diff', diffs: [one] } }).headline).toBe('src/a.ts');
-    expect(model({ view: { card: 'diff', diffs: two } }).headline).toBe('src/a.ts 等 2 个文件');
+    expect(model({ view: { card: 'diff', kind: 'edit', diffs: [one] } }).headline).toBe('src/a.ts');
+    expect(model({ view: { card: 'diff', kind: 'edit', diffs: two } }).headline).toBe('src/a.ts 等 2 个文件');
   });
 
   it('an empty diff list still has a headline', () => {
-    expect(model({ view: { card: 'diff', diffs: [] } }).headline).toBe('文件改动');
+    expect(model({ view: { card: 'diff', kind: 'edit', diffs: [] } }).headline).toBe('文件改动');
   });
 
   it('a written diff carries the hunks; a refused one fails', () => {
-    const ok = model({ view: { card: 'diff', diffs: two }, result: { card: 'diff', ok: true, diffs: two } });
+    const ok = model({ view: { card: 'diff', kind: 'edit', diffs: two }, result: { card: 'diff', ok: true, diffs: two } });
     expect(ok.state).toBe('ok');
     expect(ok.body).toEqual({ kind: 'diff', diffs: two });
     expect(ok.foot).toBeUndefined();
 
-    const denied = model({ view: { card: 'diff', diffs: [one] }, result: { card: 'diff', ok: false, diffs: [] } });
+    const denied = model({ view: { card: 'diff', kind: 'edit', diffs: [one] }, result: { card: 'diff', ok: false, diffs: [] } });
     expect(denied.state).toBe('fail');
     expect(denied.foot).toBe('改动未完成');
     expect(denied.footTone).toBe('fail');
@@ -103,15 +103,15 @@ describe('diff card', () => {
 
 describe('search card', () => {
   it('the query is the headline and the mode is this surface’s word for it', () => {
-    const content = model({ view: { card: 'search', query: 'TODO', mode: 'content' } });
+    const content = model({ view: { card: 'search', kind: 'search', query: 'TODO', mode: 'content' } });
     expect(content.headline).toBe('TODO');
     expect(content.subtitle).toBe('搜索内容');
-    expect(model({ view: { card: 'search', query: '*.ts', mode: 'name' } }).subtitle).toBe('搜索文件名');
+    expect(model({ view: { card: 'search', kind: 'search', query: '*.ts', mode: 'name' } }).subtitle).toBe('搜索文件名');
   });
 
   it('matches render as a list; a bare short list carries no footnote', () => {
     const m = model({
-      view: { card: 'search', query: 'TODO', mode: 'content' },
+      view: { card: 'search', kind: 'search', query: 'TODO', mode: 'content' },
       result: { card: 'search', matches: [{ path: 'src/a.ts', line: 12 }], truncated: false },
     });
     expect(m.state).toBe('ok');
@@ -121,7 +121,7 @@ describe('search card', () => {
 
   it('a truncated list says more exist', () => {
     const m = model({
-      view: { card: 'search', query: 'TODO', mode: 'content' },
+      view: { card: 'search', kind: 'search', query: 'TODO', mode: 'content' },
       result: { card: 'search', matches: [{ path: 'src/a.ts' }], truncated: true },
     });
     expect(m.foot).toBe('结果被截断，共 1+ 处');
@@ -130,7 +130,7 @@ describe('search card', () => {
 
   it('no matches is a successful call, not a failure', () => {
     const m = model({
-      view: { card: 'search', query: 'nothing', mode: 'name' },
+      view: { card: 'search', kind: 'search', query: 'nothing', mode: 'name' },
       result: { card: 'search', matches: [], truncated: false },
     });
     expect(m.state).toBe('ok');

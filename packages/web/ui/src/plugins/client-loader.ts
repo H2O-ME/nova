@@ -28,22 +28,25 @@
  * node-only). The separation mirrors the rest of the UI layer: pure helpers
  * + SSR-to-string, with the React tree doing the only DOM touches.
  */
-
-/** One boot-graph entry: where the bundle is and what rev to bust. */
-export interface ClientBundleSpec {
-  /** Path under `/plugins/<name>/`; defaults to `client.js`. */
-  path?: string;
-  /** Content rev (hash or version) appended as `?rev=` for cache busting. */
-  rev?: string;
-}
+import type { PluginClientBundle } from '@nova-agent/core';
 
 /** What `Kernel.roster()` (the boot graph) tells the browser about a plugin. */
 export interface BootGraphEntry {
   name: string;
-  /** Whether the plugin is currently loaded — only loaded plugins ship bundles. */
+  /**
+   * Whether the plugin is switched ON — the operator's INTENT, not liveness: a
+   * row whose `apply()` threw also reads `true`. See {@link entriesToLoad}.
+   */
   enabled?: boolean;
+  /**
+   * The plugin's container phase (`pending` / `loading` / `active` / `failed` /
+   * `disposed`) — the LIVENESS fact. Only `active` proves `apply()` finished,
+   * which is when the plugin's asset route exists. Absent on a host that does
+   * not report phases; see {@link entriesToLoad}.
+   */
+  state?: string;
   /** The plugin's client bundle; absent when the plugin is server-only. */
-  clientBundle?: ClientBundleSpec;
+  clientBundle?: PluginClientBundle;
 }
 
 /** The shape of what a loaded bundle registers on `window.__NovaPlugins__`. */
@@ -84,7 +87,7 @@ export function writeContributions(name: string, contributions: ClientPluginCont
  * `rev` busts the page's script cache (the SAME url is memoized for the page
  * — different rev = different url).
  */
-export function buildBundleUrl(name: string, spec: ClientBundleSpec): string {
+export function buildBundleUrl(name: string, spec: PluginClientBundle): string {
   const file = spec.path ?? 'client.js';
   const trimmed = file.replace(/^\/+/, '');
   const base = `/plugins/${encodeURIComponent(name)}/${trimmed}`;
@@ -148,7 +151,7 @@ export function setScriptInjector(fn: InjectScriptFn | undefined): void {
  * @param name - the plugin's roster name (the same id `/plugins` shows).
  * @param spec - the bundle's path and rev, from the boot graph.
  */
-export function loadClientPlugin(name: string, spec: ClientBundleSpec): Promise<ClientPluginContributions> {
+export function loadClientPlugin(name: string, spec: PluginClientBundle): Promise<ClientPluginContributions> {
   if (name.length === 0) return Promise.reject(new Error('plugin name is empty'));
   const prior = settled.get(name);
   if (prior instanceof Error) return Promise.reject(prior);
@@ -207,9 +210,34 @@ export function loadClientPlugin(name: string, spec: ClientBundleSpec): Promise<
   return task;
 }
 
-/** Pick the entries the boot graph would load — PURE, unit-tested. */
+/**
+ * Pick the entries the boot graph would load — PURE, unit-tested.
+ *
+ * Same criterion the settings navigation applies to this roster
+ * (`settings/plugin-state.ts`): `enabled !== false` is the operator's intent and
+ * `state === 'active'` the liveness fact. A bundle needs liveness — it is served
+ * by the plugin's OWN asset route (`/plugins/<name>/*`), registered by that
+ * plugin's `apply()`. A WHITELIST, not a `state !== 'failed'` blacklist:
+ * `pending` / `loading` have no route yet, `failed` had its effects undone,
+ * `disposed` was torn down, an unknown phase proves nothing either — `enabled`
+ * alone shipped a bundle for a plugin that threw in `apply()` (its row reads
+ * `enabled: true, state: 'failed'`) at a route it cannot serve.
+ *
+ * A wrong guess is FINAL, not merely wasteful: `loadClientPlugin` never retries
+ * a 404, so asking too early kills the bundle for the whole page, while skipping
+ * costs nothing — the next roster snapshot walks the graph again. A host that
+ * reports no phases sends no `state` at all (the wire always carries it:
+ * `WireRosterEntry.state` is required, and `App` hands that roster over), and
+ * absent stays FAIL-OPEN like every other optional roster flag
+ * (`roster-entry.ts`): a bare boot graph loads as it always did.
+ */
 export function entriesToLoad(entries: readonly BootGraphEntry[]): readonly BootGraphEntry[] {
-  return entries.filter((entry) => entry.enabled !== false && entry.clientBundle !== undefined);
+  return entries.filter(
+    (entry) =>
+      entry.enabled !== false &&
+      (entry.state === undefined || entry.state === 'active') &&
+      entry.clientBundle !== undefined,
+  );
 }
 
 /**

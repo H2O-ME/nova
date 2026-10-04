@@ -59,7 +59,7 @@ function slots(input: Partial<CardInput> & Pick<CardInput, 'view'>): ReturnType<
 
 describe('row slots', () => {
   it('a shell call: the 运行命令 title, the command as a mono summary, the exit note trailing', () => {
-    const view = { card: 'terminal' as const, command: 'pnpm test' };
+    const view = { card: 'terminal' as const, kind: 'execute' as const, command: 'pnpm test' };
     const row = slots({ view, args: '{"command":"pnpm test"}', result: { card: 'terminal', output: 'ok', exitCode: 0 } });
     expect(row.title).toBe('运行命令');
     expect(row.summary).toBe('$ pnpm test');
@@ -151,8 +151,8 @@ describe('row slots', () => {
   });
 
   it('a search call titles itself by mode and trails the mode word', () => {
-    const content = slots({ view: { card: 'search', query: 'TODO', mode: 'content' } });
-    const name = slots({ view: { card: 'search', query: '**/*.ts', mode: 'name' } });
+    const content = slots({ view: { card: 'search', kind: 'search', query: 'TODO', mode: 'content' } });
+    const name = slots({ view: { card: 'search', kind: 'search', query: '**/*.ts', mode: 'name' } });
     expect(content.title).toBe('搜索');
     expect(content.summary).toBe('TODO');
     expect(content.mono).toBe(true);
@@ -163,7 +163,7 @@ describe('row slots', () => {
 
 describe('row variant and state marks', () => {
   it('the variant follows the card, not the tool name', () => {
-    expect(rowVariant({ card: 'terminal', command: 'ls' }, { kind: 'args', text: '{}' })).toBe('bash');
+    expect(rowVariant({ card: 'terminal', kind: 'execute', command: 'ls' }, { kind: 'args', text: '{}' })).toBe('bash');
     expect(rowVariant({ card: 'generic', kind: 'read', title: 'a' }, { kind: 'none' })).toBe('others');
     expect(rowVariant({ card: 'generic', kind: 'read', title: 'a' }, { kind: 'read', path: 'a', lineCount: 1, truncated: false })).toBe(
       'read',
@@ -194,7 +194,7 @@ describe('row variant and state marks', () => {
 describe('expanded body', () => {
   it('a terminal result draws the banner with its command, output and pill', () => {
     const body = shell({
-      view: { card: 'terminal', command: 'ls -la' },
+      view: { card: 'terminal', kind: 'execute', command: 'ls -la' },
       args: '{"command":"ls -la"}',
       result: { card: 'terminal', output: 'a\nb\n', exitCode: 2 },
     });
@@ -203,11 +203,11 @@ describe('expanded body', () => {
 
   it('a clean exit draws no pill; a never-exited process keeps the failure line', () => {
     const clean = shell({
-      view: { card: 'terminal', command: 'ls' },
+      view: { card: 'terminal', kind: 'execute', command: 'ls' },
       result: { card: 'terminal', output: 'ok', exitCode: 0 },
     });
     const killed = shell({
-      view: { card: 'terminal', command: 'sleep 9' },
+      view: { card: 'terminal', kind: 'execute', command: 'sleep 9' },
       result: { card: 'terminal', output: '', exitCode: null },
     });
     expect(clean).toMatchObject({ card: 'terminal', pill: null });
@@ -215,7 +215,7 @@ describe('expanded body', () => {
   });
 
   it('a running shell call keeps the banner and carries the live tail', () => {
-    const body = shell({ view: { card: 'terminal', command: 'pnpm test' }, tail: 'running 3 tests' });
+    const body = shell({ view: { card: 'terminal', kind: 'execute', command: 'pnpm test' }, tail: 'running 3 tests' });
     expect(body).toMatchObject({ card: 'terminal', running: true, exitCode: undefined, output: 'running 3 tests', pill: null });
   });
 
@@ -233,7 +233,7 @@ describe('expanded body', () => {
 
   it('a search result groups by file and looks its match texts up from the result text', () => {
     const body = shell({
-      view: { card: 'search', query: 'TODO', mode: 'content' },
+      view: { card: 'search', kind: 'search', query: 'TODO', mode: 'content' },
       result: {
         card: 'search',
         matches: [
@@ -257,7 +257,7 @@ describe('expanded body', () => {
 
   it('a capped search says so without inventing a pre-cap total', () => {
     const body = shell({
-      view: { card: 'search', query: 'x', mode: 'content' },
+      view: { card: 'search', kind: 'search', query: 'x', mode: 'content' },
       result: { card: 'search', matches: [{ path: 'a.ts', line: 1 }], truncated: true },
     });
     if (body.card !== 'search') throw new Error('expected a search shell');
@@ -269,7 +269,7 @@ describe('expanded body', () => {
 
   it('a name-mode search is a flat path list', () => {
     const body = shell({
-      view: { card: 'search', query: '**/*.ts', mode: 'name' },
+      view: { card: 'search', kind: 'search', query: '**/*.ts', mode: 'name' },
       result: { card: 'search', matches: [{ path: 'a.ts' }, { path: 'b.ts' }], truncated: false },
       output: 'a.ts\nb.ts',
     });
@@ -281,7 +281,7 @@ describe('expanded body', () => {
 
   it('a diff result carries interleaved rows and the totals both places print', () => {
     const body = shell({
-      view: { card: 'diff', diffs: [{ path: 'a.ts', oldText: 'a\nb', newText: 'a\nc' }] },
+      view: { card: 'diff', kind: 'edit', diffs: [{ path: 'a.ts', oldText: 'a\nb', newText: 'a\nc' }] },
       result: { card: 'diff', ok: true, diffs: [{ path: 'a.ts', oldText: 'a\nb', newText: 'a\nc' }] },
     });
     expect(body).toMatchObject({ card: 'diff', added: 1, removed: 1 });

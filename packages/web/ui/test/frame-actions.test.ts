@@ -29,7 +29,6 @@ describe('frameAction', () => {
         sessionFile: 's.jsonl',
         model: 'm',
         approvalMode: 'read-only',
-        codeMode: 'native',
         history: [],
         historyTotal: 0,
         traceTotal: 2,
@@ -59,13 +58,35 @@ describe('frameAction', () => {
       blocks: [],
       total: 5,
     });
-    expect(frameAction({ type: 'state', approvalMode: 'full', codeMode: 'ptc', model: 'm' })).toEqual({
+    expect(frameAction({ type: 'state', approvalMode: 'full', model: 'm' })).toEqual({
       type: 'state',
       approvalMode: 'full',
-      codeMode: 'ptc',
       model: 'm',
     });
     expect(frameAction({ type: 'error', message: 'boom' })).toEqual({ type: 'error', message: 'boom' });
+  });
+
+  it('routes a plugin answer as the plugin_answer action', () => {
+    // The one frame the `Mapper` record cannot protect: a missing frame is a
+    // compile error, a MIS-MAPPED one is silent. A page matches its answer by
+    // `plugin` + `id`, so the echoed halves must survive intact, and a failure
+    // (`ok: false` + `error`) is still an answer rather than a dropped frame.
+    expect(frameAction({ type: 'plugin_response', id: 7, plugin: 'demo', op: 'page', ok: true, result: { title: 'T' } })).toEqual({
+      type: 'plugin_answer',
+      plugin: 'demo',
+      id: 7,
+      op: 'page',
+      ok: true,
+      result: { title: 'T' },
+    });
+    expect(frameAction({ type: 'plugin_response', id: 8, plugin: 'demo', op: 'save', ok: false, error: 'off' })).toEqual({
+      type: 'plugin_answer',
+      plugin: 'demo',
+      id: 8,
+      op: 'save',
+      ok: false,
+      error: 'off',
+    });
   });
 
   it('routes a context reading, and a null reading as a real value', () => {

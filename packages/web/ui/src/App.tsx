@@ -40,7 +40,9 @@ import { ModelConfigEditor } from './settings/ModelConfigEditor.js';
 import { ProviderSection } from './settings/ProviderSection.js';
 import { PluginsSection } from './settings/PluginsSection.js';
 import { SkillsSection } from './settings/SkillsSection.js';
-import { QqbotSection } from './settings/QqbotSection.js';
+import { PluginPageSection } from './settings/PluginPageSection.js';
+import { pagePlugins } from './settings/plugin-state.js';
+import { loadBootGraph } from './plugins/client-loader.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
 import { SETTINGS_COPY } from './settings/copy.js';
 import { AppFrame } from './shell/AppFrame.js';
@@ -48,7 +50,7 @@ import { DocumentTitle } from './shell/DocumentTitle.js';
 import { readRecentWorkspaces, rememberWorkspace } from './shell/workspaces.js';
 import { useEscapeToClose } from './shell/use-escape.js';
 import { useLayout } from './shell/use-layout.js';
-import { BookIcon, ChatBotIcon, PluginIcon, SettingsIcon } from './icons.js';
+import { BookIcon, PluginIcon, SettingsIcon } from './icons.js';
 import { DataOutline16 } from './composer/Icons.js';
 import { TraceView } from './trace/TraceView.js';
 import { ContextView } from './context/ContextView.js';
@@ -164,6 +166,27 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (connection === 'open' && state.sessionsStale) requestSessions();
   }, [connection, state.sessionsStale, requestSessions]);
+
+  // A plugin's BROWSER half is a script served from `/plugins/<name>/…` and
+  // declared on its own roster row (`clientBundle`). This is the ONLY caller of
+  // the boot graph: without it the whole seam is a capability nobody invokes —
+  // a plugin can register its asset route and declare its bundle, and the page
+  // would never fetch it. So the roster that `ready` already carries is walked
+  // once per attach, in parallel, right here.
+  //
+  // Failures stay local to their row: `loadBootGraph` reports per entry instead
+  // of throwing, a broken bundle is remembered as failed and never retried, and
+  // it cannot hold up the others — the same rule the kernel side follows (a
+  // plugin's failure is data, not a broken host).
+  const rosterEntries = state.roster?.entries;
+  useEffect(() => {
+    if (connection !== 'open' || rosterEntries === undefined) return;
+    void loadBootGraph(rosterEntries).then((reports) => {
+      for (const report of reports) {
+        if ('error' in report) console.error(`client plugin '${report.name}' failed to load`, report.error);
+      }
+    });
+  }, [connection, rosterEntries]);
 
   // The workspace shortlist the picker offers: what this browser has been in,
   // newest first. The live root is recorded as it arrives, so the menu always
@@ -423,7 +446,6 @@ export function App(): JSX.Element {
                   disabled={composerDisabled(state)}
                   running={view.running}
                   approvalMode={view.approvalMode}
-                  codeMode={view.codeMode}
                   model={state.model}
                   modelName={state.modelName}
                   modelSwitching={state.modelSwitching}
@@ -528,7 +550,7 @@ export function App(): JSX.Element {
        mode, appearance, font size), 模型 (the catalog behind the composer's
        seat), 插件管理 (the kernel's roster as grouped switch rows + the config
        file's path), Skill 中心 (the discovered skills with per-name switches),
-       QQ 机器人 (the third-party channel's connection page) — and the writes
+       plus a section per plugin that declares its own page — and the writes
        go through the same frames the composer's seats use, so a pick here and
        a pick there are one fact. */}
     {settingsOpen && (
@@ -540,17 +562,15 @@ export function App(): JSX.Element {
           // Which pages this product HAS is derived from the LIVE plugin roster,
           // never from a fixed list: a page whose plugin the operator switched off
           // must leave the nav, or the page itself claims the plugin is still
-          // there (the reported 「关掉 QQ BOT 后它仍在设置页显示」). `plugins` is a
-          // flip's answer and `roster` the first-paint snapshot; both are absent
-          // until one lands, and an unknown row must not hide a page — so only an
-          // explicit `enabled: false` counts as off (the same `?? true` reading
-          // `PluginRow` draws its switch from).
-          const rows = state.plugins?.entries ?? state.roster?.entries ?? [];
-          const off = (name: string): boolean =>
-            rows.some((row) => row.name === name && row.enabled === false);
+          // there. `plugins` is a flip's answer and `roster` the first-paint
+          // snapshot; both are absent until one lands, and an unknown row must not
+          // hide a page — so only an explicit `enabled: false` counts as off (the
+          // same `?? true` reading `PluginRow` draws its switch from).
+          //
           // A switched-off plugin leaves no fiber, but it keeps its ROW in 插件管理
           // (from the kernel's manifest), so the switch that closed it is also the
           // way back on — one door, and never a one-way one.
+          const rows = state.plugins?.entries ?? state.roster?.entries ?? [];
           return [
             {
               id: 'general',
@@ -631,26 +651,29 @@ export function App(): JSX.Element {
                 />
               ),
             },
-            // The QQ channel's own page, and the one section a plugin OWNS: with the
-            // plugin switched off it is gone rather than merely locked, and the way
-            // back on is its row's switch in 插件管理 (which is where it was closed).
-            ...(off('qqbot')
-              ? []
-              : [{
-                  id: 'qqbot',
-                  label: SETTINGS_COPY['qqbot.nav'],
-                  icon: <ChatBotIcon />,
-                  content: (
-                    <QqbotSection
-                      snapshot={state.qqbot}
-                      test={state.qqbotTest}
-                      disabled={!state.connected}
-                      manageError={state.manageError}
-                      send={send}
-                      onClearTest={() => { dispatch({ type: 'qqbot_test_clear' }); }}
-                    />
-                  ),
-                }]),
+            // Every plugin that declares a settings PAGE gets a section, and the
+            // host names none of them: the roster row carries the flag, the
+            // plugin answers `page` with its own descriptor, and
+            // `PluginPageSection` renders whatever comes back. With the plugin
+            // switched off there is no section (its row stays in 插件管理, which
+            // is where it was closed, and turning it back on brings the page
+            // back). This replaced a hand-written section per channel, which is
+            // what made "a plugin with settings" a web-package change.
+            ...pagePlugins(rows).map((row) => ({
+              id: row.name,
+              label: row.title ?? row.name,
+              icon: <PluginIcon />,
+              content: (
+                <PluginPageSection
+                  plugin={row.name}
+                  answer={state.pluginAnswers[row.name] ?? null}
+                  disabled={!state.connected}
+                  manageError={state.manageError?.message ?? null}
+                  send={send}
+                  onEdit={() => { dispatch({ type: 'plugin_edit' }); }}
+                />
+              ),
+            })),
           ];
         })()}
       />

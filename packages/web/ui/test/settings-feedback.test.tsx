@@ -1,5 +1,6 @@
 /**
- * The four reported defects on the settings pages, one assertion each.
+ * The reported settings defects that are NOT about one plugin's page, one
+ * assertion each.
  *
  * These are deliberately about the SYMPTOM the user described rather than about
  * the code's shape, because every one of them looked fine in isolation:
@@ -12,7 +13,9 @@
  *     inversion instead of two shades of gray.
  *  2. 「开关没有实际功能」 / refusals invisible — the reducer parks a refusal in
  *     `manageError`, and NOTHING rendered its message, so "运行中不能切换" and
- *     "核心功能不可关闭" both reached nobody.
+ *     "核心功能不可关闭" both reached nobody. The channel is SHARED by every
+ *     managed section, so attributing a refusal to the section that was actually
+ *     waiting is the fix, and it lives in `use-manage-refusal.ts`.
  *  3. 「开了 subagent agent 还说没有这个工具」 — the backend is correct (verified
  *     end to end by the Lead), so the gap was feedback: a landed flip said
  *     nothing, and the reader had no way to know the effect is real and when it
@@ -20,6 +23,10 @@
  *  4. 「不是让用户看不懂」 — the model page was three sibling `<h2>`s with no
  *     indication they are one flow, and the Skill page named its levels without
  *     saying where the files go.
+ *
+ * A plugin's OWN page (whatever plugin that is) is not covered here: the host
+ * stopped knowing plugin names, so a section that renders one plugin's fields is
+ * that plugin's business, not this lane's.
  */
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -28,10 +35,8 @@ import { ModelSection } from '../src/settings/ModelSection.js';
 import { PluginGroup } from '../src/settings/PluginRow.js';
 import { PluginsSection } from '../src/settings/PluginsSection.js';
 import { ProviderSection } from '../src/settings/ProviderSection.js';
-import { QqbotSection } from '../src/settings/QqbotSection.js';
 import { SkillsSection } from '../src/settings/SkillsSection.js';
 import { SETTINGS_COPY } from '../src/settings/copy.js';
-import { runningReading } from '../src/settings/qqbot-view.js';
 import { refusalToShow } from '../src/settings/use-manage-refusal.js';
 import type { PluginRowGroup } from '../src/settings/row-model.js';
 
@@ -47,61 +52,52 @@ function group(overrides: Partial<PluginRowGroup> = {}): PluginRowGroup {
   };
 }
 
+/** The 插件管理 page's switchable group, drawn as the page draws it. */
+const pluginGroup = (): string =>
+  renderToStaticMarkup(
+    <PluginGroup
+      group={group()}
+      title="基础能力"
+      expanded={new Set()}
+      disabled={false}
+      lockedNote={null}
+      switching={null}
+      onToggle={noop}
+      onFlip={noop}
+    />,
+  );
+
+/** The Skill 中心 page, whose rows carry the same shared switch. */
+const skillsSection = (disabled = false): string =>
+  renderToStaticMarkup(
+    <SkillsSection
+      skills={{ items: [{ name: 'alpha', description: 'a', source: 'project', enabled: true }], disable: [] }}
+      disabled={disabled}
+      manageError={null}
+      send={noop}
+    />,
+  );
+
 describe('root cause 1 · the switch reads as on or off', () => {
   it('writes the state to aria-checked, with no parallel data-on attribute', () => {
     // `data-on` beside `aria-checked` is two state sources that can drift, and
     // the shared Switch draws from `aria-checked[='true']` — so this is also the
     // assertion that the visual state cannot disagree with the announced one.
-    const html = renderToStaticMarkup(
-      <PluginGroup
-        group={group()}
-        title="基础能力"
-        expanded={new Set()}
-        disabled={false}
-        lockedNote={null}
-        switching={null}
-        onToggle={noop}
-        onFlip={noop}
-      />,
-    );
+    const html = pluginGroup();
     expect(html).toContain('role="switch"');
     expect(html).toContain('aria-checked="true"');
     expect(html).not.toContain('data-on');
   });
 
   it('draws no section-local pill, so the appearance cannot drift again', () => {
-    // Rendering all three pages and looking for the OLD markup is the honest
+    // Rendering the managed pages and looking for the OLD markup is the honest
     // check here: a local pill was a raw `<button>` with `data-on`, so any
     // survivor shows up as that attribute. Reading the sheets instead would be
     // asserting on source text rather than on what the pages produce.
-    const pages = [
-      renderToStaticMarkup(
-        <PluginGroup
-          group={group()}
-          title="基础能力"
-          expanded={new Set()}
-          disabled={false}
-          lockedNote={null}
-          switching={null}
-          onToggle={noop}
-          onFlip={noop}
-        />,
-      ),
-      renderToStaticMarkup(
-        <SkillsSection
-          skills={{ items: [{ name: 'alpha', description: 'a', source: 'project', enabled: true }], disable: [] }}
-          disabled={false}
-          manageError={null}
-          send={noop}
-        />,
-      ),
-      renderToStaticMarkup(
-        <QqbotSection snapshot={{ appId: '1024' }} test={null} disabled={false} manageError={null} send={noop} onClearTest={noop} />,
-      ),
-    ];
+    const pages = [pluginGroup(), skillsSection()];
     for (const html of pages) expect(html).not.toContain('data-on');
-    // Both sections that HAVE a control render the shared one, which is what
-    // makes one definition the whole story.
+    // Both pages that HAVE a control render the shared one, which is what makes
+    // one definition the whole story.
     expect(pages[0]).toContain('aria-checked');
     expect(pages[1]).toContain('aria-checked');
   });
@@ -136,14 +132,7 @@ describe('root cause 2 · a refusal is visible', () => {
     // page prose, and once as the control's own `title`, so it is reachable on
     // hover and by assistive technology rather than only as distant text.
     const note = SETTINGS_COPY['plugins.lockNote'];
-    const html = renderToStaticMarkup(
-      <SkillsSection
-        skills={{ items: [{ name: 'alpha', description: 'a', source: 'project', enabled: true }], disable: [] }}
-        disabled
-        manageError={null}
-        send={noop}
-      />,
-    );
+    const html = skillsSection(true);
     expect(html).toContain('disabled=""');
     // Twice: once inside the control's `title`, once as the page's own prose.
     // Counting is what makes this test about the two PLACEMENTS rather than
@@ -212,24 +201,5 @@ describe('root cause 4 · the pages explain themselves', () => {
     expect(html).toContain(SETTINGS_COPY['skills.userRoot']);
     // Counted per root, so "放错目录" is distinguishable from "没加载".
     expect(html).toContain('1 个');
-  });
-
-  it('separates "credentials stored" from "the channel is running"', () => {
-    // The reported confusion in one assertion: a reader who has filled the fields
-    // must not be told the bot works. Three readings, not two.
-    const stored = { appId: '1024', hasClientSecret: true };
-    expect(runningReading(stored)).toBe(SETTINGS_COPY['qqbot.statusIdle']);
-    expect(runningReading({ ...stored, running: true })).toBe(SETTINGS_COPY['qqbot.statusLive']);
-    expect(runningReading({})).toBe(SETTINGS_COPY['qqbot.statusOff']);
-  });
-
-  it('says what the channel is FOR on the qqbot page', () => {
-    const html = renderToStaticMarkup(
-      <QqbotSection snapshot={{}} test={null} disabled={false} manageError={null} send={noop} onClearTest={noop} />,
-    );
-    expect(html).toContain(SETTINGS_COPY['qqbot.guideTitle']);
-    // One line from the vocabulary, so the list is really the commands and not an
-    // empty heading.
-    expect(html).toContain(SETTINGS_COPY['qqbot.guideApprove']);
   });
 });

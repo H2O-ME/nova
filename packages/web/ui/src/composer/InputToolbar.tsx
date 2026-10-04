@@ -10,42 +10,38 @@
  * seats read. Its styles stay in `InputBar.module.css` because that is the
  * sheet the harness ships for the card and its row together.
  *
- * **Both mode chips ride the composer in EVERY variant** — the access tier and
- * the execution mode are session-wide facts, and the input bar is where the
- * reference keeps them: its own bar renders `conversation.input.permission` for
- * every session (`sessionId !== undefined ? … : null`), not only while the
- * session is blank. Carrying them only in the hero is what pushed this product
- * into bolting the tier onto the session header, where it read as a control that
- * had floated away from the box it belongs to.
+ * **The access chip rides the composer in EVERY variant** — the tier is a
+ * session-wide fact, and the input bar is where the reference keeps it: its own
+ * bar renders `conversation.input.permission` for every session
+ * (`sessionId !== undefined ? … : null`), not only while the session is blank.
+ * Carrying it only in the hero is what pushed this product into bolting the tier
+ * onto the session header, where it read as a control that had floated away from
+ * the box it belongs to.
  *
- * The two locks are deliberately different, because the host's answers differ:
- * the tier is readable at the NEXT approval and is not part of the cached
- * prefix, so it stays pickable while a run is in flight; the execution mode
- * re-rosters the tool table the running request was built on, so the server
- * refuses it mid-run and the chip says so before the click.
+ * The access tier is the one mode control here, and it stays pickable while a run
+ * is in flight: it is read fresh at the NEXT approval and is not part of the
+ * cached prefix. A control that re-rosters the tool table would be refused
+ * mid-run, which is exactly why no such control lives in this bar.
  */
-import { PermissionSelect, CodeModeSelect } from '../conversation/PermissionSelect.js';
+import { PermissionSelect } from '../conversation/PermissionSelect.js';
 import { PlusOutline16, SendArrowIcon, StopSquareIcon } from './Icons.js';
 import { ModelSeat } from './ModelSeat.js';
 import { COMMANDS_LABEL, type PrimarySeat } from './composer-text.js';
 import css from './InputBar.module.css';
 import type { ModelCatalog } from '../state.js';
-import type { ApprovalMode, ClientFrame, PtcMode } from '../types.js';
+import type { ApprovalMode, ClientFrame } from '../types.js';
 
 export interface InputToolbarProps {
   /** No socket, or an approval is pending: the bar's controls refuse. */
   disabled: boolean;
-  /** A turn is in flight: the hero's execution-mode chip locks (the server refuses it). */
-  running: boolean;
+
   /**
    * `hero` = a session that has not started, `composer` = one that has. The
-   * execution-mode chip renders in the hero ONLY: it picks the toolset, so once a
-   * transcript exists the mode is settled for that session, and the hero is the
-   * last seat where the pick is still meaningful. The access tier rides both.
+   * access tier rides both; the data attribute keeps the two variants' spacing
+   * distinct.
    */
   variant: 'hero' | 'composer';
   approvalMode: ApprovalMode;
-  codeMode: PtcMode;
   /** The model id in force (`state.model`) — the seat's check mark. */
   model: string;
   /** The host's display name for it (the seat's label); null → the id. */
@@ -66,10 +62,8 @@ export interface InputToolbarProps {
 
 export function InputToolbar({
   disabled,
-  running,
   variant,
   approvalMode,
-  codeMode,
   model,
   modelName,
   modelSwitching,
@@ -111,20 +105,11 @@ export function InputToolbar({
             disabled={disabled}
             onPick={(mode) => { send({ type: 'set_approval_mode', mode }) }}
           />
-          {/* The execution mode belongs to the HERO only — the seat of a session
-              that has not started. It picks the TOOLSET, which is part of the
-              cached prefix, so once a transcript exists the mode is settled for
-              that session; an always-visible chip offered a control the server
-              refuses mid-run, and it published a value the plugin manager could
-              already have contradicted. The settings page holds the
-              "default for the next session" half. */}
-          {variant === 'hero' && (
-            <CodeModeSelect
-              value={codeMode}
-              disabled={disabled || running}
-              onPick={(mode) => { send({ type: 'set_code_mode', mode }) }}
-            />
-          )}
+          {/* The EXECUTION mode has no chip here. Which execution modes exist is
+              decided by the plugin that provides one, so that plugin renders its
+              own control on its own settings page — a chip here would mean the
+              host keeping a vocabulary (and a frame) for a plugin it is not
+              supposed to know. */}
         </div>
       </div>
       <div className={css.trailing}>

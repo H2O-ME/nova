@@ -36,7 +36,7 @@ function row(input: {
 
 describe('row render', () => {
   it('draws the 24px line: title, summary and the running state flag', () => {
-    const html = row({ view: { card: 'terminal', command: 'pnpm test' }, tail: 'running 3 tests' });
+    const html = row({ view: { card: 'terminal', kind: 'execute', command: 'pnpm test' }, tail: 'running 3 tests' });
     expect(html).toContain('data-state="running"');
     // dsh's zh dictionary (`tool.title.bash`) is the source of truth for this
     // surface's copy; the English dictionary is a translation, not the original.
@@ -51,7 +51,7 @@ describe('row render', () => {
 
   it('draws the settled exit note in the trailing slot', () => {
     const html = row({
-      view: { card: 'terminal', command: 'ls' },
+      view: { card: 'terminal', kind: 'execute', command: 'ls' },
       args: '{"command":"ls"}',
       result: { card: 'terminal', output: 'a.txt', exitCode: 0 },
     });
@@ -62,7 +62,7 @@ describe('row render', () => {
   it('draws a diff row with its totals as the trailer', () => {
     const html = row({
       name: 'edit_file',
-      view: { card: 'diff', diffs: [{ path: 'a.ts', oldText: 'x', newText: 'y' }] },
+      view: { card: 'diff', kind: 'edit', diffs: [{ path: 'a.ts', oldText: 'x', newText: 'y' }] },
       result: { card: 'diff', ok: true, diffs: [{ path: 'a.ts', oldText: 'x', newText: 'y' }] },
     });
     expect(html).toContain('编辑');
@@ -94,7 +94,7 @@ describe('row render', () => {
     // panel alone now and the expanded card body is the call's only reading,
     // so no row markup may carry the pill (or any opener) ever again.
     const expanded = row({
-      view: { card: 'terminal', command: 'ls' },
+      view: { card: 'terminal', kind: 'execute', command: 'ls' },
       args: '{"command":"ls"}',
       result: { card: 'terminal', output: 'a.txt', exitCode: 0 },
     });

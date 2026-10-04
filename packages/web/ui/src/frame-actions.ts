@@ -29,7 +29,6 @@ const MAPPERS: Mapper = {
   state: (frame) => ({
     type: 'state',
     approvalMode: frame.approvalMode,
-    codeMode: frame.codeMode,
     model: frame.model,
     ...(frame.modelName !== undefined ? { modelName: frame.modelName } : {}),
   }),
@@ -42,23 +41,17 @@ const MAPPERS: Mapper = {
   roster: (frame) => ({ type: 'roster', entries: frame.entries, configPath: frame.configPath }),
   plugins: (frame) => ({ type: 'plugins', entries: frame.entries, disable: frame.disable }),
   skills: (frame) => ({ type: 'skills', items: frame.items, disable: frame.disable }),
-  qqbot: (frame) => {
-    // The whole frame, not field-by-field: hand-copying a server frame is how its
-    // NEW optional fields get silently dropped, and it already happened here —
-    // `running` (from `snapshotWithRuntime`) and `error` (the config diagnosis)
-    // were both reaching the browser as nothing, which left the page's 运行中
-    // branch and its error card as dead code no real session could reach. Same
-    // discipline as `launchWeb`'s whole-options pass-through (AGENTS.md §5).
-    const { type: _frameType, ...snapshot } = frame;
-    return { type: 'qqbot', snapshot };
-  },
-  qqbot_test: (frame) => ({
-    type: 'qqbot_test',
-    result: {
-      ok: frame.ok,
-      ...(frame.gateway !== undefined ? { gateway: frame.gateway } : {}),
-      ...(frame.message !== undefined ? { message: frame.message } : {}),
-    },
+  plugin_response: (frame) => ({
+    type: 'plugin_answer',
+    plugin: frame.plugin,
+    id: frame.id,
+    op: frame.op,
+    ok: frame.ok,
+    // The result travels UNTOUCHED: the host does not interpret a plugin's
+    // answer and neither does the browser — the page that asked renders it.
+    // Hand-copying fields here is how a plugin's new field gets silently dropped.
+    ...(frame.result !== undefined ? { result: frame.result } : {}),
+    ...(frame.error !== undefined ? { error: frame.error } : {}),
   }),
   model_config: (frame) => ({
     type: 'model_config',

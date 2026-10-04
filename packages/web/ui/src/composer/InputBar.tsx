@@ -7,7 +7,7 @@
  * elevation stroke (`--dsw-elevation-soft`, stroke rebound to `border-l2`), the
  * draft scrollport capped at 14 × 24px lines (`DraftSurface`), then one toolbar
  * row (`InputToolbar`) whose left group carries the `+` control (and, in the
- * hero, the two mode chips) and whose trailing group carries the model seat and
+ * hero, the access chip) and whose trailing group carries the model seat and
  * the 34px primary circle — Stop while a turn runs with an empty draft, Send
  * otherwise. Under the card, the dock row holds the session's readings (stats
  * pills and the context meter) — the harness seats both there, not in the
@@ -59,7 +59,7 @@ import { DROP_BLOCKED, DROP_TITLE, placeholderFor, primarySeat } from './compose
 import { cx } from './cx.js';
 import css from './InputBar.module.css';
 import type { ModelCatalog } from '../state.js';
-import type { ApprovalMode, ClientFrame, CommandSummary, PtcMode, WireFileEntry } from '../types.js';
+import type { ApprovalMode, ClientFrame, CommandSummary, WireFileEntry } from '../types.js';
 
 /**
  * How long typing in an `@` query settles before the host is asked. The walk
@@ -76,7 +76,6 @@ export interface InputBarProps {
   /** A turn is in flight: the primary seat becomes Stop while the draft is empty. */
   running: boolean;
   approvalMode: ApprovalMode;
-  codeMode: PtcMode;
   /** The model id in force (`state.model`) — the seat's check mark. */
   model: string;
   /** The host's display name for it (the seat's label); null → the id. */
@@ -141,7 +140,6 @@ export function InputBar({
   disabled,
   running,
   approvalMode,
-  codeMode,
   model,
   modelName,
   modelSwitching,
@@ -513,10 +511,8 @@ export function InputBar({
         />
         <InputToolbar
           disabled={disabled}
-          running={running}
           variant={variant}
           approvalMode={approvalMode}
-          codeMode={codeMode}
           model={model}
           modelName={modelName}
           modelSwitching={modelSwitching}

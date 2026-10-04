@@ -12,10 +12,11 @@
  *  - 核心功能 — load-bearing. NO switch is drawn, and the row explains why
  *    (`plugins.locked`). The kernel refuses these regardless; not drawing the
  *    control is how the page avoids offering a button that throws.
- *  - 基础能力 — ships on, may be turned off. The switch writes `plugins.disable`.
+ *  - 基础能力 — ships on, may be turned off. The switch writes that row's own
+ *    `enabled` in `plugins.entries`.
  *  - 扩展能力 — OFF until asked for. The row carries `plugins.defaultOff` and the
- *    switch writes `plugins.enable` (a DIFFERENT list: `disable` wins over
- *    `enable`, so an opt-in written to the wrong list could never be undone).
+ *    switch writes the SAME field: one list, one switch per row, so there is no
+ *    way for a settings row and a startup to disagree about whether it is on.
  *
  * Rows expand to show the description and the services they inject (see
  * `PluginRow.tsx`); failed rows sort to the top of their group with a count,

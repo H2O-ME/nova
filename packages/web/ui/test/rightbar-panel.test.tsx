@@ -147,7 +147,7 @@ describe('right panel shell', () => {
         callId: 'c1',
         name: 'edit_file',
         args: '{}',
-        view: { card: 'diff', diffs: [{ path: 'src/a.ts', oldText: 'a\n', newText: 'a\nb\n' }] },
+        view: { card: 'diff', kind: 'edit', diffs: [{ path: 'src/a.ts', oldText: 'a\n', newText: 'a\nb\n' }] },
       },
     ]);
     expect(html('changes', { changes })).not.toContain(RIGHTBAR_COPY['changes.list.label']);

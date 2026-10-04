@@ -11,6 +11,32 @@
  */
 import { SETTINGS_COPY } from './copy.js';
 import type { StateDotState } from '../tool/StateDot.js';
+import type { WireRosterEntry } from '../types.js';
+
+/**
+ * The rows that own a settings page, in roster order.
+ * A row qualifies when it declares the page AND the plugin can really answer
+ * one. `enabled` is the operator's intent (`absent` counts as on, the manager's
+ * switch reads it the same way): a row switched off gets no section while its
+ * 插件管理 row stays, which is the way back on. `state` is the liveness fact,
+ * and only `active` proves a live fiber — the section exists because the
+ * plugin's own `pluginRpc` namespace answers the `page` op, and that namespace
+ * lives ON the fiber: `pending` / `loading` have not run `apply` yet, `failed`
+ * either never got one or had its effects undone, `disposed` was torn down.
+ * Offering any of them draws a section answerable only by `no loaded plugin
+ * answers "…"` — a whitelist, not a `state !== 'failed'` blacklist (an unknown
+ * phase proves no namespace either). `enabled` alone would keep that row's dead
+ * section for good; `state` keeps it out (`web/src/roster-entry.ts`). The page
+ * itself is the plugin's: this only decides WHICH sections the navigation has,
+ * which is why the flags travel on the roster.
+ * @param rows - the live roster rows.
+ * @returns the rows whose pages the navigation should offer.
+ */
+export function pagePlugins(rows: readonly WireRosterEntry[]): readonly WireRosterEntry[] {
+  return rows.filter(
+    (row) => row.page === true && row.enabled !== false && row.state === 'active',
+  );
+}
 
 /** The container's `FiberState` union, as the wire reports it. */
 const STATE_KEYS: Record<string, string> = {

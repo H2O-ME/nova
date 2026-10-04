@@ -72,6 +72,23 @@ describe('client plugin loader — pure logic', () => {
     expect(kept.map((e) => e.name)).toEqual(['good', 'no-flag']);
   });
 
+  it('entriesToLoad: an enabled row that is not active ships no bundle', () => {
+    // `apply()` throwing reads `{ enabled: true, state: 'failed' }` — the switch
+    // is on (the operator did ask for it) and the plugin is broken. Its route
+    // and its RPC namespace went with the failed fiber, so a bundle fetched
+    // there 404s and that failure is FINAL for the page. `pending` / `loading`
+    // are the same call from the other side: `apply` has not registered the
+    // route yet, so trying early is worse than skipping. A row with no `state`
+    // at all is a host that does not report phases — load as before.
+    const entries: BootGraphEntry[] = [
+      { name: 'broken', enabled: true, state: 'failed', clientBundle: {} },
+      { name: 'starting', enabled: true, state: 'loading', clientBundle: {} },
+      { name: 'live', enabled: true, state: 'active', clientBundle: {} },
+      { name: 'old-host', enabled: true, clientBundle: {} },
+    ];
+    expect(entriesToLoad(entries).map((e) => e.name)).toEqual(['live', 'old-host']);
+  });
+
   it('writeContributions / readContributions: round-trip via the global', () => {
     const c: ClientPluginContributions = { fence: 'renderer-x' };
     writeContributions('p', c);

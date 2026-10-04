@@ -6,7 +6,7 @@
  * disagree about which one failed. That is right for the reducer and awkward for
  * the page — the settings dialog mounts ONE section at a time
  * (`SettingsPanel`'s `active?.content`), so a stale refusal left over from the
- * plugins page would be drawn again by the qqbot page, attributing someone
+ * plugins page would be drawn again by a plugin's own page, attributing someone
  * else's failure to the wrong controls.
  *
  * `manageError.seq` alone cannot answer this: it is assigned by the reducer when

@@ -13,7 +13,7 @@ import { isIgnoredEvent } from '../src/state-events.js';
  */
 
 const CALL = { id: 'c1', name: 'bash', args: { command: 'ls' }, rawArgs: '{"command":"ls"}' };
-const TERMINAL_CALL: ToolCallView = { card: 'terminal', command: 'ls' };
+const TERMINAL_CALL: ToolCallView = { card: 'terminal', kind: 'execute', command: 'ls' };
 
 type Frame = { event: KernelEvent; view?: ToolCallView; resultView?: ToolResultView };
 
@@ -54,7 +54,6 @@ function readyInfo(over: Partial<ReadyInfo> = {}): ReadyInfo {
     sessionFile: 'D:/proj/s.jsonl',
     model: 'test-model',
     approvalMode: 'read-only',
-    codeMode: 'native',
     history: [],
     historyTotal: 0,
     traceTotal: 0,
@@ -144,12 +143,12 @@ describe('reduce / ready replay', () => {
     expect(opened.sessions).toHaveLength(1);
     const state = reduce(opened, {
       type: 'ready',
-      info: readyInfo({ approvalMode: 'full', codeMode: 'both', pendingApprovals: [approvalRequest('ap1')] }),
+      info: readyInfo({ approvalMode: 'full', pendingApprovals: [approvalRequest('ap1')] }),
     });
     // An attach re-states the transcript, not the sidebar: the rows the user is
     // looking at stay put, and the list only ASKS again (stale, not empty) —
     // otherwise every switch blinks the panel into "loading" and back.
-    expect(state).toMatchObject({ approvalMode: 'full', codeMode: 'both', sessionsStale: true });
+    expect(state).toMatchObject({ approvalMode: 'full', sessionsStale: true });
     expect(state.sessions).toHaveLength(1);
     expect(state.pendingApproval?.id).toBe('ap1');
   });
@@ -213,8 +212,8 @@ describe('reduce / ready replay', () => {
 
   it('a state frame updates the modes without touching the transcript', () => {
     const live = fold([{ event: { type: 'text_delta', messageId: 'm', text: 'x' } }]);
-    const switched = reduce(live, { type: 'state', approvalMode: 'auto-edit', codeMode: 'ptc', model: 'test-model' });
-    expect(switched).toMatchObject({ approvalMode: 'auto-edit', codeMode: 'ptc' });
+    const switched = reduce(live, { type: 'state', approvalMode: 'auto-edit', model: 'test-model' });
+    expect(switched).toMatchObject({ approvalMode: 'auto-edit' });
     expect(texts(switched.blocks)).toEqual(['x']);
   });
 });
@@ -396,7 +395,7 @@ describe('reduce / streaming blocks', () => {
 describe('reduce / tool rows carry server-resolved views', () => {
   it('stores the view the host sent with the call', () => {
     const state = fold([{ event: { type: 'tool_call_start', turn: 1, call: CALL }, view: TERMINAL_CALL }]);
-    expect(state.blocks[0]).toMatchObject({ kind: 'tool', view: { card: 'terminal', command: 'ls' } });
+    expect(state.blocks[0]).toMatchObject({ kind: 'tool', view: { card: 'terminal', kind: 'execute', command: 'ls' } });
     expect(state.blocks[0]).not.toHaveProperty('result');
   });
 

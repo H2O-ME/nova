@@ -38,13 +38,13 @@ function toolBlock(
   };
 }
 
-const diffView = (diffs: FileDiff[]): ToolCallView => ({ card: 'diff', diffs });
+const diffView = (diffs: FileDiff[]): ToolCallView => ({ card: 'diff', kind: 'edit', diffs });
 
 describe('changes model', () => {
   it('reads diffs from the view vocabulary and ignores every other card', () => {
     const model = changesModel([
       toolBlock({ card: 'generic', kind: 'read', title: 'README.md' }),
-      toolBlock({ card: 'terminal', command: 'ls' }),
+      toolBlock({ card: 'terminal', kind: 'execute', command: 'ls' }),
       toolBlock(diffView([{ path: 'src/a.ts', oldText: 'one\n', newText: 'one\ntwo\n' }]), { ok: true }),
     ]);
     expect(model.files.map((file) => file.path)).toEqual(['src/a.ts']);
@@ -78,7 +78,7 @@ describe('changes model', () => {
   });
 
   it('says nothing when the session changed no files', () => {
-    expect(changesModel([toolBlock({ card: 'terminal', command: 'ls' })])).toEqual(emptyChanges);
+    expect(changesModel([toolBlock({ card: 'terminal', kind: 'execute', command: 'ls' })])).toEqual(emptyChanges);
   });
 
   it('labels a created file apart from an edit', () => {

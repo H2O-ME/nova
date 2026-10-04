@@ -1,5 +1,5 @@
 /**
- * The composer's two mode selectors, ported from deepseek-harness
+ * The composer's mode selector, ported from deepseek-harness
  * `ui-permission-presets` PermissionSelect.tsx + PermissionSelect.module.css
  * (c) 2026 DeepSeek — MIT License: a 28px chip trigger (glyph + label +
  * chevron) opening the shared `shell/Menu.tsx` card — a trailing check on the
@@ -17,9 +17,9 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Menu } from '../shell/Menu.js';
-import { APPROVAL_MODES, CODE_MODES } from './mode-options.js';
+import { APPROVAL_MODES } from './mode-options.js';
 import { ChevronDownIcon } from '../icons.js';
-import type { ApprovalMode, PtcMode } from '../types.js';
+import type { ApprovalMode } from '../types.js';
 import css from './PermissionSelect.module.css';
 
 /* Shield contour and the glyphs drawn over it (design set 1556 over the
@@ -172,35 +172,6 @@ export function PermissionSelect({ value, onPick, side, align, disabled }: Permi
       name="访问模式"
       onPick={onPick}
       glyphOf={(code) => permissionGlyphs.get(code)}
-      side={side}
-      align={align}
-      disabled={disabled}
-    />
-  );
-}
-
-export interface CodeModeSelectProps {
-  /** The execution mode in force. */
-  value: PtcMode;
-  /** The pick lands as the `set_code_mode` frame. */
-  onPick: (mode: PtcMode) => void;
-  /** Preferred side of the trigger (the settings rows open upward). */
-  side?: 'below' | 'above';
-  /** Which trigger edge the card aligns to (the settings rows align end). */
-  align?: 'start' | 'end';
-  disabled?: boolean;
-}
-
-/** Execution-mode selector (native / ptc / both): no glyph, so its label stays
- *  visible at every width (the trigger recipe only collapses glyph-carrying
- *  triggers). */
-export function CodeModeSelect({ value, onPick, side, align, disabled }: CodeModeSelectProps): JSX.Element {
-  return (
-    <ModeSelect
-      value={value}
-      options={CODE_MODES}
-      name="执行模式"
-      onPick={onPick}
       side={side}
       align={align}
       disabled={disabled}

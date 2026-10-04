@@ -55,6 +55,7 @@ const KIND_TITLES: Record<Extract<ToolCallView, { card: 'generic' }>['kind'], st
   job: '后台任务',
   subagents: '创建代理',
   plan: '更新计划',
+  question: '提问',
   other: '工具调用',
 };
 
