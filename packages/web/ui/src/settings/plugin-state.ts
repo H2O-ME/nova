@@ -45,6 +45,11 @@ const STATE_KEYS: Record<string, string> = {
   active: SETTINGS_COPY['pluginState.active'],
   failed: SETTINGS_COPY['pluginState.failed'],
   disposed: SETTINGS_COPY['pluginState.disposed'],
+  // The row a switch turned off: the roster's own word for "no fiber, because
+  // nobody asked for one" (`plugins/src/runtime-roster.ts`). It is a producer
+  // value, not a `FiberState`, and without this entry the row printed the raw
+  // wire word — 「todo · disabled · 已关闭」 was the reported reading.
+  disabled: SETTINGS_COPY['pluginState.disabled'],
 };
 
 /**

@@ -33,6 +33,11 @@ describe('remote command parsing', () => {
     // question must all reach the agent as the text the operator actually wrote.
     // The verbatim part matters — trimming is how the parser reads a command, not
     // something it may do to the operator's prompt.
+    //
+    // `/compact` is in this list on purpose: this parser declines names it does
+    // not own, and the CALLER resolves them against the kernel's live catalog
+    // (`PeerTurns.run`). Deciding it here would mean a hardcoded copy of the
+    // catalog that drifts the moment a plugin is switched on or off.
     for (const text of ['帮我看看这个 bug', '/compact', '/Perm full', '/modelx', '  /unknown stuff  ']) {
       expect(parseRemoteCommand(text)).toEqual({ text });
     }

@@ -1,12 +1,36 @@
-import type {
-  AgentMessage,
-  ChatProvider,
-  ChatRequest,
-  StreamEvent,
-  ToolDefinition,
-  Usage,
-} from '@nova-agent/core';
+/**
+ * Hand-rolled OpenAI-compatible streaming client.
+ *
+ * This module is the STATE MACHINE: it addresses an endpoint, runs the retry
+ * loop over attempts, and drives the SSE decoder. What the bytes MEAN lives in
+ * `wire.ts` (IR ↔ vendor JSON), what a failure MEANS in `retry.ts`, and the
+ * reader/timer plumbing in `transport.ts` — so this file only has to be
+ * correct about ordering: when the target is frozen, when the idle timer is
+ * armed, which failures retry, and what a partial reply leaves behind.
+ *
+ * - Internal AgentMessage/ToolDefinition IR is mapped to the wire format by
+ *   `wire.ts`, so core stays provider-agnostic.
+ * - Every retry policy lives in stream(): 429/5xx/network errors before the
+ *   stream starts, and mid-stream failures (dropped connections, provider
+ *   error chunks, streams that end without a finish reason) retry within the
+ *   same budget — after partial output a `reset` event lets consumers discard
+ *   their in-flight state before the retry replays from scratch.
+ */
+import type { ChatProvider, ChatRequest, StreamEvent, ToolDefinition } from '@nova-agent/core';
+import {
+  HttpError,
+  ProviderProtocolError,
+  RETRY_BACKOFF_MAX_MS,
+  abortError,
+  errMessage,
+  isAbortError,
+  isRetryableError,
+  parseRetryAfterMs,
+  sleep,
+} from './retry.js';
 import { parseSse } from './sse.js';
+import { keepAlive, readBoundedText } from './transport.js';
+import { translateChunk, toProviderMessage, toProviderTool, type ProviderChunk } from './wire.js';
 
 export interface OpenAICompatConfig {
   baseURL: string;
@@ -32,63 +56,22 @@ export interface OpenAICompatConfig {
   sessionId?: string;
 }
 
-export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    /** Parsed `retry-after` hint; authoritative delay for the retry backoff. */
-    readonly retryAfterMs?: number,
-  ) {
-    super(message);
-    this.name = 'HttpError';
-  }
-}
-
 /**
- * Upper bound for the client's OWN exponential backoff between attempts. The
- * growth is base * 2^attempt + jitter: without a cap a generous
- * retryBaseDelayMs (or a late attempt) parks the run for minutes on a
- * transient 429/5xx. Server hints are capped separately in
- * parseRetryAfterMs; this caps only our own growth.
+ * The endpoint identity frozen for the lifetime of ONE stream. Sampling knobs
+ * and the retry budget stay on the client (they describe the client, not the
+ * endpoint); this is only what a request addresses, so a mid-flight
+ * `setEndpoint` / `setModel` cannot desync the URL from the body.
  */
-export const RETRY_BACKOFF_MAX_MS = 32_000;
-
-interface ProviderToolCallDelta {
-  index: number;
-  id?: string;
-  type?: string;
-  function?: { name?: string; arguments?: string };
+interface RequestTarget {
+  baseURL: string;
+  apiKey: string;
+  model: string;
+  sessionId: string | undefined;
 }
 
-interface ProviderChunk {
-  choices?: Array<{
-    delta?: {
-      content?: string;
-      /** Chain-of-thought stream (DeepSeek reasoner style). */
-      reasoning_content?: string;
-      tool_calls?: ProviderToolCallDelta[];
-    };
-    finish_reason?: string | null;
-  }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    prompt_tokens_details?: { cached_tokens?: number };
-    prompt_cache_hit_tokens?: number;
-  };
-  error?: { message?: string };
-}
+/** Cap for an error response body read into a message (a bad gateway may not end). */
+const ERROR_BODY_MAX_BYTES = 64 * 1024;
 
-/**
- * Hand-rolled OpenAI-compatible streaming client.
- * - Internal AgentMessage/ToolDefinition IR is mapped to the wire format here,
- *   so core stays provider-agnostic.
- * - Every retry policy lives in stream(): 429/5xx/network errors before the
- *   stream starts, and mid-stream failures (dropped connections, provider
- *   error chunks, streams that end without a finish reason) retry within the
- *   same budget — after partial output a `reset` event lets consumers discard
- *   their in-flight state before the retry replays from scratch.
- */
 export class OpenAICompatClient implements ChatProvider {
   private readonly config: OpenAICompatConfig;
   private readonly fetchImpl: typeof fetch;
@@ -136,16 +119,21 @@ export class OpenAICompatClient implements ChatProvider {
    * Swapping the object would leave all of them talking to the previous endpoint
    * while the UI claimed the new one.
    *
-   * Only the three fields that identify an endpoint move. Sampling knobs
-   * (`temperature` / `maxTokens`), the retry budget and the injectable `fetchImpl`
-   * are properties of this CLIENT, not of the endpoint being addressed, so a
-   * provider switch does not silently reset them.
-   * @param endpoint - the new baseURL, api key and default model id.
+   * Sampling knobs (`temperature` / `maxTokens`) move WITH the endpoint when
+   * the caller names them: each BYOK provider row carries its own sampling
+   * settings, so switching rows must follow the row's values — and an ABSENT
+   * knob means "this endpoint has none", i.e. cleared, not "keep the previous
+   * row's". The retry budget and the injectable `fetchImpl` stay client-level.
+   * @param endpoint - the new baseURL, api key, default model id and sampling overrides.
    */
-  setEndpoint(endpoint: { baseURL: string; apiKey: string; model: string }): void {
+  setEndpoint(endpoint: { baseURL: string; apiKey: string; model: string; temperature?: number; maxTokens?: number }): void {
     this.config.baseURL = endpoint.baseURL;
     this.config.apiKey = endpoint.apiKey;
     this.config.model = endpoint.model;
+    if (endpoint.temperature !== undefined) this.config.temperature = endpoint.temperature;
+    else delete this.config.temperature;
+    if (endpoint.maxTokens !== undefined) this.config.maxTokens = endpoint.maxTokens;
+    else delete this.config.maxTokens;
   }
 
   /**
@@ -158,7 +146,17 @@ export class OpenAICompatClient implements ChatProvider {
   }
 
   async *stream(req: ChatRequest): AsyncGenerator<StreamEvent> {
-    const body = this.buildBody(req);
+    // Freeze the request TARGET for the whole stream. A model/provider switch
+    // (setModel / setEndpoint) landing between attempts must apply to the NEXT
+    // stream, not re-point an in-flight retry at a different endpoint while the
+    // body still names the previous model.
+    const target: RequestTarget = {
+      baseURL: this.config.baseURL,
+      apiKey: this.config.apiKey,
+      model: this.config.model,
+      sessionId: this.config.sessionId,
+    };
+    const body = this.buildBody(req, target);
     let lastError: unknown;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
@@ -168,7 +166,7 @@ export class OpenAICompatClient implements ChatProvider {
       // before the first event a retry is transparent.
       let yielded = false;
       try {
-        const { response, armIdleTimeout, disarm } = await this.fetchOnce(body, req.signal);
+        const { response, armIdleTimeout, disarm } = await this.fetchOnce(target, body, req.signal);
         try {
           const responseBody = response.body;
           if (!responseBody) throw new Error('response has no body');
@@ -176,15 +174,26 @@ export class OpenAICompatClient implements ChatProvider {
           // Every byte from the wire re-arms the idle timer, so a healthy
           // stream may run arbitrarily long — only a stalled one is cut.
           for await (const sse of parseSse(keepAlive(responseBody, armIdleTimeout))) {
-            if (sse.data === '[DONE]') {
+            // `[DONE]` is the transport terminator: it means the SSE stream is
+            // complete, which is distinct from "a finish reason arrived". An
+            // empty `[DONE]` (no content, no finish reason) is therefore still
+            // possible, and core treats that as an empty completion and retries
+            // (see `streamCompletion`) rather than committing a phantom turn.
+            const payload = sse.data.trim();
+            if (payload.toUpperCase() === '[DONE]') {
               sawFinish = true;
               return;
             }
+            // An empty `data:` field carries no information (some servers pad);
+            // anything else that is not JSON is upstream corruption and must
+            // surface as a protocol error rather than silently vanishing from
+            // the middle of a reply.
+            if (payload.length === 0) continue;
             let chunk: ProviderChunk;
             try {
-              chunk = JSON.parse(sse.data) as ProviderChunk;
+              chunk = JSON.parse(payload) as ProviderChunk;
             } catch {
-              continue;
+              throw new ProviderProtocolError(`malformed SSE payload from upstream: ${payload.slice(0, 200)}`);
             }
             if (chunk.error) throw new Error(chunk.error.message ?? 'provider returned an error');
             const events = [...translateChunk(chunk)];
@@ -241,6 +250,7 @@ export class OpenAICompatClient implements ChatProvider {
    * being slow; a stalled stream aborts into the retry path above.
    */
   private async fetchOnce(
+    target: RequestTarget,
     body: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<{
@@ -248,7 +258,7 @@ export class OpenAICompatClient implements ChatProvider {
     armIdleTimeout: () => void;
     disarm: () => void;
   }> {
-    const url = `${this.config.baseURL.replace(/\/+$/, '')}/chat/completions`;
+    const url = `${target.baseURL.replace(/\/+$/, '')}/chat/completions`;
     const attemptController = new AbortController();
     const attemptSignal = attemptController.signal;
     const timeoutError = (): Error => {
@@ -269,12 +279,12 @@ export class OpenAICompatClient implements ChatProvider {
     };
     const combined = signal ? AbortSignal.any([signal, attemptSignal]) : attemptSignal;
     const sessionHeaders =
-      this.config.sessionId !== undefined
+      target.sessionId !== undefined
         ? {
-            'x-session-id': this.config.sessionId,
+            'x-session-id': target.sessionId,
             // Request-scoped id (the header's semantics): unique per attempt.
-            'x-client-request-id': `${this.config.sessionId}-${++this.requestSeq}`,
-            'x-session-affinity': this.config.sessionId,
+            'x-client-request-id': `${target.sessionId}-${++this.requestSeq}`,
+            'x-session-affinity': target.sessionId,
           }
         : {};
     let response: Response;
@@ -283,7 +293,7 @@ export class OpenAICompatClient implements ChatProvider {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${this.config.apiKey}`,
+          authorization: `Bearer ${target.apiKey}`,
           ...sessionHeaders,
         },
         body: JSON.stringify(body),
@@ -295,7 +305,10 @@ export class OpenAICompatClient implements ChatProvider {
     }
     if (!response.ok) {
       disarm();
-      const text = await response.text().catch(() => '');
+      // The error body is untrusted and may be huge or never end, so it is read
+      // under a byte cap and its own deadline — `response.text()` with the
+      // attempt's timer already disarmed could hang the client on a bad gateway.
+      const text = await readBoundedText(response, ERROR_BODY_MAX_BYTES, this.timeoutMs, signal);
       // An unparseable retry-after fails the attempt loudly (fail-closed):
       // the server asked for a wait we cannot honor, and silently guessing
       // either hammers a throttling endpoint or parks the run. Surface it as
@@ -312,8 +325,10 @@ export class OpenAICompatClient implements ChatProvider {
       }
       throw new HttpError(response.status, `HTTP ${response.status}: ${text.slice(0, 500)}`, retryAfterMs);
     }
-    // Headers arrived: the TTFT phase is over — the timer now belongs to the
-    // body loop, which re-arms it per chunk via armIdleTimeout().
+    // Headers arrived: the TTFT phase is over, so the idle timer is re-armed
+    // with a FULL budget. Without this the body inherited whatever remained of
+    // the header wait (a 119s TTFT left a 1s body budget on a 120s timeout).
+    armIdleTimeout();
     return { response, armIdleTimeout, disarm };
   }
 
@@ -341,23 +356,25 @@ export class OpenAICompatClient implements ChatProvider {
     return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
   }
 
-  private buildBody(req: ChatRequest): Record<string, unknown> {
+  private buildBody(req: ChatRequest, target: RequestTarget): Record<string, unknown> {
     const messages: Record<string, unknown>[] = [];
     if (req.systemPrompt && req.systemPrompt.length > 0) {
       messages.push({ role: 'system', content: req.systemPrompt });
     }
     for (const msg of req.messages) messages.push(toProviderMessage(msg));
     const body: Record<string, unknown> = {
-      model: this.config.model,
+      model: target.model,
       messages,
       stream: true,
       stream_options: { include_usage: true },
     };
+    // Sampling knobs are CLIENT properties (see `setEndpoint`), so they are read
+    // live; the endpoint identity comes from the frozen target above.
     if (this.config.temperature !== undefined) body['temperature'] = this.config.temperature;
     if (this.config.maxTokens !== undefined) body['max_tokens'] = this.config.maxTokens;
-    if (this.config.sessionId !== undefined) {
+    if (target.sessionId !== undefined) {
       // OpenAI documents 64 chars as the prompt_cache_key budget.
-      body['prompt_cache_key'] = [...this.config.sessionId].slice(0, 64).join('');
+      body['prompt_cache_key'] = [...target.sessionId].slice(0, 64).join('');
     }
     if (req.tools && req.tools.length > 0) {
       body['tools'] = this.serializeTools(req.tools);
@@ -390,248 +407,4 @@ export class OpenAICompatClient implements ChatProvider {
       RETRY_BACKOFF_MAX_MS,
     );
   }
-}
-
-/**
- * ai keeps `@nova-agent/core` as a types-only dependency to stay a provider-agnostic
- * leaf runtime. Error-message narrowing is a 3-line idiom, so it lives here locally
- * rather than forcing the first ai→core runtime edge for one helper.
- */
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-function toProviderMessage(msg: AgentMessage): Record<string, unknown> {
-  switch (msg.role) {
-    case 'system':
-      return { role: msg.role, content: msg.content };
-    case 'user':
-      return { role: 'user', content: userContent(msg.content, msg.resolvedImages) };
-    case 'assistant': {
-      const out: Record<string, unknown> = { role: 'assistant', content: msg.content };
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        out['tool_calls'] = msg.toolCalls.map((call) => ({
-          id: call.id,
-          type: 'function',
-          function: {
-            name: call.name,
-            arguments: call.rawArgs.length > 0 ? call.rawArgs : '{}',
-          },
-        }));
-      }
-      return out;
-    }
-    case 'tool':
-      return { role: 'tool', tool_call_id: msg.toolCallId, content: msg.content };
-  }
-}
-
-/**
- * One user turn's content: a plain string when there are no resolved images,
- * else the OpenAI content-part array.
- *
- * The string form is kept for the no-image case on purpose — it is the shape
- * every gateway accepts, including ones that predate multimodal requests, so a
- * conversation without images stays byte-identical to what it was before this
- * feature existed.
- *
- * The image form is the documented OpenAI `image_url` part carrying a `data:`
- * URI. It was verified against a real gateway rather than assumed: a
- * 64x64 solid-blue PNG sent as `data:image/png;base64,…` came back described as
- * blue, and the response's `usage.prompt_tokens_details.image_tokens` was
- * non-zero. A bare-base64 `url` and a bare `image_url` string were also
- * accepted there, but the `data:` URI is the one the specification requires, so
- * it is the one used.
- *
- * Only `resolvedImages` is read. A message still holding unresolved references
- * (the log form) renders as text: resolution belongs to core's request
- * assembly, which is the layer that can consult the model in force and read the
- * stored bytes, and a provider that could not resolve them must not invent
- * bytes of its own.
- * @param text - the turn's text.
- * @param images - request-resolved images, already base64.
- * @returns the provider-facing `content` value.
- */
-function userContent(
-  text: string,
-  images: readonly { mediaType: string; data: string }[] | undefined,
-): unknown {
-  if (images === undefined || images.length === 0) return text;
-  return [
-    { type: 'text', text },
-    ...images.map((image) => ({
-      type: 'image_url',
-      image_url: { url: `data:${image.mediaType};base64,${image.data}` },
-    })),
-  ];
-}
-
-function toProviderTool(tool: ToolDefinition): Record<string, unknown> {
-  return {
-    type: 'function',
-    function: {
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.parameters,
-    },
-  };
-}
-
-/** Chain-of-thought text of one delta, under any of the three field names
- * gateways use — or undefined when this chunk carries none. */
-function reasoningText(raw: Record<string, unknown> | undefined): string | undefined {
-  for (const key of ['reasoning_content', 'reasoning', 'thought']) {
-    const value = raw?.[key];
-    if (typeof value === 'string' && value.length > 0) return value;
-  }
-  return undefined;
-}
-
-/** Tool-call deltas of one chunk. Empty/null members count as absent (some
- * gateways repeat entries with empty id/name and null arguments), and `index`
- * is coerced to 0 unless it is a non-negative integer — the accumulator keys
- * by it, so a NaN-shaped index must not open a second accumulator. */
-function toolCallDeltas(deltas: ProviderToolCallDelta[]): StreamEvent[] {
-  const out: StreamEvent[] = [];
-  for (const tc of deltas) {
-    const id = typeof tc.id === 'string' && tc.id.length > 0 ? tc.id : undefined;
-    const name =
-      typeof tc.function?.name === 'string' && tc.function.name.length > 0 ? tc.function.name : undefined;
-    const argsDelta =
-      typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0
-        ? tc.function.arguments
-        : undefined;
-    if (id === undefined && name === undefined && argsDelta === undefined) continue;
-    const index = typeof tc.index === 'number' && Number.isInteger(tc.index) && tc.index >= 0 ? tc.index : 0;
-    out.push({
-      type: 'tool_call_delta',
-      index,
-      ...(id !== undefined ? { id } : {}),
-      ...(name !== undefined ? { name } : {}),
-      ...(argsDelta !== undefined ? { argsDelta } : {}),
-    });
-  }
-  return out;
-}
-
-/** The chunk's usage, normalised across the two cache-reporting shapes. */
-function usageFrom(raw: NonNullable<ProviderChunk['usage']>): Usage {
-  return {
-    promptTokens: raw.prompt_tokens ?? 0,
-    completionTokens: raw.completion_tokens ?? 0,
-    cachedTokens: raw.prompt_tokens_details?.cached_tokens ?? raw.prompt_cache_hit_tokens ?? 0,
-  };
-}
-
-/** One provider chunk → the events it carries, in wire order. */
-function* translateChunk(chunk: ProviderChunk): Generator<StreamEvent> {
-  const choice = chunk.choices?.[0];
-  if (choice) {
-    const delta = choice.delta;
-    const reasoning = reasoningText(delta as Record<string, unknown> | undefined);
-    if (reasoning !== undefined) yield { type: 'reasoning_delta', text: reasoning };
-    if (delta?.content) yield { type: 'text_delta', text: delta.content };
-    if (delta?.tool_calls) yield* toolCallDeltas(delta.tool_calls);
-    if (choice.finish_reason) yield { type: 'finish', finishReason: choice.finish_reason };
-  }
-  if (chunk.usage) yield { type: 'usage', usage: usageFrom(chunk.usage) };
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || (status >= 500 && status <= 599);
-}
-
-/**
- * Retry-worthiness of one failed attempt. HTTP 4xx (except 429) is terminal —
- * the request itself is wrong and retrying cannot fix it. Everything else
- * (network errors, 429/5xx, mid-stream drops, provider error chunks, streams
- * that ended without a finish reason) is retried within the attempt budget.
- */
-function isRetryableError(err: unknown): boolean {
-  if (err instanceof HttpError) return isRetryableStatus(err.status);
-  return true;
-}
-
-/**
- * Server-provided retry delay in ms from the `retry-after` response header.
- * Two RFC forms, both authoritative over our own backoff:
- * - delta-seconds (`120`): wait that many seconds from now — the common form;
- * - HTTP-date (`Sun, 06 Nov 1994 08:49:37 GMT`): wait until that instant
- *   (already past → 0, do not sleep backwards).
- * Returns undefined when the header is absent. Anything else present-but-
- * unparseable (a negative delta, a garbage string, a date that will not
- * parse) throws HttpError-style: the server asked us to wait an amount we
- * cannot honor, and silently guessing (0? 60s?) either hammers a throttled
- * endpoint or parks the run — fail loudly instead.
- */
-export function parseRetryAfterMs(headers: Headers, nowMs: number = Date.now()): number | undefined {
-  const raw = headers.get('retry-after');
-  if (raw === null) return undefined;
-  const value = raw.trim();
-  if (/^-?\d+$/.test(value)) {
-    const seconds = Number.parseInt(value, 10);
-    if (seconds < 0) throw new Error(`invalid retry-after header: ${JSON.stringify(raw)}`);
-    // Cap at the client timeout so a huge server hint cannot stall the run.
-    return Math.min(seconds * 1000, 60_000);
-  }
-  if (/^-?\d+(\.\d+)?$/.test(value)) {
-    const seconds = Number.parseFloat(value);
-    if (!Number.isFinite(seconds) || seconds < 0) {
-      throw new Error(`invalid retry-after header: ${JSON.stringify(raw)}`);
-    }
-    return Math.min(seconds * 1000, 60_000);
-  }
-  const dateMs = Date.parse(value);
-  if (Number.isNaN(dateMs)) throw new Error(`invalid retry-after header: ${JSON.stringify(raw)}`);
-  return Math.max(0, Math.min(dateMs - nowMs, 60_000));
-}
-
-function isAbortError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'AbortError';
-}
-
-/**
- * Pass-through byte stream that re-arms the attempt's idle timer on every
- * raw chunk — keep-alive comments and partial SSE frames count as liveness
- * even though parseSse emits no event for them.
- */
-async function* keepAlive(
-  body: ReadableStream<Uint8Array>,
-  onChunk: () => void,
-): AsyncGenerator<Uint8Array> {
-  const reader = body.getReader();
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      onChunk();
-      if (value !== undefined) yield value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-}
-
-function abortError(): Error {
-  const err = new Error('aborted');
-  err.name = 'AbortError';
-  return err;
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(abortError());
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      'abort',
-      () => {
-        clearTimeout(timer);
-        reject(abortError());
-      },
-      { once: true },
-    );
-  });
 }

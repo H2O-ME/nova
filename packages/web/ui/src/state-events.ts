@@ -124,8 +124,12 @@ export function reduceEvent(
   event: KernelEvent,
   view: ToolCallView | undefined,
   resultView: ToolResultView | undefined,
+  /** The wall clock, injected: the reducer itself stays deterministic (the two
+      live stamps it writes are the only clock reads), so a test or a replay can
+      pin time instead of racing it. */
+  now: number = Date.now(),
 ): UiState {
-  if (isTranscriptEvent(event)) return reduceTranscript(state, event, view, resultView);
+  if (isTranscriptEvent(event)) return reduceTranscript(state, event, view, resultView, now);
   if (isRunStateEvent(event)) return reduceRunState(state, event);
   return state;
 }
@@ -208,6 +212,7 @@ function reduceTranscript(
   event: TranscriptEvent,
   view: ToolCallView | undefined,
   resultView: ToolResultView | undefined,
+  now: number,
 ): UiState {
   switch (event.type) {
     case 'user_message': {
@@ -228,16 +233,16 @@ function reduceTranscript(
       });
     }
     case 'text_delta':
-      return streamBlock(state, 'text', event.text);
+      return streamBlock(state, 'text', event.text, now);
     case 'reasoning_delta':
-      return streamBlock(state, 'reasoning', event.text);
+      return streamBlock(state, 'reasoning', event.text, now);
     case 'tool_call_start':
       return push(state, {
         kind: 'tool',
         callId: event.call.id,
         name: event.call.name,
         args: event.call.rawArgs,
-        ts: Date.now(),
+        ts: now,
         // The host resolves this from the LIVE tool registry; a client that
         // somehow got no view still renders (generic card from name+args).
         view: view ?? { card: 'generic', kind: 'other', title: event.call.name },
@@ -424,14 +429,14 @@ function callLine(call: { name: string; rawArgs: string }): string {
 }
 
 /** Append a delta to the open stream of the same kind, else open a new one. */
-function streamBlock(state: UiState, kind: 'text' | 'reasoning', text: string): UiState {
+function streamBlock(state: UiState, kind: 'text' | 'reasoning', text: string, now: number): UiState {
   const last = state.blocks.at(-1);
   if (last?.kind === kind && last.streaming) {
     return { ...state, blocks: [...state.blocks.slice(0, -1), { ...last, text: last.text + text }] };
   }
   // A streamed block is stamped when it opens: the live path has no log yet,
   // and the tail's clock must not jump to the close time of a long turn.
-  return push(state, { kind, text, streaming: true, ts: Date.now() });
+  return push(state, { kind, text, streaming: true, ts: now });
 }
 
 /** Drop the failed attempt's trailing partial output (llm_retry). */

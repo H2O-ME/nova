@@ -46,6 +46,20 @@ function toneDot(tone: string | undefined): StateDotState {
   return 'idle';
 }
 
+/** Narrow a plugin-owned RPC result before reading its optional action fields. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The `pendingAction` marker for the commit button.
+ *
+ * The save control is not one of the plugin's own `actions` (it exists whenever
+ * the page has fields), so it needs a marker that cannot collide with an action
+ * id — the page then knows which of its buttons is the one waiting.
+ */
+const SAVE_ACTION = '\u0000save';
+
 export interface PluginPageSectionProps {
   /** The row's id — the namespace its operations are addressed by. */
   plugin: string;
@@ -102,9 +116,25 @@ export function PluginPageSection({
   // Field values are local edits over what the descriptor last said. A save
   // returns a fresh descriptor, so the drafts are rebuilt from it — never merged,
   // because the plugin may have normalized what it stored.
-  const page = answer?.ok === true ? (answer.result as PluginPageDescriptor | undefined) : undefined;
+  const answerResult = answer?.ok === true ? answer.result : undefined;
+  const actionResult = isRecord(answerResult) ? answerResult : undefined;
+  const returnedDescriptor = answer?.op === 'action' && actionResult !== undefined
+    ? actionResult['descriptor'] as PluginPageDescriptor | undefined
+    : answerResult as PluginPageDescriptor | undefined;
+  const [lastPage, setLastPage] = useState<PluginPageDescriptor | undefined>(undefined);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const page = returnedDescriptor ?? lastPage;
   const signature = page === undefined ? '' : JSON.stringify(page.fields ?? []);
+  const busy = answer?.pending === true;
+
+  useEffect(() => {
+    if (returnedDescriptor !== undefined) setLastPage(returnedDescriptor);
+  }, [returnedDescriptor]);
+  useEffect(() => {
+    if (!busy) setPendingAction(null);
+  }, [busy, answer?.id]);
+
   useEffect(() => {
     if (page === undefined) return;
     const seeded: Record<string, string> = {};
@@ -119,7 +149,19 @@ export function PluginPageSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature]);
 
-  const busy = answer?.pending === true;
+  const actionMessage = answer?.op === 'action' && answer.ok && actionResult !== undefined
+    && typeof actionResult['message'] === 'string'
+    ? actionResult['message']
+    : null;
+  const actionFailed = answer?.op === 'action' && answer.ok && actionResult !== undefined
+    && actionResult['ok'] === false;
+  // A save that landed answers with the fresh descriptor — which, when the
+  // plugin normalized nothing, is byte-identical to what was already on screen.
+  // So the page has to SAY it: without this line a successful save is
+  // indistinguishable from a dead button, which is exactly how it was reported.
+  // The line is dropped by the next edit (`plugin_edit` clears non-`page`
+  // answers), so it never outlives the state it describes.
+  const saved = answer?.op === 'save' && answer.ok === true;
 
   return (
     <div className={css.page}>
@@ -127,14 +169,25 @@ export function PluginPageSection({
       {page?.intro !== undefined && <p className={css.intro}>{page.intro}</p>}
 
       {/* An answer that is not a descriptor is still an answer: a plugin that is
-          switched off, or one whose operation threw, says so here. */}
-      {answer !== null && answer.ok === false && (
+          switched off, or one whose operation threw, says so here. A request that
+          is merely IN FLIGHT is not a failure — `pending` carries `ok: false`
+          only because there is no result yet, and rendering it would flash the
+          failure card on every click. */}
+      {answer !== null && answer.ok === false && answer.pending !== true && (
         <div className={css.failure} role="alert">
           <span>{SETTINGS_COPY['pluginPage.failed']}</span>
           <p className={css.failureReason}>{answer.error ?? ''}</p>
         </div>
       )}
       {manageError !== null && <ManageError message={manageError} />}
+      {actionMessage !== null && (
+        <div className={actionFailed ? css.actionFailure : css.actionSuccess} role={actionFailed ? 'alert' : 'status'}>
+          {actionMessage}
+        </div>
+      )}
+      {saved && (
+        <div className={css.actionSuccess} role="status">{SETTINGS_COPY['pluginPage.saved']}</div>
+      )}
 
       {page?.guide !== undefined && page.guide.length > 0 && (
         <div className={css.guide}>
@@ -207,6 +260,16 @@ export function PluginPageSection({
         </div>
       ))}
 
+      {/* The note explains what the buttons below DO ("saving re-mounts this
+          row"), so it belongs on their side of the form, not below them — and
+          below them it was also physically covered by the footer, which is the
+          overlap this order removes. */}
+      {page?.note !== undefined && <p className={css.note}>{page.note}</p>}
+
+      {/* The page's commit row. It ends the page rather than sticking to the
+          bottom of the scroll column: a sticky bar overlays whatever is under
+          it, and there is no honest way to pin a row over the fields it is
+          committing. The reference's own editor footer is a plain row too. */}
       <div className={css.actions}>
         {(page?.actions ?? []).map((action) => (
           <button
@@ -214,9 +277,13 @@ export function PluginPageSection({
             type="button"
             className={action.kind === 'primary' ? css.primary : css.plain}
             disabled={disabled || busy}
-            onClick={() => { ask('action', { id: action.id, fields: draft }); }}
+            aria-busy={busy && pendingAction === action.id}
+            onClick={() => {
+              setPendingAction(action.id);
+              ask('action', { id: action.id, fields: draft });
+            }}
           >
-            {action.label}
+            {busy && pendingAction === action.id ? SETTINGS_COPY['pluginPage.working'] : action.label}
           </button>
         ))}
         {(page?.fields ?? []).length > 0 && (
@@ -224,14 +291,19 @@ export function PluginPageSection({
             type="button"
             className={css.primary}
             disabled={disabled || busy}
-            onClick={() => { ask('save', { fields: draft }); }}
+            aria-busy={busy && pendingAction === SAVE_ACTION}
+            onClick={() => {
+              setPendingAction(SAVE_ACTION);
+              ask('save', { fields: draft });
+            }}
           >
-            {busy ? SETTINGS_COPY['pluginPage.saving'] : SETTINGS_COPY['pluginPage.save']}
+            {/* The label tracks THIS button's own write. Reading `busy` alone
+                made a running 测试连接 relabel the save control too, so the page
+                said two different things were being saved. */}
+            {busy && pendingAction === SAVE_ACTION ? SETTINGS_COPY['pluginPage.saving'] : SETTINGS_COPY['pluginPage.save']}
           </button>
         )}
       </div>
-
-      {page?.note !== undefined && <p className={css.note}>{page.note}</p>}
     </div>
   );
 }

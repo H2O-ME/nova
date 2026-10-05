@@ -69,6 +69,17 @@ function sameMessage(a: StreamFrame['event'], b: StreamFrame['event']): boolean 
   return true;
 }
 
+/**
+ * The buffer's ceiling, in frames. A hidden tab never paints, so its rAF-based
+ * clock never fires and the buffer would grow for the WHOLE run (hundreds of
+ * thousands of chunks on a long reply) — the coalescer's memory would then be
+ * set by the provider's chunk rate times the run's length, with no bound of
+ * ours. Past the ceiling the buffer flushes synchronously: batching degrades
+ * to per-chunk renders for the tail of that run, which is exactly what the
+ * reader can't see anyway, and the bound is restored on the next paint.
+ */
+export const MAX_COALESCED_FRAMES = 500;
+
 /** The flush scheduler, injected so tests drive boundaries without timers. */
 export interface CoalesceClock {
   schedule(run: () => void): void;
@@ -111,6 +122,9 @@ export class StreamCoalescer {
   /** Buffer one frame. False = not a delta: the caller handles it itself. */
   absorb(frame: ServerFrame): boolean {
     if (!isStreamFrame(frame)) return false;
+    // A frame would exceed the ceiling (a hidden tab's clock is not ticking):
+    // release the accumulated batch NOW and let this frame start a fresh one.
+    if (this.buffer.length >= MAX_COALESCED_FRAMES) this.flushNow();
     this.buffer.push(frame);
     if (!this.scheduled) {
       this.scheduled = true;

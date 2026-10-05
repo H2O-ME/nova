@@ -192,17 +192,21 @@ function numberField(key: PtcSettingKey, raw: string): number {
 }
 
 /**
- * 提交的字段并到当前设置上。
+ * 校验并解出**提交了的**字段（只含表单真正交上来的键）。
  *
  * 空串是「不改」：页面上的数字框空着表示「用默认值」，把它当成 0 会把一次保存变成
  * 一次静默的封顶。`mode` 必须落在 `PTC_MODES` 里——它是 select，但 payload 也可能
  * 来自别处。
- * @param current - the settings this activation was given.
+ *
+ * 返回**补丁**而不是整份设置是有意的：`PluginConfigPort.setEntry` 把提交的 config
+ * **逐键**合并进磁盘上的原样行，所以保存只该交表单改过的键——把展开后的整份设置
+ * 交回去，会用展开值顶掉操作者手写的 `{env:NAME}` 引用（那是端口契约明文保住的
+ * 东西）。
  * @param fields - the submitted fields (the wire carries strings).
- * @returns the settings to store.
+ * @returns the per-key patch to store.
  */
-export function ptcSaveSettings(current: PtcPluginConfig, fields: Record<string, string>): PtcPluginConfig {
-  const next: PtcPluginConfig = { ...current };
+export function ptcSavePatch(fields: Record<string, string>): PtcPluginConfig {
+  const patch: PtcPluginConfig = {};
   for (const [key, raw] of Object.entries(fields)) {
     if (!isPtcSettingKey(key)) throw new Error(`ptc: unknown setting "${key}"`);
     const value = raw.trim();
@@ -211,29 +215,45 @@ export function ptcSaveSettings(current: PtcPluginConfig, fields: Record<string,
       if (!PTC_MODES.includes(value as PtcMode)) {
         throw new Error(`ptc: setting "mode" must be one of ${PTC_MODES.join(' | ')}`);
       }
-      next.mode = value as PtcMode;
+      patch.mode = value as PtcMode;
       continue;
     }
-    next[key] = numberField(key, value);
+    patch[key] = numberField(key, value);
   }
-  return next;
+  return patch;
+}
+
+/**
+ * 提交的字段并到当前设置上（内存里的合成视图，用于保存后的页面回显；落盘走
+ * `ptcSavePatch` 的逐键补丁）。
+ * @param current - the settings this activation was given.
+ * @param fields - the submitted fields (the wire carries strings).
+ * @returns the settings to display.
+ */
+export function ptcSaveSettings(current: PtcPluginConfig, fields: Record<string, string>): PtcPluginConfig {
+  return { ...current, ...ptcSavePatch(fields) };
 }
 
 /**
  * 设置页。
+ *
+ * 保存成功后**不在这里再印一行确认**：通用页面（`web/ui` 的 `PluginPageSection`）
+ * 对每一次成功保存都已经说了一句「已保存」，而「这一行会按新设置重挂」本来就写在
+ * `note` 里恒在。一次保存两行绿字是同一件事说两遍——这句重复正是本次设置页重做拆掉
+ * 的那类东西。
  * @param settings - the stored settings (what the fields show).
  * @param outcome - the resolved budgets (what the status line reports).
- * @param saved - whether this descriptor answers a save.
  * @returns the page descriptor.
  */
 export function ptcPage(
   settings: PtcPluginConfig,
   outcome: PtcRuntimeOutcome,
-  saved = false,
 ): PluginPageDescriptor {
   const mode = settings.mode ?? 'both';
   const status: PluginSettingStatus[] = [
-    { label: '模式', value: PTC_MODE_LABELS[mode] },
+    // 「当前模式」而不是「模式」：下面的字段也叫「模式」，两个同名的读数并排，
+    // 读者得自己猜哪个是「现在」哪个是「要改成」。
+    { label: '当前模式', value: PTC_MODE_LABELS[mode] },
     outcome.ok
       ? {
           label: '生效',
@@ -242,7 +262,6 @@ export function ptcPage(
         }
       : { label: '生效', value: `配置无效：${outcome.message}`, tone: 'bad' },
   ];
-  if (saved) status.push({ label: '保存', value: '已写入配置，这一行会按新设置重挂。', tone: 'ok' });
   return {
     title: 'PTC 代码模式',
     intro:

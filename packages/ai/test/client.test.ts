@@ -1,6 +1,7 @@
 import type { StreamEvent } from '@nova-agent/core';
 import { describe, expect, it, vi } from 'vitest';
-import { OpenAICompatClient, RETRY_BACKOFF_MAX_MS, parseRetryAfterMs } from '../src/client.js';
+import { OpenAICompatClient } from '../src/client.js';
+import { RETRY_BACKOFF_MAX_MS, parseRetryAfterMs } from '../src/retry.js';
 
 const SSE_BODY = [
   'data: {"choices":[{"delta":{"content":"Hi"},"index":0}]}',
@@ -597,3 +598,143 @@ describe('listModels', () => {
     await expect(client.listModels()).rejects.toThrow('HTTP 401');
   });
 });
+
+describe('stream protocol hardening', () => {
+  it('surfaces a malformed non-JSON data payload instead of silently dropping it', async () => {
+    // Killing test: the old `catch { continue }` swallowed the corruption and
+    // let the surrounding text look like a complete answer.
+    const body = [
+      'data: {"choices":[{"delta":{"content":"par"}}]}',
+      '',
+      'data: this-is-not-json',
+      '',
+      'data: {"choices":[{"delta":{"content":"tial"},"finish_reason":"stop"}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n');
+    const client = clientWith(() => Promise.resolve(sseResponse(body)));
+    await expect(drain(client.stream({ messages: [] }))).rejects.toThrow(/malformed SSE payload/);
+  });
+
+  it('skips an empty data field without failing the stream', async () => {
+    const body = [
+      'data:',
+      '',
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n');
+    const client = clientWith(() => Promise.resolve(sseResponse(body)));
+    const events = await drain(client.stream({ messages: [] }));
+    expect(events.some((e) => e.type === 'text_delta' && e.text === 'ok')).toBe(true);
+  });
+
+  it('freezes the endpoint for the whole stream so a mid-retry switch cannot re-point it', async () => {
+    // Killing test: reading baseURL/apiKey/model from the live config on every
+    // attempt let a provider switch during the backoff send the OLD body to the
+    // NEW endpoint.
+    const urls: string[] = [];
+    const models: unknown[] = [];
+    let calls = 0;
+    let client!: OpenAICompatClient;
+    const fetchImpl: typeof fetch = (input, init) => {
+      urls.push(String(input));
+      models.push((JSON.parse(String(init?.body)) as { model?: unknown }).model);
+      calls += 1;
+      if (calls === 1) {
+        client.setEndpoint({ baseURL: 'https://other.test/v2', apiKey: 'sk-2', model: 'other-model' });
+        return Promise.resolve(new Response('busy', { status: 503 }));
+      }
+      return Promise.resolve(sseResponse('data: [DONE]\n\n'));
+    };
+    client = clientWith(fetchImpl);
+    await drain(client.stream({ messages: [] }));
+
+    expect(urls).toEqual([
+      'https://example.test/v1/chat/completions',
+      'https://example.test/v1/chat/completions',
+    ]);
+    expect(models).toEqual(['test-model', 'test-model']);
+    // The switch itself took effect for the NEXT stream.
+    expect(client.model).toBe('other-model');
+  });
+
+  it('re-arms a full idle budget once the headers arrive', async () => {
+    // Killing test: without the re-arm the body inherited whatever was left of
+    // the header wait, so a slow TTFT starved the stream that followed. The
+    // fake fetch HONOURS the abort signal — otherwise the idle timer would have
+    // nothing to cut and the test would pass either way.
+    const timeoutMs = 200;
+    const client = new OpenAICompatClient({
+      baseURL: 'https://example.test/v1',
+      apiKey: 'sk-test',
+      model: 'test-model',
+      timeoutMs,
+      maxRetries: 0,
+      fetchImpl: (_input, init) =>
+        new Promise<Response>((resolve) => {
+          let controller!: ReadableStreamDefaultController<Uint8Array>;
+          const stream = new ReadableStream<Uint8Array>({
+            start(c) {
+              controller = c;
+              // Headers take most of the attempt budget…
+              setTimeout(() => {
+                resolve(
+                  new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }),
+                );
+                // …and the first body byte lands after the ORIGINAL deadline
+                // but well within a freshly armed one.
+                setTimeout(() => {
+                  if (init?.signal?.aborted) return;
+                  controller.enqueue(
+                    new TextEncoder().encode(
+                      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+                    ),
+                  );
+                  controller.close();
+                }, 110);
+              }, 150);
+            },
+          });
+          init?.signal?.addEventListener(
+            'abort',
+            () => controller.error(Object.assign(new Error('aborted'), { name: 'AbortError' })),
+            { once: true },
+          );
+        }),
+    });
+    const events = await drain(client.stream({ messages: [] }));
+    expect(events.some((e) => e.type === 'text_delta' && e.text === 'ok')).toBe(true);
+  });
+
+  it('bounds a never-ending error body instead of hanging the client', async () => {
+    // Killing test: `response.text()` with the attempt timer already disarmed
+    // waits forever on a gateway that opens a 500 and never closes it.
+    const fetchImpl: typeof fetch = () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"error":'));
+              // Never close: the read must be cut by the deadline, not by EOF.
+            },
+          }),
+          { status: 500, headers: {} },
+        ),
+      );
+    const client = new OpenAICompatClient({
+      baseURL: 'https://example.test/v1',
+      apiKey: 'sk-test',
+      model: 'test-model',
+      fetchImpl,
+      timeoutMs: 40,
+      maxRetries: 0,
+    });
+    const started = Date.now();
+    await expect(drain(client.stream({ messages: [] }))).rejects.toThrow('HTTP 500');
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+});
+

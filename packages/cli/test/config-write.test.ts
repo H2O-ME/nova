@@ -88,7 +88,7 @@ describe('saveModelChoice', () => {
 
 describe('setPluginEntry', () => {
   it('creates the row, then merges config key by key', async () => {
-    const home = await withConfig(JSON.stringify({ provider: { model: 'm' } }));
+    const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' } }));
     await setPluginEntry(
       '@nova-agent/qqbot',
       { enabled: true, config: { appId: '1024', clientSecret: 'sekret' } },
@@ -103,7 +103,7 @@ describe('setPluginEntry', () => {
   });
 
   it('deletes one key on null, and leaves an undefined value alone', async () => {
-    const home = await withConfig(JSON.stringify({ provider: { model: 'm' } }));
+    const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' } }));
     await setPluginEntry('row', { config: { a: 1, b: 2 } }, home);
     await setPluginEntry('row', { config: { b: null, a: undefined } }, home);
     // `null` is how a form clears an optional field; an omitted one means "leave
@@ -117,7 +117,7 @@ describe('setPluginEntry', () => {
   });
 
   it('replaces rather than merges a non-object config', async () => {
-    const home = await withConfig(JSON.stringify({ provider: { model: 'm' } }));
+    const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' } }));
     await setPluginEntry('row', { config: { a: 1 } }, home);
     // A plugin may store a scalar or a list; there is nothing to merge it into.
     await setPluginEntry('row', { config: 'plain' }, home);
@@ -125,7 +125,7 @@ describe('setPluginEntry', () => {
   });
 
   it('drops a row that would only restate the default', async () => {
-    const home = await withConfig(JSON.stringify({ provider: { model: 'm' } }));
+    const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' } }));
     await setPluginEntry('todo', {}, home);
     // "No entry" and "an entry with nothing to say" mean the same thing, and the
     // file must not grow a row per click.
@@ -162,7 +162,7 @@ describe('readPluginEntryConfig', () => {
     try {
       const home = await withConfig(
         JSON.stringify({
-          provider: { model: 'm' },
+          provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' },
           plugins: { entries: [{ id: 'q', config: { appId: '1', clientSecret: '{env:NOVA_CFG_TEST_QQ}' } }] },
         }),
       );
@@ -181,7 +181,7 @@ describe('readPluginEntryConfig', () => {
   });
 
   it('reports nothing when the row or its config is absent', async () => {
-    const home = await withConfig(JSON.stringify({ provider: { model: 'm' }, plugins: { entries: [{ id: 'q' }] } }));
+    const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' }, plugins: { entries: [{ id: 'q' }] } }));
     await expect(readPluginEntryConfig('q', home)).resolves.toBeUndefined();
     const none = await mkdtemp(path.join(tmpdir(), 'nova-cfg-none-'));
     await expect(readPluginEntryConfig('q', none)).resolves.toBeUndefined();
@@ -191,7 +191,7 @@ describe('readPluginEntryConfig', () => {
 describe('removePluginEntry', () => {
   it('removes one row and deletes the list once it is empty', async () => {
     const home = await withConfig(
-      JSON.stringify({ provider: { model: 'm' }, plugins: { entries: [{ id: 'a' }, { id: 'b' }] } }),
+      JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' }, plugins: { entries: [{ id: 'a' }, { id: 'b' }] } }),
     );
     await removePluginEntry('a', home);
     expect(await rows(home)).toEqual([{ id: 'b' }]);
@@ -204,7 +204,7 @@ describe('removePluginEntry', () => {
 
 describe('setSkillEnabled', () => {
   it('adds a name on disable, removes it on enable, and returns the list in force', async () => {
-    const home = await withConfig(JSON.stringify({ provider: { model: 'm' } }));
+    const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' } }));
     // The `skills` object is created when the file has none.
     expect(await setSkillEnabled('deep-research', false, home)).toEqual(['deep-research']);
     const disable = ((await doc(home))['skills'] as Record<string, unknown>)['disable'];
@@ -213,7 +213,7 @@ describe('setSkillEnabled', () => {
   });
 
   it('keeps the list sorted and de-duplicated across repeated flips', async () => {
-    const home = await withConfig(JSON.stringify({ provider: { model: 'm' } }));
+    const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' } }));
     // The switch is a set, not a log: flipping the same name twice must not
     // append it twice, and the stored order is stable so a hand-read config and
     // a rewritten one look the same.
@@ -240,5 +240,24 @@ describe('the abort-on-unparseable discipline', () => {
     const home = await withConfig(raw);
     await expect(setPluginEntry('todo', { enabled: false }, home)).rejects.toThrowError(/JSON object/u);
     expect(await readFile(userConfigPath(home), 'utf8')).toBe(raw);
+  });
+});
+
+describe('concurrent patches to one config file', () => {
+  it('keeps both changes when two patches race', async () => {
+    const home = await withConfig('{}');
+    // `tmp + rename` makes one write atomic, but not a read-modify-write: without
+    // the per-file queue both patches read `{}` and the second overwrites the
+    // first. The panel produces exactly this (a switch and a settings save).
+    await Promise.all([
+      setPluginEntry('todo', { enabled: false }, home),
+      setPluginEntry('ptc', { config: { mode: 'both' } }, home),
+    ]);
+    const doc = JSON.parse(await readFile(userConfigPath(home), 'utf8')) as {
+      plugins?: { entries?: { id: string; enabled?: boolean; config?: unknown }[] };
+    };
+    const entries = doc.plugins?.entries ?? [];
+    expect(entries.find((row) => row.id === 'todo')?.enabled).toBe(false);
+    expect(entries.find((row) => row.id === 'ptc')?.config).toEqual({ mode: 'both' });
   });
 });

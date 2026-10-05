@@ -21,7 +21,7 @@
 import type { ConfigSchema, StandardResult } from './types.js';
 
 /** The JS types a config field may hold. */
-export type ConfigFieldType = 'string' | 'number' | 'boolean';
+export type ConfigFieldType = 'string' | 'number' | 'boolean' | 'string[]';
 
 /** What one field of a plugin's config accepts. */
 export interface ConfigFieldSpec {
@@ -57,6 +57,20 @@ export function objectConfig<T extends object>(
         for (const [key, spec] of Object.entries(specs)) {
           const field = raw[key];
           if (field === undefined) continue;
+          // `string[]` is the one composite field, and it exists because a
+          // security-relevant LIST (whose QQ identities may control this machine)
+          // must not be stored as a delimited string: the escaping would become
+          // the operator's problem and a stray separator would silently change who
+          // is authorized. Copied on the way out so a caller cannot mutate the
+          // document it was validated from.
+          if (spec.type === 'string[]') {
+            if (!Array.isArray(field) || !field.every((item) => typeof item === 'string')) {
+              issues.push({ message: `setting "${key}" must be an array of strings` });
+              continue;
+            }
+            out[key] = [...field];
+            continue;
+          }
           if (typeof field !== spec.type || (spec.type === 'number' && !Number.isFinite(field))) {
             issues.push({ message: `setting "${key}" must be a ${spec.type}` });
             continue;

@@ -108,8 +108,23 @@ export interface WrapAutoCompactOptions {
  * the threshold, so repeating the summarizer every turn buys nothing while
  * doubling per-turn cost and flooding the session log).
  */
+/**
+ * Hooks objects already wrapped by this module. The composed `AgentHooks` is
+ * cached per container root (`composeHooks`), so its identity survives a
+ * re-roster — and a re-roster re-calls `wrapAutoCompact` (headless auto-compact
+ * is wired in `reroster`). Without this guard each re-roster stacks one more
+ * layer around the same chain: mostly harmless, but once the gate FUSES the
+ * layers no longer agree on that state, and one over-limit request runs one
+ * summarizer compaction per layer. The gate is per-kernel state (the limit
+ * comes from the kernel's own config and never changes for its lifetime), so
+ * the first wrap for a hooks object is the only one it needs.
+ */
+const wrappedHooks = new WeakSet<object>();
+
 export function wrapAutoCompact(hooks: AgentHooks, opts: WrapAutoCompactOptions): void {
   if (!opts.enabled) return;
+  if (wrappedHooks.has(hooks)) return;
+  wrappedHooks.add(hooks);
   const inner = hooks.beforeLLMCall;
   let compacting = false;
   let fused = false;

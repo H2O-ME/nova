@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerFrame } from '../src/types.js';
-import { StreamCoalescer, isStreamFrame, mergeStreamFrames, type CoalesceClock } from '../src/stream-coalesce.js';
+import { MAX_COALESCED_FRAMES, StreamCoalescer, isStreamFrame, mergeStreamFrames, type CoalesceClock } from '../src/stream-coalesce.js';
 
 /**
  * The socket-level delta batcher: chunk rate in, frame rate out. These pins are
@@ -123,5 +123,26 @@ describe('StreamCoalescer', () => {
     expect(clock.armed()).toBe(false);
     clock.fire();
     expect(emitted).toHaveLength(0);
+  });
+});
+
+describe('the buffer ceiling', () => {
+  it('flushes synchronously once the buffer hits its ceiling (a hidden tab cannot grow it without bound)', () => {
+    const clock = manualClock();
+    const emitted: ServerFrame[][] = [];
+    const coalescer = new StreamCoalescer((frames) => emitted.push([...frames]), clock);
+    for (let index = 0; index < MAX_COALESCED_FRAMES; index += 1) {
+      coalescer.absorb(text('m1', 'a'));
+    }
+    // Under the ceiling the batch is still pending: nothing emitted, clock armed.
+    expect(emitted).toHaveLength(0);
+    expect(clock.armed()).toBe(true);
+    // One frame past the ceiling: the accumulated batch releases NOW, without
+    // the clock, and the new frame opens a fresh batch (re-armed).
+    coalescer.absorb(text('m1', 'b'));
+    expect(emitted).toHaveLength(1);
+    expect(clock.armed()).toBe(true);
+    // The released run carried everything buffered up to the ceiling, merged.
+    expect(merged(emitted[0] ?? [])).toEqual(['t:' + 'a'.repeat(MAX_COALESCED_FRAMES)]);
   });
 });

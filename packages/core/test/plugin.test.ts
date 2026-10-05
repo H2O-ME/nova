@@ -514,3 +514,21 @@ describe('loud failures', () => {
     expect(live).toBe(false);
   });
 });
+describe('fiber activation lifecycle', () => {
+  it('a dispose during an async apply cannot resurrect the fiber', async () => {
+    const root = Context.createRoot(silent);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fiber = root.plugin({ name: 'slow', apply: () => gate });
+    expect(fiber.state).toBe('loading');
+    await fiber.dispose();
+    // The in-flight body finishes AFTER the dispose: it must not flip the fiber
+    // back to `active`, or a torn-down plugin would look loaded (and a later
+    // refresh would skip the reload it needs).
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fiber.state).toBe('disposed');
+  });
+});

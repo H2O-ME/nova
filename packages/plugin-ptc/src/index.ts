@@ -46,6 +46,7 @@ import {
   ptcModeReport,
   ptcPage,
   ptcRuntimeConfig,
+  ptcSavePatch,
   ptcSaveSettings,
   type PtcPluginConfig,
   type PtcRuntimeOutcome,
@@ -113,9 +114,18 @@ export const plugin: Plugin<PtcPluginConfig> = {
             case 'page':
               return ptcPage(config, outcome);
             case 'save': {
-              const merged = ptcSaveSettings(config, submittedFields(payload));
-              await ctx.must(pluginConfigKey).setEntry(PTC_PLUGIN_NAME, { enabled: true, config: merged });
-              return ptcPage(merged, ptcRuntimeAvailability(merged), true);
+              const fields = submittedFields(payload);
+              const merged = ptcSaveSettings(config, fields);
+              // The port merges PER KEY into the stored RAW row, so the save
+              // submits only the fields the form actually changed — handing it
+              // the whole in-force (expanded) config would replace an operator's
+              // hand-written `{env:NAME}` reference with its expanded value
+              // (the exact loss `PluginConfigPort.setEntry` exists to prevent).
+              await ctx.must(pluginConfigKey).setEntry(PTC_PLUGIN_NAME, { enabled: true, config: ptcSavePatch(fields) });
+              // The saved descriptor is the same page as before the save, only
+              // recomputed against the merged settings: the confirmation the
+              // operator sees is the generic one every plugin page gets.
+              return ptcPage(merged, ptcRuntimeAvailability(merged));
             }
             default:
               throw new Error(`ptc: unknown operation "${op}"`);

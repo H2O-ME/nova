@@ -36,9 +36,35 @@ import type { WireProviderInput, WireProviderModel } from './provider-wire.js';
  */
 const PROVIDER_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
-/** A finite positive integer, or undefined (absent and malformed are the same). */
-function optionalCount(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+/** Numeric field ceilings, SHARED with the config schema (`cli/config.ts`): a
+ * frame the wire accepts but the loader refuses would write a file the next
+ * start rejects — the save must fail here instead, naming the field. */
+const MAX_TEMPERATURE = 2;
+const MAX_MAX_TOKENS = 1_000_000;
+const MAX_CONTEXT_WINDOW = 200_000_000;
+const MAX_MAX_OUTPUT = 10_000_000;
+
+/**
+ * A finite positive integer within `max`, or a rejection reason naming the
+ * bound. Absent is `undefined` (an untouched field); PRESENT-but-invalid is a
+ * rejection, not a silent drop — silently writing a different value than the
+ * operator asked for is how "looks saved, does nothing" is born.
+ */
+function optionalCount(value: unknown, field: string, max: number): number | undefined | FrameRejection {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0 || value > max) {
+    return reject(`${field} must be a positive integer up to ${max}`);
+  }
+  return value;
+}
+
+/** Sampling temperature: 0..2, or a rejection reason. */
+function optionalTemperature(value: unknown, field: string): number | undefined | FrameRejection {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || Number.isNaN(value) || value < 0 || value > MAX_TEMPERATURE) {
+    return reject(`${field} must be a number between 0 and ${MAX_TEMPERATURE}`);
+  }
+  return value;
 }
 
 /**
@@ -87,8 +113,10 @@ function parseProviderModel(item: unknown, at: string): { entry: WireProviderMod
   if (inputModalities !== undefined && 'ok' in inputModalities) return inputModalities;
   const outputModalities = optionalModalities(obj['outputModalities'], `${at}.outputModalities`);
   if (outputModalities !== undefined && 'ok' in outputModalities) return outputModalities;
-  const contextWindow = optionalCount(obj['contextWindow']);
-  const maxOutput = optionalCount(obj['maxOutput']);
+  const contextWindow = optionalCount(obj['contextWindow'], `${at}.contextWindow`, MAX_CONTEXT_WINDOW);
+  if (contextWindow !== undefined && typeof contextWindow === 'object') return contextWindow;
+  const maxOutput = optionalCount(obj['maxOutput'], `${at}.maxOutput`, MAX_MAX_OUTPUT);
+  if (maxOutput !== undefined && typeof maxOutput === 'object') return maxOutput;
   const attachment = typeof obj['attachment'] === 'boolean' ? obj['attachment'] : undefined;
   const reasoning = typeof obj['reasoning'] === 'boolean' ? obj['reasoning'] : undefined;
   const toolCall = typeof obj['toolCall'] === 'boolean' ? obj['toolCall'] : undefined;
@@ -145,9 +173,12 @@ function parseProvider(item: unknown, index: number): { entry: WireProviderInput
       models.push(parsed.entry);
     }
   }
-  const temperature = typeof obj['temperature'] === 'number' ? obj['temperature'] : undefined;
-  const maxTokens = optionalCount(obj['maxTokens']);
-  const contextWindow = optionalCount(obj['contextWindow']);
+  const temperature = optionalTemperature(obj['temperature'], `${at}.temperature`);
+  if (temperature !== undefined && typeof temperature === 'object') return temperature;
+  const maxTokens = optionalCount(obj['maxTokens'], `${at}.maxTokens`, MAX_MAX_TOKENS);
+  if (maxTokens !== undefined && typeof maxTokens === 'object') return maxTokens;
+  const contextWindow = optionalCount(obj['contextWindow'], `${at}.contextWindow`, MAX_CONTEXT_WINDOW);
+  if (contextWindow !== undefined && typeof contextWindow === 'object') return contextWindow;
   return {
     entry: {
       id,

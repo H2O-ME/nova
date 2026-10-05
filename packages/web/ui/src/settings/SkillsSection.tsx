@@ -110,7 +110,8 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
             </div>
             <Switch
               checked={item.enabled}
-              disabled={disabled || feedback.switching !== null}
+              disabled={disabled || feedback.switching === item.name}
+              busy={feedback.switching === item.name}
               label={`${item.name}，当前：${item.enabled ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off']}`}
               title={disabled ? SETTINGS_COPY['plugins.lockNote'] : (item.enabled ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off'])}
               onChange={(next) => { flip(item.name, next); }}
@@ -156,11 +157,13 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
       {skills !== null && items.length > 0 && matches.length === 0 && (
         <div className={css.status}>{SETTINGS_COPY['skills.emptySearch']}</div>
       )}
+      <div className={css.feedbackSlot} aria-live="polite">
+        {feedback.switching !== null
+          ? SETTINGS_COPY['plugins.switching']
+          : feedback.applied ?? (disabled ? SETTINGS_COPY['plugins.lockNote'] : '')}
+      </div>
       {group(SETTINGS_COPY['skills.projectGroup'], project, SETTINGS_COPY['skills.projectRoot'], projectTotal)}
       {group(SETTINGS_COPY['skills.userGroup'], user, SETTINGS_COPY['skills.userRoot'], userTotal)}
-      {feedback.applied !== null && <div className={css.applied} role="status">{feedback.applied}</div>}
-      {disabled && <p className={css.lockNote}>{SETTINGS_COPY['plugins.lockNote']}</p>}
-      {feedback.switching !== null && <div className={css.status}>{SETTINGS_COPY['plugins.switching']}</div>}
       {skills !== null && items.length > 0 && (
         <p className={css.hint}>{SETTINGS_COPY['skills.hint']}</p>
       )}

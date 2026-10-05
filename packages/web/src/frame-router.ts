@@ -144,6 +144,7 @@ export async function handleFrame(
           currentSessionFile: () => agent.session.file,
           currentRootDir: () => kernel.rootDir(),
           abandonCurrentSession: () => host.abandonCurrentSession(),
+          disposeLiveHandle: (file) => host.disposeLiveHandle(file),
           setWorkspace: async (dir) => {
             // The kernel re-seeds a still-blank session itself (see
             // `runtime-facade.ts`), so every surface gets that half for free.
@@ -307,6 +308,8 @@ export async function handleFrame(
           readProviders: host.readProviders,
           storedApiKey: host.storedApiKey,
           configuredModel: host.configuredModel,
+          liveProviderId: host.liveProviderId,
+          setLiveProviderId: host.setLiveProviderId,
           refreshSeat: host.broadcastState,
         });
         break;

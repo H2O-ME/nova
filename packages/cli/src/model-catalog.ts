@@ -23,7 +23,8 @@ import {
 } from '@nova-agent/core';
 import type { Config } from './config.js';
 import type { ModelMetaStore } from './model-meta.js';
-import { resolveProvider } from './provider-store.js';
+import { resolveProvider, type ResolvedProvider } from './provider-store.js';
+import type { ActiveProviderReading } from './config-providers.js';
 
 /** 一处 provider 的显示名：URL 解析不出来时退回原文。 */
 export function endpointLabel(baseURL: string): string {
@@ -54,11 +55,17 @@ function metaCapabilities(meta: DiscoveredCapabilities): ModelCapabilities {
  *   boot-time reconciliation may have corrected that spelling against the
  *   endpoint's catalog, and comparing against the raw config name would silently
  *   stop applying the override after such a correction.
- * @param readConfigured - the LIVE list reader. The settings page rewrites
- *   `models[]` while this process runs, so the menu must read it per open: a
- *   captured array would keep offering the pre-edit catalog until a restart,
- *   which reads to the operator as a save that did nothing. Defaults to the
- *   boot-time config, which is right for a surface with no live writer.
+ * @param readConfigured - the LIVE list reader for the TOP-LEVEL `models[]`.
+ *   The settings page rewrites `models[]` while this process runs, so the menu
+ *   must read it per open: a captured array would keep offering the pre-edit
+ *   catalog until a restart, which reads to the operator as a save that did
+ *   nothing. Defaults to the boot-time config, which is right for a surface
+ *   with no live writer.
+ * @param readActive - the LIVE reader for the ACTIVE provider itself. A switch
+ *   in the same process must move every reading with it — the picker's heading,
+ *   the window denominator, and (through the caller's `readConfigured`) the
+ *   effective model list. Defaults to the boot-time endpoint for assemblies
+ *   with no config-file writer.
  * @returns the port `modelControl` consumes.
  */
 export function createModelCatalogPort(
@@ -66,27 +73,41 @@ export function createModelCatalogPort(
   store: ModelMetaStore,
   model: string,
   readConfigured: () => Promise<readonly ConfiguredModelEntry[]> = async () => config.models ?? [],
+  readActive: (() => Promise<ActiveProviderReading | undefined>) | undefined = undefined,
 ): ModelCatalogPort {
-  // The label follows the endpoint IN FORCE, not a captured `config.provider`:
-  // this port outlives a provider switch (see `web-mode.ts`), and a menu headed
-  // by the previous gateway's host would misname every row under it.
-  const endpoint = resolveProvider(config);
-  const baseURL = endpoint?.baseURL ?? '';
+  // The boot-time endpoint is the FALLBACK: assemblies without a config writer
+  // never see a switch, and a live reader that fails still leaves this answer.
+  const bootEndpoint = resolveProvider(config);
+  let lastBaseURL = bootEndpoint?.baseURL ?? '';
+  /** The endpoint IN FORCE at call time (the file's answer, not a snapshot). */
+  const activeEndpoint = async (): Promise<ActiveProviderReading | undefined> => {
+    const reading = (await readActive?.().catch(() => undefined)) ?? toReading(bootEndpoint);
+    if (reading !== undefined) lastBaseURL = reading.baseURL;
+    return reading;
+  };
   /** The live entries, read once per lookup so one open sees one list. */
-  const entries = async (): Promise<readonly ConfiguredModelEntry[]> =>
-    await readConfigured().catch(() => config.models ?? []);
+  const entries = async (): Promise<readonly ConfiguredModelEntry[]> => {
+    const active = await activeEndpoint();
+    // The ACTIVE provider's own list, when it carries one, is the menu; the
+    // top-level `models[]` remains the storage for a legacy/endpoint-less
+    // assembly. (A/B frequently share model ids with DIFFERENT capabilities —
+    // the list must follow the endpoint the requests will go to.)
+    if (active !== undefined && active.models.length > 0) return active.models;
+    return await readConfigured().catch(() => config.models ?? []);
+  };
   const entryFor = async (id: string): Promise<ConfiguredModelEntry | undefined> =>
     (await entries()).find((entry) => sameModelId(entry.id, id));
 
   /** 一个 id 的完整选项：能力按 配置 > models.dev > 未知 逐字段合成。 */
   const option = async (id: string): Promise<ModelOption> => {
+    const active = await activeEndpoint();
     const entry = await entryFor(id);
-    const meta = store.peek(id, baseURL) ?? (await store.lookup(id, baseURL).catch(() => undefined));
-    // `provider.contextWindow` 是历史字段，仍只在它确实描述**当前在役模型**时生效：
-    // 它表达「这个窗口是给谁写的」，不是「所有模型都一样大」。读在役端点自己的覆盖。
+    const meta = store.peek(id, active?.baseURL) ?? (await store.lookup(id, active?.baseURL).catch(() => undefined));
+    // 在役端点自己的窗口覆盖仍只在它确实描述**当前在役模型**时生效：它表达
+    // 「这个窗口是给谁写的」，不是「所有模型都一样大」。
     const legacy =
-      sameModelId(id, model) && endpoint?.contextWindow !== undefined
-        ? { contextWindow: endpoint.contextWindow }
+      sameModelId(id, model) && active?.contextWindow !== undefined
+        ? { contextWindow: active.contextWindow }
         : undefined;
     const capabilities = resolveCapabilities(
       entry === undefined ? legacy : { ...entryCapabilities(entry), ...legacy },
@@ -101,7 +122,14 @@ export function createModelCatalogPort(
   };
 
   return {
-    label: endpointLabel(baseURL),
+    // Read per open, not captured: the heading names the endpoint in force, and
+    // an online switch must move it in the same process.
+    get label(): string {
+      // Synchronous interface, so the LAST resolved reading stands in until the
+      // next async lookup refreshes it — a heading is cosmetic, the data under
+      // it is not.
+      return endpointLabel(lastBaseURL);
+    },
     describe: async (id) => {
       const resolved = await option(id);
       return {
@@ -115,12 +143,24 @@ export function createModelCatalogPort(
      * （「自动」），让操作者看得见自己将要偏离的是什么。
      */
     automatic: async (id) => {
-      const meta = store.peek(id, baseURL) ?? (await store.lookup(id, baseURL).catch(() => undefined));
+      const active = await activeEndpoint();
+      const meta = store.peek(id, active?.baseURL) ?? (await store.lookup(id, active?.baseURL).catch(() => undefined));
       return meta === undefined ? undefined : metaCapabilities(meta);
     },
     // 非空即接管，且每次打开都重读；空列表与缺省同义（都是「问端点」），所以这里是
     // undefined 而不是空数组。这是函数而非数组：设置页会在进程运行中改写这份名单，
     // 捕获一份快照会让菜单一直显示改写前的目录，读起来像「保存没生效」。
     configured: async () => (await entries()).map((entry) => entry.id),
+  };
+}
+
+/** The boot endpoint as a live-reading shape (the fallback when no reader is wired). */
+function toReading(endpoint: ResolvedProvider | undefined): ActiveProviderReading | undefined {
+  if (endpoint === undefined) return undefined;
+  return {
+    id: endpoint.id,
+    baseURL: endpoint.baseURL,
+    ...(endpoint.contextWindow !== undefined ? { contextWindow: endpoint.contextWindow } : {}),
+    models: [],
   };
 }

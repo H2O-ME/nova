@@ -144,8 +144,19 @@ export class Context {
    * read its own settings) without the host passing a handle around.
    */
   plugin<T>(plugin: AnyPlugin | AnyPlugin[], config?: T, name?: string, entryId?: string): Fiber {
-    const chosen = Array.isArray(plugin) ? plugin[0] : plugin;
-    const resolved = resolvePlugin(chosen as AnyPlugin, name ?? 'anonymous');
+    // A single-element array is admitted as a convenience; anything else is a
+    // caller mistake and is REFUSED, because the old behaviour — silently
+    // loading only the head — is the exact defect shape this kernel refuses
+    // elsewhere: members beyond the first would vanish with no error anywhere.
+    if (Array.isArray(plugin)) {
+      if (plugin.length !== 1) {
+        throw new Error(
+          `ctx.plugin() takes one plugin, got an array of ${String(plugin.length)} — load each row separately`,
+        );
+      }
+      plugin = plugin[0] as AnyPlugin;
+    }
+    const resolved = resolvePlugin(plugin as AnyPlugin, name ?? 'anonymous');
     const fiber = new Fiber(
       this.runtime,
       resolved,

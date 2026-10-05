@@ -6,7 +6,8 @@
  * 停死。所以遥控指令必须走队列**之外**的旁路。
  */
 import { describe, expect, it } from 'vitest';
-import { InboundHandler, type ReplySink } from '../src/inbound.js';
+import { InboundHandler } from '../src/inbound.js';
+import type { ReplySink } from '../src/reply.js';
 import type { Peer } from '../src/types.js';
 
 /** 一条 group 入站消息的 dispatch 负载。 */
@@ -34,14 +35,12 @@ function makeHandler(): { handler: InboundHandler; rig: Rig } {
   const gate = new Promise<void>((resolve) => {
     open = resolve;
   });
+  // The sink is what the OUTBOX implements: it owns the window and the allowance,
+  // so a fake here only has to record what it was asked to send.
   const reply: ReplySink = {
-    group: (openid, content) => {
-      replies.push({ peer: { peerId: `group:${openid}`, kind: 'group', openid }, text: content });
-      return Promise.resolve(1);
-    },
-    c2c: (openid, content) => {
-      replies.push({ peer: { peerId: `c2c:${openid}`, kind: 'c2c', openid }, text: content });
-      return Promise.resolve(1);
+    reply: (peerId, content) => {
+      replies.push({ peer: { peerId, kind: peerId.startsWith('group:') ? 'group' : 'c2c', openid: peerId }, text: content });
+      return Promise.resolve({ ok: true });
     },
   };
   const handler = new InboundHandler({
@@ -104,8 +103,7 @@ describe('inbound counters', () => {
     const { handler } = makeHandler();
     let failure = false;
     const reply: ReplySink = {
-      group: () => (failure ? Promise.reject(new Error('rate limited')) : Promise.resolve(1)),
-      c2c: () => Promise.resolve(1),
+      reply: () => (failure ? Promise.resolve({ ok: false, reason: 'rate limited' }) : Promise.resolve({ ok: true })),
     };
     const counting = new InboundHandler({ brain: (text) => Promise.resolve(`echo:${text}`), reply, log: () => undefined });
 
@@ -125,3 +123,6 @@ describe('inbound counters', () => {
     expect(handler.stats()).toEqual({ received: 0, replied: 0 });
   });
 });
+
+
+

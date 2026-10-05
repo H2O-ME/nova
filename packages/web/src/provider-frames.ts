@@ -9,6 +9,15 @@
  * file exists rather than the family living in `model-config-frames.ts`: a probe
  * is a network call whose failure is an answer, and a switch is a mutation of
  * kernel state that a model-list edit never performs.
+ *
+ * The switch is ONE transaction shared by two entries (`set_provider`, and the
+ * auto-apply after `save_providers`): resolve the key (refusing BEFORE anything
+ * is written), persist the pointer, apply to the live client, track the applied
+ * id. "Which provider is in force" is therefore a fact about the PROCESS
+ * (`liveProviderId`), not about the file — the file can name an id the process
+ * never applied (boot built no client, or an apply failed after the save), and
+ * comparing against the file would report a switch as a no-op while requests
+ * still go to the previous endpoint.
  */
 import { errMessage, resolveModelId, type ChatProvider } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
@@ -26,6 +35,22 @@ export interface ProvidersSnapshot {
   activeId?: string;
 }
 
+/**
+ * One attempt to turn a stored key into a USABLE secret. Structural mirror of
+ * the shell's reader (`cli/src/config-providers.ts`): the shell owns the file
+ * and the `{env:NAME}` expansion, the surface only needs the outcome — a key,
+ * or the named reason there is none. An unset variable is a NAMED refusal, so
+ * the caller can report it and never touch the network.
+ */
+export interface StoredKeyResolution {
+  /** The secret a request may carry, when one is stored and resolvable. */
+  readonly key?: string;
+  /** Why there is no usable secret. */
+  readonly problem?: 'missing' | 'env-unset';
+  /** The variable name, for an `env-unset` problem. */
+  readonly envName?: string;
+}
+
 /** What the provider frames need from the controller. */
 export interface ProviderHost {
   kernel: Kernel;
@@ -34,35 +59,44 @@ export interface ProviderHost {
   /** Re-read the list from disk (the file is the authority, the page is not). */
   readProviders: () => Promise<ProvidersSnapshot>;
   /**
-   * Resolve the stored key for one provider id, so a probe or a switch can reuse
-   * it without the browser ever holding it. Returns undefined when nothing is
-   * stored. Async because it is a read of the config file, not a cached field.
+   * Resolve the stored key for one provider id — EXPANDED for use in a request,
+   * so a referenced `{env:NAME}` resolves here or is refused by name, and the
+   * raw file text (which is a file format, not a credential) never reaches a
+   * fetch. Async because it is a read of the config file, not a cached field.
    */
-  storedApiKey: (id: string) => string | undefined | Promise<string | undefined>;
+  storedApiKey: (id: string) => StoredKeyResolution | Promise<StoredKeyResolution>;
   /** The model id to carry when retargeting (config `provider.model`). */
   configuredModel: () => string | undefined;
+  /** The provider id the live client is currently serving; undefined = none applied. */
+  liveProviderId: () => string | undefined;
+  /** Record that a switch took effect on the live client. */
+  setLiveProviderId: (id: string) => void;
   /** Tell every client the seat moved (the kernel event, then a fresh state). */
   refreshSeat: () => void;
 }
 
+/** The live client a switch retargets, read off the `llm` service. */
+interface RetargetableClient extends ChatProvider {
+  setEndpoint(endpoint: {
+    baseURL: string;
+    apiKey: string;
+    model: string;
+    temperature?: number;
+    maxTokens?: number;
+  }): void | Promise<void>;
+}
+
 /**
- * The live client a switch retargets, read off the `llm` service.
- *
  * Read LIVE rather than captured: the service is the single place every session
  * and every nested subagent gets its provider from, so retargeting the instance
- * it hands out is what makes a switch reach all of them at once. `setEndpoint`
- * may be absent on a scripted or third-party provider — that absence is the
- * refusal, reported with a reason instead of a silent no-op.
+ * it hands out is what makes a switch reach all of them at once. The switchable
+ * shell provider's `setEndpoint` is async (a placeholder target is rebuilt from
+ * the just-saved file first); a scripted or third-party provider without one is
+ * the refusal, reported with a reason instead of a silent no-op.
  */
-function endpointClient(host: ProviderHost):
-  | (ChatProvider & { setEndpoint(endpoint: { baseURL: string; apiKey: string; model: string }): void })
-  | undefined {
-  const provider = host.kernel.llm.provider as ChatProvider & {
-    setEndpoint?(endpoint: { baseURL: string; apiKey: string; model: string }): void;
-  };
-  return typeof provider.setEndpoint === 'function'
-    ? (provider as ChatProvider & { setEndpoint(endpoint: { baseURL: string; apiKey: string; model: string }): void })
-    : undefined;
+function endpointClient(host: ProviderHost): RetargetableClient | undefined {
+  const provider = host.kernel.llm.provider as ChatProvider & { setEndpoint?: RetargetableClient['setEndpoint'] };
+  return typeof provider.setEndpoint === 'function' ? (provider as RetargetableClient) : undefined;
 }
 
 /** A `providers` frame from a snapshot. */
@@ -102,6 +136,90 @@ export async function probeProvider(baseURL: string, apiKey: string | undefined)
 }
 
 /**
+ * Turn a row's stored key into a USABLE secret, refusing by name. Runs BEFORE
+ * anything is persisted: a refusal is not a switch, and persisting the pointer
+ * anyway would leave the file naming a provider no request can serve — worse,
+ * an unresolvable `{env:NAME}` in the mirrored `provider` block is FATAL at the
+ * next load, so the refusal must happen while the file is still untouched.
+ * @throws with the operator-facing reason.
+ */
+async function resolveUsableKey(host: ProviderHost, chosen: StoredProviderRow): Promise<string> {
+  const key = await host.storedApiKey(chosen.id);
+  if (key.problem === 'env-unset') {
+    throw new Error(
+      `供应商「${chosen.name ?? chosen.id}」引用的环境变量 {env:${key.envName}} 未设置，切换前请先在环境里提供它`,
+    );
+  }
+  if (key.key === undefined) {
+    throw new Error(`供应商「${chosen.name ?? chosen.id}」还没有填写 API 密钥`);
+  }
+  return key.key;
+}
+
+/**
+ * Point the live client at one saved row whose key is ALREADY resolved, then
+ * reconcile the model id against the new endpoint's catalog. Persisting the
+ * pointer is the caller's job.
+ */
+async function applyResolved(
+  host: ProviderHost,
+  id: string,
+  key: string,
+  chosen: StoredProviderRow,
+): Promise<void> {
+  const live = endpointClient(host);
+  if (live === undefined) {
+    throw new Error('本次启动的模型客户端不支持切换端点');
+  }
+  // Retarget in place, then reconcile the id against THIS endpoint's
+  // catalog: the previous endpoint's spelling is a name the new one
+  // probably does not serve (see `core/model-id.ts`).
+  const configured = host.configuredModel();
+  await live.setEndpoint({
+    baseURL: chosen.baseURL,
+    apiKey: key,
+    model: configured ?? '',
+    ...(chosen.temperature !== undefined ? { temperature: chosen.temperature } : {}),
+    ...(chosen.maxTokens !== undefined ? { maxTokens: chosen.maxTokens } : {}),
+  });
+  if (configured !== undefined && live.listModels !== undefined) {
+    const available = await live.listModels(5_000).catch(() => [] as string[]);
+    const reconciled = resolveModelId(configured, available);
+    if (reconciled !== configured) live.setModel?.(reconciled);
+  }
+  host.setLiveProviderId(id);
+  host.refreshSeat();
+}
+
+/**
+ * The apply half of the switch transaction for the path whose persist already
+ * happened (`save_providers`): resolve the key, then retarget.
+ * @throws with the operator-facing reason when the row, the key or the live
+ *   client cannot serve the switch.
+ */
+async function applyProvider(host: ProviderHost, id: string): Promise<void> {
+  const snapshot = await host.readProviders();
+  const chosen = snapshot.providers.find((entry) => entry.id === id);
+  if (chosen === undefined) {
+    throw new Error(`没有这个供应商：${id}`);
+  }
+  await applyResolved(host, id, await resolveUsableKey(host, chosen), chosen);
+}
+
+/** The stored row's full shape, ready to persist (the switch rewrites the list). */
+function toPersistEntry(entry: StoredProviderRow): WireProviderInput {
+  return {
+    id: entry.id,
+    baseURL: entry.baseURL,
+    ...(entry.name !== undefined ? { name: entry.name } : {}),
+    ...(entry.contextWindow !== undefined ? { contextWindow: entry.contextWindow } : {}),
+    ...(entry.temperature !== undefined ? { temperature: entry.temperature } : {}),
+    ...(entry.maxTokens !== undefined ? { maxTokens: entry.maxTokens } : {}),
+    models: entry.models,
+  };
+}
+
+/**
  * Route one provider frame. The caller guarantees `frame.type` is one of the
  * four, and the validator guarantees the payload shapes.
  * @param client - the requesting socket.
@@ -132,10 +250,22 @@ export async function handleProviderFrame(
         }
         // A run in flight is not a reason to refuse: the list is read at boot and
         // when a menu opens, so writing it changes the NEXT request rather than
-        // the one being built. The SAME reasoning does not extend to
-        // `set_provider`, which does refuse (see below).
+        // the one being built.
         await host.persistProviders(frame.providers, frame.activeId);
         client.send(providersFrame(await host.readProviders()));
+        // The saved pointer is also the live pointer whenever it names a provider
+        // the process has not applied — a first save on the placeholder shell, or
+        // a save that swaps the active row. A failure does NOT unsave: the frame
+        // above is the truth (已保存), the error frame is the delta (未生效).
+        if (frame.activeId !== undefined && host.liveProviderId() !== frame.activeId) {
+          try {
+            await applyProvider(host, frame.activeId);
+          } catch (err) {
+            client.send(
+              serialize({ type: 'error', message: `已保存，但切换到新供应商未生效：${errMessage(err)}` }),
+            );
+          }
+        }
         break;
       }
       case 'set_provider': {
@@ -145,14 +275,10 @@ export async function handleProviderFrame(
           client.send(serialize({ type: 'error', message: `没有这个供应商：${frame.id}` }));
           break;
         }
-        const live = endpointClient(host);
-        if (live === undefined) {
-          client.send(serialize({ type: 'error', message: '本次启动的模型客户端不支持切换端点' }));
-          break;
-        }
-        if (frame.id === snapshot.activeId) {
-          // Already in force: answer with state rather than a no-op write, so a
-          // double click cannot churn the config file.
+        if (host.liveProviderId() === frame.id) {
+          // Already in force on the LIVE client — not "matches the file": the
+          // file can name an id the process never applied, and answering state
+          // to that would claim a switch that never reached a request.
           client.send(providersFrame(snapshot));
           break;
         }
@@ -160,39 +286,30 @@ export async function handleProviderFrame(
           client.send(serialize({ type: 'error', message: '当前服务没有可写的配置文件' }));
           break;
         }
-        const apiKey = await host.storedApiKey(frame.id);
-        if (apiKey === undefined) {
-          client.send(serialize({ type: 'error', message: `供应商「${chosen.name ?? chosen.id}」还没有填写 API 密钥` }));
-          break;
-        }
+        // Refuse BEFORE anything is written: a refusal is not a switch, and
+        // persisting the pointer anyway would leave the file naming a provider
+        // no request can serve (see `resolveUsableKey`).
+        const key = await resolveUsableKey(host, chosen);
         // Persist the pointer FIRST: a switch that the process applied but the
         // file never recorded would silently revert on restart, leaving the
         // operator with a seat that moves back on its own.
         await host.persistProviders(
-          snapshot.providers.map((entry) => ({
-            id: entry.id,
-            baseURL: entry.baseURL,
-            ...(entry.name !== undefined ? { name: entry.name } : {}),
-            ...(entry.contextWindow !== undefined ? { contextWindow: entry.contextWindow } : {}),
-            models: entry.models,
-          })),
+          snapshot.providers.map(toPersistEntry),
           frame.id,
         );
-        // Retarget in place, then reconcile the id against THIS endpoint's
-        // catalog: the previous endpoint's spelling is a name the new one
-        // probably does not serve (see `core/model-id.ts`).
-        const configured = host.configuredModel();
-        live.setEndpoint({
-          baseURL: chosen.baseURL,
-          apiKey,
-          model: configured ?? '',
-        });
-        if (configured !== undefined && live.listModels !== undefined) {
-          const available = await live.listModels(5_000).catch(() => [] as string[]);
-          const reconciled = resolveModelId(configured, available);
-          if (reconciled !== configured) live.setModel?.(reconciled);
+        try {
+          await applyResolved(host, frame.id, key, chosen);
+        } catch (err) {
+          // The file is ahead of the process: the pointer is saved, the live
+          // client still serves the previous endpoint, and a restart applies
+          // what the file names. Say both, instead of pretending nothing
+          // happened.
+          client.send(providersFrame(await host.readProviders()));
+          client.send(
+            serialize({ type: 'error', message: `已写入配置，但本次进程未生效：${errMessage(err)}` }),
+          );
+          break;
         }
-        host.refreshSeat();
         client.send(providersFrame(await host.readProviders()));
         break;
       }
@@ -202,8 +319,10 @@ export async function handleProviderFrame(
         // baseURL because the probe is deliberately address-based — the operator is
         // testing text they just typed, which may not be saved under any id yet.
         const known = findByBaseURL(await host.readProviders(), frame.baseURL);
-        const stored =
-          frame.apiKey === undefined && known !== undefined ? await host.storedApiKey(known) : undefined;
+        let stored: string | undefined;
+        if (frame.apiKey === undefined && known !== undefined) {
+          stored = (await host.storedApiKey(known)).key;
+        }
         const apiKey = frame.apiKey ?? stored;
         try {
           const models = await probeProvider(frame.baseURL, apiKey);

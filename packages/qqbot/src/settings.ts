@@ -19,6 +19,12 @@ const ENV_REF = /\{env:([A-Za-z_][A-Za-z0-9_]*)\}/;
 export interface QqBotSettings {
   readonly appId?: string;
   readonly clientSecret?: string;
+  /** 已配对的 QQ 身份（群里是成员 openid，私聊是用户 openid）。 */
+  readonly owners?: readonly string[];
+  /** 远端可用的最高权限档（`read-only` / `auto-edit` / `full`）。 */
+  readonly maxTier?: string;
+  /** 长期有效的入网配对码（缺省即关闭新设备入网）。 */
+  readonly pairingCode?: string;
 }
 
 /** 通道此刻走到哪一步。 */
@@ -36,10 +42,12 @@ export interface QqBotPageState {
   readonly stats?: { readonly received: number; readonly replied: number; readonly lastReceivedAt?: number };
   /** 刚保存过：下一次 roster 会按新凭据重挂这一行。 */
   readonly saved?: boolean;
+  /** 当前有效的配对码（只在刚生成、尚未过期、且尚未使用时出现）。 */
+  readonly pairingCode?: string;
 }
 
 /** 页面可编辑的字段键——`save` 校验用的也是这一份清单。 */
-export const QQ_BOT_SETTING_KEYS = ['appId', 'clientSecret'] as const;
+export const QQ_BOT_SETTING_KEYS = ['appId', 'clientSecret', 'maxTier'] as const;
 export type QqBotSettingKey = (typeof QQ_BOT_SETTING_KEYS)[number];
 
 /** 这个键是不是本行的设置（未知键必须点名拒绝，不能静默丢掉）。 */
@@ -73,7 +81,7 @@ export function qqBotCredentialProblem(settings: QqBotSettings): string | undefi
 
 /** 这一行自己的页面。 */
 export function qqBotPage(state: QqBotPageState): PluginPageDescriptor {
-  const status: PluginSettingStatus[] = [channelStatus(state), credentialStatus(state.settings)];
+  const status: PluginSettingStatus[] = [channelStatus(state), credentialStatus(state.settings), accessStatus(state)];
   if (state.stats !== undefined) {
     status.push({
       label: '本次运行',
@@ -86,14 +94,19 @@ export function qqBotPage(state: QqBotPageState): PluginPageDescriptor {
   return {
     title: 'QQ 机器人',
     intro:
-      '接腾讯 QQ 机器人开放平台的 WebSocket 通道：对端每发一条消息，就为这个对端跑一轮内核'
-      + '（独立会话、无人值守审批），回答按被动回复窗口发回。',
+      '接腾讯 QQ 机器人开放平台的 WebSocket 通道：**已绑定的 QQ 身份**驱动的是一段**持久会话**'
+      + '——重启后接着原来的对话走，手机也能用 /use 接到桌面上正在用的那一段。过程与结论都按'
+      + '被动回复窗口回传，未绑定的发送者只会收到一句入网提示。',
     guide: [
       '在 QQ 开放平台创建机器人，拿到 AppID 与 AppSecret。',
       '把两者填在下面并保存：保存会把这一行打开，并按新凭据重挂通道。',
-      '群里需要 @机器人 才会收到消息——平台只推送被 @ 的那条。',
+      '绑定你的 QQ 号：用手机 QQ **私聊**机器人发送 /pair <配对码>。绑定是长期的，重启不用再来一次；'
+        + '无 GUI 的服务器上配对码也会打印在启动控制台里，不需要任何界面。',
+      '手机里用 /sessions 看有哪些活着的会话，再用 /use <前几位> 把本对话接到桌面上正在用的那一段——'
+        + '这就是会话接力：手机说的一句接着桌面的上下文走，桌面的转录里也会出现它。',
+      '群里需要 @机器人 才会收到消息，且只有已绑定的成员能指挥它（群本身不是身份）。',
+      '远端权限上限默认只读：对端可以用 /perm 往下调，但不能超过这里设置的上限。',
       '密钥可以写成 {env:NAME} 引用环境变量；页面永远不会回显它的值。',
-      '对端也能用 /help 看到那套遥控指令（权限档、审批、换会话）。',
     ],
     status,
     fields: [
@@ -105,9 +118,50 @@ export function qqBotPage(state: QqBotPageState): PluginPageDescriptor {
         placeholder: '开放平台里的机器人 AppID',
       },
       secretField(state.settings.clientSecret),
+      {
+        key: 'maxTier',
+        label: '远端权限上限',
+        kind: 'select',
+        value: state.settings.maxTier ?? 'read-only',
+        options: [
+          { value: 'read-only', label: '只读（推荐）' },
+          { value: 'auto-edit', label: '自动编辑' },
+          { value: 'full', label: '全放行（谨慎）' },
+        ],
+        hint: '对端 /perm 能到的最高档位；改小会立刻对正在对话的对端生效。',
+      },
     ],
-    actions: [{ id: 'test', label: '测试连接', kind: 'primary' }],
-    note: '通道随这一行一起启停：关掉这一行，socket、对端会话与审批定时器一起收走。',
+    actions: [
+      { id: 'test', label: '测试连接', kind: 'primary' },
+      { id: 'rotate', label: '换新配对码', kind: 'plain' },
+      { id: 'forget', label: '解除全部绑定', kind: 'plain' },
+    ],
+    ...(state.pairingCode !== undefined
+      ? { note: `当前配对码：${state.pairingCode} —— 在 QQ 里私聊机器人发送 /pair ${state.pairingCode}（长期有效，可用于多台设备）` }
+      : {
+          note: '通道随这一行一起启停：关掉这一行，socket、对话绑定与审批定时器一起收走；'
+            + '未绑定的 QQ 号只能看到入网提示。',
+        }),
+  };
+}
+
+/**
+ * The access row: who may drive this machine, and how far.
+ *
+ * Stated as a COUNT plus the ceiling rather than a list of ids, because the page
+ * is a screenshot-able surface and the ids are the credential — the operator who
+ * wants to see them can read the config file, which is where they belong.
+ */
+function accessStatus(state: QqBotPageState): PluginSettingStatus {
+  const owners = state.settings.owners?.length ?? 0;
+  const tier = state.settings.maxTier ?? 'read-only';
+  const label = tier === 'read-only' ? '只读' : tier === 'auto-edit' ? '自动编辑' : '全放行';
+  return {
+    label: '授权',
+    value: owners === 0
+      ? '还没有绑定任何 QQ 号——现在任何人的消息都不会被处理'
+      : `已绑定 ${owners} 个 QQ 号 · 远端权限上限 ${label}`,
+    tone: owners === 0 ? 'warn' : 'ok',
   };
 }
 
@@ -168,3 +222,8 @@ function secretField(stored: string | undefined): PluginSettingField {
     hint: isSet ? '留空保存会保留已设置的密钥。' : '在开放平台的「开发设置」里可以看到或重置。',
   };
 }
+
+
+
+
+

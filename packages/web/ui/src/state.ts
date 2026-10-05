@@ -617,14 +617,6 @@ export type Action =
       error?: string;
     }
   /**
-   * The browser asked a plugin for something: recorded IMMEDIATELY so the page's
-   * own control can disable itself while the answer is in flight, without the
-   * panel tracking a request per control. The answer (`plugin_answer`) replaces
-   * it, keyed by the same plugin — a page that has several requests in flight
-   * only ever needs its latest answer.
-   */
-  | { type: 'plugin_ask'; plugin: string; id: number; op: string }
-  /**
    * The operator edited a field on a plugin's page: whatever the last ACTION
    * answered no longer describes what is on screen (a probe result belongs to the
    * exact text it tested). The `page` descriptor is kept — dropping it would
@@ -776,6 +768,21 @@ export function reduce(state: UiState, action: Action): UiState {
       if (action.frame.type === 'pick_file' || action.frame.type === 'pick_directory') {
         return { ...state, pickPending: true };
       }
+      // A plugin operation marks itself in flight the moment it goes out. Without
+      // this the entry kept whatever the last REPLY said, so `pending` was never
+      // true: the save button never swapped to 保存中…, the action buttons never
+      // swapped to 执行中…, and every write read as a dead control — the reported
+      // 「按钮点不点让人完全没反应」. The plugin's own answer replaces this entry
+      // (the `plugin_answer` case), which is what settles it.
+      if (action.frame.type === 'plugin_request') {
+        return {
+          ...state,
+          pluginAnswers: {
+            ...state.pluginAnswers,
+            [action.frame.plugin]: { id: action.frame.id, op: action.frame.op, ok: false, pending: true },
+          },
+        };
+      }
       return state;
     case 'ready':
       return applyReady(state, action.info);
@@ -860,10 +867,6 @@ export function reduce(state: UiState, action: Action): UiState {
         if (answer !== undefined && answer.op === 'page') kept[plugin] = answer;
       }
       return { ...state, pluginAnswers: kept };
-    }
-    case 'plugin_ask': {
-      const answer: PluginRequestAnswer = { id: action.id, op: action.op, ok: false, pending: true };
-      return { ...state, pluginAnswers: { ...state.pluginAnswers, [action.plugin]: answer } };
     }
     case 'sessions':
       return { ...state, sessions: action.items, sessionsStale: false, sessionsPending: false };

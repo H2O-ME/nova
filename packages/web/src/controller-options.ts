@@ -1,6 +1,7 @@
 import type { ConfiguredModel, RouteRegistry } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import type { PickFn } from './picker-frames.js';
+import type { StoredKeyResolution } from './provider-frames.js';
 import type { WireProviderInput, WireProviderRow } from './provider-wire.js';
 
 /**
@@ -29,14 +30,23 @@ export interface ProviderSeams {
   persistProviders?: (entries: readonly WireProviderInput[], activeId: string | undefined) => void | Promise<void>;
   readProviders?: () => Promise<{ providers: readonly WireProviderRow[]; activeId?: string }>;
   /**
-   * The stored API key for one provider id.
+   * The stored API key for one provider id, RESOLVED for use in a request: the
+   * key, or the named reason there is none (`{env:NAME}` unset → `env-unset`
+   * with the variable's name, a refused request rather than a garbage fetch).
    *
    * A function on this seam rather than a field on the snapshot because the key
    * must NEVER reach the browser: the snapshot carries `hasApiKey`, and the host
    * re-reads the real value only when it needs to make a request (a switch, or a
    * re-probe of an already-saved endpoint).
    */
-  storedApiKey?: (id: string) => string | undefined | Promise<string | undefined>;
+  storedApiKey?: (id: string) => StoredKeyResolution | Promise<StoredKeyResolution>;
+  /**
+   * The provider id the live client booted serving; undefined when boot built no
+   * client (the placeholder shell). The controller tracks the applied id from
+   * here — "which provider is in force" is a fact about the process, and the
+   * file's `activeProvider` can name an id the process never applied.
+   */
+  initialProviderId?: string;
   /**
    * The model id to carry when retargeting an endpoint (config `provider.model`).
    * The shell owns it because the seat is only a view onto the durable answer.

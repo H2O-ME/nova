@@ -11,6 +11,7 @@
  */
 import type { RunStats } from './kernel/metrics.js';
 import type { SessionEvent } from './session.js';
+import { validateEvent } from './session-event-schema.js';
 import type { AgentMessage, UserMessage } from './types.js';
 
 /**
@@ -67,9 +68,16 @@ export function compactionSurface(
  * One line of a session log. Kept here beside the projection rather than with
  * the reader: the line's shape IS the event vocabulary, and the parser is a
  * pure function of it (`session-log.ts` owns the file access around it).
+ *
+ * `JSON.parse` guarantees SYNTAX, not SHAPE, so the parsed value is checked
+ * against the union (`session-event-schema.ts`) before it is admitted.
+ * @throws when the line is not a well-formed event (the reader turns that into
+ * its existing "skip this line" warning).
  */
 export function parseEventLine(line: string): SessionEvent {
-  return JSON.parse(line) as SessionEvent;
+  const event = validateEvent(JSON.parse(line));
+  if (event === undefined) throw new Error('malformed session event');
+  return event;
 }
 
 /**

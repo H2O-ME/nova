@@ -9,20 +9,27 @@
  *
  * One run = one user prompt → its final answer, which may span several loop
  * iterations (`turn_start` … tools … `turn_start` …). Within it:
- *   - `llmMs` accumulates each provider request (`turn_start` → its `usage`),
- *     so a run that spent its time in tools does not look like model latency;
+ *   - `llmMs` accumulates each provider request, so a run that spent its time
+ *     in tools does not look like model latency;
  *   - `toolMs` accumulates each call (`tool_call_start` → `tool_call_result`);
  *   - `firstTokenMs` is the run's time-to-first-token, the number a user
  *     actually feels — it excludes queueing and the request's own preamble;
  *   - `retries` counts in-flight re-requests (`llm_retry`), which is why the
  *     reported duration can exceed the sum of the parts.
  *
+ * **A request's window is opened and closed by explicit boundary calls, not
+ * inferred from the event stream.** Neither end works by inference: `turn_start`
+ * fires before `assembleRequest` (so hook, image-projection and in-place
+ * auto-compaction time was charged to `llmMs`), and `usage` may never arrive (so
+ * a request cut short by an abort silently vanished from `llmMs`). See
+ * {@link RunMeter.requestStart} / {@link RunMeter.requestEnd}.
+ *
  * Per-request timings (`RequestTiming`) record the same milestones PER LOOP
  * ITERATION — started/firstToken/finished — so a Timing card can draw a
  * TTFT/response-duration series across one run's requests without re-deriving
- * it from the event stream. They are produced ONLY when each milestone fires:
- * a request that produced no tokens has no `firstTokenAt`; a request whose
- * `usage` never came back (provider drop, abort) has no `finishedAt`.
+ * it from the event stream. A request that produced no tokens has no
+ * `firstTokenAt` (a function-call-only reply); `finishedAt` is absent only for a
+ * request still in flight when the run ends (abort, crash).
  *
  * Token counters sum the run's per-request `usage` reports. Nothing here is
  * model-visible or persisted: stats ride a `run_stats` event and die with the
@@ -33,11 +40,11 @@
 export interface RequestTiming {
   /** The loop iteration this request belongs to (1-based, matches `turn_start.turn`). */
   turn: number;
-  /** ms epoch when `turn_start` fired — the provider request began. */
+  /** ms epoch when the assembled request reached the provider. */
   startedAt: number;
   /** ms epoch when the FIRST streamed token arrived; absent if none did. */
   firstTokenAt?: number;
-  /** ms epoch when the request's `usage` closed it; absent if it never closed. */
+  /** ms epoch when the request's stream settled; absent only if it was still open at run end. */
   finishedAt?: number;
 }
 
@@ -57,9 +64,11 @@ export interface RunStats {
   /** Time inside provider requests / inside tool calls (both exclude waiting on approvals). */
   llmMs: number;
   toolMs: number;
-  /** Provider requests (loop iterations) in the run, tool calls executed, in-flight re-requests. */
+  /** Provider requests (every hand-off to the provider, retries included). */
   requests: number;
+  /** Tool calls executed. */
   toolCalls: number;
+  /** In-flight re-requests (`llm_retry`) within those requests. */
   retries: number;
   /** Summed over the run's per-request usage reports. */
   promptTokens: number;
@@ -114,35 +123,61 @@ export class RunMeter {
     this.cachedTokens = 0;
   }
 
+  /**
+   * An assembled request is being handed to the provider — the TRUE start of
+   * provider time. Called by the session's counting provider, which is the one
+   * place the request crosses into the provider; the event stream cannot mark
+   * this instant (`turn_start` precedes request assembly and its hooks).
+   *
+   * A request that re-issues itself mid-stream (a `reset` retry) stays ONE
+   * window: the session wraps the provider's whole `stream()` generator, so the
+   * backoff between attempts is part of the latency the caller actually waited.
+   * An empty-completion retry is a fresh `stream()` call and therefore a fresh
+   * request, which is what it is on the wire.
+   */
+  requestStart(): void {
+    this.requests += 1;
+    this.requestStartAt = this.now();
+    this.currentFirstTokenAt = undefined;
+  }
+
+  /**
+   * The in-flight request's stream settled — EOF, error or abort. Closes the
+   * window unconditionally, so a provider that never reports `usage` (or a
+   * request cut short by an abort) still contributes its time instead of
+   * silently vanishing from `llmMs` and from the per-request series.
+   */
+  requestEnd(): void {
+    if (this.requestStartAt === undefined) return;
+    const finishedAt = this.now();
+    this.llmMs += finishedAt - this.requestStartAt;
+    this.requestTimings.push({
+      turn: this.currentTurn,
+      startedAt: this.requestStartAt,
+      ...(this.currentFirstTokenAt !== undefined ? { firstTokenAt: this.currentFirstTokenAt } : {}),
+      finishedAt,
+    });
+    this.requestStartAt = undefined;
+  }
+
   /** Fold one event into the run's numbers (called once, in consume()). */
   observe(event: { type: string } & Record<string, unknown>): void {
     switch (event.type) {
       case 'turn_start': {
-        const turn = (event['turn'] as number | undefined) ?? this.currentTurn + 1;
-        this.currentTurn = turn;
-        this.requests += 1;
-        this.requestStartAt = this.now();
+        // Labels the requests that follow; it does NOT open one — the request
+        // window belongs to `requestStart` (see the class doc).
+        this.currentTurn = (event['turn'] as number | undefined) ?? this.currentTurn + 1;
         this.currentFirstTokenAt = undefined;
         break;
       }
       case 'usage': {
+        // Token counters only. The request's WINDOW is closed by requestEnd —
+        // closing it here was what stranded every request whose provider never
+        // reported usage.
         const usage = event['usage'] as { promptTokens: number; completionTokens: number; cachedTokens: number };
         this.promptTokens += usage.promptTokens;
         this.completionTokens += usage.completionTokens;
         this.cachedTokens += usage.cachedTokens;
-        // The request this usage belongs to is over; a usage event with no
-        // open request (a replay, a provider that reports late) adds nothing.
-        if (this.requestStartAt !== undefined) {
-          const finishedAt = this.now();
-          this.llmMs += finishedAt - this.requestStartAt;
-          this.requestTimings.push({
-            turn: this.currentTurn,
-            startedAt: this.requestStartAt,
-            ...(this.currentFirstTokenAt !== undefined ? { firstTokenAt: this.currentFirstTokenAt } : {}),
-            finishedAt,
-          });
-          this.requestStartAt = undefined;
-        }
         break;
       }
       case 'text_delta':
@@ -172,8 +207,6 @@ export class RunMeter {
       }
       case 'llm_retry':
         this.retries += 1;
-        // The failed attempt's request is still open: leave requestStartAt
-        // alone so the retry's own usage closes the pair exactly once.
         break;
       default:
         break;
@@ -183,9 +216,10 @@ export class RunMeter {
   /** The run's summary. Safe to call at any point (a failed run reports partials). */
   finish(): RunStats {
     const endedAt = this.now();
-    // If a provider request is still in flight when the run ends (abort, the
-    // last request streamed tokens but never reported usage), record it so
-    // the per-request series is not silently shorter than `requests`.
+    // If a request is still in flight when the run ends (abort mid-stream, a
+    // consumer that stopped pulling), record it so the per-request series is
+    // not silently shorter than `requests` — without a `finishedAt`, because
+    // the request genuinely has not finished.
     const timings = [...this.requestTimings];
     if (this.requestStartAt !== undefined) {
       timings.push({

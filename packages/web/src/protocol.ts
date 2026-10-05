@@ -29,7 +29,7 @@ export type { WireRosterEntry } from './roster-entry.js';
  * save carries) and must stay free to differ from what the file holds — the file
  * carries a secret, this never does.
  */
-export type { WireProviderInput, WireProviderRow } from './provider-wire.js';
+export type { WireProviderInput, WireProviderModel, WireProviderRow } from './provider-wire.js';
 
 /**
  * Every bound the wire enforces lives in `wire-limits.ts` and is re-exported

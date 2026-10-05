@@ -79,7 +79,7 @@ describe('qqbot plugin without credentials', () => {
     expect(descriptor.title).toBe('QQ 机器人');
     expect(descriptor.status?.some((row) => row.value.includes('还没有填写 AppID'))).toBe(true);
     // The fields ARE there — that is the whole point of answering without a channel.
-    expect(descriptor.fields?.map((field) => field.key)).toEqual(['appId', 'clientSecret']);
+    expect(descriptor.fields?.map((field) => field.key)).toEqual(['appId', 'clientSecret', 'maxTier']);
     expect(descriptor.fields?.find((field) => field.key === 'clientSecret')?.kind).toBe('secret');
   });
 
@@ -113,6 +113,38 @@ describe('qqbot plugin without credentials', () => {
     const descriptor = page(await active.rpc.invoke(QQ_BOT_PLUGIN_NAME, 'page', undefined));
     expect(descriptor.status?.some((row) => row.value.includes('QQ_SECRET_NOT_SET_ANYWHERE'))).toBe(true);
   });
+
+  it('saves every field its own page rendered (maxTier included)', async () => {
+    // The payload the REAL page submits: one entry per field it drew. The old test
+    // hand-wrote a two-key payload, which is why it stayed green while the live
+    // page — which also renders `maxTier` — was refused with `unknown setting
+    // "maxTier"` on every save.
+    const active = await mount({});
+    const descriptor = page(await active.rpc.invoke(QQ_BOT_PLUGIN_NAME, 'page', undefined));
+    const fields = Object.fromEntries(
+      (descriptor.fields ?? []).map((field) => [field.key, String(field.value ?? '')]),
+    );
+    const after = page(await active.rpc.invoke(QQ_BOT_PLUGIN_NAME, 'save', { fields }));
+    expect(active.saved).toHaveLength(1);
+    const config = active.saved[0]?.patch.config as { maxTier?: string } | undefined;
+    expect(config?.maxTier).toBe('read-only');
+    expect(after.title).toBe('QQ 机器人');
+  });
+
+  it('keeps enrolled devices bound across a save', async () => {
+    // `owners` is not a form field: it is written by the pairing flow. A save that
+    // derived the row from the submitted fields alone reported every device as
+    // unbound — the page said "还没有绑定任何 QQ 号" right after the operator
+    // pressed save.
+    const active = await mount({ appId: '1024', clientSecret: '{env:NOPE}', owners: ['U1', 'U2'] });
+    const after = page(
+      await active.rpc.invoke(QQ_BOT_PLUGIN_NAME, 'save', {
+        fields: { appId: '1024', clientSecret: '', maxTier: 'read-only' },
+      }),
+    );
+    const access = after.status?.find((row) => row.label === '授权');
+    expect(access?.value).toContain('已绑定 2');
+  });
 });
 
 describe('qqbot plugin with credentials', () => {
@@ -133,9 +165,50 @@ describe('qqbot plugin with credentials', () => {
       expect(JSON.stringify(descriptor)).not.toContain('literal-secret-xyz');
       expect(descriptor.status?.some((row) => row.value.includes('连接失败'))).toBe(true);
       // The namespace survived the failed dial: that page is how it gets fixed.
-      expect(descriptor.actions?.map((action) => action.id)).toEqual(['test']);
+      expect(descriptor.actions?.map((action) => action.id)).toEqual(['test', 'rotate', 'forget']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('reads the stored pairing code back instead of minting a new one every activation', async () => {
+    // The row already carries an enrollment secret. An activation that does NOT
+    // read it back believes there is none, mints a fresh one and writes it to
+    // config — which re-rosters the row, which runs `apply` again, which mints
+    // again. That is an endless write/reload loop, and the observable proof is
+    // that a row already carrying a code performs NO config write on activation.
+    vi.stubGlobal('fetch', () =>
+      Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) }),
+    );
+    try {
+      const active = await mount({ appId: '1024', clientSecret: 'literal-secret-xyz', pairingCode: 'ABC123' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(active.saved).toEqual([]);
+      const descriptor = page(await active.rpc.invoke(QQ_BOT_PLUGIN_NAME, 'page', undefined));
+      expect(descriptor.note).toContain('ABC123');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('mints and persists exactly one code when the row carries none', async () => {
+    // The other half of the same rule: a first-time enrollment still happens, and
+    // it writes the code once (the loop above is what happens when this write is
+    // re-triggered on every activation).
+    vi.stubGlobal('fetch', () =>
+      Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) }),
+    );
+    try {
+      const active = await mount({ appId: '1024', clientSecret: 'literal-secret-xyz' });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(active.saved).toHaveLength(1);
+      const config = active.saved[0]?.patch.config as { pairingCode?: string } | undefined;
+      expect(typeof config?.pairingCode).toBe('string');
+      expect(config?.pairingCode?.length ?? 0).toBeGreaterThan(0);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 });
+
+

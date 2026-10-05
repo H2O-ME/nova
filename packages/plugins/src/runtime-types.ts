@@ -13,13 +13,13 @@ import type {
   JobRegistry,
   LlmService,
   ModelControl,
+  PermissionPort,
   PluginClientBundle,
   PluginRpc,
   PluginTier,
   SessionEnvInfo,
 } from '@nova-agent/core';
 import type { CommandSummary } from './kernel-commands.js';
-import type { PermissionService } from './permission.js';
 import type { SkillMetadata } from './skills.js';
 import type { PluginHost } from './host.js';
 
@@ -53,7 +53,16 @@ export interface Kernel {
    * never left with a silent no-op or a thrown error to render.
    */
   runCommand(name: string, args: string): Promise<void>;
-  readonly permission: PermissionService;
+  /**
+   * The permission engine in force — the CONVERSATION's, not the kernel's.
+   *
+   * `mode` here is the tier of the session the operator is looking at (that is
+   * what `/perm` must change), while `policy` rides the process-wide cell every
+   * session engine shares. Read through `PermissionPort` rather than the
+   * concrete service because a session may hand the loop a narrower engine; the
+   * accessor falls back to the kernel engine only when no session exists.
+   */
+  readonly permission: PermissionPort;
   readonly jobs: JobRegistry;
   /**
    * The skills in force (discovery minus `skillsDisable`). This is the list the

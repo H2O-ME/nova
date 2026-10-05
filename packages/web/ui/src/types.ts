@@ -40,7 +40,7 @@ import type {
   TurnPhase,
   WorkspaceBucket,
 } from '@nova-agent/core';
-import type { ClientFrame, ConfiguredModel, GitLogEntry, GitStatusEntry, ModelCapabilities, ReadyInfo, ServerFrame, SessionListItem, WireBlock, WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow } from '../../src/protocol';
+import type { ClientFrame, ConfiguredModel, GitLogEntry, GitStatusEntry, ModelCapabilities, ReadyInfo, ServerFrame, SessionListItem, WireBlock, WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderModel, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow } from '../../src/protocol';
 
 /**
  * One row of the kernel's command catalog, derived from the frame that carries
@@ -94,6 +94,7 @@ export type {
   WireDirectoryLevel,
   WireFileEntry,
   WireJobRow,
+  WireProviderModel,
   WireProviderRow,
   WireRosterEntry,
   WireShell,

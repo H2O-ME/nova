@@ -49,7 +49,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 12px 0 0;
+  margin: 8px 0 0;
   padding: 10px 12px;
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-module-platform);
@@ -74,7 +74,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 16px 0 0;
+  margin: 12px 0 0;
 }
 
 .statusRow {
@@ -105,7 +105,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .label {
@@ -138,10 +138,43 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The page's commit row: the reference's `editorActions` — a plain row at the
+ * end of the form, committed to the right, secondary before primary.
+ *
+ * It used to be `position: sticky; bottom: -24px` with a negative bottom margin
+ * so its fill and top rule bled to the scroll column's edges. That pinned it
+ * over the page's own note: the note's line box was pulled up by the negative
+ * margin and then covered by the bar's opaque fill, so the last line of every
+ * plugin page was half-hidden behind its own footer. A pinned row also covers
+ * whatever it is committing while the reader scrolls the fields past it, and
+ * there is no version of that which is not a defect on a form this short. The
+ * bar ends the page instead; the note above it is what explains the buttons. */
 .actions {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  margin-top: 20px;
+  margin: 16px -24px 0;
+  padding: 12px 24px 16px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.actionSuccess,
+.actionFailure {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-md);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.actionSuccess {
+  background: var(--dsw-alias-state-success-secondary);
+  color: var(--dsw-alias-label-primary);
+}
+
+.actionFailure {
+  background: var(--dsw-alias-state-error-secondary);
+  color: var(--dsw-alias-label-primary);
 }
 
 .primary,

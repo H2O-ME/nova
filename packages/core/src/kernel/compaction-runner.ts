@@ -23,7 +23,6 @@ import type { CompactedSession, CompactSessionOptions } from '../compact.js';
 import type { AgentMessage, ChatProvider, ToolDefinition } from '../types.js';
 import type { Session } from '../session.js';
 import { errMessage } from '../errors.js';
-import { resetAnchors } from './usage-anchor.js';
 import type { UsageAnchorState } from './usage-anchor.js';
 
 /** What the compaction runner needs from the session that owns it. */
@@ -38,7 +37,13 @@ export interface CompactionHost {
   strategy(): ((options: CompactSessionOptions) => Promise<CompactedSession>) | undefined;
   /** Publish onto the session's one event stream. */
   publishStart(trigger: 'auto' | 'manual'): void;
-  publishDone(trigger: 'auto' | 'manual', outcome: CompactedSession): void;
+  /**
+   * Commit a finished compaction: splice the live surface in place, reset the
+   * anchors, publish `compaction` done. Owned by the session, so this gate and
+   * the headless per-request gate cannot disagree about what a finished
+   * compaction means.
+   */
+  commitCompaction(trigger: 'auto' | 'manual', outcome: CompactedSession): void;
   publishError(trigger: 'auto' | 'manual', message: string): void;
   /** Move the run's phase to `compacting`, and back afterwards. */
   setPhase(phase: 'compacting' | 'tool' | 'idle'): void;
@@ -65,6 +70,13 @@ export interface CompactionHost {
 export class CompactionRunner {
   private controller: AbortController | undefined;
   private active = false;
+  /**
+   * The in-flight compaction, so a run that starts while the surface is being
+   * spliced can WAIT for it. Without this a `prompt()` landing during a manual
+   * compaction started a run that assembled a request against the array the
+   * compaction was about to replace.
+   */
+  private inflight: Promise<unknown> | undefined;
 
   constructor(
     private readonly host: CompactionHost,
@@ -77,6 +89,11 @@ export class CompactionRunner {
   /** Is a compaction in flight? (`AgentSession.status` reports it.) */
   get busy(): boolean {
     return this.active;
+  }
+
+  /** Resolve once no compaction is in flight (a no-op when none is). */
+  async wait(): Promise<void> {
+    await this.inflight;
   }
 
   /**
@@ -124,6 +141,20 @@ export class CompactionRunner {
     this.controller = new AbortController();
     this.host.setPhase('compacting');
     this.host.publishStart(trigger);
+    const promise = this.execute(trigger);
+    this.inflight = promise.catch(() => undefined);
+    try {
+      return await promise;
+    } finally {
+      this.active = false;
+      this.controller = undefined;
+      this.inflight = undefined;
+      this.host.setPhase(this.host.running() ? 'tool' : 'idle');
+    }
+  }
+
+  /** The compaction body; `run` owns the interlock and the phase. */
+  private async execute(trigger: 'auto' | 'manual'): Promise<CompactedSession> {
     try {
       const strategy = this.host.strategy() ?? compactSession;
       const outcome = await strategy({
@@ -131,21 +162,14 @@ export class CompactionRunner {
         session: this.host.session(),
         messages: this.host.messages(),
         trigger,
-        signal: this.controller.signal,
+        signal: this.controller?.signal,
       });
-      // In-place splice: every consumer holds THIS array (the alias contract).
-      const messages = this.host.messages();
-      messages.splice(0, messages.length, ...outcome.surface);
-      resetAnchors(this.host.anchors());
-      this.host.publishDone(trigger, outcome);
+      // The session owns the commit: splice in place, reset anchors, publish.
+      this.host.commitCompaction(trigger, outcome);
       return outcome;
     } catch (err) {
       this.host.publishError(trigger, errMessage(err));
       throw err;
-    } finally {
-      this.active = false;
-      this.controller = undefined;
-      this.host.setPhase(this.host.running() ? 'tool' : 'idle');
     }
   }
 

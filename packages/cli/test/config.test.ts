@@ -136,8 +136,10 @@ describe('loadConfig', () => {
     await expect(loadConfig(badProvider)).rejects.toThrow(/temprature/);
     // A deleted config table is now just an unknown key — that is what makes a
     // stale hand-written file fail loudly instead of being silently ignored.
+    // (`tools` moved into the bash plugin's own row config; an old file still
+    // carrying the table must be named, not absorbed.)
     const deletedTable = await withConfig(JSON.stringify({ provider, tools: { code: { mode: 'ptc' } } }));
-    await expect(loadConfig(deletedTable)).rejects.toThrow(/code/);
+    await expect(loadConfig(deletedTable)).rejects.toThrow(/tools/);
     const badRow = await withConfig(
       JSON.stringify({ provider, plugins: { entries: [{ id: 'todo', enable: false }] } }),
     );

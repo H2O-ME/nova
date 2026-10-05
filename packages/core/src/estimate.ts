@@ -32,6 +32,20 @@ function isCJKCodePoint(cp: number): boolean {
 
 const FRAMING_TOKENS = 4;
 
+/**
+ * Conservative per-image prompt cost, in tokens.
+ *
+ * An image reaches the wire as a base64 `data:` URI, so its token cost is real
+ * but NOT derivable from the text: providers price by decoded pixels/tiles, and
+ * this layer never decodes the bytes (dimensions live inside the format's own
+ * header). Pricing images as free — what happened before — let a
+ * "fits under the limit" request blow the provider's context window and 400.
+ * A fixed, deliberately generous constant is the honest middle: it over-prices
+ * a small icon and under-prices a huge photo, but it never prices an attachment
+ * at zero.
+ */
+export const IMAGE_TOKEN_ESTIMATE = 1200;
+
 /** Price a raw text blob (system prompts, tool schemas) with the same heuristic. */
 export function estimateTextTokens(text: string): number {
   let cjk = 0;
@@ -64,6 +78,14 @@ export function estimateMessageTokens(msg: AgentMessage): number {
     for (const call of msg.toolCalls) {
       total += estimateTextTokens(`${call.name}${call.rawArgs}`);
     }
+  }
+  // Attached images are bytes on the wire, not text: count each one at the
+  // conservative constant above. The log form carries `images` (references);
+  // the request-time projection carries `resolvedImages` — price whichever is
+  // present, once.
+  if (msg.role === 'user') {
+    const images = msg.resolvedImages?.length ?? msg.images?.length ?? 0;
+    total += images * IMAGE_TOKEN_ESTIMATE;
   }
   messageTokenCache.set(msg, total);
   return total;

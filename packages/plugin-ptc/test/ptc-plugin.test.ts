@@ -290,3 +290,35 @@ describe('run_code bridge', () => {
     expect(preview).toContain('return 1;');
   });
 });
+
+describe('settings save', () => {
+  it('submits only the fields the form changed, so the port keeps raw references for the rest', async () => {
+    // The port merges the submitted config PER KEY into the stored raw row
+    // (`{env:NAME}` references survive). Re-submitting the whole in-force
+    // (expanded) config would clobber that contract — the save must carry a
+    // patch of exactly the submitted keys.
+    const host = new PluginHost('.');
+    let handler: ((op: string, payload: unknown) => Promise<unknown>) | undefined;
+    host.context.provide(pluginRpcKey, {
+      register: (_name, h) => {
+        handler = h;
+        return () => undefined;
+      },
+      invoke: () => Promise.resolve(undefined),
+    });
+    const saved: unknown[] = [];
+    host.context.provide(pluginConfigKey, {
+      setEntry: (_id, patch) => {
+        saved.push(patch);
+        return Promise.resolve();
+      },
+    });
+    await host.sync([{ id: 'ptc', plugin: ptcPlugin, config: { mode: 'both', maxParallelSubCalls: 4 } }]);
+    const page = (await handler!('save', { fields: { mode: 'ptc' } })) as { status?: unknown };
+    expect(saved).toHaveLength(1);
+    // Only the submitted key is written; maxParallelSubCalls is left as stored.
+    expect(saved[0]).toEqual({ enabled: true, config: { mode: 'ptc' } });
+    // The page reply still shows the merged in-force view.
+    expect(JSON.stringify(page)).toContain('ptc');
+  });
+});

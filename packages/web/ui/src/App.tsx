@@ -35,7 +35,6 @@ import { useAgent } from './client.js';
 import { approvalControlLocked, chromeView, composerDisabled, modeControlsLocked } from './chrome-view.js';
 import { flowRows, turnStatus } from './flow.js';
 import { GeneralSection } from './settings/GeneralSection.js';
-import { ModelSection } from './settings/ModelSection.js';
 import { ModelConfigEditor } from './settings/ModelConfigEditor.js';
 import { ProviderSection } from './settings/ProviderSection.js';
 import { PluginsSection } from './settings/PluginsSection.js';
@@ -600,18 +599,15 @@ export function App(): JSX.Element {
               icon: <DataOutline16 />,
               content: (
                 <>
-                  {/* The BYOK half first, then the catalog it produces: an operator
-                      with no endpoint configures one here, and the model list below
-                      only becomes meaningful afterwards. */}
+                  {/* 设置页管的是**怎么连**（端点、密钥、这个端点名下有哪些模型、
+                      以及逐字段的能力覆盖），不管**用哪一个**：切换当前模型是
+                      composer 那个模型座位的事（参考实现 `ui-model-selection` 的
+                      `conversation.input.model` 同一条分工），设置页再摆一份可切换
+                      的目录就是同一件事的第二个入口——而那一份还是 46 行长列表，
+                      把真正的设置项顶出屏幕。 */}
                   <ProviderSection
                     providers={state.providers}
                     probe={state.providerProbe}
-                    send={send}
-                  />
-                  <ModelSection
-                    model={state.model}
-                    switching={state.modelSwitching}
-                    catalog={state.catalog}
                     send={send}
                   />
                   <ModelConfigEditor

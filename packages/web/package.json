@@ -21,9 +21,11 @@
     "@nova-agent/core": "workspace:*",
     "@nova-agent/plugin-context": "workspace:*",
     "@nova-agent/plugins": "workspace:*",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0"
+    "@types/node": "^26.4.0",
+    "@types/ws": "^8.18.2"
   }
 }

@@ -30,11 +30,19 @@ export function parseArgs(args: string[]): ParsedArgs | undefined {
   let positionalOnly = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
-    if (!positionalOnly && arg === '--') {
+    if (positionalOnly) {
+      // After `--` EVERYTHING is task text — including tokens that spell known
+      // flags. The old parser kept reading them as options, so a task like
+      // `nova exec -- --web --json fix the flag handling` silently switched
+      // surfaces and output modes instead of being executed verbatim.
+      parsed.positional.push(arg);
+      continue;
+    }
+    if (arg === '--') {
       positionalOnly = true;
       continue;
     }
-    if (!positionalOnly && arg === '--resume') {
+    if (arg === '--resume') {
       const value = args[++i];
       if (!value) return fail('--resume requires a session file path');
       parsed.resumeFile = value;
@@ -56,7 +64,7 @@ export function parseArgs(args: string[]): ParsedArgs | undefined {
       // The explicit spelling of the default surface (the catch-all `web`
       // entry claims it either way; the flag stays for scripts and for help).
       parsed.web = true;
-    } else if (!positionalOnly && arg.startsWith('-')) {
+    } else if (arg.startsWith('-')) {
       return fail(`unknown option: ${arg}（--help 查看用法）`);
     } else {
       parsed.positional.push(arg);

@@ -1,6 +1,8 @@
-import { AccessTokenManager, QqApi, QqGateway, type CredentialSource, type FetchLike, type SocketFactory } from './protocol.js';
+import { AccessTokenManager, QqApi, QqGateway, type CredentialSource, type FetchLike, type QqGatewayState, type SocketFactory } from './protocol.js';
 import { InboundHandler, type InboundHandlerOptions } from './inbound.js';
+import type { ReplySink } from './reply.js';
 import { defaultSocketFactory } from './socket.js';
+import { withDeadline } from './deadline.js';
 import type { Peer, QqBotChannelStats } from './types.js';
 
 /**
@@ -32,6 +34,13 @@ export interface QqBotChannelOptions {
   gatewayUrl?: () => Promise<string>;
   log?: (line: string) => void;
   /**
+   * Where replies go. The caller owns this because the passive-window rule and the
+   * per-`msg_id` allowance must be shared with every other outbound path (see
+   * `outbox.ts`); a transport that built its own sink here would be a second copy
+   * of that ledger.
+   */
+  reply: ReplySink;
+  /**
    * 入站旁路：见 `InboundHandlerOptions.remote`。
    *
    * 存在的理由是**死锁**：一轮对话是串行的，而一轮可能停在审批上等人回答；如果那句
@@ -43,12 +52,23 @@ export interface QqBotChannelOptions {
 export interface QqBotChannel {
   api: QqApi;
   start(): Promise<void>;
+  /**
+   * Shut the channel down. TERMINAL: this instance will not dial again, because a
+   * re-enabled row builds a NEW channel (see `start`).
+   */
   stop(): void;
-  /** 该通道当前是否已在接收事件（重复 `start()` 是 no-op）。 */
+  /**
+   * Whether the platform has actually accepted this connection — i.e. `READY` or
+   * `RESUMED` was seen. NOT "a socket opened": a dial that returned a socket and
+   * never got a HELLO cannot deliver anything, and reporting it as running is how
+   * a channel looked healthy while being deaf.
+   */
   readonly running: boolean;
+  /** The full state, for a settings page that wants to distinguish connecting from failed. */
+  readonly state: QqGatewayState;
   /**
    * 设置页的连接读数：BOT 名称 + 本次运行的计数。异步是因为名称要真的去问一次网关
-   * （`GET /users/@me`）；通道没跑起来时**不问**——那会拿一份没人用的凭据去换 token。
+   * （`GET /users/@me`）；通道没拨过号时**不问**——那会拿一份没人用的凭据去换 token。
    */
   reading(): Promise<QqBotChannelReading>;
   /**
@@ -63,7 +83,7 @@ export interface QqBotChannel {
    * @returns 发送确认（与工具同形）。
    */
   send(peerId: string, content: string, msgId?: string): Promise<string>;
-  /** 该对端被动回复窗口里的最近 msg_id（过期即 undefined）。 */
+  /** 该对端被动回复窗口里的最近 msg_id（过期、或通道已停即 undefined）。 */
   lastMsgIdOf(peerId: string): string | undefined;
 }
 
@@ -82,20 +102,28 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
   const resolveGatewayUrl =
     options.gatewayUrl ??
     (async (): Promise<string> => {
-      const res = await fetchFn('https://api.sgroup.qq.com/gateway/bot', {
-        headers: { Authorization: `QQBot ${await token.get()}` },
-      });
-      const body = (await res.json()) as { url?: unknown };
-      if (!res.ok || typeof body.url !== 'string') throw new Error(`qqbot: gateway lookup failed (${res.status})`);
-      return body.url;
+      const accessToken = await token.get();
+      const body = await withDeadline(async (signal) => {
+        const res = await fetchFn('https://api.sgroup.qq.com/gateway/bot', {
+          headers: { Authorization: `QQBot ${accessToken}` },
+          signal,
+        });
+        // Inside the deadline, and without assuming JSON: a 200 with a non-JSON
+        // body used to throw a parse error that read as a network failure.
+        const parsed = (await res.json().catch(() => undefined)) as { url?: unknown } | undefined;
+        return { status: res.status, ok: res.ok, parsed };
+      }, 'gateway lookup');
+      if (!body.ok || typeof body.parsed?.url !== 'string') {
+        throw new Error(`qqbot: gateway lookup failed (${body.status})`);
+      }
+      return body.parsed.url;
     });
 
   const inbound = new InboundHandler({
     brain: options.brain,
-    reply: {
-      group: (openid, content, msgId) => api.sendGroupMessage(openid, { content, msgId }).then((sent) => sent.length),
-      c2c: (openid, content, msgId) => api.sendC2CMessage(openid, { content, msgId }).then((sent) => sent.length),
-    },
+    // The caller supplies the outbound seam, because the window rule and the
+    // per-message allowance are shared with every other outbound path.
+    reply: options.reply,
     log,
     ...(options.remote !== undefined ? { remote: options.remote } : {}),
   });
@@ -121,6 +149,8 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
   // 幂等：设置页每保存一次凭据就会要求启动一次，而网关每次 `connect()` 都会新开一条
   // WebSocket。没有这道闸门，重复保存会叠出多条并行连接，同一条消息被投递多次。
   let started = false;
+  /** Terminal latch: `stop()` ends this instance for good (see `start`). */
+  let stopped = false;
 
   return {
     api,
@@ -128,6 +158,12 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
     lastMsgIdOf: (peerId) => inbound.msgIdOf(peerId),
     reading: async () => ({ ...inbound.stats(), ...(started ? { botName: await api.botName() } : {}) }),
     start: async () => {
+      // The gateway is terminal by design, so a "restart" here would report a
+      // running channel with no connection. Refusing is the honest answer; the
+      // plugin builds a NEW channel when its row is switched back on.
+      if (stopped) {
+        throw new Error('qqbot: this channel was stopped and cannot be restarted (a re-enabled row builds a new one)');
+      }
       if (started) return;
       started = true;
       try {
@@ -139,11 +175,21 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
       }
     },
     stop: () => {
+      if (stopped) return;
+      stopped = true;
       started = false;
+      // Cancel queued work BEFORE the socket goes: a message that already reached
+      // the queue must not start a turn afterwards.
+      inbound.close();
       gateway.close();
     },
     get running() {
-      return started;
+      return gateway.currentState === 'ready';
+    },
+    get state() {
+      return stopped ? 'closed' : gateway.currentState;
     },
   };
 }
+
+

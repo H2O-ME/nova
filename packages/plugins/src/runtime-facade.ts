@@ -55,7 +55,15 @@ export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kerne
       return commands.catalog();
     },
     runCommand: commands.run,
-    permission: env.permission,
+    /**
+     * The permission engine of the conversation in force: `mode` is per session
+     * (so `/perm` changes the tier the operator is looking at, not everybody's),
+     * while `policy` rides the shared process-wide cell, so a headless runner's
+     * `setPolicy('never')` still binds every session through this accessor.
+     */
+    get permission() {
+      return env.root.get(sessionsKey)?.current()?.permission ?? env.permission;
+    },
     get jobs() {
       return env.root.must(jobsKey);
     },

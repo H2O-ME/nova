@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { QqOutbox } from '../src/outbox.js';
 import { createQqBotChannel } from '../src/runtime.js';
 import { qqbotSendTool } from '../src/tool.js';
 import type { GatewaySocket } from '../src/protocol.js';
@@ -28,16 +29,28 @@ class FakeSocket implements GatewaySocket {
   }
 }
 
-/** 装配一个完整通道：假 socket + 注入 fetch（token/gateway/send 全记录）。 */
+/**
+ * 装配一个完整通道：假 socket + 注入 fetch（token/gateway/send 全记录）。
+ *
+ * The reply sink is a real OUTBOX over the same transport, because the window rule
+ * and the per-`msg_id` allowance are what this rig exists to exercise: a hand-rolled
+ * sink here would pass while the shipped one refused.
+ */
 function makeChannel(
   brain: (text: string, peer: { peerId: string }) => Promise<string>,
   sends: Array<{ url: string; body: Record<string, unknown> }>,
 ): { channel: ReturnType<typeof createQqBotChannel>; socket: FakeSocket } {
   const socket = new FakeSocket();
-  const channel = createQqBotChannel({
+  let channel: ReturnType<typeof createQqBotChannel>;
+  const outbox = new QqOutbox({
+    send: (peerId, content, msgId) => channel.send(peerId, content, msgId),
+    lastMsgIdOf: (peerId) => channel.lastMsgIdOf(peerId),
+  });
+  channel = createQqBotChannel({
     appId: 'app',
     clientSecret: 'secret',
     brain,
+    reply: { reply: (peerId, content) => outbox.reply(peerId, content) },
     fetchFn: async (url, init) => {
       if (String(url).includes('/getAppAccessToken')) {
         return jsonResponse(200, { access_token: 't', expires_in: 7200 });
@@ -77,7 +90,7 @@ describe('createQqBotChannel', () => {
     });
     await new Promise((r) => setTimeout(r, 10));
 
-    expect(brain).toHaveBeenCalledWith('帮我查天气', { kind: 'group', openid: 'G1', peerId: 'group:G1' });
+    expect(brain).toHaveBeenCalledWith('帮我查天气', { kind: 'group', openid: 'G1', peerId: 'group:G1', actorId: 'MEM' });
     expect(sends).toHaveLength(1);
     expect(sends[0]!.url).toContain('/v2/groups/G1/messages');
     expect(sends[0]!.body['msg_id']).toBe('IN1');
@@ -107,7 +120,7 @@ describe('createQqBotChannel', () => {
     channel.stop();
   });
 
-  it('exposes a qqbot_send tool whose passive window follows recent inbound traffic', async () => {
+  it('refuses a qqbot_send with no live passive window, and sends when there is one', async () => {
     const sends: Array<{ url: string; body: Record<string, unknown> }> = [];
     const { channel, socket } = makeChannel(async () => 'reply', sends);
     await channel.start();
@@ -120,11 +133,18 @@ describe('createQqBotChannel', () => {
     });
     await new Promise((r) => setTimeout(r, 10));
 
-    // The tool is the plugin's registration, bound to this live channel: the
-    // passive window it reads is the channel's own inbound bookkeeping.
+    // The tool goes through the SAME outbox as everything else, so the window rule
+    // has one owner (see `outbox.ts`).
+    const outbox = new QqOutbox({
+      send: (peerId, content, msgId) => channel.send(peerId, content, msgId),
+      lastMsgIdOf: (peerId) => channel.lastMsgIdOf(peerId),
+    });
     const sendTool = qqbotSendTool({
-      send: (peer, content, msgId) => channel.send(peer, content, msgId),
-      lastMsgIdOf: (peer) => channel.lastMsgIdOf(peer),
+      send: async (peer, content) => {
+        const result = await outbox.proactive(peer, content);
+        if (!result.ok) throw new Error(result.reason ?? 'refused');
+        return `sent to ${peer}`;
+      },
     });
 
     // No recent traffic for an unknown peer → honest failure.
@@ -168,3 +188,5 @@ describe('createQqBotChannel', () => {
     channel.stop();
   });
 });
+
+

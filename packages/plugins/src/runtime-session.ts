@@ -1,18 +1,17 @@
 /**
- * The per-session open logic and the approval wiring.
+ * Opening one durable session over the kernel's live services.
  *
- * Both read their collaborators through accessors into the container, so a
- * workspace switch (which re-rosters the tool registry) or a session switch
- * never strands a captured reference: an ask rendered after a rebuild still
- * shows the CURRENT tool's preview and diff.
+ * Split from `runtime-env.ts` because it answers a different question: the env
+ * says what the KERNEL has, this file says what ONE conversation gets. The ask
+ * wiring that decides that conversation's calls is built HERE rather than handed
+ * in, because its audit sink is this session's own log and that log does not
+ * exist until the log is opened — see `session-ask.ts`.
  */
 import {
   AgentSession,
-  ApprovalBroker,
   CONTEXT_FRAGMENT_ID_PREFIX,
   newId,
   newSessionDir,
-  QuestionBroker,
   recordSessionWorkspace,
   Session,
   type AgentHooks,
@@ -21,79 +20,29 @@ import {
   type CompactedSession,
   type CompactSessionOptions,
   type JobRegistry,
-  type ToolCall,
-  type ToolCallView,
-  type ToolRegistry,
+  type SessionOpenOptions,
+  type ToolDefinition,
   type UserMessage,
 } from '@nova-agent/core';
-import { PermissionService, type ApprovalMode } from './permission.js';
+import type { ApprovalPolicyCell } from './permission.js';
+import { makeSessionAskWiring } from './session-ask.js';
 import type { KernelConfig } from './runtime-types.js';
 
-export type { PermissionService };
+export type { PermissionService } from './permission.js';
 
 /**
- * The question bridge for one kernel: unlike approvals there is nothing to render
- * from the registry (a question carries no tool call), so this is the bare broker
- * the session publishes `question_request` from and the `ask_user_question` tool
- * waits inside.
+ * How one session is opened: the kernel's own shape under this package's name, so
+ * importers here read one definition.
  */
-export function makeQuestionBridge(): QuestionBroker {
-  return new QuestionBroker();
-}
-
-/**
- * The approval wiring for one kernel: the broker renders asks from the LIVE
- * registry (re-rostering re-points it) and the engine audits into the CURRENT
- * session's log — both through accessors, never captured references.
- */
-export function makeApprovalWiring(p: {
-  approval: ApprovalMode;
-  rootDir: () => string;
-  tools: () => ToolRegistry | undefined;
-  current: () => AgentSession | undefined;
-}): { bridge: ApprovalBroker; permission: PermissionService } {
-  const bridge = new ApprovalBroker(
-    (call: ToolCall): ToolCallView | undefined => p.tools()?.find(call.name)?.presentCall?.(call.args),
-    async (call: ToolCall): Promise<string[]> => {
-      // Effect preview is best-effort (never blocks the ask): the tool's own
-      // declaration decides what it will do (e.g. edit_file's diff).
-      const entry = p.tools()
-        ?.entries()
-        .find((item) => item.tool.name === call.name);
-      if (entry?.tool.preview === undefined) return [];
-      try {
-        const text = (await entry.tool.preview(call.args, { rootDir: p.rootDir() })).trim();
-        return text.length > 0 ? text.split('\n') : [];
-      } catch {
-        return [];
-      }
-    },
-  );
-  const permission = new PermissionService(p.approval, bridge.asker, (entry) => {
-    void p
-      .current()
-      ?.session.appendEvent({
-        type: 'approval',
-        toolName: entry.toolName,
-        kind: entry.kind,
-        outcome: entry.outcome,
-        at: Date.now(),
-      })
-      .catch(() => undefined);
-  });
-  return { bridge, permission };
-}
+export type OpenSessionOptions = SessionOpenOptions;
 
 /** Everything one session handle reads from the kernel, as live accessors. */
 export interface OpenSessionDeps {
   config: KernelConfig;
   systemPrompt: string;
   provider: ChatProvider;
-  bridge: ApprovalBroker;
-  questions: QuestionBroker;
-  permission: PermissionService;
   rootDir: () => string;
-  tools: () => readonly import('@nova-agent/core').ToolDefinition[];
+  tools: () => readonly ToolDefinition[];
   hooks: () => AgentHooks;
   jobs: JobRegistry;
   buildFragment: () => string;
@@ -102,6 +51,18 @@ export interface OpenSessionDeps {
   /** The compaction strategy (the `compaction` service). */
   compact: (options: CompactSessionOptions) => Promise<CompactedSession>;
   perRequestCompact: boolean;
+  /**
+   * The kernel's ONE approval-policy cell, shared by every session engine it
+   * builds — see `ApprovalPolicyCell` on why `never` is process-wide while the
+   * tier is per session.
+   */
+  policyCell: ApprovalPolicyCell;
+  /**
+   * Whether a human can answer THIS session's `ask_user_question`. A thunk, read
+   * per call, for the same reason the tool reads its answerer live: a surface can
+   * gain or lose its human without a restart.
+   */
+  canAskUser: () => boolean;
   /**
    * Input modalities of the model in force, read per request (see
    * `AgentSessionDeps.inputModalities`). Async because the answer comes from the
@@ -115,12 +76,38 @@ export interface OpenSessionDeps {
  * workspace-marked) or resumed (projection-derived, no reseed). The handle
  * reads the LIVE hooks, tools and spill dir, so a rebuild applies to its next
  * run.
+ *
+ * The ask wiring is built HERE rather than handed in, because its audit sink is
+ * this session's log and that log does not exist until `openLog` returns. That
+ * binding is what makes "an approval taken in this conversation is recorded in
+ * this conversation" true by construction: the previous version resolved the
+ * audit target through `current()` at write time, so an approval answered in A
+ * landed in whichever conversation happened to be current afterwards.
  */
 export async function openAgentSession(
   p: OpenSessionDeps,
-  sessionOpts?: { resumeFile?: string; sessionDir?: string },
+  sessionOpts?: OpenSessionOptions,
 ): Promise<AgentSession> {
   const { session, messages } = await openLog(p, sessionOpts);
+  const wiring = makeSessionAskWiring({
+    approval: p.config.approval,
+    rootDir: p.rootDir,
+    tools: p.tools,
+    policyCell: p.policyCell,
+    audit: (entry) => {
+      // Log-only, and a failure to record an audit line must not fail the call
+      // it describes; the verdict itself already settled.
+      void session
+        .appendEvent({
+          type: 'approval',
+          toolName: entry.toolName,
+          kind: entry.kind,
+          outcome: entry.outcome,
+          at: Date.now(),
+        })
+        .catch(() => undefined);
+    },
+  });
   return new AgentSession({
     session,
     messages,
@@ -129,13 +116,14 @@ export async function openAgentSession(
     tools: () => [...p.tools()],
     hooks: p.hooks,
     jobs: p.jobs,
-    approvals: p.bridge,
-    questions: p.questions,
-    permission: p.permission,
+    approvals: wiring.bridge,
+    questions: wiring.questions,
+    permission: wiring.permission,
     systemPrompt: p.systemPrompt,
     maxTurns: p.config.maxTurns,
     cacheDir: () => p.cacheDir(session.id),
     compact: p.compact,
+    canAskUser: p.canAskUser,
     ...(p.config.autoCompactTokenLimit !== undefined
       ? { autoCompactLimit: p.config.autoCompactTokenLimit }
       : {}),
@@ -147,7 +135,7 @@ export async function openAgentSession(
 /** Fresh (seeded with the context fragment) or resumed (projection-derived). */
 async function openLog(
   p: OpenSessionDeps,
-  sessionOpts?: { resumeFile?: string; sessionDir?: string },
+  sessionOpts?: OpenSessionOptions,
 ): Promise<{ session: Session; messages: AgentMessage[] }> {
   if (sessionOpts?.resumeFile !== undefined) {
     const session = await Session.open(sessionOpts.resumeFile);

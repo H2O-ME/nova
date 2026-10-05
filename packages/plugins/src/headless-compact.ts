@@ -19,6 +19,18 @@ import {
   type CompactSessionOptions,
 } from '@nova-agent/core';
 
+export interface HeadlessCompactTarget {
+  /** The session the compaction is appended to (the strategy's log target). */
+  session: CompactSessionOptions['session'];
+  /**
+   * Commit the outcome — the SAME primitive the run-boundary gate uses (splice,
+   * anchor reset, `compaction` event). Splicing here instead left the anchors
+   * describing a surface that no longer existed.
+   */
+  commitCompaction(outcome: CompactedSession, trigger: 'auto' | 'manual'): void;
+  notice(code: string, text: string): void;
+}
+
 export interface HeadlessCompactOptions {
   limit: number;
   /** The compaction strategy to use (the `compaction` service). */
@@ -26,7 +38,7 @@ export interface HeadlessCompactOptions {
   /** Where the summarizer request goes — same provider as the loop. */
   client: CompactSessionOptions['client'];
   /** The session the compaction is appended to, re-read per request. */
-  target: () => { session: CompactSessionOptions['session']; notice(code: string, text: string): void } | undefined;
+  target: () => HeadlessCompactTarget | undefined;
   notice: (code: 'compact_failed' | 'compact_fused' | 'compact_alias_broken', text: string) => void;
 }
 
@@ -43,8 +55,7 @@ export function wrapHeadlessCompact(hooks: AgentHooks, options: HeadlessCompactO
         messages,
         trigger: 'auto',
       });
-      // In-place: runAgent and the session share this array.
-      messages.splice(0, messages.length, ...outcome.surface);
+      target.commitCompaction(outcome, 'auto');
       target.notice('compacted', `已自动压缩上下文 — 保留 ${outcome.retained} 条最近用户消息`);
     },
     onError: (err) => options.notice('compact_failed', `自动压缩失败（继续运行）：${errMessage(err)}`),

@@ -21,7 +21,7 @@
  *    provider happens to have.
  */
 import type { DecideResult, PermissionPort } from '../approval.js';
-import type { BeforeTurnEndContext, BeforeTurnEndVerdict, ChatRequest, ToolCall, ToolCallVerdict, ToolDefinition, ToolPermissionKind } from '../types.js';
+import type { BeforeTurnEndContext, BeforeTurnEndVerdict, ChatRequest, ToolCall, ToolCallScope, ToolCallVerdict, ToolDefinition, ToolPermissionKind } from '../types.js';
 import type { CompactedSession, CompactSessionOptions } from '../compact.js';
 import type { JobRegistry } from '../jobs.js';
 import type { AgentSession } from '../kernel/session.js';
@@ -260,13 +260,46 @@ export const approval: ServiceKey<ApprovalService> = key<ApprovalService>('appro
 /* ── sessions ──────────────────────────────────────────────────────────── */
 
 /**
+ * How one session is opened.
+ *
+ * `canAskUser` is the one per-call policy: whether a human can answer THIS
+ * conversation's `ask_user_question`. It belongs here rather than on the kernel
+ * because it is not derivable from the process — a bot peer created by a plugin
+ * inside a browser-hosted kernel has an answerer in the process and nobody
+ * watching ITS stream, and a question card published there would park the run with
+ * nothing able to release it. Omitted means the assembly's own answer.
+ */
+export interface SessionOpenOptions {
+  resumeFile?: string;
+  sessionDir?: string;
+  canAskUser?: () => boolean;
+}
+
+/**
  * Session lifecycle: opening, switching and creating handles. One kernel can
  * hold several (a bot channel keeps one per peer), so `current()` is what
  * everything that has to follow "the live conversation" reads.
+ *
+ * `get` is the OTHER half of that sentence and exists because `current()` is a
+ * SELECTION, not an execution fact: with several sessions running at once, a
+ * consumer holding a `ToolCallScope` must be able to reach the exact session
+ * that issued a call — the approval gate reads its permission engine, the
+ * `ask_user_question` tool reads its question seam, a resume path reads its
+ * pending asks. Routing any of those through `current()` is how one peer's tier
+ * and one peer's approval prompt ended up governing another peer's call.
  */
 export interface SessionService {
   current(): AgentSession | undefined;
-  open(options?: { resumeFile?: string; sessionDir?: string }): Promise<AgentSession>;
+  /**
+   * The live handle for one session id, or undefined when this kernel holds
+   * none. Handles that have been disposed are not returned: a session whose
+   * `dispose()` ran is finished, and handing it back would let a dead handle be
+   * used as the target of a new decision.
+   */
+  get(sessionId: string): AgentSession | undefined;
+  /** Every live handle, in creation order (diagnostics, session pickers). */
+  list(): readonly AgentSession[];
+  open(options?: SessionOpenOptions): Promise<AgentSession>;
   /** Re-point "current" at an existing handle (peer switch, `/session`). */
   activate(session: AgentSession): void;
 }
@@ -488,8 +521,15 @@ export type PluginRouteHandler = (
  * so plugins that ship UI capabilities degrade gracefully when run headless.
  */
 export interface RouteRegistry {
-  /** Append one route. Routes added later in the roster take precedence. */
-  register(route: PluginRoute): void;
+  /**
+   * Append one route. Routes added later in the roster take precedence.
+   * @returns a disposer that removes exactly this registration (by identity).
+   *   Plugins MUST hook it to their own lifetime — `ctx.effect(disposer)` — so
+   *   unloading the plugin retires its routes and their closures; a plugin
+   *   that reloads would otherwise stack same-prefix overrides whose handlers
+   *   outlive the fiber that created them.
+   */
+  register(route: PluginRoute): () => void;
   /** All currently-registered routes, in registration order. */
   routes(): readonly PluginRoute[];
   /**
@@ -525,8 +565,14 @@ export const beforeLlmCall: EventKey<[ChatRequest], ChatRequest | undefined> = e
  * A `rewrite` ends the chain: the rewritten call is not re-approved, which is
  * why rewriting is operator-level trust (the hook runs as the operator, not as
  * the model).
+ *
+ * The second payload member is the call's `ToolCallScope` — WHICH run issued it
+ * — and it exists because several sessions run concurrently in one kernel. A
+ * listener that decides something session-specific (the approval gate reading a
+ * tier) must read it from here; a process-global "current session" is a UI
+ * selection and would let one peer's tier govern another's call.
  */
-export const beforeToolCall: EventKey<[ToolCall], ToolCallVerdict | undefined> = event('tool/before');
+export const beforeToolCall: EventKey<[ToolCall, ToolCallScope], ToolCallVerdict | undefined> = event('tool/before');
 
 /**
  * Transform a tool result on its way into the log. **Waterfall**: `next()` runs

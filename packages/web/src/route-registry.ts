@@ -8,19 +8,27 @@
  * `routeRegistryProvider` plugin); the WebUI request handler reads `dispatch`
  * before its own fallbacks.
  *
- * The registry is **append-only and last-wins**: a plugin that loads later in
- * the roster overrides an earlier plugin's same prefix. The dispatch order on
- * each request is reverse-registration (latest plugin wins), which mirrors the
- * container's own replace-by-key semantics for service providers.
+ * The registry is **append-only, identity-removable and last-wins**: a plugin
+ * that loads later in the roster overrides an earlier plugin's same prefix,
+ * and `register` hands back the disposer that retires exactly that one
+ * registration. The dispatch order on each request is reverse-registration
+ * (latest plugin wins), which mirrors the container's own replace-by-key
+ * semantics for service providers — and the disposer is what makes an
+ * UNLOAD mirror it too: a plugin routes nowhere once its fiber is gone,
+ * instead of answering requests through a handler closure nobody owns.
  */
 import type { PluginRoute, PluginRouteHandler, RouteRegistry } from '@nova-agent/core';
 
 export class WebRouteRegistry implements RouteRegistry {
   private readonly entries: PluginRoute[] = [];
 
-  register(route: PluginRoute): void {
-    if (route.prefix.length === 0 || route.prefix[0] !== '/') return;
+  register(route: PluginRoute): () => void {
+    if (route.prefix.length === 0 || route.prefix[0] !== '/') return () => undefined;
     this.entries.push(route);
+    return () => {
+      const index = this.entries.indexOf(route);
+      if (index >= 0) this.entries.splice(index, 1);
+    };
   }
 
   routes(): readonly PluginRoute[] {

@@ -36,6 +36,7 @@ import {
   type SurfaceRegistry,
 } from '@nova-agent/core';
 import type { SkillMetadata } from './skills.js';
+import type { OpenSessionOptions } from './runtime-session.js';
 
 /**
  * The manifest of a load-bearing row: registries and capability providers.
@@ -149,11 +150,21 @@ export function approvalProvider(service: ApprovalService): Plugin {
 /**
  * Session lifecycle. `open` is the kernel's own session factory (it needs the
  * provider, the config and the fragment builder — all kernel business); this
- * provider owns only "which session is current", which is what a `/new`, a
- * resumed file and a bot peer switch all have to agree on.
+ * provider owns "which session is current" AND the index that answers "which
+ * session is this one" — two different questions, and the second is what keeps a
+ * concurrent conversation from being served by the first one's engine.
  */
-export function sessionsProvider(open: (options?: { resumeFile?: string; sessionDir?: string }) => Promise<AgentSession>): Plugin {
+export function sessionsProvider(open: (options?: OpenSessionOptions) => Promise<AgentSession>): Plugin {
   let current: AgentSession | undefined;
+  /**
+   * Every live handle by session id, in creation order.
+   *
+   * A `Map` preserves insertion order, so `list()` needs no second structure. The
+   * index is pruned on read and on open: a disposed session is finished, and
+   * returning it would let a dead handle be handed back as the target of a new
+   * decision.
+   */
+  const live = new Map<string, AgentSession>();
   return {
     name: 'sessions',
     description: 'Owns which session is current and rebinds cache affinity.',
@@ -169,14 +180,34 @@ export function sessionsProvider(open: (options?: { resumeFile?: string; session
         ctx.get(llmKey)?.bindSession(session.session.id);
         return session;
       };
+      const prune = (): void => {
+        for (const [id, session] of live) {
+          if (session.disposed) live.delete(id);
+        }
+      };
       ctx.provide(sessionsKey, {
         current: () => current,
+        get: (sessionId) => {
+          const found = live.get(sessionId);
+          if (found === undefined) return undefined;
+          if (found.disposed) {
+            live.delete(sessionId);
+            return undefined;
+          }
+          return found;
+        },
+        list: () => {
+          prune();
+          return [...live.values()];
+        },
         open: async (options) => {
           current = bind(await open(options));
+          live.set(current.session.id, current);
           return current;
         },
         activate: (session: AgentSession) => {
           current = bind(session);
+          live.set(session.session.id, session);
         },
       });
     },

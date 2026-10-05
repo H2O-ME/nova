@@ -6,6 +6,8 @@ export const PLUGINS_COPY = {
   'pluginPage.guideTitle': '可以这样用',
   'pluginPage.save': '保存',
   'pluginPage.saving': '保存中…',
+  'pluginPage.working': '执行中…',
+  'pluginPage.saved': '已保存',
   'pluginPage.failed': '这个插件没能完成该操作',
   'plugins.nav': '插件管理',
   'plugins.title': '插件管理',
@@ -47,4 +49,5 @@ export const PLUGINS_COPY = {
   'pluginState.active': '运行中',
   'pluginState.failed': '启动失败',
   'pluginState.disposed': '卸载中',
+  'pluginState.disabled': '未加载',
 } as const;

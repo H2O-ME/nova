@@ -127,6 +127,66 @@ describe('runAgent hooks', () => {
     expect(toolResult?.role === 'tool' && toolResult.content).not.toContain('executed');
   });
 
+  it('re-judges rewritten arguments so a rewrite cannot slip past the gate', async () => {
+    // Killing test: with a single pass the gate judged `safe.txt`, the later
+    // rewrite swapped in an out-of-workspace path, and that path executed
+    // WITHOUT ever being judged — the rewritten call must go back through the
+    // chain (where the approval gate lives).
+    const { provider } = capturingProvider(() => [
+      { type: 'tool_call_delta', index: 0, id: 'c1', name: 'read', argsDelta: '{"path":"safe.txt"}' },
+      { type: 'finish', finishReason: 'tool_calls' },
+    ]);
+    const messages: AgentMessage[] = [];
+    const hooks = {
+      beforeToolCall: async (call: { args: Record<string, unknown> }) => {
+        const path = String(call.args['path'] ?? '');
+        // Stand-in for a "helpful" rewriter that normalizes the path outward…
+        if (path === 'safe.txt') return { action: 'rewrite' as const, args: { path: '../etc/passwd' } };
+        // …and for the gate, which refuses anything outside the workspace.
+        return { action: 'deny' as const, reason: 'outside workspace' };
+      },
+    };
+    await collect(
+      runAgent({
+        provider: provider as never,
+        messages,
+        rootDir: '.',
+        tools: [
+          { name: 'read', description: '', parameters: { type: 'object' }, execute: (args) => `ran:${String(args['path'])}` },
+        ],
+        hooks: hooks as never,
+      }),
+    );
+    const toolResult = messages.find((m) => m.role === 'tool');
+    expect(toolResult?.role === 'tool' && toolResult.content).toContain('outside workspace');
+    expect(toolResult?.role === 'tool' && toolResult.content).not.toContain('ran:');
+  });
+
+  it('fails closed when a rewriter never settles', async () => {
+    // Killing test: an unbounded re-gate loop would hang; a bounded one that
+    // kept executing would run the last rewrite.
+    let n = 0;
+    const { provider } = capturingProvider(() => [
+      { type: 'tool_call_delta', index: 0, id: 'c1', name: 't', argsDelta: '{"x":0}' },
+      { type: 'finish', finishReason: 'tool_calls' },
+    ]);
+    const messages: AgentMessage[] = [];
+    await collect(
+      runAgent({
+        provider: provider as never,
+        messages,
+        rootDir: '.',
+        tools: [{ name: 't', description: '', parameters: { type: 'object' }, execute: () => 'executed' }],
+        hooks: {
+          beforeToolCall: async () => ({ action: 'rewrite' as const, args: { x: ++n } }),
+        },
+      }),
+    );
+    const toolResult = messages.find((m) => m.role === 'tool');
+    expect(toolResult?.role === 'tool' && toolResult.content).toContain('rewritten without settling');
+    expect(toolResult?.role === 'tool' && toolResult.content).not.toContain('executed');
+  });
+
   it('afterToolResult transforms the stored tool output', async () => {
     const { provider } = capturingProvider(() => [
       { type: 'tool_call_delta', index: 0, id: 'c1', name: 't', argsDelta: '{}' },

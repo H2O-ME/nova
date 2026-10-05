@@ -1,15 +1,15 @@
 /**
  * A server-render pass over the settings sections: no DOM, no browser —
  * `renderToStaticMarkup` walks the real JSX with real props. Pinned here: the
- * 通用设置 rows' copy and controls, the 模型 catalog's rows with the check on
- * the model in force, and the 内置插件 roster's rows with the config path's
- * copy control. Effects (the fetch-on-open asks) live in the browser by
- * design; the static lane pins what renders once the data is here.
+ * 通用设置 rows' copy and controls, the 模型 page's 取模弹窗 (the picker that adds
+ * endpoint models to a provider card), and the 内置插件 roster's rows with the
+ * config path's copy control. Effects (the fetch-on-open asks) live in the
+ * browser by design; the static lane pins what renders once the data is here.
  */
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { GeneralSection } from '../src/settings/GeneralSection.js';
-import { ModelSection } from '../src/settings/ModelSection.js';
+import { ProviderModelsDialog, filterCandidates } from '../src/settings/ProviderModelsDialog.js';
 import { PluginRow } from '../src/settings/PluginRow.js';
 import { PluginsSection } from '../src/settings/PluginsSection.js';
 import { SETTINGS_COPY } from '../src/settings/copy.js';
@@ -69,51 +69,56 @@ describe('general section', () => {
 });
 
 describe('model section', () => {
-  it('lists the catalog with the check on the model in force', () => {
+  it('records the endpoint models the picker can add, and locks the ones already recorded', () => {
+    // 设置页不再有可切换的模型目录：切换当前模型归 composer 的模型座位。这里钉的
+    // 是取模弹窗的两条读法——已记录的行锁定（本弹窗只做「加」），未记录的行可勾。
     const html = renderToStaticMarkup(
-      <ModelSection
-        model="m2"
-        switching
-        catalog={{
-          groups: [{
-            id: 'g1',
-            name: '测试网关',
-            models: [
-              { id: 'm1', name: 'Model One' },
-              { id: 'm2', name: 'Model Two' },
-            ],
-          }],
-          loading: false,
-        }}
-        send={() => undefined}
+      <ProviderModelsDialog
+        candidates={['m1', 'm2']}
+        existing={['m1']}
+        onApply={() => undefined}
+        onClose={() => undefined}
       />,
     );
-    expect(html).toContain('测试网关');
-    expect(html).toContain('Model One');
-    expect(html.match(/aria-current="true"/g)).toHaveLength(1);
-    const rows = html.split('<button');
-    expect(rows[2]).toContain('aria-current="true"');
+    expect(html).toContain(SETTINGS_COPY['models.pickTitle']);
+    expect(html).toContain('data-pick-row="m1"');
+    expect(html).toContain('data-pick-row="m2"');
+    expect(html).toContain(SETTINGS_COPY['models.pickExisting']);
+    expect(html).toContain('disabled=""');
   });
 
-  it('renders the catalog title and intro above the catalog rows', () => {
+  it('filters the candidates by substring, case-insensitively', () => {
+    const groups = ['DeepSeek-V4-Flash', 'GLM-4-Flash', 'BGE-M3'];
+    expect(filterCandidates(groups, 'glm')).toEqual(['GLM-4-Flash']);
+    expect(filterCandidates(groups, 'FLASH')).toEqual(['DeepSeek-V4-Flash', 'GLM-4-Flash']);
+    expect(filterCandidates(groups, 'nope')).toEqual([]);
+    // 空查询原样返回同一份引用（不过滤就不过滤，不做多余拷贝）。
+    expect(filterCandidates(groups, '')).toBe(groups);
+  });
+
+  it('offers nothing to add when the endpoint published nothing', () => {
     const html = renderToStaticMarkup(
-      <ModelSection model="m1" switching catalog={null} send={() => undefined} />,
+      <ProviderModelsDialog candidates={[]} existing={[]} onApply={() => undefined} onClose={() => undefined} />,
     );
-    const at = (needle: string): number => html.indexOf(needle);
-    expect(at(SETTINGS_COPY['models.catalogTitle'])).toBeGreaterThan(-1);
-    expect(at(SETTINGS_COPY['models.catalogIntro'])).toBeGreaterThan(-1);
-    expect(at(SETTINGS_COPY['models.catalogTitle'])).toBeLessThan(at(SETTINGS_COPY['models.catalogIntro']));
+    expect(html).toContain(SETTINGS_COPY['models.providerNoReachable']);
+    // 没有可加的东西时「添加所选」按不动，而不是按了没反应。
+    expect(html).toContain('data-pick-apply');
+    expect(html).toContain('disabled=""');
   });
 
-  it('renders the loading and empty readings from the copy table', () => {
-    const loading = renderToStaticMarkup(
-      <ModelSection model="m1" switching catalog={{ groups: [], loading: true }} send={() => undefined} />,
+  it('offers NO pick-all verb when every on-screen row is locked', () => {
+    // 分母是**可以勾的**行：一个全是「已在清单」锁定行的弹窗里，「全选」没有
+    // 对象——按旧分母（含锁定行）它会显示「清空」，点下去却什么也不会发生。
+    const html = renderToStaticMarkup(
+      <ProviderModelsDialog
+        candidates={['m1', 'm2']}
+        existing={['m1', 'm2']}
+        onApply={() => undefined}
+        onClose={() => undefined}
+      />,
     );
-    expect(loading).toContain(SETTINGS_COPY['models.loading']);
-    const empty = renderToStaticMarkup(
-      <ModelSection model="m1" switching catalog={{ groups: [], loading: false }} send={() => undefined} />,
-    );
-    expect(empty).toContain(SETTINGS_COPY['models.empty']);
+    expect(html).toContain('data-pick-row="m1"');
+    expect(html).not.toContain('data-pick-all');
   });
 });
 
@@ -178,9 +183,15 @@ describe('plugins section', () => {
     expect(html).not.toContain('tools');
   });
 
-  it('gives a core row no switch, and an advanced row the default-off tag', () => {
+  it('folds the switchless group, keeps the switchable one open, and counts both', () => {
     // Defect B's user-visible half: a core name used to render a switch that
     // threw on every click. The page must not offer a control the kernel refuses.
+    //
+    // And the core rows must not stand in front of the ones that DO have
+    // controls: 17 of them put the first live switch 706px below the fold of a
+    // 720px window (「都藏在页面最底部」). So the switchless group arrives folded
+    // — with its row count on the header, so nothing disappears silently — while
+    // the group the reader can act on arrives open.
     const html = renderToStaticMarkup(
       <PluginsSection
         roster={{
@@ -194,17 +205,21 @@ describe('plugins section', () => {
         {...pluginsProps}
       />,
     );
-    // The Chinese titles are what the reader sees…
-    expect(html).toContain('读取文件');
-    expect(html).toContain('子代理');
     // …the tier groups are the page's structure…
     expect(html).toContain(SETTINGS_COPY['plugins.coreGroup']);
     expect(html).toContain(SETTINGS_COPY['plugins.advancedGroup']);
-    // …a core row has exactly ONE switch-less row, and the advanced row has one
-    // switch, so the count of `role="switch"` is 1 for these two rows.
+    // …the switchless group's header is a CLOSED disclosure that counts its rows…
+    const coreSection = html.indexOf(`aria-label="${SETTINGS_COPY['plugins.coreGroup']}"`);
+    const coreHead = html.slice(html.indexOf('<button', coreSection), html.indexOf('</button>', coreSection));
+    expect(coreHead).toContain('aria-expanded="false"');
+    expect(coreHead).toContain('· 1');
+    // …its row is behind the fold rather than on the page…
+    expect(html).not.toContain('读取文件');
+    // …and the group with a control is open, carrying exactly one switch.
+    expect(html).toContain('子代理');
     expect(html.match(/role="switch"/gu)?.length).toBe(1);
     expect(html).toContain(SETTINGS_COPY['plugins.defaultOff']);
-    // The row is a disclosure: `aria-expanded` is what the expanded area keys off.
+    // The ROW is a disclosure too: `aria-expanded` is what its detail keys off.
     expect(html).toContain('aria-expanded="false"');
   });
 

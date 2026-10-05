@@ -65,10 +65,11 @@ export function jobsPlugin(): Plugin {
           if (stopped === undefined) return `Error: unknown job "${id}"`;
           return `Stop requested for ${stopped.id}. Current status: ${stopped.status}.`;
         },
-        // Querying/observing the agent's own jobs has no side effects beyond
-        // stop; killing a job the agent itself spawned is gated as read.
-        isConcurrencySafe() {
-          return true;
+        // Only `list` is a pure read. `output` consumes the job's output cursor
+        // (two concurrent reads split the ring buffer and each loses bytes) and
+        // `stop` mutates job state, so neither may share a parallel segment.
+        isConcurrencySafe(args) {
+          return (typeof args['action'] === 'string' ? args['action'] : 'list') === 'list';
         },
       }, 'read');
     },

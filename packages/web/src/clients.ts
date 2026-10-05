@@ -17,6 +17,11 @@ import type { WsConnection } from './ws.js';
 export class ClientFanout {
   private readonly clients = new Set<WsConnection>();
 
+  /** How many sockets are attached (the last-one-out convergence check). */
+  get count(): number {
+    return this.clients.size;
+  }
+
   /**
    * Register a freshly-upgraded socket and send it the baseline.
    * @param client - the new connection.

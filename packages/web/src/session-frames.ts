@@ -36,6 +36,13 @@ export interface SessionFrameHost {
    */
   abandonCurrentSession(): Promise<void>;
   /**
+   * Dispose the live handle on a file that is NOT the open session, if one
+   * exists. The missing half of a delete: a session switched away from but
+   * still running holds the path, and its next append would recreate the log
+   * the operator just removed.
+   */
+  disposeLiveHandle(file: string): Promise<void>;
+  /**
    * Move the workspace, context included. Validation already happened, and the
    * host also re-seeds a still-blank session: its fragment was appended once at
    * creation and is append-only, so it would otherwise keep injecting the old
@@ -112,6 +119,12 @@ export async function handleSessionFrame(
         // path afterwards. A fresh session exists by the time this resolves
         // (the kernel always has one), so no window opens with none.
         await host.abandonCurrentSession();
+      } else {
+        // A session that was merely SWITCHED AWAY FROM may still be running on
+        // a live handle. Without this, its next append — a finishing run, a
+        // queued prompt — recreates the deleted log as a truncated shell, and
+        // the row the operator removed is back on the list.
+        await host.disposeLiveHandle(frame.file);
       }
       const removed = await deleteSessionLog(frame.file);
       // "Already gone" is only worth reporting for a session the user was NOT

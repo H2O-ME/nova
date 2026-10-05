@@ -164,6 +164,12 @@ export async function* streamCompletion(
     const emptyCompletion =
       content.length === 0 && partialCalls.size === 0 && finishReason !== undefined;
     if (!emptyCompletion || opts.signal?.aborted) break;
+    // Deliberately NOT rolled back: unlike a `reset` (the provider discarding
+    // its own in-flight attempt), this attempt completed and was billed — the
+    // provider charged for its prompt tokens whatever the caller does with the
+    // reply. So `stats` keeps them and the retry adds its own. The two paths
+    // therefore differ on purpose; the run's token totals read "what this run
+    // cost", not "what the accepted reply cost".
     emptyRetries += 1;
     if (emptyRetries > EMPTY_COMPLETION_MAX_RETRIES) {
       // The job notices rode every failed request, but no assistant reply was

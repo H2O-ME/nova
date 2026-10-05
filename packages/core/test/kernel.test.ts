@@ -203,6 +203,22 @@ describe('AgentSession run lifecycle', () => {
     expect(types.indexOf('run_stats')).toBeLessThan(types.lastIndexOf('done'));
   });
 
+  it('closes every request timing even when the provider reports no usage', async () => {
+    // No `usage` chunk anywhere in the script: the old meter closed a request
+    // only on `usage`, so this run's `llmMs` stayed 0 and its per-request series
+    // came out empty while `requests` said 1. The window now closes when the
+    // provider's stream settles, which is what this asserts.
+    const h = await harness([[{ type: 'text_delta', text: 'no usage here' }]], { auto: 'allow' });
+    await h.agent.prompt('go');
+    await untilIdle(h.agent);
+
+    const stats = h.events.filter((e) => e.type === 'run_stats').at(-1)?.stats;
+    expect(stats?.requests).toBe(1);
+    expect(stats?.promptTokens).toBe(0);
+    expect(stats?.requestTimings).toHaveLength(1);
+    expect(stats?.requestTimings?.[0]?.finishedAt).toBeDefined();
+  });
+
   it('derives phase transitions from the loop events', async () => {
     const h = await harness(
       [
@@ -395,6 +411,22 @@ describe('EventPump', () => {
     expect(b).toEqual([note, note]);
   });
 
+  it('does not re-enter the error reporter from inside a reported failure', () => {
+    // Killing test: the session's reporter publishes a `listener_failed` notice
+    // back onto the SAME pump, so a listener that throws on every event
+    // recursed throw → report → publish → throw until the stack gave out.
+    let reports = 0;
+    const pump: EventPump = new EventPump(() => {
+      reports += 1;
+      pump.publish({ type: 'notice', code: 'listener_failed', text: 'reported' });
+    });
+    pump.subscribe(() => {
+      throw new Error('surface bug');
+    });
+    pump.publish({ type: 'notice', code: 'compact_failed', text: 'original' });
+    expect(reports).toBe(1);
+  });
+
   it('reports a throwing listener instead of crashing the process', async () => {
     const reported: unknown[] = [];
     const pump = new EventPump((err) => reported.push(err));
@@ -426,6 +458,78 @@ describe('prompt durability', () => {
     // that divergence survives every later resume and cannot be repaired.
     expect(h.agent.messages).toHaveLength(0);
     h.agent.session.append = append;
+  });
+
+  it('drops a model message the log refused, so surface and log cannot diverge', async () => {
+    // Killing test: `runAgent` pushes the assistant message and the session
+    // appends it; when the append failed the message stayed on the live surface
+    // while the log never got it, so the next request and a later resume
+    // disagreed about history.
+    const h = await harness(
+      [[{ type: 'text_delta', text: 'answer' }, { type: 'finish', finishReason: 'stop' }]],
+      { auto: 'allow' },
+    );
+    const append = h.agent.session.append.bind(h.agent.session);
+    h.agent.session.append = async (msg: AgentMessage) => {
+      if (msg.role === 'assistant') throw new Error('disk full');
+      return append(msg);
+    };
+    await h.agent.prompt('go');
+    await untilIdle(h.agent);
+
+    expect(h.events.some((e) => e.type === 'run_failed')).toBe(true);
+    // The user prompt committed; the assistant answer did not — in EITHER place.
+    expect(h.agent.messages.some((m) => m.role === 'user')).toBe(true);
+    expect(h.agent.messages.some((m) => m.role === 'assistant')).toBe(false);
+    expect(h.agent.session.allMessages().some((m) => m.role === 'assistant')).toBe(false);
+  });
+});
+
+describe('session log writer', () => {
+  it('refuses a write that was queued before a seal', async () => {
+    // Killing test: the sealed check ran only BEFORE queueing, so a write
+    // already in the chain still landed after `dispose()` sealed the log —
+    // resurrecting a file the surface had deleted.
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-writer-'));
+    const session = await Session.create(dir, 'sess_writer');
+    await session.append({ id: 'm0', ts: 0, role: 'user', content: 'first' });
+
+    const late = session.append({ id: 'late', ts: 0, role: 'user', content: 'late' });
+    session.seal();
+    await expect(late).rejects.toThrow(/sealed/);
+    await session.drain();
+
+    const reopened = await Session.open(session.file);
+    expect(reopened.allMessages().map((m) => m.id)).toEqual(['m0']);
+  });
+});
+
+describe('compaction and runs are mutually exclusive', () => {
+  it('queues a prompt that arrives during a compaction instead of running it concurrently', async () => {
+    // Killing test: a manual compaction leaves `running` false, so `prompt()`
+    // used to start a run whose request was assembled against the very array
+    // the compaction was about to splice.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const h = await harness(
+      [[{ type: 'text_delta', text: 'ran' }, { type: 'finish', finishReason: 'stop' }]],
+      {
+        auto: 'allow',
+        compact: async (options): Promise<CompactedSession> => {
+          await gate;
+          return { surface: [...options.messages], summary: 's', retained: options.messages.length };
+        },
+      },
+    );
+    const compacting = h.agent.compact('manual');
+    await h.agent.prompt('during');
+    expect(h.agent.queued).toEqual(['during']);
+    release();
+    await compacting;
+    await untilIdle(h.agent);
+    expect(h.agent.queued).toEqual([]);
   });
 });
 

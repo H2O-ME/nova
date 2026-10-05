@@ -52,13 +52,17 @@ export interface FrameHost {
    */
   pluginRpc: PluginFrameHost;
   /**
-   * The BYOK provider list: its writer, its on-demand reader, and the stored-key
-   * lookup a probe or a switch reuses (the browser never holds a key).
+   * The BYOK provider list: its writer, its on-demand reader, the stored-key
+   * lookup a probe or a switch reuses (the browser never holds a key), and the
+   * applied-id tracking that makes "already in force" a fact about the live
+   * client rather than the file.
    */
   persistProviders: ProviderHost['persistProviders'];
   readProviders: ProviderHost['readProviders'];
   storedApiKey: ProviderHost['storedApiKey'];
   configuredModel: ProviderHost['configuredModel'];
+  liveProviderId: ProviderHost['liveProviderId'];
+  setLiveProviderId: ProviderHost['setLiveProviderId'];
   /** The approval tier picked earlier — the default for later sessions. */
   approvalDefault(): ApprovalMode | undefined;
   setApprovalDefault(mode: ApprovalMode): void;
@@ -80,4 +84,10 @@ export interface FrameHost {
    * `switchSession`, which leaves the old session running (see `fs-frames.ts`).
    */
   abandonCurrentSession(): Promise<void>;
+  /**
+   * Dispose the live handle on a file that is NOT the open session, if one
+   * exists — the delete path's guard against a switched-away session
+   * recreating its own deleted log (see `session-frames.ts`).
+   */
+  disposeLiveHandle(file: string): Promise<void>;
 }

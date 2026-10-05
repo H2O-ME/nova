@@ -187,16 +187,59 @@ describe('runAgent', () => {
     ]);
     const messages: AgentMessage[] = [];
     const progress: string[] = [];
+    const progressCallIds: string[] = [];
     await collect(
       runAgent({
         provider,
         messages,
         rootDir: '.',
         tools: [streamingTool],
-        onToolProgress: (text) => progress.push(text),
+        onToolProgress: (call, text) => {
+          progress.push(text);
+          progressCallIds.push(call.id);
+        },
       }),
     );
     expect(progress).toEqual(['line one\n', 'line two']);
+    // The call travels with the text, so concurrent calls cannot be conflated.
+    expect(progressCallIds).toEqual(['call_1', 'call_1']);
+  });
+
+  it('attributes progress to the call that produced it under parallel dispatch', async () => {
+    // Killing test: a session-level "last call" slot attributed every stream to
+    // whichever call started most recently, so one tool's output was drawn on
+    // another tool's row.
+    const makeTool = (name: string): ToolDefinition => ({
+      name,
+      description: name,
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+      isConcurrencySafe: () => true,
+      async execute(_args, ctx) {
+        ctx.onProgress?.(`${name}-1`);
+        await new Promise((resolve) => setTimeout(resolve, 15));
+        ctx.onProgress?.(`${name}-2`);
+        return name;
+      },
+    });
+    const provider = scriptedProvider([
+      [
+        { type: 'tool_call_delta', index: 0, id: 'c_a', name: 'a', argsDelta: '{}' },
+        { type: 'tool_call_delta', index: 1, id: 'c_b', name: 'b', argsDelta: '{}' },
+        { type: 'finish', finishReason: 'tool_calls' },
+      ],
+      [{ type: 'text_delta', text: 'ok' }, { type: 'finish', finishReason: 'stop' }],
+    ]);
+    const seen: string[] = [];
+    await collect(
+      runAgent({
+        provider,
+        messages: [],
+        rootDir: '.',
+        tools: [makeTool('a'), makeTool('b')],
+        onToolProgress: (call, text) => seen.push(`${call.id}:${text}`),
+      }),
+    );
+    expect(seen.sort()).toEqual(['c_a:a-1', 'c_a:a-2', 'c_b:b-1', 'c_b:b-2']);
   });
 
   it('ends the turn promptly when the user aborts while a tool runs', async () => {

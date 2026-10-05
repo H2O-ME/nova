@@ -31,7 +31,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ManageError } from '../src/settings/ManageError.js';
-import { ModelSection } from '../src/settings/ModelSection.js';
 import { PluginGroup } from '../src/settings/PluginRow.js';
 import { PluginsSection } from '../src/settings/PluginsSection.js';
 import { ProviderSection } from '../src/settings/ProviderSection.js';
@@ -58,10 +57,13 @@ const pluginGroup = (): string =>
     <PluginGroup
       group={group()}
       title="基础能力"
+      open
+      foldable
       expanded={new Set()}
       disabled={false}
       lockedNote={null}
       switching={null}
+      onToggleGroup={noop}
       onToggle={noop}
       onFlip={noop}
     />,
@@ -156,19 +158,15 @@ describe('root cause 3 · a landed flip says so', () => {
 });
 
 describe('root cause 4 · the pages explain themselves', () => {
-  it('numbers the model page\'s three steps so they read as one flow', () => {
-    // Three sibling `<h2>`s gave a reader three parallel titles. The marker is
-    // what makes the sequence visible; the sections must actually carry DISTINCT
-    // numbers, or the flow is a claim the markup does not make.
-    const step1 = renderToStaticMarkup(<ProviderSection providers={null} probe={null} send={noop} />);
-    const step2 = renderToStaticMarkup(
-      <ModelSection model="m" switching catalog={null} send={noop} />,
-    );
-    expect(step1).toContain('第 1 步');
-    expect(step1).not.toContain('第 2 步');
-    expect(step2).toContain('第 2 步');
-    // The plugin page is NOT part of this flow: a stray marker there would be a
-    // claim about sequence that is simply untrue.
+  it('keeps one page head and plain section headings (no step theatre)', () => {
+    // The three sections used to carry "第 N 步" markers under three sibling
+    // `<h2>`s. That marker was a claim about sequence the markup had to keep
+    // true; once the page head owns the title and the sections go back to plain
+    // headings, the three read as one page without it. So the markers are gone —
+    // and a stray one reappearing anywhere (including the plugin page, which is
+    // NOT part of this flow) would be that untrue claim coming back.
+    const page = renderToStaticMarkup(<ProviderSection providers={null} probe={null} send={noop} />);
+    expect(page).toContain(SETTINGS_COPY['models.providerTitle']);
     const plugins = renderToStaticMarkup(
       <PluginsSection
         roster={{ entries: [], configPath: '/cfg.json' }}
@@ -178,7 +176,7 @@ describe('root cause 4 · the pages explain themselves', () => {
         send={noop}
       />,
     );
-    expect(plugins).not.toContain('第 1 步');
+    expect(page + plugins).not.toContain('第 1 步');
   });
 
   it('states each Skill discovery ROOT, not just its level name', () => {

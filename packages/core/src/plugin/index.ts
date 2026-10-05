@@ -11,7 +11,8 @@
  * const root = Context.createRoot();
  * await root.plugin(llmPlugin, { baseURL, model });
  * await root.plugin(fsToolPlugin);
- * const missing = root.unsatisfied();   // boot check: declared-but-absent
+ * const missing = root.unsatisfied();   // embedder-side boot check: declared-but-absent
+ *                                       // (the kernel assembles do not call this)
  * ```
  */
 export { Context } from './context.js';
@@ -96,6 +97,7 @@ export {
   type PluginRpc,
   type RouteRegistry,
   type ShellService,
+  type SessionOpenOptions,
   type SessionService,
   type SkillInfo,
   type SkillRegistry,

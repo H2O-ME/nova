@@ -52,6 +52,9 @@ function makeCtx(opts: { mode?: ApprovalMode; noPermissionService?: boolean; pen
       calls.push('new');
       return Promise.resolve({} as never);
     },
+    // The machine's local grant. A peer may go this high and no higher; the cap
+    // itself is pinned by its own case below.
+    maxTier: 'full',
   };
   return { ctx, calls, resolved };
 }
@@ -70,6 +73,24 @@ describe('remote command execution', () => {
     const { ctx } = makeCtx({ noPermissionService: true });
     const out = await runRemoteCommand({ kind: 'perm', mode: 'full' }, ctx);
     expect(out.reply).toContain('未能切换');
+  });
+
+  it('refuses a tier above the machine\'s own ceiling', async () => {
+    // The whole point of driving a machine from a chat window is that a stolen
+    // phone is not a stolen keyboard: the ceiling is applied where the tier would
+    // CHANGE, so no other path can exceed it. The refusal names the limit rather
+    // than silently granting the smaller tier, which a peer would read as success.
+    const { ctx, calls } = makeCtx();
+    const capped: RemoteContext = { ...ctx, maxTier: 'auto-edit' };
+    const refused = await runRemoteCommand({ kind: 'perm', mode: 'full' }, capped);
+    expect(refused.reply).toContain('最高只能到「自动编辑」');
+    expect(calls).not.toContain('perm:full');
+    // At or below the ceiling still works.
+    expect((await runRemoteCommand({ kind: 'perm', mode: 'auto-edit' }, capped)).reply).toContain('自动编辑');
+    expect(calls).toContain('perm:auto-edit');
+    // Absent means the WEAKEST tier, never "unlimited".
+    const bare: RemoteContext = { ...ctx, maxTier: undefined };
+    expect((await runRemoteCommand({ kind: 'perm', mode: 'full' }, bare)).reply).toContain('最高只能到「只读」');
   });
 
   it('refuses to pretend a model switch happened with no model seat', async () => {

@@ -120,23 +120,25 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
     res.end();
     return;
   }
-  // Static path resolution happens BEFORE the auth gate: the PWA install
-  // pipeline fetches the manifest and icons outside the authenticated app
-  // context (icon prefetches may carry no credentials), and a 401 there
-  // silently kills the install affordance. Brand assets are public; nothing
-  // else is.
-  let relPath: string;
-  try {
-    relPath = decodeURIComponent(url.pathname);
-  } catch {
+  // ONE canonical path, resolved once, before anything else reads it. The
+  // public-asset exemption and the static join must judge the SAME text, or an
+  // encoded separator (`/icons/..%2findex.html` — WHATWG URL also folds a raw
+  // `\` into `/`) reads as a brand prefix here and lands on a private file at
+  // the join. Dot segments are refused outright: no legitimate client sends
+  // one, and resolving them is exactly the step that turned aliases into
+  // bypasses. Plugin routes are matched on the same canonical path and are
+  // ALWAYS behind the auth gate — only a brand asset that no plugin claims is
+  // public.
+  const canonical = canonicalPath(url.pathname);
+  if (canonical === undefined) {
     deny(res, 400, 'bad path');
     return;
   }
-  if (relPath === '/' || relPath === '') relPath = '/index.html';
+  const relPath = canonical === '/' ? '/index.html' : canonical;
+  const routeHandler = ctx.routes?.handlerFor?.(relPath);
   const isPublicAsset =
-    relPath === '/manifest.webmanifest' ||
-    relPath === '/favicon.svg' ||
-    relPath.startsWith('/icons/');
+    routeHandler === undefined &&
+    (relPath === '/manifest.webmanifest' || relPath === '/favicon.svg' || relPath.startsWith('/icons/'));
   if (!isPublicAsset && !verifyCookie(ctx.auth, req.headers.cookie)) {
     deny(res, 401, 'unauthorized');
     return;
@@ -149,17 +151,14 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
   // override an earlier prefix — the same replace-by-key semantics the
   // container uses for service providers. A handler that does not match (no
   // registry, or no prefix hit) falls through to the host's own handlers.
-  if (ctx.routes !== undefined) {
-    const handler = ctx.routes.handlerFor?.(relPath);
-    if (handler !== undefined) {
-      try {
-        await handler(req, res, url);
-      } catch {
-        if (!res.headersSent) deny(res, 500, 'plugin route error');
-        else res.end();
-      }
-      return;
+  if (routeHandler !== undefined) {
+    try {
+      await routeHandler(req, res, url);
+    } catch {
+      if (!res.headersSent) deny(res, 500, 'plugin route error');
+      else res.end();
     }
+    return;
   }
   // Image upload: the only route that carries image BYTES. It must be handled
   // before static serving, which would otherwise 404 the path. See
@@ -173,12 +172,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
   // so without this a reload would silently drop every pasted image.
   if (await handleImageBytes(req, res, url)) return;
   // Static file serving. `/` → index.html; everything else resolved under
-  // staticDir (traversal rejected). Unknown/missing → 404 (SPA single page).
-  // A path that is not valid percent-encoding (`/%`, `/%zz`, a truncated UTF-8
-  // escape) is a 400: letting `decodeURIComponent` throw here would take the
-  // request — and, without the caller's catch, the process — down, and no
-  // legitimate client ever sends one.
-  const abs = path.join(ctx.staticDir, path.normalize(relPath));
+  // staticDir (traversal refused). Unknown/missing → 404 (SPA single page).
+  // `canonicalPath` already refused dot segments, backslashes and control
+  // characters, so the join below cannot climb out of `staticDir`; the
+  // containment check stays as defense in depth, not as the only gate.
+  const abs = path.join(ctx.staticDir, relPath);
   if (!abs.startsWith(ctx.staticDir + path.sep) && abs !== ctx.staticDir) {
     deny(res, 400, 'bad path');
     return;
@@ -215,12 +213,53 @@ function deny(res: ServerResponse, status: number, message: string): void {
   res.end(JSON.stringify({ error: message }));
 }
 
+/**
+ * The ONE canonical form of a request path: percent-decoded once, with every
+ * escape hatch closed before anything judges it.
+ *
+ * - Invalid percent-encoding (`/%`, `/%zz`, a truncated UTF-8 escape) is
+ *   `undefined` → 400. Letting `decodeURIComponent` throw would take the
+ *   request — and, without the caller's catch, the process — down, and no
+ *   legitimate client ever sends one.
+ * - A backslash or a control character is `undefined`: on Windows `\` is a
+ *   separator, and WHATWG URL has already folded raw ones into `/`, so a
+ *   decoded one is nothing but an escape attempt.
+ * - Dot segments (`.` / `..`) are refused rather than resolved. Resolution is
+ *   the step that once turned a public prefix into a private file; a strict
+ *   refusal keeps the public-asset check and the static join on one text.
+ * - Empty segments collapse (`//x` → `/x`); the result always starts with `/`.
+ * @param rawPathname - `url.pathname`, still percent-encoded.
+ * @returns the canonical path, or `undefined` when the request is refused.
+ */
+export function canonicalPath(rawPathname: string): string | undefined {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(rawPathname);
+  } catch {
+    return undefined;
+  }
+  if (!decoded.startsWith('/') || decoded.includes('\\')) {
+    return undefined;
+  }
+  for (let index = 0; index < decoded.length; index += 1) {
+    const code = decoded.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) return undefined;
+  }
+  const segments: string[] = [];
+  for (const segment of decoded.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') return undefined;
+    segments.push(segment);
+  }
+  return `/${segments.join('/')}`;
+}
+
 interface UpgradeCtx {
   controller: WebController;
   auth: LaunchAuth;
 }
 
-function handleUpgrade(req: IncomingMessage, socket: Duplex, _head: Buffer, ctx: UpgradeCtx): void {
+function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, ctx: UpgradeCtx): void {
   const url = new URL(req.url ?? '/', 'http://localhost');
   if (url.pathname !== '/ws') {
     socket.destroy();
@@ -231,8 +270,10 @@ function handleUpgrade(req: IncomingMessage, socket: Duplex, _head: Buffer, ctx:
     socket.destroy();
     return;
   }
+  // `head` rides along: those are bytes the HTTP upgrade already consumed that
+  // belong to the first WS frame — dropping them lost a pipelined frame.
   let connection: WsConnection | undefined;
-  connection = upgrade(socket, req.headers['sec-websocket-key'], {
+  connection = upgrade(req, socket, head, {
     onMessage: (text: string) => {
       if (connection === undefined) return;
       const frame = parseClientFrame(text);

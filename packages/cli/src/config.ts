@@ -9,7 +9,7 @@ export { expandRefs, diagnosticText, unresolvedRef } from './config-expand.js';
 export type { ConfigDiagnostic } from './config-expand.js';
 export { modelEntrySchema, modelsSchema, providerEntrySchema, providersSchema } from './config-schema-models.js';
 
-const configSchema = z.object({
+const configSchema_ = z.object({
   /**
    * 在役供应商（历史字段，仍是**唯一**「当前用哪个端点」的答案）。
    *
@@ -17,12 +17,16 @@ const configSchema = z.object({
    * 缺失时各 surface 报「尚未配置模型端点」而不是启动失败（见 `resolveProvider`）。
    * `providers` 非空时，这个对象的 `baseURL` / `apiKey` 由激活项派生（见
    * `provider-store.ts`），此处保留是为了让老配置**逐字节继续可用**。
+   *
+   * `model` 同样可选：镜像块的 model 属于「当前模型」存储（模型选择器写它），
+   * 而设置页第一次保存供应商时它还不存在——要求它存在会把首次保存变成
+   * 「存得下、起不来」。读者（`createProvider` / `configuredModel`）本就容忍缺省。
    */
   provider: z
     .object({
       baseURL: z.string().min(1),
       apiKey: z.string().min(1),
-      model: z.string().min(1),
+      model: z.string().min(1).optional(),
       /** Sampling temperature passed through to the provider. */
       temperature: z.number().min(0).max(2).optional(),
       /** Passed through as `max_tokens` when set. */
@@ -91,19 +95,14 @@ const configSchema = z.object({
     })
     .strict()
     .optional(),
-  tools: z
-    .object({
-      bash: z
-        .object({
-          enabled: z.boolean().optional(),
-          timeoutMs: z.number().int().positive().optional(),
-          shellPath: z.string().optional(),
-        })
-        .strict()
-        .optional(),
-    })
-    .strict()
-    .optional(),
+  // The former `tools.bash` block is GONE, deliberately: it was accepted by
+  // this schema for a long time but had NO reader — the bash tool takes its
+  // settings from its own row's `config` in `plugins.entries`
+  // (`{ id: "bash", config: { timeoutMs, shellPath } }`), and a top-level
+  // block the kernel never reads is the "looks saved, does nothing" failure
+  // mode this strict schema exists to prevent. Accepting it silently was the
+  // bug; refusing it at load — naming the key — is the honest answer, and the
+  // config example in AGENTS.md shows the row form.
   /**
    * 插件树：唯一的插件配置入口。
    *
@@ -128,6 +127,24 @@ const configSchema = z.object({
             })
             .strict(),
         )
+        // Duplicate ids are ambiguous BY CONSTRUCTION and the ambiguity is not
+        // even consistent: the settings writer edits the FIRST row with an id
+        // while the runtime tree maps rows by id (LAST one wins) — so a
+        // duplicate could mean the operator's switch and the running row
+        // disagree. Named refusal at load, not a silent pick of one.
+        .superRefine((rows, ctx) => {
+          const seen = new Set<string>();
+          for (const row of rows) {
+            if (seen.has(row.id)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `plugins.entries 有重复的插件 id "${row.id}"（同一个插件只能有一行）`,
+              });
+              return;
+            }
+            seen.add(row.id);
+          }
+        })
         .optional(),
     })
     .strict()
@@ -158,6 +175,15 @@ const configSchema = z.object({
 // "plugins.entrys") is a silent no-op on a lenient schema and a confusing
 // wrong-way run. Fail at load with the offending key named.
 .strict();
+
+/**
+ * The config schema, exported for the RAW-document writers (`config-doc.ts`):
+ * every writer validates the unexpanded document BEFORE its atomic commit, so
+ * a settings save that would produce an unbootable file is refused at the
+ * save — with the file untouched — instead of being discovered at the next
+ * start, when the operator who made the mistake is no longer looking.
+ */
+export const configSchema = configSchema_;
 
 export type Config = z.infer<typeof configSchema>;
 

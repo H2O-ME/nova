@@ -46,10 +46,33 @@ function isCompoundCommand(command: string): boolean {
   return /[&;|\n\r]/.test(command) || command.includes('$(') || command.includes('`');
 }
 
+/** A leading `NAME=value` token: an environment assignment, not the program. */
+const ENV_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * The PROGRAM a bare command invokes: the first token that is not a leading
+ * `NAME=value` environment assignment. `NOVA=1 git status` → `git`.
+ *
+ * The assignment prefix matters for the "always" grant: remembering
+ * `exec:nova=1` (the raw first token) would let a later `NOVA=1 rm -rf ~`
+ * match the same key and skip approval, so the memory must key on the program
+ * the user actually approved. `undefined` for compound commands (no word-prefix
+ * semantics) or a command made only of assignments.
+ */
+export function commandProgram(command: unknown): string | undefined {
+  return alwaysScopeWords(command)[0]?.toLowerCase();
+}
+
 /**
  * The word list an execute command can scope an "always" grant over: a bare
- * (non-compound) command's tokens; [] for compound commands, where only
- * whole-command memory is safe (no meaningful word prefix).
+ * (non-compound) command's tokens STARTING AT THE PROGRAM; [] for compound
+ * commands, where only whole-command memory is safe (no meaningful word
+ * prefix).
+ *
+ * Leading `NAME=value` assignments are dropped: pinning the first N words must
+ * mean "this program onward", never "this env assignment". Keying a grant on
+ * `NOVA=1` authorizes nothing (the assignment is not a program) while looking
+ * like a grant, and it would let a later `NOVA=1 rm -rf ~` share the key.
  *
  * Lives here, beside `MAX_ALWAYS_SCOPE_WORDS`: the rule that produces the
  * options and the cap that validates them must not drift apart, and every
@@ -61,7 +84,10 @@ export function alwaysScopeWords(command: unknown): string[] {
   if (typeof command !== 'string') return [];
   const trimmed = command.trim();
   if (trimmed.length === 0 || isCompoundCommand(trimmed)) return [];
-  return trimmed.split(/\s+/);
+  const words = trimmed.split(/\s+/);
+  let start = 0;
+  while (start < words.length && ENV_ASSIGNMENT.test(words[start]!)) start++;
+  return words.slice(start);
 }
 
 /**
@@ -121,15 +147,41 @@ export interface ApprovalAudit {
 }
 
 /**
- * The minimal permission-engine contract an `AgentSession` speaks. plugins'
+ * The permission-engine contract an `AgentSession` speaks. plugins'
  * `PermissionService` implements it structurally; a surface that assembles its
- * own engine can hand the session the same shape (mode readout + switching).
+ * own engine can hand the session the same shape.
+ *
+ * `mode` and `policy` are deliberately NOT the same kind of fact, and separating
+ * them is what makes a remote peer safe:
+ *
+ *  - `approvalMode` (read-only / auto-edit / full) and the remembered grants
+ *    behind it belong to ONE conversation, so a session owns them. A peer that
+ *    raises its tier must not raise anybody else's — which is why the engine is
+ *    per session and the decision is routed by `ToolCallScope.sessionId`.
+ *  - `approvalPolicy` ('ask' | 'never') is a property of the PROCESS: it says
+ *    whether an interactive answerer exists at all. A headless runner pins it
+ *    once and every session it creates inherits that, because there is no human
+ *    anywhere in that process to consult. It is therefore shared by all sessions
+ *    of a kernel.
+ *
+ * `decideDetailed` is the decision itself. It is optional so an embedder may
+ * hand the loop only the readout (mode/policy) while some outer engine keeps the
+ * decision — but a session that omits it cannot be the target of the approval
+ * gate, and the gate says so rather than guessing.
  */
 export interface PermissionPort {
   readonly approvalMode: ApprovalMode;
   readonly approvalPolicy: ApprovalPolicy;
   setMode(mode: ApprovalMode): void;
   setPolicy(policy: ApprovalPolicy): void;
+  /**
+   * Decide one call end to end: remembered grants, the mode's auto-allow rules,
+   * then the asker (which may prompt a human). Omitted means "this port cannot
+   * decide", never "allow".
+   */
+  decideDetailed?(toolName: string, kind: ToolPermissionKind, call: ToolCall): Promise<DecideResult>;
+  /** True while an ask is being dispatched for this port (a surface may render it). */
+  outstandingAsks?(): readonly ApprovalRequest[];
 }
 
 /** One outstanding approval: everything a surface needs to render the ask. */

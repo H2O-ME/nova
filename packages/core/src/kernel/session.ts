@@ -22,7 +22,7 @@ import {
 import { errMessage } from '../errors.js';
 import { newId } from '../ids.js';
 import type { Goal } from '../goal.js';
-import type { CompactedSession, CompactSessionOptions } from '../compact.js';
+import { surfaceDivergence, type CompactedSession, type CompactSessionOptions } from '../compact.js';
 import type { ImageAttachmentRef } from '../images.js';
 import type {
   ApprovalBroker,
@@ -41,6 +41,7 @@ import type {
   AgentHooks,
   AgentMessage,
   ChatProvider,
+  StreamEvent,
   ToolDefinition,
   Usage,
   UsageStats,
@@ -52,7 +53,7 @@ import { CompactionRunner } from './compaction-runner.js';
 import { PromptQueue } from './prompt-queue.js';
 import { RunMeter } from './metrics.js';
 import type { KernelEvent, NoticeCode, TurnPhase } from './protocol.js';
-import { createAnchors, lastLoggedUsage, type UsageAnchorState } from './usage-anchor.js';
+import { createAnchors, lastLoggedUsage, resetAnchors, type UsageAnchorState } from './usage-anchor.js';
 
 export type { UsageAnchorState } from './usage-anchor.js';
 
@@ -78,6 +79,21 @@ export interface AgentSessionDeps {
   questions: QuestionBroker;
   /** Permission engine view (mode readout/switch); omit for headless-never. */
   permission?: PermissionPort;
+  /**
+   * Whether a human can answer THIS session's `ask_user_question`.
+   *
+   * A THUNK read per call, not a boolean captured at open, because the answer is
+   * a fact about the surface in force and that can change without a restart. It
+   * is per SESSION rather than per process because one process can drive several
+   * conversations with different ends: a bot peer whose chat window has nobody
+   * watching must get the typed `NO_PROVIDER` refusal instead of a question card
+   * published onto a stream no human is following — which parks the run with
+   * nothing able to release it.
+   *
+   * Absent means false (fail-closed): a session assembled without this fact
+   * cannot ask.
+   */
+  canAskUser?: () => boolean;
   systemPrompt?: string;
   maxTurns?: number;
   /** Spill dir for oversized tool results. */
@@ -127,7 +143,6 @@ export class AgentSession {
   private readonly pending = new PromptQueue();
   private runController: AbortController | undefined;
   private phase: TurnPhase = 'idle';
-  private lastToolCallId: string | undefined;
   /** The last message this run appended (the durable stats row's anchor). */
   private lastMessageId: string | undefined;
   private closed = false;
@@ -163,17 +178,7 @@ export class AgentSession {
         provider: () => deps.provider,
         strategy: () => deps.compact,
         publishStart: (trigger) => { this.publish({ type: 'compaction', progress: { state: 'start', trigger } }); },
-        publishDone: (trigger, outcome) => {
-          this.publish({
-            type: 'compaction',
-            progress: {
-              state: 'done',
-              trigger,
-              retained: outcome.retained,
-              summaryChars: outcome.summary.length,
-            },
-          });
-        },
+        commitCompaction: (trigger, outcome) => { this.commitCompaction(outcome, trigger); },
         publishError: (trigger, message) => {
           this.publish({ type: 'compaction', progress: { state: 'error', trigger, error: message } });
         },
@@ -240,8 +245,60 @@ export class AgentSession {
     return this.pending.items;
   }
 
+  /**
+   * This session's OWN permission engine — the one that decides ITS tool calls.
+   *
+   * Read by consumers that hold a `ToolCallScope` (the approval gate) and by a
+   * surface driving "the tier of the conversation I am looking at" (the CLI's
+   * `/perm`). Both must reach the session that issued the call, never a
+   * process-global engine: one kernel runs several sessions at once, and a tier
+   * that leaked between them would let a chat peer raise the desktop's
+   * permissions.
+   *
+   * Undefined for an embedded session assembled without one; the gate then
+   * reports that it cannot decide rather than allowing the call.
+   */
+  get permission(): PermissionPort | undefined {
+    return this.deps.permission;
+  }
+
+  /**
+   * This session's question seam (the broker the `ask_user_question` tool parks
+   * inside and the surface answers over the event stream).
+   *
+   * Exposed so the ask tool — registered ONCE per roster, with no session of its
+   * own — can route a call to the session that made it. A single shared broker
+   * was the defect here: whoever created the newest session re-pointed the
+   * publish slot, so A's question card appeared on B and only B could answer it.
+   */
+  get questions(): QuestionBroker {
+    return this.deps.questions;
+  }
+
+  /**
+   * Whether this session can ask a human anything at all.
+   *
+   * Read by the `ask_user_question` tool through the session that issued the
+   * call: a question is only worth publishing where somebody can answer it, and
+   * "somebody" is per conversation (see `AgentSessionDeps.canAskUser`).
+   * Fail-closed: absent means no.
+   */
+  get answersQuestions(): boolean {
+    return this.deps.canAskUser?.() === true;
+  }
+
+  /** True once `dispose()` has run: the handle is finished and must not be reused. */
+  get disposed(): boolean {
+    return this.closed;
+  }
+
   get approvalMode(): ApprovalMode | undefined {
     return this.deps.permission?.approvalMode;
+  }
+
+  /** The process-wide 'ask' | 'never' policy in force (see `PermissionPort`). */
+  get approvalPolicy(): ApprovalPolicy | undefined {
+    return this.deps.permission?.approvalPolicy;
   }
 
   setApprovalMode(mode: ApprovalMode): void {
@@ -396,7 +453,11 @@ export class AgentSession {
     // re-read after the run instead of decided from a snapshot, which is what
     // makes queueing here safe; the entry's watermark (`prompt-queue.ts`) is what
     // keeps it from also causing a duplicate run when the live run DID read it.
-    if (this.running) {
+    // A compaction holds the SAME message array a run would assemble from, so a
+    // prompt arriving mid-compaction is queued rather than allowed to start a
+    // run that would be spliced out from under it. `compact()` serves the queue
+    // when it finishes.
+    if (this.running || this.compaction.busy) {
       this.pending.enqueue(text);
       this.publish({ type: 'queue_update', items: this.pending.items });
       return;
@@ -474,7 +535,46 @@ export class AgentSession {
    * array out from under a live request.
    */
   async compact(trigger: 'auto' | 'manual' = 'manual'): Promise<CompactedSession> {
-    return this.compaction.compact(trigger);
+    const outcome = await this.compaction.compact(trigger);
+    // A prompt that arrived while the compaction held the surface was QUEUED
+    // (see `prompt`); this is what gives it its run, since a manual compaction
+    // has no run loop around it.
+    if (!this.running && !this.closed && !this.pending.empty) void this.runLoop();
+    return outcome;
+  }
+
+  /**
+   * Commit a FINISHED compaction — the ONE place its three effects happen
+   * together: splice the live surface IN PLACE (every consumer holds that array),
+   * reset the token anchors (the old measurement describes a surface that no
+   * longer exists), and publish the `compaction` event.
+   *
+   * Both the run-boundary gate and the headless per-request gate come through
+   * here, so neither can leave the session sizing its next request against the
+   * pre-compaction usage — which is what the headless path did while it spliced
+   * on its own.
+   */
+  commitCompaction(outcome: CompactedSession, trigger: 'auto' | 'manual'): void {
+    const messages = this.deps.messages;
+    messages.splice(0, messages.length, ...outcome.surface);
+    resetAnchors(this.anchors);
+    // "Model-visible means logged", checked at the one moment it can break: a
+    // surface replacement. This used to live only in a test helper
+    // (`surfaceDivergence`), which is a fixture proving the producer right
+    // rather than a check on the real path.
+    const divergence = surfaceDivergence(this.deps.session, messages);
+    if (divergence !== undefined) {
+      this.notice('compact_alias_broken', `压缩后模型面与日志投影不一致：${divergence}`);
+    }
+    this.publish({
+      type: 'compaction',
+      progress: {
+        state: 'done',
+        trigger,
+        retained: outcome.retained,
+        summaryChars: outcome.summary.length,
+      },
+    });
   }
 
   /** Close: terminal for prompts, outstanding asks deny, pump drains and ends. */
@@ -490,7 +590,10 @@ export class AgentSession {
     this.deps.approvals.failAll('closed');
     // Seal BEFORE closing the pump: a run still in flight may yet try to commit,
     // and the seal is what stops it from recreating a log the surface deleted.
+    // `drain` then waits for writes already past the seal check to land, so the
+    // caller may safely unlink the file the moment this resolves.
     this.deps.session.seal();
+    await this.deps.session.drain();
     this.events.close();
   }
 
@@ -498,6 +601,33 @@ export class AgentSession {
 
   private publish(event: KernelEvent): void {
     this.events.publish(event);
+  }
+
+  /**
+   * Commit one model-visible message: durable log FIRST, live surface second.
+   *
+   * `runAgent` pushes onto `messages` and then yields the message, so by the
+   * time this runs the live surface already carries it. If the durable append
+   * fails, that push is undone — the log is the truth, and a message it never
+   * received must not survive in memory, or the model's next request (built from
+   * `messages`) and a later resume (built from the log) would disagree about
+   * history. The failure then propagates, so the run is reported as failed
+   * rather than silently continuing on a phantom history.
+   *
+   * The push is undone BY IDENTITY, not by "is it the tail": a concurrent
+   * writer (a `prompt()` that landed during the append's await) leaves this
+   * message in the middle of the array, and a tail-only check would then accept
+   * the divergence. `indexOf` finds the exact object this commit appended.
+   */
+  private async commit(message: AgentMessage): Promise<void> {
+    try {
+      await this.deps.session.append(message);
+    } catch (err) {
+      const messages = this.deps.messages;
+      const at = messages.indexOf(message);
+      if (at >= 0) messages.splice(at, 1);
+      throw err;
+    }
   }
 
   /**
@@ -577,6 +707,9 @@ export class AgentSession {
   }
 
   private async startRun(signal: AbortSignal): Promise<void> {
+    // Never assemble a request while a compaction is splicing the array it
+    // would read (see `CompactionRunner.wait`).
+    await this.compaction.wait();
     this.meter.start();
     this.lastMessageId = undefined;
     try {
@@ -619,6 +752,12 @@ export class AgentSession {
    * Only `stream` is wrapped: that is the whole of `ChatProvider` the run loop
    * uses (`stream.ts` calls `opts.provider.stream(request)`), while the model
    * seat keeps its own reference to the real client.
+   *
+   * The same hand-off is also the meter's request boundary: this call site is
+   * the one place a request crosses into the provider, which is why the meter is
+   * told here rather than inferring it from `turn_start` (that fires before
+   * request assembly, its hooks and an in-place auto-compaction — all of which
+   * used to be charged to `llmMs`).
    */
   private countingProvider(): ChatProvider {
     const inner = this.deps.provider;
@@ -630,9 +769,25 @@ export class AgentSession {
         if (this.pending.recordAssembly(request)) {
           this.publish({ type: 'queue_update', items: this.pending.items });
         }
-        return inner.stream(request);
+        this.meter.requestStart();
+        return this.meteredStream(inner.stream(request));
       },
     };
+  }
+
+  /**
+   * Close the meter's request window when the provider's stream settles. The
+   * `finally` covers every exit — clean EOF, a provider error, and a consumer
+   * that stops pulling (the run loop breaks out on abort, which calls
+   * `.return()` on this generator) — so a request can no longer stay open
+   * forever just because its provider never reported `usage`.
+   */
+  private async *meteredStream(source: AsyncIterable<StreamEvent>): AsyncGenerator<StreamEvent> {
+    try {
+      yield* source;
+    } finally {
+      this.meter.requestEnd();
+    }
   }
 
   private agentOptions(signal: AbortSignal): AgentOptions {
@@ -658,8 +813,8 @@ export class AgentSession {
         // value. `null` means cleared — a whole-value snapshot, last write wins.
         if (evt.type === 'goal/change') this.publish({ type: 'goal', goal: evt.goal });
       },
-      onToolProgress: (text) => {
-        this.publish({ type: 'tool_progress', callId: this.lastToolCallId, text });
+      onToolProgress: (call, text) => {
+        this.publish({ type: 'tool_progress', callId: call.id, text });
       },
       // A closure, not a value: the model can change between runs, and this
       // accessor must answer with the model in force at the moment of the
@@ -681,23 +836,21 @@ export class AgentSession {
         this.setPhase('writing');
         break;
       case 'tool_call_start':
-        this.lastToolCallId = event.call.id;
         this.setPhase('tool');
         break;
       case 'tool_call_result':
-        await this.deps.session.append(event.result);
-        if (this.lastToolCallId === event.call.id) this.lastToolCallId = undefined;
+        await this.commit(event.result);
         if (!this.askSeam.waiting()) this.setPhase('tool');
         break;
       case 'llm_retry':
         this.setPhase('retrying');
         break;
       case 'message':
-        await this.deps.session.append(event.message);
+        await this.commit(event.message);
         this.lastMessageId = event.message.id;
         break;
       case 'turn_aborted':
-        await this.deps.session.append(event.message);
+        await this.commit(event.message);
         this.lastMessageId = event.message.id;
         break;
       case 'usage': {

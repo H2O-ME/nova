@@ -39,7 +39,7 @@ import { writeClipboard } from '../clipboard.js';
 import { SearchIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { ManageError } from './ManageError.js';
-import { failedCount, pluginGroups, rowTitle } from './row-model.js';
+import { failedCount, pluginGroups, rowTitle, type PluginRowGroup } from './row-model.js';
 import { PluginGroup } from './PluginRow.js';
 import { SettingsRow } from './SettingsRow.js';
 import { SettingsSection } from './Section.js';
@@ -95,6 +95,11 @@ export function PluginsSection({ roster, plugins, disabled, manageError, send, o
   // Which rows are expanded. Independent per row and kept across a flip (a
   // refresh re-renders the same names, so an open row does not snap shut).
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // Group folds, as an OVERRIDE map: an absent entry means "the group's own
+  // default", which is a property of the group rather than of this state. Storing
+  // the resolved default would freeze whatever the roster looked like on the
+  // first render — and on the first render there is no roster at all.
+  const [fold, setFold] = useState<ReadonlyMap<string, boolean>>(new Map());
   const feedback = useFlipFeedback(manageError);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => { window.clearTimeout(timer.current); }, []);
@@ -124,6 +129,10 @@ export function PluginsSection({ roster, plugins, disabled, manageError, send, o
   const groups = pluginGroups(entries, query);
   const shown = groups.reduce((total, group) => total + group.rows.length, 0);
   const failed = failedCount(entries);
+  // While the box is filtering, every group is unfolded: a hit inside a folded
+  // group is a hit the reader cannot see, and the fold is not offered at all
+  // (`foldable` below) rather than offered and ignored.
+  const searching = query.trim() !== '';
   // The switches are live only when the shell says the kernel can take a flip.
   // When they are locked the reason is stated on every row's `title` and once as
   // a line on the page: a greyed control with no explanation reads as a bug.
@@ -147,6 +156,19 @@ export function PluginsSection({ roster, plugins, disabled, manageError, send, o
     setExpanded((previous) => {
       const next = new Set(previous);
       if (!next.delete(name)) next.add(name);
+      return next;
+    });
+  };
+  // A group whose rows carry no switch is reference, and it arrives folded: 17
+  // core rows put the first live switch 706px below the fold of a 720px window.
+  // A group the reader can act on arrives open.
+  const groupOpen = (group: PluginRowGroup): boolean =>
+    searching || (fold.get(group.tier) ?? group.switchable);
+  const toggleGroup = (tier: string): void => {
+    setFold((previous) => {
+      const next = new Map(previous);
+      const group = groups.find((candidate) => candidate.tier === tier);
+      next.set(tier, !(previous.get(tier) ?? group?.switchable ?? true));
       return next;
     });
   };
@@ -174,22 +196,27 @@ export function PluginsSection({ roster, plugins, disabled, manageError, send, o
       {/* A count over the whole page, for the case where the failures are spread
           across groups and the reader has scrolled past one of them. */}
       {failed > 0 && <div className={css.failureBanner}>{`${failed} ${SETTINGS_COPY['plugins.failedCount']}`}</div>}
+      <div className={css.feedbackSlot} aria-live="polite">
+        {feedback.switching !== null
+          ? SETTINGS_COPY['plugins.switching']
+          : feedback.applied ?? (disabled ? SETTINGS_COPY['plugins.lockNote'] : '')}
+      </div>
       {groups.map((group) => (
         <PluginGroup
           key={group.tier}
           group={group}
           title={GROUP_TITLES[group.tier]}
+          open={groupOpen(group)}
+          foldable={!searching}
           expanded={expanded}
           disabled={disabled}
           lockedNote={lockedNote}
           switching={feedback.switching}
+          onToggleGroup={() => { toggleGroup(group.tier); }}
           onToggle={toggleRow}
           onFlip={flip}
         />
       ))}
-      {feedback.applied !== null && <div className={css.applied} role="status">{feedback.applied}</div>}
-      {disabled && <p className={css.lockNote}>{SETTINGS_COPY['plugins.lockNote']}</p>}
-      {feedback.switching !== null && <div className={css.status}>{SETTINGS_COPY['plugins.switching']}</div>}
       {roster !== null && (
         <ConfigPathRow path={roster.configPath} copied={copied} onCopy={copyPath} />
       )}

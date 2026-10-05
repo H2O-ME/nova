@@ -8,6 +8,7 @@
  *
  * 依赖全部注入（fetch / 时钟），测试不发真实网络请求。
  */
+import { withDeadline } from './deadline.js';
 
 export interface HttpClientResponse {
   ok: boolean;
@@ -17,7 +18,7 @@ export interface HttpClientResponse {
 
 export type FetchLike = (
   url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string },
+  init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal },
 ) => Promise<HttpClientResponse>;
 
 export const TOKEN_ENDPOINT = 'https://api.bot.qq.com/app/getAppAccessToken';
@@ -98,23 +99,34 @@ export class AccessTokenManager {
   }
 
   private async request(creds: ResolvedCredentials): Promise<string> {
-    const res = await this.fetchFn(TOKEN_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appId: creds.appId, clientSecret: creds.clientSecret }),
-    });
-    const body = (await res.json()) as { access_token?: unknown; expires_in?: unknown };
-    if (!res.ok || typeof body.access_token !== 'string' || body.access_token.length === 0) {
-      throw new Error(`qqbot: access token request failed (${res.status})`);
+    const body = await withDeadline(async (signal) => {
+      const res = await this.fetchFn(TOKEN_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appId: creds.appId, clientSecret: creds.clientSecret }),
+        signal,
+      });
+      // Read the body INSIDE the deadline: a transport that resolves the headers
+      // and then stalls on the body would otherwise hang past the bound, and a
+      // 200 whose body never arrives is not a token.
+      const parsed = (await res.json().catch(() => undefined)) as
+        | { access_token?: unknown; expires_in?: unknown }
+        | undefined;
+      return { res, parsed };
+    }, 'access token request');
+    const token = body.parsed?.access_token;
+    if (!body.res.ok || typeof token !== 'string' || token.length === 0) {
+      throw new Error(`qqbot: access token request failed (${body.res.status})`);
     }
-    const seconds = typeof body.expires_in === 'string' ? Number(body.expires_in) : typeof body.expires_in === 'number' ? body.expires_in : 7200;
+    const raw = body.parsed?.expires_in;
+    const seconds = typeof raw === 'string' ? Number(raw) : typeof raw === 'number' ? raw : 7200;
     // 只在凭据没在中途换过时才缓存：否则这次（属于旧凭据的）token 会覆盖掉新一轮请求
     // 刚写入的那一个。返回值照给——调用方拿到的是它请求时所对的那对凭据的 token。
     if (this.credentials().fingerprint === creds.fingerprint) {
-      this.token = body.access_token;
+      this.token = token;
       this.expiresAt = this.now() + (Number.isFinite(seconds) && seconds > 0 ? seconds : 7200) * 1000;
       this.mintedFor = creds.fingerprint;
     }
-    return body.access_token;
+    return token;
   }
 }

@@ -9,7 +9,7 @@ import type {
   ToolCall,
   ToolPermissionKind as PermissionKind,
 } from '@nova-agent/core';
-import { alwaysScopeWords, parseAskResult } from '@nova-agent/core';
+import { alwaysScopeWords, commandProgram, parseAskResult } from '@nova-agent/core';
 
 /**
  * The approval vocabulary lives in core (the kernel event stream speaks it:
@@ -29,11 +29,6 @@ export type {
   ApprovalPolicy,
   ApprovalAudit,
 } from '@nova-agent/core';
-
-/** Chaining/substitution markers — a command containing them grants whole-command memory only. */
-function isCompoundCommand(command: string): boolean {
-  return /[&;|\n\r]/.test(command) || command.includes('$(') || command.includes('`');
-}
 
 /**
  * Fail-closed normalization for the asker seam: an asker is third-party code
@@ -65,11 +60,24 @@ function normalizeAsk(raw: unknown): AskResult {
  * All failure modes fail closed: a throwing asker or an invalid answer
  * denies the call instead of opening the gate.
  */
+/**
+ * The process-wide approval policy, as one mutable cell.
+ *
+ * `'never'` is a statement about the PROCESS ("there is no interactive answerer
+ * here"), not about a conversation, so every session's engine reads and writes
+ * the SAME cell. Sharing it by reference is what lets a headless runner pin
+ * `never` once — before or after sessions exist — and have every session it
+ * creates inherit that, without any of them being able to disagree with the
+ * others about whether a human is reachable.
+ */
+export interface ApprovalPolicyCell {
+  policy: ApprovalPolicy;
+}
+
 export class PermissionService {
   /** Remembered grants, keyed by scope (see rememberKey). */
   private readonly remembered = new Set<string>();
   private mode: ApprovalMode;
-  private policy: ApprovalPolicy = 'ask';
   /**
    * Serialization point for the ask path: concurrent decide() calls dispatch
    * their asker ONE AT A TIME. Without this, PTC run_code's parallel sub-calls
@@ -83,6 +91,12 @@ export class PermissionService {
     mode: ApprovalMode,
     private readonly ask: AskFn,
     private readonly audit?: (entry: ApprovalAudit) => void,
+    /**
+     * The shared policy cell. Defaulted so a standalone engine (a test, an
+     * embedder) still works, but a kernel passes its ONE cell to every session
+     * engine it builds — see `ApprovalPolicyCell`.
+     */
+    private readonly policyCell: ApprovalPolicyCell = { policy: 'ask' },
   ) {
     this.mode = mode;
   }
@@ -91,18 +105,18 @@ export class PermissionService {
     return this.mode;
   }
 
-  /** Runtime switch (e.g. the /approvals command). */
+  /** Runtime switch (e.g. the /approvals command). Per session, not per kernel. */
   setMode(mode: ApprovalMode): void {
     this.mode = mode;
   }
 
   /** Non-interactive deployments set this once; 'never' short-circuits every ask. */
   setPolicy(policy: ApprovalPolicy): void {
-    this.policy = policy;
+    this.policyCell.policy = policy;
   }
 
   get approvalPolicy(): ApprovalPolicy {
-    return this.policy;
+    return this.policyCell.policy;
   }
 
   private autoAllows(kind: PermissionKind): boolean {
@@ -130,9 +144,15 @@ export class PermissionService {
     if (kind === 'execute') {
       const command = typeof call.args['command'] === 'string' ? call.args['command'].trim() : '';
       if (command.length > 0) {
-        if (isCompoundCommand(command)) return `exec:${command.replace(/\s+/g, ' ')}`;
-        const program = (command.split(/\s+/)[0] ?? '').toLowerCase();
-        if (program.length > 0) return `exec:${program}`;
+        // The PROGRAM, not the raw first token (see commandProgram): a leading
+        // `NAME=value` prefix must not become the grant key, or `NOVA=1 git
+        // status` would remember `exec:nova=1` and silently allow a later
+        // `NOVA=1 rm -rf ~`. Compound / all-assignment commands have no single
+        // program, so the whole normalized command is the key — only that exact
+        // command is re-granted.
+        const program = commandProgram(command);
+        if (program !== undefined) return `exec:${program}`;
+        return `exec:${command.replace(/\s+/g, ' ')}`;
       }
     }
     return `${toolName}:${kind}`;
@@ -199,7 +219,7 @@ export class PermissionService {
    */
   private enqueueAsk(call: ToolCall, kind: PermissionKind): Promise<AskResult> {
     const dispatch = (): AskResult | Promise<AskResult> => {
-      if (this.policy === 'never') return 'deny';
+      if (this.policyCell.policy === 'never') return 'deny';
       return this.ask(call, kind).then(normalizeAsk).catch(() => 'deny' as AskResult);
     };
     const run = this.askChain.then(dispatch, dispatch);

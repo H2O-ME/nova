@@ -298,6 +298,20 @@ export interface ChatProvider {
   listModels?(timeoutMs?: number): Promise<string[]>;
 }
 
+/** JSON-safe shape check for rewritten tool args (see validateToolCallVerdict). */
+function isJsonSafeValue(value: unknown, seen: Set<object> = new Set()): boolean {
+  if (value === null) return true;
+  const kind = typeof value;
+  if (kind === 'string' || kind === 'number' || kind === 'boolean') return true;
+  if (kind !== 'object') return false;
+  const obj = value as object;
+  if (seen.has(obj)) return false;
+  seen.add(obj);
+  if (Array.isArray(value)) return value.every((item) => isJsonSafeValue(item, seen));
+  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) return false;
+  return Object.values(value as Record<string, unknown>).every((item) => isJsonSafeValue(item, seen));
+}
+
 /**
  * Verdict a beforeToolCall hook returns for one tool call. A DISCRIMINATED
  * union, not a flat bag of optionals: each action carries exactly the fields
@@ -355,11 +369,39 @@ export function validateToolCallVerdict(verdict: unknown): string | undefined {
       if (args === undefined || typeof args !== 'object' || args === null || Array.isArray(args)) {
         return 'rewrite verdict must carry args as a plain object';
       }
+      // JSON-safe only: the composer re-serializes these args into `rawArgs`
+      // and hands the object straight to the tool, so a function/symbol/BigInt/
+      // circular value would either desync the log from what executed or throw
+      // while canonicalizing. Rejecting it fail-closed keeps the audit trail
+      // and the execution in agreement.
+      if (!isJsonSafeValue(args)) {
+        return 'rewrite verdict args must be JSON-safe (no functions, symbols, BigInt or cycles)';
+      }
       return undefined;
     }
     default:
       return `unknown verdict action ${(verdict as { action?: unknown }).action ?? '(missing)'}`;
   }
+}
+
+/**
+ * Which run a tool call belongs to.
+ *
+ * ONE kernel can hold several sessions at once (a bot channel keeps one per
+ * peer, the browser keeps one per open tab), and they run CONCURRENTLY — a
+ * switch leaves the previous session's run going. So "which session is this
+ * call from" cannot be read from a process-global "current session" slot: that
+ * slot is a UI selection, not an execution fact, and reading it here is how a
+ * peer's permission tier, remembered grants and approval prompt used to be
+ * decided by whichever session happened to be current.
+ *
+ * It is therefore threaded EXPLICITLY from the run that issues the call through
+ * the hook chain. `sessionId` is optional because embedding code (kernel tests,
+ * an SDK caller) may drive the loop with no session of its own.
+ */
+export interface ToolCallScope {
+  /** The session whose run issued this call; undefined when the loop is bare. */
+  sessionId?: string;
 }
 
 /**
@@ -369,8 +411,14 @@ export function validateToolCallVerdict(verdict: unknown): string | undefined {
 export interface AgentHooks {
   /** Chain: each hook may rewrite the request before it reaches the provider. */
   beforeLLMCall?(req: ChatRequest): Promise<ChatRequest>;
-  /** Permission gate / arg rewrite before a tool executes. */
-  beforeToolCall?(call: ToolCall): Promise<ToolCallVerdict>;
+  /**
+   * Permission gate / arg rewrite before a tool executes.
+   *
+   * `scope` is optional so a hand-written hook (and a direct call in a test) may
+   * ignore it, but the loop always passes it: a hook that decides anything
+   * session-specific must read the scope rather than a global.
+   */
+  beforeToolCall?(call: ToolCall, scope?: ToolCallScope): Promise<ToolCallVerdict>;
   /** Transform a tool result before it enters the message log. */
   afterToolResult?(call: ToolCall, result: string): Promise<string>;
   /**

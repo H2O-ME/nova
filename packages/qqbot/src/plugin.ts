@@ -21,6 +21,7 @@ import path from 'node:path';
 
 import {
   errMessage,
+  commands as commandsKey,
   executionEnvironment as executionEnvironmentKey,
   llm as llmKey,
   objectConfig,
@@ -33,11 +34,14 @@ import {
   type Plugin,
   type PluginPageDescriptor,
 } from '@nova-agent/core';
-import { registerTool } from '@nova-agent/plugins';
-import { PeerTurns } from './peers.js';
+import { registerTool, runCommandText } from '@nova-agent/plugins';
+import { AccessGate, mintPairingCode, type AccessPolicy, type AccessTier } from './access.js';
+import { BindingsStore } from './bindings.js';
+import { QqOutbox } from './outbox.js';
+import { PeerTurns, type RemoteCommandSeat } from './peers.js';
 import { probeQqBotConnection } from './probe.js';
 import { createQqBotChannel, type QqBotChannel } from './runtime.js';
-import { parseRemoteCommand } from './remote-parse.js';
+import { parseRemoteCommand, remoteBypassesQueue } from './remote-parse.js';
 import {
   isQqBotSettingKey,
   qqBotCredentialProblem,
@@ -47,6 +51,7 @@ import {
   type QqBotSettings,
 } from './settings.js';
 import { qqbotSendTool } from './tool.js';
+import type { Peer } from './types.js';
 
 /** 行 id，也是 RPC 命名空间与每一条错误/日志里的名字（一个身份，一处定义）。 */
 export const QQ_BOT_PLUGIN_NAME = '@nova-agent/qqbot';
@@ -57,16 +62,48 @@ export interface QqBotPluginConfig {
   appId?: string;
   /** AppSecret；可以是 `{env:NAME}` 引用。 */
   clientSecret?: string;
+  /**
+   * 已配对的 QQ 身份（群里是成员 openid，私聊是用户 openid）。
+   *
+   * Written by the pairing flow (`/pair <配对码>` in a private chat, the code
+   * shown on this row's own settings page) and by nothing else. Empty means the
+   * channel answers nobody but the pairing hint — a chat window is a public input
+   * surface, so "unconfigured" must mean "nobody", never "everybody".
+   */
+  owners?: string[];
+  /**
+   * The strongest permission tier a QQ peer may set for its own conversation.
+   *
+   * A ceiling, not a default: the peer may always choose a lower tier, and one
+   * that asks for more is refused with that fact stated. Keep it below whatever
+   * the operator granted locally — the point of driving a machine from a chat
+   * window is that a stolen phone is not a stolen keyboard.
+   */
+  maxTier?: string;
+  /**
+   * The standing enrollment secret (see `access.ts`).
+   *
+   * Persisted because it must survive a restart: a headless server has no settings
+   * page, so the console is the only channel that can carry it to the operator, and
+   * a secret that vanished on reboot would lock them out of their own machine.
+   */
+  pairingCode?: string;
 }
 
+/** The tiers a `maxTier` may name, mirroring the kernel's approval modes. */
+export const QQ_BOT_TIERS = ['read-only', 'auto-edit', 'full'] as const;
+
 /**
- * Both fields are optional and that is load-bearing: a row with no credentials
- * still activates (it has a settings page to fill in). What CANNOT be refused
- * here is an unknown key — a typo would look saved and do nothing.
+ * Both credential fields are optional and that is load-bearing: a row with no
+ * credentials still activates (it has a settings page to fill in). What CANNOT be
+ * refused here is an unknown key — a typo would look saved and do nothing.
  */
 export const Config = objectConfig<QqBotPluginConfig>({
   appId: { type: 'string' },
   clientSecret: { type: 'string' },
+  owners: { type: 'string[]' },
+  maxTier: { type: 'string', oneOf: QQ_BOT_TIERS },
+  pairingCode: { type: 'string' },
 });
 
 /** 一次 `action` 的答复面（设置页的「测试连接」按钮读它）。 */
@@ -99,6 +136,35 @@ export function runningQqBotChannel(): QqBotChannel | undefined {
   return activeChannel;
 }
 
+/**
+ * The running activation's access readings, for a surface with no settings page.
+ *
+ * `nova qqbot` is the HEADLESS deployment: there is no Web UI, so the console is
+ * the only place an enrollment secret can reach its operator. Printing it is the
+ * difference between "deploy it and message it" and "edit a config file, guess an
+ * id format, restart" — which is why this is a reading the surface asks for rather
+ * than a `console.log` inside the plugin (the plugin does not own the console).
+ */
+export interface QqBotAccessReading {
+  /** The standing enrollment secret, or undefined when enrollment is closed. */
+  pairingCode(): string | undefined;
+  /** The QQ identities currently bound. */
+  owners(): readonly string[];
+}
+
+let activeAccess: QqBotAccessReading | undefined;
+
+/** 本进程此刻的授权读数；行关着或没凭据时 undefined。 */
+export function runningQqBotAccess(): QqBotAccessReading | undefined {
+  return activeAccess;
+}
+
+/** Test seam: clear the process-wide readings (they outlive a fiber by design). */
+export function resetQqBotReadings(): void {
+  activeChannel = undefined;
+  activeAccess = undefined;
+}
+
 export const plugin: Plugin<QqBotPluginConfig> = {
   name: QQ_BOT_PLUGIN_NAME,
   manifest: {
@@ -122,31 +188,136 @@ export const plugin: Plugin<QqBotPluginConfig> = {
     const settings: QqBotSettings = {
       ...(config.appId !== undefined ? { appId: config.appId } : {}),
       ...(config.clientSecret !== undefined ? { clientSecret: config.clientSecret } : {}),
+      ...(config.owners !== undefined ? { owners: [...config.owners] } : {}),
+      ...(config.maxTier !== undefined ? { maxTier: config.maxTier } : {}),
+      // The stored enrollment secret MUST be read back: `ensurePairingCode` below
+      // mints one only when the row carries none, and the code it mints is written
+      // straight back to this row's config. Leaving it out of `settings` made every
+      // activation believe there was no code, mint a fresh one, and write it —
+      // which re-rostered the row, which re-ran `apply`, which minted again: an
+      // endless write/reload loop for any row with usable credentials.
+      ...(config.pairingCode !== undefined ? { pairingCode: config.pairingCode } : {}),
     };
     /** 对端会话与启动期的初始会话同归档在 qqbot 子目录（与交互会话隔离）。 */
     const sessionDir = path.join(sessionsRoot(), 'qqbot');
     let live: LiveQqBot | undefined;
+    // The chat → session map, loaded once and published as a reading so the
+    // surface's banner and this page can say where each conversation lives.
+    const bindings = new BindingsStore(path.join(sessionsRoot(), 'qqbot', 'bindings.json'));
+    // The owners this activation runs with. Mutable because enrollment WRITES it:
+    // a newly bound device works now, not after the next restart.
+    const gate = new AccessGate();
+    let policy: AccessPolicy = {
+      owners: [...(settings.owners ?? [])],
+      maxTier: tierOf(settings.maxTier),
+      ...(settings.pairingCode !== undefined ? { pairingCode: settings.pairingCode } : {}),
+    };
+
+    // The one way anything goes OUT (see `outbox.ts`). Late-bound to the channel
+    // through `live`, because the channel is built after the orchestrator that
+    // already needs to send (approvals and questions go out DURING a turn).
+    const outbox = new QqOutbox({
+      send: async (peerId, content, msgId) => {
+        const sending = live?.channel;
+        if (sending === undefined) throw new Error('qqbot: the channel is not running');
+        return await sending.send(peerId, content, msgId);
+      },
+      lastMsgIdOf: (peerId) => live?.channel?.lastMsgIdOf(peerId),
+      log: (line) => ctx.log('info', line),
+    });
 
     const turns = new PeerTurns({
       sessions: ctx.must(sessionsKey),
       sessionDir,
+      bindings,
       rootDir: () => ctx.get(executionEnvironmentKey)?.rootDir(),
       model: () => ctx.get(llmKey)?.model,
-      // 审批问题必须在轮还没结束时**立刻**推出去：它等的那条消息正是这一轮攥着的。
+      maxTier: () => policy.maxTier,
+      // The kernel's live command catalog. Read through the container per call, so
+      // a plugin row switched off changes what `/…` means in the chat window at the
+      // same moment it changes the browser's menu — no second list here to drift.
+      commands: commandSeat(ctx),
+      // 审批与提问必须在轮还没结束时**立刻**推出去：它等的那条消息正是这一轮攥着的。
       // 通道迟绑定，因为它建在跑轮子的东西之后（两者互为对方的输入）。
+      //
+      // Every outbound message goes through this ONE outbox — the reply, the
+      // approval/question notices, the progress lines and the model's
+      // `qqbot_send` — because the three rules that bite (which `msg_id`, how many
+      // replies one inbound message may draw, and who wins when that is spent) are
+      // only answerable in one place. See `outbox.ts`.
       notify: (peer, text) => {
-        const sending = live?.channel;
-        if (sending === undefined) return;
-        // 平台只允许「回复最近一条入站消息」这种外发，所以窗口没开就不发；开着就把
-        // 那条 msg_id 带上。**这里曾经只查窗口却把 msg_id 丢下**——那等于发一条主动
-        // 消息，会被平台限流拒绝，审批问题永远送不到对端（`send` 的注释说「缺省用
-        // 窗口」而实现并没有回退，两者当时是相反的）。
-        const msgId = sending.lastMsgIdOf(peer.peerId);
-        if (msgId === undefined) return;
-        void sending.send(peer.peerId, text, msgId).catch(() => undefined);
+        outbox.narrate(peer.peerId, text);
       },
+      canAskUser: () => true,
     });
     ctx.effect(() => () => turns.dispose(), 'qqbot peer turns');
+
+    /**
+     * Establish the standing enrollment secret.
+     *
+     * A headless server has no settings page, so the ONLY channel that can carry
+     * a secret to its operator is the console — which is why this mints one when
+     * none is configured and persists it. Minting rather than refusing is the
+     * difference between "deploy it and message it" and "edit a config file, guess
+     * an id format, restart".
+     *
+     * Persisting it is what makes the arrangement durable: the same secret keeps
+     * working across restarts and can enroll a second device later. Rotation is an
+     * operator's config edit, not an expiry timer.
+     */
+    const ensurePairingCode = async (): Promise<void> => {
+      if (policy.pairingCode !== undefined && policy.pairingCode.length > 0) return;
+      const code = mintPairingCode();
+      policy = { ...policy, pairingCode: code };
+      await ctx.must(pluginConfigKey).setEntry(QQ_BOT_PLUGIN_NAME, { config: { pairingCode: code } });
+    };
+    activeAccess = {
+      pairingCode: () => policy.pairingCode,
+      owners: () => policy.owners,
+    };
+    ctx.effect(() => () => {
+      activeAccess = undefined;
+    }, 'qqbot access reading');
+    // Loaded eagerly: the first inbound message must not race a disk read, and a
+    // failure to load is not fatal (it means "no conversations yet").
+    void bindings.load().catch(() => undefined);
+    // Only when credentials are usable — a row that cannot dial has no operator
+    // waiting for a code, and minting one would write config behind their back.
+    if (qqBotCredentialProblem(settings) === undefined) {
+      void ensurePairingCode().catch((err: unknown) => ctx.log('warn', `qqbot: ${errMessage(err)}`));
+    }
+
+    /**
+     * The ONE door from a chat message to work.
+     *
+     * Both the model path and the remote-command path come through here, so the
+     * identity decision cannot be made in one and forgotten in the other. An
+     * unbound sender gets a sentence telling them what to do; nothing they sent
+     * reaches the model, and no session is created for them.
+     *
+     * `/pair <secret>` is the sole exception, and only in a private chat — see
+     * `AccessGate.check`.
+     */
+    const guarded = async (text: string, peer: Peer): Promise<string> => {
+      const verdict = gate.check(policy, peer.actorId, peer.kind, text);
+      switch (verdict.kind) {
+        case 'allow':
+          return await turns.run(text, peer);
+        case 'refuse':
+          return verdict.reply;
+        case 'paired': {
+          // Persist FIRST, then answer: a binding that only existed in memory would
+          // be lost on the next restart, and the device would have to enroll again
+          // with the same secret — the one-time ceremony this design removes.
+          policy = { ...policy, owners: [...policy.owners, verdict.actorId] };
+          await ctx.must(pluginConfigKey).setEntry(QQ_BOT_PLUGIN_NAME, {
+            config: { owners: [...policy.owners] },
+          });
+          ctx.log('info', `qqbot: bound a new owner (${policy.owners.length} total)`);
+          return verdict.reply;
+        }
+      }
+    };
 
     /** 描述符：活读数只在通道真的在跑时去问（见 `QqBotChannel.reading`）。 */
     const describe = async (shown: QqBotSettings, saved = false): Promise<PluginPageDescriptor> => {
@@ -169,6 +340,8 @@ export const plugin: Plugin<QqBotPluginConfig> = {
             }
           : {}),
         ...(saved ? { saved: true } : {}),
+        ...(policy.pairingCode !== undefined ? { pairingCode: policy.pairingCode } : {}),
+        ...(bindings.entries().length > 0 ? { conversations: bindings.entries().length } : {}),
       };
       return qqBotPage(state);
     };
@@ -176,6 +349,27 @@ export const plugin: Plugin<QqBotPluginConfig> = {
     const runAction = async (payload: unknown): Promise<QqBotActionResult> => {
       const id = textMember(payload, 'id');
       if (id === undefined || id.length === 0) throw new Error('qqbot: "action" needs an "id"');
+      if (id === 'rotate') {
+        // ROTATION is the revocation path, and it is deliberate rather than
+        // automatic: the secret is standing (that is what makes enrollment
+        // convenient on a headless box), so the operator — not a timer — decides
+        // when it stops working.
+        const code = mintPairingCode();
+        policy = { ...policy, pairingCode: code };
+        await ctx.must(pluginConfigKey).setEntry(QQ_BOT_PLUGIN_NAME, { config: { pairingCode: code } });
+        return {
+          ok: true,
+          message: `已换新配对码 ${code}；旧的立刻失效。在 QQ 里私聊本机器人发送 /pair ${code}`,
+          descriptor: await describe(settings),
+        };
+      }
+      if (id === 'forget') {
+        // Un-binding every device: the only way to take access away from a phone
+        // that is no longer yours.
+        policy = { ...policy, owners: [] };
+        await ctx.must(pluginConfigKey).setEntry(QQ_BOT_PLUGIN_NAME, { config: { owners: [] } });
+        return { ok: true, message: '已解除全部 QQ 绑定；下一次入网需要重新配对。', descriptor: await describe(settings) };
+      }
       if (id !== 'test') throw new Error(`qqbot: unknown action "${id}"`);
       // The probe runs on what the operator JUST typed when the page sent fields
       // along (testing before saving is the whole point of the button), and on the
@@ -213,6 +407,16 @@ export const plugin: Plugin<QqBotPluginConfig> = {
                 enabled: true,
                 config: merged,
               });
+              // The ceiling may have moved with this save; a peer that was allowed
+              // `full` a moment ago must not keep it because the page changed. The
+              // enrollment secret is NOT touched here: it is standing by design
+              // (rotating it is the explicit `rotate` action), and a save silently
+              // invalidating it would strand every device the operator has.
+              policy = {
+                owners: [...(merged.owners ?? [])],
+                maxTier: tierOf(merged.maxTier),
+                ...(policy.pairingCode !== undefined ? { pairingCode: policy.pairingCode } : {}),
+              };
               return describe(merged, true);
             }
             case 'action':
@@ -229,13 +433,23 @@ export const plugin: Plugin<QqBotPluginConfig> = {
     const channel = createQqBotChannel({
       appId: settings.appId ?? '',
       clientSecret: settings.clientSecret ?? '',
-      brain: (text, peer) => turns.run(text, peer),
+      // Both entry points go through the SAME guard, so authorization cannot be
+      // enforced on one path and forgotten on the other.
+      brain: guarded,
       // 遥控指令走串行队列**之外**的旁路：一轮可能停在审批上等人回答，而答复要排队的话
-      // 就会永远排在自己所等的那一轮后面（死锁）。`claim` 用同一个纯解析器判定。
+      // 就会永远排在自己所等的那一轮后面（死锁）。`claim` 用同一个纯解析器判定，
+      // 且只放行**读与解阻塞**那几条（见 `remoteBypassesQueue`）：改权限档、开新会话、
+      // 内核目录命令都必须排在队列里，否则一次 `/perm full` 会去改正在跑的那一轮的裁量档。
       remote: {
-        claim: (text) => parseRemoteCommand(text).command !== undefined,
-        handle: (text, peer) => turns.run(text, peer),
+        claim: (text) => {
+          const parsed = parseRemoteCommand(text);
+          return parsed.command !== undefined && remoteBypassesQueue(parsed.command);
+        },
+        handle: guarded,
       },
+      // The inbound reply shares the outbox with everything else, so the window
+      // rule and the per-message allowance have ONE owner.
+      reply: { reply: (peerId, content) => outbox.reply(peerId, content) },
       // A plugin has no console owner: `ctx.log` writes only when NOVA_LOG asks.
       log: (line) => ctx.log('info', `qqbot: ${line}`),
     });
@@ -271,8 +485,14 @@ export const plugin: Plugin<QqBotPluginConfig> = {
     registerTool(
       ctx,
       qqbotSendTool({
-        send: (peer, content, msgId) => channel.send(peer, content, msgId),
-        lastMsgIdOf: (peer) => channel.lastMsgIdOf(peer),
+        // Through the SHARED outbox: the model's own sends draw on the same
+        // per-message allowance as the reply it is part of, so a chatty turn
+        // cannot spend the answer's reserve on proactive messages.
+        send: async (peer, content) => {
+          const result = await outbox.proactive(peer, content);
+          if (!result.ok) throw new Error(result.reason ?? 'send refused');
+          return `sent to ${peer}`;
+        },
       }),
       // 对外发送消息 = 对外网络副作用，与 bash 同级审批。
       'execute',
@@ -289,6 +509,12 @@ export default plugin;
  * 办法。未提交的字段**必须跟着走**，因为 `plugin-config` 的 `config` 是整份替换——
  * 少带一个键就等于把它从文件里删掉。代价是：如果配置层已经把 `{env:NAME}` 兑现成了
  * 明文交给我们，这次保存会把那份明文写回文档；只有宿主能保住引用（见交付说明）。
+ *
+ * The returned value is the WHOLE settings, not just the edited fields: the same
+ * object is the save's config patch AND the descriptor the page renders back, so
+ * a field the form does not own (the enrolled `owners`, the standing
+ * `pairingCode`) has to ride through unchanged — otherwise the write would look
+ * like it dropped them and the page would report every device as unbound.
  * @param current - the settings this activation was given.
  * @param patch - the submitted fields.
  * @returns the settings to store.
@@ -299,6 +525,7 @@ function mergeSettings(
 ): QqBotSettings {
   const appId = patch.appId?.trim() ?? '';
   const secret = patch.clientSecret?.trim() ?? '';
+  const maxTier = patch.maxTier?.trim() ?? '';
   return {
     ...(appId.length > 0 ? { appId } : current.appId !== undefined ? { appId: current.appId } : {}),
     ...(secret.length > 0
@@ -306,6 +533,53 @@ function mergeSettings(
       : current.clientSecret !== undefined
         ? { clientSecret: current.clientSecret }
         : {}),
+    // `maxTier` is one of the page's own fields, so it arrives with every save;
+    // carrying the current value when it is absent keeps a synthetic/partial
+    // payload from silently lowering the remote cap to the weakest tier.
+    ...(maxTier.length > 0 ? { maxTier } : current.maxTier !== undefined ? { maxTier: current.maxTier } : {}),
+    // Not form fields: written by the pairing flow, never by this form, so they
+    // are preserved rather than derived from `patch`.
+    ...(current.owners !== undefined ? { owners: [...current.owners] } : {}),
+    ...(current.pairingCode !== undefined ? { pairingCode: current.pairingCode } : {}),
+  };
+}
+
+/** A configured `maxTier` as the union, defaulting to the WEAKEST tier. */
+function tierOf(configured: string | undefined): AccessTier {
+  return (QQ_BOT_TIERS as readonly string[]).includes(configured ?? '')
+    ? (configured as AccessTier)
+    : 'read-only';
+}
+
+/**
+ * The kernel's command catalog, as a seat this package can use.
+ *
+ * Both halves read the container LIVE, which is the point: the catalog is a
+ * property of the loaded plugin rows, so a command must appear in the chat window
+ * exactly when its row is loaded and vanish when it is switched off. Caching a
+ * name list here would be the same "two tables that can disagree" defect the
+ * plugin tree exists to prevent.
+ *
+ * Execution goes through the host's ONE implementation (`runCommandText`, the
+ * same function the browser's command runner uses), so a command cannot behave
+ * one way in the UI and another in a chat window.
+ * @param ctx - the plugin's context.
+ * @returns the seat.
+ */
+function commandSeat(ctx: Context): RemoteCommandSeat {
+  return {
+    catalog: () =>
+      (ctx.get(commandsKey)?.all() ?? []).map((command) => ({
+        name: command.name,
+        description: command.description,
+      })),
+    run: async (name, args) =>
+      await runCommandText(
+        ctx.get(commandsKey),
+        name,
+        args,
+        ctx.get(executionEnvironmentKey)?.rootDir() ?? process.cwd(),
+      ),
   };
 }
 
@@ -351,3 +625,6 @@ function plainMember(value: unknown, key: string): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   return (value as Record<string, unknown>)[key];
 }
+
+
+

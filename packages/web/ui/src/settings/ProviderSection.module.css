@@ -108,22 +108,19 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-.keyDot {
-  box-sizing: border-box;
-  display: inline-block;
+/* The missing-key state as a word, in the same capsule shape as the active
+   tag: it is the state that blocks 设为当前, so it is the one worth printing.
+   A stored key prints nothing — the enabled button beside it is that readout. */
+.keyMissing {
   flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  padding: 1px 8px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: 999px;
   corner-shape: round;
-}
-
-.keyDotSet {
-  background: var(--dsw-alias-state-success-primary);
-}
-
-.keyDotMissing {
-  background: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-state-error-primary);
 }
 
 .rowActions {
@@ -447,56 +444,15 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.pool {
+/* 探针失败的那一行。挑模型的地方是弹窗（`ProviderModelsDialog`），所以卡里只剩
+   「没问成」这一个事实要说。 */
+.poolFail {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-}
-
-.poolRows {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-/* A probed id: a capsule, because it is a token to toggle rather than a field.
- * `corner-shape: round` keeps the capsule's ends circular under the universal
- * superellipse (see `styles/corner-shape.css`). */
-.poolRow {
-  box-sizing: border-box;
-  max-width: 100%;
-  padding: 3px 10px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: 999px;
-  corner-shape: round;
-  background: transparent;
-  font-family: var(--ds-font-family-code);
+  gap: 4px;
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
-}
-
-.poolRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
-}
-
-.poolPicked {
-  border-color: var(--dsw-alias-border-l4);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
 }
 
 .error {
@@ -509,16 +465,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
-}
-
-/* The section's tail: the write control sits here, right-aligned, with its
-   refusal (or the unsaved-changes note) on the same line. */
-.actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
   margin-top: 12px;
 }
 
@@ -553,21 +499,60 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.primary {
-  box-sizing: border-box;
-  flex: none;
-  display: inline-flex;
+.problem {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* ── 重写后的新增类 ─────────────────────────────────────────────────── */
+
+/* Section heading under the page head: same optical scale as the page's h2,
+   one level down in the tree. The 12px above it is the reference's own block
+   rhythm (`ModelsSection.module.css` `.rows { margin: 12px 0 0 }`); the 16px
+   that was here bought nothing between the page's explanation and the first
+   thing it explains. */
+.sectionTitle {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.sectionIntro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The card's own footer (the reference's `editorActions`): cancel left, commit
+   right. It ends the card on the control that writes it — no page-level save. */
+.cardFooter {
+  display: flex;
+  justify-content: flex-end;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+}
+
+.cardFooter .problem {
+  margin: 0 auto 0 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* The two commit buttons: the reference's pill pair from `EditorFooter`. */
+.cancelButton,
+.saveButton {
+  box-sizing: border-box;
   height: 32px;
-  padding: 0 16px;
-  border: none;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-button-primary-fill);
+  padding: 0 14px;
+  border-radius: var(--dsw-radius-sm);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary-foreground);
   cursor: pointer;
   transition:
       color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
@@ -577,25 +562,28 @@
       box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
-.primary:hover:not(:disabled) {
+.cancelButton {
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.cancelButton:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.saveButton {
+  border: none;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.saveButton:hover:not(:disabled) {
   background: var(--dsw-alias-button-primary-hover);
 }
 
-.primary:disabled {
-  opacity: 0.4;
+.saveButton:disabled,
+.cancelButton:disabled {
+  opacity: 0.5;
   cursor: default;
-}
-
-.problem {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-state-error-primary);
-}
-
-.dirtyNote {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
 }

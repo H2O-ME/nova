@@ -7,6 +7,7 @@ import type {
   AgentHooks,
   AgentMessage,
   ChatProvider,
+  ToolCall,
   ToolDefinition,
   ToolDispatchCall,
   ToolDispatchResult,
@@ -52,8 +53,13 @@ export interface AgentOptions {
    * Live progress feed from long-running tools (bash stdout tail etc.).
    * Purely presentational: the loop never waits on it and drops it silently
    * when unset.
+   *
+   * The CALL is passed alongside the text because several calls of one batch
+   * may run concurrently: a session-level "last call" slot attributed every
+   * stream to whichever call started most recently, so one tool's output was
+   * drawn on another tool's row.
    */
-  onToolProgress?: (text: string) => void;
+  onToolProgress?: (call: ToolCall, text: string) => void;
   signal?: AbortSignal;
   /**
    * Input modalities of the model in force. Called per request and only when a

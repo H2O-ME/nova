@@ -11,7 +11,7 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ChatProvider, KernelEvent, StreamEvent } from '@nova-agent/core';
 import { parseClientFrame } from '../src/client-frame.js';
 import { serializeServerFrame, type ClientFrame, type ServerFrame } from '../src/protocol.js';
@@ -172,7 +172,7 @@ describe('WebController question round trip', () => {
     });
   });
 
-  it('restores an outstanding question in ready so a reattaching client can still answer', async () => {
+  it('cancels the pending ask when the LAST viewer detaches (fail-closed), and ready states the converged wait', async () => {
     await withFakeHome(async () => {
       const controller = await makeController([ASK_TURN, CLOSING]);
       const first = new FakeConn();
@@ -181,20 +181,39 @@ describe('WebController question round trip', () => {
       await first.waitFor((frames) => frames.some((f) => f.type === 'event' && f.event.type === 'question_request'));
       controller.detach(first);
 
-      // A second socket attaches while the run is suspended. Without the
-      // baseline carrying the ask, this client sees an idle session and the run
-      // has no way out.
+      // The ask nobody can see must not hold the run open: the last detach
+      // converges every human wait (cancel, never fabricate an answer). The
+      // run itself then finishes on its own — a reattach replays the outcome.
+      await vi.waitFor(() => expect(controller.agent.pendingQuestions()).toHaveLength(0));
+      await vi.waitFor(() => expect(controller.agent.running).toBe(false));
+
+      // The next client's baseline states reality: no card, nothing to answer.
       const second = new FakeConn();
       controller.attach(second);
       const ready = second.frames.find((f) => f.type === 'ready');
       if (ready?.type !== 'ready') throw new Error('no ready');
-      expect(ready.info.pendingQuestions).toHaveLength(1);
-      const pending = ready.info.pendingQuestions[0];
-      expect(pending?.questions[0]?.question).toBe('Which mode?');
+      expect(ready.info.pendingQuestions).toHaveLength(0);
+      await controller.dispose();
+    });
+  });
 
+  it('keeps the ask alive while ANY other viewer remains attached', async () => {
+    await withFakeHome(async () => {
+      const controller = await makeController([ASK_TURN, CLOSING]);
+      const first = new FakeConn();
+      const second = new FakeConn();
+      controller.attach(first);
+      controller.attach(second);
+      await handle(controller, first, { type: 'prompt', text: 'ask me' });
+      await second.waitFor((frames) => frames.some((f) => f.type === 'event' && f.event.type === 'question_request'));
+
+      // One viewer leaving is not all viewers leaving: the second window can
+      // still see the card, so it survives and remains answerable there.
+      controller.detach(first);
+      expect(controller.agent.pendingQuestions()).toHaveLength(1);
       await handle(controller, second, {
         type: 'resolve_question',
-        id: pending?.id ?? '',
+        id: controller.agent.pendingQuestions()[0]?.id ?? '',
         answer: { answers: [{ id: 'mode', selected: ['Thorough (Recommended)'] }] },
       });
       await second.waitFor((frames) => frames.some((f) => f.type === 'event' && f.event.type === 'done'));

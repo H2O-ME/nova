@@ -132,7 +132,7 @@ describe('parseInbound', () => {
       content: ' 你好 ',
       group_openid: 'G1',
     });
-    expect(group?.peer).toEqual({ kind: 'group', openid: 'G1', peerId: 'group:G1' });
+    expect(group?.peer).toEqual({ kind: 'group', openid: 'G1', peerId: 'group:G1', actorId: 'MEM' });
     expect(group?.message.content).toBe(' 你好 ');
 
     const c2c = parseInbound('C2C_MESSAGE_CREATE', {
@@ -276,3 +276,4 @@ describe('QqGateway state machine', () => {
     gateway.close();
   });
 });
+

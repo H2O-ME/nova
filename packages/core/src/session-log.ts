@@ -9,7 +9,7 @@
 import { appendFile, open, readFile, rename, writeFile } from 'node:fs/promises';
 import { SESSION_VERSION, type SessionEvent, type SessionHeader } from './session.js';
 import { parseEventLine } from './session-projection.js';
-import type { AgentMessage } from './types.js';
+import { isAgentMessage, validateHeader } from './session-event-schema.js';
 
 export interface ReadResult {
   header: SessionHeader;
@@ -37,9 +37,12 @@ export async function readEvents(file: string, opts?: { repairTail?: boolean }):
   if (headerLine === undefined) throw new Error(`empty session file: ${file}`);
   let header: SessionHeader;
   try {
-    const parsed = JSON.parse(headerLine) as SessionHeader;
-    if (parsed.type !== 'session') throw new Error('not a session header');
-    header = parsed;
+    const checked = validateHeader(JSON.parse(headerLine));
+    // A header missing `v`/`id`/`createdAt` is not a session file. Without this
+    // check it read as `v: undefined`, which is NOT >= SESSION_VERSION — so the
+    // file took the v1 upgrade path and the damage was written back as fact.
+    if (checked === undefined) throw new Error('not a session header');
+    header = checked;
   } catch {
     throw new Error(`not a session file: ${file}`);
   }
@@ -60,8 +63,10 @@ export async function readEvents(file: string, opts?: { repairTail?: boolean }):
       if (header.v >= SESSION_VERSION) {
         events.push(parseEventLine(line));
       } else {
-        // v1: bare message lines.
-        const message = JSON.parse(line) as AgentMessage;
+        // v1: bare message lines. The shape is checked too — an upgrade writes
+        // the wrapped form back, so a malformed line must not be blessed here.
+        const message: unknown = JSON.parse(line);
+        if (!isAgentMessage(message)) throw new Error('malformed v1 message line');
         events.push({ type: 'message', message });
       }
     } catch {
@@ -82,9 +87,12 @@ export async function readEvents(file: string, opts?: { repairTail?: boolean }):
     } finally {
       await fh.close();
     }
-  } else if (!raw.endsWith('\n')) {
-    // A valid final line without a trailing newline (some external writer):
-    // the next append would glue onto it and corrupt two lines at once.
+  } else if (opts?.repairTail === true && !raw.endsWith('\n')) {
+    // A valid final line without a trailing newline (some external writer): the
+    // next append would glue onto it and corrupt two lines at once. This is a
+    // WRITE, so it happens only on the repair path — the file's owner
+    // (`Session.open`). A pure read (`Session.replay`, the WebUI's context
+    // window) must not mutate a log another writer may be appending to.
     await appendFile(file, '\n', 'utf8');
   }
   return { header, events, warnings };

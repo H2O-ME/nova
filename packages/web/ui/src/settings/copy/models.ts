@@ -15,10 +15,7 @@ export const MODELS_COPY = {
   // The reference's own intro sentence, verbatim in intent: it names the one
   // action that makes models usable (filling in a key), not the mechanism.
   'models.intro': '填入各提供商的 API 密钥即可使用其模型。',
-  'models.loading': '正在读取站点模型目录…',
-  'models.retry': '重试',
-  'models.empty': '端点没有公布模型目录（可继续使用当前模型）',
-  /* ── 第 1 步：供应商（多端点） ───────────────────────────────────────── */
+  /* ── 供应商（多端点） ───────────────────────────────────────── */
   'models.providerTitle': '供应商',
   'models.providerIntro': '会话使用的 OpenAI 兼容端点。标着「当前使用」的那一个在役。',
   'models.providerLoading': '正在读取供应商列表…',
@@ -35,7 +32,7 @@ export const MODELS_COPY = {
   // and an empty field must mean "keep it".
   'models.providerApiKeySet': '已配置——输入新值可替换',
   'models.providerApiKeyHint': '密钥只存在本机配置文件中，永不回显到浏览器；支持 {env:NAME} 引用。',
-  'models.providerKeySet': 'API 密钥已配置',
+  // 只有「缺」这一态有词：它是「设为当前」按不动的那个原因。配好了不印字。
   'models.providerKeyMissing': 'API 密钥缺失',
   'models.providerActive': '当前使用',
   'models.providerUse': '设为当前',
@@ -64,23 +61,27 @@ export const MODELS_COPY = {
   'models.providerProbe': '获取可用模型',
   'models.providerProbing': '正在询问提供商…',
   'models.providerProbeNeedsUrl': '请先填写 API 地址，再获取。',
-  'models.providerProbeOk': '该端点公布的模型',
   'models.providerProbeFail': '获取失败',
   'models.providerNoReachable': '该提供商没有列出任何模型，请手动添加。',
   'models.providerSave': '保存',
-  'models.providerDirty': '有未保存的改动。',
+  'models.providerCancel': '取消',
+  // A card's own footer refuses to commit when a field is unreadable; the
+  // sentence lands on the card, not in a page-level alert.
   'models.providerSaveFirst': '请先保存供应商，再切换。',
-  'models.providerSwitchNote': '「设为当前」立刻把本进程指向该端点；需先保存改动。',
-  /* ── 第 2 步：该端点的模型目录 ─────────────────────────────────────── */
-  'models.catalogTitle': '模型目录',
-  'models.catalogIntro': '当前端点上可选的模型。点一行即切换会话正在使用的模型。',
-  'models.catalogCurrent': '正在使用',
-  'models.inUse': '当前使用',
-  'models.catalogNoEndpoint': '还没有在役端点，先在上一步配置供应商。',
-  // The reference's `readOnly`/`catalogOffered` posture: a list that cannot be
-  // acted on says so instead of drawing controls that do nothing.
-  'models.catalogReadOnly': '本次启动的模型客户端不支持切换，这里只能查看。',
-  /* ── 第 3 步：模型参数（config `models[]`） ────────────────────────── */
+  'models.providerRemoveNow': '删除立刻生效（重新添加即可恢复）。',
+  'models.providerSwitchNote': '「设为当前」立刻把本进程指向该端点。',
+  /* ── 取模弹窗（「获取可用模型」） ─────────────────────────────── */
+  // 标题说的是**这件事**：把端点公布的模型挑几个加进这张卡。切换会话在用的
+  // 模型是 composer 那个座位的事，设置页不管——参考实现里也是如此。
+  'models.pickTitle': '选择要添加的模型',
+  'models.pickSearch': '搜索模型…',
+  'models.pickAll': '全选',
+  'models.pickNone': '清空',
+  'models.pickExisting': '已在清单',
+  'models.pickNoMatch': '没有匹配的模型。',
+  'models.pickApply': '添加所选',
+  'models.pickCancel': '取消',
+  /* ── 模型参数（config `models[]`） ────────────────────────── */
   'models.configTitle': '模型参数',
   'models.configIntro': '逐字段覆盖模型能力：留空即自动取自 models.dev，填写即覆盖并写入配置文件。',
   'models.configInherited': '未自定义：会话菜单直接使用端点公布的模型目录。',

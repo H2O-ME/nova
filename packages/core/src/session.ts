@@ -137,6 +137,14 @@ export class Session {
    * rather than something each surface has to remember at the right moment.
    */
   private sealed = false;
+  /**
+   * Serializes appends. The log is an ORDERED stream, and two concurrent
+   * `appendEvent` calls would otherwise race their `appendFile` writes — the
+   * file could hold them in one order and `events` in another. Chaining every
+   * write through one promise makes "the order callers asked for" the order on
+   * disk and in memory.
+   */
+  private writeChain: Promise<unknown> = Promise.resolve();
 
   private constructor(file: string, id: string, createdAt: number, events: SessionEvent[], warnings: string[]) {
     this.file = file;
@@ -185,12 +193,32 @@ export class Session {
    */
   async appendEvent(evt: SessionEvent): Promise<number> {
     if (this.sealed) throw new Error('session is closed; the log was sealed and cannot be appended');
-    // Disk first, memory second: if the write throws (full disk, killed
-    // mid-flush), in-memory state still matches what a resume will replay
-    // instead of diverging with a phantom event that never hit the log.
-    await appendFile(this.file, `${JSON.stringify(evt)}\n`, 'utf8');
-    this.events.push(evt);
-    return this.events.length - 1;
+    const run = this.writeChain.then(async () => {
+      // Re-checked INSIDE the critical section: a `seal()` that landed while
+      // this write was queued must win. Without it a disposed session could
+      // still append — the exact resurrection `seal()` exists to prevent, just
+      // one microtask later.
+      if (this.sealed) throw new Error('session is closed; the log was sealed and cannot be appended');
+      // Disk first, memory second: if the write throws (full disk, killed
+      // mid-flush), in-memory state still matches what a resume will replay
+      // instead of diverging with a phantom event that never hit the log.
+      await appendFile(this.file, `${JSON.stringify(evt)}\n`, 'utf8');
+      this.events.push(evt);
+      return this.events.length - 1;
+    });
+    // The chain must survive a rejected write, or every later append inherits
+    // the failure.
+    this.writeChain = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * Wait for every queued append to settle. Used by `dispose` so a closed
+   * session has no write still in flight; it never rejects (the chain swallows
+   * failures, which the original caller already saw).
+   */
+  async drain(): Promise<void> {
+    await this.writeChain;
   }
 
   /**
@@ -221,28 +249,30 @@ export class Session {
   }
 
   /**
-   * Project the model-visible surface from the log. An incomplete compaction
-   * (orphaned lock) is discarded wholesale: everything from the unmatched
-   * compaction/start on is ignored, so history stays complete and the crash
-   * degrades to "compaction never happened".
+   * Project the model-visible surface from the log. An UNCLOSED compaction is
+   * discarded — only that transaction: its summary never committed. Every
+   * message written after the crash stays (the old slice-at-orphan dropped it).
    */
   deriveMessages(): AgentMessage[] {
     const orphan = findOrphanCompaction(this.events);
-    const effective = orphan === -1 ? this.events : this.events.slice(0, orphan);
 
     const all: AgentMessage[] = [];
     let surface: AgentMessage[] = [];
-    for (const evt of effective) {
+    for (let i = 0; i < this.events.length; i++) {
+      const evt = this.events[i]!;
       if (evt.type === 'message') {
         all.push(evt.message);
         surface.push(evt.message);
         continue;
       }
       if (evt.type === 'compaction/summary') {
+        // Skip a summary that belongs to the unclosed compaction; apply the
+        // ones from earlier, properly-closed compactions.
+        if (orphan !== -1 && i > orphan) continue;
         // Replace the whole surface: kept originals (context fragment, recent
         // user messages) plus the synthesized summary message — the SAME
         // construction the live compaction path uses (compactionSurface).
-        surface = compactionSurface(evt, all, this.events.indexOf(evt));
+        surface = compactionSurface(evt, all, i);
       }
     }
     return surface;

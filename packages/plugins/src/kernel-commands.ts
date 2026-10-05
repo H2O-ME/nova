@@ -15,7 +15,7 @@
  * party would use), which ties the entry to this plugin's fiber — so a
  * re-roster unregisters cleanly.
  */
-import { commands as commandsKey, errMessage, sessions as sessionsKey, type CommandDefinition, type Plugin } from '@nova-agent/core';
+import { commands as commandsKey, errMessage, sessions as sessionsKey, type CommandDefinition, type CommandRegistry, type Plugin } from '@nova-agent/core';
 import { goalCommand } from './goal-command.js';
 import { registerCommand } from './toolbox.js';
 import type { Environment } from './runtime-env.js';
@@ -24,6 +24,53 @@ import type { Environment } from './runtime-env.js';
 export interface CommandSummary {
   name: string;
   description: string;
+}
+
+/** What one command execution produced. */
+export interface CommandOutcome {
+  /** False when no registered command has that name. */
+  found: boolean;
+  /** The command's own lines joined, a thrown reason included; `''` is a silent success. */
+  text: string;
+}
+
+/** Whether the live catalog currently owns this name (re-read per call: rows flip). */
+export function hasCommand(registry: CommandRegistry | undefined, name: string): boolean {
+  return registry?.all().some((entry) => entry.name === name) === true;
+}
+
+/**
+ * Run one registered command and COLLECT its output.
+ *
+ * The one implementation of "execute a catalog command". `commandRunner.run`
+ * (every interactive surface) and a programmatic caller that needs the text
+ * rather than an announcement (the QQ channel, which has to send it back over
+ * chat) both come through here, so a command cannot behave one way in the
+ * browser and another in a chat window.
+ *
+ * A command that throws reports its reason in the SAME outcome instead of
+ * failing the caller — a chat peer must get a sentence, not a dropped message.
+ * @param registry - the live command registry, when the assembly has one.
+ * @param name - the command name without its leading `/`.
+ * @param args - everything after the name, verbatim.
+ * @param rootDir - the workspace root the command runs against.
+ * @returns whether it was found, and its output.
+ */
+export async function runCommandText(
+  registry: CommandRegistry | undefined,
+  name: string,
+  args: string,
+  rootDir: string,
+): Promise<CommandOutcome> {
+  const command = registry?.all().find((entry) => entry.name === name);
+  if (command === undefined) return { found: false, text: `未知命令：/${name}` };
+  const lines: string[] = [];
+  try {
+    await command.run(args, { rootDir, log: (message) => { lines.push(message); } });
+  } catch (err) {
+    lines.push(errMessage(err));
+  }
+  return { found: true, text: lines.join('\n') };
 }
 
 /**
@@ -43,27 +90,20 @@ export function commandRunner(env: Environment): {
         description: command.description,
       })),
     run: async (name, args) => {
-      const registry = env.root.get(commandsKey);
-      const command = registry?.all().find((entry) => entry.name === name);
       const agent = current();
-      if (command === undefined) {
+      const registry = env.root.get(commandsKey);
+      // Existence is settled BEFORE the row opens: an unknown name must leave one
+      // finished row explaining itself, not a `run` row that never closes.
+      if (!hasCommand(registry, name)) {
         agent?.announceCommand(name, 'done', `未知命令：/${name}`);
         return;
       }
-      // The row opens before the work and closes with its outcome: a command
-      // that throws reports its reason in the SAME row instead of leaving a
+      // The row opens before the work and closes with its outcome: a command that
+      // throws reports its reason in the SAME row instead of leaving a
       // half-finished one behind (and never fails the caller's run).
       agent?.announceCommand(name, 'run');
-      const lines: string[] = [];
-      try {
-        await command.run(args, {
-          rootDir: env.state.rootDir,
-          log: (message) => { lines.push(message); },
-        });
-        agent?.announceCommand(name, 'done', lines.join('\n'));
-      } catch (err) {
-        agent?.announceCommand(name, 'done', lines.concat(errMessage(err)).join('\n'));
-      }
+      const outcome = await runCommandText(registry, name, args, env.state.rootDir);
+      agent?.announceCommand(name, 'done', outcome.text);
     },
   };
 }

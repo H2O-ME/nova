@@ -218,6 +218,14 @@ export class TermRegistry {
   private readonly bySession = new Map<string, TermSession>();
   /** Spawns in flight, keyed by session (concurrent opens share one). */
   private readonly spawning = new Map<string, Promise<TermSession>>();
+  /**
+   * Sessions whose spawn must NOT register when it lands: a `dispose` or
+   * `retainOnly` that ran while the spawn was in flight. Without this, the
+   * disposal "succeeded" (there was nothing in `bySession` yet) and the
+   * late-arriving spawn re-registered a terminal nobody owned any more — an
+   * orphaned shell that a later switch would not even find to kill.
+   */
+  private readonly cancelled = new Set<string>();
 
   constructor(private readonly spawnPty: PtySpawner = nodePtySpawn) {}
 
@@ -258,6 +266,14 @@ export class TermRegistry {
     if (inFlight !== undefined) return inFlight;
     const promise = (async () => {
       const handle = await this.spawnPty({ file: opts.file, args: opts.args, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
+      // The spawn lost a race with a dispose/switch: the pty it produced is
+      // nobody's. Kill it here, immediately, and refuse to register it — this
+      // is the latch that keeps the registry the only place a terminal can
+      // outlive its session's interest in it.
+      if (this.cancelled.has(sessionId)) {
+        killPtyTree(handle);
+        throw new Error('terminal spawn cancelled');
+      }
       const created = new TermSession(handle, onOutput, onExit);
       this.bySession.set(sessionId, created);
       return created;
@@ -267,6 +283,7 @@ export class TermRegistry {
       return await promise;
     } finally {
       this.spawning.delete(sessionId);
+      this.cancelled.delete(sessionId);
     }
   }
 
@@ -279,14 +296,30 @@ export class TermRegistry {
   }
 
   /**
-   * Terminate and forget one session's terminal.
+   * Terminate and forget one session's terminal. Also arms the spawn-cancel
+   * latch: if a spawn for this session is in flight, its result is killed on
+   * arrival instead of registering.
    * @param sessionId - the session that owned it.
    */
   dispose(sessionId: string): void {
     const term = this.bySession.get(sessionId);
-    if (term === undefined) return;
     this.bySession.delete(sessionId);
-    term.kill();
+    if (this.spawning.has(sessionId)) this.cancelled.add(sessionId);
+    if (term !== undefined) term.kill();
+  }
+
+  /**
+   * Terminate and forget EVERY session's terminal (process teardown). Any
+   * spawn still in flight is cancelled the same way, so the count ends at
+   * zero — no shell survives the host that owned it.
+   */
+  disposeAll(): void {
+    // dispose() removes from the map, so iterate a snapshot (Array.from — the
+    // spread spelling here reads as needless to the linter, the copy is not).
+    for (const sessionId of Array.from(this.bySession.keys())) this.dispose(sessionId);
+    // Sessions with a spawn in flight but no registered terminal: arm the
+    // latch for those too, so a late spawn cannot re-register after teardown.
+    for (const sessionId of this.spawning.keys()) this.cancelled.add(sessionId);
   }
 
   /**

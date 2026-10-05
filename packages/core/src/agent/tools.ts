@@ -12,6 +12,7 @@ import { validateToolCallVerdict } from '../types.js';
 import type {
   AgentEvent,
   ToolCall,
+  ToolCallScope,
   ToolDefinition,
   ToolResultMessage,
 } from '../types.js';
@@ -81,7 +82,7 @@ export async function* runToolCalls(
           };
           continue;
         }
-        const result = await completeToolCall(verdict.effective, opts, maxBytes, toolByName, dispatch);
+        const result = await settleToolCall(verdict.effective, opts, maxBytes, toolByName, dispatch);
         opts.messages.push(result);
         yield { type: 'tool_call_result', turn, call: verdict.effective, result };
       }
@@ -109,29 +110,19 @@ export async function* runToolCalls(
     }
 
     if (approved.length === 0) continue;
-    const pending = approved.map((entry) => completeToolCall(entry.effective, opts, maxBytes, toolByName, dispatch));
-    // allSettled: one failing call (e.g. a spill-to-disk error) must not leak
-    // an unhandled rejection from the siblings nobody awaits anymore — the
-    // run would crash mid-turn with an unbalanced log (assistant tool_calls
-    // without their result messages). Every slot resolves to a result.
-    const settled = await Promise.allSettled(pending);
+    // An abort during the LAST approval must not start earlier-approved calls:
+    // executeTool's per-call race fires only after the tool has begun.
+    if (opts.signal?.aborted) {
+      for (const entry of approved) yield abortedSkipResult(opts, entry.call, turn);
+      continue;
+    }
+    // settleToolCall never rejects, so one result per call lands in call order.
+    const settled = await Promise.all(
+      approved.map((entry) => settleToolCall(entry.effective, opts, maxBytes, toolByName, dispatch)),
+    );
     for (let i = 0; i < settled.length; i++) {
-      const outcome = settled[i]!;
+      const result = settled[i]!;
       const call = approved[i]!.effective;
-      let result: ToolResultMessage;
-      if (outcome.status === 'fulfilled') {
-        result = outcome.value;
-      } else {
-        const reason = errMessage(outcome.reason);
-        result = {
-          id: newId('msg'),
-          ts: Date.now(),
-          role: 'tool',
-          toolCallId: call.id,
-          name: call.name,
-          content: `Error: tool result could not be recorded (${reason})`,
-        };
-      }
       opts.messages.push(result);
       yield { type: 'tool_call_result', turn, call, result };
     }
@@ -144,18 +135,28 @@ type PreflightVerdict =
   | { kind: 'run'; effective: ToolCall };
 
 /**
- * Hook/permission/abort gate for one call, before any execution. Mirrors the
- * pre-execution half of the old serial loop: denied calls produce a result
- * message, aborted calls are recorded as skipped.
+ * Hook/permission/abort gate for one call, before any execution.
+ *
+ * The chain runs to a FIXPOINT: the approval gate judges inside it, so a single
+ * pass would judge the original args while a later `rewrite` decided what
+ * executes. A non-converging rewriter is denied rather than looped.
  */
 async function preflightToolCall(call: ToolCall, opts: AgentOptions): Promise<PreflightVerdict> {
   // Queued-but-unstarted tools are recorded as skipped so the assistant
   // tool_calls keep their required result messages.
   if (opts.signal?.aborted) return { kind: 'skip' };
 
+  // WHICH run this call belongs to, captured once and handed to every hook
+  // round. A hook that decides something session-specific (the approval gate
+  // reading a permission tier) must read it from here: one kernel runs several
+  // sessions concurrently, so "the current session" is a UI selection and would
+  // let one conversation's tier decide another's call.
+  const scope: ToolCallScope = opts.sessionId === undefined ? {} : { sessionId: opts.sessionId };
+
   let effective = call;
-  if (opts.hooks?.beforeToolCall) {
-    const verdict = await opts.hooks.beforeToolCall(call);
+  for (let round = 0; ; round++) {
+    if (opts.hooks?.beforeToolCall === undefined) break;
+    const verdict = await opts.hooks.beforeToolCall(effective, scope);
     // Defense in depth: the composed host already validates, but AgentHooks
     // is a public interface — a hand-rolled implementation bypasses the host.
     // A malformed verdict fails closed (deny), never guessed into execution.
@@ -167,19 +168,42 @@ async function preflightToolCall(call: ToolCall, opts: AgentOptions): Promise<Pr
       const reason = verdict.reason !== undefined && verdict.reason.length > 0 ? `: ${verdict.reason}` : '';
       return { kind: 'deny', content: `Permission denied${reason}` };
     }
-    // Trust seam: the rewrite lands AFTER the permission gate inside
-    // beforeToolCall has already judged the ORIGINAL args — the rewritten
-    // call is not re-gated (host.ts composes gate then hooks; no built-in
-    // plugin rewrites today).
-    if (verdict.action === 'rewrite') {
-      effective = { ...call, args: verdict.args, rawArgs: JSON.stringify(verdict.args) };
+    if (verdict.action === 'allow') break;
+    // `rewrite`: the gate inside the chain judged the arguments it was handed,
+    // so the NEW arguments must be judged again. Settle when they no longer
+    // change (an idempotent rewriter is normal); give up, fail-closed, when
+    // they keep changing.
+    if (canonicalJson(effective.args) === canonicalJson(verdict.args)) break;
+    if (round >= MAX_TOOL_REWRITE_ROUNDS) {
+      return {
+        kind: 'deny',
+        content: 'Permission denied: tool arguments were rewritten without settling (possible rewrite loop)',
+      };
     }
+    effective = { ...effective, args: verdict.args, rawArgs: JSON.stringify(verdict.args) };
   }
 
   // An abort that arrived while waiting on the approval prompt must not
   // run the just-approved tool.
   if (opts.signal?.aborted) return { kind: 'skip' };
   return { kind: 'run', effective };
+}
+
+/** How many times a call's arguments may change before the gate gives up. */
+const MAX_TOOL_REWRITE_ROUNDS = 4;
+
+/**
+ * Order-independent JSON for the rewrite fixpoint test: a rewriter that hands
+ * back the same object with its keys in a different order has not changed
+ * anything and must settle, not loop.
+ */
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(',')}}`;
 }
 
 function deniedResult(opts: AgentOptions, call: ToolCall, content: string): ToolResultMessage {
@@ -290,7 +314,9 @@ async function executeTool(
         ...(opts.jobs !== undefined ? { jobs: opts.jobs } : {}),
         ...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
         ...(opts.emit !== undefined ? { emit: opts.emit } : {}),
-        ...(opts.onToolProgress !== undefined ? { onProgress: opts.onToolProgress } : {}),
+        ...(opts.onToolProgress !== undefined
+          ? { onProgress: (text: string) => opts.onToolProgress?.(call, text) }
+          : {}),
         ...(dispatch !== undefined ? { dispatch } : {}),
       });
     } catch (err) {
@@ -343,6 +369,28 @@ async function executeTool(
     }
     void run.then((value) => settle(value));
   });
+}
+
+/** `completeToolCall` with a guaranteed result: a failure in execute, the after-hook, spill or meta becomes a recorded error result, so one result per call always lands. */
+async function settleToolCall(
+  call: ToolCall,
+  opts: AgentOptions,
+  maxBytes: number,
+  toolByName: Map<string, ToolDefinition>,
+  dispatch?: ToolDispatcher,
+): Promise<ToolResultMessage> {
+  try {
+    return await completeToolCall(call, opts, maxBytes, toolByName, dispatch);
+  } catch (err) {
+    return {
+      id: newId('msg'),
+      ts: Date.now(),
+      role: 'tool',
+      toolCallId: call.id,
+      name: call.name,
+      content: `Error: tool result could not be recorded (${errMessage(err)})`,
+    };
+  }
 }
 
 /** Execute one approved call and produce its log-ready result message. */

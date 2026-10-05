@@ -28,7 +28,6 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, TrashIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { SettingsSection } from './Section.js';
-import { StepHeading } from './StepHeading.js';
 import { cls } from '../sidebar/view.js';
 import type { ClientFrame, ConfiguredModel } from '../types.js';
 import type { ModelConfigSnapshot } from '../state.js';
@@ -337,12 +336,16 @@ export function ModelConfigEditor({ config, writable, send }: ModelConfigEditorP
 
   return (
     <SettingsSection>
-      {/* Step 3: 逐字段覆盖能力。 */}
-      <StepHeading
-        step={3}
-        title={SETTINGS_COPY['models.configTitle']}
-        intro={SETTINGS_COPY['models.configIntro']}
-      />
+      {/* 逐字段覆盖能力是进阶操作，默认收进一张「高级」折叠：主路（填密钥、选
+          模型）不再被一份空的参数表打断。折叠用原生 `details`——收起是浏览器的
+          事，不是第二份状态。 */}
+      <details className={css.advanced} data-model-advanced>
+        <summary className={css.advancedSummary}>
+          <ChevronRightIcon className={css.advancedChevron} />
+          <span className={css.advancedTitle}>{SETTINGS_COPY['models.configTitle']}</span>
+          <span className={css.advancedHint}>{SETTINGS_COPY['models.configIntro']}</span>
+        </summary>
+        <div className={css.advancedBody}>
       <p className={css.notice}>
         {stored.length === 0 ? SETTINGS_COPY['models.configInherited'] : SETTINGS_COPY['models.configTakeover']}
       </p>
@@ -563,6 +566,8 @@ export function ModelConfigEditor({ config, writable, send }: ModelConfigEditorP
         </button>
         {!writable && <span className={css.readOnly}>{SETTINGS_COPY['models.configReadOnly']}</span>}
       </div>
+        </div>
+      </details>
     </SettingsSection>
   );
 }

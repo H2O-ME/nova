@@ -84,8 +84,20 @@ export function kernelPlugins(env: Environment, opts: CreateKernelOptions): Plug
     // answerer means nobody can answer: the fail-closed end, where the tool
     // reports NO_PROVIDER instead of parking a run no card can release.
     askUser: {
-      ask: () =>
-        env.root.get(userQuestionsKey)?.answerer() ?? (opts.userQuestions === true ? env.questions.asker : undefined),
+      ask: (sessionId) => {
+        // The conversation that asked owns the question: its broker parks ITS
+        // run and its own surface answers over ITS event stream. Routing this
+        // through a kernel-wide broker put A's question card on B — and, in the
+        // browser case, put a bot peer's question on a stream no human follows.
+        const session = sessionId === undefined ? undefined : env.root.get(sessionsKey)?.get(sessionId);
+        if (session !== undefined) {
+          return session.answersQuestions ? session.questions.asker : undefined;
+        }
+        // No session (an embedder driving the loop directly): the assembly-level
+        // seam answers, and the surface in force decides whether anyone can.
+        if (opts.userQuestions === true) return env.questions.asker;
+        return env.root.get(userQuestionsKey)?.answerer();
+      },
     },
     // The goal's live value is a SESSION fact (the log is its only store), and a
     // plugin's `apply(ctx)` has no session handle, so it is wired at the

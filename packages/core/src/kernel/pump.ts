@@ -22,6 +22,14 @@ export class EventPump {
   private readonly consumers = new Set<AsyncConsumer>();
   private readonly listeners = new Set<(event: KernelEvent) => void>();
   private closed = false;
+  /**
+   * True while an error reporter is running. The owner's reporter publishes a
+   * `listener_failed` notice back onto this same pump, so a listener that keeps
+   * throwing would otherwise recurse: throw → report → publish → throw → ….
+   * While the flag is set, a nested failure is swallowed instead of reported
+   * again — one report per original failure, however many listeners break.
+   */
+  private reportingError = false;
 
   constructor(private readonly onListenerError?: (err: unknown) => void) {}
 
@@ -33,11 +41,15 @@ export class EventPump {
       } catch (err) {
         // Nothing may escape publish(): a broken listener must not be able to
         // strand the run loop or the approval bridge that is publishing here.
+        if (this.reportingError) continue;
+        this.reportingError = true;
         try {
           this.onListenerError?.(err);
         } catch {
           // A failing reporter is the end of the chain; the notice below is a
           // best-effort channel, not a guarantee.
+        } finally {
+          this.reportingError = false;
         }
       }
     }

@@ -122,6 +122,17 @@ describe('PermissionService always-memory scopes', () => {
     expect(asked).toHaveLength(2); // git status + rm — git log came from memory
   });
 
+  it('an env-assignment prefix is not the granted program: NOVA=1 git status does not grant NOVA=1 rm', async () => {
+    const { ask, asked } = scriptedAsk(['always', 'deny']);
+    const svc = new PermissionService('read-only', ask);
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'NOVA=1 git status' }))).resolves.toBe('allow');
+    // Same program under a different assignment value: still covered by the grant.
+    await expect(svc.check('bash', EXECUTE, call('bash', { command: 'NOVA=2 git log' }))).resolves.toBe('allow');
+    // A DIFFERENT program behind the same prefix must not inherit the grant.
+    await expect(svc.decide('bash', EXECUTE, call('bash', { command: 'NOVA=1 rm -rf /tmp/x' }))).resolves.toBe('deny');
+    expect(asked).toHaveLength(2); // git status + rm — git log came from memory
+  });
+
   it('compound commands are remembered as the whole normalized chain, not their head program', async () => {
     const { ask } = scriptedAsk(['always']);
     const svc = new PermissionService('read-only', ask);

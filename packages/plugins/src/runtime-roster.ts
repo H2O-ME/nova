@@ -38,7 +38,20 @@ import type { CreateKernelOptions, PluginDescriptor, PluginRosterEntry } from '.
 import type { Environment } from './runtime-env.js';
 
 /** (Re)build the tool host and load the tree for the current state. */
-export async function reroster(env: Environment, opts: CreateKernelOptions): Promise<void> {
+export function reroster(env: Environment, opts: CreateKernelOptions): Promise<void> {
+  // One roster at a time. The body re-reads the operator's rows, re-scans the
+  // workspace and then syncs the loader; two of those interleaved would let the
+  // OLDER config snapshot be the one that syncs last, rolling the live tree back
+  // to a state the file no longer describes.
+  const run = env.state.rerosterQueue.then(
+    () => runRoster(env, opts),
+    () => runRoster(env, opts),
+  );
+  env.state.rerosterQueue = run.then(noop, noop);
+  return run;
+}
+
+async function runRoster(env: Environment, opts: CreateKernelOptions): Promise<void> {
   const host = env.state.host ?? new PluginHost(env.state.rootDir, env.root);
   env.state.host = host;
   // The operator's rows are re-read from the document BEFORE the tree is built,
@@ -62,12 +75,15 @@ export async function reroster(env: Environment, opts: CreateKernelOptions): Pro
     permissionGatePlugin,
   ];
   const rows = await buildTree(builtins, env.state.pluginEntries, opts);
-  env.state.rows = rows;
   // Every row goes to the loader, switched-off ones included: `disabled` keeps
   // its place on the panel without creating a fiber, which is exactly what
   // "off" means. A row that could not even be IMPORTED has nothing to activate
   // and is left out — its reason is reported from the tree instead.
   await host.sync(rows.filter((row) => row.error === undefined).map((row) => row.options));
+  // Published only AFTER the sync: `describePlugins` reads these rows against the
+  // live loader, so handing them over before the fibers exist would report every
+  // row as disabled/failed for the duration of the load.
+  env.state.rows = rows;
   if (opts.config.autoCompactTokenLimit !== undefined && opts.perRequestCompact === true) {
     wrapHeadlessCompact(env.hooks(), {
       limit: opts.config.autoCompactTokenLimit,
@@ -78,6 +94,8 @@ export async function reroster(env: Environment, opts: CreateKernelOptions): Pro
     });
   }
 }
+
+function noop(): void {}
 
 /**
  * This build's in-process plugins, built ONCE for the kernel's lifetime.

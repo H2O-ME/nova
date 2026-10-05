@@ -88,15 +88,24 @@ export class EventRegistry {
     };
   }
 
+  /** Listeners for a key, as a snapshot — `on` sorts the live list in place. */
   private listOf(key: EventKey<never[], unknown> | string): Entry[] {
-    return this.entries.get(typeof key === 'string' ? key : key.name) ?? [];
+    return [...(this.entries.get(typeof key === 'string' ? key : key.name) ?? [])];
   }
 
   /** Observe: every listener runs, in order; a throwing listener is contained. */
   emit(key: EventKey<never[], unknown> | string, ...args: unknown[]): void {
+    // `listOf` is already a snapshot (a listener may unregister another mid-dispatch).
     for (const entry of this.listOf(key)) {
       try {
-        entry.listener(...args, noop);
+        const out = entry.listener(...args, noop);
+        // "errors are contained" must cover ASYNC listeners too: a rejected
+        // promise used to escape as an unhandledRejection.
+        if (isThenable(out)) {
+          void Promise.resolve(out).catch((err: unknown) => {
+            this.log('error', `listener for "${name(key)}" rejected: ${errMessage(err)}`);
+          });
+        }
       } catch (err) {
         this.log('error', `listener for "${name(key)}" threw: ${errMessage(err)}`);
       }
@@ -175,6 +184,11 @@ export class EventRegistry {
   bail<Result>(key: EventKey<never[], Result> | string, ...args: unknown[]): Result | undefined {
     for (const entry of this.listOf(key)) {
       const out = entry.listener(...args, noop) as Result;
+      // A promise is always truthy, so an async listener would be returned as
+      // the "decisive" answer — a silent wrong verdict. `bail` is sync-only.
+      if (isThenable(out)) {
+        throw new Error(`"${name(key)}" bail listener returned a promise; bail is synchronous-only`);
+      }
       if (isBailed(out)) return out;
     }
     return undefined;
@@ -192,6 +206,10 @@ function noop(): Promise<never> {
 
 function name(key: EventKey<never[], unknown> | string): string {
   return typeof key === 'string' ? key : key.name;
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return typeof (value as { then?: unknown } | undefined)?.then === 'function';
 }
 
 

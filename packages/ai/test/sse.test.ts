@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSse } from '../src/sse.js';
+import { MAX_SSE_EVENT_CHARS, MAX_SSE_LINE_CHARS, parseSse } from '../src/sse.js';
 
 async function* bytes(...parts: string[]): AsyncIterable<Uint8Array> {
   const encoder = new TextEncoder();
@@ -32,4 +32,35 @@ describe('parseSse', () => {
     const datas = await collect(bytes('data: tail'));
     expect(datas).toEqual(['tail']);
   });
+
+  it('treats a lone CR as a line ending (SSE spec)', async () => {
+    // Killing test: dropping the CR branch makes this hang on one event.
+    const datas = await collect(bytes('data: a\r\rdata: b\r\r'));
+    expect(datas).toEqual(['a', 'b']);
+  });
+
+  it('keeps a CRLF split across two chunks as one line break', async () => {
+    // Killing test: treating the LF after a chunk-boundary CR as a blank line
+    // emits 'a' prematurely and yields TWO events instead of one.
+    const datas = await collect(bytes('data: a\r', '\ndata: b\n\n'));
+    expect(datas).toEqual(['a\nb']);
+  });
+
+  it('throws when one event exceeds the size bound', async () => {
+    // Killing test: without the bound the parser accumulates without limit. Each
+    // line stays under the LINE bound, so this exercises the EVENT bound — the
+    // single-oversized-line case is the next test.
+    const half = 'x'.repeat(Math.floor(MAX_SSE_EVENT_CHARS / 2) + 1);
+    const huge = `data: ${half}\ndata: ${half}\n\n`;
+    await expect(collect(bytes(huge))).rejects.toThrow(/SSE event exceeded/);
+  });
+
+  it('throws when a single unterminated line exceeds the bound', async () => {
+    // Killing test: the event cap only counts `data:` payloads, so a line that
+    // never ends — a gateway that sends no newline, or a giant comment — grew the
+    // parser's `line` buffer without bound and never tripped it.
+    const huge = `:${'x'.repeat(MAX_SSE_LINE_CHARS + 1)}`;
+    await expect(collect(bytes(huge))).rejects.toThrow(/SSE line exceeded/);
+  });
 });
+

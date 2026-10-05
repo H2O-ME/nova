@@ -2,14 +2,16 @@
  * A hand-rolled WebSocket CLIENT for `packages/web` tests: handshake + masked
  * frames + server-frame decode, with no external `ws` dependency.
  *
- * Shared rather than copied because it is the second opinion on `src/ws.ts`
- * (an independent implementation of the same RFC 6455 subset) and because two
- * copies would drift: the auth handshake — cookie header on the upgrade — is
- * exactly the part a re-implementation gets subtly wrong.
+ * Deliberately independent of the server end: it is the second opinion on the
+ * wire contract, and the auth handshake — cookie header on the upgrade — is
+ * exactly the part a re-implementation gets subtly wrong. The key below is a
+ * REAL 16-byte base64 value (the RFC 6455 example nonce): the `ws` library the
+ * server end now uses validates the handshake per protocol, so a fake key
+ * would be answered with a 400 before any frame could flow.
  */
 import { connect } from 'node:net';
+import { createHash } from 'node:crypto';
 import type { ServerFrame } from '../../src/protocol.js';
-import { acceptKey } from '../../src/ws.js';
 
 export interface WsClient {
   nextFrame(): Promise<ServerFrame | undefined>;
@@ -17,7 +19,9 @@ export interface WsClient {
   destroy(): void;
 }
 
-const WS_KEY = 'testkey0123456789abcdefghij';
+const WS_KEY = 'dGhlIHNhbXBsZSBub25jZQ==';
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+const WS_ACCEPT = createHash('sha1').update(WS_KEY + WS_GUID).digest('base64');
 
 /** Upgrade `/ws` (cookie-gated) and resolve once the 101 is verified. */
 export function wsHandshake(
@@ -52,7 +56,7 @@ export function wsHandshake(
           socket.destroy();
           return;
         }
-        if (!head.includes(`Sec-WebSocket-Accept: ${acceptKey(WS_KEY) ?? ''}`)) {
+        if (!head.includes(`Sec-WebSocket-Accept: ${WS_ACCEPT}`)) {
           rejectPromise(new Error('bad accept header'));
           socket.destroy();
           return;

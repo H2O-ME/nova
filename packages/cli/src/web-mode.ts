@@ -21,12 +21,13 @@ import { cliVersion } from './version.js';
 import type { Config } from './config.js';
 import { loadConfigWithDiagnostics } from './config.js';
 import { createProvider, configuredModel } from './kernel-boot.js';
-import { readProviders, saveProviders, storedApiKey } from './config-providers.js';
+import { readProviders, saveProviders, readActiveProvider, resolveStoredKey } from './config-providers.js';
 import { resolveProvider } from './provider-store.js';
 import { createModelCatalogPort } from './model-catalog.js';
 import { createModelMetaStore } from './model-meta.js';
 import { readModels, saveModels } from './config-models.js';
 import { readPluginEntryConfig, saveModelChoice, setPluginEntry, setSkillEnabled } from './config-write.js';
+import { switchableProvider } from './live-provider.js';
 import type { BuiltinSurface } from './surface-host.js';
 
 export interface WebSurfaceDeps {
@@ -46,6 +47,13 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
      * `afterBoot`——所以它经这个 holder 回填。
      */
     live: { kernel?: Kernel };
+    /**
+     * The provider id the boot-time client was built to serve, or undefined when
+     * boot built no client (the placeholder shell). The controller tracks the
+     * APPLIED id from here: the file's `activeProvider` can name an id the
+     * process never applied, and "already in force" must not read the file.
+     */
+    providerId?: string;
     /** Plugin asset route registry (built here, fed into the kernel + the HTTP server). */
     routes: WebRouteRegistry;
   } = { model: '', live: {}, routes: new WebRouteRegistry() };
@@ -81,9 +89,11 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
           persistProviders: (entries, activeId) => saveProviders(entries, activeId),
           readProviders: () => readProviders(),
           // 密钥只在**服务端需要发请求**时才被取用（切端点、复测已存端点）；快照里
-          // 只有 `hasApiKey`，明文永不进浏览器。
-          storedApiKey: (id) => storedApiKey(id),
+          // 只有 `hasApiKey`，明文永不进浏览器。`{env:NAME}` 引用在这里展开——磁盘上
+          // 是 RAW 引用，服务端请求前是已解析的密钥；未设置的变量被点名拒绝，零 fetch。
+          storedApiKey: (id) => resolveStoredKey(id),
           configuredModel: () => configuredModel(config),
+          initialProviderId: shared.providerId,
           staticDir: webStaticDir(),
           ...webPort(),
         });
@@ -98,45 +108,75 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
         await new Promise<never>(() => undefined);
       },
     },
-    boot: {
-      kernel: async () => {
-        // A first run has NO endpoint configured: the product must still start, show
-        // the empty shell, and let the settings page write the first provider. So the
-        // client is built when one exists and otherwise left out — the assembly gets
-        // the refusing `unconfiguredProvider()` placeholder instead.
-        const endpoint = resolveProvider(config);
-        const client = endpoint === undefined ? undefined : await createProvider(config);
-        // The model in force is the CLIENT's, not the config's: `createProvider`
-        // reconciled it against the endpoint's own catalog (a config that differs only
-        // in case is a name the endpoint does not serve). Everything downstream — the
-        // label, the gauge's denominator, the kernel's `llm` service — must read the
-        // spelling that will actually be sent.
-        const model = client?.model ?? '';
-        shared.model = model;
-        // One metadata store for the whole process: the gauge's denominator and the
-        // model picker's labels both read it (cache, offline fallback, best-effort).
-        const meta = createModelMetaStore();
-        // One lookup at boot: the gauge's denominator (config override first, else
-        // the models.dev catalog — an unknown model renders without a percentage
-        // rather than guessing a window) and the picker's label for the model in
-        // force. Both are the surface's metadata half; best-effort either way.
-        const boot =
-          endpoint === undefined || model.length === 0
-            ? undefined
-            : await meta.lookup(model, endpoint.baseURL).catch(() => undefined);
-        shared.contextWindow = endpoint?.contextWindow ?? boot?.contextWindow;
-        shared.providerModelName = boot?.displayName;
+      boot: {
+        kernel: async () => {
+          // A first run has NO endpoint configured: the product must still start, show
+          // the empty shell, and let the settings page write the first provider. The
+          // assembly gets a SWITCHABLE provider whose initial target is the real
+          // client when one exists and the refusing placeholder otherwise — so the
+          // settings page's first save can install a client into the SAME instance
+          // the kernel's `llm` service already handed out, instead of leaving every
+          // session talking to a refusal until a restart.
+          const endpoint = resolveProvider(config);
+          const client = endpoint === undefined ? undefined : await createProvider(config);
+          if (client !== undefined) {
+            // The applied id comes from the same reader the page uses (legacy
+            // `provider` block → the `default` row, dangling ids fall back) —
+            // boot does not re-derive which row is active.
+            shared.providerId = (await readProviders().catch(() => undefined))?.activeId;
+          }
+          const live = switchableProvider(client ?? unconfiguredProvider(), async () => {
+            // Rebuild from the FILE (the settings page persisted before this runs).
+            const fresh = await loadConfigWithDiagnostics();
+            const built = await createProvider(fresh.config);
+            if (built.model === '') {
+              // No model chosen yet: take the endpoint's own first id rather than
+              // send model-less requests. The picker remains the way to change it.
+              const available = await built.listModels?.(5_000).catch(() => [] as string[]);
+              const first = available?.[0];
+              if (first !== undefined) built.setModel(first);
+            }
+            return built;
+          });
+          // The model in force is the CLIENT's, not the config's: `createProvider`
+          // reconciled it against the endpoint's own catalog (a config that differs only
+          // in case is a name the endpoint does not serve). Everything downstream — the
+          // label, the gauge's denominator, the kernel's `llm` service — must read the
+          // spelling that will actually be sent.
+          const model = client?.model ?? '';
+          shared.model = model;
+          // One metadata store for the whole process: the gauge's denominator and the
+          // model picker's labels both read it (cache, offline fallback, best-effort).
+          const meta = createModelMetaStore();
+          // One lookup at boot: the gauge's denominator (config override first, else
+          // the models.dev catalog — an unknown model renders without a percentage
+          // rather than guessing a window) and the picker's label for the model in
+          // force. Both are the surface's metadata half; best-effort either way.
+          const boot =
+            endpoint === undefined || model.length === 0
+              ? undefined
+              : await meta.lookup(model, endpoint.baseURL).catch(() => undefined);
+          shared.contextWindow = endpoint?.contextWindow ?? boot?.contextWindow;
+          shared.providerModelName = boot?.displayName;
 
-        // 壳交给内核的额外插件行：只有资产路由注册表——`web` 包本身不认识任何渠道，
-        // 每行都带自己 config 用的 id。插件经 `ctx.must(routes)` 写入，HTTP 处理器经
-        // 同一个实例分派；没有 per-plugin 特例。
-        const extraPlugins = [{ id: 'routes', plugin: routeRegistryProvider(shared.routes) }];
-        return {
-          provider: client ?? unconfiguredProvider(),
+          // 壳交给内核的额外插件行：只有资产路由注册表——`web` 包本身不认识任何渠道，
+          // 每行都带自己 config 用的 id。插件经 `ctx.must(routes)` 写入，HTTP 处理器经
+          // 同一个实例分派；没有 per-plugin 特例。
+          const extraPlugins = [{ id: 'routes', plugin: routeRegistryProvider(shared.routes) }];
+          return {
+            provider: live,
           // The list reader is LIVE (re-reads the raw file per menu open): the settings
           // page rewrites `models[]` while this process runs, so a captured array would
-          // keep offering the pre-edit catalog until a restart.
-          modelCatalog: createModelCatalogPort(config, meta, model, () => readModels()),
+          // keep offering the pre-edit catalog until a restart. The ACTIVE provider's
+          // own list wins when it carries one — the menu must describe the endpoint
+          // the requests actually go to (A and B often share ids, rarely meanings).
+          modelCatalog: createModelCatalogPort(
+            config,
+            meta,
+            model,
+            () => readModels(),
+            () => readActiveProvider(),
+          ),
           // The settings panel's switches write through the same raw-document
           // patchers (never the expanded Config), so `{env:NAME}` references in the
           // file survive a toggle from the browser. There is ONE row writer, addressed

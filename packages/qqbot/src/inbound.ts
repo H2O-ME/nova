@@ -9,7 +9,7 @@
 import { errMessage } from '@nova-agent/core';
 import { parseInbound, type Peer, type QqBotChannelStats } from './types.js';
 import type { QqGatewayOptions } from './protocol.js';
-import { sendReply } from './reply.js';
+import { sendReply, type ReplySink } from './reply.js';
 
 /** 被动回复窗口（略短于官方上限，留出网络余量）：群 5 分钟、单聊 60 分钟。 */
 const GROUP_WINDOW_MS = 4.5 * 60_000;
@@ -17,11 +17,6 @@ const C2C_WINDOW_MS = 55 * 60_000;
 /** 事件去重缓存上限（同一 msg_id 可能重复推送）。 */
 const DEDUPE_CAP = 512;
 
-/** 一条出站回复的落地方式（`QqApi` 的两条分支，由通道注入）。 */
-export interface ReplySink {
-  group(openid: string, content: string, msgId: string): Promise<number>;
-  c2c(openid: string, content: string, msgId: string): Promise<number>;
-}
 
 export interface InboundHandlerOptions {
   /** 回复文本的生产者（运行方的 agent 大脑）。 */
@@ -57,8 +52,45 @@ export class InboundHandler {
   private lastReceivedAt: number | undefined;
   /** 全局串行：低流量场景下避免并发 brain 调用竞争共享 client 会话亲和。 */
   private queue: Promise<void> = Promise.resolve();
+  /**
+   * Terminal shutdown latch.
+   *
+   * A channel that has been switched off must stop doing things: no new message
+   * may start a turn, and nothing already queued may go on to reach the model or
+   * the platform. Without this the serial queue kept draining after `stop()` — a
+   * released turn still answered, and the message behind it ran a whole fresh
+   * turn — so the row that was switched off kept operating the machine.
+   *
+   * Work already INSIDE `brain` is not killed here: cancelling that belongs to
+   * whoever owns the session (`PeerTurns.dispose` aborts its peers), and the
+   * channel must not pretend to a cancellation it cannot perform.
+   */
+  private closed = false;
 
   constructor(private readonly options: InboundHandlerOptions) {}
+
+  /** Whether this handler has been shut down (terminal). */
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
+  /**
+   * Shut down for good: refuse new work, drop the queues and the passive windows,
+   * and make every in-flight continuation stop before its next side effect.
+   *
+   * The windows are cleared because they are the CREDENTIALS to send on this
+   * channel's behalf: a stopped channel must not be able to hand anybody a
+   * still-valid `msg_id`. Queued text is dropped rather than run — the turn it
+   * would have started has no channel to answer on, and running it anyway would
+   * execute tools on behalf of a channel that is supposed to be gone.
+   */
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.passive.clear();
+    this.dedupe.clear();
+    this.queue = Promise.resolve();
+  }
 
   /** 本次运行的收发计数（设置页的连接读数；重启归零，不是历史累计）。 */
   stats(): QqBotChannelStats {
@@ -75,6 +107,7 @@ export class InboundHandler {
    * @returns 可用的 msg_id，或 undefined。
    */
   msgIdOf(peerId: string): string | undefined {
+    if (this.closed) return undefined;
     const hit = this.passive.get(peerId);
     if (hit === undefined) return undefined;
     const window = peerId.startsWith('group:') ? GROUP_WINDOW_MS : C2C_WINDOW_MS;
@@ -84,6 +117,7 @@ export class InboundHandler {
 
   /** 网关 dispatch 的入口（与 `QqGatewayOptions.onDispatch` 同形）。 */
   readonly onDispatch: QqGatewayOptions['onDispatch'] = (event) => {
+    if (this.closed) return;
     const inbound = parseInbound(event.t, event.d);
     if (inbound === undefined) return;
     const { peer, message } = inbound;
@@ -103,27 +137,33 @@ export class InboundHandler {
     // 遥控指令走队列**之外**的旁路：见 `InboundHandlerOptions.remote` —— 排队会让
     // 一条审批答复永远堵在它自己所等的那一轮后面。
     if (this.options.remote?.claim(text, peer) === true) {
-      void this.runRemote(text, peer, message.id);
+      void this.runRemote(text, peer);
       return;
     }
-    this.queue = this.queue.then(() => this.replyOnce(text, peer, message.id)).catch(() => undefined);
+    this.queue = this.queue.then(() => this.replyOnce(text, peer)).catch(() => undefined);
   };
 
   /** 旁路执行一条遥控指令，并把它的答复按被动窗口发回去。 */
-  private async runRemote(text: string, peer: Peer, msgId: string): Promise<void> {
+  private async runRemote(text: string, peer: Peer): Promise<void> {
     const { remote, reply, log } = this.options;
     if (remote === undefined) return;
     try {
       const answer = await remote.handle(text, peer);
+      // A shutdown that landed while the command ran wins: its answer describes a
+      // channel that is no longer there.
+      if (this.closed) return;
       // `undefined` = 这条指令没有立即答复（例如它已经自己发过消息了）。
       if (answer === undefined) return;
-      if (await sendReply(reply, log, peer, answer, msgId, 'remote')) this.replied += 1;
+      if (await sendReply(reply, log, peer, answer, 'remote')) this.replied += 1;
     } catch (err) {
       log(`remote failed for ${peer.peerId}: ${errMessage(err)}`);
     }
   }
 
-  private async replyOnce(text: string, peer: Peer, msgId: string): Promise<void> {
+  private async replyOnce(text: string, peer: Peer): Promise<void> {
+    // Queued behind an earlier turn — the channel may have been switched off in
+    // the meantime, in which case this message must not reach the model at all.
+    if (this.closed) return;
     const { brain, reply, log } = this.options;
     let answer: string;
     try {
@@ -132,6 +172,9 @@ export class InboundHandler {
       log(`brain failed for ${peer.peerId}: ${errMessage(err)}`);
       answer = '（处理消息时出错，请稍后重试）';
     }
-    if (await sendReply(reply, log, peer, answer, msgId, 'replied')) this.replied += 1;
+    if (this.closed) return;
+    if (await sendReply(reply, log, peer, answer, 'replied')) this.replied += 1;
   }
 }
+
+

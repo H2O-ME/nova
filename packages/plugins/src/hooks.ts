@@ -11,25 +11,25 @@
  *  - `beforeLLMCall` is a waterfall: a hook that wraps the request calls
  *    `next()`, one that merely transforms it calls `next(rewritten)`.
  *  - `beforeToolCall` is serial and first-decisive-wins, with the approval
- *    gate registered at high priority (see `permissionGatePlugin`) so
- *    permission is settled before any other hook sees the call.
+ *    gate registered at high priority (see `permission-gate.ts`) so
+ *    permission is settled before any other hook sees the call. The call's
+ *    `ToolCallScope` is forwarded verbatim, because the gate decides with the
+ *    engine of the session that issued the call.
  *  - `afterToolResult` is a waterfall over the result text.
  */
 import {
   afterToolResult as afterToolResultEvent,
-  approval as approvalKey,
   beforeLlmCall as beforeLlmCallEvent,
   beforeToolCall as beforeToolCallEvent,
   beforeTurnEnd as beforeTurnEndEvent,
-  tools as toolsKey,
+  errMessage,
   type AgentHooks,
   type BeforeTurnEndContext,
   type BeforeTurnEndVerdict,
   type ChatRequest,
   type Context,
-  type Listener,
-  type Plugin,
   type ToolCall,
+  type ToolCallScope,
   type ToolCallVerdict,
   validateToolCallVerdict,
 } from '@nova-agent/core';
@@ -62,8 +62,15 @@ function buildHooks(ctx: Context): AgentHooks {
       assertToolSetUnchanged(before, out);
       return out;
     },
-    beforeToolCall: async (call: ToolCall): Promise<ToolCallVerdict> => {
-      const verdict = await ctx.serial(beforeToolCallEvent, call);
+    beforeToolCall: async (call: ToolCall, scope?: ToolCallScope): Promise<ToolCallVerdict> => {
+      let verdict: ToolCallVerdict | undefined;
+      try {
+        verdict = await ctx.serial(beforeToolCallEvent, call, scope ?? {});
+      } catch (err) {
+        // A throwing/rejecting hook has proven itself untrustworthy; fail
+        // closed with an actionable reason instead of aborting the whole run.
+        return { action: 'deny', reason: `hook failed: ${errMessage(err)}` };
+      }
       if (verdict === undefined) return { action: 'allow' };
       const malformed = validateToolCallVerdict(verdict);
       if (malformed !== undefined) {
@@ -86,32 +93,12 @@ function buildHooks(ctx: Context): AgentHooks {
 }
 
 /**
- * The approval gate as a plugin: it inserts itself into the `tool/before`
- * chain at the highest priority, so permission is settled before any other
- * hook runs — and a later hook can still veto or rewrite. It reads the registry
- * and the gate from the container (both declared in `inject`), so replacing
- * either one re-points the gate instead of stranding it on a captured handle.
+ * The approval gate lives in its own module (`permission-gate.ts`): it is a
+ * DECISION about one call, not part of how the chains are composed. Re-exported
+ * here because this module is the package's hook seam and every existing
+ * importer reads the gate from it.
  */
-export const permissionGatePlugin: Plugin = {
-  name: 'approval-gate',
-  manifest: { title: '审批门', description: '在工具执行前按权限档位裁定放行、拒绝或询问；优先级最高。', tier: 'core' },
-  inject: [toolsKey, approvalKey],
-  apply: (ctx: Context): void => {
-    const registry = ctx.must(toolsKey);
-    const gate = ctx.must(approvalKey);
-    const listener: Listener<[ToolCall], ToolCallVerdict | undefined> = async (call) => {
-      const kind = await registry.permissionFor(call.name, call.args);
-      if (kind === undefined) return undefined;
-      const decision = await gate.decideDetailed(call.name, kind, call);
-      if (decision === 'allow') return undefined;
-      return {
-        action: 'deny',
-        reason: decision.reason !== undefined ? `by user: ${decision.reason}` : 'by user',
-      };
-    };
-    ctx.on(beforeToolCallEvent, listener, { priority: 1000 });
-  },
-};
+export { permissionGatePlugin } from './permission-gate.js';
 
 /**
  * Prefix-cache and reach guard: the tool array's wire order is dictionary

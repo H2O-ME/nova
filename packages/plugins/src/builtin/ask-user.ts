@@ -37,13 +37,17 @@ import { registerTool } from '../toolbox.js';
  */
 export interface AskUserPluginOptions {
   /**
-   * Resolve the answerer AT CALL TIME. A thunk, not the answerer itself, and not
-   * a boolean decided at assembly: "can this surface ask a human?" is now a
-   * container service (`userQuestions`), so the tool reads the live answer
-   * instead of a copy taken when the roster was built. Returning `undefined`
-   * means nobody can answer here, and every call reports `NO_PROVIDER` verbatim.
+   * Resolve the answerer AT CALL TIME, for the session that made the call.
+   *
+   * A thunk, not the answerer itself, and not a boolean decided at assembly:
+   * "can this conversation ask a human?" is a per-session fact (a bot peer inside
+   * a browser-hosted kernel has an answerer in the process but nobody watching
+   * ITS stream), so the answer is read live from the session named by the call's
+   * scope. Returning `undefined` means nobody can answer here, and every call
+   * reports `NO_PROVIDER` verbatim.
+   * @param sessionId - the session that issued the call, when it has one.
    */
-  ask?: () => AskQuestionsFn | undefined;
+  ask?: (sessionId?: string) => AskQuestionsFn | undefined;
 }
 
 const DESCRIPTION =
@@ -223,10 +227,11 @@ export function askUserPlugin(options: AskUserPluginOptions = {}): Plugin {
           async execute(args, c: ToolExecuteContext) {
             const questions = parseQuestions(args['questions']);
             if (typeof questions === 'string') return questions;
-            // Read the live answerer per call (see `AskUserPluginOptions.ask`):
-            // a surface that gains or loses its human mid-process is reflected
-            // without rebuilding the roster.
-            const answerer = ask?.();
+            // Read the live answerer per call, for the session that asked (see
+            // `AskUserPluginOptions.ask`): a surface that gains or loses its human
+            // mid-process, and a kernel driving several conversations at once,
+            // are both reflected without rebuilding the roster.
+            const answerer = ask?.(c.sessionId);
             if (answerer === undefined) return `Error: ${new UserQuestionError('NO_PROVIDER').message}`;
             try {
               const answer = await answerer(questions, c.signal);

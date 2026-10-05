@@ -23,6 +23,7 @@ import {
   shell as shellKey,
   spill as spillKey,
   tools as toolsKey,
+  userQuestions as userQuestionsKey,
   type AgentHooks,
   type AgentSession,
   type ApprovalBroker,
@@ -43,7 +44,9 @@ import type { CreateKernelOptions, PluginRosterEntry } from './runtime-types.js'
 import type { PluginEntryConfig } from './plugin-tree.js';
 import type { PluginRow } from './plugin-tree.js';
 import { jobListener } from './job-listener.js';
-import { makeApprovalWiring, makeQuestionBridge, openAgentSession, type PermissionService } from './runtime-session.js';
+import { openAgentSession, type OpenSessionOptions, type PermissionService } from './runtime-session.js';
+import { makeKernelAskWiring, kernelAskAudit } from './session-ask.js';
+import type { ApprovalPolicyCell } from './permission.js';
 import { executionEnvironmentProvider, pluginConfigProvider, pluginRpcProvider } from './plugin-services.js';
 import {
   approvalProvider,
@@ -56,7 +59,6 @@ import {
   surfaceRegistryProvider,
   userQuestionsProvider,
 } from './services.js';
-
 /** What the assembly mutates: the parts a workspace/mode change re-points. */
 export interface State {
   rootDir: string;
@@ -98,8 +100,13 @@ export interface State {
    * snapshot for headless/embedded kernels, which have no file to re-read.
    */
   pluginEntries: readonly PluginEntryConfig[];
-  /** Where `pluginEntries` is re-read from, when there is a config file. */
-  readPluginEntries: (() => Promise<readonly PluginEntryConfig[]>) | undefined;
+  /**
+   * Serializes `reroster` runs. A roster is read-entries → load-workspace →
+   * build tree → `host.sync`; two of them running at once (a workspace switch
+   * racing a settings save) can interleave so that the OLDER config snapshot is
+   * the one that syncs last, silently rolling the live tree back.
+   */
+  rerosterQueue: Promise<void>;
   /**
    * This build's in-process plugins, built ONCE per kernel.
    *
@@ -131,14 +138,34 @@ export interface Environment {
   state: State;
   jobs: JobRegistry;
   provider: ChatProvider;
+  /**
+   * The KERNEL-level approval broker, used only for calls that belong to no
+   * session (an embedder driving the loop directly, a kernel test). Every real
+   * conversation gets its OWN broker from `openSession`, because
+   * `ApprovalBroker.attach` holds one publisher: a shared broker meant the newest
+   * session stole the card of whatever ask was already outstanding.
+   */
   bridge: ApprovalBroker;
   /**
-   * The question seam. It lives on the env rather than per session because the ask
-   * tool is registered once per roster and must point at the kernel's ONE broker —
-   * a per-session broker would be answered by a surface holding the wrong handle.
+   * The KERNEL-level question seam, same role as `bridge`: the fallback for a
+   * session-less `ask_user_question` call. A real conversation asks through its
+   * own broker (`AgentSession.questions`), reached by session id.
    */
   questions: QuestionBroker;
+  /**
+   * The KERNEL-level permission engine: the fallback for session-less calls, and
+   * what `Kernel.permission` answers when no session exists. It shares the ONE
+   * `policyCell` with every session engine, so `setPolicy('never')` still binds
+   * the whole process; its `mode` is deliberately NOT what a conversation uses —
+   * that is per session (`AgentSession.permission`).
+   */
   permission: PermissionService;
+  /**
+   * The process-wide 'ask' | 'never' cell, shared by `permission` and by every
+   * engine `openSession` builds. One cell, so a headless runner's stance cannot
+   * be true for one conversation and false for another.
+   */
+  policyCell: ApprovalPolicyCell;
   systemPrompt: string;
   sessionEnv(): SessionEnvInfo;
   buildFragment(): string;
@@ -146,9 +173,9 @@ export interface Environment {
   /** Re-scan docs + skills for the current workspace root. */
   loadWorkspace(): Promise<SkillMetadata[]>;
   /** The session FACTORY (what the `sessions` provider calls). */
-  openSession(sessionOpts?: { resumeFile?: string; sessionDir?: string }): Promise<AgentSession>;
+  openSession(sessionOpts?: OpenSessionOptions): Promise<AgentSession>;
   /** Open through the service, which is what makes it the current session. */
-  openCurrent(sessionOpts?: { resumeFile?: string; sessionDir?: string }): Promise<AgentSession>;
+  openCurrent(sessionOpts?: OpenSessionOptions): Promise<AgentSession>;
   /** Rebuild the tool host + roster for the current workspace/mode. */
   reroster(): Promise<void>;
   /**
@@ -177,7 +204,7 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
     skillsDisable: [...(config.skillsDisable ?? [])],
     rows: [],
     pluginEntries: config.plugins?.entries ?? [],
-    readPluginEntries: opts.persist?.readPluginEntries,
+    rerosterQueue: Promise.resolve(),
     builtins: undefined,
     kernelCommands: undefined,
     surfacePlugins: undefined,
@@ -185,13 +212,20 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
     providers: [],
   };
 
-  const { bridge, permission } = makeApprovalWiring({
+  // ONE policy cell for the whole kernel: `never` says "this process has no
+  // interactive answerer", which is true for every conversation here, while the
+  // TIER is per session. Sharing the cell by reference is what keeps those two
+  // facts from being confused with each other.
+  const policyCell: ApprovalPolicyCell = { policy: 'ask' };
+  const { bridge, questions, permission } = makeKernelAskWiring({
     approval: config.approval,
     rootDir: () => state.rootDir,
-    tools: () => root.get(toolsKey),
-    current: () => root.get(sessionsKey)?.current(),
+    tools: () => root.get(toolsKey)?.all() ?? [],
+    policyCell,
+    // Only session-less calls route here (kernel tests, embedders); a real
+    // conversation audits into its own log (`openAgentSession`).
+    audit: kernelAskAudit(() => root.get(sessionsKey)?.current()),
   });
-  const questions = makeQuestionBridge();
 
   const env: Environment = {
     root,
@@ -201,6 +235,7 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
     bridge,
     questions,
     permission,
+    policyCell,
     systemPrompt,
     sessionEnv: () => ({
       platform: process.platform,
@@ -280,7 +315,7 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
 async function openSession(
   env: Environment,
   opts: CreateKernelOptions,
-  sessionOpts?: { resumeFile?: string; sessionDir?: string },
+  sessionOpts?: OpenSessionOptions,
 ): Promise<AgentSession> {
   const llm = env.root.must(llmKey);
   const jobs = env.root.must(jobsKey);
@@ -288,9 +323,6 @@ async function openSession(
     {
       config: opts.config,
       systemPrompt: env.systemPrompt,
-      bridge: env.bridge,
-      questions: env.questions,
-      permission: env.permission,
       provider: llm.provider,
       rootDir: () => env.state.rootDir,
       tools: () => [...env.root.must(toolsKey).all()],
@@ -298,6 +330,13 @@ async function openSession(
       jobs,
       buildFragment: env.buildFragment,
       cacheDir: (sessionId) => env.root.must(spillKey).dir(sessionId),
+      policyCell: env.policyCell,
+      // The default answer is the surface in force, read LIVE (a plugin flip or a
+      // late-claiming surface must be reflected without reopening the session);
+      // a caller that knows better for its own conversation overrides it.
+      canAskUser:
+        sessionOpts?.canAskUser
+        ?? (() => env.root.get(userQuestionsKey)?.answerer() !== undefined),
       compact: (options: CompactSessionOptions): Promise<CompactedSession> =>
         env.root.must(compactionKey).run(options),
       perRequestCompact: opts.perRequestCompact === true,

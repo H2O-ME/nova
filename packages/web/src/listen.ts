@@ -36,12 +36,18 @@ function listenOnce(server: Server, port: number, opts: StartWebServerOptions): 
         server,
         port: bound,
         url: `http://${opts.host}:${bound}/?t=${opts.auth.token}`,
-        close: () =>
-          new Promise<void>((done) => {
-            opts.controller.dispose().catch(() => undefined);
-            server.closeAllConnections?.();
+        close: async () => {
+          // Teardown FIRST, awaited: the controller owns the kernel, the
+          // session handles and the terminals, and closing the server socket
+          // under them left fibers and PTYs running after `close()` resolved.
+          // Disposing also closes the attached clients, so `server.close`
+          // below does not wait on sockets the shutdown itself ended.
+          await opts.controller.dispose().catch(() => undefined);
+          server.closeAllConnections?.();
+          await new Promise<void>((done) => {
             server.close(() => done());
-          }),
+          });
+        },
       });
     });
   });

@@ -291,6 +291,13 @@ export class PluginLoader {
     }
     const fiber = context.plugin(options.plugin as AnyPlugin, options.config, options.id, options.id);
     managed.fiber = fiber;
+    // A reload that fails at RUNTIME (a provider swap) must land on the row the
+    // panel reads, exactly like a boot-time failure does — otherwise a plugin
+    // that only breaks on reload keeps showing as healthy.
+    fiber.onSettled = (error) => {
+      managed.error = error;
+      if (error !== undefined) this.context.log('error', `plugin "${options.id}" failed to reload: ${error}`);
+    };
     try {
       await fiber.ready;
     } catch (err) {
@@ -310,12 +317,14 @@ export class PluginLoader {
   }
 
   /**
-   * Swap one row's activation, keeping the previous one as the fallback.
+   * Swap one row's activation.
    *
    * A failed activation is not the same as a failed EDIT: the operator changed
-   * something, the new plugin body threw, and the honest outcome is the state
-   * they had before — not a kernel that lost a capability because a config typo
-   * made the replacement explode.
+   * something, the new plugin body threw, and the honest outcome is a ROW that
+   * says so — with its reason — rather than a kernel that lost a capability
+   * silently. The previous row is NOT restored (the doc here used to claim it
+   * was): restoring it would run code the config no longer describes, so the
+   * new row keeps its place on the panel carrying `error`.
    */
   private async replace(options: PluginEntryOptions, previous: ManagedEntry): Promise<void> {
     const parentId = previous.parentId;

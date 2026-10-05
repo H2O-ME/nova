@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  IMAGE_TOKEN_ESTIMATE,
   estimateMessageTokens,
   estimateNextPromptTokens,
   type AssistantMessage,
@@ -45,6 +46,28 @@ describe('estimateMessageTokens', () => {
     // an empty-content assistant turn is otherwise priced as a bare frame.
     expect(estimateMessageTokens(withCalls)).toBeGreaterThan(30_000);
     expect(estimateMessageTokens(withCalls)).toBeLessThan(50_000);
+  });
+  it('prices attached images, which reach the wire as bytes', () => {
+    // Killing test: images were priced as free, so an image-heavy session's
+    // auto-compact gate under-counted the prompt and the next request could
+    // still overflow the provider window.
+    const withImage: UserMessage = {
+      ...userMsg('look'),
+      images: [{ id: 'sha256:abc', mediaType: 'image/png', bytes: 1024 }],
+    };
+    const withoutImage = estimateMessageTokens(userMsg('look'));
+    const withOne = estimateMessageTokens(withImage);
+    expect(withOne - withoutImage).toBe(IMAGE_TOKEN_ESTIMATE);
+  });
+
+  it('prices resolved images once, not on top of their references', () => {
+    const both: UserMessage = {
+      ...userMsg('look'),
+      images: [{ id: 'sha256:abc', mediaType: 'image/png', bytes: 1024 }],
+      resolvedImages: [{ mediaType: 'image/png', data: 'AAAA' }],
+    };
+    const withoutImage = estimateMessageTokens(userMsg('look'));
+    expect(estimateMessageTokens(both) - withoutImage).toBe(IMAGE_TOKEN_ESTIMATE);
   });
 });
 

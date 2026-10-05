@@ -18,6 +18,7 @@ import type { Context } from './context.js';
 import type { Logger } from './events.js';
 import type { ServiceStore } from './store.js';
 import type { Dispose, ResolvedPlugin } from './types.js';
+import { errMessage } from '../errors.js';
 
 export type FiberState = 'pending' | 'loading' | 'active' | 'failed' | 'disposed';
 
@@ -49,9 +50,20 @@ export class Fiber {
   config: unknown;
   /** Settles with the current activation attempt; already settled when sync. */
   ready: Promise<void> = Promise.resolve();
+  /**
+   * Installed by the loader: reports every SETTLED activation (`undefined`
+   * clears, a message reports) so a reload that fails at RUNTIME lands on the
+   * roster row the panel reads. Without it a plugin that only breaks on a
+   * provider swap keeps showing as healthy.
+   */
+  onSettled: ((error: string | undefined) => void) | undefined;
 
   private readonly effects: EffectRecord[] = [];
   private epoch: string | undefined;
+  /** Serializes activations: one teardown+load at a time, per fiber. */
+  private tail: Promise<void> | undefined;
+  /** Monotonic attempt id; a superseded attempt must not commit its outcome. */
+  private attempt = 0;
 
   constructor(
     readonly runtime: Runtime,
@@ -95,29 +107,81 @@ export class Fiber {
    * and remember the attempt. `ready` is the awaitable form.
    */
   start(): Promise<void> {
-    const attempt = this.refresh();
-    this.ready = attempt;
-    // Nobody may be awaiting; a rejection must still be observable.
-    attempt.catch(() => undefined);
-    return attempt;
+    return this.refresh();
   }
 
   /**
-   * Bring the fiber up — or back up after a provider swap. A missing declared
-   * service does not silently skip the plugin: the body still runs, and the
-   * first access to the absent service raises a named error, so a mis-wired
-   * roster fails at boot instead of at the first tool call.
+   * Bring the fiber up — or back up after a provider swap.
+   *
+   * Activations are SERIALIZED per fiber and carry an attempt id: provider churn
+   * can request a reload while an earlier one is still tearing down or running,
+   * and without both properties the second request tears down alongside the first
+   * (double teardown) and then applies a second time (double registration), with
+   * whichever finished last silently winning.
+   *
+   * A missing declared service does not silently skip the plugin: the body still
+   * runs, and the first access to the absent service raises a named error, so a
+   * mis-wired roster fails at boot instead of at the first tool call.
    */
   refresh(): Promise<void> {
-    if (this.state === 'disposed' || this.state === 'loading') return this.ready;
+    if (this.state === 'disposed') return this.ready;
     const epoch = this.currentEpoch();
     if (this.state === 'active' && epoch === this.epoch) return Promise.resolve();
-    const previous = this.state === 'active' ? this.teardown() : undefined;
-    if (previous === undefined) return this.load(epoch);
-    return previous.then(
-      () => this.load(epoch),
-      () => this.load(epoch),
-    );
+    return this.enqueue(epoch);
+  }
+
+  /** Chain one activation behind the previous; the newest attempt supersedes. */
+  private enqueue(epoch: string): Promise<void> {
+    const id = ++this.attempt;
+    const previous = this.tail;
+    const start = (): Promise<void> | undefined => this.step(epoch, id);
+    const outcome = previous === undefined ? start() : previous.then(start, start);
+    if (outcome === undefined) {
+      // Completed inline (a synchronous body): the chain stays idle, so the next
+      // activation in this tick is inline too — a `.then()` hop would defer every
+      // activation by a microtask and break the synchronous contract above.
+      this.ready = Promise.resolve();
+      return this.ready;
+    }
+    this.tail = outcome;
+    this.ready = outcome;
+    const clear = (): void => {
+      if (this.tail === outcome) this.tail = undefined;
+    };
+    outcome.then(clear, clear);
+    outcome.catch(noop);
+    return outcome;
+  }
+
+  /**
+   * Reconcile the fiber to `epoch`, or return `undefined` when it already
+   * finished synchronously (the common case: a body that awaits nothing).
+   */
+  private step(epoch: string, id: number): Promise<void> | undefined {
+    // Disposed, or superseded while queued: the newer attempt owns the outcome.
+    if (this.state === 'disposed' || id !== this.attempt) return undefined;
+    if (this.state === 'active' && epoch === this.epoch) return undefined;
+    if (this.state === 'pending' || this.state === 'failed') {
+      // Nothing live to tear down: a failed activation already unwound itself, so
+      // this stays synchronous — the retry the caller triggers must be visible by
+      // the time `refresh()` returns (a `.then()` hop would defer it a microtask).
+      const run = this.load(epoch, id);
+      return this.settled ? undefined : run;
+    }
+    return this.teardown().then(() => {
+      if (!this.live || id !== this.attempt) return;
+      return this.load(epoch, id);
+    });
+  }
+
+  /** Read fresh (a `state` narrowed before an `await` may be stale after it). */
+  private get live(): boolean {
+    return this.state !== 'disposed';
+  }
+
+  /** True once an activation committed or failed — read past any narrowing. */
+  private get settled(): boolean {
+    return this.state === 'active' || this.state === 'failed';
   }
 
   /** Dispose every registration, newest first. Children go first. */
@@ -132,6 +196,8 @@ export class Fiber {
   async dispose(): Promise<void> {
     if (this.state === 'disposed') return;
     this.state = 'disposed';
+    // Supersede any in-flight activation, so its `finish` cannot resurrect us.
+    this.attempt++;
     await this.teardown();
     this.parent?.children.delete(this);
     this.runtime.fibers.delete(this);
@@ -142,69 +208,78 @@ export class Fiber {
    * `active` before this returns; only an async config schema or an async body
    * defers to a promise.
    */
-  private load(epoch: string): Promise<void> {
+  private load(epoch: string, id: number): Promise<void> {
     this.state = 'loading';
     const schema = this.resolved.config?.['~standard'];
-    if (schema === undefined) return this.runBody(epoch, this.raw);
+    if (schema === undefined) return this.runBody(epoch, id, this.raw);
     let outcome: unknown;
     try {
       outcome = schema.validate(this.raw);
     } catch (err) {
-      return this.fail(err);
+      return this.fail(err, id);
     }
     if (isThenable(outcome)) {
       return Promise.resolve(outcome).then(
-        (settled) => this.runBody(epoch, checked(this.name, settled)),
-        (err: unknown) => this.fail(err),
+        (settled) => this.runBody(epoch, id, checked(this.name, settled)),
+        (err: unknown) => this.fail(err, id),
       );
     }
     let config: unknown;
     try {
       config = checked(this.name, outcome);
     } catch (err) {
-      return this.fail(err);
+      return this.fail(err, id);
     }
-    return this.runBody(epoch, config);
+    return this.runBody(epoch, id, config);
   }
 
-  private runBody(epoch: string, config: unknown): Promise<void> {
+  private runBody(epoch: string, id: number, config: unknown): Promise<void> {
     try {
       const result = this.resolved.run(this.ctx, config);
       if (isThenable(result)) {
         return Promise.resolve(result).then(
           () => {
-            this.finish(epoch, config);
+            this.finish(epoch, id, config);
           },
-          (err: unknown) => this.fail(err),
+          (err: unknown) => this.fail(err, id),
         );
       }
     } catch (err) {
-      return this.fail(err);
+      return this.fail(err, id);
     }
-    this.finish(epoch, config);
+    this.finish(epoch, id, config);
     return Promise.resolve();
   }
 
-  private finish(epoch: string, config?: unknown): void {
+  private finish(epoch: string, id: number, config?: unknown): void {
+    // Disposed or superseded — the newer attempt owns the outcome.
+    if (this.state === 'disposed' || id !== this.attempt) return;
     this.config = config;
     this.epoch = epoch;
     this.error = undefined;
     this.state = 'active';
+    this.onSettled?.(undefined);
   }
 
   /**
    * Undo whatever half-registered before the failure — a failed plugin must
    * leave no trace, since a partially registered tool set is worse than none.
    */
-  private fail(err: unknown): Promise<never> {
-    this.error = err;
+  private fail(err: unknown, id: number): Promise<never> {
+    const current = id === this.attempt && this.state !== 'disposed';
+    if (current) this.error = err;
+    const settle = (): void => {
+      if (!current) return;
+      this.state = 'failed';
+      this.onSettled?.(errMessage(err));
+    };
     return this.teardown().then(
       () => {
-        this.state = 'failed';
+        settle();
         throw err;
       },
       () => {
-        this.state = 'failed';
+        settle();
         throw err;
       },
     );
@@ -248,3 +323,5 @@ async function runReverse(disposers: readonly Dispose[]): Promise<void> {
 function isThenable(value: unknown): value is PromiseLike<unknown> {
   return typeof (value as { then?: unknown } | undefined)?.then === 'function';
 }
+
+function noop(): void {}

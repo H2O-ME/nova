@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -162,6 +162,26 @@ describe('compaction keepIds projection', () => {
     const surface = session.deriveMessages();
     expect(surface.map((m) => m.id)).toEqual(['msg_u1', expect.stringMatching(/^msg_compact_/)]);
   });
+
+  it('an unclosed compaction is discarded without dropping later messages', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-orphan-'));
+    const session = await Session.create(dir, 'sess_orphan');
+    await session.append(user('msg_u1', 'early'));
+    // A crash between start and end leaves an orphan lock; the summary it wrote
+    // never committed and must not replace the surface.
+    await session.appendEvent({ type: 'compaction/start', trigger: 'auto', at: 1 });
+    await session.appendEvent({
+      type: 'compaction/summary',
+      summary: 'uncommitted handoff',
+      keep: [0],
+      shadowedTokenCount: 5,
+      at: 2,
+    });
+    // The conversation continued after the crash: these messages must survive.
+    await session.append(assistant('msg_a1', 'after crash'));
+
+    expect(session.deriveMessages().map((m) => m.id)).toEqual(['msg_u1', 'msg_a1']);
+  });
 });
 
 /**
@@ -319,5 +339,39 @@ describe('deleteSessionLog', () => {
   it('refuses the sessions root itself', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'nova-del5-'));
     await expect(deleteSessionLog(root, root)).rejects.toThrow(/outside the sessions dir/);
+  });
+});
+
+describe('session log read purity and shape tolerance', () => {
+  it('a plain read never writes; the owner repairs a missing trailing newline', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-pure-'));
+    const session = await Session.create(dir, 'sess_pure');
+    await session.append(user('msg_u1', 'hi'));
+    // An external writer left the final line without its newline.
+    await writeFile(session.file, (await readFile(session.file, 'utf8')).trimEnd(), 'utf8');
+    const before = await readFile(session.file, 'utf8');
+
+    // A GET (the WebUI's context window, an audit) must not mutate a log another
+    // writer may be appending to.
+    await Session.replay(session.file);
+    expect(await readFile(session.file, 'utf8')).toBe(before);
+
+    // The file's OWNER still repairs it, or the next append would glue two lines.
+    await Session.open(session.file);
+    expect((await readFile(session.file, 'utf8')).endsWith('\n')).toBe(true);
+  });
+
+  it('skips a malformed line instead of admitting it into the projection', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nova-sess-shape-'));
+    const session = await Session.create(dir, 'sess_shape');
+    await session.append(user('msg_u1', 'hi'));
+    // Valid JSON, wrong shape: a `message` event with no message. The old
+    // `as SessionEvent` cast let this reach `deriveMessages`.
+    await appendFile(session.file, `${JSON.stringify({ type: 'message' })}\n`, 'utf8');
+    await session.append(user('msg_u2', 'still here'));
+
+    const reopened = await Session.open(session.file);
+    expect(reopened.deriveMessages().map((m) => m.id)).toEqual(['msg_u1', 'msg_u2']);
+    expect(reopened.warnings.length).toBeGreaterThan(0);
   });
 });

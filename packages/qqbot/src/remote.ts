@@ -15,7 +15,15 @@
  * 全部依赖注入，所以每一条都能对着假实现直接驱动，不需要网络也不需要真内核。
  */
 import { errMessage } from '@nova-agent/core';
-import type { AgentSession, ApprovalMode, AskResult } from '@nova-agent/core';
+import type {
+  AgentSession,
+  ApprovalMode,
+  AskResult,
+  AskUserQuestionAnswer,
+  AskUserQuestionItem,
+} from '@nova-agent/core';
+import { clampTier, tierLabel, type AccessTier } from './access.js';
+import { parseAnswer } from './question-reply.js';
 import type { RemoteCommand, RemotePerm } from './remote-parse.js';
 
 /**
@@ -59,6 +67,13 @@ export interface RemoteSessionPort {
   approvalMode(): ApprovalMode | undefined;
   pendingApprovals(): readonly { id: string; call: { name: string } }[];
   resolveApproval(id: string, answer: AskResult): boolean;
+  /** Interrupt the current run (the remote Ctrl+C). */
+  abort(): void;
+  /** Whether a run is in flight, so `/stop` can answer honestly. */
+  running(): boolean;
+  /** The outstanding `ask_user_question` batches, for `/answer`. */
+  pendingQuestions(): readonly { id: string; questions: readonly AskUserQuestionItem[] }[];
+  resolveQuestion(id: string, answer: AskUserQuestionAnswer): boolean;
 }
 
 /** How long a remote approval waits before it fails closed. */
@@ -135,12 +150,62 @@ export async function awaitRemoteAnswer(
   }
 }
 
+/**
+ * One live conversation this chat could drive instead of its own.
+ *
+ * `target` is the short handle a peer types (`/use a1b2c3`), derived from the
+ * session id so it is stable for the life of that session. `mine` says whether it
+ * is already the one this chat is driving.
+ */
+export interface RelayCandidate {
+  /** The short, typeable handle (`/use <target>`). */
+  target: string;
+  /** The session id, for a reply that wants to be unambiguous. */
+  id: string;
+  /** Where it runs (last path segment), so the peer can tell conversations apart. */
+  where: string;
+  /** Whether a run is in flight right now. */
+  busy: boolean;
+  /** Whether this chat already drives it. */
+  mine: boolean;
+}
+
+/**
+ * Session relay: the phone-driving-a-desktop seat.
+ *
+ * Separate from `RemoteKernelPort` because these are operations on OTHER
+ * conversations, not on the one this chat is already in — and absent means this
+ * deployment has no relay (a channel whose sessions are all its own), which the
+ * commands report rather than pretending a switch landed.
+ */
+export interface RemoteRelayPort {
+  list(): Promise<readonly RelayCandidate[]>;
+  /** Point this chat at one conversation. Refuses an unknown/ambiguous handle. */
+  use(target: string): Promise<{ ok: true; candidate: RelayCandidate } | { ok: false; reason: string }>;
+  /** Let go: this chat owns a fresh conversation again. */
+  unbind(): Promise<void>;
+  /** The conversation this chat is driving now, when it came from a relay. */
+  bound(): RelayCandidate | undefined;
+}
+
 /** 执行一条指令所需的全部接缝。 */
 export interface RemoteContext {
   kernel: RemoteKernelPort;
   session: RemoteSessionPort;
   /** 为这个对端开一个新会话（`/new`）；调用方据此换绑自己那份对端表。 */
   newSession: () => Promise<AgentSession>;
+  /** Session relay, when this deployment has other conversations to offer. */
+  relay?: RemoteRelayPort;
+  /**
+   * The strongest tier a REMOTE peer may set for its own conversation.
+   *
+   * Enforced here rather than in the parser or the menu, because this is the
+   * operation that changes the tier: an `/perm full` arriving from a chat window
+   * must be capped by what the operator granted locally, and a check anywhere
+   * else would leave the execution path able to exceed it. Absent means the
+   * machine's own default (`read-only`) — never "unlimited".
+   */
+  maxTier?: AccessTier;
 }
 
 /** 一句话回复 +（`/new` 时）要换绑的新会话句柄。 */
@@ -180,6 +245,15 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
     case 'status':
       return { reply: statusText(ctx) };
     case 'perm': {
+      // The ceiling is applied to what LANDS, not to what was asked: a peer that
+      // asks for more than the operator granted is told so, instead of silently
+      // getting the smaller tier and believing it holds the bigger one.
+      const ceiling = ctx.maxTier ?? 'read-only';
+      if (clampTier(command.mode, ceiling) !== command.mode) {
+        return {
+          reply: `远端权限最高只能到「${tierLabel(ceiling)}」；要更高请在操作这台机器的那一侧打开（并提高上限）。`,
+        };
+      }
       ctx.session.setApprovalMode(command.mode);
       // Read back rather than echoing: `setApprovalMode` no-ops when a session
       // has no permission service, and claiming a switch that did not land is
@@ -222,6 +296,69 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
       // place (the bridge's) instead of a second copy here.
       const nextAgent = await ctx.newSession();
       return { reply: '已为这个对话开一个新会话，后面的消息走新会话。', nextAgent };
+    }
+    case 'sessions': {
+      const relay = ctx.relay;
+      if (relay === undefined) return { reply: '这个进程没有会话接力的座位：它只服务自己的会话。' };
+      const candidates = await relay.list();
+      if (candidates.length === 0) return { reply: '现在没有活着的会话。' };
+      const rows = candidates.map((candidate) => {
+        const marks = [candidate.mine ? '← 本对话' : '', candidate.busy ? '（进行中）' : ''].filter((m) => m.length > 0);
+        return `- ${candidate.target} · ${candidate.where}${marks.length > 0 ? ` ${marks.join(' ')}` : ''}`;
+      });
+      return { reply: `活着的会话：\n${rows.join('\n')}\n用 /use <前几位> 把本对话接到其中一个上。` };
+    }
+    case 'use': {
+      const relay = ctx.relay;
+      if (relay === undefined) return { reply: '这个进程没有会话接力的座位：它只服务自己的会话。' };
+      const outcome = await relay.use(command.target);
+      if (!outcome.ok) return { reply: `没有切换：${outcome.reason}` };
+      const { candidate } = outcome;
+      return {
+        reply: `本对话现在接到 ${candidate.target}（${candidate.where}）${candidate.busy ? '，它正在跑一轮任务——你的下一条消息会排在它后面。' : '。'}`,
+      };
+    }
+    case 'unbind': {
+      const relay = ctx.relay;
+      if (relay === undefined) return { reply: '这个进程没有会话接力的座位：它只服务自己的会话。' };
+      const bound = relay.bound();
+      await relay.unbind();
+      return {
+        reply: bound === undefined
+          ? '本对话本来就没有接在别人的会话上。'
+          : `已放开 ${bound.target}；本对话会从自己的一个空会话重新开始。`,
+      };
+    }
+    case 'stop': {
+      // Read BEFORE aborting: afterwards `running` is already false, and a reply
+      // built from the post-state could not tell "I stopped it" from "nothing was
+      // running" — two answers the peer acts on differently.
+      const wasRunning = ctx.session.running();
+      ctx.session.abort();
+      return {
+        reply: wasRunning
+          ? '已中止这一段会话正在跑的任务。'
+          : '这一段会话现在没有在跑的任务（若它在等审批或提问，用 /deny 或 /answer 处理）。',
+      };
+    }
+    case 'answer': {
+      const pending = ctx.session.pendingQuestions();
+      const first = pending[0];
+      if (first === undefined) {
+        return { reply: '现在没有待回答的问题。' };
+      }
+      const parsed = parseAnswer(first.questions, command.text);
+      if (!parsed.ok) return { reply: `回答没有送出：${parsed.reason}` };
+      // The kernel validates the batch against the questions it asked, so a
+      // mapping this side got wrong is REFUSED there rather than silently
+      // answering something else.
+      if (!ctx.session.resolveQuestion(first.id, parsed.answer)) {
+        return { reply: '这条提问已经不在等待了（可能已超时或被别的入口答复）。' };
+      }
+      const chosen = parsed.answer.answers
+        .map((item) => item.custom ?? item.selected.join('、'))
+        .filter((value) => value.length > 0);
+      return { reply: chosen.length > 0 ? `已答复：${chosen.join('；')}` : '已提交答复。' };
     }
     case 'approve': {
       const first = ctx.session.pendingApprovals()[0];

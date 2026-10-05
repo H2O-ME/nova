@@ -1,44 +1,45 @@
 /**
- * 被动窗口里的回复发送：一种答复，两种入口。
+ * The reply a chat receives, and the one place its outcome is reported.
  *
- * 从 `inbound.ts` 拆出，因为它是另一个问题：那边讲**收到一条消息之后走哪条路**
- * （去重、记账、旁路还是排队），这里讲**答复发出去那一下**（按对端种类选落点、
- * 空答复不发、失败记一行）。前者是路由，后者是发送原语。
+ * The WINDOW rule and the per-message allowance belong to the outbox
+ * (`outbox.ts`), which every outbound path shares — so what remains here is the
+ * part that is genuinely this file's job: an empty answer is not a failed answer,
+ * and a failure is a line in the log plus an honest `false` to the caller's
+ * counter.
  */
-import { errMessage } from '@nova-agent/core';
 import type { Peer } from './types.js';
-import type { ReplySink } from './inbound.js';
+
+/** The outbound seam the inbound handler speaks; the outbox implements it. */
+export interface ReplySink {
+  /** Send one reply to a chat; the outbox resolves the passive window and budget. */
+  reply(peerId: string, content: string): Promise<{ ok: boolean; reason?: string }>;
+}
 
 /**
- * Send one reply through the passive window, picking the sink by peer kind.
+ * Send one reply through the shared outbox.
  *
- * Empty answers are dropped silently: an empty reply is not a failed reply,
- * it is nothing to say, and the gateway would reject it anyway.
- * @param reply - the two sinks, injected by the channel.
+ * Empty answers are dropped silently: an empty reply is not a failed reply, it is
+ * nothing to say, and the gateway would reject it anyway.
+ * @param reply - the outbound seam, injected by the channel.
  * @param log - where a failure line goes.
  * @param peer - who to answer.
  * @param answer - the text.
- * @param msgId - the inbound message being answered.
  * @param tag - the log prefix naming the path (`remote` vs the queue).
- * @returns whether a reply actually went out (false: nothing to say, or the send failed).
+ * @returns whether a reply actually went out (false: nothing to say, or refused).
  */
 export async function sendReply(
   reply: ReplySink,
   log: (line: string) => void,
   peer: Peer,
   answer: string,
-  msgId: string,
   tag: string,
 ): Promise<boolean> {
   if (answer.trim().length === 0) return false;
-  try {
-    const n = peer.kind === 'group'
-      ? await reply.group(peer.openid, answer, msgId)
-      : await reply.c2c(peer.openid, answer, msgId);
-    log(`${tag} ${peer.peerId}: ${n} message(s)`);
+  const result = await reply.reply(peer.peerId, answer);
+  if (result.ok) {
+    log(`${tag} ${peer.peerId}: sent`);
     return true;
-  } catch (err) {
-    log(`${tag} failed for ${peer.peerId}: ${errMessage(err)}`);
-    return false;
   }
+  log(`${tag} not sent for ${peer.peerId}: ${result.reason ?? 'the outbox refused without a reason'}`);
+  return false;
 }

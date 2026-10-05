@@ -13,12 +13,11 @@
  * siblings in a flex line — `.rowToggle` (the leading area, which expands) and
  * the switch — rather than one wrapper element around both.
  */
-import { StateDot } from '../tool/StateDot.js';
+import { ChevronDownIcon, ChevronRightIcon } from '../icons.js';
 import { Switch } from './Switch.js';
 import { SETTINGS_COPY } from './copy.js';
-import { pluginStateDot, pluginStateLabel } from './plugin-state.js';
+import { pluginStateLabel } from './plugin-state.js';
 import { rowSwitchable, rowTitle, type PluginRowGroup } from './row-model.js';
-import { cls } from '../sidebar/view.js';
 import type { WireRosterEntry } from '../types.js';
 import css from './PluginsSection.module.css';
 
@@ -27,56 +26,96 @@ export interface PluginGroupProps {
   group: PluginRowGroup;
   /** The group's Chinese title. */
   title: string;
+  /** Whether the group is unfolded. */
+  open: boolean;
+  /**
+   * Whether the header may fold at all. False while the roster is being
+   * filtered: a hit inside a folded group would be invisible, and a control that
+   * cannot change what is on screen is the thing this page is being fixed for.
+   */
+  foldable: boolean;
   expanded: ReadonlySet<string>;
   disabled: boolean;
   /** Why the switches are locked, or null when they are live. */
   lockedNote: string | null;
   switching: string | null;
+  onToggleGroup: () => void;
   onToggle: (name: string) => void;
   onFlip: (name: string, enabled: boolean) => void;
 }
 
 /**
- * Render one tier group: its title, a failure count when it has one, and its rows.
+ * Render one tier group: its header, a failure count when it has one, and its rows.
+ *
+ * The header folds. A group whose rows carry no switch is reference material
+ * rather than a set of controls, and it was pushing the controls off the page:
+ * 17 core rows put the first live switch 706px below the fold of a 720px window
+ * — the reported 「都藏在页面最底部」. Such a group arrives folded, and its
+ * header states how many rows are behind it, so nothing disappears silently.
+ *
  * @param props - see PluginGroupProps.
  * @returns the group element (or null when it has no rows).
  */
 export function PluginGroup({
   group,
   title,
+  open,
+  foldable,
   expanded,
   disabled,
   lockedNote,
   switching,
+  onToggleGroup,
   onToggle,
   onFlip,
 }: PluginGroupProps): JSX.Element | null {
   if (group.rows.length === 0) return null;
   const failed = group.rows.filter((entry) => entry.state === 'failed').length;
+  // The count is the whole reason a folded group is not a lie: the reader sees
+  // how much is behind the header without opening it.
+  const head = (
+    <>
+      {foldable && (open ? <ChevronDownIcon className={css.groupHeadIcon} /> : <ChevronRightIcon className={css.groupHeadIcon} />)}
+      {title}
+      <span className={css.groupCount}>{`· ${String(group.rows.length)}`}</span>
+      {/* The count only appears when it is non-zero: a standing "0 个启动失败"
+          is noise on every healthy page. */}
+      {failed > 0 && <span className={css.failed}>{`${String(failed)} ${SETTINGS_COPY['plugins.failedCount']}`}</span>}
+    </>
+  );
   return (
     <section role="group" aria-label={title} className={css.group}>
-      <div className={css.groupTitle}>
-        {title}
-        {/* The count only appears when it is non-zero: a standing "0 个启动失败"
-            is noise on every healthy page. */}
-        {failed > 0 && <span className={css.failed}>{`${failed} ${SETTINGS_COPY['plugins.failedCount']}`}</span>}
-      </div>
-      <ul className={css.list}>
-        {group.rows.map((entry) => (
-          <PluginRow
-            key={entry.name}
-            entry={entry}
-            switchable={group.switchable}
-            advanced={group.tier === 'advanced'}
-            open={expanded.has(entry.name)}
-            disabled={disabled}
-            lockedNote={lockedNote}
-            switching={switching}
-            onToggle={onToggle}
-            onFlip={onFlip}
-          />
-        ))}
-      </ul>
+      {foldable ? (
+        <button
+          type="button"
+          className={css.groupHead}
+          aria-expanded={open}
+          title={SETTINGS_COPY['plugins.groupToggle']}
+          onClick={onToggleGroup}
+        >
+          {head}
+        </button>
+      ) : (
+        <div className={css.groupTitle}>{head}</div>
+      )}
+      {open && (
+        <ul className={css.list}>
+          {group.rows.map((entry) => (
+            <PluginRow
+              key={entry.name}
+              entry={entry}
+              switchable={group.switchable}
+              advanced={group.tier === 'advanced'}
+              open={expanded.has(entry.name)}
+              disabled={disabled}
+              lockedNote={lockedNote}
+              switching={switching}
+              onToggle={onToggle}
+              onFlip={onFlip}
+            />
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -117,7 +156,7 @@ export function PluginRow({
   const title = rowTitle(entry);
   return (
     <li
-      className={cls(css.plugin, !on && css.pluginDisabled)}
+      className={css.plugin}
       data-failed={entry.state === 'failed' ? 'true' : undefined}
     >
       {/* The whole leading area is the disclosure control: a reader clicks the
@@ -131,14 +170,17 @@ export function PluginRow({
         aria-label={`${title}（${entry.name}）：${pluginStateLabel(entry.state)}`}
         onClick={() => { onToggle(entry.name); }}
       >
-        <span className={css.rowDot}>
-          <StateDot state={pluginStateDot(entry.state)} />
-        </span>
         <span className={css.pluginText}>
           <span className={css.pluginName}>{title}</span>
           <span className={css.pluginMeta}>
             <span className={css.pluginId}>{entry.name}</span>
-            {` · ${pluginStateLabel(entry.state)}`}
+            {/* A row the switch turned off has ONE fact to state: the roster
+                reports its state as `disabled`, so printing the state word and
+                「已关闭」 said the same thing twice. The off row keeps the
+                operator's word; every other phase (failed, loading, …) still
+                prints, because there it adds. */}
+            {entry.state !== 'disabled' && ` · ${pluginStateLabel(entry.state)}`}
+            {` · ${on ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off']}`}
             {advanced && <span className={css.tag}>{SETTINGS_COPY['plugins.defaultOff']}</span>}
           </span>
         </span>
@@ -161,10 +203,17 @@ export function PluginRow({
       {canSwitch && (
         /* The shared `Switch`: one control, three sections, so the appearance
            cannot drift. The reason it is locked travels in `title` — a silently
-           greyed control leaves the reader guessing. */
+           greyed control leaves the reader guessing.
+
+           Only the row whose OWN write is in flight refuses input. Disabling
+           every switch in the section for the duration of one write made the
+           whole list dim and come back on each toggle — the reported
+           「开关一次整个页面都要闪烁」 — and the reference does it per row
+           (`busy: (row) => boolean`, `disabled={busy || locked}`). */
         <Switch
           checked={on}
-          disabled={disabled || switching !== null}
+          disabled={disabled || switching === entry.name}
+          busy={switching === entry.name}
           label={`${title}，当前：${on ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off']}`}
           title={lockedNote ?? (on ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off'])}
           onChange={(next) => { onFlip(entry.name, next); }}

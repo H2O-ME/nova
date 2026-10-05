@@ -4,9 +4,12 @@
  * Split from `runtime-roster.ts` (what LOADS) because this is what the panel
  * CHANGES, and the readers differ — the router calls these, the boot path never
  * does. One module, one discipline: **persist first, then reload, then verify**.
- * A successful call means the durable plugin tree and the live kernel agree; a
- * throw means neither moved, because the writer throws before anything reloads
- * and the reload throws before its result is reported.
+ * A successful call means the durable plugin tree and the live kernel agree. A
+ * throw from the WRITE means neither moved. A throw from the VERIFY means both
+ * DID move — the operator's intent is durable (the row stays written with its
+ * load failure, which the panel reports) and only the flip is reported as
+ * failed; re-enabling a row whose module cannot load is the case that lands
+ * here.
  *
  * There is no per-tier list routing any more. A row is switched by writing ITS
  * entry (`{ id, enabled }`), which is the same field the boot path reads — so a
@@ -105,7 +108,8 @@ export async function setSkillEnabled(
   }
   const disable = await persist(name, enabled);
   env.state.skillsDisable = [...disable];
-  await env.loadWorkspace();
+  // The provider's `reload` re-runs loadWorkspace itself (it IS the same scan);
+  // calling both would run the full skill discovery twice for one flip.
   await env.root.must(skillsKey).reload();
   return disable;
 }

@@ -155,23 +155,17 @@
   opacity: 0.6;
 }
 
-/* The confirmation that a flip landed, and why the switches are locked. Both
-   mirror the plugin manager's pair so the two pages read alike. */
-.applied {
+/* The section's one feedback row, mirroring the plugin manager's: "applying…",
+   the confirmation that a flip landed, and why the switches are locked are the
+   same sentence in the same place. The line box is reserved so the transient
+   "applying…" appearing and going cannot shift the list under the reader's
+   cursor. */
+.feedbackSlot {
+  min-height: 18px;
   margin: 8px 0;
-  padding: 8px 12px;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-module-platform);
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-secondary);
-}
-
-.lockNote {
-  margin: 8px 0 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
 }
 
 .status {

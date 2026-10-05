@@ -139,6 +139,29 @@ describe('wrapAutoCompact', () => {
     expect(hooks.beforeLLMCall).toBeUndefined();
   });
 
+  it('is idempotent per hooks object: a re-wrap must not stack a second gate', async () => {
+    // reroster re-calls wrapAutoCompact on the SAME cached hooks object; a
+    // stacked layer would run its own compaction after the first one fused.
+    const req: ChatRequest = { messages: [{ id: 'm', ts: 0, role: 'user', content: 'z'.repeat(80_000) }] };
+    const compacted = { count: 0 };
+    const hooks: AgentHooks = {};
+    const opts = {
+      enabled: true as const,
+      limit: 1000,
+      compact: async () => {
+        compacted.count += 1;
+      },
+      onError: () => {},
+      onWarn: () => {},
+    };
+    wrapAutoCompact(hooks, opts);
+    wrapAutoCompact(hooks, opts);
+    await hooks.beforeLLMCall?.(req);
+    await hooks.beforeLLMCall?.(req);
+    // One gate: first request compacts once and fuses, second never re-compacts.
+    expect(compacted.count).toBe(1);
+  });
+
   it('records the error but lets the request through when compact throws', async () => {
     const req: ChatRequest = { messages: [{ id: 'm', ts: 0, role: 'user', content: 'z'.repeat(80_000) }] };
     const errors: unknown[] = [];

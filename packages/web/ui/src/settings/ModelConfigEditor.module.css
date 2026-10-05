@@ -378,3 +378,70 @@
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
 }
+
+/* ── 高级折叠（重写后新增） ─────────────────────────────────────────── */
+
+/* The advanced disclosure: native <details>, so collapsed is the browser's job,
+   not a second piece of state. The summary is the settings heading rhythm. */
+.advanced {
+  margin-top: 16px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.advancedSummary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 0;
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--dsw-radius-md);
+  transition:
+      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
+      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.advancedSummary::-webkit-details-marker {
+  display: none;
+}
+
+.advancedSummary:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.advancedChevron {
+  flex: none;
+  align-self: center;
+  width: 14px;
+  height: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.advanced[open] .advancedChevron {
+  transform: rotate(90deg);
+}
+
+.advancedTitle {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.advancedHint {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.advancedBody {
+  padding: 4px 0 8px;
+}

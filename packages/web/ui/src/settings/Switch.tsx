@@ -30,8 +30,10 @@ export interface SwitchProps {
   onChange: (next: boolean) => void;
   /** Localized accessible name; required, so a render site cannot omit it. */
   label: string;
-  /** Whether the control refuses input (also set while a write is in flight). */
+  /** Whether the control refuses input (also set while its own write is in flight). */
   disabled?: boolean;
+  /** Whether this row is waiting for its own write to settle. */
+  busy?: boolean;
   /** Localized hover text, typically why the toggle is locked. */
   title?: string | undefined;
   /** Extra class for layout placement. */
@@ -43,12 +45,13 @@ export interface SwitchProps {
  * @param props - see SwitchProps.
  * @returns the switch element.
  */
-export function Switch({ checked, onChange, label, disabled = false, title, className }: SwitchProps): JSX.Element {
+export function Switch({ checked, onChange, label, disabled = false, busy = false, title, className }: SwitchProps): JSX.Element {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-busy={busy}
       aria-label={label}
       title={title}
       disabled={disabled}

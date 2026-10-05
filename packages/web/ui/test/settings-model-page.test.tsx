@@ -14,8 +14,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ModelConfigEditor, formatCapacity, parseCapacityField, parseCapacityText } from '../src/settings/ModelConfigEditor.js';
-import { ModelSection } from '../src/settings/ModelSection.js';
-import { ProviderSection } from '../src/settings/ProviderSection.js';
+import { ProviderModelsDialog } from '../src/settings/ProviderModelsDialog.js';
+import { ProviderSection, draftProblem } from '../src/settings/ProviderSection.js';
 import { SETTINGS_COPY } from '../src/settings/copy.js';
 import type { ModelConfigSnapshot, ProvidersSnapshot } from '../src/state.js';
 
@@ -57,9 +57,10 @@ describe('模型页 · 多供应商一眼分清', () => {
     const second = html.slice(html.indexOf('data-provider="p2"'));
     expect(second).toContain('data-active="true"');
     expect(html.slice(0, html.indexOf('data-provider="p2"'))).not.toContain('data-active="true"');
-    // 一个词加一个点，而不是靠顺序暗示（`>当前使用<` 是标记元素本身；说明里也提到这四个字）。
+    // 一个词，而不是靠顺序暗示（`>当前使用<` 是标记元素本身；说明里也提到这四个字）。
     expect(html.match(/>当前使用</g)).toHaveLength(1);
-    expect(html).toContain(`aria-label="${SETTINGS_COPY['models.providerKeySet']}"`);
+    // 密钥配好了就一个字都不印：旁边那颗「设为当前」能按，本身就是读数。
+    expect(html).not.toContain(`>${SETTINGS_COPY['models.providerKeyMissing']}<`);
     // 在役那一行没有「设为当前」，另一行有。
     expect(html).not.toContain('data-provider-use="p2"');
     expect(html).toContain('data-provider-use="p1"');
@@ -86,40 +87,8 @@ describe('模型页 · 多供应商一眼分清', () => {
     const keyless = html.slice(html.indexOf('data-provider="p2"'));
     expect(keyless).toContain(`title="${SETTINGS_COPY['models.providerKeyMissing']}"`);
     expect(keyless).toContain('data-provider-use="p2" disabled=""');
-    expect(html).toContain(`aria-label="${SETTINGS_COPY['models.providerKeyMissing']}"`);
-  });
-});
-
-describe('模型目录 · 在用模型属于哪个端点', () => {
-  it('names the endpoint above the list and marks the row in force', () => {
-    const html = renderToStaticMarkup(
-      <ModelSection
-        model="m2"
-        switching
-        catalog={{
-          groups: [{ id: 'endpoint', name: 'api.example.com', models: [{ id: 'm1', name: 'A' }, { id: 'm2', name: 'B' }] }],
-          loading: false,
-        }}
-        send={noop}
-      />,
-    );
-    expect(html).toContain('api.example.com');
-    expect(html).toContain(SETTINGS_COPY['models.catalogCurrent']);
-    expect(html.match(/aria-current="true"/g)).toHaveLength(1);
-    expect(html).toContain(SETTINGS_COPY['models.inUse']);
-  });
-
-  it('states why the rows are inert when this kernel cannot switch', () => {
-    const html = renderToStaticMarkup(
-      <ModelSection
-        model="m1"
-        switching={false}
-        catalog={{ groups: [{ id: 'endpoint', name: 'gw', models: [{ id: 'm1', name: 'A' }] }], loading: false }}
-        send={noop}
-      />,
-    );
-    expect(html).toContain(SETTINGS_COPY['models.catalogReadOnly']);
-    expect(html).toContain('disabled=""');
+    // 缺密钥用**词**说，不用一颗只有 tooltip 才懂的小圆点。
+    expect(html).toContain(`>${SETTINGS_COPY['models.providerKeyMissing']}<`);
   });
 });
 
@@ -175,18 +144,11 @@ describe('模型参数 · 当前生效与自动值', () => {
   });
 
   it('refuses an out-of-range temperature on the provider card for the same reason', () => {
-    const html = renderToStaticMarkup(
-      <ProviderSection
-        providers={{
-          activeId: 'p1',
-          providers: [{ id: 'p1', name: '官方', baseURL: 'https://api.example.com/v1', hasApiKey: true, temperature: 3, models: [] }],
-        }}
-        probe={null}
-        send={noop}
-      />,
-    );
-    expect(html).toContain(SETTINGS_COPY['models.configRangeExceeded']);
-    expect(html).toContain('data-provider-save="true" disabled=""');
+    // 卡片收起时不渲染编辑器；校验逻辑是纯函数，直接断言它拒绝越界值。
+    expect(draftProblem({ id: 'p1', name: '', baseURL: 'https://api.example.com/v1', apiKey: '', temperature: '3', maxTokens: '', contextWindow: '', models: [] }))
+      .toBe(SETTINGS_COPY['models.configRangeExceeded']);
+    expect(draftProblem({ id: 'p1', name: '', baseURL: '', apiKey: '', temperature: '', maxTokens: '', contextWindow: '', models: [] }))
+      .toBe(SETTINGS_COPY['models.providerNoUrl']);
   });
 });
 
@@ -195,29 +157,21 @@ describe('模型页 · 样式护栏（没有裸控件）', () => {
     const html = [
       renderToStaticMarkup(<ProviderSection providers={TWO_PROVIDERS} probe={null} send={noop} />),
       renderToStaticMarkup(
-        <ModelSection
-          model="m1"
-          switching
-          catalog={{ groups: [{ id: 'endpoint', name: 'gw', models: [{ id: 'm1', name: 'A' }] }], loading: false }}
-          send={noop}
-        />,
+        <ProviderModelsDialog candidates={['m1', 'm2']} existing={['m1']} onApply={noop} onClose={noop} />,
       ),
       renderToStaticMarkup(<ModelConfigEditor config={CONFIG} writable send={noop} />),
     ].join('\n');
     expect(unstyledControls(html)).toEqual([]);
   });
 
-  it('orders the three steps under one page head', () => {
+  it('keeps one page head and plain section headings (no step theatre)', () => {
     const provider = renderToStaticMarkup(<ProviderSection providers={TWO_PROVIDERS} probe={null} send={noop} />);
-    const model = renderToStaticMarkup(
-      <ModelSection model="m1" switching catalog={null} send={noop} />,
-    );
     const config = renderToStaticMarkup(<ModelConfigEditor config={CONFIG} writable send={noop} />);
-    const at = (html: string, needle: string): number => html.indexOf(needle);
-    expect(at(provider, SETTINGS_COPY['models.title'])).toBeGreaterThan(-1);
-    expect(at(provider, '第 1 步')).toBeGreaterThan(at(provider, SETTINGS_COPY['models.title']));
-    expect(at(model, '第 2 步')).toBeGreaterThan(-1);
-    expect(at(config, '第 3 步')).toBeGreaterThan(-1);
+    expect(provider.indexOf(SETTINGS_COPY['models.title'])).toBeGreaterThan(-1);
+    expect(provider).toContain(SETTINGS_COPY['models.providerTitle']);
+    expect(provider + config).not.toContain('第 1 步');
+    // 参数编辑器默认收进「高级」折叠。
+    expect(config).toContain('data-model-advanced');
   });
 });
 
@@ -238,5 +192,20 @@ describe('容量词法（纯函数）', () => {
     expect(parseCapacityField('nope', 200_000_000)).toMatchObject({ ok: false });
     expect(parseCapacityField('-1', 200_000_000)).toMatchObject({ ok: false });
     expect(parseCapacityField('300M', 200_000_000)).toMatchObject({ ok: false });
+  });
+});
+
+describe('取模弹窗 · 勾选与「只做加」', () => {
+  it('locks the rows already recorded and lets the new ones be picked', () => {
+    const html = renderToStaticMarkup(
+      <ProviderModelsDialog candidates={['a', 'b']} existing={['a']} onApply={noop} onClose={noop} />,
+    );
+    // 已记录的行勾上并锁定，并写明「已在清单」——移除走卡片上的条目。
+    expect(html).toContain('data-pick-row="a"');
+    expect(html).toContain(SETTINGS_COPY['models.pickExisting']);
+    expect(html).toContain('disabled=""');
+    // 没勾任何新行时「添加所选」按不动。
+    expect(html).toContain('data-pick-apply');
+    expect(html).toContain(SETTINGS_COPY['models.pickApply']);
   });
 });

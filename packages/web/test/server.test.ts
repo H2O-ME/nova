@@ -7,7 +7,6 @@
  */
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
-import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,8 +17,7 @@ import { WebController } from '../src/controller.js';
 import { WebRouteRegistry } from '../src/route-registry.js';
 import { bootController } from './controller-rig.js';
 import { startWebServer, type WebServerHandle } from '../src/server.js';
-import { acceptKey } from '../src/ws.js';
-import type { ServerFrame } from '../src/protocol.js';
+import { wsHandshake } from './helpers/ws-client.js';
 import { pngBytes } from './helpers/png.js';
 
 let staticDir: string;
@@ -241,107 +239,4 @@ describe('ws surface', () => {
 
 function cookieFor(hop: { headers: NodeJS.Dict<string | string[]> }): string {
   return String((hop.headers['set-cookie'] ?? [''])[0]).split(';')[0] as string;
-}
-
-// ------------------------------------------------------------- tiny ws client
-
-interface WsClient {
-  nextFrame(): Promise<ServerFrame | undefined>;
-  send(text: string): void;
-  destroy(): void;
-}
-
-const WS_KEY = 'testkey0123456789abcdefghij';
-
-function wsHandshake(port: number, pathname: string, cookie: string | undefined): Promise<WsClient> {
-  return new Promise((resolve, rejectPromise) => {
-    const socket = connect({ host: '127.0.0.1', port }, () => {
-      socket.write(
-        `GET ${pathname} HTTP/1.1\r\n` +
-          'Host: 127.0.0.1\r\n' +
-          'Upgrade: websocket\r\nConnection: Upgrade\r\n' +
-          `Sec-WebSocket-Key: ${WS_KEY}\r\nSec-WebSocket-Version: 13\r\n` +
-          (cookie !== undefined ? `Cookie: ${cookie}\r\n` : '') +
-          '\r\n',
-      );
-    });
-    let handshakeDone = false;
-    let buf = Buffer.alloc(0);
-    const queue: ServerFrame[] = [];
-    let wake: ((f: ServerFrame | undefined) => void) | undefined;
-    socket.on('data', (chunk: Buffer) => {
-      buf = Buffer.concat([buf, chunk]);
-      if (!handshakeDone) {
-        const end = buf.indexOf('\r\n\r\n');
-        if (end === -1) return;
-        const head = buf.subarray(0, end).toString('latin1');
-        buf = buf.subarray(end + 4);
-        if (!head.startsWith('HTTP/1.1 101')) {
-          rejectPromise(new Error(/closed|401/.test(head) ? head.split('\r\n')[0] ?? 'closed' : 'closed'));
-          socket.destroy();
-          return;
-        }
-        if (!head.includes(`Sec-WebSocket-Accept: ${acceptKey(WS_KEY) ?? ''}`)) {
-          rejectPromise(new Error('bad accept header'));
-          socket.destroy();
-          return;
-        }
-        handshakeDone = true;
-        resolve({
-          nextFrame: () =>
-            new Promise((res) => {
-              const pending = queue.shift();
-              if (pending !== undefined) res(pending);
-              else wake = res;
-            }),
-          send: (text: string) => socket.write(clientFrame(text)),
-          destroy: () => socket.destroy(),
-        });
-      }
-      for (;;) {
-        const frame = decodeServerFrame(buf);
-        if (frame === null) break;
-        buf = buf.subarray(frame.consumed);
-        if (frame.opcode === 0x1) {
-          const value = JSON.parse(frame.payload.toString('utf8')) as ServerFrame;
-          if (wake !== undefined) {
-            const fn = wake;
-            wake = undefined;
-            fn(value);
-          } else queue.push(value);
-        }
-      }
-    });
-    socket.on('error', rejectPromise);
-    socket.on('close', () => {
-      wake?.(undefined);
-      if (!handshakeDone) rejectPromise(new Error('closed'));
-    });
-  });
-}
-
-function decodeServerFrame(buf: Buffer): { opcode: number; payload: Buffer; consumed: number } | null {
-  if (buf.length < 2) return null;
-  const opcode = buf[0] !== undefined ? buf[0] & 0x0f : 0;
-  let len = (buf[1] ?? 0) & 0x7f;
-  let offset = 2;
-  if (len === 126) {
-    if (buf.length < 4) return null;
-    len = buf.readUInt16BE(2);
-    offset = 4;
-  } else if (len === 127) {
-    if (buf.length < 10) return null;
-    len = Number(buf.readBigUInt64BE(2));
-    offset = 10;
-  }
-  if (buf.length < offset + len) return null;
-  return { opcode, payload: buf.subarray(offset, offset + len), consumed: offset + len };
-}
-
-function clientFrame(text: string): Buffer {
-  const payload = Buffer.from(text, 'utf8');
-  const mask = Buffer.from([9, 8, 7, 6]);
-  const masked = Buffer.from(payload);
-  for (let i = 0; i < masked.length; i += 1) masked[i] = (masked[i] ?? 0) ^ (mask[i & 3] ?? 0);
-  return Buffer.concat([Buffer.from([0x81, 0x80 | payload.length, ...mask]), masked]);
 }

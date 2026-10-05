@@ -10,12 +10,14 @@
  * （一个是「这个端点没有这个名字」，一个是「你把整个端点删了」）。
  */
 import { docFile, patchConfig, plainMember, readDoc } from './config-doc.js';
+import { unresolvedRef } from './config-expand.js';
 import {
   positiveInt,
   providerDoc,
   providerEntry,
   text,
   type ProviderEntryInput,
+  type ProviderModel,
   type ProvidersSnapshot,
   type StoredProvider,
 } from './provider-doc.js';
@@ -67,6 +69,85 @@ export async function storedApiKey(id: string, homedir?: string): Promise<string
     return legacy === undefined ? undefined : text(legacy['apiKey']);
   }
   return undefined;
+}
+
+/** One attempt to turn a stored key into a USABLE secret. */
+export interface StoredKeyResolution {
+  /** The secret a request may carry, when one is stored and resolvable. */
+  readonly key?: string;
+  /** Why there is no usable secret. */
+  readonly problem?: 'missing' | 'env-unset';
+  /** The variable name, for an `env-unset` problem. */
+  readonly envName?: string;
+}
+
+/**
+ * The stored key for one provider id, RESOLVED for use in a request.
+ *
+ * `storedApiKey` reads the RAW text — and the raw text of a referenced secret is
+ * the literal `{env:NAME}`, which is a file format, not a credential. The boot
+ * path expands references (`loadConfig`), so an online switch or probe that used
+ * the raw text would address the endpoint as `{env:MY_KEY}` while a restart used
+ * the real value: the two paths must agree, and the agreement point is here —
+ * the single reader, one step before the value crosses into a fetch.
+ *
+ * An unset variable is a NAMED refusal, not a silent fetch with garbage and not
+ * an empty string: the caller reports `envName` and never touches the network.
+ * @param id - the provider's binding id.
+ * @param homedir - Override for tests; defaults to the real home.
+ * @returns the resolution, with exactly one of `key` / `problem` set.
+ */
+export async function resolveStoredKey(id: string, homedir?: string): Promise<StoredKeyResolution> {
+  const raw = await storedApiKey(id, homedir);
+  if (raw === undefined) return { problem: 'missing' };
+  let current = raw;
+  for (;;) {
+    const name = unresolvedRef(current);
+    if (name === undefined) return { key: current };
+    const value = process.env[name];
+    if (value === undefined || value.length === 0) return { problem: 'env-unset', envName: name };
+    current = current.replace(`{env:${name}}`, value);
+  }
+}
+
+/** What the ACTIVE provider looks like to a live reader (the model catalog). */
+export interface ActiveProviderReading {
+  /** The row's id — the same identity `activeProvider` names. */
+  readonly id: string;
+  readonly baseURL: string;
+  readonly contextWindow?: number;
+  /** The row's own model list; empty when the row carries none. */
+  readonly models: readonly ProviderModel[];
+}
+
+/**
+ * The ACTIVE endpoint, read from the RAW file, per call.
+ *
+ * The model catalog used to capture `resolveProvider(config)` at boot, so after
+ * an online provider switch every reading — the picker's heading, the window
+ * denominator, the effective model list — kept describing the endpoint the
+ * process STARTED with. The file is the authority; this is the per-lookup read
+ * that makes a switch reach the catalog in the same process.
+ *
+ * Legacy-only configs read as the `default` row (the `readProviders` rule), so
+ * the catalog behaves identically before and after a first BYOK save.
+ * @param homedir - Override for tests; defaults to the real home.
+ * @returns the active endpoint's reading, or undefined when nothing is configured.
+ */
+export async function readActiveProvider(homedir?: string): Promise<ActiveProviderReading | undefined> {
+  const snapshot = await readProviders(homedir);
+  const activeId =
+    snapshot.activeId !== undefined
+      ? snapshot.providers.find((entry) => entry.id === snapshot.activeId)?.id
+      : undefined;
+  const active = snapshot.providers.find((entry) => entry.id === activeId) ?? snapshot.providers[0];
+  if (active === undefined) return undefined;
+  return {
+    id: active.id,
+    baseURL: active.baseURL,
+    ...(active.contextWindow !== undefined ? { contextWindow: active.contextWindow } : {}),
+    models: active.models,
+  };
 }
 
 /**
@@ -154,8 +235,13 @@ export async function saveProviders(
     const legacy = plainMember(doc, 'provider');
     const legacyKey = legacy === undefined ? undefined : text(legacy['apiKey']);
     if (usable.length === 0) {
+      // Back to the EMPTY shell — all three sections. Leaving the legacy block
+      // behind made "clear everything" a lie: the file still held an endpoint,
+      // the reader presented it as a `default` row again, and a restart booted
+      // right back into the provider the operator had just deleted.
       delete doc['providers'];
       delete doc['activeProvider'];
+      delete doc['provider'];
       return;
     }
     doc['providers'] = usable.map((entry) =>
@@ -164,15 +250,24 @@ export async function saveProviders(
     const active = usable.find((entry) => entry.id === activeId) ?? usable[0];
     if (active !== undefined) {
       doc['activeProvider'] = active.id;
-      // Mirror into the legacy block so every path that still reads
-      // `config.provider.baseURL` addresses the endpoint the operator chose.
+      // Mirror REBUILT, not patched: the legacy block must describe THIS
+      // endpoint and nothing else. Copying only the fields the new row defines
+      // kept the previous endpoint's sampling overrides (and its secret, when
+      // the new row has none of its own) alive under the new baseURL — three
+      // answers to "what is in force" that disagreed with the list. `model` is
+      // the one carried-over field: it is the current-model storage owned by
+      // the model picker, not a property of either endpoint.
       const stored = providerDoc(active, previous.get(active.id) ?? legacyKey);
-      const mirror = plainMember(doc, 'provider') ?? {};
+      const previousMirror = legacy ?? {};
+      const mirror: Record<string, unknown> = {};
+      if (typeof previousMirror['model'] === 'string' && previousMirror['model'].length > 0) {
+        mirror['model'] = previousMirror['model'];
+      }
       mirror['baseURL'] = stored['baseURL'];
       if (stored['apiKey'] !== undefined) mirror['apiKey'] = stored['apiKey'];
-      if (stored['temperature'] !== undefined) mirror['temperature'] = stored['temperature'];
-      if (stored['maxTokens'] !== undefined) mirror['maxTokens'] = stored['maxTokens'];
-      if (stored['contextWindow'] !== undefined) mirror['contextWindow'] = stored['contextWindow'];
+      for (const key of ['temperature', 'maxTokens', 'contextWindow'] as const) {
+        if (stored[key] !== undefined) mirror[key] = stored[key];
+      }
       doc['provider'] = mirror;
     }
   }, homedir);

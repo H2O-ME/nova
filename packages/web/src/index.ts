@@ -18,7 +18,7 @@ export { serializeServerFrame, MAX_CLIENT_FRAME_BYTES, MAX_MODEL_CHARS, MAX_PROM
 export { parseClientFrame } from './client-frame.js';
 export { reject, type FrameRejection } from './reject.js';
 export { projectTranscript } from './transcript.js';
-export { upgrade, acceptKey, encodeTextFrame, WS_MAX_MESSAGE_BYTES, type WsConnection, type WsHandlers } from './ws.js';
+export { upgrade, WS_MAX_MESSAGE_BYTES, WS_MAX_BUFFERED_BYTES, type WsConnection, type WsHandlers } from './ws.js';
 export type { LaunchWebOptions, ControllerOptions } from './options.js';
 
 /** One call: controller + auth + server on a loopback port → launch URL. */

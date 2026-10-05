@@ -8,10 +8,16 @@
 import type { ToolDefinition } from '@nova-agent/core';
 
 export interface QqBotToolOptions {
-  /** 发送函数（通道注入，接 QqApi）。返回回复确认。 */
+  /**
+   * Send function (the shared outbox injects it).
+   *
+   * There is deliberately NO `lastMsgIdOf` here any more: the passive-window rule
+   * and the per-message allowance are the OUTBOX's, and a tool that looked up the
+   * window itself would be a second copy of that decision — one that could spend
+   * the allowance the current turn's answer is holding in reserve. The tool asks to
+   * send; the outbox decides whether it may.
+   */
   send: (peer: string, content: string, msgId?: string) => Promise<string>;
-  /** 每个对端最近一条入站 msg_id（被动回复窗口：群 4.5 分钟 / 单聊 55 分钟）。 */
-  lastMsgIdOf: (peer: string) => string | undefined;
 }
 
 /** The `qqbot_send` tool, bound to one live channel. */
@@ -40,12 +46,13 @@ export function qqbotSendTool(options: QqBotToolOptions): ToolDefinition {
       if (!peer.startsWith('group:') && !peer.startsWith('c2c:')) {
         return 'Error: peer must start with "group:" or "c2c:"';
       }
-      const msgId = options.lastMsgIdOf(peer);
-      if (msgId === undefined) {
-        return `Error: no passive-reply window for ${peer} (no recent inbound message). Proactive messages are rate-limited by the platform — wait for the user to message first.`;
+      try {
+        return await options.send(peer, content);
+      } catch (err) {
+        // The refusal is the outbox's own sentence (no window, or the allowance is
+        // spent); the model gets it verbatim so it can decide to wait instead.
+        return `Error: ${err instanceof Error ? err.message : String(err)}`;
       }
-      const confirmation = await options.send(peer, content, msgId);
-      return `sent to ${peer}: ${confirmation}`;
     },
   };
 }

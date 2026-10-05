@@ -17,27 +17,32 @@ import type { AgentMessage, ToolResultMessage } from './types.js';
 
 /** A NOT_EXECUTED result for every assistant call id that has none. */
 export function missingToolResults(messages: readonly AgentMessage[]): ToolResultMessage[] {
-  const answered = new Set<string>();
+  // Pair results with calls IN ORDER rather than with one global id set: a
+  // provider that reuses a call id in a later turn would otherwise let the
+  // earlier turn's result mark the later call answered, and the repair would
+  // leave that call bare — exactly the unbalanced surface a strict provider
+  // rejects on the next request. The Map's insertion order keeps the output in
+  // call order, and the `has` guard keeps two calls sharing an id within ONE
+  // assistant message from producing two results.
+  const pending = new Map<string, { name: string }>();
   for (const msg of messages) {
-    if (msg.role === 'tool') answered.add(msg.toolCallId);
-  }
-  const missing: ToolResultMessage[] = [];
-  for (const msg of messages) {
-    if (msg.role !== 'assistant' || msg.toolCalls === undefined) continue;
-    for (const call of msg.toolCalls) {
-      if (answered.has(call.id)) continue;
-      answered.add(call.id);
-      missing.push({
-        id: newId('msg'),
-        ts: Date.now(),
-        role: 'tool',
-        toolCallId: call.id,
-        name: call.name,
-        content: NOT_EXECUTED_GUIDANCE,
-      });
+    if (msg.role === 'assistant') {
+      if (msg.toolCalls === undefined) continue;
+      for (const call of msg.toolCalls) {
+        if (!pending.has(call.id)) pending.set(call.id, { name: call.name });
+      }
+      continue;
     }
+    if (msg.role === 'tool') pending.delete(msg.toolCallId);
   }
-  return missing;
+  return [...pending].map(([toolCallId, call]) => ({
+    id: newId('msg'),
+    ts: Date.now(),
+    role: 'tool' as const,
+    toolCallId,
+    name: call.name,
+    content: NOT_EXECUTED_GUIDANCE,
+  }));
 }
 
 /**
@@ -50,10 +55,8 @@ export async function persistMissingToolResults(
   session: Session,
   messages: AgentMessage[],
 ): Promise<number> {
-  const loggedResults = new Set<string>();
-  for (const msg of session.allMessages()) {
-    if (msg.role === 'tool') loggedResults.add(msg.toolCallId);
-  }
+  // `missingToolResults` computes the logged set itself; a second copy here
+  // would be one more thing to keep in step with it (and was never read).
   const missing = missingToolResults(session.allMessages());
   if (missing.length === 0) return 0;
   const surfaceResults = new Set<string>();

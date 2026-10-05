@@ -20,6 +20,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { userConfigPath } from '@nova-agent/core';
+import { configSchema } from './config.js';
 
 /** Rewrite one config file atomically (same-dir tmp + rename). */
 async function writeDoc(file: string, doc: unknown): Promise<void> {
@@ -78,9 +79,23 @@ export async function readDoc(file: string): Promise<unknown> {
 }
 
 /**
+ * One write queue per config file.
+ *
+ * `tmp + rename` makes a SINGLE write atomic, but it cannot protect a
+ * read-modify-write: two patches that both read the file before either writes
+ * leave whichever wrote last with the other's change erased. The settings panel
+ * can produce exactly that — a plugin switch and a plugin's own settings save
+ * are separate patches to the same file.
+ */
+const writeQueues = new Map<string, Promise<unknown>>();
+
+/**
  * Apply `patch` to the raw document and write it back. The patcher receives the
  * parsed root and mutates it in place; non-object roots are rejected before it
  * runs.
+ *
+ * The whole read → patch → write runs INSIDE the file's queue, so a patch always
+ * sees the previous patch's result rather than a stale read.
  *
  * **A missing file is an EMPTY document, not an error.** A first run has no
  * `config.json` at all — that is the product's starting state, not a fault — and
@@ -93,11 +108,23 @@ export async function readDoc(file: string): Promise<unknown> {
  * @param homedir - Override for tests; defaults to the real home.
  * @returns the file path written.
  */
-export async function patchConfig(
+export function patchConfig(
   patch: (doc: Record<string, unknown>) => void,
   homedir?: string,
 ): Promise<string> {
   const file = docFile(homedir);
+  const previous = writeQueues.get(file) ?? Promise.resolve();
+  const run = previous.then(
+    () => applyPatch(file, patch),
+    () => applyPatch(file, patch),
+  );
+  // The queue must survive a failed patch, or one unparseable save would wedge
+  // every later one; the caller still sees the rejection through `run`.
+  writeQueues.set(file, run.then(noop, noop));
+  return run;
+}
+
+async function applyPatch(file: string, patch: (doc: Record<string, unknown>) => void): Promise<string> {
   const doc: unknown = await readDoc(file).catch((err: unknown) => {
     const code = err instanceof Error && 'code' in err ? (err as NodeJS.ErrnoException).code : undefined;
     if (code === 'ENOENT' || (err instanceof Error && err.message.startsWith('missing config'))) return {};
@@ -107,9 +134,24 @@ export async function patchConfig(
     throw new Error(`${file}: config root must be a JSON object`);
   }
   patch(doc as Record<string, unknown>);
+  // Validate the PATCHED RAW document before the commit. The atomic write
+  // protects the file's integrity, not its validity: without this, a settings
+  // save could write a document the next start REFUSES — an unbootable config
+  // written by the very panel meant to keep the product configurable. (The raw
+  // form is what is validated: `{env:NAME}` references are strings here and
+  // pass the schema, exactly as they pass at load before expansion.)
+  const checked = configSchema.safeParse(doc);
+  if (!checked.success) {
+    const issues = checked.error.issues
+      .map((issue) => `  ${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('\n');
+    throw new Error(`refusing to write ${file} — the result would not load:\n${issues}`);
+  }
   await writeDoc(file, doc);
   return file;
 }
+
+function noop(): void {}
 
 /** Sorted, de-duplicated string list (a disable list's canonical form). */
 export function sortedUnique(names: readonly string[]): string[] {
