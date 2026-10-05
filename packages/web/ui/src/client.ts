@@ -79,7 +79,11 @@ export function useAgent(): AgentClient {
       ws.onopen = () => {
         retryMs = RETRY_MIN_MS;
         setConnection('open');
-        dispatch({ type: 'connection', connected: true });
+        // NO reducer dispatch here. The socket being open is not the session
+        // being serviceable: until the host's `ready` lands, `meta` is null and
+        // a prompt sent now is answered by nobody (the connect handler has not
+        // attached the socket to a session yet). `connected` is lit by the
+        // `ready` reduction alone — the one fact every control gates on.
       };
       ws.onmessage = (msg: MessageEvent<string>) => {
         let frame: ServerFrame;

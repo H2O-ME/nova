@@ -23,10 +23,13 @@
  * what is stored alone" — which the plugin implements, because only it knows
  * whether its own field is a secret.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SETTINGS_COPY } from './copy.js';
 import { ManageError } from './ManageError.js';
 import { StateDot, type StateDotState } from '../tool/StateDot.js';
+import { parsePageDescriptor } from './page-descriptor.js';
+import { nextPluginRequestId } from './plugin-request-id.js';
+import { draftDirty } from './plugin-state.js';
 import type { ClientFrame, PluginPageDescriptor } from '../types.js';
 import type { PluginRequestAnswer } from '../state.js';
 import css from './PluginPageSection.module.css';
@@ -72,6 +75,13 @@ export interface PluginPageSectionProps {
   send(frame: ClientFrame): void;
   /** Forget a previous action's answer (a field edit invalidates it). */
   onEdit(): void;
+  /**
+   * Whether the operator has unsaved edits on this page, reported whenever it
+   * changes. The settings panel reads it to guard section switches — a switch
+   * unmounts this component, and an unmount without this report would discard
+   * the edit silently.
+   */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /**
@@ -85,18 +95,20 @@ export function PluginPageSection({
   manageError,
   send,
   onEdit,
+  onDirtyChange,
 }: PluginPageSectionProps): JSX.Element {
-  // The request counter lives per MOUNTED SECTION, which is what makes it a
-  // correlation id rather than a queue: reopening the page starts over, and a
-  // late answer for a previous mount can never be matched to this one (the
-  // reducer keys answers by plugin AND id, and this section only reads its own).
-  const nextId = useRef(0);
+  // Correlation ids come from the page-wide monotonic source, NOT a per-mount
+  // counter: a per-mount restart made this mount's ids collide with a previous
+  // mount's, and a slow reply to the previous mount then landed on the fresh
+  // page as if it were the fresh page's answer (the reducer keys answers by
+  // plugin and drops ids older than the newest it holds — which only isolates
+  // mounts when the ids never repeat). See `plugin-request-id.ts`.
   const ask = (op: string, payload?: unknown): void => {
-    nextId.current += 1;
+    const id = nextPluginRequestId();
     send(
       payload === undefined
-        ? { type: 'plugin_request', id: nextId.current, plugin, op }
-        : { type: 'plugin_request', id: nextId.current, plugin, op, payload },
+        ? { type: 'plugin_request', id, plugin, op }
+        : { type: 'plugin_request', id, plugin, op, payload },
     );
   };
 
@@ -119,18 +131,30 @@ export function PluginPageSection({
   const answerResult = answer?.ok === true ? answer.result : undefined;
   const actionResult = isRecord(answerResult) ? answerResult : undefined;
   const returnedDescriptor = answer?.op === 'action' && actionResult !== undefined
-    ? actionResult['descriptor'] as PluginPageDescriptor | undefined
-    : answerResult as PluginPageDescriptor | undefined;
+    ? actionResult['descriptor']
+    : answerResult;
+  // A descriptor is PLUGIN-owned data crossing a JSON boundary, so it is
+  // validated before rendering sees it: the renderer indexes into its
+  // collections (`fields.map`, `guide.length`, `options.map`), and a malformed
+  // one used to throw and take the settings panel with it. A bad payload now
+  // renders as the failure card with the reason instead.
+  const parsed = returnedDescriptor === undefined ? undefined : parsePageDescriptor(returnedDescriptor);
+  const invalidReason = parsed !== undefined && !parsed.ok ? parsed.reason : null;
+  const validDescriptor = parsed !== undefined && parsed.ok ? parsed.page : undefined;
   const [lastPage, setLastPage] = useState<PluginPageDescriptor | undefined>(undefined);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
-  const page = returnedDescriptor ?? lastPage;
+  // What the descriptor last seeded, kept beside the draft: the dirty report is
+  // "draft differs from the seed", not "draft differs from an empty object" —
+  // a page whose stored value is pre-filled must not read as edited on mount.
+  const baselineRef = useRef<Record<string, string>>({});
+  const page = validDescriptor ?? lastPage;
   const signature = page === undefined ? '' : JSON.stringify(page.fields ?? []);
   const busy = answer?.pending === true;
 
   useEffect(() => {
-    if (returnedDescriptor !== undefined) setLastPage(returnedDescriptor);
-  }, [returnedDescriptor]);
+    if (validDescriptor !== undefined) setLastPage(validDescriptor);
+  }, [validDescriptor]);
   useEffect(() => {
     if (!busy) setPendingAction(null);
   }, [busy, answer?.id]);
@@ -143,6 +167,7 @@ export function PluginPageSection({
       // starts blank and blank means "keep what is stored".
       seeded[field.key] = field.kind === 'secret' ? '' : (field.value ?? '');
     }
+    baselineRef.current = seeded;
     setDraft(seeded);
     // `signature` is the descriptor's own content, so a save that changed
     // nothing does not reset the operator's cursor mid-edit.
@@ -155,6 +180,15 @@ export function PluginPageSection({
     : null;
   const actionFailed = answer?.op === 'action' && answer.ok && actionResult !== undefined
     && actionResult['ok'] === false;
+  // The unsaved-edit report (see the prop's doc): any field's draft differing
+  // from what the descriptor seeded. A save re-seeds from the fresh descriptor,
+  // so a successful save clears it; leaving the section unmounts this component,
+  // whose cleanup reports `false` so the guard never fires for a gone page.
+  const dirty = useMemo(() => draftDirty(baselineRef.current, draft), [draft]);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   // A save that landed answers with the fresh descriptor — which, when the
   // plugin normalized nothing, is byte-identical to what was already on screen.
   // So the page has to SAY it: without this line a successful save is
@@ -177,6 +211,12 @@ export function PluginPageSection({
         <div className={css.failure} role="alert">
           <span>{SETTINGS_COPY['pluginPage.failed']}</span>
           <p className={css.failureReason}>{answer.error ?? ''}</p>
+        </div>
+      )}
+      {invalidReason !== null && (
+        <div className={css.failure} role="alert">
+          <span>{SETTINGS_COPY['pluginPage.invalid']}</span>
+          <p className={css.failureReason}>{invalidReason}</p>
         </div>
       )}
       {manageError !== null && <ManageError message={manageError} />}

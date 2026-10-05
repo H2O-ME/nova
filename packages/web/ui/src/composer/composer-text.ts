@@ -104,6 +104,30 @@ export interface PrimarySeat {
 export const STILL_UPLOADING = '文件还在上传，请等待上传完成后发送';
 
 /**
+ * Whether a draft may be delivered at all, as ONE verdict for the two readers
+ * that must never disagree: the primary seat's disabled state and `submit()`'s
+ * own early returns. They once diverged on exactly this question — the seat was
+ * fed a hard-coded `uploading: false` while `submit` checked the real
+ * attachments, so an image still in flight showed an enabled 发送 button whose
+ * click and Enter both silently did nothing. Both now read the same verdict
+ * built from the same facts.
+ *
+ * Order matters and is the submit path's own: EMPTY refuses before UPLOADING
+ * (an image-only prompt is legitimate, so readiness counts as content), and a
+ * mixed batch (one image ready, one still uploading) refuses on UPLOADING —
+ * the prompt would name a file that does not exist yet.
+ */
+export type SendGate =
+  | { ok: true }
+  | { ok: false; why: 'empty' | 'uploading' };
+
+export function sendGate(state: { draft: string; readyImages: number; uploadingImages: number }): SendGate {
+  if (state.draft.trim() === '' && state.readyImages === 0) return { ok: false, why: 'empty' };
+  if (state.uploadingImages > 0) return { ok: false, why: 'uploading' };
+  return { ok: true };
+}
+
+/**
  * The primary seat (harness InputBar `primaryStops` / `primaryLabel`, minus
  * the seats our kernel has no transport for: steering and continuable
  * children).

@@ -1,0 +1,117 @@
+/* The unsaved-edit confirmation. Overlay, mask and panel match the shared
+   modal family (SettingsPanel, DeleteSessionDialog) so the three dialogs read
+   as one surface; the card is content-sized for the same reason the delete
+   confirm's is — a two-sentence question sized like the settings page it sits
+   over reads as a second settings page. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mask {
+  position: absolute;
+  inset: 0;
+  background: var(--dsw-alias-bg-mask-1);
+  backdrop-filter: var(--dsw-mask-blur);
+  animation: unsaved-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+@keyframes unsaved-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mask,
+  .panel {
+    animation: none;
+  }
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 400px;
+  max-width: calc(100vw - 48px);
+  padding: 20px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2);
+  box-shadow: var(--dsw-elevation-prominent);
+  animation: unsaved-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+}
+
+.panel:focus {
+  outline: none;
+}
+
+.title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.stay,
+.discard {
+  min-width: 72px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--dsw-radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.stay {
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+
+.stay:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Discarding is the destructive choice and takes the primary fill, not a red
+   one — the delete confirm's own rule: a solid danger fill reads as the
+   recommended choice. */
+.discard {
+  border: none;
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.discard:hover {
+  background: var(--dsw-alias-button-primary-hover);
+}
+
+.stay:focus-visible,
+.discard:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}

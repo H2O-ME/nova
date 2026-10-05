@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   COMMANDS_LABEL, PLACEHOLDER_DEFAULT, PLACEHOLDER_HERO, PLACEHOLDER_UNAVAILABLE, QUEUE_SEND_LABEL,
   SEND_LABEL, STILL_UPLOADING, STOP_LABEL, placeholderFor, plainDraft, primarySeat, queueCountLabel,
-  queueHeaderVisible, queueListVisible, queuePreview,
+  queueHeaderVisible, queueListVisible, queuePreview, sendGate,
 } from '../src/composer/composer-text.js';
 
 describe('placeholderFor', () => {
@@ -122,5 +122,31 @@ describe('the queue strip', () => {
     expect(queueListVisible(1, true)).toBe(true);
     expect(queueListVisible(3, true)).toBe(false);
     expect(queueListVisible(3, false)).toBe(true);
+  });
+});
+describe('sendGate', () => {
+  // One verdict, two readers: the seat's disabled state and submit()'s early
+  // return. They once disagreed while an image was uploading (the seat was fed
+  // a hard-coded `uploading: false`), so the verdict itself is pinned here —
+  // whoever reintroduces a second computation of "can I send" breaks against
+  // this, not against the user.
+  it('refuses an empty draft with no ready image', () => {
+    expect(sendGate({ draft: '', readyImages: 0, uploadingImages: 0 })).toEqual({ ok: false, why: 'empty' });
+    expect(sendGate({ draft: '   \n', readyImages: 0, uploadingImages: 0 })).toEqual({ ok: false, why: 'empty' });
+  });
+
+  it('counts a ready image as content: an image-only prompt is legitimate', () => {
+    expect(sendGate({ draft: '', readyImages: 1, uploadingImages: 0 })).toEqual({ ok: true });
+  });
+
+  it('refuses while any body is still uploading, even with text', () => {
+    expect(sendGate({ draft: '看看这个', readyImages: 0, uploadingImages: 1 })).toEqual({ ok: false, why: 'uploading' });
+    // A mixed batch refuses on UPLOADING: the prompt would name a file that
+    // does not exist yet.
+    expect(sendGate({ draft: '看看这个', readyImages: 2, uploadingImages: 1 })).toEqual({ ok: false, why: 'uploading' });
+  });
+
+  it('allows plain text with nothing in flight', () => {
+    expect(sendGate({ draft: '看看这个', readyImages: 0, uploadingImages: 0 })).toEqual({ ok: true });
   });
 });

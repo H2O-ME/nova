@@ -9,6 +9,7 @@ export const PLUGINS_COPY = {
   'pluginPage.working': '执行中…',
   'pluginPage.saved': '已保存',
   'pluginPage.failed': '这个插件没能完成该操作',
+  'pluginPage.invalid': '插件返回的页面描述不合法',
   'plugins.nav': '插件管理',
   'plugins.title': '插件管理',
   'plugins.intro': '查看运行中的插件、按需开关；开关即时生效并写入配置文件。',

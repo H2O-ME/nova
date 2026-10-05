@@ -12,7 +12,7 @@
  * its seat invisible while the baseline lands, and only an active transcript
  * gets a scroller, width handles and the strict header.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApprovalPanel } from './approval/ApprovalPanel.js';
 import { QuestionPanel } from './question/QuestionPanel.js';
 import { ChatView } from './chat/ChatView.js';
@@ -84,6 +84,31 @@ export function App(): JSX.Element {
   const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
   /** The settings dialog: the shell owns the panel, the sidebar foot the seat. */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Sections holding unsaved edits (a plugin page's field drafts). The panel
+  // reads this to ask before a switch discards them; the sections REPORT it,
+  // because only a section knows what its draft means.
+  const [dirtySections, setDirtySections] = useState<ReadonlySet<string>>(new Set());
+  const markSectionDirty = useCallback((id: string, dirty: boolean): void => {
+    setDirtySections((current) => {
+      if (current.has(id) === dirty) return current;
+      const next = new Set(current);
+      if (dirty) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  // One stable reporter per section id: PluginPageSection re-reports when the
+  // callback identity changes, so a fresh closure per render would re-report
+  // (harmlessly, but on every keystroke). The map keeps identity per id.
+  const dirtyReportersRef = useRef(new Map<string, (dirty: boolean) => void>());
+  const dirtyReporter = useCallback((id: string): ((dirty: boolean) => void) => {
+    let report = dirtyReportersRef.current.get(id);
+    if (report === undefined) {
+      report = (dirty) => { markSectionDirty(id, dirty); };
+      dirtyReportersRef.current.set(id, report);
+    }
+    return report;
+  }, [markSectionDirty]);
   /** The right panel's four-page body (变更/文件/任务/终端). */
   const [rightbarOpen, setRightbarOpen] = useState(false);
   // The right panel's OPEN tabs and the one in front (null = the start page).
@@ -456,6 +481,7 @@ export function App(): JSX.Element {
                   fileItems={state.files?.items ?? []}
                   filesTruncated={state.files?.truncated ?? false}
                   filesPending={state.files?.pending ?? false}
+                  sendRejected={state.sendRejected}
                   // The `+` menu's 引用本地文件 opens the HOST's NATIVE file
                   // dialog first; a host without one falls back to the in-page
                   // browser (see the `picked` consumer above).
@@ -659,6 +685,9 @@ export function App(): JSX.Element {
               id: row.name,
               label: row.title ?? row.name,
               icon: <PluginIcon />,
+              // The panel's leave guard reads this: an unsaved draft on the
+              // page asks before a switch discards it.
+              dirty: dirtySections.has(row.name),
               content: (
                 <PluginPageSection
                   plugin={row.name}
@@ -667,6 +696,7 @@ export function App(): JSX.Element {
                   manageError={state.manageError?.message ?? null}
                   send={send}
                   onEdit={() => { dispatch({ type: 'plugin_edit' }); }}
+                  onDirtyChange={dirtyReporter(row.name)}
                 />
               ),
             })),

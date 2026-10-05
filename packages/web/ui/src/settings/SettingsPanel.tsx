@@ -24,6 +24,7 @@ import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
 import { CloseIcon } from '../icons.js';
 import { cls } from '../sidebar/view.js';
+import { UnsavedConfirmDialog } from './UnsavedConfirmDialog.js';
 import a11yCss from '../chat/accessibility.module.css';
 import css from './SettingsPanel.module.css';
 
@@ -33,7 +34,17 @@ export interface SettingsSection {
   label: string;
   icon: JSX.Element;
   content: JSX.Element;
+  /**
+   * The section holds unsaved edits. Switching away (or closing the panel)
+   * unmounts the content, so the panel asks first instead of discarding
+   * silently — the section reports this through its own state (a plugin page
+   * knows its draft; the panel knows nothing about what the fields mean).
+   */
+  dirty?: boolean;
 }
+
+/** What the reader asked to leave TO — another section, or out of the panel. */
+export type LeaveIntent = { kind: 'switch'; id: string } | { kind: 'close' };
 
 export interface SettingsDialogProps {
   /** The dialog's name, rendered as the nav title (`设置`). */
@@ -133,23 +144,54 @@ export interface SettingsPanelProps {
  */
 export function SettingsPanel({ title, closeLabel, sections, onClose }: SettingsPanelProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | undefined>(sections[0]?.id);
+  // The leave guard. Switching a section away (and closing the panel) unmounts
+  // the one on screen; when it holds unsaved edits the loss must be ASKED, not
+  // taken — the same judgment the session-delete confirm makes for a row
+  // button a reader may have mis-aimed. The section's own `dirty` is the only
+  // voice: the panel cannot know what its fields mean.
+  const [pendingLeave, setPendingLeave] = useState<LeaveIntent | null>(null);
+  const active = sections.find((section) => section.id === activeId) ?? sections[0];
+  const guard = (intent: LeaveIntent, proceed: () => void): void => {
+    if (active?.dirty === true) setPendingLeave(intent);
+    else proceed();
+  };
+  const handleSelect = (id: string): void => {
+    // Re-picking the row already on screen is not a leave: it must not ask.
+    if (id === activeId) return;
+    guard({ kind: 'switch', id }, () => { setActiveId(id); });
+  };
+  const handleClose = (): void => { guard({ kind: 'close' }, onClose); };
   const panelRef = useRef<HTMLDivElement | null>(null);
   // The modal layer's lifetime runs ONCE per mount: entry focus without a
   // ring, top-layer Escape and Tab ownership, and the focus return to the
   // invoker on unmount. The caller's onClose is read through the layer's own
   // ref, so a fresh callback per shell render does not re-bind anything.
-  useModalLayer(panelRef, true, onClose);
+  useModalLayer(panelRef, true, handleClose);
 
   return createPortal(
-    <SettingsDialog
-      title={title}
-      closeLabel={closeLabel}
-      sections={sections}
-      activeId={activeId}
-      onSelect={setActiveId}
-      onClose={onClose}
-      panelRef={panelRef}
-    />,
+    <>
+      <SettingsDialog
+        title={title}
+        closeLabel={closeLabel}
+        sections={sections}
+        activeId={activeId}
+        onSelect={handleSelect}
+        onClose={handleClose}
+        panelRef={panelRef}
+      />
+      {pendingLeave !== null && (
+        <UnsavedConfirmDialog
+          section={active?.label ?? title}
+          onConfirm={() => {
+            const intent = pendingLeave;
+            setPendingLeave(null);
+            if (intent.kind === 'switch') setActiveId(intent.id);
+            else onClose();
+          }}
+          onClose={() => { setPendingLeave(null); }}
+        />
+      )}
+    </>,
     document.body,
   );
 }

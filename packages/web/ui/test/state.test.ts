@@ -87,12 +87,96 @@ function texts(blocks: Block[]): string[] {
 }
 
 describe('reduce / connection', () => {
-  it('marks the transcript disconnected without dropping it, and clears on reconnect', () => {
+  it('marks the transcript disconnected without dropping it; only `ready` reconnects', () => {
     const live = fold([{ event: { type: 'text_delta', messageId: 'm', text: 'hi' } }]);
     const down = reduce(live, { type: 'connection', connected: false });
     expect(down.phase).toBe('disconnected');
+    expect(down.connected).toBe(false);
     expect(texts(down.blocks)).toEqual(['hi']);
-    expect(reduce(down, { type: 'connection', connected: true }).phase).toBe('idle');
+    // A socket that is open is not a session that answers: there is no
+    // `connected: true` arm at all (compile-time), so the reconnect's `ready`
+    // is the only thing that lights the room back up.
+    const back = reduce(down, { type: 'ready', info: readyInfo() });
+    expect(back.connected).toBe(true);
+    expect(back.phase).toBe('idle');
+  });
+});
+
+describe('reduce / send echo accounting', () => {
+  const userMsg = (id: string, text: string) => ({ id, ts: 0, role: 'user' as const, content: text });
+
+  it('parks the echo wait on a prompt/command send and settles it on the kernel echo', () => {
+    const sent = reduce(initialState, { type: 'sent', frame: { type: 'prompt', text: '跑' } });
+    expect(sent.awaitingEcho).toBe(true);
+    const echoed = reduce(sent, { type: 'event', event: { type: 'user_message', message: userMsg('m1', '跑') } });
+    expect(echoed.awaitingEcho).toBe(false);
+  });
+
+  it('a queued prompt also settles: its user_message commits before the queue branch', () => {
+    // Queued prompts echo immediately (session.prompt publishes user_message
+    // before the running/compaction queue check), so the same echo settles a
+    // send that the kernel is still queueing.
+    const first = reduce(initialState, { type: 'sent', frame: { type: 'prompt', text: '一' } });
+    const queued = reduce(first, { type: 'sent', frame: { type: 'prompt', text: '二' } });
+    expect(queued.awaitingEcho).toBe(true);
+    expect(reduce(queued, { type: 'event', event: { type: 'user_message', message: userMsg('m2', '二') } }).awaitingEcho).toBe(false);
+  });
+
+  it('a command run row echoes a command send', () => {
+    const sent = reduce(initialState, { type: 'sent', frame: { type: 'command', name: 'compact', args: '' } });
+    expect(sent.awaitingEcho).toBe(true);
+    const done = reduce(sent, { type: 'event', event: { type: 'command', name: 'compact', phase: 'run' } });
+    expect(done.awaitingEcho).toBe(false);
+  });
+
+  it('an error before any echo rings sendRejected exactly once per rejected send', () => {
+    const sent = reduce(initialState, { type: 'sent', frame: { type: 'prompt', text: '跑' } });
+    const rejected = reduce(sent, { type: 'error', message: 'not attached' });
+    expect(rejected.sendRejected).toBe(1);
+    expect(rejected.awaitingEcho).toBe(false);
+    // A second `error` frame with nothing newly sent must NOT ring again —
+    // otherwise the composer restores a draft the user already has.
+    expect(reduce(rejected, { type: 'error', message: 'still bad' }).sendRejected).toBe(1);
+    // A new send re-arms: the next rejection is observable again.
+    const resent = reduce(rejected, { type: 'sent', frame: { type: 'prompt', text: '再' } });
+    expect(reduce(resent, { type: 'error', message: 'no' }).sendRejected).toBe(2);
+  });
+
+  it('after the echo, a later error is not mistaken for a rejected send', () => {
+    const live = reduce(
+      reduce(initialState, { type: 'sent', frame: { type: 'prompt', text: '跑' } }),
+      { type: 'event', event: { type: 'user_message', message: userMsg('m1', '跑') } },
+    );
+    const after = reduce(live, { type: 'error', message: 'provider blew up mid-run' });
+    expect(after.sendRejected).toBe(0);
+  });
+
+  it('non-echo frames (list_sessions) never park the echo wait', () => {
+    expect(reduce(initialState, { type: 'sent', frame: { type: 'list_sessions' } }).awaitingEcho).toBe(false);
+  });
+});
+
+describe('reduce / plugin answers', () => {
+  const answer = (plugin: string, id: number, result: unknown) => ({
+    type: 'plugin_answer' as const,
+    plugin,
+    id,
+    op: 'page',
+    ok: true,
+    result,
+  });
+
+  it('keeps the newest answer per plugin and drops a late one from a previous mount', () => {
+    // Ids are globally monotonic (settings/plugin-request-id.ts), so a slow
+    // reply to a request the page has moved past must not overwrite the fresh
+    // page the operator is looking at.
+    const fresh = reduce(initialState, answer('demo', 9, { title: '新页' }));
+    expect(fresh.pluginAnswers.demo).toMatchObject({ id: 9 });
+    expect(reduce(fresh, answer('demo', 3, { title: '旧页' })).pluginAnswers.demo).toMatchObject({ id: 9 });
+    // A genuinely newer answer still lands, and another plugin is untouched.
+    const next = reduce(fresh, answer('demo', 10, { title: '更新页' }));
+    expect(next.pluginAnswers.demo).toMatchObject({ id: 10 });
+    expect(next.pluginAnswers.other).toBeUndefined();
   });
 });
 

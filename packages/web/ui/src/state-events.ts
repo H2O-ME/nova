@@ -129,9 +129,21 @@ export function reduceEvent(
       pin time instead of racing it. */
   now: number = Date.now(),
 ): UiState {
-  if (isTranscriptEvent(event)) return reduceTranscript(state, event, view, resultView, now);
-  if (isRunStateEvent(event)) return reduceRunState(state, event);
-  return state;
+  const next = isTranscriptEvent(event)
+    ? reduceTranscript(state, event, view, resultView, now)
+    : isRunStateEvent(event)
+      ? reduceRunState(state, event)
+      : state;
+  // The kernel echoed the browser's send (a committed prompt — queued prompts
+  // commit before they enqueue — or a command's run row). The draft's fate is
+  // sealed as DELIVERED, so a later `error` frame about something else must not
+  // restore it.
+  return acceptsEcho(event) ? { ...next, awaitingEcho: false } : next;
+}
+
+/** Whether this event IS the echo the composer's send was waiting for. */
+function acceptsEcho(event: KernelEvent): boolean {
+  return event.type === 'user_message' || (event.type === 'command' && event.phase === 'run');
 }
 
 /**

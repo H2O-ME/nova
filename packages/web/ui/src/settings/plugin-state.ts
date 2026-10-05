@@ -38,6 +38,29 @@ export function pagePlugins(rows: readonly WireRosterEntry[]): readonly WireRost
   );
 }
 
+/**
+ * Whether a settings-page draft holds unsaved edits, compared against the
+ * values the descriptor last seeded.
+ *
+ * The comparison runs over BOTH key sets: a field the seed removed (the plugin
+ * dropped it on save) still counts while its draft value survives, and a draft
+ * key the seed never had counts too. Equal content on equal keys — the common
+ * mount case, a pre-filled page — is not an edit.
+ * @param baseline - what the descriptor last seeded (the seed itself, not a copy).
+ * @param draft - the operator's current field values.
+ * @returns true when any key's values differ.
+ */
+export function draftDirty(
+  baseline: Readonly<Record<string, string>>,
+  draft: Readonly<Record<string, string>>,
+): boolean {
+  const keys = new Set([...Object.keys(baseline), ...Object.keys(draft)]);
+  for (const key of keys) {
+    if (baseline[key] !== draft[key]) return true;
+  }
+  return false;
+}
+
 /** The container's `FiberState` union, as the wire reports it. */
 const STATE_KEYS: Record<string, string> = {
   pending: SETTINGS_COPY['pluginState.pending'],

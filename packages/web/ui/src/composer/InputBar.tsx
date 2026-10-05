@@ -55,7 +55,7 @@ import { DropOverlay } from './DropOverlay.js';
 import { DraftSurface } from './DraftSurface.js';
 import { InputToolbar } from './InputToolbar.js';
 import { chainsWheelToConversation } from './composer-measure.js';
-import { DROP_BLOCKED, DROP_TITLE, placeholderFor, primarySeat } from './composer-text.js';
+import { DROP_BLOCKED, DROP_TITLE, placeholderFor, primarySeat, sendGate } from './composer-text.js';
 import { cx } from './cx.js';
 import css from './InputBar.module.css';
 import type { ModelCatalog } from '../state.js';
@@ -106,6 +106,13 @@ export interface InputBarProps {
   /** A `list_files` request is in flight for the query now being typed. */
   filesPending: boolean;
   /**
+   * How many times a send of this composer's was refused before the kernel
+   * echoed it. The bar clears its draft the moment a frame leaves, so a refusal
+   * arriving later is the death of an edit the reader already saw leave — this
+   * counter is the bell that brings it back (see `sendRejected` in state.ts).
+   */
+  sendRejected: number;
+  /**
    * Open the HOST's file picker (the `+` menu's 引用本地文件 row).
    *
    * The picker is not here because it is not a browser control: a `File` from an
@@ -149,6 +156,7 @@ export function InputBar({
   fileItems,
   filesTruncated,
   filesPending,
+  sendRejected,
   onReferenceFile,
   pickedFile,
   onPickedFileConsumed,
@@ -175,6 +183,32 @@ export function InputBar({
   // upload is: the card says what happened, and the drop never silently
   // vanishes.
   const [intakeError, setIntakeError] = useState<string | null>(null);
+  // A refused SEND reads under the card too, but it is its own line: the intake
+  // error is about a gesture that never left the bar, this one is about a draft
+  // the reader saw leave and is getting back.
+  const [sendNotice, setSendNotice] = useState<string | null>(null);
+  // The draft the last submit cleared, kept until the kernel rules on it: an
+  // echoed send was delivered (nothing to restore), a refused one gets its text
+  // back. Null once ruled on either way.
+  const lastSentRef = useRef<string | null>(null);
+  const seenRejectionRef = useRef(0);
+  useEffect(() => {
+    if (sendRejected === seenRejectionRef.current) return;
+    seenRejectionRef.current = sendRejected;
+    const sent = lastSentRef.current;
+    if (sent === null) return;
+    lastSentRef.current = null;
+    // Restoring under text the reader already typed would destroy THAT edit;
+    // the transcript hint still carries the refusal, so only a clean draft
+    // gets the text back.
+    if (draft !== '') {
+      setSendNotice('上一条发送被拒绝，原因见转录');
+      return;
+    }
+    setDraft(sent);
+    setCaret(sent.length);
+    setSendNotice('发送被拒绝，草稿已还原');
+  }, [sendRejected, draft]);
   // Attachments: the document-level drop/paste intake plus the hidden picker.
   // While the composer is disabled (no connection, or a run owns it) an intake
   // attempt is ignored rather than posted to a socket that cannot carry it. The
@@ -268,6 +302,7 @@ export function InputBar({
     setDismissed(false);
     setPinned(false);
     setActiveItem(0);
+    setSendNotice(null);
   };
   const pick = (item: ComposerMenuItem): void => {
     // The local action rows act instead of writing text: a pick opens the
@@ -293,15 +328,17 @@ export function InputBar({
     }
     boxRef.current?.focus();
   };
+  // The delivery verdict, computed ONCE per render from the live attachments:
+  // the seat below and `submit` both read it, so the button's enabled state and
+  // the gesture's own gate can never disagree (they did — the seat was fed a
+  // hard-coded `uploading: false` while submit checked the real attachments,
+  // and an in-flight upload showed an enabled button that silently did
+  // nothing).
+  const readyImages = readyImageRefs(attachments.images);
+  const uploadingImages = attachments.images.filter((image) => image.status === 'uploading').length;
+  const delivery = sendGate({ draft, readyImages: readyImages.length, uploadingImages });
   const submit = (): void => {
-    const text = draft.trim();
-    // An image-only prompt is legitimate (paste a screenshot and hit send), so
-    // the emptiness gate is text OR a ready image — but never an image still
-    // uploading, whose reference does not exist yet.
-    const imageRefs = readyImageRefs(attachments.images);
-    const stillUploading = attachments.images.some((image) => image.status === 'uploading');
-    if (text === '' && imageRefs.length === 0) return;
-    if (stillUploading) return;
+    if (!delivery.ok) return;
     // Files become mention tokens in the prompt; images ride the frame as
     // references. Two routes on purpose: a path is text the model resolves with
     // `read_file`, while image bytes have no path and must be content.
@@ -314,12 +351,18 @@ export function InputBar({
     const frame = draftFrame(draft, commands);
     if (frame.type === 'prompt') {
       const body = mentions === '' ? frame.text : `${frame.text}\n\n${mentions}`;
-      send(imageRefs.length === 0
+      send(readyImages.length === 0
         ? { type: 'prompt', text: body }
-        : { type: 'prompt', text: body, images: imageRefs });
+        : { type: 'prompt', text: body, images: readyImages });
     } else {
       send(frame);
     }
+    // The draft is kept until the kernel rules: a refusal arriving after this
+    // clear is what `sendRejected` counts, and the effect above hands the text
+    // back. Images cannot come back (their refs died with the clear) — the
+    // notice says text only.
+    lastSentRef.current = draft;
+    setSendNotice(null);
     attachments.clear();
     setDraft('');
     setCaret(0);
@@ -331,9 +374,10 @@ export function InputBar({
     running,
     disabled,
     draft,
-    // A named reference is ready the moment the host returns it (nothing is
-    // copied or transferred), so no intake state gates the key.
-    uploading: false,
+    // The REAL intake fact: an image still uploading disables the seat with its
+    // own reason (STILL_UPLOADING) instead of leaving a live-looking button
+    // whose gesture the verdict refuses.
+    uploading: !delivery.ok && delivery.why === 'uploading',
   });
   // The `@` listing is asked per query, debounced: the host walks the workspace
   // on every ask, so typing `@src/main` must not start five walks. The timer
@@ -525,10 +569,17 @@ export function InputBar({
         />
       </div>
       {/* A refused intake (a dropped folder) reads under the card, not inside
-          it: it is about the gesture, not about a file that got staged. */}
+          it: it is about the gesture, not about a file that got staged. A
+          refused SEND reads in the same slot: it is about a draft the reader
+          saw leave, and the line is where its restoration is announced. */}
       {intakeError !== null && (
         <div className={css.intakeError} role="status">
           {intakeError}
+        </div>
+      )}
+      {sendNotice !== null && (
+        <div className={css.intakeError} role="status">
+          {sendNotice}
         </div>
       )}
       {/* The dock row, outside the card but inside the root: the stats pills

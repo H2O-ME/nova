@@ -227,6 +227,19 @@ export interface UiState {
   pendingQuestion: QuestionRequest | null;
   queued: readonly string[];
   turnCount: number;
+  /**
+   * A prompt/command the browser just put on the socket has NOT been echoed by
+   * the kernel yet (`user_message` / command `run` row). `submit()` clears the
+   * draft optimistically; this is what makes the clearing provisional — and
+   * {@link sendRejected} is the bell it rings.
+   */
+  awaitingEcho: boolean;
+  /**
+   * How many sends were refused (an `error` frame arrived before any echo).
+   * A counter, not a boolean: two rejections — even of the same text — are two
+   * observable events, and the composer restores the draft on each it sees.
+   */
+  sendRejected: number;
   /** Prompt tokens of the last request (the context gauge's numerator). */
   usedTokens: number;
   contextWindow: number | null;
@@ -561,6 +574,8 @@ export const initialState: UiState = {
   pendingQuestion: null,
   queued: [],
   turnCount: 0,
+  awaitingEcho: false,
+  sendRejected: 0,
   usedTokens: 0,
   contextWindow: null,
   sessions: null,
@@ -587,7 +602,10 @@ export const initialState: UiState = {
 };
 
 export type Action =
-  | { type: 'connection'; connected: boolean }
+  /** The socket DIED. Lighting `connected` is `ready`'s job alone (applyReady):
+   *  a socket that is open but not yet attached answers nothing, so it must
+   *  not unlock a single control. */
+  | { type: 'connection'; connected: false }
   /** A frame the client just put on the socket — request-side state the
    *  server's replies alone cannot account for (the pagination in-flight flag). */
   | { type: 'sent'; frame: ClientFrame }
@@ -678,27 +696,29 @@ export type Action =
 export function reduce(state: UiState, action: Action): UiState {
   switch (action.type) {
     case 'connection':
+      // `connected: false` is the whole action: the socket died, so every
+      // control darkens and every in-flight flag the dead socket owned is
+      // released (the reconnect's `ready` re-baselines them). There is no
+      // `connected: true` arm to write — see the Action type.
       return {
         ...state,
-        connected: action.connected,
-        // 'disconnected' is synthetic (not a kernel TurnPhase): a reconnect must
-        // clear it, or the badge outlives the disconnect until the next event.
-        phase: action.connected ? (state.phase === 'disconnected' ? 'idle' : state.phase) : 'disconnected',
+        connected: false,
+        // 'disconnected' is synthetic (not a kernel TurnPhase): the reconnect's
+        // `ready` replaces it with the real phase.
+        phase: 'disconnected',
         // A dropped socket means the reply cannot arrive: unblock the button
         // rather than leave it spinning until the reconnect re-baselines.
-        historyPending: action.connected ? state.historyPending : false,
+        historyPending: false,
         // Same rule for the trace page: a dropped socket cannot deliver it.
-        trace: state.trace !== null && !action.connected ? { ...state.trace, pending: false } : state.trace,
+        trace: state.trace !== null ? { ...state.trace, pending: false } : state.trace,
         // …and for the directory picker, where a stuck flag is worse than a
         // spinner: the dialog gates its own opening ask on `!pending` and
         // disables both 新建文件夹 and 打开 while it is set, so a disconnect during
         // a listing left the reader in a dead end that only closing and
         // reopening could escape.
-        directory: state.directory !== null && !action.connected
-          ? { ...state.directory, pending: false }
-          : state.directory,
+        directory: state.directory !== null ? { ...state.directory, pending: false } : state.directory,
         // A dropped socket cannot deliver the `picked` reply either.
-        pickPending: action.connected ? state.pickPending : false,
+        pickPending: false,
       };
     case 'sent':
       if (action.frame.type === 'load_earlier') return { ...state, historyPending: true };
@@ -783,6 +803,13 @@ export function reduce(state: UiState, action: Action): UiState {
           },
         };
       }
+      // A prompt or command parks the echo wait: the kernel either echoes it
+      // (its `user_message` / command `run` row lands) or refuses it (an
+      // `error` frame arrives with nothing echoed). Every other frame type is
+      // answered by a reply of its own and needs no echo bookkeeping.
+      if (action.frame.type === 'prompt' || action.frame.type === 'command') {
+        return { ...state, awaitingEcho: true };
+      }
       return state;
     case 'ready':
       return applyReady(state, action.info);
@@ -850,6 +877,14 @@ export function reduce(state: UiState, action: Action): UiState {
     case 'skills':
       return { ...state, skills: { items: action.items, disable: action.disable } };
     case 'plugin_answer': {
+      // A LATE answer is dropped, not applied. Ids are globally monotonic (the
+      // id source never restarts, not even across section remounts — see
+      // `settings/plugin-request-id.ts`), so an answer older than the newest
+      // one this plugin already holds belongs to a request the page has moved
+      // past: reopening the page must not let a slow reply to the PREVIOUS
+      // mount overwrite the fresh one.
+      const current = state.pluginAnswers[action.plugin];
+      if (current !== undefined && current.id > action.id) return state;
       const answer: PluginRequestAnswer = {
         id: action.id,
         op: action.op,
@@ -1040,6 +1075,11 @@ export function reduce(state: UiState, action: Action): UiState {
         sessionsPending: false,
         clonePending: false,
         trace: state.trace !== null ? { ...state.trace, pending: false } : null,
+        // An error IS a reply. When it settles a send that never got its echo,
+        // the composer's optimistically cleared draft is owed a restore: the
+        // counter (not a boolean) is what makes a second rejection — even of
+        // the same text — observable too.
+        ...(state.awaitingEcho ? { sendRejected: state.sendRejected + 1, awaitingEcho: false } : {}),
       };
     }
   }
@@ -1075,6 +1115,9 @@ function applyReady(state: UiState, info: ReadyInfo): UiState {
     // keep a switch disabled after the reconnect that re-baselined it.
     manageError: null,
     pluginAnswers: {},
+    // Same for the echo wait: a reconnect is not a reply to anything, and a
+    // draft parked waiting for an echo belongs to a page that no longer exists.
+    awaitingEcho: false,
     // The model list lives in the config file, not in the session, so a
     // re-baseline does not invalidate it — but the panel re-asks on open anyway
     // (the operator may have hand-edited the file between opens).

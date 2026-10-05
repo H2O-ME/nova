@@ -6,9 +6,10 @@
  * input in the same 36px strip, save/cancel on Enter/Escape, and an empty draft
  * disabling the save.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { CheckIcon, CloseIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
+import { COMPOSING_GRACE_MS, composing } from '../composer-keys.js';
 import css from './GoalPanel.module.css';
 
 export interface GoalEditRowProps {
@@ -21,6 +22,11 @@ export interface GoalEditRowProps {
 
 export function GoalEditRow({ objective, onSave, onCancel }: GoalEditRowProps): JSX.Element {
   const [draft, setDraft] = useState(objective);
+  // Composition watch, the composer's own predicate: an Enter that picks an IME
+  // candidate (or Safari's late keydown just after `compositionend`) is the
+  // IME's, not a save — typing a Chinese objective used to commit the half-
+  // composed pinyin as the goal on the very Enter that confirmed it.
+  const composingUntilRef = useRef(0);
   const save = (): void => {
     const trimmed = draft.trim();
     if (trimmed === '') return;
@@ -34,7 +40,17 @@ export function GoalEditRow({ objective, onSave, onCancel }: GoalEditRowProps): 
         aria-label="目标内容"
         value={draft}
         onChange={(event) => { setDraft(event.target.value); }}
+        onCompositionStart={() => { composingUntilRef.current = 0; }}
+        onCompositionEnd={() => { composingUntilRef.current = Date.now() + COMPOSING_GRACE_MS; }}
         onKeyDown={(event) => {
+          if (composing({
+            key: event.key,
+            shiftKey: event.shiftKey,
+            repeat: event.repeat,
+            keyCode: event.keyCode,
+            isComposing: event.nativeEvent.isComposing,
+            recentlyComposing: Date.now() < composingUntilRef.current,
+          })) return;
           if (event.key === 'Enter') save();
           if (event.key === 'Escape') onCancel();
         }}
