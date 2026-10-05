@@ -69,6 +69,16 @@ export const permissionGatePlugin: Plugin = {
       if (scope.sessionId !== undefined && sessions !== undefined) {
         return { action: 'deny', reason: 'this call belongs to a session that is no longer open' };
       }
+      // A call with NO scope in a kernel that HAS sessions is just as suspect:
+      // every product path (a session run, a PTC sub-dispatch, a nested
+      // subagent loop) threads the scope, so a scopeless call means a run
+      // bypassed the threading — and the kernel engine belongs to no
+      // conversation, so deciding under it is the escalation path F01 closed.
+      // Bare embedded kernels (no registry) keep the kernel-engine fallback:
+      // there is no other engine and no scope to carry.
+      if (scope.sessionId === undefined && sessions !== undefined) {
+        return { action: 'deny', reason: 'this call carries no session scope' };
+      }
       const decision = await kernelGate.decideDetailed(call.name, kind, call);
       if (decision === 'allow') return undefined;
       return {

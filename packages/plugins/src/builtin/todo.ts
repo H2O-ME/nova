@@ -39,6 +39,11 @@ export function todoPlugin(): Plugin {
         name: 'todo_write',
         description:
           'Replaces the whole session todo list. Args: todos (required) — array of { content: string, status: "pending" | "in_progress" | "completed" }. Write the complete list every time; mark exactly one task in_progress while working on it.',
+        // The board belongs to THIS conversation: a nested ephemeral run (a
+        // subagent) must not write it — without this marker the nested run
+        // either polluted the parent's board (emit inherited) or silently
+        // pretended success (emit absent). See `nestedToolset`.
+        ownsSessionState: true,
         parameters: {
           type: 'object',
           properties: {

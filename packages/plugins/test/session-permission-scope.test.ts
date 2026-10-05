@@ -114,6 +114,22 @@ describe('per-session permission scope', () => {
     await kernel.dispose();
   });
 
+  it('refuses a SCOPELESS call instead of judging it with the kernel engine', async () => {
+    // In a kernel that has sessions, every legitimate path threads the scope
+    // (session runs, PTC sub-dispatches, nested subagent loops). A call with
+    // an empty scope means something bypassed the threading — deciding it
+    // under the kernel engine was exactly the F01 escalation path (a nested
+    // run outliving a restricted parent conversation could come back
+    // scopeless and be judged by the kernel's broader tier).
+    const kernel = await kernelWithTool();
+    kernel.permission.setMode('full');
+    expect(await kernel.hooks.beforeToolCall?.(call, {})).toEqual({
+      action: 'deny',
+      reason: 'this call carries no session scope',
+    });
+    await kernel.dispose();
+  });
+
   it('does not carry a remembered "always allow" grant across sessions', async () => {
     const kernel = await kernelWithTool();
     const a = await kernel.newAgentSession();

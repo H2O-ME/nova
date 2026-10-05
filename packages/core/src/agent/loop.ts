@@ -27,6 +27,13 @@ import { makeDispatcher, parseArgs, runToolCalls } from './tools.js';
  * REPL, browser and non-interactive runners all consume the same stream.
  */
 export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> {
+  // One id per invocation, stable across the run's tool calls: hooks and audit
+  // records read it off the scope to correlate "the calls of THIS run" — and a
+  // subagent's nested loop, being its own invocation, gets a different runId
+  // under the same sessionId. A caller that pinned `runId` (a resumed run
+  // replaying under one identity) wins.
+  const scoped: AgentOptions = opts.runId !== undefined ? opts : { ...opts, runId: newId('run') };
+  opts = scoped;
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxBytes = opts.maxToolResultBytes ?? DEFAULT_MAX_TOOL_RESULT_BYTES;
   const stats = emptyStats();

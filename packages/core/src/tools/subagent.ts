@@ -1,6 +1,7 @@
 import { runAgent } from '../agent.js';
 import { newId } from '../ids.js';
 import { presentSubagentCall, presentSubagentResult } from './subagent-view.js';
+import { nestedToolset, type NestedRunSession } from './nested-run.js';
 import type { AgentHooks, ChatProvider, ToolCall, ToolDefinition, UsageStats } from '../types.js';
 
 /**
@@ -93,10 +94,12 @@ async function runOnce(
   label: string,
   prompt: string,
   signal: AbortSignal | undefined,
+  session: NestedRunSession,
 ): Promise<{ report: string; usage: SubagentUsage; completed: boolean }> {
-  // Same tools minus the subagent itself (no recursion) — evaluated live
-  // so a host rebuild between registration and dispatch is honored.
-  const nestedTools = opts.tools().filter((tool) => tool.name !== SUBAGENT_TOOL_NAME);
+  // Same tools minus the subagent itself and the session-state tools —
+  // evaluated live so a host rebuild between registration and dispatch is
+  // honored.
+  const nestedTools = nestedToolset(opts.tools(), SUBAGENT_TOOL_NAME);
 
   const messages = [
     {
@@ -139,6 +142,14 @@ async function runOnce(
     ...(opts.hooks !== undefined ? { hooks: opts.hooks() } : {}),
     signal,
     maxTurns: opts.maxTurns,
+    // The nested run belongs to the conversation that asked for it: its tool
+    // calls carry the parent's scope (the gate decides with the parent's
+    // engine, the audit lands in the parent's session), its background jobs
+    // are owned by that session, and its log-only writes reach the parent's
+    // log instead of vanishing. See `NestedRunSession`.
+    ...(session.sessionId !== undefined ? { sessionId: session.sessionId } : {}),
+    ...(session.jobs !== undefined ? { jobs: session.jobs } : {}),
+    ...(session.emit !== undefined ? { emit: session.emit } : {}),
   })) {
     if (event.type === 'message' && event.message.role === 'assistant') {
       lastAssistant = event.message.content.trim();
@@ -217,6 +228,10 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
       const prompt = typeof args['prompt'] === 'string' ? args['prompt'] : '';
       if (prompt.trim().length === 0) return 'Error: prompt must be a non-empty string';
       const label = typeof args['label'] === 'string' && args['label'].trim().length > 0 ? args['label'].trim() : 'subtask';
+      // What the nested run inherits from the conversation that asked for it
+      // (see `NestedRunSession`): the permission subject, the job owner, and
+      // the log sink — all read off the ToolExecuteContext at dispatch time.
+      const session: NestedRunSession = { sessionId: ctx.sessionId, jobs: ctx.jobs, emit: ctx.emit };
 
       if (args['run_in_background'] === true) {
         if (ctx.jobs === undefined) return 'Error: background jobs are not available in this context';
@@ -245,6 +260,7 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
           label,
           prompt,
           controller.signal,
+          session,
         ).then(({ report, usage, completed }) => ({
           status: (completed ? 'completed' : report.includes('aborted') ? 'killed' : 'failed') as
             | 'completed'
@@ -281,7 +297,7 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
         return `Started background subagent ${snapshot.id}: ${label}\nYou will be notified automatically when it finishes — do not poll. When notified, read its report once with the jobs tool (action=output, id=${snapshot.id}); use action=stop to terminate it early.`;
       }
 
-      const { report, usage } = await runOnce(opts, label, prompt, ctx.signal);
+      const { report, usage } = await runOnce(opts, label, prompt, ctx.signal, session);
       return `${report}\n${subagentUsageTrailer(label, usage)}`;
     },
   };

@@ -151,7 +151,11 @@ async function preflightToolCall(call: ToolCall, opts: AgentOptions): Promise<Pr
   // reading a permission tier) must read it from here: one kernel runs several
   // sessions concurrently, so "the current session" is a UI selection and would
   // let one conversation's tier decide another's call.
-  const scope: ToolCallScope = opts.sessionId === undefined ? {} : { sessionId: opts.sessionId };
+  const scope: ToolCallScope = {
+    ...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
+    ...(opts.runId !== undefined ? { runId: opts.runId } : {}),
+    ...(opts.principal !== undefined ? { principal: opts.principal } : {}),
+  };
 
   let effective = call;
   for (let round = 0; ; round++) {

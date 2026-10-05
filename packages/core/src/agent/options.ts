@@ -47,6 +47,19 @@ export interface AgentOptions {
    * this the job would be visible to, and announced into, every session.
    */
   sessionId?: string;
+  /**
+   * Which run inside the session this is. Minted by `runAgent` when unset (one
+   * id per invocation, stable across its tool calls) so every hook and audit
+   * record can correlate the calls of one run — a subagent's nested loop gets a
+   * DIFFERENT runId from its parent's, under the SAME sessionId.
+   */
+  runId?: string;
+  /**
+   * The permission subject in force (the principal whose tier the approval
+   * gate consults). A channel that constrains its sessions stamps it; a nested
+   * run inherits it, so delegation can never widen what its caller could do.
+   */
+  principal?: string;
   /** Session-event sink exposed to tools (log-only events like todo/write). */
   emit?: (evt: import('../session.js').SessionEvent) => void | Promise<void>;
   /**

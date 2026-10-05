@@ -202,6 +202,15 @@ export interface ToolDefinition {
    */
   permissionFor?(args: Record<string, unknown>): ToolPermissionKind | Promise<ToolPermissionKind>;
   /**
+   * The tool owns PER-SESSION state (a todo board, a goal): its writes are
+   * only meaningful inside the conversation whose state they mutate. A nested
+   * ephemeral run (a subagent) EXCLUDES such tools from its toolset instead of
+   * letting them write into the parent's state or — worse — silently pretend
+   * success because no log sink is wired. Optional; absent means the tool is
+   * stateless with respect to the conversation and safe to nest.
+   */
+  ownsSessionState?: boolean;
+  /**
    * Optional human-readable preview of a call's effect, rendered above
    * approval prompts (e.g. the edit diff of edit_file). Must never mutate
    * state — the caller may invoke it before permission is granted.
@@ -399,9 +408,30 @@ export function validateToolCallVerdict(verdict: unknown): string | undefined {
  * the hook chain. `sessionId` is optional because embedding code (kernel tests,
  * an SDK caller) may drive the loop with no session of its own.
  */
-export interface ToolCallScope {
-  /** The session whose run issued this call; undefined when the loop is bare. */
+export interface ToolCallScope extends ExecutionScope {}
+
+/**
+ * WHO and WHICH RUN an execution belongs to — the minimal facts a permission
+ * decision, an audit record, or a job stamp needs about its origin.
+ *
+ * Threading is the security property: a nested run (a subagent, a background
+ * job) INHERITS the scope of the run that spawned it, so its tool calls are
+ * decided by the same conversation's permission engine instead of silently
+ * falling back to a process-wide one. `signal` deliberately is not part of the
+ * scope: cancellation already rides `AgentOptions.signal` and merging the two
+ * would make "which signal wins" a second question with no second answer.
+ */
+export interface ExecutionScope {
+  /** The session whose run issued this execution; undefined when the loop is bare. */
   sessionId?: string;
+  /** The run inside the session; minted per `runAgent` invocation, stable across its calls. */
+  runId?: string;
+  /**
+   * The permission subject in force — the principal whose tier decides. A
+   * channel that constrains its sessions (a QQ caller cap) stamps it here so a
+   * nested run cannot inherit a broader engine than its caller had.
+   */
+  principal?: string;
 }
 
 /**

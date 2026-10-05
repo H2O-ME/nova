@@ -160,6 +160,9 @@ export function goalPlugin(options: GoalPluginOptions): Plugin {
         name: 'create_goal',
         description:
           'Starts a durable goal the session keeps working toward across runs. Use it when the user states an objective that will not fit in one run. Args: objective (required), maxRounds (optional, 1..100, default 10).',
+        // Same rule as todo_write: the goal is THIS conversation's; a nested
+        // run must not create one on the parent's behalf. See `nestedToolset`.
+        ownsSessionState: true,
         parameters: {
           type: 'object',
           properties: {
@@ -197,6 +200,7 @@ export function goalPlugin(options: GoalPluginOptions): Plugin {
         name: 'update_goal',
         description:
           'Updates the current goal: record progress, mark it complete or blocked, pause/resume it, or edit its objective. Args: objective?, status? ("active" | "paused" | "blocked" | "complete"), blockedReason? (required when blocking), maxRounds?. Mark complete only with evidence the whole objective is achieved; mark blocked only when the same concrete condition has persisted.',
+        ownsSessionState: true,
         parameters: {
           type: 'object',
           properties: {
