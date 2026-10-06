@@ -100,6 +100,56 @@ function srcDirsOf(pkg) {
 const IMPORT_RE = /@nova-agent\/([a-z-]+)((?:\/[A-Za-z0-9._-]+)*)/g;
 const violations = [];
 
+/**
+ * 去掉注释，只留代码。
+ *
+ * 扫描的是**源码文本**，不是 AST——因为这里要抓的包括字符串里的包名（
+ * `plugin-tree.ts` 的 `SHIPPED_PACKAGES` 是一张字符串表，运行时 `import()` 装载，
+ * 它必须过门禁：动态边也是边）。代价是注释里的包名也会被算成依赖。
+ *
+ * 那个代价不是理论上的：Batch 4 摘掉 web → plugin-context 这条边时，**唯一**报
+ * 违规的是文件头那句解释"这里以前静态 import 过谁"的注释——于是作者面对的选择
+ * 是「把注释删掉」还是「把白名单加回去」，而门禁恰恰是为了阻止后者存在的。
+ *
+ * 所以只剔除注释：字符串保留（否则动态装载就漏检），注释剔除（它不构成依赖）。
+ * 状态机而不是正则，因为注释标记会出现在字符串里（`'https://…'`、`'/*'`）。
+ * @param text - 一个源文件的全文。
+ * @returns 等长语义的文本，注释被替换为单个空格。
+ */
+function stripComments(text) {
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (quote !== null) {
+      out += ch;
+      if (ch === '\\') {
+        out += next ?? '';
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') i += 1;
+      out += '\n';
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i += 1;
+      i += 1;
+      out += ' ';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+    out += ch;
+  }
+  return out;
+}
+
 for (const [pkg, allowed] of Object.entries(ALLOW)) {
   const files = [];
   for (const dir of srcDirsOf(pkg)) {
@@ -110,7 +160,7 @@ for (const [pkg, allowed] of Object.entries(ALLOW)) {
     }
   }
   for (const file of files) {
-    const text = readFileSync(file, 'utf8');
+    const text = stripComments(readFileSync(file, 'utf8'));
     const rel = relative(repoRoot, file).replace(/\\/g, '/');
     for (const [, target, deep] of text.matchAll(IMPORT_RE)) {
       if (!(target in ALLOW)) {
