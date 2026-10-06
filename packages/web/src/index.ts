@@ -3,6 +3,7 @@
  * assembles controller + auth + server and returns the loopback launch URL; the
  * pieces are exported individually for tests and a future `--web` hosting.
  */
+import { contextInsights as contextInsightsKey } from '@nova-agent/core';
 import { loadLaunchAuth } from './auth-store.js';
 import { WebController } from './controller.js';
 import { startWebServer, type WebServerHandle } from './server.js';
@@ -42,6 +43,12 @@ export async function launchWeb(opts: LaunchWebOptions): Promise<WebServerHandle
     host,
     ...(port !== undefined ? { port } : {}),
     ...(routes !== undefined ? { routes } : {}),
+    // The read-only Browser/DNA route reaches the fold through the SAME service
+    // key the live path uses, instead of statically importing the producer: the
+    // context plugin is an optional extension and this surface has to run
+    // without it. Resolved per request — the container mutates in place when the
+    // plugin is switched on, so a boot-time read would pin the answer.
+    contextWindow: () => opts.kernel.host.context.get(contextInsightsKey),
   });
   onReady?.(handle.url);
   return handle;

@@ -17,6 +17,7 @@ import { EventRegistry, type EventKey, type Listener, type OnOptions, type Logge
 import { errMessage } from '../errors.js';
 import { oneLineText } from '../text.js';
 import { Fiber, type Runtime } from './fiber.js';
+import { normalize, runReverse } from './effects.js';
 import { ServiceStore, ServiceUnavailable, type InterceptMap, type ServiceInterceptor } from './store.js';
 import {
   resolvePlugin,
@@ -129,9 +130,21 @@ export class Context {
     const fiber = this.fiber;
     if (fiber === undefined) {
       const disposers = normalize(body());
-      return () => runReverse(disposers);
+      return () => runReverse(disposers, this.reporter(label));
     }
     return fiber.addEffect(body, label);
+  }
+
+  /**
+   * Report an undo that threw on the ROOT scope, where there is no plugin name
+   * to blame and the label is all there is. Reported rather than raised for the
+   * same reason a fiber's is: the remaining undos must still run, and the
+   * failure must still be visible (see `effects.ts`).
+   */
+  private reporter(label: string): (error: unknown) => void {
+    return (error) => {
+      this.runtime.log('warn', `assembly effect "${label}" failed to undo: ${errMessage(error)}`);
+    };
   }
 
   /**
@@ -299,21 +312,6 @@ export class Context {
 
 function nameOf(key: ServiceKey<unknown> | string): string {
   return typeof key === 'string' ? key : key.name;
-}
-
-function normalize(value: Dispose | readonly Dispose[] | undefined): Dispose[] {
-  if (value === undefined) return [];
-  return typeof value === 'function' ? [value] : [...value];
-}
-
-async function runReverse(disposers: readonly Dispose[]): Promise<void> {
-  for (const dispose of [...disposers].reverse()) {
-    try {
-      await dispose();
-    } catch {
-      /* a failing undo must not stop the remaining ones */
-    }
-  }
 }
 
 const LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;

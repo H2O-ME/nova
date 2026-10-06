@@ -39,7 +39,7 @@
 | `plugin-subagent` | `core` | optional extension |
 | `plugin-context` | `core` | optional extension |
 | `plugin-ptc` | `core` | optional extension |
-| `web`（含 `web/ui`） | `core`、`plugins`、`plugin-context` | Web surface 后端 + 浏览器前端。**`plugin-context` 这一边将在 Batch 4 移除** |
+| `web`（含 `web/ui`） | `core`、`plugins` | Web surface 后端 + 浏览器前端。**Batch 4 已摘掉 `plugin-context` 这条边**（见 §6） |
 | `qqbot` | `core`、`plugins` | 第三方 surface / 插件示范 |
 | `cli` | `plugins`、`ai`、`core`、`qqbot`、`web` | 产品壳 / 装配层。`qqbot` 经**一处**动态 `import` |
 
@@ -125,7 +125,8 @@ test → 另一个包的 src/internal/*
 | Session 读 / 写 / 投影 | 同一 `Session` 类 | `session/{repository,writer,projection,repair}` | 5 |
 | Session 删除顺序 | 分散在 web / cli | Runtime 内统一序列 | 5 |
 | Provider 契约 | 由 `ai` 的实现形状隐含 | Runtime 定义契约，`ai` 是实现 | 4 |
-| 插件注册项回收 | 靠插件自觉挂 `ctx.effect` | registry 按 owner(fiber) 兜底回收 | 4 |
+| 插件注册项回收 | 靠插件自觉挂 `ctx.effect` | registry 按 owner(fiber) 兜底回收 | 4 ✅ 已成立（§7） |
+| 回收失败可见性 | `runReverse` 的 `catch {}` 静默吞 | 经 logger 报出，循环继续 | 4 ✅ |
 | Web 帧协议 | 无版本、无 eventId、无 runId | `protocolVersion` + `eventId` + `runId` | 3 |
 | 浏览器端业务状态 | React hook 内 | `ui/src/client/`（React-free） | 6 |
 | 视觉决策 | 98 张 module.css 各自发明 | `design/tokens` 单一来源 | 1 / 7 / 8 |
@@ -175,23 +176,51 @@ test → 另一个包的 src/internal/*
 argv → config → surface registry → kernel boot → surface.start()
 ```
 
-## 6. Batch 4 的待证事项（`windowAtSeq`）
+## 6. Batch 4 的待证事项（`windowAtSeq`）—— 已答（2026-10-07）
 
-> 记录于此以便 Batch 4 开工时直接回答，不重复调研。
-
-`packages/web/src/context-window.ts` 静态 `import windowAtSeq from '@nova-agent/plugin-context'`（`dep-direction.mjs` 白名单注释明确认可该边）。要判断它是否应上移 core，必须先回答：
+`packages/web/src/context-window.ts` 曾静态 `import { windowAtSeq } from '@nova-agent/plugin-context'`。
 
 ```text
 ① windowAtSeq 依赖哪些类型？
+   SessionEvent / ContextWindowSnapshot / ContextSurface / ContextElement /
+   ContextPoint / ContextTimeline / ContextBreakdown / ContextFold /
+   AgentMessage / AssistantMessage / ToolResultMessage / FileOpRecord
+   —— 全部来自 @nova-agent/core 公开入口，无一是 plugin-context 私有类型。
 ② 这些类型是不是 Core domain contract？
+   是。它们都定义在 core/src/context-insights.ts，且能力键 ContextInsights
+   （core/src/plugin/capabilities.ts）本身就以 ContextFold 为形状。
 ③ 这个行为是不是 Runtime 的业务语义？
+   不是。「窗口里有什么」是**可选扩展**的语义：core 只声明能力键，谁提供、
+   怎么折、折多细是扩展的事。live 路径也正是经能力键取值，而不是调用 core 函数。
 ```
 
-**三者全 Yes 才上移 `core/src/session/`；否则留在 web 的纯函数模块内。不接受"因为它是纯函数所以进 Core"。**
+**判定：不上移 core。** ① ② Yes、③ No，未达"三者全 Yes"。
 
-> 反面教训：Core 什么都懂，正是本次重构要避免的。
+但调研暴露了真正的问题——**不是位置，是通道**：live 路径经能力键 `contextInsights` 取 fold，只读路由却静态 import 生产者。两条通道让**一个可选扩展变成 web 表面的安装期硬需求**：扩展缺席时整个 surface 加载失败，而不是降级。
 
-## 7. 内部 import 规则（包内）
+**改法**：core 的 `ContextInsights` 契约补上 `windowAt`（实现早已在 `contextInsightsOf()` 里，只是类型描述得比服务少）；路由改收注入的 `ContextWindowReader = Pick<ContextInsights, 'windowAt'>`，由 `launchWeb` 经 `kernel.host.context.get(contextInsightsKey)` 按请求解析。实现仍留在扩展里，"什么在窗口里"仍只有一份定义。
+
+**真机验证**（`nova --web` + 探针，非浏览器自动化）：
+
+| 情形 | `GET /api/context-window` 应答 |
+| --- | --- |
+| `plugin-context` 在 | `404 {"error":"session not found"}` —— 缝已注入，走到了读日志 |
+| `plugin-context` 缺席 | `503 {"error":"context insights unavailable"}` —— surface 照常启动并应答 |
+
+第二条是本次要买的东西：可选扩展缺席时 surface 降级，而不是不启动。
+
+## 7. 插件注册项回收（Batch 4 复核结论）
+
+规范的目标是"registry 按 owner(fiber) 兜底回收"。**复核后：已成立，无需新增机制。**
+
+- `registerTool` / `registerCommand`（`core/src/plugin/registration.ts`）都走 `ctx.effect(...)`；
+- `ctx.provide` / `ctx.on` / surface 注册同样走 `ctx.effect`；
+- `ctx.effect` 在 fiber 上落 `fiber.addEffect`，`Fiber.teardown()` 逆序回收；
+- `toolbox.ts` 的 `register` 返回注销闭包，而 `ctx.effect` 收下的正是它。
+
+**真正不成立的是另一半：回收失败不可见。** `Fiber` 与 `Context` 各有一份逐字节相同的 `runReverse`，`catch {}` 把 disposer 抛出的异常吞掉——一个只回收了一半的插件在系统里不留任何痕迹。已合并为 `core/src/plugin/effects.ts` **一处实现**，异常经 logger 以 `warn` 报出，循环继续（`Fiber` 报出插件名 + 注册标签，root 作用域报出标签）。
+
+## 8. 内部 import 规则（包内）
 
 包内不设强制的目录契约，但有一条不变量：
 

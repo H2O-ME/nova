@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@nova-agent/core": "workspace:*",
-    "@nova-agent/plugin-context": "workspace:*",
     "@nova-agent/plugins": "workspace:*",
     "node-pty": "^1.1.0",
     "ws": "^8.22.0"

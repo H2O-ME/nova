@@ -116,6 +116,36 @@ describe('effects and teardown', () => {
     expect(order).toEqual(['second', 'first']);
   });
 
+  it('reports a failing undo and still runs the remaining ones', async () => {
+    const lines: string[] = [];
+    const root = Context.createRoot({ log: (level, message) => lines.push(`${level}:${message}`) });
+    const order: string[] = [];
+    const fiber = root.plugin({
+      name: 'p',
+      apply: (ctx) => {
+        ctx.effect(() => () => order.push('first'), 'first');
+        ctx.effect(() => () => {
+          throw new Error('undo blew up');
+        }, 'broken');
+      },
+    });
+    await fiber.dispose();
+    // Reverse order, so the broken undo runs first: it is REPORTED and the older
+    // one still runs. A teardown that only half-ran used to leave no trace at all.
+    expect(order).toEqual(['first']);
+    expect(lines).toEqual(['warn:plugin "p" failed to undo broken: undo blew up']);
+  });
+
+  it('reports a failing undo on the root scope too', async () => {
+    const lines: string[] = [];
+    const root = Context.createRoot({ log: (level, message) => lines.push(`${level}:${message}`) });
+    const undo = root.effect(() => () => {
+      throw new Error('assembly undo blew up');
+    }, 'assembly-thing');
+    await undo();
+    expect(lines).toEqual(['warn:assembly effect "assembly-thing" failed to undo: assembly undo blew up']);
+  });
+
   it('removes a service when its provider unloads', async () => {
     const root = Context.createRoot(silent);
     const fiber = root.plugin({

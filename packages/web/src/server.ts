@@ -20,7 +20,7 @@ import type { WebController } from './controller.js';
 import { handleImageUpload } from './image-upload.js';
 import { handleImageBytes } from './image-bytes.js';
 import { handleDashboard } from './dashboard.js';
-import { handleContextWindow } from './context-window.js';
+import { handleContextWindow, type ContextWindowReader } from './context-window.js';
 import { upgrade, type WsConnection } from './ws.js';
 
 const MIME: Record<string, string> = {
@@ -69,6 +69,15 @@ export interface StartWebServerOptions {
    * directory so a corpus read never touches real logs.
    */
   sessionsRootDir?: string;
+  /**
+   * The context plugin's read-at-a-past-position seam, for the Browser/DNA
+   * route. A THUNK, not a resolved value: the container mutates in place when a
+   * plugin is switched on or off, so a value captured at boot would leave the
+   * route dead for the rest of the process after the operator enables the
+   * plugin. Absent (tests, or a shell that did not wire the seam) means the
+   * route answers "capability unavailable" instead of failing to load.
+   */
+  contextWindow?: () => ContextWindowReader | undefined;
 }
 
 export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHandle> {
@@ -87,6 +96,7 @@ export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHa
       staticDir,
       sessionsRootDir,
       ...(routes !== undefined ? { routes } : {}),
+      ...(opts.contextWindow !== undefined ? { contextWindow: opts.contextWindow } : {}),
     }).catch(() => {
       if (!res.headersSent) deny(res, 500, 'internal error');
       else res.end();
@@ -104,6 +114,7 @@ interface HttpCtx {
   staticDir: string;
   sessionsRootDir: string;
   routes?: RouteRegistry;
+  contextWindow?: () => ContextWindowReader | undefined;
 }
 
 async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCtx): Promise<void> {
@@ -166,7 +177,7 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
   // has a path and crosses as `@path` text, but a pasted image exists only as
   // clipboard bytes, and 8 MiB does not fit the 512 KiB client-frame channel.
   if (await handleDashboard(req, res, url, ctx.sessionsRootDir)) return;
-  if (await handleContextWindow(req, res, url, ctx.sessionsRootDir)) return;
+  if (await handleContextWindow(req, res, url, ctx.sessionsRootDir, ctx.contextWindow?.())) return;
   if (await handleImageUpload(req, res, url)) return;
   // Image bytes BACK to the browser: the transcript carries only the reference,
   // so without this a reload would silently drop every pasted image.

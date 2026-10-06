@@ -19,6 +19,7 @@ import type { Logger } from './events.js';
 import type { ServiceStore } from './store.js';
 import type { Dispose, ResolvedPlugin } from './types.js';
 import { errMessage } from '../errors.js';
+import { normalize, runReverse } from './effects.js';
 
 export type FiberState = 'pending' | 'loading' | 'active' | 'failed' | 'disposed';
 
@@ -93,12 +94,26 @@ export class Fiber {
       throw new Error(`plugin "${this.name}" tried to register "${label}" while disposed`);
     }
     const disposers = normalize(body());
-    const record: EffectRecord = { label, dispose: () => runReverse(disposers) };
+    const report = this.reporter(label);
+    const record: EffectRecord = { label, dispose: () => runReverse(disposers, report) };
     this.effects.push(record);
     return () => {
       const index = this.effects.indexOf(record);
       if (index >= 0) this.effects.splice(index, 1);
-      return runReverse(disposers);
+      return runReverse(disposers, report);
+    };
+  }
+
+  /**
+   * Report an undo that threw, naming the plugin and the registration.
+   *
+   * A teardown failure is reported rather than raised: it must not stop the
+   * remaining undos or fail the unload that triggered it, but it also must not
+   * disappear — see `effects.ts`.
+   */
+  private reporter(label: string): (error: unknown) => void {
+    return (error) => {
+      this.runtime.log('warn', `plugin "${this.name}" failed to undo ${label}: ${errMessage(error)}`);
     };
   }
 
@@ -188,7 +203,12 @@ export class Fiber {
   async teardown(): Promise<void> {
     for (const child of [...this.children].reverse()) await child.dispose();
     this.children.clear();
-    await runReverse(this.effects.map((record) => record.dispose));
+    // Each record's own undo already reports its own failure, so this report is
+    // the backstop for the day that stops being true.
+    await runReverse(
+      this.effects.map((record) => record.dispose),
+      (error) => this.runtime.log('warn', `plugin "${this.name}" teardown failed: ${errMessage(error)}`),
+    );
     this.effects.length = 0;
     this.epoch = undefined;
   }
@@ -303,21 +323,6 @@ function checked(name: string, outcome: unknown): unknown {
     throw new Error(`invalid config for plugin "${name}": ${detail}`);
   }
   return result.value;
-}
-
-function normalize(value: Dispose | readonly Dispose[] | undefined): Dispose[] {
-  if (value === undefined) return [];
-  return typeof value === 'function' ? [value] : [...value];
-}
-
-async function runReverse(disposers: readonly Dispose[]): Promise<void> {
-  for (const dispose of [...disposers].reverse()) {
-    try {
-      await dispose();
-    } catch {
-      // A failing undo must not stop the remaining ones.
-    }
-  }
 }
 
 function isThenable(value: unknown): value is PromiseLike<unknown> {

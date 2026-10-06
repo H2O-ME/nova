@@ -17,7 +17,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nova-agent/core": "workspace:*",
+    "@nova-agent/core": "workspace:*"
+  },
+  "optionalDependencies": {
     "@nova-agent/plugin-context": "workspace:*",
     "@nova-agent/plugin-ptc": "workspace:*",
     "@nova-agent/plugin-subagent": "workspace:*"

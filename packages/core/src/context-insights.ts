@@ -221,7 +221,7 @@ export interface ContextFold {
   view(): ContextTimeline;
 }
 
-/** The context-insight capability: open a fold over a log. */
+/** The context-insight capability: open a fold over a log, or read one position of it. */
 export interface ContextInsights {
   /**
    * Start folding a session's log.
@@ -230,4 +230,27 @@ export interface ContextInsights {
    * @returns a fold the caller advances with each appended event.
    */
   fold(events: readonly SessionEvent[], surface?: ContextSurface): ContextFold;
+
+  /**
+   * Read the window snapshot at one request's log position — the Browser/DNA
+   * cards' view of a PAST request.
+   *
+   * Part of the contract rather than a convenience on one implementation: the
+   * read-only route serving those cards has to reach the fold through the SAME
+   * service key the live path uses. It used to statically import the producer
+   * instead, which turned an optional extension into an install-level
+   * requirement of the web surface — a surface that must run fine without it.
+   * Widening the vocabulary here keeps ONE definition of "what was in the
+   * window" (a second copy is how the cards and the trend would drift apart)
+   * while leaving the implementation where it belongs.
+   * @param events - the session's durable log, in order.
+   * @param seq - the log position to read at.
+   * @param surface - the system prompt + tool schemas in force.
+   * @returns the snapshot, or `undefined` when no element entered before `seq`.
+   */
+  windowAt(
+    events: readonly SessionEvent[],
+    seq: number,
+    surface?: ContextSurface,
+  ): ContextWindowSnapshot | undefined;
 }

@@ -106,7 +106,7 @@ const STANDIN_TIMELINE: ContextTimeline = {
  */
 function standinPlugin(): Plugin {
   const fold: ContextFold = { apply: () => undefined, view: () => STANDIN_TIMELINE };
-  const insights: ContextInsights = { fold: () => fold };
+  const insights: ContextInsights = { fold: () => fold, windowAt: () => undefined };
   return {
     name: STANDIN,
     manifest: { title: '上下文演示', description: 'a stand-in context provider', tier: 'standard' },

@@ -90,6 +90,7 @@
  "packages/core/src/plugin/capabilities.ts": 655,
  "packages/core/src/plugin/config-equal.ts": 76,
  "packages/core/src/plugin/context.ts": 388,
+ "packages/core/src/plugin/effects.ts": 54,
  "packages/core/src/plugin/events.ts": 245,
  "packages/core/src/plugin/fiber.ts": 360,
  "packages/core/src/plugin/loader.ts": 415,
