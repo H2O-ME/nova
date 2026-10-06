@@ -121,6 +121,26 @@ Batch 9   Test Consolidation / Final Cleanup
 Batch 10  Legacy Deletion + 0.5.0
 ```
 
+### 批次进度（就地记录，避免跨会话重查）
+
+```text
+Batch 0   已交付 0ef6662   五份 NOVA 规范 + test-boundary 门禁 + dep-direction 两条棘轮
+Batch 1   已交付 7967cc1   Nova token 层 + ui-token-guard 棘轮 + 删 Tailwind 死依赖
+Batch 2   阻塞            落点 core/src/kernel/session.ts、web/src/controller.ts 等在途
+Batch 3   阻塞            落点 web/src/protocol.ts 等在途
+Batch 4   已交付 82589e8   摘掉 web → plugin-context 静态边 + 扩展包 optional + 回收失败不再静默
+Batch 5+  阻塞            落点 core/src/session*.ts、web/ui/src/** 全部在途
+门禁修正  已交付 feae106   dep-direction 扫描前剔除注释
+```
+
+**阻塞原因**：工作树里有一批**尚未提交**的功能改动（会话标题模型、QQ 富交互、插件中心、
+WebUI 动效）共 123 个文件，覆盖了 Batch 2–8 的全部集成点。按 §全局纪律，不对非本批改动做
+`reset / checkout / clean / restore`，也不把它们卷进本重构的提交；因此只能等那批先落地。
+
+**Batch 4 尚有两项未做**，且都**下游于 Batch 2A**：Provider 契约由 runtime 定义（需
+`core/src/runtime/`）、删除 `provider.setModel` 原地改路径（需 Run 冻结 provider/model
+才有替代路径）。它们随 Batch 2 一起做，不单独提前。
+
 四条**贯穿全程**（不是某个批次）：
 
 ```text
