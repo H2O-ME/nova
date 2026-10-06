@@ -1,6 +1,10 @@
-// 包间依赖方向门禁（AGENTS.md §4 的机械化）。
+// 包间依赖方向门禁（docs/NOVA-BOUNDARIES.md §2 的机械化）。
 // 违规即失败：core 不得有上游；其余只允许白名单内的下行依赖。
 // 白名单是架构事实，改动它=改架构，应在 diff 里显眼地被审阅。
+//
+// 除白名单外另有两条**棘轮**（现状均零违规，作用是让第一次出现时理由清楚）：
+//   · 深路径包导入——跨包只能走公开入口（internal import gate / surface-to-runtime gate）；
+//   · 插件互赖——插件之间不得直接依赖（plugin-to-plugin gate）。
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,7 +82,21 @@ function srcDirsOf(pkg) {
   });
 }
 
-const IMPORT_RE = /@nova-agent\/([a-z-]+)/g;
+/**
+ * 包说明符与它的**深路径尾巴**。
+ *
+ * 组 1 是包名，组 2 是深路径（`/` 开头的任意后缀；无后缀时为空串）。跨包只允许
+ * 走公开入口 `@nova-agent/<pkg>`；`@nova-agent/<pkg>/src/…`、`@nova-agent/<pkg>/dist/…`
+ * 一律违规。这一条同时承担两个边界的机械执行：
+ *
+ *  - **internal import gate**：跨包不得引用别人的内部实现；
+ *  - **surface-to-runtime gate**：Web / CLI / QQ 不得 import Runtime 私有实现。
+ *
+ * 现状：全仓零深路径导入，所以它是**零违规的纯棘轮**——它的作用不是抓现行，
+ * 而是让第一条出现时门禁就把理由说出来，而不是等 review 发现。
+ * 判据见 `docs/NOVA-BOUNDARIES.md` §3.1 / §3.3。
+ */
+const IMPORT_RE = /@nova-agent\/([a-z-]+)((?:\/[A-Za-z0-9._-]+)*)/g;
 const violations = [];
 
 for (const [pkg, allowed] of Object.entries(ALLOW)) {
@@ -93,11 +111,28 @@ for (const [pkg, allowed] of Object.entries(ALLOW)) {
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
     const rel = relative(repoRoot, file).replace(/\\/g, '/');
-    for (const [, target] of text.matchAll(IMPORT_RE)) {
+    for (const [, target, deep] of text.matchAll(IMPORT_RE)) {
       if (!(target in ALLOW)) {
         violations.push(`${rel}: 未知包 @nova-agent/${target}`);
       } else if (!allowed.includes(target) && target !== pkg) {
         violations.push(`${rel}: @nova-agent/${pkg} → @nova-agent/${target} 不在白名单`);
+      }
+      if (deep !== '') {
+        violations.push(
+          `${rel}: @nova-agent/${target}${deep} —— 跨包只能走公开入口 @nova-agent/${target}，不得引用内部实现（NOVA-BOUNDARIES §3.1）`
+        );
+      }
+      /**
+       * 插件之间不得直接依赖（NOVA-BOUNDARIES §3.2）。
+       *
+       * 与白名单**故意重复**：白名单已把三个扩展包的上游收到只剩 core，但那条
+       * 约束是「名单里没写」——放宽名单即失效。这一条是「无论如何都不许」，两条
+       * 一起才挡住「顺手加一条白名单让插件互相认识」。
+       */
+      if (pkg.startsWith('plugin-') && target.startsWith('plugin-') && target !== pkg) {
+        violations.push(
+          `${rel}: 插件 @nova-agent/${pkg} 直接依赖插件 @nova-agent/${target} —— 跨插件只能走 Contract / Service / Event / Contribution（NOVA-BOUNDARIES §3.2）`
+        );
       }
     }
   }
@@ -108,4 +143,6 @@ if (violations.length > 0) {
   for (const v of violations) console.error('  ' + v);
   process.exit(1);
 }
-console.log(`✓ 依赖方向：${Object.keys(ALLOW).length} 个包全部符合 AGENTS.md §4 白名单`);
+console.log(
+  `✓ 依赖方向：${Object.keys(ALLOW).length} 个包符合 docs/NOVA-BOUNDARIES.md §2 白名单（含深路径、插件互赖两条棘轮）`
+);
