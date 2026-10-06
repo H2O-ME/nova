@@ -1,0 +1,25 @@
+/* Nova type scale and text colors.
+ *
+ * Four size rungs and three weights, and no intermediates. The ported sheet
+ * records why the weight axis is closed: a Figma 510 weight is an SF Pro
+ * variable-font value, and on non-variable webfonts it snaps unpredictably
+ * across platforms — so only 400 / 500 / 600 exist.
+ *
+ * Note the ported `--dsw-font-*` tokens are `font:` SHORTHANDS
+ * (`16px/24px <family>`), not sizes — reusing one as a `font-size` is a silent
+ * bug, which is why Nova names the two axes separately instead of aliasing. */
+:root {
+  --nova-text-size-xs: 12px;
+  --nova-text-size-sm: 13px;
+  --nova-text-size-md: 14px;
+  --nova-text-size-lg: 16px;
+
+  --nova-text-weight-normal: 400;
+  --nova-text-weight-medium: 500;
+  --nova-text-weight-strong: 600;
+
+  --nova-text-primary: var(--dsw-alias-label-primary);
+  --nova-text-secondary: var(--dsw-alias-label-secondary);
+  --nova-text-muted: var(--dsw-alias-label-tertiary);
+  --nova-text-inverse: var(--dsw-alias-label-primary-inverted);
+}

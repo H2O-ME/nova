@@ -1,0 +1,21 @@
+/* Nova surfaces and borders — which plane a thing sits on.
+ *
+ * Honest note about the ported backing, because a reader will otherwise
+ * conclude the tokens are broken: in the LIGHT palette `bg-layer-1/2/3` all
+ * resolve to the same near-white, so `sunken` / `base` / `raised` are
+ * degenerate there today — light mode separates planes with a border, not with
+ * a fill (which is what a Quiet / Neutral direction wants anyway). The dark
+ * palette does ladder them (875 / 850 / 800). The palette swap separates the
+ * light rungs; until then a component must not rely on a fill difference to
+ * carry meaning.
+ *
+ * A component names the plane it belongs to. It does not invent a background. */
+:root {
+  --nova-surface-sunken: var(--dsw-alias-bg-layer-1);
+  --nova-surface-base: var(--dsw-alias-bg-base);
+  --nova-surface-raised: var(--dsw-alias-bg-layer-2);
+  --nova-surface-overlay: var(--dsw-alias-bg-overlay);
+
+  --nova-border-subtle: var(--dsw-alias-border-l1);
+  --nova-border-strong: var(--dsw-alias-border-l3);
+}

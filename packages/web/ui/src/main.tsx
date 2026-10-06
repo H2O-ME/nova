@@ -10,6 +10,9 @@ import './shell/input-modality.js';
 // running an older bundle forever; this asks the host what it serves now.
 import { watchForStaleBuild } from './shell/stale-build-watch.js';
 import './index.css';
+// The Nova design layer mounts after the ported sheets so its tokens win the
+// cascade. New UI reads `--nova-*`; see `docs/NOVA-DESIGN-SYSTEM.md`.
+import './design/index.css';
 
 watchForStaleBuild(import.meta.url);
 

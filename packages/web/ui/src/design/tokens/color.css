@@ -1,0 +1,21 @@
+/* Nova color — one accent, muted semantics, and the trap this naming removes.
+ *
+ * The ported sheet records it: `--dsw-alias-brand-primary` resolves to INK
+ * BLACK in light mode, so every blue accent (send button, selected tab,
+ * running state, caret) has to ride the state-business alias instead. That is
+ * a footgun at every call site — a token that looks like a brand colour and is
+ * actually the foreground ink.
+ *
+ * Naming the accent `--nova-color-accent` and pointing it at the business
+ * alias ONCE removes the trap: a component that wants "the accent" gets the
+ * accent, and there is no second name that quietly means something else. */
+:root {
+  --nova-color-accent: var(--dsw-alias-state-business-primary);
+
+  --nova-color-success: var(--dsw-alias-state-success-primary);
+  --nova-color-warn: var(--dsw-alias-state-warn-primary);
+  --nova-color-danger: var(--dsw-alias-state-error-primary);
+  --nova-color-idle: var(--dsw-alias-state-idle-primary);
+
+  --nova-color-link: var(--dsw-alias-link);
+}

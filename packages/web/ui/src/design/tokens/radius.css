@@ -1,0 +1,15 @@
+/* Nova corner ladder — deliberately smaller than the ported `--dsw-radius-*`
+ * rungs (4 / 8 / 12 / 16 / 20 / 28).
+ *
+ * Nova's direction is Quiet / Dense / Precise: a 12–16px corner on a 28px row
+ * reads as a card, and cards-on-cards is exactly the visual layering this
+ * system exists to stop. Three rungs is the whole vocabulary.
+ *
+ * `full` is for shapes that are circles BY NATURE (status dots, avatars) and
+ * is not a way to build a pill — a pill is a card wearing a corner. */
+:root {
+  --nova-radius-sm: 4px;
+  --nova-radius-md: 6px;
+  --nova-radius-lg: 8px;
+  --nova-radius-full: 9999px;
+}

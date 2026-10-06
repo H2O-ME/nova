@@ -1,0 +1,31 @@
+/* Nova spacing scale — the single source for padding / margin / gap.
+ *
+ * Value-named (`space-8` IS 8px) so a reader never has to look up a rung, and
+ * 4px-based so the ladder composes instead of drifting. The harness port had
+ * 829 px literals spread over 98 component sheets precisely because there was
+ * no ladder to pick from — every author measured their own gap.
+ *
+ * Density-first: Nova is an Agent Development Workspace, and the default step
+ * is 8px, not a marketing page's 16px.
+ *
+ * Consumers write `var(--nova-space-8)`. Never a literal — the machine check
+ * is `scripts/ui-token-guard.mjs`, and the allowed literals (border-width,
+ * hairlines, icon and SVG geometry) are a closed list in
+ * `docs/NOVA-DESIGN-SYSTEM.md` §5.2. */
+:root {
+  --nova-space-0: 0;
+  --nova-space-2: 2px;
+  --nova-space-4: 4px;
+  --nova-space-6: 6px;
+  --nova-space-8: 8px;
+  --nova-space-12: 12px;
+  --nova-space-16: 16px;
+  --nova-space-24: 24px;
+  --nova-space-32: 32px;
+
+  /* Row heights for list rows, toolbar buttons and menu items. Three rungs, so
+   * a surface picks one instead of measuring its own. */
+  --nova-row-sm: 24px;
+  --nova-row-md: 28px;
+  --nova-row-lg: 32px;
+}

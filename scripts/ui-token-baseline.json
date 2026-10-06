@@ -1,0 +1,390 @@
+{
+ "approval/ApprovalPanel.module.css": {
+  "spacing": 14,
+  "radius": 2,
+  "duration": 1,
+  "ease": 1
+ },
+ "approval/PreviewBlock.module.css": {
+  "spacing": 3,
+  "shadow": 2
+ },
+ "chat/AssistantMessage.module.css": {
+  "spacing": 3,
+  "duration": 1,
+  "ease": 1
+ },
+ "chat/AssistantTail.module.css": {
+  "spacing": 3
+ },
+ "chat/ChatView.module.css": {
+  "spacing": 5,
+  "duration": 1,
+  "ease": 1
+ },
+ "chat/ContextInjectionRow.module.css": {
+  "spacing": 9,
+  "radius": 1
+ },
+ "chat/DisclosureRow.module.css": {
+  "spacing": 1,
+  "duration": 2,
+  "ease": 2
+ },
+ "chat/MessageIconActions.module.css": {
+  "spacing": 5,
+  "duration": 1,
+  "ease": 1
+ },
+ "chat/MessageItem.module.css": {
+  "spacing": 10,
+  "radius": 1,
+  "duration": 3,
+  "ease": 3
+ },
+ "chat/ProcessGroup.module.css": {
+  "spacing": 3,
+  "duration": 1,
+  "ease": 1
+ },
+ "chat/ReasoningRow.module.css": {
+  "spacing": 2,
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "chat/TurnHeader.module.css": {
+  "spacing": 3,
+  "duration": 2,
+  "ease": 2
+ },
+ "chat/TurnUsagePill.module.css": {
+  "spacing": 9,
+  "duration": 1,
+  "ease": 1
+ },
+ "chat/markdown/CodeBlock.module.css": {
+  "spacing": 10,
+  "duration": 1,
+  "ease": 1
+ },
+ "chat/markdown/MarkdownText.module.css": {
+  "spacing": 35,
+  "shadow": 2
+ },
+ "composer/AttachmentRail.module.css": {
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "composer/ComposerMenu.module.css": {
+  "spacing": 13,
+  "duration": 1,
+  "ease": 1
+ },
+ "composer/DropOverlay.module.css": {
+  "spacing": 2,
+  "duration": 1,
+  "ease": 1
+ },
+ "composer/FileCard.module.css": {
+  "spacing": 3,
+  "radius": 1,
+  "duration": 3,
+  "ease": 3
+ },
+ "composer/ImageCard.module.css": {
+  "spacing": 1,
+  "duration": 2,
+  "ease": 2
+ },
+ "composer/InputBar.module.css": {
+  "spacing": 20,
+  "radius": 2,
+  "duration": 1,
+  "ease": 1
+ },
+ "composer/ModelSeat.module.css": {
+  "spacing": 2,
+  "shadow": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "composer/QueueDock.module.css": {
+  "spacing": 4,
+  "shadow": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "composer/StatsPills.module.css": {
+  "spacing": 9,
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "context/ContextView.module.css": {
+  "spacing": 83,
+  "radius": 28,
+  "shadow": 1,
+  "duration": 21,
+  "ease": 21
+ },
+ "conversation/ContextMeter.module.css": {
+  "spacing": 6,
+  "radius": 2,
+  "duration": 1,
+  "ease": 1
+ },
+ "conversation/ConversationRoot.module.css": {
+  "spacing": 4,
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "conversation/DirectoryBrowser.module.css": {
+  "spacing": 24
+ },
+ "conversation/GoalPanel.module.css": {
+  "spacing": 2,
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "conversation/HeaderButtons.module.css": {
+  "spacing": 2,
+  "radius": 2
+ },
+ "conversation/HeroShell.module.css": {
+  "spacing": 12,
+  "radius": 2,
+  "duration": 2,
+  "ease": 2
+ },
+ "conversation/PermissionSelect.module.css": {
+  "spacing": 2,
+  "shadow": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "conversation/SessionHeader.module.css": {
+  "spacing": 11,
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "conversation/TodoPanel.module.css": {
+  "spacing": 3
+ },
+ "flow/StatusRows.module.css": {
+  "spacing": 7,
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "question/QuestionPanel.module.css": {
+  "spacing": 31,
+  "radius": 2,
+  "duration": 4,
+  "ease": 4
+ },
+ "rightbar/ChangesView.module.css": {
+  "spacing": 32,
+  "radius": 8,
+  "shadow": 2,
+  "duration": 3
+ },
+ "rightbar/FileTabView.module.css": {
+  "spacing": 5
+ },
+ "rightbar/GitSetup.module.css": {
+  "spacing": 7,
+  "radius": 3
+ },
+ "rightbar/RightbarPanel.module.css": {
+  "spacing": 1
+ },
+ "rightbar/RightbarStrip.module.css": {
+  "spacing": 6
+ },
+ "rightbar/StartView.module.css": {
+  "spacing": 7
+ },
+ "rightbar/TasksView.module.css": {
+  "spacing": 20,
+  "duration": 1
+ },
+ "rightbar/TerminalView.module.css": {
+  "spacing": 6
+ },
+ "rightbar/TreeDock.module.css": {
+  "spacing": 19,
+  "radius": 10,
+  "duration": 2
+ },
+ "rightbar/kit.module.css": {
+  "spacing": 9,
+  "radius": 4
+ },
+ "settings/AppearanceRow.module.css": {
+  "spacing": 5,
+  "duration": 1,
+  "ease": 1
+ },
+ "settings/FontSizeRow.module.css": {
+  "spacing": 2,
+  "duration": 2,
+  "ease": 2
+ },
+ "settings/ManageError.module.css": {
+  "spacing": 3
+ },
+ "settings/ModelConfigEditor.module.css": {
+  "spacing": 29,
+  "radius": 1,
+  "duration": 6,
+  "ease": 6
+ },
+ "settings/PluginCenterPage.module.css": {
+  "spacing": 1
+ },
+ "settings/PluginPageSection.module.css": {
+  "spacing": 26
+ },
+ "settings/PluginsSection.module.css": {
+  "spacing": 24,
+  "duration": 3,
+  "ease": 3
+ },
+ "settings/ProviderModelsDialog.module.css": {
+  "spacing": 11,
+  "radius": 1
+ },
+ "settings/ProviderSection.module.css": {
+  "spacing": 35,
+  "radius": 2,
+  "duration": 7,
+  "ease": 7
+ },
+ "settings/SettingsPanel.module.css": {
+  "spacing": 10
+ },
+ "settings/SettingsRow.module.css": {
+  "spacing": 5
+ },
+ "settings/SkillsSection.module.css": {
+  "spacing": 14,
+  "duration": 1,
+  "ease": 1
+ },
+ "settings/Switch.module.css": {
+  "spacing": 1,
+  "radius": 1,
+  "duration": 1,
+  "ease": 1
+ },
+ "settings/UnsavedConfirmDialog.module.css": {
+  "spacing": 4
+ },
+ "shell/AppFrame.module.css": {
+  "spacing": 1
+ },
+ "shell/ConnectionIndicator.module.css": {
+  "spacing": 2,
+  "duration": 4,
+  "ease": 4
+ },
+ "shell/ErrorBoundary.module.css": {
+  "spacing": 4
+ },
+ "shell/Menu.module.css": {
+  "spacing": 3,
+  "duration": 1,
+  "ease": 1
+ },
+ "shell/MenuCard.module.css": {
+  "spacing": 9,
+  "duration": 1,
+  "ease": 1
+ },
+ "shell/MenuSurface.module.css": {
+  "duration": 1,
+  "ease": 1
+ },
+ "shell/TextShimmer.module.css": {
+  "duration": 1,
+  "ease": 1
+ },
+ "shell/Tooltip.module.css": {
+  "spacing": 2,
+  "duration": 1
+ },
+ "sidebar/ConnectionIndicator.module.css": {
+  "spacing": 2,
+  "duration": 4,
+  "ease": 4
+ },
+ "sidebar/DeleteSessionDialog.module.css": {
+  "spacing": 4
+ },
+ "sidebar/SessionBrowser.module.css": {
+  "spacing": 25,
+  "duration": 6,
+  "ease": 2
+ },
+ "sidebar/SessionRow.module.css": {
+  "spacing": 4,
+  "duration": 2
+ },
+ "sidebar/Sidebar.module.css": {
+  "spacing": 17,
+  "duration": 5,
+  "ease": 1
+ },
+ "sidebar/SidebarFoot.module.css": {
+  "spacing": 5,
+  "duration": 1
+ },
+ "tool/StateDot.module.css": {
+  "duration": 4,
+  "ease": 4
+ },
+ "tool/ToolRow.module.css": {
+  "spacing": 4,
+  "radius": 1,
+  "duration": 5,
+  "ease": 5
+ },
+ "tool/views/DiffCard.module.css": {
+  "spacing": 4,
+  "shadow": 2,
+  "duration": 1,
+  "ease": 1
+ },
+ "tool/views/GenericCard.module.css": {
+  "spacing": 4
+ },
+ "tool/views/PlanCard.module.css": {
+  "spacing": 5,
+  "duration": 1,
+  "ease": 1
+ },
+ "tool/views/ReadCard.module.css": {
+  "spacing": 7,
+  "duration": 1,
+  "ease": 1
+ },
+ "tool/views/SearchCard.module.css": {
+  "spacing": 9,
+  "duration": 1,
+  "ease": 1
+ },
+ "tool/views/TerminalCard.module.css": {
+  "spacing": 9,
+  "radius": 1
+ },
+ "trace/TraceView.module.css": {
+  "spacing": 9,
+  "duration": 2,
+  "ease": 2
+ }
+}

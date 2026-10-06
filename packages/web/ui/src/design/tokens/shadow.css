@@ -1,0 +1,15 @@
+/* Nova elevation — three rungs, and that is the ceiling.
+ *
+ * Backed by the ported elevation tokens for now, so Batch 1 moves no pixel:
+ * the VOCABULARY is Nova's, the values still come from the harness port until
+ * the palette swap. A surface that needs a fourth level is telling you it has
+ * a layering problem, not an elevation problem.
+ *
+ * A docked column (the right Inspector) draws NO elevation — it is a column of
+ * the page, not a float. `ui/test/style-guard.test.ts` pins that rule and it
+ * stays. */
+:root {
+  --nova-shadow-1: var(--dsw-shadow-lv1);
+  --nova-shadow-2: var(--dsw-shadow-lv2);
+  --nova-shadow-3: var(--dsw-shadow-lv3);
+}
