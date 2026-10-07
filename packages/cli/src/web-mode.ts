@@ -25,7 +25,7 @@ import { readProviders, saveProviders, readActiveProvider, resolveStoredKey } fr
 import { resolveProvider } from './provider-store.js';
 import { createModelCatalogPort } from './model-catalog.js';
 import { createModelMetaStore } from './model-meta.js';
-import { readModels, saveModels } from './config-models.js';
+import { readModels, saveModels, readTitleModel, saveTitleModel } from './config-models.js';
 import { readPluginEntryConfig, saveModelChoice, setPluginEntry, setSkillEnabled } from './config-write.js';
 import { switchableProvider } from './live-provider.js';
 import type { BuiltinSurface } from './surface-host.js';
@@ -83,6 +83,9 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
           // `{env:NAME}`, and this list is written back.
           persistModels: (models) => saveModels(models),
           readModels: () => readModels(),
+          // 会话标题模型：同一条 RAW 文档纪律（null = 删键，不是存空串）。
+          persistTitleModel: (model) => saveTitleModel(model),
+          readTitleModel: () => readTitleModel(),
           // ── BYOK：多供应商 ───────────────────────────────────────────────────
           // 整份读写（设置页拥有每一行），且写的是 RAW 文档——`loadConfig` 会把
           // `{env:NAME}` 展开成明文，把解析后的对象写回去等于用密钥替换引用。

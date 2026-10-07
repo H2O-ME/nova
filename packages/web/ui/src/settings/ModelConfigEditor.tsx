@@ -28,6 +28,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDownIcon, ChevronRightIcon, TrashIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { SettingsSection } from './Section.js';
+import { TitleModelRow } from './TitleModelRow.js';
 import { cls } from '../sidebar/view.js';
 import type { ClientFrame, ConfiguredModel } from '../types.js';
 import type { ModelConfigSnapshot } from '../state.js';
@@ -126,6 +127,8 @@ export interface ModelConfigEditorProps {
   config: ModelConfigSnapshot | null;
   /** Whether this host can write the config at all (inert text when false). */
   writable: boolean;
+  /** Whether this editor holds unsaved edits, reported whenever it changes. */
+  onDirtyChange?: (dirty: boolean) => void;
   send: (frame: ClientFrame) => void;
 }
 
@@ -257,7 +260,7 @@ function autoLabel(value: number | readonly string[] | boolean | undefined): str
  * @param props - see ModelConfigEditorProps.
  * @returns the editor element tree.
  */
-export function ModelConfigEditor({ config, writable, send }: ModelConfigEditorProps): JSX.Element {
+export function ModelConfigEditor({ config, writable, onDirtyChange, send }: ModelConfigEditorProps): JSX.Element {
   // 草稿与「已存名单」分开：没有待保存的改动时，重新问一次宿主不该把正在编辑的内容
   // 冲掉，所以草稿只在首次拿到名单、或宿主回报的结果与它一致时才重置。挂载 effect
   // 生效之前（以及不发生 effect 的静态渲染里）用**已存名单**当草稿：内容逐字相同，
@@ -266,6 +269,14 @@ export function ModelConfigEditor({ config, writable, send }: ModelConfigEditorP
   const [dirty, setDirty] = useState(false);
   const [newId, setNewId] = useState('');
   const [collapsed, setCollapsed] = useState<ReadonlySet<number>>(new Set());
+
+  // The shell's leave guard reads this: a draft here is an edit a section
+  // switch would silently discard, so the editor reports it like the plugin
+  // pages do. The unmount cleanup clears it for a gone page.
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
 
   useEffect(() => {
     send({ type: 'list_model_config' });
@@ -336,6 +347,8 @@ export function ModelConfigEditor({ config, writable, send }: ModelConfigEditorP
 
   return (
     <SettingsSection>
+      {/* 会话标题模型：主路设置，即时保存（宿主的回帧就是状态），不进草稿。 */}
+      <TitleModelRow config={config} writable={writable} send={send} />
       {/* 逐字段覆盖能力是进阶操作，默认收进一张「高级」折叠：主路（填密钥、选
           模型）不再被一份空的参数表打断。折叠用原生 `details`——收起是浏览器的
           事，不是第二份状态。 */}

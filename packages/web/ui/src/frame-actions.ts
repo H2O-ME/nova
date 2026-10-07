@@ -58,6 +58,7 @@ const MAPPERS: Mapper = {
     models: frame.models,
     published: frame.published,
     automatic: frame.automatic,
+    titleModel: frame.titleModel,
   }),
   providers: (frame) => ({
     type: 'providers',

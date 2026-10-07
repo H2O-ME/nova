@@ -11,7 +11,7 @@
  * writes; the two judgements belong at those two layers.
  */
 import { hasControlChars, type ConfiguredModel } from '@nova-agent/core';
-import { MAX_CONFIGURED_MODELS, MAX_MODALITY_CHARS, MAX_MODEL_CHARS, MAX_MODEL_MODALITIES, type ClientFrame } from './protocol.js';
+import { MAX_CONFIGURED_MODELS, MAX_MODALITY_CHARS, MAX_MODEL_CHARS, MAX_MODEL_MODALITIES, MAX_TITLE_MODEL_CHARS, type ClientFrame } from './protocol.js';
 import { reject, type FrameRejection } from './reject.js';
 
 /** A finite positive integer, or undefined for anything else (including absent). */
@@ -107,10 +107,24 @@ function parseConfiguredModel(item: unknown, index: number): { entry: Configured
  * @returns the parsed frame, or a rejection reason.
  */
 export function parseModelConfigFrame(
-  type: 'list_model_config' | 'save_models',
+  type: 'list_model_config' | 'save_models' | 'set_title_model',
   obj: Record<string, unknown>,
 ): ClientFrame | FrameRejection {
   if (type === 'list_model_config') return { type: 'list_model_config' };
+  if (type === 'set_title_model') {
+    // `null` clears the setting; a string is a model id under the same bounds as
+    // `set_model`'s (same kind of value, same abuse surface).
+    const raw = obj['model'];
+    if (raw === null) return { type: 'set_title_model', model: null };
+    if (typeof raw !== 'string' || raw.trim().length === 0) {
+      return reject('set_title_model.model must be a non-empty string or null');
+    }
+    if (raw.length > MAX_TITLE_MODEL_CHARS) {
+      return reject(`set_title_model.model exceeds ${MAX_TITLE_MODEL_CHARS} chars`);
+    }
+    if (hasControlChars(raw)) return reject('set_title_model.model contains control characters');
+    return { type: 'set_title_model', model: raw.trim() };
+  }
   const raw = obj['models'];
   if (!Array.isArray(raw)) return reject('save_models.models must be an array');
   if (raw.length > MAX_CONFIGURED_MODELS) {

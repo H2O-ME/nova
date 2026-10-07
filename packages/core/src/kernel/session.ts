@@ -35,6 +35,9 @@ import type { JobRegistry } from '../jobs.js';
 import type { JobSnapshot } from '../job-types.js';
 import type { QuestionBroker, QuestionRequest, AskUserQuestionAnswer } from '../user-question.js';
 import type { Session, SessionEvent } from '../session.js';
+import { isContextFragment } from '../context-fragment.js';
+import { recordSessionTitle, sessionTitleOf } from '../session-title.js';
+import { generateSessionTitle, titleTranscript, TITLE_REGEN_PROMPTS } from './title.js';
 import { persistMissingToolResults } from '../session-repair.js';
 import type { SubagentProgress } from '../tools/subagent.js';
 import type {
@@ -124,6 +127,16 @@ export interface AgentSessionDeps {
    * `acceptsImages` for why an unknown capability must fail open.
    */
   inputModalities?: () => Promise<readonly string[] | undefined>;
+  /**
+   * The session-TITLE model's own client, read when the conversation's first
+   * real prompt lands. A THUNK returning a promise because the client is built
+   * from the config FILE (the authority the settings page writes) — a boot-time
+   * capture would leave every new session titling with a model the operator
+   * already replaced. Undefined, a throwing read or a missing endpoint all mean
+   * "no titles": the listing falls back to the first prompt, and nothing else
+   * notices.
+   */
+  titleProvider?: () => Promise<ChatProvider | undefined>;
 }
 
 export type AgentStatus = 'idle' | 'running' | 'compacting';
@@ -142,6 +155,11 @@ export class AgentSession {
   private readonly meter = new RunMeter();
   private readonly pending = new PromptQueue();
   private runController: AbortController | undefined;
+  /** In-flight title request (first prompt only); aborted with the session. */
+  private titleController: AbortController | undefined;
+  /** Real prompts landed since the title was last (re)generated — the
+   *  re-ask cadence counter. Reset when a fresh title is recorded. */
+  private titlePrompts = 0;
   private phase: TurnPhase = 'idle';
   /** The last message this run appended (the durable stats row's anchor). */
   private lastMessageId: string | undefined;
@@ -424,6 +442,9 @@ export class AgentSession {
    */
   async prompt(text: string, images?: readonly ImageAttachmentRef[]): Promise<void> {
     if (this.closed) throw new Error('agent session is closed');
+    // Read BEFORE the push: whether this is the conversation's opening prompt is
+    // "no real user message yet", and after the push it never is.
+    const opening = !this.deps.messages.some((m) => m.role === 'user' && !isContextFragment(m));
     const userMsg: UserMessage = {
       id: newId('msg'),
       ts: Date.now(),
@@ -440,6 +461,13 @@ export class AgentSession {
     await this.deps.session.append(userMsg);
     this.deps.messages.push(userMsg);
     this.publish({ type: 'user_message', message: userMsg });
+    // The title does not wait for the turn (nor care whether one is already
+    // running): it labels the PROMPT, it rides no queue, and it must never delay
+    // or fail the reply. The FIRST prompt titles immediately; after that the
+    // label is re-asked only every TITLE_REGEN_PROMPTS prompts, so a growing
+    // conversation keeps tracking its topic at one small call per few turns.
+    this.titlePrompts += 1;
+    if (opening || this.titlePrompts > TITLE_REGEN_PROMPTS) this.scheduleTitle();
     // The message is committed to the live array BEFORE the branch below, so an
     // in-flight run's next request already carries it: steering needs no extra
     // channel. The queue entry is only the GUARANTEE that the prompt also gets a
@@ -587,6 +615,7 @@ export class AgentSession {
     // session rather than of a turn.
     this.askSeam.failQuestions('closed');
     this.abort();
+    this.titleController?.abort();
     this.deps.approvals.failAll('closed');
     // Seal BEFORE closing the pump: a run still in flight may yet try to commit,
     // and the seal is what stops it from recreating a log the surface deleted.
@@ -601,6 +630,47 @@ export class AgentSession {
 
   private publish(event: KernelEvent): void {
     this.events.publish(event);
+  }
+
+  /**
+   * Fire-and-forget title generation: on the conversation's opening prompt,
+   * then again every `TITLE_REGEN_PROMPTS` prompts so the label tracks the
+   * conversation as it grows.
+   *
+   * Everything about this is best-effort by construction: the provider read may
+   * be absent or throw, the model may answer nothing usable, and the append may
+   * race the run — the write chain serializes that last one, and the first two
+   * fall back to the listing's first-prompt label. At most one title request in
+   * flight (a prompt landing during one neither queues a second nor resets the
+   * cadence — the recorded title resets the counter, so the skipped prompt is
+   * simply part of the last window).
+   */
+  private scheduleTitle(): void {
+    const readProvider = this.deps.titleProvider;
+    if (readProvider === undefined || this.titleController !== undefined) return;
+    // The CURRENT title travels with the request: a model that still finds it
+    // accurate repeats it, so a same-topic conversation does not churn its label
+    // every regeneration; one that drifted replaces it (the newest marker wins).
+    const transcript = titleTranscript(this.deps.messages, sessionTitleOf(this.deps.session));
+    const controller = new AbortController();
+    this.titleController = controller;
+    void readProvider()
+      .then((provider) => {
+        if (provider === undefined) return undefined;
+        return generateSessionTitle(provider, transcript, controller.signal);
+      })
+      .then((title) => {
+        if (title === undefined || controller.signal.aborted || this.closed) return;
+        this.titlePrompts = 0;
+        // The live signal beside the durable marker: surfaces refresh what they
+        // show about this session (the sidebar row) without polling.
+        this.publish({ type: 'session_titled', title });
+        return recordSessionTitle(this.deps.session, title);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.titleController === controller) this.titleController = undefined;
+      });
   }
 
   /**

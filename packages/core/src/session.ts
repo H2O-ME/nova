@@ -79,6 +79,13 @@ export type SessionEvent =
    * from it); never joins the model surface. */
   | { type: 'workspace'; path: string; at: number }
   /**
+   * Log-only session-title marker (see `session-title.ts`); never joins the
+   * model surface. Written once per conversation by the title model, and read
+   * by every session LISTING — the newest marker wins, so a regenerated title
+   * is a second marker, not an edit.
+   */
+  | { type: 'title'; title: string; at: number }
+  /**
    * Log-only PTC sub-dispatch audit record: one per settled `run_code`
    * binding call (dsh tool/code-dispatch). The only durable trace of what a
    * program actually did — intermediate results never enter the model

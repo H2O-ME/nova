@@ -18,6 +18,7 @@ export * from './paths.js';
 export * from './session-index.js';
 export * from './session-aggregate.js';
 export * from './session-workspace.js';
+export * from './session-title.js';
 export * from './session-listing.js';
 export * from './file-listing.js';
 export * from './file-io.js';

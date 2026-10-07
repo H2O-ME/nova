@@ -1,14 +1,18 @@
 /**
- * Follow the kernel's CURRENT session, re-binding on every replacement.
+ * Follow the session a surface hands over, re-binding on every replacement.
  *
  * Why this is its own object rather than two fields on the controller: the
- * subscription must move whenever the kernel swaps its session, and the kernel
- * does that on its OWN (a `setWorkspace` on a still-blank session mints a fresh
- * one so its context names the new workspace). A subscription pinned to the
- * session bound at boot goes silent at that moment — the transcript stops
- * updating while the kernel keeps working. Owning the "bound session" and its
+ * subscription must move whenever the served session changes, and that happens
+ * on the controller's own decision (a switch, a replace, or a workspace move
+ * that re-seeds a still-blank session). A subscription pinned to the session
+ * bound at boot goes silent at that moment — the transcript stops updating
+ * while the kernel keeps working. Owning the "bound session" and its
  * unsubscribe together is what makes "am I following?" a single question instead
  * of two fields that can disagree.
+ *
+ * It follows what it is GIVEN and never reads the kernel itself: the kernel's
+ * current session moves for reasons that are not any one surface's business
+ * (see `controller.ts`'s `agent`).
  */
 import type { AgentSession, KernelEvent } from '@nova-agent/core';
 

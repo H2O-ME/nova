@@ -43,6 +43,9 @@ export interface FrameHost {
   /** The operator's model list: its writer, and its on-demand reader. */
   persistModels: ((models: readonly ConfiguredModel[]) => void | Promise<void>) | undefined;
   readModels: () => Promise<readonly ConfiguredModel[]>;
+  /** The session-TITLE model (config `titleModel`): writer (`null` clears) and reader. */
+  persistTitleModel: ((model: string | null) => void | Promise<void>) | undefined;
+  readTitleModel: () => Promise<string | null>;
   /**
    * Every plugin's operations, addressed by the id its config row uses.
    *
@@ -90,4 +93,13 @@ export interface FrameHost {
    * recreating its own deleted log (see `session-frames.ts`).
    */
   disposeLiveHandle(file: string): Promise<void>;
+  /**
+   * Move the workspace for the session THIS surface serves.
+   *
+   * The controller's own method rather than a direct `kernel.setWorkspace`
+   * call: the kernel moves ITS current session, which another surface may have
+   * moved (see `controller.ts`'s `setWorkspace`), so the frame must be
+   * addressed to the conversation the operator is looking at.
+   */
+  setWorkspace(dir: string): Promise<void>;
 }

@@ -27,6 +27,7 @@ import {
   type AgentHooks,
   type AgentSession,
   type ApprovalBroker,
+  type ApprovalMode,
   type ChatProvider,
   type CompactedSession,
   type CompactSessionOptions,
@@ -166,6 +167,14 @@ export interface Environment {
    * be true for one conversation and false for another.
    */
   policyCell: ApprovalPolicyCell;
+  /**
+   * The process's default tier for NEW sessions — what a surface's settings
+   * row picked. Mutable on the env (not a per-surface field) because sessions
+   * are created by several surfaces; the qqbot channel's conversations must
+   * start at the same default the browser's would. `undefined` = the boot
+   * config's `approval` is the default, unchanged.
+   */
+  approvalDefault?: ApprovalMode;
   systemPrompt: string;
   sessionEnv(): SessionEnvInfo;
   buildFragment(): string;
@@ -331,6 +340,11 @@ async function openSession(
       buildFragment: env.buildFragment,
       cacheDir: (sessionId) => env.root.must(spillKey).dir(sessionId),
       policyCell: env.policyCell,
+      // The tier a new conversation STARTS at: the process default when a
+      // surface's settings row picked one (live read — a pick made after boot
+      // still reaches the chat channel's next conversation), else the boot
+      // config's `approval`.
+      approvalDefault: () => env.approvalDefault,
       // The default answer is the surface in force, read LIVE (a plugin flip or a
       // late-claiming surface must be reflected without reopening the session);
       // a caller that knows better for its own conversation overrides it.
@@ -340,6 +354,7 @@ async function openSession(
       compact: (options: CompactSessionOptions): Promise<CompactedSession> =>
         env.root.must(compactionKey).run(options),
       perRequestCompact: opts.perRequestCompact === true,
+      ...(opts.titleProvider === undefined ? {} : { titleProvider: opts.titleProvider }),
       // Input modalities of the model in force, read per request. The provider
       // is the authority on WHICH model is active (`ChatProvider.model`) and the
       // catalog answers what that id can accept, so this reads both live rather

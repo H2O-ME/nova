@@ -28,6 +28,9 @@ export interface ManageHost {
   /** The operator's model list; the model-list frames live in their own module. */
   persistModels: ((models: readonly ConfiguredModel[]) => void | Promise<void>) | undefined;
   readModels: () => Promise<readonly ConfiguredModel[]>;
+  /** The session-title model's writer and reader (lives with the model list). */
+  persistTitleModel: ((model: string | null) => void | Promise<void>) | undefined;
+  readTitleModel: () => Promise<string | null>;
 }
 
 function errorTo(client: WsConnection, err: unknown): void {
@@ -78,6 +81,7 @@ export async function handleManageFrame(
     | { type: 'list_skills' }
     | { type: 'list_model_config' }
     | { type: 'save_models' }
+    | { type: 'set_title_model' }
   >,
   host: ManageHost,
 ): Promise<void> {
@@ -123,6 +127,7 @@ export async function handleManageFrame(
       }
       case 'list_model_config':
       case 'save_models':
+      case 'set_title_model':
         // The model-list family lives in its own module (same discipline,
         // different config section and a wholly-replaced list rather than a
         // flipped switch).

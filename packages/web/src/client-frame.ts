@@ -302,6 +302,7 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     }
     case 'list_model_config':
     case 'save_models':
+    case 'set_title_model':
       // The model catalog's own field bounds live with it (`model-config-parse`),
       // the way the workspace-path rules live in `fs-frame-parse`.
       return parseModelConfigFrame(type, obj);

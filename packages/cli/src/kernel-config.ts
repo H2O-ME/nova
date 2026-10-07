@@ -72,3 +72,26 @@ export async function createProvider(config: Config): Promise<OpenAICompatClient
 export function configuredModel(config: Config): string | undefined {
   return config.provider?.model;
 }
+
+/**
+ * 会话标题模型的客户端：**同一个在役端点**上的另一个模型（`config.titleModel`）。
+ *
+ * 它不是主客户端的 `setModel` 换名——那个实例被内核、会话与模型座位共享，就地改写
+ * 会与在跑的那一轮抢同一个模型。也不做 `resolveProviderModel` 的名字对账：标题是
+ * 尽力而为的旁路，一次对账就多一次启动期的 `GET /models`，而名字拼错的后果只是
+ * 「这一段会话没有标题」。
+ * @param config - the loaded config.
+ * @returns undefined when no endpoint or no title model is configured.
+ */
+export function createTitleProvider(config: Config): OpenAICompatClient | undefined {
+  const endpoint = resolveProvider(config);
+  if (endpoint === undefined || config.titleModel === undefined) return undefined;
+  return new OpenAICompatClient({
+    baseURL: endpoint.baseURL,
+    apiKey: endpoint.apiKey,
+    model: config.titleModel,
+    // A title is a label; the endpoint default (often thousands of tokens) is a
+    // runaway budget for one short line.
+    maxTokens: 200,
+  });
+}

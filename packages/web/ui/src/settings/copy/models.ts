@@ -81,6 +81,12 @@ export const MODELS_COPY = {
   'models.pickNoMatch': '没有匹配的模型。',
   'models.pickApply': '添加所选',
   'models.pickCancel': '取消',
+  /* ── 会话标题模型（config `titleModel`） ────────────────────── */
+  // 摆在「模型参数」折叠块之前：它是主路设置（要不要标题），不是逐字段进阶。
+  'models.titleRow': '会话标题模型',
+  'models.titleHint': '每段会话的第一条消息由这个模型生成一个短标题；留空则不生成。',
+  'models.titleNone': '不生成标题',
+
   /* ── 模型参数（config `models[]`） ────────────────────────── */
   'models.configTitle': '模型参数',
   'models.configIntro': '逐字段覆盖模型能力：留空即自动取自 models.dev，填写即覆盖并写入配置文件。',

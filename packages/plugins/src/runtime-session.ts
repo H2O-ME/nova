@@ -16,6 +16,7 @@ import {
   Session,
   type AgentHooks,
   type AgentMessage,
+  type ApprovalMode,
   type ChatProvider,
   type CompactedSession,
   type CompactSessionOptions,
@@ -58,6 +59,13 @@ export interface OpenSessionDeps {
    */
   policyCell: ApprovalPolicyCell;
   /**
+   * The process's default tier for NEW sessions, read live (a surface's
+   * settings pick made after boot still reaches conversations opened later by
+   * ANY surface — the chat channel included). Absent = the boot config's
+   * `approval`. The tier itself stays PER SESSION once chosen.
+   */
+  approvalDefault?: () => ApprovalMode | undefined;
+  /**
    * Whether a human can answer THIS session's `ask_user_question`. A thunk, read
    * per call, for the same reason the tool reads its answerer live: a surface can
    * gain or lose its human without a restart.
@@ -69,6 +77,8 @@ export interface OpenSessionDeps {
    * model catalog, and consulted only when a message actually carries an image.
    */
   inputModalities?: () => Promise<readonly string[] | undefined>;
+  /** The title model's client accessor, handed straight to the session engine. */
+  titleProvider?: () => Promise<ChatProvider | undefined>;
 }
 
 /**
@@ -90,7 +100,7 @@ export async function openAgentSession(
 ): Promise<AgentSession> {
   const { session, messages } = await openLog(p, sessionOpts);
   const wiring = makeSessionAskWiring({
-    approval: p.config.approval,
+    approval: p.approvalDefault?.() ?? p.config.approval,
     rootDir: p.rootDir,
     tools: p.tools,
     policyCell: p.policyCell,
@@ -129,6 +139,7 @@ export async function openAgentSession(
       : {}),
     ...(p.perRequestCompact ? { perRequestCompact: true } : {}),
     ...(p.inputModalities === undefined ? {} : { inputModalities: p.inputModalities }),
+    ...(p.titleProvider === undefined ? {} : { titleProvider: p.titleProvider }),
   });
 }
 

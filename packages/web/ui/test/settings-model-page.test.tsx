@@ -15,7 +15,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ModelConfigEditor, formatCapacity, parseCapacityField, parseCapacityText } from '../src/settings/ModelConfigEditor.js';
 import { ProviderModelsDialog } from '../src/settings/ProviderModelsDialog.js';
-import { ProviderSection, draftProblem } from '../src/settings/ProviderSection.js';
+import { ProviderSection, draftProblem, saveLanded } from '../src/settings/ProviderSection.js';
 import { SETTINGS_COPY } from '../src/settings/copy.js';
 import type { ModelConfigSnapshot, ProvidersSnapshot } from '../src/state.js';
 
@@ -42,6 +42,7 @@ const CONFIG: ModelConfigSnapshot = {
       toolCall: true,
     },
   },
+  titleModel: null,
 };
 
 /** 每个控件标签（input/select/button/textarea）都带 `class="`。 */
@@ -102,8 +103,8 @@ describe('模型参数 · 当前生效与自动值', () => {
     // 未覆盖的字段：当前生效 = 自动，占位符给自动值。
     expect(html).toContain(`${SETTINGS_COPY['models.configEffectiveLabel']} ${SETTINGS_COPY['models.configEffectiveAuto']}`);
     expect(html).toContain(`placeholder="${SETTINGS_COPY['models.configAutoLabel']} 8192"`);
-    // 三个开关 + 两组模态勾选都在。
-    expect(html.match(/<select/g)).toHaveLength(3);
+    // 三个开关 + 两组模态勾选都在；上面那行会话标题模型再带一个 select。
+    expect(html.match(/<select/g)).toHaveLength(4);
     expect(html.match(/type="checkbox"/g)).toHaveLength(10);
     expect(html).toContain(SETTINGS_COPY['models.fieldAttachment']);
     expect(html).toContain(SETTINGS_COPY['models.fieldReasoning']);
@@ -121,7 +122,7 @@ describe('模型参数 · 当前生效与自动值', () => {
 
   it('says which list decides the menu instead of showing an empty editor', () => {
     const html = renderToStaticMarkup(
-      <ModelConfigEditor config={{ models: [], published: [], automatic: {} }} writable send={noop} />,
+      <ModelConfigEditor config={{ models: [], published: [], automatic: {}, titleModel: null }} writable send={noop} />,
     );
     expect(html).toContain(SETTINGS_COPY['models.configInherited']);
     expect(html).toContain(SETTINGS_COPY['models.configPublishedEmpty']);
@@ -131,7 +132,7 @@ describe('模型参数 · 当前生效与自动值', () => {
     // 20 亿超过 schema 的上限：写进文件会让 `loadConfig` 直接失败，所以必须挡在这里。
     const html = renderToStaticMarkup(
       <ModelConfigEditor
-        config={{ models: [{ id: 'x', contextWindow: 2_000_000_000 }], published: [], automatic: {} }}
+        config={{ models: [{ id: 'x', contextWindow: 2_000_000_000 }], published: [], automatic: {}, titleModel: null }}
         writable
         send={noop}
       />,
@@ -207,5 +208,31 @@ describe('取模弹窗 · 勾选与「只做加」', () => {
     // 没勾任何新行时「添加所选」按不动。
     expect(html).toContain('data-pick-apply');
     expect(html).toContain(SETTINGS_COPY['models.pickApply']);
+  });
+});
+
+describe('保存回执 · 按内容匹配', () => {
+  const sent = [
+    { id: 'p1', baseURL: 'https://gw.example.com/v1', name: '自建网关', hasApiKey: false, temperature: 0.7, models: [{ id: 'a' }] },
+    { id: 'p2', baseURL: 'https://api.example.com/v1', hasApiKey: true, models: [{ id: 'b' }] },
+  ];
+
+  it('a frame that IS the echo of this save settles it (secret material skipped)', () => {
+    const echo = [
+      { id: 'p1', name: '自建网关', baseURL: 'https://gw.example.com/v1', hasApiKey: true, temperature: 0.7, models: [{ id: 'a' }] },
+      { id: 'p2', baseURL: 'https://api.example.com/v1', hasApiKey: false, models: [{ id: 'b' }] },
+    ];
+    expect(saveLanded(sent, echo, undefined, undefined)).toBe(true);
+  });
+
+  it("someone else's snapshot (any row differs, or the pointer moved) does NOT clear the draft", () => {
+    const other = [
+      { id: 'p1', name: '被别的窗口改过', baseURL: 'https://gw.example.com/v1', hasApiKey: true, models: [] },
+      { id: 'p2', baseURL: 'https://api.example.com/v1', hasApiKey: true, models: [] },
+    ];
+    expect(saveLanded(sent, other, undefined, undefined)).toBe(false);
+    expect(saveLanded(sent, other, 'p1', undefined)).toBe(false);
+    // 行数不同同样不是回执（对面删了一行）。
+    expect(saveLanded(sent, [sent[0] as (typeof sent)[number]], undefined, undefined)).toBe(false);
   });
 });

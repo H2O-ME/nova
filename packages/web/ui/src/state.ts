@@ -442,6 +442,8 @@ export interface ModelConfigSnapshot {
    * a fabricated default.
    */
   automatic: Readonly<Record<string, ModelCapabilities | undefined>>;
+  /** The session-TITLE model (config `titleModel`); `null` when unset. */
+  titleModel: string | null;
 }
 
 /**
@@ -617,7 +619,7 @@ export type Action =
   | { type: 'plugins'; entries: readonly WireRosterEntry[]; disable: readonly string[] }
   | { type: 'skills'; items: readonly WireSkillEntry[]; disable: readonly string[] }
 
-  | { type: 'model_config'; models: readonly ConfiguredModel[]; published: readonly string[]; automatic: Readonly<Record<string, ModelCapabilities>> }
+  | { type: 'model_config'; models: readonly ConfiguredModel[]; published: readonly string[]; automatic: Readonly<Record<string, ModelCapabilities>>; titleModel: string | null }
   | { type: 'providers'; providers: readonly WireProviderRow[]; activeId?: string }
   /** The host's answer to `probe_provider` (success or reason), same shape. */
   | { type: 'provider_probe'; baseURL: string; ok: boolean; models: readonly string[]; message?: string }
@@ -841,6 +843,7 @@ export function reduce(state: UiState, action: Action): UiState {
           models: action.models,
           published: action.published,
           automatic: action.automatic,
+          titleModel: action.titleModel,
         },
         manageError: null,
       };

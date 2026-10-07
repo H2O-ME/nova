@@ -127,6 +127,14 @@ export interface ControllerOptions extends ProviderSeams {
    */
   readModels?: () => Promise<readonly ConfiguredModel[]>;
   /**
+   * Persist the session-TITLE model (config `titleModel`); `null` clears it.
+   * Same shell-injection story as `persistModels`: only the shell knows the
+   * config file, and absent in tests the page then reports that it cannot write.
+   */
+  persistTitleModel?: (model: string | null) => void | Promise<void>;
+  /** The stored title model, re-read on demand (`null` = none configured). */
+  readTitleModel?: () => Promise<string | null>;
+  /**
    * Override the host's native file/folder dialog (`pick_file` /
    * `pick_directory`). Absent in production — the real dialog from
    * `native-picker.ts` answers; tests inject a fake so no OS dialog ever opens.

@@ -85,6 +85,13 @@ const configSchema_ = z.object({
    */
   projectDocMaxTokens: z.number().int().positive().max(1_000_000).optional(),
   /**
+   * 会话标题模型：在役端点上的一个模型 id。每段会话的**第一条真实提示词**落盘后，
+   * 用它起一个短标题（log-only 的 `title` 标记），会话清单（浏览器侧栏、QQ
+   * `/sessions`）显示它而不是首条提示词原文。缺省不生成；生成失败或不在线都只是
+   * 回落到首条提示词，绝不影响那一轮。
+   */
+  titleModel: z.string().min(1).optional(),
+  /**
    * 界面外观（REPL 呈现层）。theme：dark（默认，配色与引入主题层前
    * 逐字节一致）/ light（亮背景高对比）/ plain（无色）。NO_COLOR 与
    * 非 TTY 恒定无色，主题不生效。

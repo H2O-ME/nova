@@ -13,7 +13,8 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { sessionsRoot } from '@nova-agent/core';
+import { sessionsRoot, sessionWorkspace } from '@nova-agent/core';
+import { createAgentKernel } from '@nova-agent/plugins';
 import { parseClientFrame } from '../src/client-frame.js';
 import { serializeServerFrame, type ClientFrame, type ServerFrame } from '../src/protocol.js';
 import type { WsConnection } from '../src/ws.js';
@@ -103,6 +104,107 @@ const TURN: StreamEvent[] = [
 ];
 
 describe('session isolation', () => {
+  it('a foreign surface activating its own conversation does not steal this surface', async () => {
+    await withFakeHome(async () => {
+      const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-iso-root-'));
+      const kernel = await createAgentKernel({
+        rootDir,
+        provider: scriptedProvider([TURN, TURN]),
+        config: { approval: 'full' },
+        userQuestions: true,
+      });
+      const controller = await WebController.create({ kernel, providerModelLabel: 'test-model' });
+      const conn = new FakeConn();
+      controller.attach(conn);
+      try {
+        await handle(controller, conn, { type: 'prompt', text: 'webui only' });
+        await settle(conn, (f) => f.some((x) => x.type === 'event' && (x.event.type === 'done' || x.event.type === 'run_failed')));
+        const mine = controller.agent.session.file;
+        // Another surface opens its OWN conversation and makes it the kernel's
+        // current one — exactly what the QQ channel's `agentFor` does on every
+        // inbound message.
+        const theirs = await kernel.newAgentSession();
+        expect(theirs.session.file).not.toBe(mine);
+        // Any later frame on THIS surface...
+        await handle(controller, conn, { type: 'list_sessions' });
+        // ...must not move what this surface serves: the browser keeps its own
+        // conversation, not the one another surface just activated.
+        expect(controller.agent.session.file).toBe(mine);
+      } finally {
+        await controller.dispose();
+      }
+    });
+  });
+
+  it('a workspace move lands on THIS surface\'s session, not another surface\'s', async () => {
+    await withFakeHome(async () => {
+      const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-iso-root-'));
+      const otherDir = await mkdtemp(path.join(tmpdir(), 'nova-iso-moved-'));
+      const kernel = await createAgentKernel({
+        rootDir,
+        provider: scriptedProvider([TURN]),
+        config: { approval: 'full' },
+        userQuestions: true,
+      });
+      const controller = await WebController.create({ kernel, providerModelLabel: 'test-model' });
+      const conn = new FakeConn();
+      controller.attach(conn);
+      try {
+        // Another surface's own (still blank) conversation is the kernel's current
+        // one when the frame arrives.
+        const theirs = await kernel.newAgentSession();
+        expect(sessionWorkspace(theirs.session)).toBe(rootDir);
+        await handle(controller, conn, { type: 'set_workspace', dir: otherDir });
+        // The other conversation must not be moved, nor re-seeded as a side effect.
+        expect(sessionWorkspace(theirs.session)).toBe(rootDir);
+        // This surface's conversation is the one that moved.
+        expect(sessionWorkspace(controller.agent.session)).toBe(otherDir);
+      } finally {
+        await controller.dispose();
+      }
+    });
+  });
+
+  it('switching back to a live session re-points the workspace at that session', async () => {
+    await withFakeHome(async () => {
+      const rootDir = await mkdtemp(path.join(tmpdir(), 'nova-iso-root-'));
+      const otherDir = await mkdtemp(path.join(tmpdir(), 'nova-iso-other-'));
+      const controller = await bootController({
+        rootDir,
+        provider: scriptedProvider([TURN, TURN, TURN]),
+        config: { approval: 'full' },
+        providerModelLabel: 'test-model',
+      });
+      const conn = new FakeConn();
+      controller.attach(conn);
+      const ran = (f: ServerFrame[]): boolean =>
+        f.some((x) => x.type === 'event' && (x.event.type === 'done' || x.event.type === 'run_failed'));
+      try {
+        await handle(controller, conn, { type: 'prompt', text: 'alpha' });
+        await settle(conn, ran);
+        // A second session, which this controller now HOLDS (the boot session is
+        // not in the handle map; one it opened itself is).
+        await handle(controller, conn, { type: 'new_session' });
+        await handle(controller, conn, { type: 'prompt', text: 'beta' });
+        await settle(conn, ran);
+        const fileB = controller.agent.session.file;
+        // A third, then move the workspace: B is left behind in the old one.
+        await handle(controller, conn, { type: 'new_session' });
+        await handle(controller, conn, { type: 'prompt', text: 'gamma' });
+        await settle(conn, ran);
+        await handle(controller, conn, { type: 'set_workspace', dir: otherDir });
+        expect(conn.ready().info.rootDir).toBe(otherDir);
+        // Back to B — still LIVE, so this takes the activate path...
+        await handle(controller, conn, { type: 'resume', file: fileB });
+        expect(controller.agent.session.file).toBe(fileB);
+        // ...and the tools must follow B's workspace, not the one left behind.
+        expect(conn.ready().info.rootDir).toBe(rootDir);
+      } finally {
+        await controller.dispose();
+      }
+    });
+  });
+
   it('a new session does not inherit the previous transcript', async () => {
     await withFakeHome(async () => {
       const { controller } = await makeController([TURN, TURN]);

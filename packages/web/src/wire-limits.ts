@@ -19,6 +19,8 @@ export const MAX_CLIENT_FRAME_BYTES = 512 * 1024;
 export const MAX_PROMPT_CHARS = 200_000;
 /** Max chars of a model id (an endpoint's own id; no id is anywhere near this). */
 export const MAX_MODEL_CHARS = 200;
+/** A session-title model id — the same kind of value `MAX_MODEL_CHARS` bounds. */
+export const MAX_TITLE_MODEL_CHARS = 200;
 /** Max chars of a slash-command name (kernel commands are short ASCII words). */
 export const MAX_COMMAND_NAME_CHARS = 64;
 /** Max chars of a workspace directory path (a host path, not a document). */

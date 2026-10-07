@@ -111,6 +111,8 @@ export type ServerFrame =
       models: readonly ConfiguredModel[];
       published: readonly string[];
       automatic: Readonly<Record<string, ModelCapabilities>>;
+      /** The session-TITLE model (config `titleModel`); `null` when unset. */
+      titleModel: string | null;
     }
   /**
    * The provider list, as stored (answer to `list_providers` / `save_providers`

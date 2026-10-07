@@ -14,8 +14,8 @@ import {
   type Kernel,
 } from '@nova-agent/plugins';
 import type { ChatProvider, ModelCatalogPort, PluginEntryOptions, SurfaceRows } from '@nova-agent/core';
-import type { Config } from './config.js';
-import { createProvider, configuredModel, toKernelConfig } from './kernel-config.js';
+import { loadConfig, type Config } from './config.js';
+import { createProvider, createTitleProvider, configuredModel, toKernelConfig } from './kernel-config.js';
 
 export { createProvider, configuredModel, toKernelConfig } from './kernel-config.js';
 
@@ -65,6 +65,25 @@ export interface BootOptions {
 /** 装配内核：五个 surface 共用的唯一一段装配。 */
 export async function bootKernel(opts: BootOptions): Promise<Kernel> {
   const provider = opts.provider ?? (await createProvider(opts.config));
+  // The title model is read per SESSION OPEN, not captured here: the settings
+  // page writes the config file, and a boot-time client would keep titling new
+  // conversations with a model the operator already replaced. The read fails
+  // soft (no endpoint / broken file / no title model → no titles) — a label
+  // never blocks a turn.
+  //
+  // Deliberately NOT gated on the boot config's `titleModel`: gating here made
+  // the per-open read a lie — a title model configured from the settings page
+  // during the run was never seen, so every conversation opened afterwards (the
+  // QQ channel's included) stayed untitled until a restart. `createTitleProvider`
+  // already answers `undefined` when the file names none, which is the honest
+  // place for that decision: it is re-made on every read.
+  const titleProvider = async (): Promise<ChatProvider | undefined> => {
+    try {
+      return createTitleProvider(await loadConfig());
+    } catch {
+      return undefined;
+    }
+  };
   const kernel = await createAgentKernel({
     rootDir: opts.rootDir,
     provider,
@@ -87,6 +106,7 @@ export async function bootKernel(opts: BootOptions): Promise<Kernel> {
     ...(opts.persist !== undefined ? { persist: opts.persist } : {}),
     ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
     ...(opts.userQuestions !== undefined ? { userQuestions: opts.userQuestions } : {}),
+    titleProvider,
   });
   return kernel;
 }

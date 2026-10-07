@@ -191,6 +191,16 @@ export type ClientFrame =
    */
   | { type: 'save_models'; models: readonly ConfiguredModel[] }
   /**
+   * Name the session-TITLE model (config `titleModel`), or clear it with `null`.
+   *
+   * A separate frame from `save_models` on purpose: the catalog editor and the
+   * title row are two concerns, and coupling them would make each sender carry
+   * the other's value (and let a stale catalog snapshot rewrite it). The host
+   * answers with `model_config` (which carries the stored value), so the select
+   * shows what is durable rather than what was clicked.
+   */
+  | { type: 'set_title_model'; model: string | null }
+  /**
    * Read the provider list (BYOK). Distinct from `list_models` and
    * `list_model_config`: those describe MODELS, this describes the ENDPOINTS
    * that serve them. The answer carries each provider's baseURL and whether a

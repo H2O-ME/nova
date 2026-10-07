@@ -25,6 +25,10 @@ export interface ModelConfigHost {
    * the operator's own hand-edit already replaced.
    */
   readModels: () => Promise<readonly ConfiguredModel[]>;
+  /** Write the session-TITLE model (config `titleModel`); `null` clears it. */
+  persistTitleModel: ((model: string | null) => void | Promise<void>) | undefined;
+  /** The stored title model, re-read from disk (`null` = none configured). */
+  readTitleModel: () => Promise<string | null>;
   kernel: Kernel;
 }
 
@@ -34,18 +38,23 @@ export interface ModelConfigFrame {
   models: ConfiguredModel[];
   published: string[];
   automatic: Record<string, ModelCapabilities>;
+  /** The session-title model, `null` when unset (core falls back to no titles). */
+  titleModel: string | null;
 }
 
 /**
  * Route one model-list frame. The caller guarantees `frame.type` is one of the
- * two, and the validator guarantees the payload shapes.
+ * family's, and the validator guarantees the payload shapes.
  * @param client - the requesting socket.
  * @param frame - the validated frame.
  * @param host - the controller's model-list seams.
  */
 export async function handleModelConfigFrame(
   client: WsConnection,
-  frame: { type: 'list_model_config' } | { type: 'save_models'; models: readonly ConfiguredModel[] },
+  frame:
+    | { type: 'list_model_config' }
+    | { type: 'save_models'; models: readonly ConfiguredModel[] }
+    | { type: 'set_title_model'; model: string | null },
   host: ModelConfigHost,
 ): Promise<void> {
   if (frame.type === 'save_models') {
@@ -57,6 +66,15 @@ export async function handleModelConfigFrame(
     // on a menu open, so writing it now changes the NEXT menu rather than the
     // run in flight — nothing the live request is built on moves.
     await host.persistModels(frame.models);
+  } else if (frame.type === 'set_title_model') {
+    if (host.persistTitleModel === undefined) {
+      client.send(serialize({ type: 'error', message: '当前服务没有可写的配置文件' }));
+      return;
+    }
+    // Same shape as `save_models`: a per-SESSION read (`kernel-session`'s
+    // `titleProvider` thunk), so the next opened session picks it up and the
+    // one in flight is untouched.
+    await host.persistTitleModel(frame.model);
   }
   // Both paths answer with what is now STORED, not what was sent: the host's own
   // normalization (blank ids dropped, an empty list deleting the key) is part of
@@ -81,11 +99,12 @@ export async function handleModelConfigFrame(
  */
 async function modelConfigFrame(host: ModelConfigHost): Promise<ModelConfigFrame> {
   const models = [...(await host.readModels())];
+  const titleModel = await host.readTitleModel();
   const control = host.kernel.models;
   if (control === undefined) {
     // No picker on this kernel (a scripted provider): the page still edits the
     // file, it just cannot offer the endpoint's pool or any automatic defaults.
-    return { type: 'model_config', models, published: [], automatic: {} };
+    return { type: 'model_config', models, published: [], automatic: {}, titleModel };
   }
   const [published, automatic] = await Promise.all([
     control.published().catch(() => [] as readonly string[]),
@@ -100,5 +119,5 @@ async function modelConfigFrame(host: ModelConfigHost): Promise<ModelConfigFrame
       );
     })(),
   ]);
-  return { type: 'model_config', models, published: [...published], automatic };
+  return { type: 'model_config', models, published: [...published], automatic, titleModel };
 }

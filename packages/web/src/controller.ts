@@ -22,7 +22,6 @@ import {
   sessionsRoot,
   sessionWorkspace,
   type AgentSession,
-  type ApprovalMode,
   type ConfiguredModel,
   type KernelEvent,
 } from '@nova-agent/core';
@@ -101,13 +100,6 @@ export class WebController {
    * fires on a CHANGE — a flip, not every frame.
    */
   private contextAvailable = false;
-  /**
-   * The approval tier settings picked, applied to every session created after
-   * it. The config file stays the boot default (the server does not rewrite
-   * it); within this process the settings row's promise — 新会话的默认权限模式 —
-   * is kept here, at the one place that creates sessions.
-   */
-  private approvalDefault: ApprovalMode | undefined;
 
   private constructor(
     kernel: Kernel,
@@ -127,6 +119,9 @@ export class WebController {
      * Reporting a list nobody can save is the failure this avoids.
      */
     private readonly readModels: () => Promise<readonly ConfiguredModel[]>,
+    /** The session-TITLE model's writer (`null` clears) and its on-demand reader. */
+    private readonly persistTitleModel: ((model: string | null) => void | Promise<void>) | undefined,
+    private readonly readTitleModel: () => Promise<string | null>,
     /**
      * The BYOK provider seams. Same shape as the model-list trio above and for
      * the same reason (only the shell knows the config file), plus the stored-key
@@ -162,6 +157,8 @@ export class WebController {
       opts.persistModel,
       opts.persistModels,
       opts.readModels ?? (async () => []),
+      opts.persistTitleModel,
+      opts.readTitleModel ?? (async () => null),
       opts.persistProviders,
       opts.readProviders ?? (async () => ({ providers: [] })),
       opts.storedApiKey ?? (() => ({ problem: 'missing' as const })),
@@ -169,15 +166,28 @@ export class WebController {
       opts.initialProviderId,
       opts.pickPath,
     );
-    controller.followSession();
+    controller.adoptKernelSession();
     // The boot-time answer, so the first inbound frame does not look like a flip:
     // `ready` already stated it, and only a CHANGE is worth a frame.
     controller.contextAvailable = controller.context.available(kernel);
     return controller;
   }
 
+  /**
+   * The session THIS surface serves — pinned when followed, NOT a live read of
+   * `kernel.agent` (the kernel's `current`). The kernel's current moves for
+   * reasons that are not this surface's business: a QQ relay activating its
+   * bound conversation per turn flips `current()`, and a live read here made
+   * every webui client broadcast the QQ session's events — the two
+   * conversations cross-contaminating each other's transcripts. The pin is
+   * (re)taken only where the webui itself decides which session is open
+   * (create / switch / replace / abandon), so a relay's activation never moves
+   * what the browser is shown.
+   */
+  private pinnedAgent: AgentSession | undefined;
+
   get agent(): AgentSession {
-    return this.kernel.agent;
+    return this.pinnedAgent ?? this.kernel.agent;
   }
 
   /**
@@ -199,7 +209,7 @@ export class WebController {
     const handles = [...this.handles.values()];
     this.handles.clear();
     for (const handle of handles) {
-      if (handle === this.kernel.agent) continue; // torn down with the kernel
+      if (handle === this.agent) continue; // torn down with the kernel
       await handle.dispose().catch(() => undefined);
       await this.kernel.jobs.disposeSession(handle.session.id).catch(() => undefined);
     }
@@ -240,7 +250,7 @@ export class WebController {
     if (this.clients.count > 0) return;
     const sessions = new Set<AgentSession>(this.handles.values());
     try {
-      sessions.add(this.kernel.agent);
+      sessions.add(this.agent);
     } catch {
       // The kernel already tore its sessions down (a dispose racing the last
       // detach): there is nothing left to converge.
@@ -285,14 +295,19 @@ export class WebController {
         },
       },
       readModels: this.readModels,
+      persistTitleModel: this.persistTitleModel,
+      readTitleModel: this.readTitleModel,
       persistProviders: this.persistProviders,
       readProviders: this.readProviders,
       storedApiKey: this.storedApiKey,
       configuredModel: this.configuredModel,
       liveProviderId: () => this.liveProviderId,
       setLiveProviderId: (id) => { this.liveProviderId = id; },
-      approvalDefault: () => this.approvalDefault,
-      setApprovalDefault: (mode) => { this.approvalDefault = mode; },
+      // The default tier lives on the KERNEL, not here: sessions are created by
+      // several surfaces (the qqbot channel opens its own conversations), and a
+      // default held in one controller would never reach the others.
+      approvalDefault: () => this.kernel.approvalDefault,
+      setApprovalDefault: (mode) => { this.kernel.setApprovalDefault(mode); },
       pickPath: this.pickPath,
       broadcast: (text) => { this.clients.broadcast(text); },
       readyFrame: () => this.readyFrame(),
@@ -300,6 +315,7 @@ export class WebController {
       switchSession: (opts) => this.switchSession(opts),
       abandonCurrentSession: () => this.abandonSession(),
       disposeLiveHandle: (file) => this.disposeLiveHandle(file),
+      setWorkspace: (dir) => this.setWorkspace(dir),
     });
     // AFTER the frame: a workspace move replaces the session inside the kernel,
     // so follow it here rather than making every handler remember to.
@@ -337,14 +353,15 @@ export class WebController {
     if (opts.resumeFile !== undefined) {
       // Resuming what is ALREADY open is not a switch: the client asked for a
       // baseline, and it already has the right one.
-      if (opts.resumeFile === this.kernel.agent.session.file) {
+      if (opts.resumeFile === this.agent.session.file) {
         this.clients.broadcast(this.readyFrame());
         return;
       }
       const live = this.handles.get(opts.resumeFile);
       if (live !== undefined) {
         this.kernel.activateSession(live);
-        this.followSession();
+        this.adoptKernelSession();
+        await this.followWorkspaceOf(this.agent);
         this.clients.broadcast(this.readyFrame());
         return;
       }
@@ -364,7 +381,7 @@ export class WebController {
    * is then re-pointed at the replacement, and the client gets a new baseline.
    */
   private async abandonSession(): Promise<void> {
-    const doomed = this.kernel.agent;
+    const doomed = this.agent;
     // Order matters: unsubscribe BEFORE dispose, so the closing session's own
     // terminal events are not broadcast as if they belonged to the new one.
     this.follow.stop();
@@ -397,7 +414,7 @@ export class WebController {
       return; // not a legal session target; the delete itself will refuse it
     }
     const doomed = this.handles.get(resolved);
-    if (doomed === undefined || doomed === this.kernel.agent) return;
+    if (doomed === undefined || doomed === this.agent) return;
     this.handles.delete(resolved);
     await doomed.dispose().catch(() => undefined);
     await this.kernel.jobs.disposeSession(doomed.session.id).catch(() => undefined);
@@ -422,33 +439,55 @@ export class WebController {
         ? await this.kernel.newAgentSession({ resumeFile: opts.resumeFile })
         : await this.kernel.newAgentSession();
     this.handles.set(agent.session.file, agent);
+    // `newAgentSession` made this the kernel's current session, so this surface's
+    // pin moves here NOW — before the workspace move below reads `this.agent`.
+    this.adoptKernelSession();
     // Resuming re-points the tools at the workspace that session was created
     // in (the marker it logged) — a surface decision, so not the kernel's.
-    const workspace = opts.resumeFile !== undefined ? sessionWorkspace(agent.session) : undefined;
-    if (workspace !== undefined && workspace !== this.kernel.rootDir() && !isInsideNovaHome(workspace)) {
-      await this.kernel.setWorkspace(workspace).catch(() => undefined);
-    }
+    await this.followWorkspaceOf(this.agent);
     // A tier settings picked earlier is the default for the sessions created
     // after it — applied before the baseline ships, so `ready` names the tier
-    // that is actually in force.
-    if (this.approvalDefault !== undefined && agent.approvalMode !== this.approvalDefault) {
-      agent.setApprovalMode(this.approvalDefault);
+    // that is actually in force. (The kernel cell feeds NEW sessions of every
+    // surface; this only re-pins THIS handle, which may predate the pick.)
+    const approvalDefault = this.kernel.approvalDefault;
+    if (approvalDefault !== undefined && this.agent.approvalMode !== approvalDefault) {
+      this.agent.setApprovalMode(approvalDefault);
     }
-    this.followSession();
   }
 
   /**
-   * Follow the kernel's current session — whichever that now is.
+   * Point the tools at the workspace the session records.
+   *
+   * A session switch has TWO paths — a still-live handle is activated, a cold one
+   * is resumed — and the workspace rule belongs to the DECISION ("this session is
+   * now open"), not to one of its implementations. Applying it only on the resume
+   * path left "switch away, switch back" running the tools in the directory of
+   * the session being left behind while the transcript showed this one.
+   * @param agent - the session now open.
+   */
+  private async followWorkspaceOf(agent: AgentSession): Promise<void> {
+    const workspace = sessionWorkspace(agent.session);
+    if (workspace !== undefined && workspace !== this.kernel.rootDir() && !isInsideNovaHome(workspace)) {
+      await this.setWorkspace(workspace).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Follow the session this surface serves — the PIN, not `kernel.agent`.
    *
    * Idempotent, so a caller says "make sure I am following" rather than tracking
-   * whether something replaced the session. The kernel can replace it on its
-   * own: `setWorkspace` mints a fresh session for a still-blank one so its
-   * context names the new workspace. A subscription pinned to the session bound
-   * at boot would go silent at that moment — the transcript stops updating while
-   * the kernel keeps working.
+   * whether something replaced the session.
+   *
+   * Deliberately NOT a live read of the kernel's current: that moves for reasons
+   * which are not this surface's business (a QQ relay activates its bound
+   * conversation per turn), and re-reading it here made every later frame
+   * re-point the browser at that other conversation — the transcript showed
+   * somebody else's session and the next prompt landed in it. The pin moves only
+   * through `adoptKernelSession`, called where the webui ITSELF decided which
+   * session is open (see `agent` above).
    */
   private followSession(): void {
-      this.follow.follow(this.kernel.agent, (event) => {
+      this.follow.follow(this.agent, (event) => {
         if (event.type === 'model') {
           // The seat follows the session, then every client is re-stated with the
           // same `state` frame the mode switches use — it answers the same
@@ -465,6 +504,38 @@ export class WebController {
           this.clients.broadcast(serialize(this.context.frame(this.agent, this.kernel)));
         }
       });
+  }
+
+  /**
+   * Adopt the kernel's current session as the one THIS surface serves, and
+   * re-point the subscription at it.
+   *
+   * Called ONLY where the webui itself decided which session is open: boot, a
+   * switch, a replace, and a workspace move (the kernel re-seeds a still-blank
+   * session, which is a replacement this surface asked for). A frame arriving on
+   * the socket is not such a place.
+   */
+  private adoptKernelSession(): void {
+    this.pinnedAgent = this.kernel.agent;
+    this.followSession();
+  }
+
+  /**
+   * Move the workspace for the session THIS surface serves.
+   *
+   * `kernel.setWorkspace` acts on the kernel's current session, which another
+   * surface may have moved (a QQ relay activates its bound conversation on every
+   * inbound message). Pointing the kernel at this surface's session first keeps
+   * the move — and the blank-session re-seed that rides it — on the conversation
+   * the operator is looking at, instead of re-seeding somebody else's.
+   *
+   * The re-seed REPLACES a still-blank session (its context fragment is
+   * append-only, see `runtime-workspace.ts`), so the pin follows the replacement.
+   */
+  private async setWorkspace(dir: string): Promise<void> {
+    this.kernel.activateSession(this.agent);
+    await this.kernel.setWorkspace(dir);
+    this.adoptKernelSession();
   }
 
   /**

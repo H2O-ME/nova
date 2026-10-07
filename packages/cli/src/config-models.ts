@@ -147,3 +147,38 @@ export async function saveModels(entries: readonly ModelEntryInput[], homedir?: 
     doc['models'] = written;
   }, homedir);
 }
+
+/**
+ * Read the session-TITLE model (config `titleModel`), or `null` when unset.
+ *
+ * Raw-document read for the same reason the rest of this file is: the answer
+ * goes back over the wire, and the loaded `Config`'s expanded strings must not
+ * become the page's picture of the file.
+ * @param homedir - Override for tests; defaults to the real home.
+ */
+export async function readTitleModel(homedir?: string): Promise<string | null> {
+  let doc: unknown;
+  try {
+    doc = await readDoc(docFile(homedir));
+  } catch {
+    return null;
+  }
+  const value = (doc as Record<string, unknown>)['titleModel'];
+  return typeof value === 'string' && value.trim() !== '' ? value : null;
+}
+
+/**
+ * Write the session-TITLE model. `null` deletes the key — absent and empty mean
+ * the same thing to the loader (no titles), and one of them is noise.
+ * @param model - the model id, or `null` to clear.
+ * @param homedir - Override for tests; defaults to the real home.
+ */
+export async function saveTitleModel(model: string | null, homedir?: string): Promise<void> {
+  await patchConfig((doc) => {
+    if (model === null) {
+      delete doc['titleModel'];
+      return;
+    }
+    doc['titleModel'] = model;
+  }, homedir);
+}

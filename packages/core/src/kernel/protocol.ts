@@ -106,6 +106,13 @@ export type KernelEvent =
    * Commands never enter the model's history.
    */
   | { type: 'command'; name: string; phase: 'run' | 'done'; text?: string }
+  /**
+   * The session's TITLE was just recorded (the log-only `title` marker). Same
+   * family as `model`: an out-of-band state announcement so a surface can
+   * refresh what it shows about this session (the sidebar row, `/sessions`)
+   * without polling — the durable record is the marker, this is the live signal.
+   */
+  | { type: 'session_titled'; title: string }
   /** An automatic compaction pass made progress. */
   | { type: 'compaction'; progress: CompactionProgress }
   /**

@@ -617,6 +617,11 @@ export function bashPlugin(): Plugin<BashPluginOptions> {
           additionalProperties: false,
         },
         execute: (args, c) => executeBash(args, c, defaultTimeoutMs, maxOutputBytes, settings.shellPath),
+        // The command IS the approval: a surface that shows only the tool name
+        // (a chat channel, say) would be asking its human to authorize blind.
+        preview(args) {
+          return bashCommand(args) ?? '';
+        },
         presentCall(args): TerminalCallView | undefined {
           const command = bashCommand(args);
           return command === undefined ? undefined : { card: 'terminal', kind: 'execute', command };

@@ -146,9 +146,11 @@ export async function handleFrame(
           abandonCurrentSession: () => host.abandonCurrentSession(),
           disposeLiveHandle: (file) => host.disposeLiveHandle(file),
           setWorkspace: async (dir) => {
-            // The kernel re-seeds a still-blank session itself (see
-            // `runtime-facade.ts`), so every surface gets that half for free.
-            await kernel.setWorkspace(dir);
+            // Addressed to THIS surface's session, not to whatever the kernel
+            // happens to call current (see `FrameHost.setWorkspace`). The kernel
+            // re-seeds a still-blank session itself, so every surface gets that
+            // half for free.
+            await host.setWorkspace(dir);
           },
           broadcastReady: () => { host.broadcast(host.readyFrame()); },
           sendSessions: async (target) => {
@@ -281,6 +283,7 @@ export async function handleFrame(
       case 'list_skills':
       case 'list_model_config':
       case 'save_models':
+      case 'set_title_model':
         // The settings panel's management frames share one discipline (persist
         // first, reload, answer with state) and live together in
         // `manage-frames.ts`. A PLUGIN's own page is not here: it goes through
@@ -293,6 +296,8 @@ export async function handleFrame(
           broadcastState: host.broadcastState,
           persistModels: host.persistModels,
           readModels: host.readModels,
+          persistTitleModel: host.persistTitleModel,
+          readTitleModel: host.readTitleModel,
         });
         break;
       case 'list_providers':

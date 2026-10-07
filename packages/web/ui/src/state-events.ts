@@ -109,6 +109,7 @@ type RunStateEvent = Extract<
       | 'question_resolved'
       | 'queue_update'
       | 'model'
+      | 'session_titled'
       | 'todo'
       | 'goal'
       | 'compaction'
@@ -189,6 +190,7 @@ function isRunStateEvent(event: KernelEvent): event is RunStateEvent {
     case 'question_resolved':
     case 'queue_update':
     case 'model':
+    case 'session_titled':
     case 'todo':
     case 'goal':
     case 'compaction':
@@ -327,6 +329,21 @@ function reduceRunState(state: UiState, event: RunStateEvent): UiState {
         modelName: event.name ?? null,
         contextWindow: event.contextWindow ?? null,
       };
+    case 'session_titled':
+      // The sidebar row for THIS session updates in place; other rows' titles
+      // come from disk on the next re-list. A missing row (list not loaded, or
+      // the current blank filtered out) is left alone — the next `sessions`
+      // answer carries the title from the durable marker anyway.
+      {
+        const file = state.meta?.sessionFile;
+        if (state.sessions === null || file === undefined) return state;
+        return {
+          ...state,
+          sessions: state.sessions.map((row) =>
+            row.file === file ? { ...row, title: event.title } : row,
+          ),
+        };
+      }
     case 'todo':
       // Wholesale replacement, never a merge: `todo_write` is last-write-wins,
       // so accumulating would keep items the model has already dropped.

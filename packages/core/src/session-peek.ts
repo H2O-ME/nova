@@ -12,6 +12,7 @@
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 import { isContextFragment } from './context-fragment.js';
+import { stripTitleWrappers } from './session-title.js';
 
 /** What a capped head scan can tell about one session log. */
 export interface SessionPeek {
@@ -57,9 +58,24 @@ export async function peekSession(file: string): Promise<SessionPeek> {
         continue; // a read-capped tail can end mid-line
       }
       if (typeof evt !== 'object' || evt === null) continue;
-      const rec = evt as { type?: unknown; createdAt?: unknown; message?: unknown; path?: unknown };
+      const rec = evt as {
+        type?: unknown;
+        createdAt?: unknown;
+        message?: unknown;
+        path?: unknown;
+        title?: unknown;
+      };
       if (rec.type === 'session') {
         if (typeof rec.createdAt === 'number') createdAt = rec.createdAt;
+        continue;
+      }
+      if (rec.type === 'title') {
+        // The generated label WINS over the first-prompt fallback: the marker is
+        // appended after that prompt, so a later prompt's `||=` below can never
+        // overwrite it, and a regenerated title is a second, newer marker. The
+        // label is stripped of its wrapper because a marker recorded before that
+        // rule existed still carries it — a row must not draw the model's markdown.
+        if (typeof rec.title === 'string') title = stripTitleWrappers(rec.title);
         continue;
       }
       if (rec.type === 'workspace') {

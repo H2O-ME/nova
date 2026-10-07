@@ -10,6 +10,7 @@
 import type {
   AgentHooks,
   AgentSession,
+  ApprovalMode,
   JobRegistry,
   LlmService,
   ModelControl,
@@ -63,6 +64,16 @@ export interface Kernel {
    * accessor falls back to the kernel engine only when no session exists.
    */
   readonly permission: PermissionPort;
+  /**
+   * The process's default tier for NEW sessions — what a surface's settings
+   * row picked (the web tier select writes it through `set_approval_mode`).
+   * Lives on the kernel rather than in any one surface because conversations
+   * are created by SEVERAL surfaces: a default the qqbot channel never sees
+   * would apply to browser sessions only, which is the "设置了也不执行" bug.
+   * `undefined` = fall back to the boot config's `approval`.
+   */
+  get approvalDefault(): ApprovalMode | undefined;
+  setApprovalDefault(mode: ApprovalMode | undefined): void;
   readonly jobs: JobRegistry;
   /**
    * The skills in force (discovery minus `skillsDisable`). This is the list the

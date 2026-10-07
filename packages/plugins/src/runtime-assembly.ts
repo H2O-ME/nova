@@ -120,6 +120,14 @@ export interface CreateKernelOptions {
   /** Session-file bucket override (qqbot archives under sessionsRoot()/qqbot). */
   sessionDir?: string;
   /**
+   * The session-TITLE model's client, read once per conversation at its first
+   * real prompt. A thunk over the config FILE, not a boot-time capture: the
+   * settings page writes that file, and a capture would keep titling new
+   * sessions with a model the operator already replaced. Absent or rejecting
+   * means no titles — every listing falls back to the first prompt.
+   */
+  titleProvider?: () => Promise<ChatProvider | undefined>;
+  /**
    * The config file, as this kernel is allowed to touch it.
    *
    * Absent in headless/test assemblies (whose config is not the operator's

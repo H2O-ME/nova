@@ -64,6 +64,18 @@ export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kerne
     get permission() {
       return env.root.get(sessionsKey)?.current()?.permission ?? env.permission;
     },
+    /**
+     * The process's default tier for NEW sessions, read live off the env: a
+     * surface writes it (`set_approval_mode`) and EVERY surface's next session
+     * starts there — browser, qqbot, exec alike. Living on the env rather than
+     * in the web controller is the fix for a default the chat channel never saw.
+     */
+    get approvalDefault() {
+      return env.approvalDefault;
+    },
+    setApprovalDefault: (mode) => {
+      env.approvalDefault = mode;
+    },
     get jobs() {
       return env.root.must(jobsKey);
     },
