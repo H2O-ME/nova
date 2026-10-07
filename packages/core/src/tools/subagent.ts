@@ -145,11 +145,13 @@ async function runOnce(
     // The nested run belongs to the conversation that asked for it: its tool
     // calls carry the parent's scope (the gate decides with the parent's
     // engine, the audit lands in the parent's session), its background jobs
-    // are owned by that session, and its log-only writes reach the parent's
-    // log instead of vanishing. See `NestedRunSession`.
+    // are owned by that session, its log-only writes reach the parent's log
+    // instead of vanishing, and oversized tool results spill into the
+    // parent's cacheDir. See `NestedRunSession`.
     ...(session.sessionId !== undefined ? { sessionId: session.sessionId } : {}),
     ...(session.jobs !== undefined ? { jobs: session.jobs } : {}),
     ...(session.emit !== undefined ? { emit: session.emit } : {}),
+    ...(session.cacheDir !== undefined ? { cacheDir: session.cacheDir } : {}),
   })) {
     if (event.type === 'message' && event.message.role === 'assistant') {
       lastAssistant = event.message.content.trim();
@@ -229,9 +231,10 @@ export function createSubagentTool(opts: SubagentToolOptions): ToolDefinition {
       if (prompt.trim().length === 0) return 'Error: prompt must be a non-empty string';
       const label = typeof args['label'] === 'string' && args['label'].trim().length > 0 ? args['label'].trim() : 'subtask';
       // What the nested run inherits from the conversation that asked for it
-      // (see `NestedRunSession`): the permission subject, the job owner, and
-      // the log sink — all read off the ToolExecuteContext at dispatch time.
-      const session: NestedRunSession = { sessionId: ctx.sessionId, jobs: ctx.jobs, emit: ctx.emit };
+      // (see `NestedRunSession`): the permission subject, the job owner, the
+      // log sink, and the spill dir — all read off the ToolExecuteContext at
+      // dispatch time.
+      const session: NestedRunSession = { sessionId: ctx.sessionId, jobs: ctx.jobs, emit: ctx.emit, cacheDir: ctx.cacheDir };
 
       if (args['run_in_background'] === true) {
         if (ctx.jobs === undefined) return 'Error: background jobs are not available in this context';

@@ -104,6 +104,41 @@ describe('subagent / nested scope inheritance', () => {
     expect(byCall.get('probe')?.runId).not.toBe(byCall.get('subagent')?.runId);
     expect(byCall.get('subagent')).toMatchObject({ sessionId: 'parent-1' });
   });
+
+  it('a nested run spills oversized tool output into the PARENT cache dir, not the global fallback', async () => {
+    const seen: string[] = [];
+    const spillProbe: ToolDefinition = {
+      name: 'probe',
+      description: 'capture cacheDir',
+      parameters: { type: 'object' },
+      execute: (_args, ctx) => {
+        seen.push(ctx.cacheDir ?? '(global fallback)');
+        return 'evidence';
+      },
+    };
+    const subagent = createSubagentTool({
+      provider: scriptedProvider([TOOL_CALL('n1', 'probe', '{}'), SAY('complete\nall found')]),
+      tools: () => [spillProbe],
+      hooks: () => ({ beforeToolCall: async () => ({ action: 'allow' }) }),
+      rootDir: () => '.',
+    });
+    await collect(
+      runAgent({
+        provider: scriptedProvider([TOOL_CALL('c1', 'subagent', '{"prompt":"find things"}'), SAY('delegated')]),
+        messages: [],
+        rootDir: '.',
+        tools: [subagent],
+        maxTurns: 2,
+        sessionId: 'parent-1',
+        cacheDir: '/nova/tool-outputs/parent-1',
+        hooks: { beforeToolCall: async () => ({ action: 'allow' }) },
+      }),
+    );
+    // THE property: the nested loop offloads into the parent conversation's
+    // cache dir. Revert the threading and probe sees the global fallback —
+    // the nested run's spill files land outside the session's cache.
+    expect(seen).toEqual(['/nova/tool-outputs/parent-1']);
+  });
 });
 
 describe('nestedToolset', () => {

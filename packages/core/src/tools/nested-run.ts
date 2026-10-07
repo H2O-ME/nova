@@ -30,10 +30,13 @@ export function nestedToolset(tools: ToolDefinition[], selfName: string): ToolDe
  * bearing one: without it the nested loop's tool calls carry an EMPTY
  * `ToolCallScope`, and the approval gate falls back to the kernel engine —
  * an escalation path when the parent conversation is more restricted than the
- * kernel default, and mis-attributed asks when it is not.
+ * kernel default, and mis-attributed asks when it is not. The cacheDir keeps
+ * oversized tool results in the parent conversation's spill dir rather than
+ * the global fallback.
  */
 export interface NestedRunSession {
   sessionId?: string;
   jobs?: JobRegistry;
   emit?: (evt: SessionEvent) => void | Promise<void>;
+  cacheDir?: string;
 }

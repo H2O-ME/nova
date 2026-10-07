@@ -318,6 +318,7 @@ async function executeTool(
         ...(opts.jobs !== undefined ? { jobs: opts.jobs } : {}),
         ...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
         ...(opts.emit !== undefined ? { emit: opts.emit } : {}),
+        ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
         ...(opts.onToolProgress !== undefined
           ? { onProgress: (text: string) => opts.onToolProgress?.(call, text) }
           : {}),

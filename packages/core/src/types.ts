@@ -156,6 +156,13 @@ export interface ToolExecuteContext {
    */
   emit?: (evt: import('./session.js').SessionEvent) => void | Promise<void>;
   /**
+   * The directory oversized tool results are offloaded to for this run — the
+   * host wires it per session. Tools that delegate nested runs forward it, so
+   * a nested loop spills into the same conversation's cache instead of the
+   * global fallback.
+   */
+  cacheDir?: string;
+  /**
    * Live progress feed for long-running tools (bash output tail etc.),
    * forwarded from AgentOptions.onToolProgress. Fire-and-forget: consumers
    * render it best-effort and tools must not depend on it existing.
