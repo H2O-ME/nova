@@ -37,12 +37,12 @@ import { flowRows, turnStatus } from './flow.js';
 import { GeneralSection } from './settings/GeneralSection.js';
 import { ModelConfigEditor } from './settings/ModelConfigEditor.js';
 import { ProviderSection } from './settings/ProviderSection.js';
-import { PluginsSection } from './settings/PluginsSection.js';
 import { SkillsSection } from './settings/SkillsSection.js';
 import { PluginPageSection } from './settings/PluginPageSection.js';
 import { pagePlugins } from './settings/plugin-state.js';
 import { loadBootGraph } from './plugins/client-loader.js';
 import { SettingsPanel } from './settings/SettingsPanel.js';
+import { PluginCenterPage } from './settings/PluginCenterPage.js';
 import { SETTINGS_COPY } from './settings/copy.js';
 import { AppFrame } from './shell/AppFrame.js';
 import { DocumentTitle } from './shell/DocumentTitle.js';
@@ -84,6 +84,13 @@ export function App(): JSX.Element {
   const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(new Set());
   /** The settings dialog: the shell owns the panel, the sidebar foot the seat. */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /**
+   * The plugin center owning the main column. The reference (`ui-plugin-manager`)
+   * puts it in the sidebar beside 新会话 rather than in the settings dialog, so
+   * the shell holds it here and the column shows either a session or this page —
+   * never both.
+   */
+  const [pluginsOpen, setPluginsOpen] = useState(false);
   // Sections holding unsaved edits (a plugin page's field drafts). The panel
   // reads this to ask before a switch discards them; the sections REPORT it,
   // because only a section knows what its draft means.
@@ -352,6 +359,9 @@ export function App(): JSX.Element {
           send={send}
           settingsOpen={settingsOpen}
           onOpenSettings={() => { setSettingsOpen(true); }}
+          pluginsOpen={pluginsOpen}
+          onOpenPlugins={() => { setPluginsOpen(true); }}
+          onLeavePlugins={() => { setPluginsOpen(false); }}
           onDeleteSession={(file) => { send({ type: 'delete_session', file }); }}
           onReloadSessions={requestSessions}
           onToggleCollapsed={layout.toggleSidebar}
@@ -359,7 +369,16 @@ export function App(): JSX.Element {
       )}
       center={
         <>
-          <DocumentTitle title={view.title} />
+          <DocumentTitle title={pluginsOpen ? SETTINGS_COPY['plugins.title'] : view.title} />
+          {pluginsOpen ? (
+            <PluginCenterPage
+              roster={state.roster}
+              plugins={state.plugins}
+              disabled={modeControlsLocked(state)}
+              manageError={state.manageError}
+              send={send}
+            />
+          ) : (
           <ConversationRoot
             phase={phase}
             header={({ hidden }) => (
@@ -420,6 +439,7 @@ export function App(): JSX.Element {
                   timeline={state.context}
                   {...(state.contextWindow !== null ? { window: state.contextWindow } : {})}
                   {...(state.meta?.sessionFile !== undefined ? { sessionFile: state.meta.sessionFile } : {})}
+                  totals={state.totals}
                   onRefresh={onRefreshContext}
                 />
               ) : phase === 'active' ? (
@@ -509,6 +529,7 @@ export function App(): JSX.Element {
               </DockStack>
             }
           />
+          )}
         </>
       }
       rightbar={({ width, canShow }) => {
@@ -573,11 +594,14 @@ export function App(): JSX.Element {
     {/* The settings dialog the sidebar foot's seat opens. The shell registers
        the sections this product really has — 通用设置 (permission, execution
        mode, appearance, font size), 模型 (the catalog behind the composer's
-       seat), 插件管理 (the kernel's roster as grouped switch rows + the config
-       file's path), Skill 中心 (the discovered skills with per-name switches),
-       plus a section per plugin that declares its own page — and the writes
-       go through the same frames the composer's seats use, so a pick here and
-       a pick there are one fact. */}
+       seat), Skill 中心 (the discovered skills with per-name switches), plus a
+       section per plugin that declares its own page — and the writes go through
+       the same frames the composer's seats use, so a pick here and a pick there
+       are one fact.
+       插件管理 is NOT one of them: the reference keeps the plugin center on the
+       sidebar (`ui-plugin-manager`'s panel entry), so it is a top-level page
+       (`PluginCenterPage`) with one door rather than a section two clicks deep
+       behind 设置. */}
     {settingsOpen && (
       <SettingsPanel
         title="设置"
@@ -623,6 +647,9 @@ export function App(): JSX.Element {
               id: 'models',
               label: SETTINGS_COPY['models.nav'],
               icon: <DataOutline16 />,
+              // Both editors on this page report their drafts, so the shell's
+              // leave guard covers the whole page — not only the plugin pages.
+              dirty: dirtySections.has('models'),
               content: (
                 <>
                   {/* 设置页管的是**怎么连**（端点、密钥、这个端点名下有哪些模型、
@@ -634,29 +661,17 @@ export function App(): JSX.Element {
                   <ProviderSection
                     providers={state.providers}
                     probe={state.providerProbe}
+                    manageError={state.manageError}
+                    onDirtyChange={dirtyReporter('models')}
                     send={send}
                   />
                   <ModelConfigEditor
                     config={state.modelConfig}
                     writable={state.modelSwitching}
+                    onDirtyChange={dirtyReporter('models')}
                     send={send}
                   />
                 </>
-              ),
-            },
-            {
-              id: 'plugins',
-              label: SETTINGS_COPY['plugins.nav'],
-              icon: <PluginIcon />,
-              content: (
-                <PluginsSection
-                  roster={state.roster}
-                  plugins={state.plugins}
-                  disabled={modeControlsLocked(state)}
-                  manageError={state.manageError}
-                  send={send}
-                  onClose={() => { setSettingsOpen(false); }}
-                />
               ),
             },
             {
@@ -693,7 +708,6 @@ export function App(): JSX.Element {
                   plugin={row.name}
                   answer={state.pluginAnswers[row.name] ?? null}
                   disabled={!state.connected}
-                  manageError={state.manageError?.message ?? null}
                   send={send}
                   onEdit={() => { dispatch({ type: 'plugin_edit' }); }}
                   onDirtyChange={dirtyReporter(row.name)}

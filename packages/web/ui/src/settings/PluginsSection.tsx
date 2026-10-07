@@ -72,12 +72,6 @@ export interface PluginsSectionProps {
    */
   manageError: { readonly seq: number; readonly message: string } | null;
   send: (frame: ClientFrame) => void;
-  /**
-   * Close the panel. The search field owns Escape while it is focused (the
-   * shell's standing rule), so it is also the field's job to give the key a
-   * second meaning once there is nothing left to clear — see the input below.
-   */
-  onClose?: (() => void) | undefined;
 }
 
 /**
@@ -85,7 +79,7 @@ export interface PluginsSectionProps {
  * @param props - see PluginsSectionProps.
  * @returns the section element tree.
  */
-export function PluginsSection({ roster, plugins, disabled, manageError, send, onClose }: PluginsSectionProps): JSX.Element {
+export function PluginsSection({ roster, plugins, disabled, manageError, send }: PluginsSectionProps): JSX.Element {
   useEffect(() => {
     send({ type: 'roster' });
   }, [send]);
@@ -186,13 +180,7 @@ export function PluginsSection({ roster, plugins, disabled, manageError, send, o
       <p className={css.intro}>{SETTINGS_COPY['plugins.intro']}</p>
       <ManageError message={feedback.error} />
       {notice !== null && <div className={css.status}>{notice}</div>}
-      {loaded && entries.length > 0 && (
-        <SearchBox
-          query={query}
-          onQuery={setQuery}
-          {...(onClose !== undefined ? { onClose } : {})}
-        />
-      )}
+      {loaded && entries.length > 0 && <SearchBox query={query} onQuery={setQuery} />}
       {/* A count over the whole page, for the case where the failures are spread
           across groups and the reader has scrolled past one of them. */}
       {failed > 0 && <div className={css.failureBanner}>{`${failed} ${SETTINGS_COPY['plugins.failedCount']}`}</div>}
@@ -251,10 +239,9 @@ function ConfigPathRow({ path, copied, onCopy }: {
  * The roster's search box, split out because its Escape handling is a contract
  * of its own rather than page structure.
  */
-function SearchBox({ query, onQuery, onClose }: {
+function SearchBox({ query, onQuery }: {
   query: string;
   onQuery: (next: string) => void;
-  onClose?: (() => void) | undefined;
 }): JSX.Element {
   return (
     /* The icon is decorative: the input carries the same name for a screen
@@ -272,20 +259,13 @@ function SearchBox({ query, onQuery, onClose }: {
         data-modal-escape-owner
         onChange={(event) => { onQuery(event.currentTarget.value); }}
         onKeyDown={(event) => {
-          // The modal layer yields Escape to a focused text field only when that
-          // field declares `data-modal-escape-owner` (`shell/modal-layer.ts`),
-          // and the declaration is a PROMISE: the field must actually act on the
-          // key. A search box that claims Escape and then swallows it leaves the
-          // reader with a dead key and no way out but the mouse. Clearing first
-          // and closing on the second press is the same two-step the reference's
-          // search boxes follow.
+          // The declaration above is a PROMISE: the field must actually act on
+          // the key. Escape clears the filter — the one thing this box owns —
+          // and stops there, because the page behind it is not a layer that can
+          // be dismissed (the reader leaves it by picking a session).
           if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
           event.stopPropagation();
-          if (query !== '') {
-            onQuery('');
-            return;
-          }
-          onClose?.();
+          onQuery('');
         }}
       />
     </label>

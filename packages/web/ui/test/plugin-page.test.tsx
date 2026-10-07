@@ -119,7 +119,6 @@ describe('PluginPageSection / malformed descriptor', () => {
         plugin="demo"
         answer={{ id: 1, op: 'page', ok: true, result }}
         disabled={false}
-        manageError={null}
         send={() => undefined}
         onEdit={() => undefined}
       />,

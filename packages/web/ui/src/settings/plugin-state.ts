@@ -61,6 +61,28 @@ export function draftDirty(
   return false;
 }
 
+/**
+ * The danger-action gate, as a pure step: what the armed id becomes after one
+ * press.
+ *
+ * A danger action cannot be committed by its first press — the press ARMS the
+ * row, and only a second press (with the armed id equal) commits. A non-danger
+ * action always disarms: committing one destructive row must not be a side
+ * effect of reaching for its neighbour. The renderer owns the send; this owns
+ * only the decision, so the two-press rule is testable without a DOM.
+ * @param armed - the id currently armed, or null.
+ * @param action - the action whose button was pressed.
+ * @returns the next armed id (the pressed danger action when it was not yet
+ *   armed; null when the press commits or disarms).
+ */
+export function nextArmedDanger(
+  armed: string | null,
+  action: { id: string; danger?: boolean },
+): string | null {
+  if (action.danger !== true) return null;
+  return armed === action.id ? null : action.id;
+}
+
 /** The container's `FiberState` union, as the wire reports it. */
 const STATE_KEYS: Record<string, string> = {
   pending: SETTINGS_COPY['pluginState.pending'],

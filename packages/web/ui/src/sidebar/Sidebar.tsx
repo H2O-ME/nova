@@ -18,6 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ClientFrame, SessionListItem } from '../types.js';
 import { NewSessionButton } from './NewSessionButton.js';
+import { PluginsEntryButton } from './PluginsEntryButton.js';
 import { SessionBrowser } from './SessionBrowser.js';
 import { SidebarFoot } from './SidebarFoot.js';
 import { SidebarLogoRow } from './SidebarLogoRow.js';
@@ -55,6 +56,20 @@ export interface SidebarProps {
   settingsOpen: boolean;
   /** Open the settings dialog (the shell owns the panel and its sections). */
   onOpenSettings: () => void;
+  /**
+   * Whether the plugin center owns the main column. The reference puts that
+   * page in the sidebar (`ui-plugin-manager`'s panel entry) rather than in the
+   * settings dialog, so this column is where its door belongs.
+   */
+  pluginsOpen: boolean;
+  /** Open the plugin center (the shell owns the page). */
+  onOpenPlugins: () => void;
+  /**
+   * Leave the plugin center. Every session gesture means "back to the
+   * conversation": without this, picking a session while the plugin page is up
+   * would change what the frame holds and show nothing.
+   */
+  onLeavePlugins: () => void;
   /** Delete one session log (the shell owns the frame; the dialog is local). */
   onDeleteSession: (file: string) => void;
   /** Re-ask the host for the session list (the shell's single-flight policy). */
@@ -91,6 +106,9 @@ export function Sidebar({
   send,
   settingsOpen,
   onOpenSettings,
+  pluginsOpen,
+  onOpenPlugins,
+  onLeavePlugins,
   onDeleteSession,
   onReloadSessions,
   onToggleCollapsed,
@@ -144,8 +162,14 @@ export function Sidebar({
   // a fixed-position settings panel there; this column has none.)
   useEffect(() => () => { cancelLinger(); }, []);
 
-  const startSession = (): void => { send({ type: 'new_session' }); };
+  const startSession = (): void => {
+    onLeavePlugins();
+    send({ type: 'new_session' });
+  };
   const openSession = (file: string): void => {
+    // Leaving the plugin page comes FIRST: the session already attached would
+    // otherwise hit the early return below and the gesture would look inert.
+    onLeavePlugins();
     // Opening the session already attached would re-baseline the same log for
     // nothing; the row keeps its normal affordances either way.
     if (file === currentFile) return;
@@ -176,6 +200,7 @@ export function Sidebar({
         onStartSession={startSession}
       />
       <NewSessionButton wide={wide} onStartSession={startSession} />
+      <PluginsEntryButton wide={wide} active={pluginsOpen} onOpen={onOpenPlugins} />
 
       {/* The browsing region fills the column between the controls and the
           foot in both states; its rail control rides the same seat. */}

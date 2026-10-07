@@ -190,7 +190,7 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   padding: 0;
   border: none;
@@ -198,6 +198,28 @@
   cursor: pointer;
   text-align: left;
   font-family: inherit;
+}
+
+/* The leading mark, at the reference's 40px seat (`rowIcon`): a bordered tile
+   holding the plugin glyph. Nova's plugins declare no artwork of their own, so
+   every row draws the same glyph — the reference's own behaviour for a package
+   that ships no icon (`PackageArtwork`'s fallback), which is what keeps the
+   rows on one rhythm instead of inventing per-plugin art. */
+.rowIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.rowIconGlyph {
+  width: 18px;
+  height: 18px;
 }
 
 .pluginText {
@@ -213,6 +235,18 @@
   font-weight: 400;
   line-height: 22px;
   color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The one-line description, ON the row rather than behind the disclosure: it is
+   what tells two plugin names apart, and the reference reads it collapsed. */
+.pluginDesc {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -251,12 +285,12 @@
 /* The expanded area: prose, indented to the title's left edge so it reads as
    belonging to the row above it rather than to the group. `flex-basis: 100%`
    forces it onto its own line — the row wraps, and without this the block shares
-   the first line with the toggle and the switch. The 18px inset is the leading
-   state dot's width (10px) plus the row's 8px gap: the text lines up under the
-   row's TITLE, not under the dot, in both the open and closed states. */
+   the first line with the toggle and the switch. The 48px inset is the leading
+   tile's width (40px) plus the row's 8px gap: the text lines up under the row's
+   TITLE, not under the tile, in both the open and closed states. */
 .detail {
   flex-basis: 100%;
-  padding: 0 0 0 18px;
+  padding: 0 0 0 48px;
   display: flex;
   flex-direction: column;
   gap: 2px;

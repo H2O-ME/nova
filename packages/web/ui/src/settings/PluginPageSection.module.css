@@ -55,6 +55,17 @@
   background: var(--dsw-alias-bg-module-platform);
 }
 
+/* The guide collapses: the summary is the only visible line until the operator
+ * opens it. The marker keeps the native triangle, tinted to the tertiary label
+ * so it reads as chrome rather than content. */
+.guide summary {
+  cursor: pointer;
+}
+
+.guide summary::marker {
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .guideTitle {
   font-size: 13px;
   line-height: 20px;
@@ -210,4 +221,51 @@
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* The copy block: one value the operator takes away verbatim, in a mono box
+ * beside the button that copies it. Its own block — not a sentence — so the
+ * eye lands on the code, not on prose around it. */
+.copyBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.copyLabel {
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.copyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copyValue {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--ds-font-family-code);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* A danger action reads as danger BEFORE it is armed: red border and label on
+ * the plain fill, the same reading ProviderSection's row delete uses. */
+.danger {
+  border-color: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
 }

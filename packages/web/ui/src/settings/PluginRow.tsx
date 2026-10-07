@@ -13,7 +13,7 @@
  * siblings in a flex line — `.rowToggle` (the leading area, which expands) and
  * the switch — rather than one wrapper element around both.
  */
-import { ChevronDownIcon, ChevronRightIcon } from '../icons.js';
+import { ChevronDownIcon, ChevronRightIcon, PluginIcon } from '../icons.js';
 import { Switch } from './Switch.js';
 import { SETTINGS_COPY } from './copy.js';
 import { pluginStateLabel } from './plugin-state.js';
@@ -170,8 +170,21 @@ export function PluginRow({
         aria-label={`${title}（${entry.name}）：${pluginStateLabel(entry.state)}`}
         onClick={() => { onToggle(entry.name); }}
       >
+        {/* The leading mark, at the reference's 40px seat (`rowIcon`). Nova's
+            plugins declare no artwork of their own, so every row draws the
+            plugin glyph — the reference's own behaviour for a package that
+            ships no icon (`PackageArtwork`'s fallback). */}
+        <span className={css.rowIcon} aria-hidden="true">
+          <PluginIcon className={css.rowIconGlyph} />
+        </span>
         <span className={css.pluginText}>
           <span className={css.pluginName}>{title}</span>
+          {/* The one-line description sits ON the row, not behind the
+              disclosure: it is what tells two plugin names apart, and the
+              reference reads it in the collapsed state. */}
+          {entry.description !== undefined && entry.description.length > 0 && (
+            <span className={css.pluginDesc}>{entry.description}</span>
+          )}
           <span className={css.pluginMeta}>
             <span className={css.pluginId}>{entry.name}</span>
             {/* A row the switch turned off has ONE fact to state: the roster
@@ -185,13 +198,10 @@ export function PluginRow({
           </span>
         </span>
       </button>
-      {/* The expanded area: the description, what it injects, and — for a core
-          row — why it carries no switch rather than a switch. */}
+      {/* The expanded area: what it injects, and — for a core row — why it
+          carries no switch rather than a switch. */}
       {open && (
         <div className={css.detail}>
-          {entry.description !== undefined && entry.description.length > 0 && (
-            <p className={css.detailLine}>{entry.description}</p>
-          )}
           {/* Why an enabled row has no fiber (an extension whose package could
               not load): the reason belongs with the row, not only in the host's
               stdout — the reader acting here is the one who can fix it. */}

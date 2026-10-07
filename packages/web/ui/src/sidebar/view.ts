@@ -38,6 +38,13 @@ export const SIDEBAR_COPY = {
   brand: 'Nova',
   'session.new': '新会话',
   'session.new.label': '新建会话',
+  /**
+   * The plugin center's sidebar entry. The reference (`ui-plugin-manager`)
+   * contributes the sidebar's Plugins panel under this word and gives it the
+   * main column; Nova shipped the same page as a settings section, which put it
+   * two clicks deep behind 设置.
+   */
+  'plugins.entry': '插件',
   'toggle.open': '打开侧边栏',
   /**
    * The NARROW-FRAME auto-collapse. Its own words because the two rails look

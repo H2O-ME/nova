@@ -10,6 +10,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ContextBreakdown, ContextTimeline } from '../src/types.js';
+import { emptyTotals } from '../../src/totals.js';
 import { ContextView } from '../src/context/ContextView.js';
 
 function cats(overrides: Partial<ContextBreakdown> = {}): ContextBreakdown {
@@ -44,6 +45,7 @@ const render = (timeline: ContextTimeline | null, window?: number): string =>
     <ContextView
       timeline={timeline}
       {...(window !== undefined ? { window } : {})}
+      totals={{ ...emptyTotals, promptTokens: 5_000, completionTokens: 60 }}
       onRefresh={() => undefined}
     />,
   );
@@ -53,6 +55,7 @@ describe('ContextView', () => {
     const html = render(TIMELINE, 10_000);
     for (const card of [
       'data-context-stats',
+      'data-context-tokens',
       'data-context-headline',
       'data-context-trend',
       'data-context-elements',

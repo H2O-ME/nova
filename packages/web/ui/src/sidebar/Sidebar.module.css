@@ -286,6 +286,76 @@
   max-width: 0;
 }
 
+/* The plugin center's door: a NAV row, not the bordered New Session bar. The
+   reference's sidebar panel entry (`ui-plugin-manager`) sits in the same list
+   as the session views, so it carries the nav row's chrome — transparent at
+   rest, hover fill, the ACTIVE page filled — rather than the bar's border and
+   elevated fill. Collapsed it is the rail's 36x36 icon control, exactly like
+   the New Session bar beside it. */
+.pluginsEntry {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  margin: 0 2px 8px;
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.pluginsEntry:hover {
+  background: var(--dsw-specific-sidebar-nav-item-hover);
+}
+
+.pluginsEntryActive,
+.pluginsEntryActive:hover {
+  background: var(--dsw-specific-sidebar-nav-item-active);
+}
+
+.collapsed .pluginsEntry {
+  align-self: flex-start;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin: 0 0 8px;
+  gap: 0;
+}
+
+/* The row's glyph: 16px expanded, 18px in the rail — the same two sizes the New
+   Session bar and the rail toggle use. */
+.pluginsEntryIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.collapsed .pluginsEntryIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.pluginsEntryLabel {
+  max-width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.collapsed .pluginsEntryLabel {
+  max-width: 0;
+}
+
 /* Region seat: always mounted so the foot never moves. Its trailing margin
    cancels the wide shell inset so the nested scrollbar can sit at the sidebar
    edge; the browser restores that inset inside its own rows. */

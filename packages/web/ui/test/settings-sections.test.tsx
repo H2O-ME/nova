@@ -153,6 +153,38 @@ describe('plugins section', () => {
     expect(html).toContain(SETTINGS_COPY['pluginState.failed']);
     expect(html).toContain('加载失败：无法加载 @nova-agent/plugin-context：module not found');
   });
+  it('reads the description ON the collapsed row, and never twice when open', () => {
+    // The reference prints a package row's one-line description in the collapsed
+    // state — it is what tells two plugin names apart. Nova kept it behind the
+    // disclosure, so a reader scanning the list saw names and identifiers only.
+    const entry = {
+      name: 'subagent',
+      state: 'active',
+      inject: ['tools'],
+      enabled: true,
+      tier: 'advanced',
+      title: '子代理',
+      description: '为自包含的子任务启动隔离子代理。',
+    } as const;
+    const props = {
+      entry,
+      switchable: true,
+      advanced: true,
+      disabled: false,
+      lockedNote: null,
+      switching: null,
+      onToggle: () => undefined,
+      onFlip: () => undefined,
+    } as const;
+    const collapsed = renderToStaticMarkup(<PluginRow {...props} open={false} />);
+    expect(collapsed).toContain('为自包含的子任务启动隔离子代理。');
+    // Exactly once when the row is unfolded too: the detail carries what the row
+    // cannot (what it injects), never a second copy of the description.
+    const expanded = renderToStaticMarkup(<PluginRow {...props} open />);
+    expect(expanded.match(/为自包含的子任务启动隔离子代理。/gu)).toHaveLength(1);
+    expect(expanded).toContain('依赖：tools');
+  });
+
   it('renders roster rows with the localized state and the tier group', () => {
     const html = renderToStaticMarkup(
       <PluginsSection

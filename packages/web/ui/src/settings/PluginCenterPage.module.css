@@ -1,0 +1,27 @@
+/* The 插件 center's page sheet: the main column's occupant, so it owns its own
+   scrollport and the reading axis the roster is centered on.
+   The scrollport is this page's own — the conversation's shared one
+   (`[data-conversation-scroll]`) belongs to the session column this page
+   replaces, and a nested scroller with no range would swallow the wheel
+   (the defect `ContextView` records). */
+
+.page {
+  height: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--dsw-alias-bg-base);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* A wider axis than the transcript's: the reference's plugin page spans the
+   main column rather than the reading measure, so 920px is a cap, not a
+   target — a narrow column narrows the page instead of overflowing it. */
+.column {
+  box-sizing: border-box;
+  width: min(100%, 920px);
+  margin: 0 auto;
+  padding: 32px 32px 48px;
+  display: flex;
+  flex-direction: column;
+}

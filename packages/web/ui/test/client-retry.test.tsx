@@ -121,6 +121,9 @@ describe('ConnectionIndicator retry affordance', () => {
         onDeleteSession={() => undefined}
         onReloadSessions={() => undefined}
         onToggleCollapsed={() => undefined}
+        pluginsOpen={false}
+        onOpenPlugins={() => undefined}
+        onLeavePlugins={() => undefined}
       />,
     );
     expect(html).toContain('<button');

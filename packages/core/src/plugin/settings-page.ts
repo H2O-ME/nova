@@ -38,6 +38,20 @@ export interface PluginSettingAction {
   id: string;
   label: string;
   kind?: 'primary' | 'plain';
+  /**
+   * The action takes something away and cannot be undone (unbinding every
+   * device, dropping a stored credential). The renderer asks a SECOND click
+   * before it sends: the first press arms the row, the second commits. The
+   * plugin still owns the decision — this only costs one mis-aimed click.
+   */
+  danger?: boolean;
+}
+
+/** One copyable value a page wants the operator to take away (a pairing code). */
+export interface PluginSettingCopyValue {
+  label: string;
+  value: string;
+  hint?: string;
 }
 
 /**
@@ -53,6 +67,8 @@ export interface PluginPageDescriptor {
   guide?: readonly string[];
   status?: readonly PluginSettingStatus[];
   note?: string;
+  /** A value worth copying verbatim, shown as its own block — not prose. */
+  copy?: PluginSettingCopyValue;
   fields?: readonly PluginSettingField[];
   actions?: readonly PluginSettingAction[];
 }

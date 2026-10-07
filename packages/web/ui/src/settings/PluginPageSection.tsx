@@ -25,11 +25,11 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SETTINGS_COPY } from './copy.js';
-import { ManageError } from './ManageError.js';
 import { StateDot, type StateDotState } from '../tool/StateDot.js';
 import { parsePageDescriptor } from './page-descriptor.js';
 import { nextPluginRequestId } from './plugin-request-id.js';
-import { draftDirty } from './plugin-state.js';
+import { draftDirty, nextArmedDanger } from './plugin-state.js';
+import { cls } from '../sidebar/view.js';
 import type { ClientFrame, PluginPageDescriptor } from '../types.js';
 import type { PluginRequestAnswer } from '../state.js';
 import css from './PluginPageSection.module.css';
@@ -70,8 +70,6 @@ export interface PluginPageSectionProps {
   answer: PluginRequestAnswer | null;
   /** Why a write is refused right now (a run in flight, or no connection). */
   disabled: boolean;
-  /** The last management failure, shown in place when an answer is an error. */
-  manageError: string | null;
   send(frame: ClientFrame): void;
   /** Forget a previous action's answer (a field edit invalidates it). */
   onEdit(): void;
@@ -92,7 +90,6 @@ export function PluginPageSection({
   plugin,
   answer,
   disabled,
-  manageError,
   send,
   onEdit,
   onDirtyChange,
@@ -143,6 +140,20 @@ export function PluginPageSection({
   const validDescriptor = parsed !== undefined && parsed.ok ? parsed.page : undefined;
   const [lastPage, setLastPage] = useState<PluginPageDescriptor | undefined>(undefined);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  // A danger action costs a second click: the first press ARMS the row (its
+  // label becomes the confirm sentence), the second commits. Any other click,
+  // and the action's own answer, disarm it.
+  const [armedDanger, setArmedDanger] = useState<string | null>(null);
+  // The copy block's feedback: the button says 已复制 for a beat, then reverts.
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => { window.clearTimeout(copyTimer.current); }, []);
+  const copyValue = (text: string): void => {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(true);
+    window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => { setCopied(false); }, 2000);
+  };
   const [draft, setDraft] = useState<Record<string, string>>({});
   // What the descriptor last seeded, kept beside the draft: the dirty report is
   // "draft differs from the seed", not "draft differs from an empty object" —
@@ -156,7 +167,10 @@ export function PluginPageSection({
     if (validDescriptor !== undefined) setLastPage(validDescriptor);
   }, [validDescriptor]);
   useEffect(() => {
-    if (!busy) setPendingAction(null);
+    if (!busy) {
+      setPendingAction(null);
+      setArmedDanger(null);
+    }
   }, [busy, answer?.id]);
 
   useEffect(() => {
@@ -196,6 +210,8 @@ export function PluginPageSection({
   // The line is dropped by the next edit (`plugin_edit` clears non-`page`
   // answers), so it never outlives the state it describes.
   const saved = answer?.op === 'save' && answer.ok === true;
+  // The copy block, lifted so the button's closure reads a narrowed const.
+  const copyBlock = page?.copy;
 
   return (
     <div className={css.page}>
@@ -219,7 +235,6 @@ export function PluginPageSection({
           <p className={css.failureReason}>{invalidReason}</p>
         </div>
       )}
-      {manageError !== null && <ManageError message={manageError} />}
       {actionMessage !== null && (
         <div className={actionFailed ? css.actionFailure : css.actionSuccess} role={actionFailed ? 'alert' : 'status'}>
           {actionMessage}
@@ -229,13 +244,16 @@ export function PluginPageSection({
         <div className={css.actionSuccess} role="status">{SETTINGS_COPY['pluginPage.saved']}</div>
       )}
 
+      {/* The guide is the plugin's long tutorial, and it COLLAPSES: a wall of
+          steps before the fields is what made a first-run page unreadable. The
+          summary carries the title; the operator who wants the steps opens it. */}
       {page?.guide !== undefined && page.guide.length > 0 && (
-        <div className={css.guide}>
-          <div className={css.guideTitle}>{SETTINGS_COPY['pluginPage.guideTitle']}</div>
+        <details className={css.guide}>
+          <summary className={css.guideTitle}>{SETTINGS_COPY['pluginPage.guideTitle']}</summary>
           <ul className={css.guideList}>
             {page.guide.map((line) => <li key={line}>{line}</li>)}
           </ul>
-        </div>
+        </details>
       )}
 
       {page?.status !== undefined && page.status.length > 0 && (
@@ -250,6 +268,25 @@ export function PluginPageSection({
             </div>
           ))}
         </dl>
+      )}
+
+      {/* A value the operator is meant to take away verbatim (a pairing code):
+          its own block with a copy button, not a sentence to retype from. */}
+      {copyBlock !== undefined && (
+        <div className={css.copyBlock}>
+          <div className={css.copyLabel}>{copyBlock.label}</div>
+          <div className={css.copyRow}>
+            <code className={css.copyValue}>{copyBlock.value}</code>
+            <button
+              type="button"
+              className={css.plain}
+              onClick={() => { copyValue(copyBlock.value); }}
+            >
+              {copied ? SETTINGS_COPY['pluginPage.copied'] : SETTINGS_COPY['pluginPage.copy']}
+            </button>
+          </div>
+          {copyBlock.hint !== undefined && <p className={css.fieldHint}>{copyBlock.hint}</p>}
+        </div>
       )}
 
       {(page?.fields ?? []).map((field) => (
@@ -315,15 +352,27 @@ export function PluginPageSection({
           <button
             key={action.id}
             type="button"
-            className={action.kind === 'primary' ? css.primary : css.plain}
+            className={cls(
+              action.kind === 'primary' ? css.primary : css.plain,
+              action.danger === true && css.danger,
+            )}
             disabled={disabled || busy}
             aria-busy={busy && pendingAction === action.id}
             onClick={() => {
+              // A danger action's first press arms; the second commits. A
+              // non-danger press (or an already-armed one) goes straight out.
+              const armed = nextArmedDanger(armedDanger, action);
+              setArmedDanger(armed);
+              if (armed !== null) return;
               setPendingAction(action.id);
               ask('action', { id: action.id, fields: draft });
             }}
           >
-            {busy && pendingAction === action.id ? SETTINGS_COPY['pluginPage.working'] : action.label}
+            {armedDanger === action.id
+              ? SETTINGS_COPY['pluginPage.confirmDanger']
+              : busy && pendingAction === action.id
+                ? SETTINGS_COPY['pluginPage.working']
+                : action.label}
           </button>
         ))}
         {(page?.fields ?? []).length > 0 && (

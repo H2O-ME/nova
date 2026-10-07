@@ -56,6 +56,19 @@ export function parsePageDescriptor(value: unknown): PageDescriptorParse {
       }
     }
   }
+  // The copy block's label and value are rendered verbatim; a malformed one is
+  // refused here for the same reason a bad field is — the renderer indexes into
+  // it without a guard.
+  const copy = page['copy'];
+  if (copy !== undefined) {
+    if (!isRecord(copy)) return { ok: false, reason: 'copy 必须是对象' };
+    if (typeof copy['label'] !== 'string' || typeof copy['value'] !== 'string') {
+      return { ok: false, reason: 'copy 缺少 label 或 value' };
+    }
+    if (copy['hint'] !== undefined && typeof copy['hint'] !== 'string') {
+      return { ok: false, reason: 'copy.hint 必须是字符串' };
+    }
+  }
   const fields = page['fields'];
   if (fields !== undefined) {
     if (!Array.isArray(fields)) return { ok: false, reason: 'fields 必须是数组' };

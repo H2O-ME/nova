@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type { ContextTimeline } from '../types.js';
+import type { SessionTotals } from '../../../src/totals.js';
 import { scrollportOf } from '../scroll-follow.js';
 import { CompositionCard, StatsStrip } from './ContextCards.js';
 import { DashboardCard } from './DashboardCard.js';
@@ -19,6 +20,7 @@ import { ElementCard } from './ElementCard.js';
 import { EventsCard } from './EventsCard.js';
 import { FilesCard } from './FileCard.js';
 import { TimingCard } from './TimingCard.js';
+import { TokenStatsCard } from './TokenStatsCard.js';
 import { TrendCard } from './TrendCard.js';
 import css from './ContextView.module.css';
 
@@ -29,11 +31,17 @@ export interface ContextViewProps {
   window?: number;
   /** Absolute path of the open session log — the DNA card fetches a window by seq. */
   sessionFile?: string;
+  /**
+   * The session's cumulative run numbers — the SAME object the composer's usage
+   * pill reads, so the Token 统计 card's total is the pill's figure by
+   * construction rather than a second fold of the same events.
+   */
+  totals: SessionTotals;
   /** Ask the host for a fresh reading (the pane's refresh and open path). */
   onRefresh: () => void;
 }
 
-export function ContextView({ timeline, window, sessionFile, onRefresh }: ContextViewProps): JSX.Element {
+export function ContextView({ timeline, window, sessionFile, totals, onRefresh }: ContextViewProps): JSX.Element {
   const root = useRef<HTMLDivElement | null>(null);
   // Read on mount: opening the view is the request, and re-mounting (switching
   // back to this tab) re-reads so the pane is never a stale snapshot.
@@ -53,7 +61,10 @@ export function ContextView({ timeline, window, sessionFile, onRefresh }: Contex
           <p className={css.empty}>上下文插件未开启。</p>
         ) : (
           <>
-            <StatsStrip timeline={timeline} />
+            <div className={css.headRow}>
+              <StatsStrip timeline={timeline} />
+              <TokenStatsCard timeline={timeline} totals={totals} />
+            </div>
             <DashboardCard />
             <CompositionCard timeline={timeline} {...(window !== undefined ? { window } : {})} />
             <TrendCard

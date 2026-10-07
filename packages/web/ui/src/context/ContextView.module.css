@@ -100,6 +100,172 @@
   line-height: 1.2;
 }
 
+/* ── head band (会话统计 beside Token 统计) ────────────────────────────── */
+
+/* dsh's `lc-cols lc-head`: the head band pairs two cards on one row and wraps
+   them into one column when the pane is narrow. The 360px floor is the
+   reference's own (`min-w-[min(360px,100%)]`). */
+.headRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  gap: 12px;
+}
+
+/* ── token stats (donut + legend) ──────────────────────────────────────── */
+
+/* dsh .lc-donut-row: the ring hugs the card's left edge and the legend fills
+   the rest of the row. */
+.donutRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.donut {
+  position: relative;
+  flex: none;
+}
+
+.donut svg {
+  display: block;
+}
+
+/* The empty ring's neutral track (dsh .lc-donut-track): a session that has
+   billed nothing shows a track, never a full circle that reads "100%". */
+.donutTrack {
+  fill: none;
+  stroke-width: 4;
+  stroke: color-mix(in srgb, var(--dsw-static-neutral-500) 18%, transparent);
+}
+
+.donutSeg {
+  fill: none;
+  stroke-width: 4;
+  transition: opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+  /* The entrance sweep: a `from`-only keyframe takes each arc's own painted
+     dasharray as its implicit end value, so the slices grow clockwise from 12
+     o'clock in reading order (the pane's `--lc-i` slot convention). */
+  animation: lc-donut-in 0.45s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 60ms) backwards;
+}
+
+/* The legend row ↔ segment link: hovering either side recedes the other arcs. */
+.donutDim .donutSeg {
+  opacity: 0.35;
+}
+
+/* Declared after the dim rule: the hovered arc keeps full opacity. */
+.donutDim .donutSegOn {
+  opacity: 1;
+}
+
+.donutCenter {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 7px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.donutCenter b {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.15;
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.donutCenter span {
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+}
+
+/* dsh .lc-sl: the legend rows flow into as many ≥160px columns as the card
+   offers — two in a half-width head card, one in a narrow pane. */
+.sliceList {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 4px 20px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The row's padding pairs with a matching negative margin, so its hover
+   highlight paints past the text column without shifting it. */
+.sliceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 1px 6px;
+  margin: 0 -6px;
+  border-radius: 6px;
+  font-size: var(--dsh-font-xxs-12, 12px);
+  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+}
+
+.sliceRowOn {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* A zero-weight row dims whole — the ring already carries the share. */
+.sliceRowDim {
+  opacity: 0.55;
+}
+
+.sliceMain {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sliceDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.sliceLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+  font-weight: 600;
+}
+
+.slicePct {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sliceSub {
+  margin-left: 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── composition ───────────────────────────────────────────────────────── */
 
 .headline {
@@ -1159,12 +1325,21 @@
   }
 }
 
+/* `from`-only: each arc's implicit end value is its own painted dasharray, so
+   one keyframe sweeps every slice without the CSS knowing the values. */
+@keyframes lc-donut-in {
+  from {
+    stroke-dasharray: 0 100;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .slot,
   .free,
   .trendStack,
   .barTip,
-  .chartTip {
+  .chartTip,
+  .donutSeg {
     animation: none;
   }
 }

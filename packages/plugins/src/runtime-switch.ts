@@ -56,7 +56,10 @@ export async function setPluginEnabled(
   // container's roster, which knows a fiber by the plugin's own `name` and so
   // cannot find a spec-loaded row at all.
   const live = env.state.host?.entry(id);
-  const failure = live?.error;
+  // A row that could not even be IMPORTED never reached the loader: its reason
+  // sits on the tree row (filtered out of the sync), not on the loader's entry,
+  // which still holds the pre-flip disabled row with no error on it.
+  const failure = live?.error ?? env.state.rows.find((candidate) => candidate.id === id)?.error;
   const loaded = live?.fiber !== undefined;
   if (enabled && !loaded) {
     throw new Error(`plugin "${id}" did not load after enabling${failure !== undefined ? `: ${failure}` : ''}`);
