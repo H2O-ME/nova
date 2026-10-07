@@ -15,6 +15,7 @@
 @import "./styles/scrollbar.css";
 @import "./styles/gradient-shadow-text.css";
 @import "./styles/shiki.css";
+@import "./styles/motion.css";
 
 /* Mount defaults: the frame fills the viewport, and the page's own text colors
  * come from the alias layer so the pre-paint theme script's choice (body

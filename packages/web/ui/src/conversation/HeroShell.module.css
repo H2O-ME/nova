@@ -121,9 +121,33 @@
   }
 }
 
+/* Ambient idle: a slower, smaller drift so the mark feels alive on an empty
+   screen without demanding attention (NovaAgent-directed deviation from the
+   reference's hover-only swim — see docs/dsh-parity-inventory.md). */
+@keyframes hero-fish-idle {
+  0%,
+  100% {
+    transform: none;
+  }
+
+  40% {
+    transform: rotate(-1.2deg) translateY(-0.8px);
+  }
+
+  75% {
+    transform: rotate(0.6deg) translateY(0.3px);
+  }
+}
+
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .fishHitbox:hover .fish {
     animation: hero-fish-swim 1.6s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .fishHitbox:not(:hover) .fish {
+    animation: hero-fish-idle 5.2s var(--nova-ease-inout, ease-in-out) infinite;
   }
 }
 

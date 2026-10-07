@@ -258,6 +258,29 @@ Nova 侧浏览器前端只有 **12 个 `src/` 目录 + 21 个顶层文件**（`p
 - **字号收进面板基级**：明细行曾未声明 font-size、继承浏览器默认 16px（用户点名「比其他 UI 大一圈」）。面板根补 `.root { font-size: 13px }`（参照 `.lc-root` 的基级）。真机量测：明细行/图例行/尾注 13px、卡题 14px、轴刻度 11px。
 - **参照未跟（数据面不在本仓，明记）**：轮次条与步/轮粒度（会话日志无 turn/step 坐标）、步旗与 ✂ 事件标记（无 per-request 事件）、总量/变化模式、明细里的第二条 stacked bar（卡头「当前上下文」已有构成条，不重复）。**DNA 模式已落地**（2026-10-01，第 15 轮——见上）；同轮的上下文浏览器后按操作者裁定删除（第 17 轮）。几何取值逐项对回参照：130px 画布 + 18px 头、40px 轴栏、14px 柱宽、2px 节奏与内边距、5 档刻度（1/¾/½/¼/0）。
 
+### 上下文「Token 统计」环 + 插件中心搬回侧边栏顶层（第 21 轮，2026-10-06：操作者两次点名——「差距太大了…对齐 dsh」→「不是插件中心的位置就不对，你应该对齐 dsh」）
+
+两条报障的**性质不同**，处置也不同：上下文面板是**缺一块**（补），插件中心是**放错地方**（搬）。第二轮点名纠正的正是我第一轮的理解偏差——我把「插件中心没做好」读成了行内细节，操作者说的是**位置**：dsh 的插件中心是侧边栏的一个顶层页、占主栏，而本仓把它埋在「设置」弹窗里当第三节。**参照实现是权威，单点意见不是**（同一教训见 `ui-align-to-reference-first`）。
+
+**① 上下文面板补「Token 统计」环（对齐第三方 dsh-context）**
+
+- **几何逐值移植** `dsh-context` 的 `components/donut.tsx`：`viewBox 0 0 42 42`、`r = 15.9155`（周长恰 100，故 dasharray 单位 = 1%）、`stroke-width 4`、`offset = 100 − consumed + 25`（+25 把起点转到 12 点）、段间 `SEG_GAP = 0.5` **两端各切一半**（短段按 `len/4` 钳制，否则细段会被切成负长）、入场是**只写 `from` 的关键帧**（`from { stroke-dasharray: 0 100 }`，终态即属性值）。纯几何收在 `context/donut-model.ts`（`donutArcs`），环组件 `context/Donut.tsx` 只画不算。
+- **口径 = 计费口径**：环中心的总量取 `SessionTotals` 的 `promptTokens + completionTokens`——**与 composer 用量药丸同一个对象**（`state.totals`），所以两处数字不可能打架；类别的 token 数按 `live.cats` 的比例**分摊**并按 dsh 的写法标 `≈`（分摊是估算，不是读数），占比是真读数。没计费（无 `run/stats`）时环心画 `—` 而不是画 0。
+- **头部改双列**：`ContextView` 的统计条与新的 `TokenStatsCard` 进同一个 `headRow`（`auto-fit minmax(min(360px,100%),1fr)`），窄窗自动落成上下两行。
+- **记名偏离**：① dsh 的输出段用**粉色**，本仓 token 层没有粉色 ramp（只有 indigo/amber/purple/green/blue/teal/red/deepseek + 中性），取 `--dsw-static-red-500`——**色号不同，语义位次相同**；② dsh 在输出旁注「含思考」，**本仓内核不单列推理 token**，写了就是编造，故不写（同「不装成已对齐」纪律）。
+
+**② 插件中心从「设置弹窗第三节」搬到「侧边栏顶层页」（对齐 dsh `ui-plugin-manager`）**
+
+- **依据**：dsh 的 `ui-plugin-manager/src/client/index.ts` 声明 `PANEL_ID = 'plugins'` 并注册进 `sidebar.panellist`——**页占主栏、侧边栏不消失**。本仓原来只有「设置」弹窗一条路（弹窗会盖住侧边栏），两次点击才到，位置与参照相反。
+- **实现**：侧边栏在「新会话」下方加一枚顶层入口 `sidebar/PluginsEntryButton.tsx`（36px 行 / 收起态 36×36 轨道钮；`aria-current="page"` 只在打开时给；标签走 `SIDEBAR_COPY['plugins.entry']`），主栏由 `settings/PluginCenterPage.tsx` 承接——**它渲染的还是同一个 `PluginsSection`**（一个实现一个门，不复制行渲染），`App` 只持 `pluginsOpen` 一个布尔。**任何「离开插件中心」的手势都要先关它**：`new_session` 与 `resume` 两条路径都在 `Sidebar` 的包装里先调 `onLeavePlugins()`——否则点会话行会因 `file === currentFile` 的早退而**看起来毫无反应**（页面没变、会话也没变）。
+- **删掉设置里的 `plugins` section** 及 `App` 对 `PluginsSection` 的导入；设置弹窗注释同步改写（`插件管理 is NOT one of them`）。
+- **行形态对齐**（第一轮做的，保留）：40px 图标座 + **内联描述**——描述从展开区移到收起行（展开区只剩 加载失败 / 依赖 / 不可关闭）。**顺带删掉 `PluginsSection` 的 `onClose` prop**：App 不再传它之后，它就是**声明了却永远没人传**的死参数（本仓第一缺陷族「声明与实现相反」），删掉比留着好。
+- **记名偏离**：dsh 每个插件有自己的图标，本仓插件清单没有 artwork，统一用 `PluginIcon` 图标座。
+
+**证据**：`web/ui` 车道 **96 文件 / 1041 测试**全绿；本轮新增 `token-stats.test.tsx`（8 条：弧长/缝隙/零值、计费锚点、`≈` 标记、无计费时回落最新点、无计费时画 `—`）与 `plugin-center.test.tsx`（4 条：页画出行与描述、加载态、`aria-current` 只在活动时给、收起态丢标签但保留 `aria-label`）；两条**变异验证**（把环心总量改回「分类求和」、把行内描述改成只在展开时渲染 → 各自立刻变红）。`pnpm gates` 走**路径限定**的 `gates:update`（只命名本轮 8 个文件；同期另一会话有 5 个文件超限，**刻意不碰**）。前端产物已 `pnpm --filter nova-web-ui build` 重建。
+
+> **Windows 大小写不敏感的一课**：纯模型文件最初叫 `context/donut.ts`，与组件 `Donut.tsx` 只差大小写——Windows 上 `import './Donut.js'` 解析到了**纯模型文件**，报错是 `Element type is invalid … got: undefined`（一个和 import 毫无关系的运行时错误）。已改名 `donut-model.ts`。**同一目录里两个文件只差大小写，在 Windows 上就是同一个文件。**
+
 ## 差异清单（既有条目）
 - **`ui-user-questions` 的草稿查表崩溃（真 bug，`?? fallback` 缺陷类的第 10 处）**：`decisions.ts` 的四处 `drafts[question.id] ?? EMPTY_DRAFT` 都**挡不住原型链**——问题 id 是**模型给的**（`parseQuestions` 只限长度、不排除 `constructor`），而草稿表是对象字面量，于是 `drafts['constructor']` 取到继承来的 `Object` 函数、`??` 回退**永远不触发**，`isComplete` 拿函数去读 `.length` 抛 `TypeError`，**整张问题卡崩掉**。实测四个函数（`allComplete` / `firstIncomplete` / `buildAnswer` / `isComplete`）全部抛错。修法：`decisions.ts` 新增**唯一**的安全查表 `draftOf(drafts, id)`（`Object.hasOwn`），四处调用点全部改走它；`QuestionPanel.tsx` 的同名写法也一并收口。回归测试用五个继承成员名（`constructor`/`toString`/`valueOf`/`__proto__`/`hasOwnProperty`）钉住，并做变异验证（恢复 `??` 写法后 2 条测试立刻变红）。
 - **`ui-user-questions` 的 Skip 死路（真 bug）**：`Skip` 只移动分页游标、**不记录跳过**，于是 (a) 单题批次的 Skip 是**彻底的空操作**，(b) 多题批次跳过的题永远 `isAnswered === false`，`allAnswered` 恒假，**提交按钮永久禁用**——用户走进死胡同。参照实现用 `completed = answered || skipped` 收口，Nova 缺的就是 `skipped` 这一位。已按 `isComplete` / `allComplete` / `firstIncomplete` / `skipQuestion` 收口，并把「提交被拒时跳到卡住的那一题」也补上。
@@ -398,3 +421,12 @@ dsh-TUI 是 Ink（React 19 + react-reconciler）+ 约 28 个运行时依赖 + �
 2. **boot graph 而非 dsh 的运行时发现**：dsh 的装载走组件挂载时的运行时 import；本仓用声明式 `clientBundle`（写在插件自己的 manifest 里）作为 boot graph，挂载时一次性装载所有启用插件、单个失败不阻塞其他。**管道已闭合且真机验过**（见上面「闭环」）——但要读准这句话的范围：验的是**机制链**（`manifest.clientBundle` → `describePlugins` 投影 → `roster-wire` 透传 → `App` 装载 → 浏览器取回），**声明方是验收时临时写的**，不是仓内任何插件；仓内今天仍然**零个插件声明 `clientBundle`**。
 3. **client-loader 是单向注入**：bundle 写到 `window.__NovaPlugins__[name]` 后由 host 读取；不支持热替换、不支持回滚——重启浏览器是新装载的唯一路径。
 4. **fence renderer 不带运行时降级链**：一个语言键只能注册一个 renderer，后注册的覆盖先注册的（与容器 replace-by-key 同语义）；没有 dsh 的「主 renderer 失败回落备用 renderer」链。
+
+## 全局动效体系（styles/motion.css，2026-10-06，操作者点名要求）
+
+**操作者明确要求「优化 WebUI 动画、加 SVG 动画」，这是对 dsh 参照的记名偏离，勿修回**（dsh 参照件没有这套全局动效层；fish 待机游动、消息入场、勾画线都是本仓新增）。
+
+- `web/ui/src/styles/motion.css`：共享动效 token（`--nova-ease-out/spring/inout`、`--nova-dur-fast/base/slow`）+ 全局关键帧（`nova-fade-up` / `nova-pop-in` / `nova-draw`）+ 全局 `prefers-reduced-motion: reduce` 兜底钳制。关键帧是**全局名**：CSS module 只哈希自己文件里定义的关键帧，跨文件引用按原名解析。不引第三方动效库（framer-motion 等）——合成器驱动的 CSS（opacity/transform/stroke-dashoffset only）零包体且更流畅。
+- 消息入场：`chat/MessageItem.module.css` `.userRow` 与 `chat/AssistantMessage.module.css` `.root` 挂 `nova-fade-up`（220ms）。
+- SVG 动画：`HeroShell.module.css` 的鱼从「仅悬停游动」扩为**待机 5.2s 缓摆 + 悬停 1.6s 快摆**（原 hover 行为保留）；`tool/StateDot.module.css` 的完成态勾改为**画线入场**（`nova-draw` + 药丸 `nova-pop-in`）。
+- 守卫：`web/ui/test/motion-guard.test.ts` 钉挂载点、token、关键帧与引用（变异验证过：改关键帧名测试变红）。

@@ -1,0 +1,74 @@
+/* Motion system: one shared timing/easing vocabulary plus reusable keyframes.
+ * Component modules reference these names (e.g. `animation: nova-fade-up …`)
+ * so entrances, pops and draws never drift apart. Keyframes declared here are
+ * GLOBAL names — CSS modules only hash keyframes defined in their own file, so
+ * references from `.module.css` resolve to these untouched.
+ *
+ * Everything runs on the compositor (opacity / transform / stroke-dashoffset
+ * only) so animations never trigger layout or paint on the main thread. The
+ * global reduced-motion clamp at the bottom is the single off-switch. */
+
+:root {
+  /* Easings: out-expo-ish settle for entrances, spring for playful pops,
+   * standard in-out for ambient loops. */
+  --nova-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --nova-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --nova-ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --nova-dur-fast: 140ms;
+  --nova-dur-base: 220ms;
+  --nova-dur-slow: 400ms;
+}
+
+/* Entrance: slide up a hairline while fading in. */
+@keyframes nova-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Entrance: scale from ~95% while fading in, with a slight overshoot. */
+@keyframes nova-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  60% {
+    transform: scale(1.008);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Draw-in for stroked SVG paths: pair with the element's own
+ * stroke-dasharray/dashoffset inline styles. */
+@keyframes nova-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Reduced motion: collapse every animation and transition to a near-instant
+ * end state. One global clamp means individual modules never have to repeat
+ * the guard (the `no-preference` gates already present are a stricter form
+ * and stay). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

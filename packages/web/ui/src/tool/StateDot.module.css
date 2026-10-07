@@ -116,6 +116,15 @@
 .step[data-state='done'] {
   border-color: var(--dsw-alias-state-success-primary);
   background: var(--dsw-alias-state-success-primary);
+  /* Tick draws itself in (keyframe from styles/motion.css); the path length
+     is ~11 units, 16 covers it at any stroke scaling. */
+  animation: nova-pop-in var(--nova-dur-fast, 140ms) var(--nova-ease-out, ease-out);
+}
+
+.step[data-state='done'] svg path {
+  stroke-dasharray: 16;
+  stroke-dashoffset: 16;
+  animation: nova-draw var(--nova-dur-base, 220ms) var(--nova-ease-out, ease-out) 60ms forwards;
 }
 
 .step[data-state='error'] {

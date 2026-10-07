@@ -87,27 +87,31 @@
   cursor: pointer;
 }
 
+/* Staying is the primary choice and takes the primary fill: the dialog exists
+ * to protect the draft, so the recommended action is the one a stray Enter (and
+ * the autofocus) lands on. */
 .stay {
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-}
-
-.stay:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-/* Discarding is the destructive choice and takes the primary fill, not a red
-   one — the delete confirm's own rule: a solid danger fill reads as the
-   recommended choice. */
-.discard {
   border: none;
   background: var(--dsw-alias-button-primary-fill);
   color: var(--dsw-alias-label-primary-foreground);
 }
 
-.discard:hover {
+.stay:hover {
   background: var(--dsw-alias-button-primary-hover);
+}
+
+/* Discarding is the destructive choice and reads as danger WITHOUT a solid
+ * fill — the delete confirm's own rule: a solid danger fill reads as the
+ * recommended choice, and solid-on-solid made both buttons look equally
+ * committed. */
+.discard {
+  border: 1px solid var(--dsw-alias-state-error-primary);
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.discard:hover {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
 }
 
 .stay:focus-visible,

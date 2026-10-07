@@ -21,6 +21,8 @@
   font-size: var(--dsh-content-font-size, 14px);
   line-height: calc(24px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-primary);
+  /* Compositor-only entrance from the shared motion sheet (styles/motion.css). */
+  animation: nova-fade-up var(--nova-dur-base, 220ms) var(--nova-ease-out, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
 .body {
