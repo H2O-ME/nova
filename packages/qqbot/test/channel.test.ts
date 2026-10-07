@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { QqOutbox } from '../src/outbox.js';
 import { createQqBotChannel } from '../src/runtime.js';
-import { qqbotSendTool } from '../src/tool.js';
 import type { GatewaySocket } from '../src/protocol.js';
 
 function jsonResponse(status: number, body: unknown): { ok: boolean; status: number; json: () => Promise<unknown> } {
@@ -117,47 +116,6 @@ describe('createQqBotChannel', () => {
 
     expect(brain).toHaveBeenCalledTimes(1);
     expect(sends).toHaveLength(1);
-    channel.stop();
-  });
-
-  it('refuses a qqbot_send with no live passive window, and sends when there is one', async () => {
-    const sends: Array<{ url: string; body: Record<string, unknown> }> = [];
-    const { channel, socket } = makeChannel(async () => 'reply', sends);
-    await channel.start();
-    socket.emit(HELLO);
-    socket.emit({
-      op: 0,
-      t: 'C2C_MESSAGE_CREATE',
-      s: 1,
-      d: { id: 'IN9', author: { user_openid: 'U1' }, content: 'hi' },
-    });
-    await new Promise((r) => setTimeout(r, 10));
-
-    // The tool goes through the SAME outbox as everything else, so the window rule
-    // has one owner (see `outbox.ts`).
-    const outbox = new QqOutbox({
-      send: (peerId, content, msgId) => channel.send(peerId, content, msgId),
-      lastMsgIdOf: (peerId) => channel.lastMsgIdOf(peerId),
-    });
-    const sendTool = qqbotSendTool({
-      send: async (peer, content) => {
-        const result = await outbox.proactive(peer, content);
-        if (!result.ok) throw new Error(result.reason ?? 'refused');
-        return `sent to ${peer}`;
-      },
-    });
-
-    // No recent traffic for an unknown peer → honest failure.
-    expect(await sendTool.execute({ peer: 'group:GHOST', content: 'x' })).toContain('passive-reply window');
-    // Recent traffic for U1 → sends through the cached msg_id.
-    const out = await sendTool.execute({ peer: 'c2c:U1', content: 'proactive hello' });
-    expect(out).toContain('sent to c2c:U1');
-    const last = sends.at(-1)!;
-    expect(last.url).toContain('/v2/users/U1/messages');
-    expect(last.body['msg_id']).toBe('IN9');
-    expect(last.body['msg_seq']).toBeGreaterThanOrEqual(1);
-    // Bad peer shape → rejected up front.
-    expect(await sendTool.execute({ peer: 'bogus', content: 'x' })).toContain('must start with');
     channel.stop();
   });
 

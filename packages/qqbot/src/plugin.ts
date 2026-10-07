@@ -18,9 +18,11 @@
  * 模块**无导入副作用**：行关着时插件树也要 import 它来读 manifest（见 `plugin-tree.ts`）。
  */
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 import {
   errMessage,
+  tools as toolsKey,
   commands as commandsKey,
   executionEnvironment as executionEnvironmentKey,
   llm as llmKey,
@@ -29,19 +31,20 @@ import {
   pluginRpc as pluginRpcKey,
   sessions as sessionsKey,
   sessionsRoot,
-  tools as toolsKey,
   type Context,
   type Plugin,
   type PluginPageDescriptor,
 } from '@nova-agent/core';
-import { registerTool, runCommandText } from '@nova-agent/plugins';
+import { runCommandText } from '@nova-agent/plugins';
 import { AccessGate, mintPairingCode, type AccessPolicy, type AccessTier } from './access.js';
 import { BindingsStore } from './bindings.js';
 import { QqOutbox } from './outbox.js';
-import { PeerTurns, type RemoteCommandSeat } from './peers.js';
+import { localMediaInText, mediaTypeOf } from './media.js';
+import { registerSendFileTool } from './send-file-tool.js';
+import { PeerTurns, type RemoteAnswer, type RemoteCommandSeat } from './peers.js';
 import { probeQqBotConnection } from './probe.js';
 import { createQqBotChannel, type QqBotChannel } from './runtime.js';
-import { parseRemoteCommand, remoteBypassesQueue } from './remote-parse.js';
+import { parseRemoteCommand, remoteBypassesQueue, splitSlash } from './remote-parse.js';
 import {
   isQqBotSettingKey,
   qqBotCredentialProblem,
@@ -50,7 +53,6 @@ import {
   type QqBotSettingKey,
   type QqBotSettings,
 } from './settings.js';
-import { qqbotSendTool } from './tool.js';
 import type { Peer } from './types.js';
 
 /** 行 id，也是 RPC 命名空间与每一条错误/日志里的名字（一个身份，一处定义）。 */
@@ -198,11 +200,12 @@ export const plugin: Plugin<QqBotPluginConfig> = {
       // endless write/reload loop for any row with usable credentials.
       ...(config.pairingCode !== undefined ? { pairingCode: config.pairingCode } : {}),
     };
-    /** 对端会话与启动期的初始会话同归档在 qqbot 子目录（与交互会话隔离）。 */
-    const sessionDir = path.join(sessionsRoot(), 'qqbot');
     let live: LiveQqBot | undefined;
     // The chat → session map, loaded once and published as a reading so the
     // surface's banner and this page can say where each conversation lives.
+    // Session LOGS themselves follow the kernel's standard date-bucketed layout
+    // (`newSessionDir()`) — same kind of nova session as the browser's, so the
+    // WebUI switcher lists them; only this state file stays channel-scoped.
     const bindings = new BindingsStore(path.join(sessionsRoot(), 'qqbot', 'bindings.json'));
     // The owners this activation runs with. Mutable because enrollment WRITES it:
     // a newly bound device works now, not after the next restart.
@@ -217,18 +220,29 @@ export const plugin: Plugin<QqBotPluginConfig> = {
     // through `live`, because the channel is built after the orchestrator that
     // already needs to send (approvals and questions go out DURING a turn).
     const outbox = new QqOutbox({
-      send: async (peerId, content, msgId) => {
+      send: async (peerId, content, msgId, rich) => {
         const sending = live?.channel;
         if (sending === undefined) throw new Error('qqbot: the channel is not running');
-        return await sending.send(peerId, content, msgId);
+        return await sending.send(peerId, content, msgId, rich);
       },
       lastMsgIdOf: (peerId) => live?.channel?.lastMsgIdOf(peerId),
-      log: (line) => ctx.log('info', line),
+      // 本地媒体：回复里出现真实存在的图片/视频/语音路径时，随文本一起发文件本体。
+      // 存在性检查归这一层（outbox 不做 IO），插件已有 fs。
+      localMedia: (content) => localMediaInText(content, (candidate) => existsSync(candidate)),
+      recall: async (peerId, messageId) => {
+        const sending = live?.channel;
+        if (sending === undefined) throw new Error('qqbot: the channel is not running');
+        await sending.recall(peerId, messageId);
+      },
+      log: (line) => ctx.log('warn', line),
     });
 
     const turns = new PeerTurns({
       sessions: ctx.must(sessionsKey),
-      sessionDir,
+      // 会话落点用内核默认（标准日期桶）：本通道开的会话与浏览器的同布局同清单，
+      // WebUI 切换器照常见到。不再传 `sessionDir` 自设隔离目录。
+      // 接力清单的取处：这台机器上的**每一段会话**，不只是本通道自己的。
+      catalogDir: sessionsRoot(),
       bindings,
       rootDir: () => ctx.get(executionEnvironmentKey)?.rootDir(),
       model: () => ctx.get(llmKey)?.model,
@@ -241,12 +255,32 @@ export const plugin: Plugin<QqBotPluginConfig> = {
       // 通道迟绑定，因为它建在跑轮子的东西之后（两者互为对方的输入）。
       //
       // Every outbound message goes through this ONE outbox — the reply, the
-      // approval/question notices, the progress lines and the model's
-      // `qqbot_send` — because the three rules that bite (which `msg_id`, how many
-      // replies one inbound message may draw, and who wins when that is spent) are
-      // only answerable in one place. See `outbox.ts`.
-      notify: (peer, text) => {
-        outbox.narrate(peer.peerId, text);
+      // approval/question notices and the progress lines — because the three rules
+      // that bite (which `msg_id`, how many replies one inbound message may draw,
+      // and who wins when that is spent) are only answerable in one place. See
+      // `outbox.ts`.
+      notify: (peer, text, rich) => {
+        outbox.narrate(peer.peerId, text, rich);
+      },
+      // 流式卡片**没有接线**：平台的 `stream_messages` 对这台机器长期回「系统繁忙」
+      // （50015001），重试耗尽后回落——读者看到的是一张永远收不了口的半截卡片，加一
+      // 条重复的完整回复。没有流式，一轮的文本只走「叙述 + markdown 回复」这一条路，
+      // 也就是加流式之前的样子。
+      //
+      // 座位与实现都还在（`peers.ts` 的 `streamText`、`observer.ts`、`stream.ts` /
+      // `stream-send.ts` / `stream-fallback.ts`），所以哪天平台正常了，把下面那段接
+      // 回来即可；在那之前不接线，就是不发注定被拒的请求、也不让卡片闪一下再被撤回。
+      log: (line) => ctx.log('warn', `qqbot: ${line}`),
+      // 工具入口：把本地文件发到本会话所在的 QQ 对话（模型不必知道 peerId）。
+      sendFile: async (peerId, filePath, caption) => {
+        const result = await outbox.reply(peerId, caption, {
+          localFile: { fileType: mediaTypeOf(filePath), path: filePath },
+        });
+        if (!result.ok) throw new Error(result.reason ?? '发送未完成');
+      },
+      // 正式答案落地后撤掉过程碎片：转录里留下答案，不留脚手架。
+      recallNarration: (peer) => {
+        outbox.drainRecallable(peer.peerId);
       },
       canAskUser: () => true,
     });
@@ -298,13 +332,13 @@ export const plugin: Plugin<QqBotPluginConfig> = {
      * `/pair <secret>` is the sole exception, and only in a private chat — see
      * `AccessGate.check`.
      */
-    const guarded = async (text: string, peer: Peer): Promise<string> => {
+    const guarded = async (text: string, peer: Peer): Promise<RemoteAnswer> => {
       const verdict = gate.check(policy, peer.actorId, peer.kind, text);
       switch (verdict.kind) {
         case 'allow':
           return await turns.run(text, peer);
         case 'refuse':
-          return verdict.reply;
+          return { text: verdict.reply };
         case 'paired': {
           // Persist FIRST, then answer: a binding that only existed in memory would
           // be lost on the next restart, and the device would have to enroll again
@@ -314,13 +348,15 @@ export const plugin: Plugin<QqBotPluginConfig> = {
             config: { owners: [...policy.owners] },
           });
           ctx.log('info', `qqbot: bound a new owner (${policy.owners.length} total)`);
-          return verdict.reply;
+          return { text: verdict.reply };
         }
       }
     };
 
-    /** 描述符：活读数只在通道真的在跑时去问（见 `QqBotChannel.reading`）。 */
-    const describe = async (shown: QqBotSettings, saved = false): Promise<PluginPageDescriptor> => {
+    /** 描述符：活读数只在通道真的在跑时去问（见 `QqBotChannel.reading`）。
+        没有 `saved`：「刚保存过」是一次反馈（`save` 应答的 ok），不是页面的
+        一项事实——写进描述符它就会随缓存活过之后的每一次编辑。 */
+    const describe = async (shown: QqBotSettings): Promise<PluginPageDescriptor> => {
       const reading =
         live === undefined || live.failure !== undefined
           ? undefined
@@ -339,7 +375,6 @@ export const plugin: Plugin<QqBotPluginConfig> = {
               },
             }
           : {}),
-        ...(saved ? { saved: true } : {}),
         ...(policy.pairingCode !== undefined ? { pairingCode: policy.pairingCode } : {}),
         ...(bindings.entries().length > 0 ? { conversations: bindings.entries().length } : {}),
       };
@@ -417,7 +452,7 @@ export const plugin: Plugin<QqBotPluginConfig> = {
                 maxTier: tierOf(merged.maxTier),
                 ...(policy.pairingCode !== undefined ? { pairingCode: policy.pairingCode } : {}),
               };
-              return describe(merged, true);
+              return describe(merged);
             }
             case 'action':
               return runAction(payload);
@@ -438,20 +473,38 @@ export const plugin: Plugin<QqBotPluginConfig> = {
       brain: guarded,
       // 遥控指令走串行队列**之外**的旁路：一轮可能停在审批上等人回答，而答复要排队的话
       // 就会永远排在自己所等的那一轮后面（死锁）。`claim` 用同一个纯解析器判定，
-      // 且只放行**读与解阻塞**那几条（见 `remoteBypassesQueue`）：改权限档、开新会话、
-      // 内核目录命令都必须排在队列里，否则一次 `/perm full` 会去改正在跑的那一轮的裁量档。
+      // 且只放行**读与解阻塞**那几条（见 `remoteBypassesQueue`）：提档也算解阻塞——
+      // 轮停在审批上时，「别再问了」正是用户从手机上要的出路；开新会话、内核目录
+      // 命令仍须排在队列里，不能与正在跑的一轮并发。
+      //
+      // 非指令的普通话也在旁路之内，但**只在这个对端正停在一个提问上时**：那时它是
+      // 答复（自然语言即自由回答），而提问把这一轮停在了原地——排队答复就是让它等
+      // 自己。不在提问时它仍是新指令，照旧入队。
       remote: {
-        claim: (text) => {
+        claim: (text, peer) => {
           const parsed = parseRemoteCommand(text);
-          return parsed.command !== undefined && remoteBypassesQueue(parsed.command);
+          if (parsed.command !== undefined) return remoteBypassesQueue(parsed.command);
+          return splitSlash(text) === undefined && turns.awaitingQuestion(peer);
         },
         handle: guarded,
       },
+      // 新消息 = 新意图：把在跑的那一轮打断，而不是让它排队等完（`/stop` 是同一个
+      // 动作的点名版，两者都落在 `AgentSession.abort()`）。
+      interrupt: (peer: Peer) => turns.interrupt(peer),
       // The inbound reply shares the outbox with everything else, so the window
       // rule and the per-message allowance have ONE owner.
-      reply: { reply: (peerId, content) => outbox.reply(peerId, content) },
-      // A plugin has no console owner: `ctx.log` writes only when NOVA_LOG asks.
-      log: (line) => ctx.log('info', `qqbot: ${line}`),
+      reply: { reply: (peerId, content, rich) => outbox.reply(peerId, content, rich) },
+      // A plugin has no console owner: FAILURE lines (rich rejected / send
+      // failed / recall failed) are diagnostics an operator may need to act on,
+      // so they go out at `warn` — `info` is NOVA_LOG-gated and would bury the
+      // reason the panel shows plain text where a card should be. Routine
+      // receipts (`…: sent`, `gateway identified/resumed`) stay `info`: noise
+      // on a healthy channel, available under NOVA_LOG when actually debugging.
+      log: (line) =>
+        ctx.log(
+          line.endsWith(': sent') || line.startsWith('gateway ') ? 'info' : 'warn',
+          `qqbot: ${line}`,
+        ),
     });
     const started: LiveQqBot = { channel, connecting: true };
     live = started;
@@ -477,26 +530,14 @@ export const plugin: Plugin<QqBotPluginConfig> = {
         channel.stop();
       };
     }, 'qqbot channel');
-    // The tool ships with the CHANNEL, not with the connect result: the socket
-    // reconnects on its own after a transient failure, and a tool that came and
-    // went with it would make the model's reach depend on network timing. What it
-    // does NOT do is exist for a row that has no channel at all — a row with no
-    // credentials offers the model nothing to call.
-    registerTool(
-      ctx,
-      qqbotSendTool({
-        // Through the SHARED outbox: the model's own sends draw on the same
-        // per-message allowance as the reply it is part of, so a chatty turn
-        // cannot spend the answer's reserve on proactive messages.
-        send: async (peer, content) => {
-          const result = await outbox.proactive(peer, content);
-          if (!result.ok) throw new Error(result.reason ?? 'send refused');
-          return `sent to ${peer}`;
-        },
-      }),
-      // 对外发送消息 = 对外网络副作用，与 bash 同级审批。
-      'execute',
-    );
+
+    // ONE tool, and it is deliberately NOT the old `qqbot_send` — see
+    // `send-file-tool.ts` for what it is for and why its target is fixed to the
+    // QQ conversation this session belongs to.
+    registerSendFileTool(ctx, {
+      send: (file) => turns.sendFileToCurrentConversation(file),
+      rootDir: () => ctx.get(executionEnvironmentKey)?.rootDir() ?? '',
+    });
   },
 };
 

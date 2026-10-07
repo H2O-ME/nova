@@ -90,27 +90,24 @@ describe('BindingsStore', () => {
 });
 
 describe('ProgressRelay', () => {
-  it('always delivers the answer, even when the progress budget is spent', () => {
-    // The answer is what was asked for. Narration is droppable; the result is not.
-    let clock = 0;
-    const sent: string[] = [];
-    const relay = new ProgressRelay({ send: (line) => sent.push(line), minIntervalMs: 1_000, maxUpdates: 1, now: () => clock });
-    relay.accepted();
-    relay.tool('read_file');
-    clock += 5_000;
-    relay.flushIfDue();
-    relay.tool('grep');
-    clock += 5_000;
-    relay.flushIfDue();
-    relay.final('这是结论');
+  /** A realistic (far-from-zero) clock, so the throttle baseline is really exercised. */
+  const T0 = 1_700_000_000_000;
 
-    expect(sent[0]).toBe('收到，开始处理。');
-    expect(sent.filter((line) => line.includes('正在'))).toHaveLength(1);
-    expect(sent.at(-1)).toBe('这是结论');
+  it('says nothing before the answer — no receipt, no immediate progress', () => {
+    // The complaint this encodes: every inbound message drew a "收到，开始处理"
+    // receipt, so a quick answer cost the peer TWO messages and the reader learned
+    // nothing. Narration is now the work itself, and it waits for the interval.
+    let clock = T0;
+    const sent: string[] = [];
+    const relay = new ProgressRelay({ send: (line) => sent.push(line), minIntervalMs: 1_000, now: () => clock });
+    relay.tool('read_file');
+    expect(sent).toEqual([]);
+    relay.final('这是结论');
+    expect(sent).toEqual(['这是结论']);
   });
 
   it('coalesces tools inside one interval and throttles', () => {
-    let clock = 0;
+    let clock = T0;
     const sent: string[] = [];
     const relay = new ProgressRelay({ send: (line) => sent.push(line), minIntervalMs: 1_000, maxUpdates: 5, now: () => clock });
     relay.tool('read_file');
@@ -118,14 +115,32 @@ describe('ProgressRelay', () => {
     // Same instant: still throttled, nothing out yet.
     expect(sent).toEqual([]);
     clock += 1_000;
-    relay.flushIfDue();
-    expect(sent).toEqual(['正在：read_file、edit_file']);
+    relay.tool('grep');
+    expect(sent).toEqual(['正在：read_file、edit_file、grep']);
+    // Inside the next interval nothing more goes out, however many tools start.
+    relay.tool('bash');
+    expect(sent).toHaveLength(1);
+  });
+
+  it('always delivers the answer, even when the progress budget is spent', () => {
+    // The answer is what was asked for. Narration is droppable; the result is not.
+    let clock = T0;
+    const sent: string[] = [];
+    const relay = new ProgressRelay({ send: (line) => sent.push(line), minIntervalMs: 1_000, maxUpdates: 1, now: () => clock });
+    relay.tool('read_file');
+    clock += 1_000;
+    relay.tool('grep'); // spends the only update
+    clock += 1_000;
+    relay.tool('bash'); // budget gone: the narration is dropped, the answer is not
+    relay.final('这是结论');
+
+    expect(sent.filter((line) => line.includes('正在'))).toHaveLength(1);
+    expect(sent.at(-1)).toBe('这是结论');
   });
 
   it('says so when a turn produced no text, instead of going silent', () => {
     const sent: string[] = [];
     const relay = new ProgressRelay({ send: (line) => sent.push(line) });
-    relay.accepted();
     relay.final('   ');
     expect(sent.at(-1)).toContain('没有要说的文本');
   });
@@ -138,7 +153,6 @@ describe('ProgressRelay', () => {
       },
     });
     expect(() => {
-      relay.accepted();
       relay.tool('bash');
       relay.final('done');
     }).not.toThrow();

@@ -1,5 +1,6 @@
-import { AccessTokenManager, QqApi, QqGateway, type CredentialSource, type FetchLike, type QqGatewayState, type SocketFactory } from './protocol.js';
+import { AccessTokenManager, QqApi, QqGateway, type CredentialSource, type FetchLike, type QqGatewayState, type RichSend, type SocketFactory } from './protocol.js';
 import { InboundHandler, type InboundHandlerOptions } from './inbound.js';
+import type { RemoteAnswer } from './peers.js';
 import type { ReplySink } from './reply.js';
 import { defaultSocketFactory } from './socket.js';
 import { withDeadline } from './deadline.js';
@@ -9,8 +10,8 @@ import type { Peer, QqBotChannelStats } from './types.js';
  * 把协议层装配成一个完整通道：WebSocket 事件 →（去重、被动窗口缓存）→
  * brain（agent 侧回调，运行方提供）→ REST 被动回复。
  *
- * 通道**不认识宿主**：它不是插件、也不注册工具。谁把它装起来、工具叫 `qqbot_send`
- * 还是别的，都是插件那一半的事（`plugin.ts`）；这里只管一条 WebSocket 通道的
+ * 通道**不认识宿主**：它不是插件、也不注册任何工具。谁把它装起来、回复怎么落地，
+ * 都是插件那一半的事（`plugin.ts`）；这里只管一条 WebSocket 通道的
  * 装配与启停，另外把「被动窗口里的最近一条 msg_id」与「BOT 是谁」这两件读数交出去。
  */
 
@@ -27,7 +28,7 @@ export interface QqBotChannelOptions {
   appId: CredentialSource;
   clientSecret: CredentialSource;
   /** 收到一条群/单聊消息，返回回复文本（运行方的 agent 大脑）。 */
-  brain: (text: string, peer: Peer) => Promise<string>;
+  brain: (text: string, peer: Peer) => Promise<RemoteAnswer>;
   fetchFn?: FetchLike;
   socketFactory?: SocketFactory;
   /** 默认 GET https://api.sgroup.qq.com/gateway/bot 取 wss 地址。 */
@@ -47,6 +48,8 @@ export interface QqBotChannelOptions {
    * 答复也要排队，它会永远排在自己所等的那一轮后面。所以遥控指令不进队列。
    */
   remote?: InboundHandlerOptions['remote'];
+  /** 新消息打断在跑的那一轮：见 `InboundHandlerOptions.interrupt`。 */
+  interrupt?: InboundHandlerOptions['interrupt'];
 }
 
 export interface QqBotChannel {
@@ -80,11 +83,25 @@ export interface QqBotChannel {
    * @param peerId - `group:<id>` / `c2c:<id>`。
    * @param content - 文本。
    * @param msgId - 被动回复的 msg_id（缺省 = 不带窗口）。
-   * @returns 发送确认（与工具同形）。
+   * @returns 每片消息的平台 id（撤回要用；媒体/分片各占一位）。
    */
-  send(peerId: string, content: string, msgId?: string): Promise<string>;
+  send(peerId: string, content: string, msgId?: string, rich?: RichSend): Promise<string[]>;
   /** 该对端被动回复窗口里的最近 msg_id（过期、或通道已停即 undefined）。 */
   lastMsgIdOf(peerId: string): string | undefined;
+  /** 回应一次按钮互动（`PUT /interactions/{id}`）：3 秒内，一次性。 */
+  interact(interactionId: string): Promise<void>;
+  /**
+   * 单聊流式消息的一片（`POST /v2/users/{openid}/stream_messages`）：nova 只服务
+   * 私聊，群聊没有对应接口。首片 `streamMsgId` 缺省，由服务端在响应 `id` 里发回；
+   * 调用方（`ReplyStreamer`）负责节流与收口。
+   * @returns 服务端回的 `stream_msg_id`（首片才有意义）。
+   */
+  stream(peerId: string, text: string, state: 1 | 10, index: number, streamMsgId?: string): Promise<string | undefined>;
+  /**
+   * 撤回一条自己发的单聊消息（平台时限 2 分钟）：尽力而为，失败静默——撤回
+   * 永远只是清扫，绝不能反过来打扰投递。
+   */
+  recall(peerId: string, messageId: string): Promise<void>;
 }
 
 /** 设置页要的那一份连接读数（`QqBotChannel.reading`）：计数口径是**本次运行**。 */
@@ -97,7 +114,7 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
   const fetchFn = options.fetchFn ?? (globalThis.fetch as unknown as FetchLike);
   const log = options.log ?? (() => undefined);
   const token = new AccessTokenManager(options.appId, options.clientSecret, fetchFn);
-  const api = new QqApi(token, fetchFn);
+  const api = new QqApi(token, fetchFn, 'https://api.sgroup.qq.com', log);
 
   const resolveGatewayUrl =
     options.gatewayUrl ??
@@ -126,15 +143,69 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
     reply: options.reply,
     log,
     ...(options.remote !== undefined ? { remote: options.remote } : {}),
+    interact: (interactionId) => api.respondInteraction(interactionId),
+    ...(options.interrupt !== undefined ? { interrupt: options.interrupt } : {}),
   });
 
-  const send = async (peerId: string, content: string, msgId?: string): Promise<string> => {
+  const send = async (peerId: string, content: string, msgId?: string, rich?: RichSend): Promise<string[]> => {
     const [kind, openid] = [peerId.slice(0, peerId.indexOf(':')), peerId.slice(peerId.indexOf(':') + 1)];
+    // 媒体在上传后发送：`file_info` 与场景绑定（单/群两套接口），所以换算必须在
+    // 知道对端类型的这一层做，而不是更上面。
+    if (rich?.file !== undefined) {
+      const fileInfo = await api.uploadMedia(kind === 'group' ? 'group' : 'c2c', openid, {
+        fileType: rich.file.fileType,
+        url: rich.file.url,
+      });
+      const richSent =
+        kind === 'group'
+          ? await api.sendGroupMessage(openid, { content, ...(msgId !== undefined ? { msgId } : {}), rich: { fileInfo } })
+          : await api.sendC2CMessage(openid, { content, ...(msgId !== undefined ? { msgId } : {}), rich: { fileInfo } });
+      return richSent.map((m) => m.id);
+    }
+    // 本地文件（agent 产出的截图等）：分片上传换 file_info 再发，单聊专用。
+    if (rich?.localFile !== undefined) {
+      const fileInfo = await api.uploadLocalC2C(openid, { fileType: rich.localFile.fileType, path: rich.localFile.path });
+      const sent = await api.sendC2CMessage(openid, {
+        content,
+        ...(msgId !== undefined ? { msgId } : {}),
+        rich: { fileInfo },
+      });
+      return sent.map((m) => m.id);
+    }
     const sent =
       kind === 'group'
-        ? await api.sendGroupMessage(openid, { content, ...(msgId !== undefined ? { msgId } : {}) })
-        : await api.sendC2CMessage(openid, { content, ...(msgId !== undefined ? { msgId } : {}) });
-    return `${sent.length} message(s), last id ${sent.at(-1)?.id ?? 'n/a'}`;
+        ? await api.sendGroupMessage(openid, { content, ...(msgId !== undefined ? { msgId } : {}), ...(rich !== undefined ? { rich } : {}) })
+        : await api.sendC2CMessage(openid, { content, ...(msgId !== undefined ? { msgId } : {}), ...(rich !== undefined ? { rich } : {}) });
+    return sent.map((m) => m.id);
+  };
+
+  // 流式一片：nova 只服务私聊，群聊没有对应接口（群聊对话在装配层就不该出现）。
+  const stream = async (peerId: string, text: string, state: 1 | 10, index: number, streamMsgId?: string): Promise<string | undefined> => {
+    const [kind, openid] = [peerId.slice(0, peerId.indexOf(':')), peerId.slice(peerId.indexOf(':') + 1)];
+    if (kind !== 'c2c') throw new Error(`qqbot: streaming is c2c-only (got peer "${kind}:…")`);
+    const msgId = inbound.msgIdOf(peerId);
+    const res = await api.sendStreamC2C(openid, {
+      text,
+      mode: 'replace',
+      state,
+      index,
+      // markdown：流式卡片就是正式回复的那张脸，纯 text 会把富文本原样吐字。
+      contentType: 'markdown',
+      ...(streamMsgId !== undefined ? { streamMsgId } : {}),
+      ...(msgId !== undefined ? { msgId } : {}),
+      msgSeq: api.drawSeq(msgId ?? `stream-${peerId}`),
+    });
+    return res.streamMsgId;
+  };
+
+  const recall = async (peerId: string, messageId: string): Promise<void> => {
+    const [kind, openid] = [peerId.slice(0, peerId.indexOf(':')), peerId.slice(peerId.indexOf(':') + 1)];
+    if (kind !== 'c2c') return;
+    await api.deleteC2CMessage(openid, messageId);
+  };
+
+  const interact = async (interactionId: string): Promise<void> => {
+    await api.respondInteraction(interactionId);
   };
 
   const gateway = new QqGateway({
@@ -155,7 +226,10 @@ export function createQqBotChannel(options: QqBotChannelOptions): QqBotChannel {
   return {
     api,
     send,
+    stream,
+    recall,
     lastMsgIdOf: (peerId) => inbound.msgIdOf(peerId),
+    interact,
     reading: async () => ({ ...inbound.stats(), ...(started ? { botName: await api.botName() } : {}) }),
     start: async () => {
       // The gateway is terminal by design, so a "restart" here would report a

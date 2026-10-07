@@ -13,7 +13,8 @@
 import { describe, expect, it } from 'vitest';
 import type { AskUserQuestionItem } from '@nova-agent/core';
 import { QqOutbox, NARRATION_ALLOWANCE, WINDOW_ALLOWANCE } from '../src/outbox.js';
-import { layoutQuestions, parseAnswer, renderQuestions } from '../src/question-reply.js';
+import { layoutQuestions, renderQuestions } from '../src/question-reply.js';
+import { parseAnswer } from '../src/question-answer.js';
 import { parseRemoteCommand, remoteBypassesQueue } from '../src/remote-parse.js';
 
 const PEER = 'c2c:U1';
@@ -60,18 +61,6 @@ describe('the outbox owns the window and the allowance', () => {
     expect(refused.ok).toBe(false);
     expect(refused.reason).toContain('reply allowance spent');
     expect(sent).toHaveLength(WINDOW_ALLOWANCE);
-  });
-
-  it("does not let the model's own sends spend the reply reserve", async () => {
-    // `qqbot_send` is the model talking on its own, NOT the answer the peer asked
-    // for, so it draws on the narration budget. Routing it through the reply class
-    // let a chatty turn spend the reserve and then drop the actual conclusion.
-    const { outbox, sent } = rig();
-    for (let i = 0; i < NARRATION_ALLOWANCE + 2; i++) await outbox.proactive(PEER, `主动 ${i}`);
-    expect(sent).toHaveLength(NARRATION_ALLOWANCE);
-    const reply = await outbox.reply(PEER, '结论');
-    expect(reply.ok).toBe(true);
-    expect(sent.at(-1)?.content).toBe('结论');
   });
 
   it('counts per inbound window, so the next message gets a fresh allowance', async () => {

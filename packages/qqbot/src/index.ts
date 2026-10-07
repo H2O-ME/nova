@@ -17,6 +17,5 @@ export * from './types.js';
 export * from './runtime.js';
 export { default } from './plugin.js';
 export * from './plugin.js';
-export * from './tool.js';
 export * from './probe.js';
 export * from './surface/index.js';

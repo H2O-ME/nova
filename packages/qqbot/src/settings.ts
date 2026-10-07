@@ -40,9 +40,7 @@ export interface QqBotPageState {
   readonly failure?: string;
   /** 本次运行的收发计数（口径见 `types.ts`：重启归零）。 */
   readonly stats?: { readonly received: number; readonly replied: number; readonly lastReceivedAt?: number };
-  /** 刚保存过：下一次 roster 会按新凭据重挂这一行。 */
-  readonly saved?: boolean;
-  /** 当前有效的配对码（只在刚生成、尚未过期、且尚未使用时出现）。 */
+  /** 当前有效的配对码（长期有效，作为可复制的独立块下发）。 */
   readonly pairingCode?: string;
 }
 
@@ -88,19 +86,19 @@ export function qqBotPage(state: QqBotPageState): PluginPageDescriptor {
       value: `收到 ${state.stats.received} 条 · 回复 ${state.stats.replied} 条`,
     });
   }
-  if (state.saved === true) {
-    status.push({ label: '保存', value: '已写入配置，这一行会按新凭据重挂通道。', tone: 'ok' });
-  }
+  // 「刚保存过」不是页面的一项事实，是一次反馈：渲染器的成功条（对 `save`
+  // 的应答）已经在保存的那一刻说过了。把它写进描述符，它就会随 `lastPage`
+  // 活过之后的每一次编辑——「明明改了东西，页面还说已保存」就是这么来的。
   return {
     title: 'QQ 机器人',
     intro:
-      '接腾讯 QQ 机器人开放平台的 WebSocket 通道：**已绑定的 QQ 身份**驱动的是一段**持久会话**'
+      '接腾讯 QQ 机器人开放平台的 WebSocket 通道：已绑定的 QQ 身份驱动的是一段持久会话'
       + '——重启后接着原来的对话走，手机也能用 /use 接到桌面上正在用的那一段。过程与结论都按'
       + '被动回复窗口回传，未绑定的发送者只会收到一句入网提示。',
     guide: [
       '在 QQ 开放平台创建机器人，拿到 AppID 与 AppSecret。',
       '把两者填在下面并保存：保存会把这一行打开，并按新凭据重挂通道。',
-      '绑定你的 QQ 号：用手机 QQ **私聊**机器人发送 /pair <配对码>。绑定是长期的，重启不用再来一次；'
+      '绑定你的 QQ 号：用手机 QQ 私聊机器人发送 /pair <配对码>。绑定是长期的，重启不用再来一次；'
         + '无 GUI 的服务器上配对码也会打印在启动控制台里，不需要任何界面。',
       '手机里用 /sessions 看有哪些活着的会话，再用 /use <前几位> 把本对话接到桌面上正在用的那一段——'
         + '这就是会话接力：手机说的一句接着桌面的上下文走，桌面的转录里也会出现它。',
@@ -109,6 +107,15 @@ export function qqBotPage(state: QqBotPageState): PluginPageDescriptor {
       '密钥可以写成 {env:NAME} 引用环境变量；页面永远不会回显它的值。',
     ],
     status,
+    ...(state.pairingCode !== undefined
+      ? {
+          copy: {
+            label: '当前配对码',
+            value: state.pairingCode,
+            hint: `长期有效，可用于多台设备：在 QQ 里私聊机器人发送 /pair ${state.pairingCode}`,
+          },
+        }
+      : {}),
     fields: [
       {
         key: 'appId',
@@ -134,14 +141,12 @@ export function qqBotPage(state: QqBotPageState): PluginPageDescriptor {
     actions: [
       { id: 'test', label: '测试连接', kind: 'primary' },
       { id: 'rotate', label: '换新配对码', kind: 'plain' },
-      { id: 'forget', label: '解除全部绑定', kind: 'plain' },
+      // 撤销全部授权不可 undo，且第一下点错就要重配每一台设备：渲染器对
+      // danger 动作要求第二次点击才发。
+      { id: 'forget', label: '解除全部绑定', kind: 'plain', danger: true },
     ],
-    ...(state.pairingCode !== undefined
-      ? { note: `当前配对码：${state.pairingCode} —— 在 QQ 里私聊机器人发送 /pair ${state.pairingCode}（长期有效，可用于多台设备）` }
-      : {
-          note: '通道随这一行一起启停：关掉这一行，socket、对话绑定与审批定时器一起收走；'
-            + '未绑定的 QQ 号只能看到入网提示。',
-        }),
+    note: '通道随这一行一起启停：关掉这一行，socket、对话绑定与审批定时器一起收走；'
+      + '未绑定的 QQ 号只能看到入网提示。',
   };
 }
 

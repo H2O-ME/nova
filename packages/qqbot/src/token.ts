@@ -18,7 +18,8 @@ export interface HttpClientResponse {
 
 export type FetchLike = (
   url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal },
+  // `body` 允许二进制：分片上传要把文件块原样 PUT 到预签名 URL（见 `uploadLocalC2C`）。
+  init?: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array; signal?: AbortSignal },
 ) => Promise<HttpClientResponse>;
 
 export const TOKEN_ENDPOINT = 'https://api.bot.qq.com/app/getAppAccessToken';

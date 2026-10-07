@@ -41,7 +41,7 @@ export type RemoteCommand =
    *
    * A chat window has no form to fill: the peer sees a numbered menu and types
    * numbers, or types prose and it becomes a free-text answer. The mapping lives in
-   * `question-reply.ts`, and this verb exists so the text is unambiguously an
+   * `question-answer.ts`, and this verb exists so the text is unambiguously an
    * ANSWER — a bare message during a parked question could just as well be a new
    * request, and guessing between the two is how a question eats the peer's next
    * instruction.
@@ -84,10 +84,11 @@ export function splitSlash(text: string): { name: string; args: string } | undef
  *
  * The bypass exists for exactly one deadlock: a turn parked on an approval can
  * only be released by an answer, so an answer that queued behind that turn would
- * wait for itself. Everything else BELONGS in the queue — a tier change, a new
- * session or a catalog command that mutates state must not run concurrently with
- * a turn, and `/perm` mid-run would change the tier the running turn is being
- * judged under.
+ * wait for itself — and so would a TIER change: the whole point of raising the
+ * tier from the phone is to stop being asked, so a `/perm` parked behind the very
+ * ask it should have prevented is the same deadlock in a different coat.
+ * Everything else BELONGS in the queue — a new session or a catalog command that
+ * mutates state must not run concurrently with a turn.
  *
  * Reads and unblock-actions only, therefore, and the list is derived from the
  * parsed command rather than re-parsed from text.
@@ -100,14 +101,15 @@ export function remoteBypassesQueue(command: RemoteCommand): boolean {
     case 'status':
     case 'help':
     case 'sessions':
-    // Both are UNBLOCKING: `/stop` exists to release a run that is parked or
-    // spinning, and `/answer` releases the very wait `/stop` would otherwise be
-    // needed for. Queueing either behind the run it is meant to release is the
-    // deadlock the bypass exists to prevent.
+    // All three are UNBLOCKING: `/stop` exists to release a run that is parked
+    // or spinning, `/answer` releases the very wait `/stop` would otherwise be
+    // needed for, and `/perm` is the third way out of the same park — stop being
+    // asked at all. Queueing any of them behind the run they are meant to release
+    // is the deadlock the bypass exists to prevent.
     case 'stop':
     case 'answer':
-      return true;
     case 'perm':
+      return true;
     case 'model':
     case 'models':
     case 'workspace':
@@ -150,6 +152,9 @@ export function parseRemoteCommand(raw: string): RemoteParse {
   const { name, args: rest } = slash;
   switch (name) {
     case '/perm':
+    case '/approvals':
+      // `/approvals` is the same verb under the name the hermes-style peer
+      // reaches for; two spellings, one tier switch.
       return REMOTE_PERM_MODES.includes(rest as RemotePerm)
         ? asCommand({ kind: 'perm', mode: rest as RemotePerm })
         : asPrompt(raw);

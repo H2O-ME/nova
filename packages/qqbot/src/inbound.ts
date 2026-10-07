@@ -8,7 +8,9 @@
  */
 import { errMessage } from '@nova-agent/core';
 import { parseInbound, type Peer, type QqBotChannelStats } from './types.js';
+import { parseInteraction } from './interact.js';
 import type { QqGatewayOptions } from './protocol.js';
+import type { RemoteAnswer } from './peers.js';
 import { sendReply, type ReplySink } from './reply.js';
 
 /** 被动回复窗口（略短于官方上限，留出网络余量）：群 5 分钟、单聊 60 分钟。 */
@@ -19,8 +21,8 @@ const DEDUPE_CAP = 512;
 
 
 export interface InboundHandlerOptions {
-  /** 回复文本的生产者（运行方的 agent 大脑）。 */
-  brain: (text: string, peer: Peer) => Promise<string>;
+  /** 回复文本的生产者（运行方的 agent 大脑）；富样式随回答一起走。 */
+  brain: (text: string, peer: Peer) => Promise<RemoteAnswer>;
   /** 回复的落地方式。 */
   reply: ReplySink;
   log: (line: string) => void;
@@ -37,8 +39,21 @@ export interface InboundHandlerOptions {
    */
   remote?: {
     claim: (text: string, peer: Peer) => boolean;
-    handle: (text: string, peer: Peer) => Promise<string | undefined>;
+    handle: (text: string, peer: Peer) => Promise<RemoteAnswer | string | undefined>;
   };
+  /**
+   * 回应一次按钮互动（`PUT /interactions/{id}`）。缺省不回应：按钮一直在转圈的
+   * 体验比报错更糟，所以通道装配时必须给上（`api.respondInteraction`）。
+   */
+  interact?: (interactionId: string) => Promise<void>;
+  /**
+   * 打断这个对端正跑着的那一轮（有则返回 true）。
+   *
+   * 一条新消息是**新的意图**：排队让它等上一轮跑完，等于让人对着手机等一个自己
+   * 已经改主意的问题。所以新消息先把在跑的轮次打断，再按顺序跑（中断的轮次在
+   * 日志里留下 `<turn_aborted>` 标记，模型看得见自己被打断过）。
+   */
+  interrupt?: (peer: Peer) => boolean;
 }
 
 /** 入站事件的处理器：网关把每条 dispatch 交给它。 */
@@ -101,7 +116,7 @@ export class InboundHandler {
   /**
    * 该对端的被动回复窗口是否还开着，开着就给出可用的 msg_id。
    *
-   * 平台只允许「回复最近一条入站消息」这种主动外发；窗口过期后 `qqbot_send` 只能
+   * 平台只允许「回复最近一条入站消息」这种主动外发；窗口过期后发送只能
    * 老实失败，而不是发一条注定被拒的请求。
    * @param peerId - `group:<id>` / `c2c:<id>`。
    * @returns 可用的 msg_id，或 undefined。
@@ -118,6 +133,12 @@ export class InboundHandler {
   /** 网关 dispatch 的入口（与 `QqGatewayOptions.onDispatch` 同形）。 */
   readonly onDispatch: QqGatewayOptions['onDispatch'] = (event) => {
     if (this.closed) return;
+    // 按钮互动先于消息事件：指令按钮平台会另发一条消息，回调按钮只在这里出现。
+    const interaction = parseInteraction(event.t, event.d);
+    if (interaction !== undefined) {
+      void this.runInteraction(interaction);
+      return;
+    }
     const inbound = parseInbound(event.t, event.d);
     if (inbound === undefined) return;
     const { peer, message } = inbound;
@@ -140,20 +161,50 @@ export class InboundHandler {
       void this.runRemote(text, peer);
       return;
     }
+    // 新消息 = 新意图：先把在跑的那一轮打断，再入队。旁路指令不在此列——它们
+    // 本来就不排队（`/stop` 就是那条用来打断的路）。
+    this.options.interrupt?.(peer);
     this.queue = this.queue.then(() => this.replyOnce(text, peer)).catch(() => undefined);
   };
+
+  /**
+   * 一次按钮点击：应答互动（3 秒内），然后按钮的数据按一条消息走同一条管线。
+   *
+   * 回调按钮的 `button_data` 约定为一条指令文本，所以它进与 `/status` 相同的旁路/
+   * 队列判定——按钮和键盘输入殊途同归，不存在第二套执行语义。互动事件自带一个
+   * 被动窗口（`msg_id`），先落账，回复才有得挂。
+   */
+  private async runInteraction(interaction: { interactionId: string; text: string; peer: Peer; msgId?: string }): Promise<void> {
+    const { interact, log } = this.options;
+    if (interaction.msgId !== undefined) {
+      this.passive.set(interaction.peer.peerId, { msgId: interaction.msgId, at: Date.now() });
+    }
+    if (interact !== undefined) {
+      // 应答是让 QQ 客户端停止转圈的一次握手，失败只记日志——按钮数据照常执行。
+      await interact(interaction.interactionId).catch((err: unknown) => {
+        log(`interaction ack failed for ${interaction.peer.peerId}: ${errMessage(err)}`);
+      });
+    }
+    if (this.closed) return;
+    if (this.options.remote?.claim(interaction.text, interaction.peer) === true) {
+      await this.runRemote(interaction.text, interaction.peer);
+      return;
+    }
+    this.queue = this.queue.then(() => this.replyOnce(interaction.text, interaction.peer)).catch(() => undefined);
+  }
 
   /** 旁路执行一条遥控指令，并把它的答复按被动窗口发回去。 */
   private async runRemote(text: string, peer: Peer): Promise<void> {
     const { remote, reply, log } = this.options;
     if (remote === undefined) return;
     try {
-      const answer = await remote.handle(text, peer);
+      const raw = await remote.handle(text, peer);
       // A shutdown that landed while the command ran wins: its answer describes a
       // channel that is no longer there.
       if (this.closed) return;
       // `undefined` = 这条指令没有立即答复（例如它已经自己发过消息了）。
-      if (answer === undefined) return;
+      if (raw === undefined) return;
+      const answer: RemoteAnswer = typeof raw === 'string' ? { text: raw } : raw;
       if (await sendReply(reply, log, peer, answer, 'remote')) this.replied += 1;
     } catch (err) {
       log(`remote failed for ${peer.peerId}: ${errMessage(err)}`);
@@ -165,12 +216,12 @@ export class InboundHandler {
     // the meantime, in which case this message must not reach the model at all.
     if (this.closed) return;
     const { brain, reply, log } = this.options;
-    let answer: string;
+    let answer: RemoteAnswer;
     try {
       answer = await brain(text, peer);
     } catch (err) {
       log(`brain failed for ${peer.peerId}: ${errMessage(err)}`);
-      answer = '（处理消息时出错，请稍后重试）';
+      answer = { text: '（处理消息时出错，请稍后重试）' };
     }
     if (this.closed) return;
     if (await sendReply(reply, log, peer, answer, 'replied')) this.replied += 1;

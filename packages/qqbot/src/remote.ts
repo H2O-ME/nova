@@ -23,7 +23,9 @@ import type {
   AskUserQuestionItem,
 } from '@nova-agent/core';
 import { clampTier, tierLabel, type AccessTier } from './access.js';
-import { parseAnswer } from './question-reply.js';
+import { labelOf, rowTitle, stampOf } from './relay-candidates.js';
+import { answerPendingQuestion } from './question-answer.js';
+import { cardText, type QqKeyboard, type RichSend } from './protocol.js';
 import type { RemoteCommand, RemotePerm } from './remote-parse.js';
 
 /**
@@ -92,32 +94,53 @@ const PERM_LABEL: Readonly<Record<RemotePerm, string>> = {
  * Built from the seats this process actually has, because a help line for a
  * command that can only answer "this process has no seat for that" teaches the
  * peer a command that will not work. The commands that always work (permission
- * tier, approvals, a new session) are always listed.
- * @param kernel - the seats in force.
+ * tier, approvals, a new session, `/stop`, `/answer`) are always listed.
+ *
+ * It takes the WHOLE context rather than just the kernel port, and that is the
+ * fix for a real defect: the relay verbs (`/sessions`, `/use`, `/unbind`) live on
+ * `ctx.relay`, so a builder that could only see `kernel` could never list them —
+ * `/help` was advertising six verbs while the parser accepted eleven, and the one
+ * it omitted is the reason to have this channel at all (会话接力: point the phone
+ * at the conversation the desktop is working in). A help text that hides a verb is
+ * indistinguishable from a missing verb to whoever is reading it.
+ * @param ctx - the seats in force.
  * @returns the help text.
  */
-export function remoteHelp(kernel: RemoteKernelPort): string {
+export function remoteHelpLines(ctx: RemoteContext): string[] {
+  const { kernel, relay } = ctx;
   const lines = [
     '可用遥控指令：',
     '/status — 看当前工作区 / 模型 / 权限 / 待审批',
-    '/perm read-only|auto-edit|full — 切换权限档',
+    '/perm read-only|auto-edit|full（/approvals 同义）— 切换权限档',
   ];
   if (kernel.models !== undefined) lines.push('/model — 列出可选模型；/model <id> — 切换');
   lines.push('/ws — 看当前工作区');
   if (kernel.setWorkspace !== undefined) lines.push('/ws <目录> — 切换工作区');
+  lines.push('/new — 为这个对话开一个新会话');
+  if (relay !== undefined) {
+    lines.push(
+      '/sessions — 列出活着的会话（每行：标题 · 标记 · 工作区 · 时间 · 句柄）',
+      '/use <句柄> — 把本对话接到其中一个上（句柄是 /sessions 每行最后那段）',
+      '/unbind — 放开别人的会话，本对话从自己的新会话重新开始',
+    );
+  }
   lines.push(
-    '/new — 为这个对话开一个新会话',
+    '/stop — 中止本对话正在跑的任务',
+    '/answer <答案> — 回答 agent 的提问（也可用选项编号，如 /answer 2）',
     '/approve — 允许待审批的命令；/deny — 拒绝',
     '/help — 这份清单',
     '（不认得的 / 开头行、以及所有其它文本，都原样作为提示词发给 agent。）',
   );
-  return lines.join('\n');
+  return lines;
+}
+
+/** 纯文本版帮助（文本回落与卡片同源）。 */
+export function remoteHelp(ctx: RemoteContext): string {
+  return remoteHelpLines(ctx).join('\n');
 }
 
 /**
- * Wait for a remote approval answer.
- *
- * **The timeout is the point.** A QQ peer may simply not answer (they walked
+ * Wait for a remote approval answer. **The timeout is the point.** A QQ peer may simply not answer (they walked
  * away, the phone died, the group scrolled past), and an ask that waits forever
  * parks the whole run. So the wait has an explicit bound and fails closed to a
  * denial — the same discipline the kernel uses when a socket drops with an ask
@@ -162,8 +185,33 @@ export interface RelayCandidate {
   target: string;
   /** The session id, for a reply that wants to be unambiguous. */
   id: string;
-  /** Where it runs (last path segment), so the peer can tell conversations apart. */
+  /**
+   * The session LOG this row stands for — what `/use` binds.
+   *
+   * A row may come from the disk catalog rather than from an open handle, so the
+   * file is the one thing that identifies the conversation in both cases.
+   */
+  file: string;
+  /**
+   * Where it runs, as the session recorded it — the FULL path. A row that named
+   * only the last segment read `agent` for every conversation under one project,
+   * which is the same as naming nothing.
+   */
   where: string;
+  /**
+   * When it was last used (epoch ms). Two conversations in one directory whose
+   * opening lines read alike are still told apart by when they happened.
+   */
+  at: number;
+  /**
+   * What the conversation is about: the opening prompt, one line. Empty for a
+   * session nobody has used yet.
+   *
+   * This is what makes the listing a CHOOSER. Without it the row is a handle and a
+   * directory — and when every conversation lives in the same directory, that is
+   * one fact repeated per row, which is the same as no facts at all.
+   */
+  title: string;
   /** Whether a run is in flight right now. */
   busy: boolean;
   /** Whether this chat already drives it. */
@@ -211,12 +259,14 @@ export interface RemoteContext {
 /** 一句话回复 +（`/new` 时）要换绑的新会话句柄。 */
 export interface RemoteOutcome {
   reply: string;
+  /** 富样式（markdown 正文 + 按钮卡）：目前只有 `/help` 出，其余指令纯文本。 */
+  rich?: RichSend;
   /** Present for `/new`: the caller rebinds this peer to it. */
   nextAgent?: AgentSession;
 }
 
 /** `/status` 的读数。 */
-function statusText(ctx: RemoteContext): string {
+function statusLines(ctx: RemoteContext): string[] {
   const mode = ctx.session.approvalMode();
   const label = mode === undefined ? '未知' : (PERM_LABEL[mode] ?? mode);
   const pending = ctx.session.pendingApprovals().length;
@@ -226,7 +276,7 @@ function statusText(ctx: RemoteContext): string {
     `模型：${model}`,
     `权限：${label}`,
     pending > 0 ? `待审批：${pending} 条（回复 /approve 或 /deny）` : '无待审批',
-  ].join('\n');
+  ];
 }
 
 /**
@@ -240,10 +290,41 @@ function statusText(ctx: RemoteContext): string {
  */
 export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContext): Promise<RemoteOutcome> {
   switch (command.kind) {
-    case 'help':
-      return { reply: remoteHelp(ctx.kernel) };
-    case 'status':
-      return { reply: statusText(ctx) };
+    case 'help': {
+      // 菜单按钮（指令按钮，点击即发出）与文字版同义：一样的话给两种入口。
+      const rows: QqKeyboard['rows'] = [
+        [
+          { label: '状态', kind: 'command', data: '/status' },
+          { label: '会话列表', kind: 'command', data: '/sessions' },
+          { label: '新会话', kind: 'command', data: '/new' },
+        ],
+        [
+          { label: '只读', kind: 'command', data: '/perm read-only' },
+          { label: '自动编辑', kind: 'command', data: '/perm auto-edit' },
+          { label: '全放行', kind: 'command', data: '/perm full' },
+        ],
+        [
+          { label: '停止任务', kind: 'command', data: '/stop' },
+          { label: '帮助', kind: 'command', data: '/help' },
+        ],
+      ];
+      return {
+        reply: remoteHelpLines(ctx).join('\n'),
+        rich: { markdown: cardText(remoteHelpLines(ctx)), keyboard: { rows } },
+      };
+    }
+    case 'status': {
+      // 状态卡：markdown 渲染 + 一行常用按钮，遥控的主要入口值得一整张卡。
+      const rows: QqKeyboard['rows'] = [
+        [
+          { label: '新会话', kind: 'command', data: '/new' },
+          { label: '会话列表', kind: 'command', data: '/sessions' },
+          { label: '帮助', kind: 'command', data: '/help' },
+        ],
+      ];
+      const lines = statusLines(ctx);
+      return { reply: lines.join('\n'), rich: { markdown: cardText(lines), keyboard: { rows } } };
+    }
     case 'perm': {
       // The ceiling is applied to what LANDS, not to what was asked: a peer that
       // asks for more than the operator granted is told so, instead of silently
@@ -274,7 +355,10 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
       const groups = await seat.list();
       const ids = groups.flatMap((group) => group.models.map((model) => model.id));
       if (ids.length === 0) return { reply: '端点没有公布任何模型；可以在设置页里手动配置 models[]。' };
-      return { reply: `可选模型：\n${ids.map((id) => `- ${id}`).join('\n')}\n用 /model <id> 切换。` };
+      return {
+        reply: `可选模型：\n${ids.map((id) => `- ${id}`).join('\n')}\n用 /model <id> 切换。`,
+        rich: { markdown: `**可选模型（${ids.length}）：**\n${ids.map((id) => `- ${id}`).join('\n')}\n用 \`/model <id>\` 切换。` },
+      };
     }
     case 'workspace': {
       const seat = ctx.kernel.setWorkspace;
@@ -303,10 +387,22 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
       const candidates = await relay.list();
       if (candidates.length === 0) return { reply: '现在没有活着的会话。' };
       const rows = candidates.map((candidate) => {
-        const marks = [candidate.mine ? '← 本对话' : '', candidate.busy ? '（进行中）' : ''].filter((m) => m.length > 0);
-        return `- ${candidate.target} · ${candidate.where}${marks.length > 0 ? ` ${marks.join(' ')}` : ''}`;
+        // The row is read in the order a person scans it: what the conversation
+        // is about, then its state, then where and when it happened, and the
+        // handle LAST — so the hint below can point at one position instead of
+        // describing a shape, and so the leading text is never a machine token.
+        const marks = [candidate.mine ? '[本对话]' : '', candidate.busy ? '[进行中]' : ''].filter((m) => m.length > 0);
+        const what = rowTitle(candidate.title);
+        const parts = [what, ...marks, candidate.where, stampOf(candidate.at), candidate.target]
+          .filter((part) => part.length > 0);
+        return `- ${parts.join(' · ')}`;
       });
-      return { reply: `活着的会话：\n${rows.join('\n')}\n用 /use <前几位> 把本对话接到其中一个上。` };
+      return {
+        reply: `📋 活着的会话（${candidates.length}）：\n${rows.join('\n')}\n用 /use <句柄> 把本对话接到其中一个上——句柄是每行最后那段。`,
+        rich: {
+          markdown: `**📋 活着的会话（${candidates.length}）：**\n${rows.join('\n')}\n用 \`/use <句柄>\` 接到其中一个——句柄是每行最后那段。`,
+        },
+      };
     }
     case 'use': {
       const relay = ctx.relay;
@@ -314,8 +410,12 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
       const outcome = await relay.use(command.target);
       if (!outcome.ok) return { reply: `没有切换：${outcome.reason}` };
       const { candidate } = outcome;
+      // Name what it landed on, not just where: the confirmation is the reader's
+      // only check that they picked the conversation they meant to.
+      const what = labelOf(candidate.title);
+      const details = [candidate.where, stampOf(candidate.at), candidate.target].filter((part) => part.length > 0);
       return {
-        reply: `本对话现在接到 ${candidate.target}（${candidate.where}）${candidate.busy ? '，它正在跑一轮任务——你的下一条消息会排在它后面。' : '。'}`,
+        reply: `本对话现在接到 ${what.length > 0 ? `「${what}」` : '（还没说过话）'}（${details.join(' · ')}）${candidate.busy ? '，它正在跑一轮任务——你的下一条消息会排在它后面。' : '。'}`,
       };
     }
     case 'unbind': {
@@ -341,25 +441,17 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
           : '这一段会话现在没有在跑的任务（若它在等审批或提问，用 /deny 或 /answer 处理）。',
       };
     }
-    case 'answer': {
-      const pending = ctx.session.pendingQuestions();
-      const first = pending[0];
-      if (first === undefined) {
-        return { reply: '现在没有待回答的问题。' };
-      }
-      const parsed = parseAnswer(first.questions, command.text);
-      if (!parsed.ok) return { reply: `回答没有送出：${parsed.reason}` };
-      // The kernel validates the batch against the questions it asked, so a
-      // mapping this side got wrong is REFUSED there rather than silently
-      // answering something else.
-      if (!ctx.session.resolveQuestion(first.id, parsed.answer)) {
-        return { reply: '这条提问已经不在等待了（可能已超时或被别的入口答复）。' };
-      }
-      const chosen = parsed.answer.answers
-        .map((item) => item.custom ?? item.selected.join('、'))
-        .filter((value) => value.length > 0);
-      return { reply: chosen.length > 0 ? `已答复：${chosen.join('；')}` : '已提交答复。' };
-    }
+    case 'answer':
+      // ONE settle path, two doors: a plain message that arrived while the
+      // question waited lands in the same function (`PeerTurns.run`), so a typed
+      // number, a tapped button and a sentence of prose cannot disagree.
+      return {
+        reply: answerPendingQuestion(
+          ctx.session.pendingQuestions(),
+          (id, answer) => ctx.session.resolveQuestion(id, answer),
+          command.text,
+        ),
+      };
     case 'approve': {
       const first = ctx.session.pendingApprovals()[0];
       if (first === undefined) return { reply: '现在没有待审批的命令。' };
@@ -373,3 +465,4 @@ export async function runRemoteCommand(command: RemoteCommand, ctx: RemoteContex
     }
   }
 }
+

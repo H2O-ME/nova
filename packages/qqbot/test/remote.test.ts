@@ -8,10 +8,26 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { ApprovalMode, AskResult } from '@nova-agent/core';
-import { awaitRemoteAnswer, runRemoteCommand, type RemoteContext } from '../src/remote.js';
+import {
+  awaitRemoteAnswer,
+  runRemoteCommand,
+  type RelayCandidate,
+  type RemoteContext,
+  type RemoteRelayPort,
+} from '../src/remote.js';
+
+/** 一个会话接力座位，只要「有」就够：本文件读的是 `/help` 与 `/sessions` 的**行**。 */
+function fakeRelay(candidates: RelayCandidate[] = []): RemoteRelayPort {
+  return {
+    list: () => Promise.resolve(candidates),
+    use: () => Promise.resolve({ ok: false, reason: '本夹具不做切换' }),
+    unbind: () => Promise.resolve(),
+    bound: () => undefined,
+  };
+}
 
 /** 一个记下所有动作的假内核 + 假会话。`mode: undefined` 模拟没有权限服务的会话。 */
-function makeCtx(opts: { mode?: ApprovalMode; noPermissionService?: boolean; pending?: { id: string; call: { name: string } }[] } = {}) {
+function makeCtx(opts: { mode?: ApprovalMode; noPermissionService?: boolean; pending?: { id: string; call: { name: string } }[]; relay?: boolean } = {}) {
   const calls: string[] = [];
   // A session WITHOUT a permission service: `setApprovalMode` no-ops and the
   // read-back stays undefined — the case the "did it land" check exists for.
@@ -55,6 +71,7 @@ function makeCtx(opts: { mode?: ApprovalMode; noPermissionService?: boolean; pen
     // The machine's local grant. A peer may go this high and no higher; the cap
     // itself is pinned by its own case below.
     maxTier: 'full',
+    ...(opts.relay === true ? { relay: fakeRelay() } : {}),
   };
   return { ctx, calls, resolved };
 }
@@ -131,6 +148,45 @@ describe('remote command execution', () => {
   it('says there is nothing to approve when the queue is empty', async () => {
     const { ctx } = makeCtx();
     expect((await runRemoteCommand({ kind: 'approve', allow: true }, ctx)).reply).toContain('没有待审批');
+  });
+
+  it('advertises every verb it accepts, the session-relay ones included', async () => {
+    // `/help` used to be built from the KERNEL port alone, so the three verbs that
+    // live on the relay seat could never appear: the manual listed six commands
+    // while the parser accepted eleven — and the omitted ones are the reason this
+    // channel exists at all (会话接力: point the phone at the conversation the
+    // desktop is working in). To whoever is reading, a hidden verb IS a missing verb.
+    const { ctx } = makeCtx({ relay: true });
+    const help = (await runRemoteCommand({ kind: 'help' }, ctx)).reply;
+    for (const verb of ['/status', '/perm', '/model', '/ws', '/new', '/sessions', '/use', '/unbind', '/stop', '/answer', '/approve', '/deny', '/help']) {
+      expect(help).toContain(verb);
+    }
+    // The seat rule still holds: with no relay seat, the relay verbs are not
+    // advertised — a line for a command that can only answer "no seat for that"
+    // teaches the peer a command that will not work.
+    const bare = (await runRemoteCommand({ kind: 'help' }, makeCtx().ctx)).reply;
+    expect(bare).not.toContain('/sessions');
+    expect(bare).not.toContain('/unbind');
+  });
+
+  it('renders a session row the reader can choose by', async () => {
+    // The listing used to print a handle and a directory and nothing else, so two
+    // conversations in one directory read as two identical rows. A row now leads
+    // with what the conversation is ABOUT, carries where and when it happened,
+    // and keeps the handle LAST so the hint can point at one position.
+    const relay = fakeRelay([
+      { target: 'a1b2c3', id: 'sess_a1b2c3d4e5f6', file: 'D:/s/a1.jsonl', where: 'D:/work/agent', at: 1_760_000_000_000, title: '重构 qqbot 通道', busy: false, mine: true },
+      { target: '9f8e7d', id: 'sess_9f8e7d6c5b4a', file: 'D:/s/9f.jsonl', where: 'D:/work/agent', at: 1_760_000_000_000, title: '', busy: true, mine: false },
+    ]);
+    const ctx: RemoteContext = { ...makeCtx().ctx, relay };
+    const reply = (await runRemoteCommand({ kind: 'sessions' }, ctx)).reply;
+    expect(reply).toContain('重构 qqbot 通道');
+    expect(reply).toContain('D:/work/agent');
+    expect(reply).toContain('[本对话]');
+    // An unused conversation says so rather than showing an empty label.
+    expect(reply).toContain('（还没说过话）');
+    expect(reply).toContain('[进行中]');
+    expect(reply).toMatch(/a1b2c3$/mu);
   });
 
   it('hands back the new session for /new so the caller can rebind', async () => {

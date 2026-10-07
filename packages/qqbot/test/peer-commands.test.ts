@@ -15,7 +15,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { AgentSession, ApprovalMode, KernelEvent, SessionService } from '@nova-agent/core';
+import type { AgentMessage, AgentSession, ApprovalMode, KernelEvent, SessionService } from '@nova-agent/core';
 import type { AccessTier } from '../src/access.js';
 import { BindingsStore } from '../src/bindings.js';
 import { PeerTurns, type RemoteCommandSeat } from '../src/peers.js';
@@ -52,6 +52,9 @@ async function turnsWith(commands: RemoteCommandSeat): Promise<PeerTurns> {
   return new PeerTurns({
     sessions: noSessions(),
     sessionDir: dir,
+    // An empty catalog dir: these tests drive the LIVE-handle path, and a temp
+    // root keeps the machine's real sessions out of the listing.
+    catalogDir: dir,
     // A real store, in a temp home: the binding is what makes a chat's
     // conversation durable, so a test that stubbed it would not be exercising the
     // path it claims to.
@@ -90,7 +93,7 @@ describe('slashes the kernel owns', () => {
   it('runs a live catalog command with its verbatim argument', async () => {
     const commands = seat(['goal']);
     const turns = await turnsWith(commands);
-    expect(await turns.run('/goal 修好登录', PEER)).toBe('ran goal 修好登录');
+    expect(await turns.run('/goal 修好登录', PEER)).toEqual({ text: 'ran goal 修好登录' });
     expect(commands.calls).toEqual([{ name: 'goal', args: '修好登录' }]);
   });
 
@@ -111,24 +114,41 @@ describe('slashes the kernel owns', () => {
 });
 
 describe('which commands may skip the serial queue', () => {
-  it('bypasses only reads and the unblocking answers', () => {
-    // The bypass exists for ONE deadlock: an approval can only be released by an
-    // answer, so an answer that queued behind the parked turn would wait for
-    // itself. A tier change mid-run would change the tier the running turn is
-    // judged under, so it waits.
+  it('bypasses reads and the unblocking answers, tier change included', () => {
+    // The bypass exists for ONE deadlock: a turn parked on an approval can only
+    // be released by an answer — and `/perm` is the OTHER way out of the same
+    // park (stop being asked at all), so it rides with the answers. A new
+    // session or a catalog command that mutates state still waits.
     const bypass = (text: string): boolean => {
       const parsed = parseRemoteCommand(text);
       return parsed.command !== undefined && remoteBypassesQueue(parsed.command);
     };
-    expect([bypass('/approve'), bypass('/status'), bypass('/help')]).toEqual([true, true, true]);
-    expect([bypass('/perm full'), bypass('/new'), bypass('/compact')]).toEqual([false, false, false]);
+    expect([bypass('/approve'), bypass('/status'), bypass('/help'), bypass('/perm full')]).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+    expect([bypass('/new'), bypass('/compact')]).toEqual([false, false]);
   });
 });
 
-/** A minimal session stand-in: the tier is the only fact these tests read. */
-function fakeAgent(id: string, mode: ApprovalMode): AgentSession {
+/** One user message, shaped the way the relay listing reads it. */
+function userMessage(content: string): AgentMessage {
+  return { id: 'm_user', ts: 0, role: 'user', content };
+}
+
+/**
+ * A minimal session stand-in.
+ *
+ * The tier is what the ceiling tests read; `messages` / `session.events` are here
+ * because the relay listing reads those too (a chooser row is built from the
+ * session's own workspace marker and its opening prompt).
+ */
+function fakeAgent(id: string, mode: ApprovalMode, messages: AgentMessage[] = []): AgentSession {
   const agent = {
-    session: { id, file: `${id}.jsonl` },
+    session: { id, file: `${id}.jsonl`, events: [], allMessages: () => [] },
+    messages,
     approvalMode: mode as ApprovalMode | undefined,
     disposed: false,
     running: false,
@@ -159,6 +179,7 @@ function tierTurns(opts: {
         activate: () => undefined,
       },
       sessionDir: dir,
+      catalogDir: dir,
       bindings: new BindingsStore(path.join(dir, 'bindings.json')),
       rootDir: () => 'D:/work',
       model: () => 'm1',
@@ -183,14 +204,40 @@ describe('the remote tier ceiling', () => {
     expect(created[0]?.approvalMode).toBe('read-only');
   });
 
+  it('lists conversations by what they are about, with handles that differ', async () => {
+    // The listing used to print `sess_c · agent` and `sess_1 · agent`: handles
+    // differing by ONE character (the `sess_` prefix ate five of the six) over a
+    // directory that was the same on every row. Nothing in that row said which
+    // conversation was which, so the one verb this channel exists for was unusable
+    // in practice — the reader could not pick the desktop's conversation out.
+    const desktop = fakeAgent('sess_a1b2c3d4e5f6', 'full', [userMessage('重构 qqbot 通道')]);
+    const other = fakeAgent('sess_9f8e7d6c5b4a', 'full', [userMessage('今天天气怎么样')]);
+    const turns = await tierTurns({
+      list: () => [desktop, other],
+      open: () => fakeAgent('sess_111122223333', 'full'),
+      maxTier: 'full',
+    });
+    const reply = (await turns.run('/sessions', PEER)).text;
+    // The handle is the entropy after the prefix, not the constant prefix itself.
+    expect(reply).toContain('a1b2c3');
+    expect(reply).toContain('9f8e7d');
+    expect(reply).not.toContain('sess_');
+    // And the row says what the conversation is about.
+    expect(reply).toContain('重构 qqbot 通道');
+    expect(reply).toContain('今天天气怎么样');
+  });
+
   it('never lowers a RELAYED desktop session to the remote ceiling', async () => {
-    const desktop = fakeAgent('desktop-1', 'full');
+    // A real conversation: a session nobody has said anything in is not offered
+    // as a relay target, so a fixture without a prompt would test the refusal
+    // instead of the tier rule.
+    const desktop = fakeAgent('desktop-1', 'full', [userMessage('桌面上的那段对话')]);
     const turns = await tierTurns({
       list: () => [desktop],
       open: () => fakeAgent('own-1', 'full'),
       maxTier: 'read-only',
     });
-    const reply = await turns.run(`/use ${desktop.session.id.slice(0, 6)}`, PEER);
+    const reply = (await turns.run(`/use ${desktop.session.id.slice(0, 6)}`, PEER)).text;
     expect(reply).toContain('接到');
     // The phone pointed at the desktop; it did not hand it a new tier. Lowering it
     // here would let the remote ceiling contaminate the operator's own session.
@@ -223,6 +270,6 @@ describe('the answer is delivered on the reply budget', () => {
     // spends the reply class (the reserve narration leaves). Relaying it here as
     // narration put the answer on the DROPPABLE budget.
     const turns = await tierTurns({ list: () => [], open: () => scriptedAgent('s1', '结论正文'), maxTier: 'read-only' });
-    expect(await turns.run('你好', PEER)).toBe('结论正文');
+    expect(await turns.run('你好', PEER)).toEqual({ text: '结论正文', rich: { markdown: '结论正文' } });
   });
 });

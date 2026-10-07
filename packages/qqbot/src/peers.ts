@@ -19,18 +19,28 @@
  *  - **无 GUI 服务器**：`nova qqbot` 重启后，每个对话必须还在原来的那段会话里，否则
  *    每次重启都悄悄从头开始——那正好是这个形态最不想要的东西。
  */
-import type { AgentSession, SessionService } from '@nova-agent/core';
+import { errMessage, type AgentSession, type SessionService } from '@nova-agent/core';
 import { clampTier, type AccessTier } from './access.js';
 import type { BindingsStore } from './bindings.js';
 import type { Peer } from './types.js';
 import { PendingAsks } from './ask-forward.js';
-import { ProgressRelay } from './progress.js';
+import { answerPendingQuestion } from './question-answer.js';
+import { EMPTY_TURN_LINE } from './progress.js';
 import { parseRemoteCommand, splitSlash } from './remote-parse.js';
 import { runRemoteCommand, type RelayCandidate, type RemoteKernelPort, type RemoteRelayPort } from './remote.js';
-import { promptOnce, type TurnObserver } from './turn.js';
+import type { RichSend } from './protocol.js';
+import { liveCandidateOf, relayCandidates } from './relay-candidates.js';
+import { promptOnce } from './turn.js';
+import { turnObserver } from './observer.js';
 
 /** 往 QQ 主动推一行（审批问题与过程回传要用；被动窗口由通道保证）。 */
-export type PeerNotifier = (peer: Peer, text: string) => void;
+/** 一条要发回去的回答：文本，加上可选的富样式（markdown 正文 + 按钮）。 */
+export interface RemoteAnswer {
+  text: string;
+  rich?: RichSend;
+}
+
+export type PeerNotifier = (peer: Peer, text: string, rich?: RichSend) => void;
 
 /**
  * The kernel's command catalog, as this package sees it.
@@ -52,8 +62,19 @@ export interface RemoteCommandSeat {
 export interface PeerTurnDeps {
   /** 会话生命周期：绑定与 `current` 的唯一来源。 */
   sessions: SessionService;
-  /** 自己新开的会话的落点（`sessionsRoot()/qqbot`：与交互会话隔离）。 */
-  sessionDir: string;
+  /**
+   * 自己新开的会话的落点。缺省 = 内核的默认布局（`newSessionDir()`：标准日期桶），
+   * 即本通道开的会话与浏览器开的会话**同一种 nova 会话、同一份目录清单**——
+   * WebUI 的会话切换器照常见到它们。通道不再自设隔离目录。
+   */
+  sessionDir?: string;
+  /**
+   * 会话目录（`sessionsRoot()`）：接力清单从这里列出**这台机器上的每一段会话**。
+   *
+   * 本通道自己的会话现在也落在标准日期桶里，目录走查本来就能看到；活句柄那一侧
+   * 补的是 `busy` 标记与「本对话正在驱动哪段」。
+   */
+  catalogDir: string;
   /** The durable chat → session map (see the module header). */
   bindings: BindingsStore;
   /** 本进程的工作区，遥控 `/status` 用；装配没有就给 undefined。 */
@@ -80,6 +101,35 @@ export interface PeerTurnDeps {
    */
   canAskUser?: () => boolean;
   notify: PeerNotifier;
+  /**
+   * 单聊流式消息座位（`stream_messages`）：接线后，一轮里每条助手文本都会边生成
+   * 边长在一张卡片上。缺省 = 不流式，叙述与回复照旧走普通发送。
+   */
+  streamText?: (
+    peer: Peer,
+    text: string,
+    state: 1 | 10,
+    index: number,
+    streamMsgId?: string,
+  ) => Promise<{ streamMsgId?: string } | void>;
+  /** 正式回复落地后清扫过程叙述（撤回）；缺省 = 叙述留着。 */
+  recallNarration?: (peer: Peer) => void;
+  /**
+   * 流式卡片中途发不出去时把它撤掉；缺省 = 卡片留着。不撤的代价是读者看到两份：
+   * 一段截断且永远收不了口的卡片，加一条回落发出的完整正文。撤回尽力而为。
+   */
+  recallStream?: (peer: Peer, messageId: string) => Promise<void>;
+  /** 现在要不要走流式（断路器）；缺省 = 要。判定与停用时长都归装配层（见 `observer.ts`）。 */
+  streamGate?: () => boolean;
+  /** 一次流式彻底失败；装配层据此决定要不要断开断路器。 */
+  onStreamBroken?: (err: unknown) => void;
+  /** 诊断留痕（流式失败等）；缺省 = 静默。 */
+  log?: (line: string) => void;
+  /**
+   * 把本地文件发到某个对端（模型工具入口）。缺省 = 没有这个座位，工具如实说发不了。
+   * 只按 `peerId` 走，因为发送只需要被动窗口，不需要 `Peer` 的其它字段。
+   */
+  sendFile?: (peerId: string, path: string, caption: string) => Promise<void>;
 }
 
 /**
@@ -111,33 +161,34 @@ export class PeerTurns {
    *  2. a name the KERNEL's live catalog owns (`/compact`, `/goal`, `/mode`, and
    *     anything a third-party plugin registered) — resolved LIVE, so a command
    *     appears here exactly when it is loaded, and switches off with its row;
-   *  3. everything else, verbatim, as a prompt.
-   *
-   * The last door is why this is a chain and not a whitelist: a peer's text must
-   * never be swallowed by a parser that did not understand it, so the final
-   * fallback is always "ask the model what they said".
+   *  3. the ANSWER to an outstanding question — a number picks an option and prose
+   *     is free text, because a question is settled in the peer's own words. It sits
+   *     ahead of the prompt door, and the inbound bypass claims it too: the run is
+   *     PARKED inside the question, so a prompt would queue behind the wait it
+   *     should release;
+   *  4. everything else, verbatim, as a prompt — a chain, not a whitelist, so an
+   *     unparsed line is never swallowed.
    * @param text - 入站消息。
    * @param peer - 发消息的 QQ 对端。
    * @returns 回复文本；空串表示「这一轮已经自己把话说完并送出去了」。
    */
-  async run(text: string, peer: Peer): Promise<string> {
+  async run(text: string, peer: Peer): Promise<RemoteAnswer> {
     const parsed = parseRemoteCommand(text);
-    if (parsed.command !== undefined) return this.runRemote(parsed.command, peer);
+    if (parsed.command !== undefined) return await this.runRemote(parsed.command, peer);
     const slash = splitSlash(text);
     const commands = this.deps.commands;
     if (slash !== undefined && commands !== undefined && this.hasCommand(commands, slash.name)) {
       const outcome = await commands.run(slash.name.slice(1), slash.args);
-      return outcome.text.length > 0 ? outcome.text : `/${slash.name.slice(1)} 执行完毕（无输出）。`;
+      return {
+        text: outcome.text.length > 0 ? outcome.text : `/${slash.name.slice(1)} 执行完毕（无输出）。`,
+      };
     }
     const agent = await this.agentFor(peer);
-    // Live narration: the phone hears what the agent is doing while it works, not
-    // only after it stops. Delivery moves HERE when it is on, so the caller must
-    // send nothing (an empty return) or the peer would read the answer twice.
-    const relay = new ProgressRelay({ send: (line) => { this.deps.notify(peer, line); } });
-    const observer: TurnObserver = {
-      accepted: () => { relay.accepted(); },
-      tool: (name) => { relay.tool(name); },
-    };
+    const pending = agent.pendingQuestions();
+    if (pending.length > 0 && slash === undefined) {
+      return { text: answerPendingQuestion(pending, (id, answer) => agent.resolveQuestion(id, answer), text) };
+    }
+    const observer = turnObserver(peer, this.deps);
     const result = await promptOnce(agent, this.asks, text, peer, observer);
     // The ANSWER is RETURNED, not relayed. `notify` is the NARRATION class, capped
     // below the reply allowance on purpose so a busy turn cannot spend the answer's
@@ -146,11 +197,24 @@ export class PeerTurns {
     // to the channel's reply seat, which spends the reserve.
     if (result.reply.trim().length === 0) {
       // Nothing to say: the "finished, no text" line is narration, and there is
-      // nothing for the caller to deliver.
-      relay.final(result.reply);
-      return '';
+      // nothing for the caller to deliver. A turn that was CUT SHORT is the one
+      // exception: the new message (or `/stop`) that interrupted it is already
+      // being answered, so the floor line would answer a question nobody asked.
+      if (result.aborted !== true) this.deps.notify(peer, EMPTY_TURN_LINE);
+      this.deps.recallNarration?.(peer);
+      return { text: '' };
     }
-    return result.reply;
+    // Already fully delivered by its streaming card (state 10 with the full
+    // text): returning the body would make the peer read the answer twice.
+    if (result.streamed === true) {
+      this.deps.recallNarration?.(peer);
+      return { text: '' };
+    }
+    // The reply goes out as MARKDOWN: the client renders headings, bold, lists
+    // and code instead of raw characters. A plain-text fallback on platform
+    // refusal is folded in at the protocol layer, so nothing is lost.
+    this.deps.recallNarration?.(peer);
+    return { text: result.reply, rich: { markdown: result.reply } };
   }
 
   /**
@@ -168,6 +232,56 @@ export class PeerTurns {
     this.peers.clear();
   }
 
+  /**
+   * 把本地文件发到**本会话所在的 QQ 对话**（模型工具 `qq_send_file` 的落点）。
+   *
+   * 对端由「当前会话」反查，不由模型指名——`peerId` 从没告诉过模型，而一个能对任意
+   * 对端发消息的工具正是本包刻意不要的东西。所以这里只有一条路：这个会话属于哪个
+   * QQ 对话，文件就发到哪；不属于任何 QQ 对话就如实说没发。
+   * @param file - 本地路径与可选的说明文字。
+   * @returns 给模型看的一句话（成功或为什么没发）。
+   */
+  async sendFileToCurrentConversation(file: { path: string; caption?: string }): Promise<string> {
+    const current = this.deps.sessions.current();
+    if (current === undefined) return '当前没有活动会话，文件未发送。';
+    const match = [...this.peers.entries()].find(([, agent]) => agent.session.file === current.session.file);
+    if (match === undefined) {
+      return '这个会话不是 QQ 对话（没有绑定的对端），文件仍在本地、没有发送。';
+    }
+    const send = this.deps.sendFile;
+    if (send === undefined) return '这个进程没有发送文件的座位，文件未发送。';
+    try {
+      await send(match[0], file.path, file.caption ?? '');
+      return `已发送到当前 QQ 对话：${file.path}`;
+    } catch (err) {
+      return `发送失败：${errMessage(err)}`;
+    }
+  }
+
+  /**
+   * 打断这个对端正跑着的那一轮（有则 true）。
+   *
+   * 与 `/stop` 是同一个动作，只是触发者不同：那边是操作者点名要停，这边是一条新消息
+   * 到了——两者都走 `AgentSession.abort()`，不另造一条「怎么停」的路。
+   */
+  interrupt(peer: Peer): boolean {
+    const agent = this.peers.get(peer.peerId);
+    if (agent === undefined || !agent.running) return false;
+    agent.abort();
+    return true;
+  }
+
+  /**
+   * 这个对端的会话是不是正停在一个提问上（同步，因为入站旁路必须无 IO 地决定）。
+   * 入站侧拿它判断「这句普通话是不是答复」：是的话必须走队列**之外**的旁路，否则
+   * 它会排在自己所等的那一轮后面——与审批答复是同一个死锁（`run` 的第三道门是它
+   * 的执行侧）。
+   */
+  awaitingQuestion(peer: Peer): boolean {
+    const agent = this.peers.get(peer.peerId);
+    return agent !== undefined && agent.pendingQuestions().length > 0;
+  }
+
   /** Is this `/name` one the kernel currently owns? (Re-read per call: rows flip.) */
   private hasCommand(seat: RemoteCommandSeat, slashName: string): boolean {
     const name = slashName.slice(1);
@@ -178,7 +292,7 @@ export class PeerTurns {
   private async runRemote(
     command: NonNullable<ReturnType<typeof parseRemoteCommand>['command']>,
     peer: Peer,
-  ): Promise<string> {
+  ): Promise<RemoteAnswer> {
     const agent = await this.agentFor(peer);
     const kernel: RemoteKernelPort = {
       rootDir: () => this.deps.rootDir() ?? '',
@@ -208,11 +322,15 @@ export class PeerTurns {
       newSession: () => this.newSession(peer),
     });
     if (outcome.nextAgent !== undefined) this.peers.set(peer.peerId, outcome.nextAgent);
-    return outcome.reply;
+    return { text: outcome.reply, ...(outcome.rich !== undefined ? { rich: outcome.rich } : {}) };
   }
 
   /**
    * The relay seat: which OTHER conversations this chat may be pointed at.
+   *
+   * The rows themselves are built in `relay-candidates.ts` (two sources, merged
+   * and sorted); this only decides what a CHOICE does — bind the log, and keep the
+   * peer map honest about whether anyone holds it.
    *
    * `mine` is computed against the handle this chat currently drives, so the
    * listing answers "where am I" as well as "what else is there" — a peer who
@@ -220,20 +338,19 @@ export class PeerTurns {
    */
   private relayPort(current: AgentSession, peer: Peer): RemoteRelayPort {
     const mineFile = current.session.file;
-    const candidateOf = (agent: AgentSession): RelayCandidate => ({
-      target: shortHandle(agent.session.id),
-      id: agent.session.id,
-      where: lastSegment(this.deps.rootDir() ?? '') || '（未设置工作区）',
-      busy: agent.running,
-      mine: agent.session.file === mineFile,
-    });
+    const candidatesFor = (): Promise<RelayCandidate[]> =>
+      relayCandidates({ live: this.deps.sessions.list(), catalogDir: this.deps.catalogDir, mineFile });
+
     return {
-      list: async () => this.deps.sessions.list().map(candidateOf),
+      list: candidatesFor,
       use: async (target) => {
-        const matches = this.deps.sessions
-          .list()
-          .filter((agent) => agent.session.id.startsWith(target) || shortHandle(agent.session.id) === target);
-        if (matches.length === 0) return { ok: false, reason: `没有以 ${target} 开头的活会话（用 /sessions 看清单）。` };
+        const candidates = await candidatesFor();
+        const matches = candidates.filter(
+          (candidate) => candidate.id.startsWith(target) || candidate.target === target,
+        );
+        if (matches.length === 0) {
+          return { ok: false, reason: `清单里没有 ${target}（用 /sessions 看当前清单）。` };
+        }
         // Ambiguity is refused rather than resolved by picking the first: the peer
         // asked for one conversation and silently attaching them to another is
         // exactly the "switch that landed somewhere else" this command exists to
@@ -241,12 +358,18 @@ export class PeerTurns {
         if (matches.length > 1) return { ok: false, reason: `${target} 匹配到 ${matches.length} 个会话，请多打几位。` };
         const chosen = matches[0];
         if (chosen === undefined) return { ok: false, reason: '内部错误：匹配到的会话不见了。' };
-        await this.bind(peer, { kind: 'relay', file: chosen.session.file });
-        this.peers.set(peer.peerId, chosen);
+        await this.bind(peer, { kind: 'relay', file: chosen.file });
+        // Only a LIVE handle goes in the map. Binding to a log nobody holds must
+        // leave the map without one, so the next turn resumes it from the file —
+        // opening a second handle on one log would put two writers on it, which is
+        // the invariant `agentFor` exists to keep.
+        const held = this.deps.sessions.list().find((agent) => agent.session.file === chosen.file);
+        if (held === undefined) this.peers.delete(peer.peerId);
+        else this.peers.set(peer.peerId, held);
         // Binding a relay does NOT steal the kernel's `current`: the selection a
         // desktop is showing belongs to the desktop. `activate` happens per turn,
         // in `agentFor`, so audit and job fan-out follow the turn being run.
-        return { ok: true, candidate: candidateOf(chosen) };
+        return { ok: true, candidate: chosen };
       },
       unbind: async () => {
         await this.deps.bindings.clear(peer.peerId);
@@ -255,7 +378,7 @@ export class PeerTurns {
       bound: () => {
         const binding = this.deps.bindings.get(peer.peerId);
         if (binding === undefined || binding.kind !== 'relay') return undefined;
-        return candidateOf(current);
+        return liveCandidateOf(current, mineFile);
       },
     };
   }
@@ -351,10 +474,12 @@ export class PeerTurns {
       throw new Error('qqbot: this conversation pool was disposed');
     }
     return await this.deps.sessions.open({
-      sessionDir: this.deps.sessionDir,
+      // 无自设目录 = 内核默认的 `newSessionDir()`（标准日期桶）：本通道的会话
+      // 与交互会话同布局、同清单，WebUI 切换器照常列出。
+      ...(this.deps.sessionDir !== undefined ? { sessionDir: this.deps.sessionDir } : {}),
       ...(options.resumeFile !== undefined ? { resumeFile: options.resumeFile } : {}),
-      // A chat peer CAN be asked: questions are forwarded to it and answered with
-      // `/answer` (`question-reply.ts` maps the prose onto the kernel's batch).
+      // A chat peer CAN be asked: questions are forwarded to it and answered by
+      // replying (`question-answer.ts` maps the prose onto the kernel's batch).
       // This used to be `false`, which made every question refuse with
       // NO_PROVIDER — honest, but it meant the agent could never ask the person
       // who was right there in the chat window.
@@ -366,16 +491,3 @@ export class PeerTurns {
     await this.deps.bindings.set(peer.peerId, binding);
   }
 }
-
-/** A short, typeable handle derived from a session id (stable per session). */
-function shortHandle(sessionId: string): string {
-  return sessionId.slice(0, 6).toLowerCase();
-}
-
-/** Last path segment, so a chat can tell conversations in different roots apart. */
-function lastSegment(dir: string): string {
-  const parts = dir.split(/[\\/]/u).filter((part) => part.length > 0);
-  return parts[parts.length - 1] ?? '';
-}
-
-

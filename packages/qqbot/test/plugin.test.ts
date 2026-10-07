@@ -16,11 +16,14 @@ import {
   pluginConfig as pluginConfigKey,
   pluginRpc as pluginRpcKey,
   sessions as sessionsKey,
+  tools as toolsKey,
   type PluginPageDescriptor,
+  type ToolDefinition,
+  type ToolRegistry,
   type PluginRpc,
   type SessionService,
 } from '@nova-agent/core';
-import { pluginRpcProvider, toolboxPlugin } from '@nova-agent/plugins';
+import { pluginRpcProvider } from '@nova-agent/plugins';
 import plugin, { QQ_BOT_PLUGIN_NAME, runningQqBotChannel } from '../src/plugin.js';
 
 /** 会话服务：被调用即说明「没有凭据也开了会话」，那是 bug。 */
@@ -41,10 +44,11 @@ interface Mounted {
 /** 装配一次这一行的激活；`config` 是行自己的设置（由 `Config` 校验）。 */
 async function mount(config: unknown): Promise<Mounted> {
   const root: Context = Context.createRoot();
-  // The same two providers every real tree loads first: the tool registry (the
-  // channel's tool registers into it) and the plugin-RPC namespace.
-  await root.plugin(toolboxPlugin).ready;
+  // The provider every real tree loads first: the plugin-RPC namespace this row
+  // answers its settings page on. The tool registry IS needed: this row registers
+  // `qq_send_file` (the only way a file the agent produced reaches the peer).
   await root.plugin(pluginRpcProvider()).ready;
+  root.provide(toolsKey, fakeTools());
   const saved: Mounted['saved'] = [];
   root.provide(pluginConfigKey, {
     setEntry: async (id, patch) => {
@@ -56,6 +60,21 @@ async function mount(config: unknown): Promise<Mounted> {
   await fiber.ready;
   mounted = { rpc: root.must(pluginRpcKey), saved, dispose: () => fiber.dispose() };
   return mounted;
+}
+
+/** 最小工具注册表：只回答「注册了什么」，供这一行装配使用。 */
+function fakeTools(): ToolRegistry {
+  const entries = new Map<string, ToolDefinition>();
+  return {
+    all: () => [...entries.values()],
+    entries: () => [...entries.values()].map((tool) => ({ tool, permission: 'read' as const, owner: 'qqbot' })),
+    find: (name) => entries.get(name),
+    permissionFor: async (name) => (entries.has(name) ? 'read' : undefined),
+    register: (tool) => {
+      entries.set(tool.name, tool);
+      return () => entries.delete(tool.name);
+    },
+  };
 }
 
 let mounted: Mounted | undefined;
@@ -185,7 +204,8 @@ describe('qqbot plugin with credentials', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(active.saved).toEqual([]);
       const descriptor = page(await active.rpc.invoke(QQ_BOT_PLUGIN_NAME, 'page', undefined));
-      expect(descriptor.note).toContain('ABC123');
+      // The code is its own copyable block now, not a sentence in `note`.
+      expect(descriptor.copy?.value).toBe('ABC123');
     } finally {
       vi.unstubAllGlobals();
     }
