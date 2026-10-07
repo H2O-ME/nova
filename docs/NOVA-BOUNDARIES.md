@@ -144,6 +144,9 @@ test → 另一个包的 src/internal/*
 
 **必须保持 provider-agnostic。**
 
+> 注意"Provider **Contracts**"这一项：Core 拥有的是**能力的形状**，不是能力的实现。两者分开——
+> 见 §6 的原则框（契约进 Core ≠ 实现进 Core）。
+
 ### `plugins` — Plugin Composition Layer
 
 **负责**：Plugin Host、内置能力、插件装载、Kernel 组合、Kernel factory。
@@ -196,11 +199,34 @@ argv → config → surface registry → kernel boot → surface.start()
    怎么折、折多细是扩展的事。live 路径也正是经能力键取值，而不是调用 core 函数。
 ```
 
-**判定：不上移 core。** ① ② Yes、③ No，未达"三者全 Yes"。
+**判定：不上移 core 的实现。** ① ② Yes、③ No，未达"三者全 Yes"——但判据回答的是**实现放哪**，不是**契约放哪**。见下。
 
-但调研暴露了真正的问题——**不是位置，是通道**：live 路径经能力键 `contextInsights` 取 fold，只读路由却静态 import 生产者。两条通道让**一个可选扩展变成 web 表面的安装期硬需求**：扩展缺席时整个 surface 加载失败，而不是降级。
+> ### 原则：契约进 Core ≠ 实现进 Core
+>
+> 这次最容易读错的一步。判据的结论是"`windowAtSeq` 的实现不搬进 `core/session/`"，**不是**
+> "core 不该知道 `windowAt` 这件事"。
+>
+> ```text
+> Core                       能力契约（双方共用的 vocabulary）
+>  └── ContextInsights         ├── fold()
+>                              └── windowAt()
+> Optional Extension         能力的业务实现
+>  └── plugin-context          ├── fold()
+>                              └── windowAt()
+> ```
+>
+> **能力键的形状永远属于 Core**：live 路径与任何只读消费者必须用同一份 vocabulary，否则就会
+> 各自发明一份——这正是本仓"第二份实现"缺陷族的入口。而"窗口里有什么"的语义（怎么折、折多细、
+> 什么算进入）属于扩展，因为它不是 Runtime 的业务语义。
+>
+> 所以"加进 core 契约"与"不上移 core"**不矛盾**：前者是接口，后者是实现。后续批次遇到
+> "这个 provider 的哪一部分进 Core"时，先问这句，再套三问判据。
+
+调研真正暴露的问题是——**不是位置，是通道**：live 路径经能力键 `contextInsights` 取 fold，只读路由却静态 import 生产者。两条通道让**一个可选扩展变成 web 表面的安装期硬需求**：扩展缺席时整个 surface 加载失败，而不是降级。
 
 **改法**：core 的 `ContextInsights` 契约补上 `windowAt`（实现早已在 `contextInsightsOf()` 里，只是类型描述得比服务少）；路由改收注入的 `ContextWindowReader = Pick<ContextInsights, 'windowAt'>`，由 `launchWeb` 经 `kernel.host.context.get(contextInsightsKey)` 按请求解析。实现仍留在扩展里，"什么在窗口里"仍只有一份定义。
+
+**封板**：Batch 4 到此为止。不再因为"已经碰到了 `ContextInsights`"就顺手把它整理得更 Core 一点。
 
 **真机验证**（`nova --web` + 探针，非浏览器自动化）：
 

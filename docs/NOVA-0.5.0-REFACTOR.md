@@ -126,20 +126,79 @@ Batch 10  Legacy Deletion + 0.5.0
 ```text
 Batch 0   已交付 0ef6662   五份 NOVA 规范 + test-boundary 门禁 + dep-direction 两条棘轮
 Batch 1   已交付 7967cc1   Nova token 层 + ui-token-guard 棘轮 + 删 Tailwind 死依赖
-Batch 2   阻塞            落点 core/src/kernel/session.ts、web/src/controller.ts 等在途
-Batch 3   阻塞            落点 web/src/protocol.ts 等在途
 Batch 4   已交付 82589e8   摘掉 web → plugin-context 静态边 + 扩展包 optional + 回收失败不再静默
-Batch 5+  阻塞            落点 core/src/session*.ts、web/ui/src/** 全部在途
+          封板             不再扩 Batch 4；结论见 NOVA-BOUNDARIES §6
 门禁修正  已交付 feae106   dep-direction 扫描前剔除注释
+Batch 2   阻塞  ⏸         落点 core/src/kernel/session.ts、web/src/controller.ts 等在途
+Batch 3   阻塞  ⏸         落点 web/src/protocol.ts 等在途
+Batch 5+  阻塞  ⏸         落点 core/src/session*.ts、web/ui/src/** 全部在途
 ```
-
-**阻塞原因**：工作树里有一批**尚未提交**的功能改动（会话标题模型、QQ 富交互、插件中心、
-WebUI 动效）共 123 个文件，覆盖了 Batch 2–8 的全部集成点。按 §全局纪律，不对非本批改动做
-`reset / checkout / clean / restore`，也不把它们卷进本重构的提交；因此只能等那批先落地。
 
 **Batch 4 尚有两项未做**，且都**下游于 Batch 2A**：Provider 契约由 runtime 定义（需
 `core/src/runtime/`）、删除 `provider.setModel` 原地改路径（需 Run 冻结 provider/model
-才有替代路径）。它们随 Batch 2 一起做，不单独提前。
+才有替代路径）。它们随 Batch 2 一起做，**不单独提前**——提前做只会得到没人读的代码。
+
+### 阻塞是 prerequisite，不是"继续找能改的东西"的信号
+
+工作树里有一批**尚未提交**的功能改动（会话标题模型、QQ 富交互、插件中心、WebUI 动效）共
+123 个文件，覆盖了 Batch 2–8 的全部集成点。正确反应是**停下来**，不是绕过：
+
+```text
+Feature batch 完成并提交
+        ↓
+工作树重新分类（哪些属于哪一批）
+        ↓
+Batch 2 prerequisite inspection（下面的五段硬检查）
+        ↓
+Batch 2A → Batch 2B → Batch 3 → …
+```
+
+**错误反应**（正是本重构要防的）：Batch 2 阻塞 → 继续找能改的东西 → 发现更多 → 把 Batch 4
+越扩越大 → 边界消失。**边界比进度重要。**
+
+**在途归属的判定看 diff 内容，不看文件名。** 实测：那批改的 `core/src/kernel/protocol.ts`
+加的是 `session_titled` 事件、`web/src/protocol.ts` 加的是 `MAX_TITLE_MODEL_CHARS`——是标题模型
+功能，不是 Batch 3 的 Run。只看文件名会把 `protocol.ts` 误判成 Batch 3 的领地。
+
+### Batch 2A 开工前的硬检查（第一件事，先于任何编辑）
+
+按 `docs/NOVA-BOUNDARIES.md` §4/§5 填满五段，填不出"当前"就别开工：
+
+```text
+① Current ownership      session.ts / protocol.ts / model state 现在各自拥有什么
+② Target ownership       Run / ExecutionScope / Protocol 各自拥有什么
+③ Current dependencies   逐项列出（文件 → 谁引用谁），用实际 import 统计得出
+④ Target dependencies    逐项列出
+⑤ Forbidden              当前 feature batch 的任何修改；以及本批明确不动的东西
+```
+
+③ 必须**在 Batch 2A 开工当天现算**，不能引用本文档里任何过期清单——`core/src/kernel/session.ts`
+此刻正在被在途批次编辑，今天抄下来的依赖表明天就是错的。
+
+### 门禁被外部改动污染时怎么办
+
+`pnpm gates` 现在红，原因是**在途功能批**把 5 个文件撑超行数预算（它们在 HEAD 版本分别为
+58/100/117/349/688 行，全部在上限内）。此时的正确状态是：
+
+```text
+Batch 4 自己的改动 → 相关门禁通过
+Global gates      → 被其他在途改动污染 → 当前不是 clean baseline
+```
+
+**绝对不得**为了让重构"看起来绿"去改 `scripts/structure-budget.json` 或放宽阈值。等那批功能
+提交后重跑 `pnpm gates`；若仍红，再处理真正属于重构的部分。
+
+### 提交粒度：可独立理解、验证、回退的变更单元
+
+不是"每个 Batch 必须一个 commit"。Batch 4 就落成了三个可分别 revert 的单元：
+
+```text
+82589e8  refactor(boundaries): Batch 4 架构改动
+feae106  fix(gates):           门禁实现 bug（与架构改动不同层，故分开）
+21a5d6f  docs(refactor):       进度记录
+```
+
+判据是**一个变更单元能否被独立理解、验证和回退**，不是批次数。
 
 四条**贯穿全程**（不是某个批次）：
 
