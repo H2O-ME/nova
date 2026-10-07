@@ -6,6 +6,7 @@
  * stale copy is the failure that rule exists to prevent).
  */
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -35,17 +36,23 @@ describe('resolveModuleSpec', () => {
     expect(resolveModuleSpec('/abs/plugin.mjs', '/w').startsWith('file://')).toBe(true);
   });
 
-  it('hands a product-resolvable name to Node untouched', () => {
+  it('returns the PROVEN file for a product-resolvable name', () => {
     // `@nova-agent/core` is a dependency of this package: the product resolves it,
-    // so the user root is not consulted at all.
-    expect(resolveModuleSpec('@nova-agent/core', '/w', home)).toBe('@nova-agent/core');
+    // so the user root is not consulted at all. The file URL, not the bare spec —
+    // a loader that patches only CJS resolution (tsx) can make require.resolve
+    // succeed where the ESM import of the bare spec then fails.
+    expect(resolveModuleSpec('@nova-agent/core', '/w', home)).toBe(
+      pathToFileURL(createRequire(import.meta.url).resolve('@nova-agent/core')).href,
+    );
   });
 
   it('does NOT let the user root shadow a name the product can resolve', async () => {
     // The stale-copy trap: an old copy in the user root must not replace the
-    // bundled package after an upgrade.
+    // bundled package after an upgrade — the PRODUCT's file is what loads.
     await installFake('@nova-agent/core', './index.mjs');
-    expect(resolveModuleSpec('@nova-agent/core', '/w', home)).toBe('@nova-agent/core');
+    expect(resolveModuleSpec('@nova-agent/core', '/w', home)).toBe(
+      pathToFileURL(createRequire(import.meta.url).resolve('@nova-agent/core')).href,
+    );
   });
 
   it('resolves a name that only exists in the user plugin root', async () => {

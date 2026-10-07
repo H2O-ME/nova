@@ -87,8 +87,15 @@ export function resolvableFromProduct(spec: string, appModulesUrl?: string): boo
  */
 export function resolveModuleSpec(spec: string, cwd: string, homedir?: string, appModulesUrl?: string): string {
   if (isAbsolute(spec) || spec.startsWith('.')) return pathToFileURL(resolve(cwd, spec)).href;
-  // This package's own tree: the bare spec is what Node resolves from here too.
-  if (tryResolve(import.meta.url, spec) !== undefined) return spec;
+  // This package's own tree. The proven file URL, not the bare spec: the bare
+  // spec assumes Node re-resolves it identically at import time, which a loader
+  // that patches only CJS resolution (tsx under `pnpm dev`) breaks — require
+  // "succeeds" from a tree that cannot actually import it, and the ESM import
+  // then fails from here (a bundled channel package is NOT a dependency of this
+  // library). Both branches hand back the file they proved, so the library tree,
+  // the app tree and the user root tell ONE resolution story.
+  const fromLibrary = tryResolve(import.meta.url, spec);
+  if (fromLibrary !== undefined) return pathToFileURL(fromLibrary).href;
   // The app's tree: NOT on this package's resolution path, so the proven target
   // is what gets imported — a bare spec would be re-resolved from here and fail.
   const fromApp = appModulesUrl === undefined ? undefined : tryResolve(appModulesUrl, spec);
