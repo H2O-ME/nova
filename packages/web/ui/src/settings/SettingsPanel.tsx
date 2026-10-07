@@ -18,7 +18,7 @@
  * (portaled menus keep their own traversal), focus enters on the active nav
  * row without a ring and returns to the invoker on unmount.
  */
-import { useState, useId, useRef } from 'react';
+import { useState, useId, useRef, useEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
@@ -77,6 +77,13 @@ export function SettingsDialog({
 }: SettingsDialogProps): JSX.Element {
   const active = sections.find((section) => section.id === activeId) ?? sections[0];
   const titleId = useId();
+  // The scroll column is the panel's own and survives a switch: landing on a
+  // short page from a long one kept the old offset, and the new page looked
+  // like it had not switched. Every switch lands at the top.
+  const optionsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    optionsRef.current?.scrollTo({ top: 0 });
+  }, [active?.id]);
   return (
     <div className={css.overlay} role="presentation">
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
@@ -121,7 +128,7 @@ export function SettingsDialog({
               <span className={a11yCss.visuallyHidden}>{closeLabel}</span>
             </button>
           </div>
-          <div className={css.options}>{active?.content}</div>
+          <div className={css.options} ref={optionsRef}>{active?.content}</div>
         </div>
       </div>
     </div>

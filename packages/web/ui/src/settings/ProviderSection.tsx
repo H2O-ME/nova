@@ -32,6 +32,7 @@ import { SETTINGS_COPY } from './copy.js';
 import { SettingsSection } from './Section.js';
 import { parseCapacityField } from './ModelConfigEditor.js';
 import { ProviderModelsPicker } from './ProviderModelsDialog.js';
+import { useManageRefusal, type ManageErrorValue } from './use-manage-refusal.js';
 import { cls } from '../sidebar/view.js';
 import type { ClientFrame } from '../types.js';
 import type { WireProviderModel, WireProviderRow } from '../types.js';
@@ -78,6 +79,14 @@ export interface ProviderSectionProps {
   providers: ProvidersSnapshot | null;
   /** The last probe answer (or its in-flight marker). */
   probe: ProviderProbe | null;
+  /**
+   * The shared refusal channel, attributed by this section's own writes: a
+   * refused save is answered by an `error` frame, not a snapshot, and the
+   * sentence belongs next to the button that asked.
+   */
+  manageError?: ManageErrorValue | null;
+  /** Whether this section holds unsaved edits, reported whenever it changes. */
+  onDirtyChange?: (dirty: boolean) => void;
   send: (frame: ClientFrame) => void;
 }
 
@@ -184,16 +193,60 @@ export function draftProblem(row: ProviderDraft): string | null {
 }
 
 /**
+ * 「这次保存落盘了吗」——按内容回答，不按「来了一帧」回答。
+ *
+ * `save_providers` 没有回执 id：宿主的确认就是广播出来的下一份 `providers`
+ * 快照。但共享通道上还会来**别人**的快照（另一个窗口的保存、迟到的首答），
+ * 「来了一帧就清草稿」会把操作者还在看的字删掉。所以拿**我们发出去的那份
+ * 清单**逐行逐字段对——密钥本身浏览器永远收不到（线上只有 `hasApiKey`），
+ * 对比时跳过它。导出给测试车道。
+ * @param sent - this save carried, in order.
+ * @param incoming - the frame the host broadcast.
+ * @param sentActiveId - the active pointer this save asked for, if any.
+ * @param incomingActiveId - the pointer the frame carries.
+ * @returns true when the frame IS the echo of this save.
+ */
+export function saveLanded(
+  sent: readonly WireProviderRowInput[],
+  incoming: readonly WireProviderRow[],
+  sentActiveId: string | undefined,
+  incomingActiveId: string | undefined,
+): boolean {
+  if (sent.length !== incoming.length) return false;
+  if ((sentActiveId ?? undefined) !== (incomingActiveId ?? undefined)) return false;
+  for (const [index, row] of incoming.entries()) {
+    const mine = sent[index];
+    if (mine === undefined) return false;
+    if (mine.id !== row.id || mine.baseURL !== row.baseURL) return false;
+    if ((mine.name ?? undefined) !== (row.name ?? undefined)) return false;
+    if ((mine.temperature ?? undefined) !== (row.temperature ?? undefined)) return false;
+    if ((mine.maxTokens ?? undefined) !== (row.maxTokens ?? undefined)) return false;
+    if ((mine.contextWindow ?? undefined) !== (row.contextWindow ?? undefined)) return false;
+    const mineModels = mine.models ?? [];
+    if (mineModels.length !== row.models.length) return false;
+    for (const [modelIndex, model] of row.models.entries()) {
+      if (mineModels[modelIndex]?.id !== model.id) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Render the 供应商 section.
  * @param props - see ProviderSectionProps.
  * @returns the section element tree.
  */
-export function ProviderSection({ providers, probe, send }: ProviderSectionProps): JSX.Element {
+export function ProviderSection({ providers, probe, manageError, onDirtyChange, send }: ProviderSectionProps): JSX.Element {
   // On demand, every open: the file is the authority and the operator may have
   // hand-edited it (or another window may have saved), so a cached list could lie.
   useEffect(() => {
     send({ type: 'list_providers' });
   }, [send]);
+
+  // The shared refusal channel, attributed to THIS section's own writes: a
+  // refused save lands as an `error` frame and is shown by the card that sent
+  // it — not absorbed, and not blamed on a section that never wrote.
+  const refusal = useManageRefusal(manageError ?? null);
 
   const stored = providers?.providers ?? [];
   const activeId = providers?.activeId;
@@ -206,6 +259,14 @@ export function ProviderSection({ providers, probe, send }: ProviderSectionProps
   const [newDraft, setNewDraft] = useState<ProviderDraft | null>(null);
   const [manualModel, setManualModel] = useState('');
   const [probeTarget, setProbeTarget] = useState<string | null>(null);
+
+  // The unsaved-edit report for the settings shell's leave guard: a draft in
+  // any card, or an open add-card, is an edit a switch would discard.
+  const dirty = Object.keys(drafts).length > 0 || adding;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => { onDirtyChange?.(false); }, [onDirtyChange]);
 
   // The endpoint in force changed under us (a switch, or another window's save):
   // the catalog belongs to the NEW endpoint, and no other section can see that it
@@ -256,23 +317,33 @@ export function ProviderSection({ providers, probe, send }: ProviderSectionProps
     return built;
   };
 
-  /** 保存一张卡：只写它的草稿，其余照已存内容。**宿主的 `providers` 帧到达后才**
-      回到「已存」态（见 `pendingSave`）——写盘被拒绝时草稿还在，读者改一字再存即可。 */
+  /** 保存一张卡：只写它的草稿，其余照已存内容。**保存的回执按内容匹配**
+      （见 `saveLanded`）——共享通道上别人的快照不清草稿；写盘被拒时拒绝句
+      就在卡边（`refusal`），草稿原样，读者改一字再存即可。 */
   const saveCard = (id: string): void => {
     const input = buildList(id);
     if (input === undefined) return;
     setPendingSave(id);
+    sentSaveRef.current = { providers: input, activeId: activeId };
+    refusal.begin();
     send({ type: 'save_providers', providers: input, ...(activeId !== undefined ? { activeId } : {}) });
   };
   // The save's ACK is the `providers` frame (the file is the truth, the frame is
-  // its echo). Only then does the saved card drop its draft: clearing on SEND
-  // meant a refused write (no writer, schema bound, dup id) silently threw away
-  // exactly the text the reader was still looking at.
+  // its echo) — but the frame carries no correlation id, and other writers ride
+  // the same channel. The echo is recognized by CONTENT: only a frame that
+  // matches what this save sent settles it and drops the draft. Anything else
+  // (another window's save, a late first answer) leaves the draft alone.
   const [pendingSave, setPendingSave] = useState<string | null>(null);
+  const sentSaveRef = useRef<{ providers: WireProviderRowInput[]; activeId: string | undefined } | null>(null);
   useEffect(() => {
     if (providers === null || pendingSave === null) return;
+    const sent = sentSaveRef.current;
+    if (sent === null) return;
+    if (!saveLanded(sent.providers, providers.providers, sent.activeId, providers.activeId)) return;
     const id = pendingSave;
+    sentSaveRef.current = null;
     setPendingSave(null);
+    refusal.settle();
     setDrafts((current) => {
       const next = { ...current };
       delete next[id];
@@ -282,7 +353,7 @@ export function ProviderSection({ providers, probe, send }: ProviderSectionProps
       setAdding(false);
       setNewDraft(null);
     }
-  }, [providers, pendingSave, newDraft]);
+  }, [providers, pendingSave, newDraft, refusal]);
   /** 取消一张卡：丢掉它的草稿（添加卡则整个收起），已存内容原样。 */
   const cancelCard = (id: string): void => {
     setDrafts((current) => {
@@ -561,6 +632,12 @@ export function ProviderSection({ providers, probe, send }: ProviderSectionProps
       <p className={css.intro}>{SETTINGS_COPY['models.intro']}</p>
       <h3 className={css.sectionTitle}>{SETTINGS_COPY['models.providerTitle']}</h3>
       <p className={css.sectionIntro}>{SETTINGS_COPY['models.providerIntro']}</p>
+      {/* A refused save is this section's own fact (its write started it), said
+          once at the top of the roster — the draft it protected is still on the
+          card, unchanged. */}
+      {refusal.message !== null && (
+        <div className={css.notice} role="alert">{refusal.message}</div>
+      )}
       {loading && <div className={css.status}>{SETTINGS_COPY['models.providerLoading']}</div>}
       {!loading && stored.length === 0 && !adding && (
         <div className={css.notice}>{SETTINGS_COPY['models.providerEmpty']}</div>
