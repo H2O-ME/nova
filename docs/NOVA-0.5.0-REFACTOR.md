@@ -200,6 +200,23 @@ feae106  fix(gates):           门禁实现 bug（与架构改动不同层，故
 
 判据是**一个变更单元能否被独立理解、验证和回退**，不是批次数。
 
+### Backlog（已发现、本版明确不处理）
+
+**① context-window 路由缺 `ContextSurface`**（Batch 4 真机探针时发现，**本版不修**）：
+
+```text
+live  ContextInsights  →  拿到 ContextSurface { system, tools }
+/api/context-window    →  只有 durable events，surface 传 undefined
+```
+
+`windowAt(events, seq, surface)` 的第三参数在只读路由上是省略的，所以"窗口里有什么"在只读路径
+上**没有把 system prompt 与工具 schema 计入**，而 live 路径计入了——两条路径的口径可能不一致。
+现有 route 测试只断言 `elements` 是数组，没有覆盖这一点。
+
+**不修，也不因此重开 Batch 4**：它不影响 Batch 2A 的 ownership，而修法（路由该不该拿到 surface、
+由谁提供）同时牵动 Batch 3 的协议契约与 Batch 6 的 client model，应在那些批次里一并判断。
+记在这里是为了不让"发现了但没人记得"发生。
+
 四条**贯穿全程**（不是某个批次）：
 
 ```text
