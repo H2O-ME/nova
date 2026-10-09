@@ -199,7 +199,7 @@ export async function startRepl(
       lines.cancelPending();
       return;
     }
-    if (agent.running || agent.status === 'compacting') {
+    if (agent.running || agent.compacting) {
       agent.abort();
       return;
     }

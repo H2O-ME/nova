@@ -15,6 +15,7 @@
  * browser / REPL / bot channels interchangeable consumers of the same kernel.
  */
 import { runAgent } from '../agent/loop.js';
+import { beginRun, type Run } from '../runtime/run.js';
 import {
   emptyStats,
   type AgentOptions,
@@ -139,8 +140,6 @@ export interface AgentSessionDeps {
   titleProvider?: () => Promise<ChatProvider | undefined>;
 }
 
-export type AgentStatus = 'idle' | 'running' | 'compacting';
-
 export class AgentSession {
   /** The event pump: `subscribe` for callbacks, `events()` for iteration. */
   readonly events: EventPump;
@@ -155,6 +154,12 @@ export class AgentSession {
   private readonly meter = new RunMeter();
   private readonly pending = new PromptQueue();
   private runController: AbortController | undefined;
+  /**
+   * The current (or most recent) run. Replaces the old `runController !==
+   * undefined` busy check: a boolean forgot a run the moment it ended, while a
+   * Run keeps its identity and terminal state (see `runtime/run.ts`).
+   */
+  private currentRun: Run | undefined;
   /** In-flight title request (first prompt only); aborted with the session. */
   private titleController: AbortController | undefined;
   /** Real prompts landed since the title was last (re)generated — the
@@ -223,13 +228,22 @@ export class AgentSession {
     return this.deps.messages;
   }
 
-  get status(): AgentStatus {
-    if (this.compaction.busy) return 'compacting';
-    return this.running ? 'running' : 'idle';
+  /** The most recent run, live or settled; `undefined` before the first one. */
+  get run(): Run | undefined {
+    return this.currentRun;
+  }
+
+  /**
+   * Whether a compaction is in flight. Session-level, NOT a run: compaction
+   * splices the message array rather than executing a turn, so it never gets a
+   * Run of its own. Split out of the old `status` union, which mixed the two.
+   */
+  get compacting(): boolean {
+    return this.compaction.busy;
   }
 
   get running(): boolean {
-    return this.runController !== undefined;
+    return this.currentRun?.active === true;
   }
 
   get currentPhase(): TurnPhase {
@@ -737,13 +751,15 @@ export class AgentSession {
    * `abort()` withdraws leftover triggers deliberately — see the note there.
    */
   private async runLoop(): Promise<void> {
-    if (this.runController !== undefined || this.closed) return;
+    if (this.running || this.closed) return;
     let controller = new AbortController();
     this.runController = controller;
     try {
       for (;;) {
         const before = this.pending.requestCount;
-        await this.startRun(controller.signal);
+        const run = beginRun(this.deps.session.id);
+        this.currentRun = run;
+        await this.startRun(controller.signal, run);
         if (this.closed) break;
         await this.postTurnCompact();
         if (controller.signal.aborted) {
@@ -776,19 +792,21 @@ export class AgentSession {
     }
   }
 
-  private async startRun(signal: AbortSignal): Promise<void> {
+  private async startRun(signal: AbortSignal, run: Run): Promise<void> {
     // Never assemble a request while a compaction is splicing the array it
     // would read (see `CompactionRunner.wait`).
     await this.compaction.wait();
     this.meter.start();
     this.lastMessageId = undefined;
+    let failed = false;
     try {
       await this.preflightCompact();
-      const options = this.agentOptions(signal);
+      const options = this.agentOptions(signal, run);
       for await (const event of runAgent(options)) {
         await this.consume(event);
       }
     } catch (err) {
+      failed = true;
       // Repair the log BEFORE classification/propagation — the old trio of
       // persist → repair → classify, now owned by the run loop itself.
       await persistMissingToolResults(this.deps.session, this.deps.messages).catch(() => undefined);
@@ -797,6 +815,9 @@ export class AgentSession {
       await this.publishRunStats();
       this.publish({ type: 'run_failed', message: errMessage(err), aborted: signal.aborted });
     } finally {
+      // Settle here, not in the loop: every exit of a run — natural end, abort,
+      // throw — passes through this block exactly once.
+      run.settle(failed ? 'failed' : signal.aborted ? 'cancelled' : 'completed');
       // Outstanding asks must not outlive the run that made them.
       this.deps.approvals.failAll('aborted');
       this.askSeam.failQuestions('aborted');
@@ -860,7 +881,7 @@ export class AgentSession {
     }
   }
 
-  private agentOptions(signal: AbortSignal): AgentOptions {
+  private agentOptions(signal: AbortSignal, run: Run): AgentOptions {
     const deps = this.deps;
     return {
       provider: this.countingProvider(),
@@ -873,6 +894,7 @@ export class AgentSession {
       cacheDir: deps.cacheDir(),
       jobs: deps.jobs,
       sessionId: this.deps.session.id,
+      runId: run.id,
       emit: async (evt) => {
         await deps.session.appendEvent(evt);
         // The live plan panel cannot poll the log, so the snapshot the log just

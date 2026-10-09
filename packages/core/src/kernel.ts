@@ -19,6 +19,5 @@ export { RunMeter, type RunStats, type RequestTiming } from './kernel/metrics.js
 export {
   AgentSession,
   type AgentSessionDeps,
-  type AgentStatus,
   type UsageAnchorState,
 } from './kernel/session.js';

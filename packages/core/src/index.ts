@@ -37,6 +37,7 @@ export * from './approval.js';
 export * from './user-question.js';
 export * from './kernel.js';
 export * from './kernel/prompt-queue.js';
+export * from './runtime/run.js';
 export * from './plugin/index.js';
 export * from './type-stripping.js';
 export * from './tools/get-time.js';

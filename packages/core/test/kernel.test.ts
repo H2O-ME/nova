@@ -134,7 +134,7 @@ async function harness(
 }
 
 async function untilIdle(agent: AgentSession): Promise<void> {
-  for (let i = 0; i < 3000 && (agent.running || agent.status === 'compacting'); i++) {
+  for (let i = 0; i < 3000 && (agent.running || agent.compacting); i++) {
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
   expect(agent.running).toBe(false);
