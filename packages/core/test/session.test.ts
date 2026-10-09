@@ -13,7 +13,7 @@ import {
 } from '../src/index.js';
 // `session-peek.ts` is deliberately outside the package barrel (AGENTS.md §8):
 // it is the head-scan implementation the listing uses, not a public API.
-import { peekSession } from '../src/session-peek.js';
+import { peekSession } from '../src/session/session-peek.js';
 
 function user(id: string, content: string): UserMessage {
   return { id, ts: 1, role: 'user', content };

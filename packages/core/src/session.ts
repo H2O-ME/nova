@@ -1,8 +1,8 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { newId } from './ids.js';
-import { readEvents, upgradeToV2 } from './session-log.js';
-import { compactionSurface, findOrphanCompaction } from './session-projection.js';
+import { readEvents, upgradeToV2 } from './session/session-log.js';
+import { compactionSurface, findOrphanCompaction } from './session/session-projection.js';
 import type { RunStats } from './kernel/metrics.js';
 import type { AgentMessage } from './types.js';
 import type { Goal } from './goal.js';
@@ -19,7 +19,7 @@ export {
   compactionSurface,
   findOrphanCompaction,
   parseEventLine,
-} from './session-projection.js';
+} from './session/session-projection.js';
 
 /**
  * Session log format v2: the file is an append-only event stream, not a

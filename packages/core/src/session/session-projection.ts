@@ -9,10 +9,10 @@
  * one — and the compaction surface has exactly ONE implementation, shared by the
  * live compaction path and the replay projection (see `compactionSurface`).
  */
-import type { RunStats } from './kernel/metrics.js';
-import type { SessionEvent } from './session.js';
+import type { RunStats } from '../kernel/metrics.js';
+import type { SessionEvent } from '../session.js';
 import { validateEvent } from './session-event-schema.js';
-import type { AgentMessage, UserMessage } from './types.js';
+import type { AgentMessage, UserMessage } from '../types.js';
 
 /**
  * Each run's measurement, keyed by the message it closed (the anchor the log

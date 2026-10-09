@@ -85,7 +85,7 @@
    - 审批答案解析：唯一定义在 `core/approval.ts: parseAskResult`[cite: 1]。
    - 文本控制字符清洗：唯一定义在 `core/src/text.ts: oneLineText / hasControlChars`[cite: 1]。
    - 呈现意图形状：唯一定义在 `core/presentation.ts`，视图卡片解析只走 `callViewOf` / `resultViewOf`[cite: 1]。
-   - 工具缺失结果补齐：唯一定义在 `session-repair.ts: missingToolResults`[cite: 1]。
+   - 工具缺失结果补齐：唯一定义在 `session/session-repair.ts: missingToolResults`[cite: 1]。
 2. **容器与插件规范**：
    - 注册工具统一用 `registerTool(ctx, def, permission)`，注册命令用 `registerCommand(ctx, def)`[cite: 1]。
    - 插件故障记录在状态 `error` 中，绝不从 `create/update/reconcile` 中抛出未处理异常崩溃主进程[cite: 1]。

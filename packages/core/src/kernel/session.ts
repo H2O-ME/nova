@@ -37,9 +37,9 @@ import type { JobSnapshot } from '../job-types.js';
 import type { QuestionBroker, QuestionRequest, AskUserQuestionAnswer } from '../user-question.js';
 import type { Session, SessionEvent } from '../session.js';
 import { isContextFragment } from '../context-fragment.js';
-import { recordSessionTitle, sessionTitleOf } from '../session-title.js';
+import { recordSessionTitle, sessionTitleOf } from '../session/session-title.js';
 import { generateSessionTitle, titleTranscript, TITLE_REGEN_PROMPTS } from './title.js';
-import { persistMissingToolResults } from '../session-repair.js';
+import { persistMissingToolResults } from '../session/session-repair.js';
 import type { SubagentProgress } from '../tools/subagent.js';
 import type {
   AgentHooks,

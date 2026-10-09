@@ -10,8 +10,8 @@
  * No I/O and no state: the reader decides what to do with a rejected line (it
  * takes the same "skip and warn" path as a syntactically broken one).
  */
-import type { SessionEvent, SessionHeader } from './session.js';
-import type { AgentMessage } from './types.js';
+import type { SessionEvent, SessionHeader } from '../session.js';
+import type { AgentMessage } from '../types.js';
 
 /** Structural check for one parsed log line (see `parseEventLine`). */
 export function validateEvent(value: unknown): SessionEvent | undefined {

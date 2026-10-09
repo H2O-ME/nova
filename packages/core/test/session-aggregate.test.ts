@@ -11,7 +11,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { aggregateSessions, NO_WORKSPACE } from '../src/session-aggregate.js';
+import { aggregateSessions, NO_WORKSPACE } from '../src/session/session-aggregate.js';
 
 /** Build a date-bucketed sessions dir and return the root path. */
 async function makeRoot(): Promise<string> {

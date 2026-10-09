@@ -9,7 +9,7 @@
  * The marker never joins the model surface — it exists so a session switch can
  * re-point the tool roots at the directory the session was created in.
  */
-import type { Session } from './session.js';
+import type { Session } from '../session.js';
 
 /**
  * Append the log-only workspace marker so a later session switch can re-point

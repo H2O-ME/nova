@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { NOT_EXECUTED_GUIDANCE } from '../src/agent/options.js';
-import { missingToolResults } from '../src/session-repair.js';
+import { missingToolResults } from '../src/session/session-repair.js';
 import type { AgentMessage } from '../src/types.js';
 
 const assistantCall = (id: string, callId: string): AgentMessage => ({

@@ -229,4 +229,4 @@ export async function aggregateSessions(root: string): Promise<SessionAggregate>
 }
 
 /** Re-exported path utility for callers that need the sessions root. */
-export { sessionsRoot } from './paths.js';
+export { sessionsRoot } from '../paths.js';

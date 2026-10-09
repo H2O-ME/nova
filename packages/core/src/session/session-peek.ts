@@ -11,7 +11,7 @@
  */
 import { open } from 'node:fs/promises';
 import path from 'node:path';
-import { isContextFragment } from './context-fragment.js';
+import { isContextFragment } from '../context-fragment.js';
 import { stripTitleWrappers } from './session-title.js';
 
 /** What a capped head scan can tell about one session log. */

@@ -11,7 +11,7 @@
  */
 import path from 'node:path';
 import { realpath, stat, unlink } from 'node:fs/promises';
-import { novaHome, sessionsRoot } from './paths.js';
+import { novaHome, sessionsRoot } from '../paths.js';
 
 /**
  * True when `dir` points inside the nova data directory (sessions/skills/

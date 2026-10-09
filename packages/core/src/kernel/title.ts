@@ -13,7 +13,7 @@
  */
 import { oneLineText } from '../text.js';
 import { isContextFragment } from '../context-fragment.js';
-import { stripTitleWrappers } from '../session-title.js';
+import { stripTitleWrappers } from '../session/session-title.js';
 import type { AgentMessage, ChatProvider, UserMessage } from '../types.js';
 
 /** A title is a label: past this it is a sentence, and the listing caps anyway. */

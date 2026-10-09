@@ -304,7 +304,17 @@ G1a（Run 实体）与 G1b（scope 归位）已落地。**G1c 与 G1d 的原定�
 
 **删除目标**：`web/src/controller.ts` 的三处重复调用（已删）。
 
-**仍未做**（留在本批）：PTY 停止（终端归 `web/src/term-session.ts` 所有，§3.4 规定"一律不动"，只能在 web 侧）；`await run settle` 与 zombie 防护（`seal()` + `drain()` 目前已覆盖"日志不被复活"，是否需要额外等待 run 完全退栈**需先证明有可观测差异**，不凭 0.5.0 条文直接加）；12 个 `session-*.ts` 收进 `session/`。
+**仍未做**（留在本批）：PTY 停止（终端归 `web/src/term-session.ts` 所有，§3.4 规定"一律不动"，只能在 web 侧）；`await run settle` 与 zombie 防护（`seal()` + `drain()` 目前已覆盖"日志不被复活"，是否需要额外等待 run 完全退栈**需先证明有可观测差异**，不凭 0.5.0 条文直接加）。
+
+#### G2 第二刀（2026-10-10，已落地）：12 个 `session-*.ts` 收进 `session/`
+
+`session-aggregate` / `session-event-schema` / `session-files` / `session-index` / `session-listing` / `session-log` / `session-peek` / `session-projection` / `session-repair` / `session-target` / `session-title` / `session-workspace` 移入 `packages/core/src/session/`。
+
+- **文件名保持不变**：这些文件内部的互引注释按 basename 写（"Split from `session-peek.ts`"），改名会让约 20 处注释失效。
+- **`core/src/session.ts` 不动**：它是 `Session` 对象本体（写入漏斗），不在 `session-*` 之列；新目录**不放 `index.ts`**，所以 `./session.js` 与 `./session/xxx.js` 的解析互不冲突。
+- **公共 API 零变化**：所有名字仍经 `core/src/index.ts` 桶文件再导出；现算确认无跨包深路径引用（`@nova-agent/core/session-log.js` 形式为零），改动只在 core 内部。
+- **删除目标**：`core/src/` 顶层不再有 `session-*.ts`。
+- **同步**：`structure-budget.json` 的 12 个键改名（值不变）；`docs/architecture-audit-2026-10.md` 的相对链接与 `AGENTS.md` §3.1 的引用已更新。
 
 ### G3 — 能力归位
 

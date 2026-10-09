@@ -12,8 +12,8 @@
  * ({@link stripTitleWrappers}) lives here for the same reason: the writer and
  * every reader have to agree on what a label looks like.
  */
-import { oneLineText } from './text.js';
-import type { Session } from './session.js';
+import { oneLineText } from '../text.js';
+import type { Session } from '../session.js';
 
 /**
  * The wrapper a chatty title model puts AROUND the label: markdown emphasis, a

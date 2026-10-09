@@ -15,7 +15,7 @@
  * log, showed the failure row.
  */
 import { newId } from '../ids.js';
-import { missingToolResults } from '../session-repair.js';
+import { missingToolResults } from '../session/session-repair.js';
 import type { AgentEvent, AgentMessage, ToolCall, ToolResultMessage } from '../types.js';
 import type { AgentOptions } from './options.js';
 

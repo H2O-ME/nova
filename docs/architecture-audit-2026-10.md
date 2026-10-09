@@ -228,7 +228,7 @@ event cap 在换行后累计，line += ch 仍可无限长；comment/unknown fiel
 
 ### F23 durable validator 不验证完整事件（P2，运行时复现）
 
-证据：[session-event-schema.ts:17](../packages/core/src/session-event-schema.ts#L17)。
+证据：[session-event-schema.ts:17](../packages/core/src/session/session-event-schema.ts#L17)。
 
 接受 unknown role、非法 goal/todos/compaction keep；未完整检查工具调用/usage/stats/approval。修复 durable boundary 完整 schema，未来版本/未知事件处理明确，不能把未知 mandatory 数据静默当损坏丢掉。v1/v2 迁移与尾部修复必须保持可读与可审计。
 

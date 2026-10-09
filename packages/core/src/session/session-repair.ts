@@ -10,10 +10,10 @@
  * also has to reach the surface). `missingToolResults` is that rule; the two
  * callers are the two scopes it runs over.
  */
-import { newId } from './ids.js';
-import { NOT_EXECUTED_GUIDANCE } from './agent/options.js';
-import type { Session } from './session.js';
-import type { AgentMessage, ToolResultMessage } from './types.js';
+import { newId } from '../ids.js';
+import { NOT_EXECUTED_GUIDANCE } from '../agent/options.js';
+import type { Session } from '../session.js';
+import type { AgentMessage, ToolResultMessage } from '../types.js';
 
 /** A NOT_EXECUTED result for every assistant call id that has none. */
 export function missingToolResults(messages: readonly AgentMessage[]): ToolResultMessage[] {
