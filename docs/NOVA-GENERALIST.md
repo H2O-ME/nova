@@ -306,6 +306,18 @@ G1a（Run 实体）与 G1b（scope 归位）已落地。**G1c 与 G1d 的原定�
 
 **仍未做**（留在本批）：PTY 停止（终端归 `web/src/term-session.ts` 所有，§3.4 规定"一律不动"，只能在 web 侧）；`await run settle` 与 zombie 防护（`seal()` + `drain()` 目前已覆盖"日志不被复活"，是否需要额外等待 run 完全退栈**需先证明有可观测差异**，不凭 0.5.0 条文直接加）。
 
+#### G2 收口（2026-10-10，现算）：契约四项逐条给结论
+
+| 契约项 | 结论 | 证据 |
+| --- | --- | --- |
+| **jobs 前置** | ✅ 已做（第一刀） | 见上 |
+| **PTY 停止** | ✅ 已覆盖，无需改 | `web/src/controller.ts:327 terms.retainOnly(当前会话)` **在每帧之后**执行——删除会话那一帧本身就是一帧，旧会话的终端随后被 `term-session.ts:304 dispose()` 杀掉（`kill()` + 生成中启动的取消闩）。终端本就归 web 所有，core 的 `dispose()` 不该也无法碰它 |
+| **`await run settle`** | ⛔ **不加**（有证据） | ① **无可观测差异**：run 晚退栈时 `publish()` 是空操作（`kernel/pump.ts` 的 `if (this.closed) return`），而日志侧 `seal()` 之后任何 append 都无法重建文件；晚到的工具溢出写落在**共享**的 `~/.nova/cache/tool-outputs/`（`paths.ts:74`），而 `deleteSessionLog` 只 unlink 日志文件，不删该目录——不会"复活"任何已删产物。② **加了会引入挂死风险**：一个不响应 abort 的前台工具会让 `dispose()` 永久阻塞；现在的设计**刻意不对 run 阻塞** |
+| **zombie 防护** | ⛔ 同上 | 与 `await run settle` 同一判据；无独立可观测差异 |
+| **12 个 `session-*.ts` 收进 `session/`** | ✅ 已做（第二刀） | 见上 |
+
+> **G2 实现部分已收口**：拆卸序列的完整性（jobs 归属）落在 core，终端的生命周期归 web 且已由 `retainOnly` 保证，`await run settle` 经证据判定不加。
+
 #### G2 第二刀（2026-10-10，已落地）：12 个 `session-*.ts` 收进 `session/`
 
 `session-aggregate` / `session-event-schema` / `session-files` / `session-index` / `session-listing` / `session-log` / `session-peek` / `session-projection` / `session-repair` / `session-target` / `session-title` / `session-workspace` 移入 `packages/core/src/session/`。
