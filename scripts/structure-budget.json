@@ -82,7 +82,7 @@
  "packages/core/src/kernel/protocol-vocabulary.ts": 64,
  "packages/core/src/kernel/protocol.ts": 135,
  "packages/core/src/kernel/pump.ts": 122,
- "packages/core/src/kernel/session.ts": 1009,
+ "packages/core/src/kernel/session.ts": 1117,
  "packages/core/src/kernel/title.ts": 131,
  "packages/core/src/kernel/usage-anchor.ts": 71,
  "packages/core/src/model-catalog-rules.ts": 136,

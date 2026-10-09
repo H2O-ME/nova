@@ -631,6 +631,12 @@ export class AgentSession {
     this.abort();
     this.titleController?.abort();
     this.deps.approvals.failAll('closed');
+    // The session's OWN background jobs stop HERE, not at each surface: the
+    // registry is per-process, so the cancel was implemented once per caller
+    // (web did it three times, cli once) and a surface that forgot left shells
+    // running with nowhere to report. Cancelling before the seal below also
+    // lets a job's last event land in the log instead of being rejected.
+    await this.deps.jobs.disposeSession(this.deps.session.id);
     // Seal BEFORE closing the pump: a run still in flight may yet try to commit,
     // and the seal is what stops it from recreating a log the surface deleted.
     // `drain` then waits for writes already past the seal check to land, so the

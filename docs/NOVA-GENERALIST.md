@@ -290,6 +290,22 @@ G1a（Run 实体）与 G1b（scope 归位）已落地。**G1c 与 G1d 的原定�
 - **不可改变**：**日志格式与单一写入者不变量**（`Session.appendEvent` 是唯一写入漏斗）；已持久化会话的可读性。
 - **验收**：恶意 JSONL、append after delete、非 current 会话删除不复活日志。
 
+#### G2 第一刀（2026-10-10，已落地）
+
+**"jobs 前置"已做**：`AgentSession.dispose()` 现在自己调 `JobRegistry.disposeSession(this.deps.session.id)`，位置在 `seal()` 之前（作业的最后一个事件仍能落进日志）。
+
+现算证据（这条改动为什么是"收口"而不是"新功能"）：
+
+| 事实 | 位置 |
+| --- | --- |
+| 拆卸的两步式（`dispose()` + `jobs.disposeSession()`）**被实现了四份** | `web/src/controller.ts` 三处（`dispose` / `abandonSession` / `disposeLiveHandle`）+ `cli/src/repl.ts:473-476`（那里改调全进程 `jobs.dispose()`） |
+| web 的每条 `dispose()` 路径**本来都紧跟**这次取消 | 因此把取消收进 `dispose()` 对 web **行为等价**，只是删掉重复 |
+| 其余 surface 只在拆卸时调 `dispose()` | `cli/src/surface-teardown.ts:61`（后接 `kernel.dispose()`） |
+
+**删除目标**：`web/src/controller.ts` 的三处重复调用（已删）。
+
+**仍未做**（留在本批）：PTY 停止（终端归 `web/src/term-session.ts` 所有，§3.4 规定"一律不动"，只能在 web 侧）；`await run settle` 与 zombie 防护（`seal()` + `drain()` 目前已覆盖"日志不被复活"，是否需要额外等待 run 完全退栈**需先证明有可观测差异**，不凭 0.5.0 条文直接加）；12 个 `session-*.ts` 收进 `session/`。
+
 ### G3 — 能力归位
 
 - **第一件事**：完成 ownership 审计（§3.2 / §3.3 是输入，不是结论），**在审计结论出来前不做任何搬迁**。

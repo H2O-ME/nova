@@ -210,8 +210,9 @@ export class WebController {
     this.handles.clear();
     for (const handle of handles) {
       if (handle === this.agent) continue; // torn down with the kernel
+      // Jobs included: `AgentSession.dispose` stops the session's own work, so
+      // no surface has to remember a second step (it used to, in four places).
       await handle.dispose().catch(() => undefined);
-      await this.kernel.jobs.disposeSession(handle.session.id).catch(() => undefined);
     }
     await this.kernel.jobs.dispose().catch(() => undefined);
     await this.kernel.dispose().catch(() => undefined);
@@ -386,10 +387,10 @@ export class WebController {
     // terminal events are not broadcast as if they belonged to the new one.
     this.follow.stop();
     this.handles.delete(doomed.session.file);
+    // Jobs belong to the session that started them, and `dispose` stops them:
+    // a deleted session's running work has nowhere to report, so it is
+    // cancelled rather than left orphaned.
     await doomed.dispose().catch(() => undefined);
-    // Jobs belong to the session that started them; a deleted session's running
-    // work has nowhere to report, so it is cancelled rather than left orphaned.
-    await this.kernel.jobs.disposeSession(doomed.session.id).catch(() => undefined);
     await this.replaceSession({});
     this.clients.broadcast(this.readyFrame());
   }
@@ -417,7 +418,6 @@ export class WebController {
     if (doomed === undefined || doomed === this.agent) return;
     this.handles.delete(resolved);
     await doomed.dispose().catch(() => undefined);
-    await this.kernel.jobs.disposeSession(doomed.session.id).catch(() => undefined);
   }
 
   /**
