@@ -35,6 +35,22 @@
 
 ---
 
+## 文档索引（细则不在本文件，按任务只读相关的那一份）
+
+| 文档 | 何时读 |
+| --- | --- |
+| `docs/NOVA-GENERALIST.md` | **通用化纲领**：定位、执行契约、批次表（G 系列）、每批开工条件与删除判据 |
+| `docs/NOVA-0.5.0-REFACTOR.md` | 历史总纲：命令语义（§4）、git 纪律（§5）、测试表述纪律（§6）、Scope Protocol（§12）——其批次表**已被通用化纲领取代** |
+| `docs/NOVA-BOUNDARIES.md` | 改动跨包依赖、插件边界、测试边界时 |
+| `docs/NOVA-UI-ARCHITECTURE.md` | 改动 WebUI 结构、Client Model、Slot 时 |
+| `docs/NOVA-DESIGN-SYSTEM.md` | 改动视觉、token、动效、间距时 |
+| `docs/NOVA-TESTING.md` | 新增或删除测试时 |
+| `docs/dsh-parity-inventory.md` | **历史参照（非验收口径）**：迁移期查询"哪些 UI 是移植来的" |
+
+> **重构期测试纪律例外**：§0.4「拒绝过度测试」持续有效；重构批次的验收以 `docs/NOVA-GENERALIST.md` §6 各批「验收」段为准，两者冲突时以后者为准。
+
+---
+
 ## 2. 常用命令矩阵
 
 | 命令 | 适用场景 / 说明 | 耗时/开销 |

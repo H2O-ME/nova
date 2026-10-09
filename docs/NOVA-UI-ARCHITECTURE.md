@@ -1,12 +1,16 @@
 # NOVA WebUI 架构规范
 
-> **文档状态**：Normative
+> **文档状态**：Normative（**§1 与 §6.2 待 G0b 改写**）
 > **本文件回答**：浏览器前端的目录 ownership、状态分层、布局结构、扩展点边界。
-> 视觉决策见 `NOVA-DESIGN-SYSTEM.md`；依赖边界见 `NOVA-BOUNDARIES.md`。
+> 视觉决策见 `NOVA-DESIGN-SYSTEM.md`；依赖边界见 `NOVA-BOUNDARIES.md`；通用化方向见 `NOVA-GENERALIST.md`。
+
+> ⚠️ **待改写标注（2026-10-09）**：§1「Nova 是 Agent Development Workspace」与 §6.2「Nova 是 Coding Agent」的定位，与 `NOVA-GENERALIST.md` §1 的通用型定位冲突，将在 **G0b** 改写。§2 的三栏（含常驻 Inspector）与 §5 的 Slot 白名单将在 **G5/G6** 重定。**在此之前，本文件的目录树、状态分层、React Adapter 规则与组件禁令仍然有效。**
 
 ---
 
 ## 1. Nova 的定位
+
+> **[待 G0b 改写]** 本节把 Nova 定位为 "Agent Development Workspace"、界面中心是 "Conversation + Execution + Tools + Context"。`NOVA-GENERALIST.md` §1 已将其改为**通用型本地 agent 工作台**；下方原文保留至 G0b 落地。
 
 ```text
 Nova 不是：AI 聊天应用
@@ -272,6 +276,8 @@ Agent Message
 视觉层级靠 **typography / spacing / alignment / divider / surface**，而不是靠十几层圆角卡片。
 
 ### 6.2 Tool Call 是 Nova WebUI 的核心特色
+
+> **[待 G0b 改写]** 本节原文把 Nova 定义为 "Coding Agent"。`NOVA-GENERALIST.md` §1 改为通用型定位后，Tool UI 仍是核心特色（工具执行是通用任务的可见载体），但不再是"因为 Nova 是编程 Agent"。下方原文保留至 G0b 落地。
 
 Nova 是 Coding Agent，Tool UI 比普通聊天 UI 更重要。
 

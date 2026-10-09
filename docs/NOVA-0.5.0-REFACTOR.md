@@ -1,6 +1,7 @@
 # NOVA 0.5.0 重构总纲
 
-> **文档状态**：Normative（规范）
+> **文档状态**：**历史记录（批次表已被取代）** — 2026-10-09 起
+> **权威关系**：本文件 §7 的批次表**已被 `NOVA-GENERALIST.md` §5 取代**。本文件继续有效的是 §4（命令语义）、§5（git 纪律）、§6（测试表述纪律）、§8（各批要点原文）、§10–§12（修改前必答问题、Migration Strategy、Scope Protocol）；§7 的批次进度与 §8 的批次编号降级为历史记录，其未完成批次已映射进 `NOVA-GENERALIST.md` §5。
 > **目标版本**：`0.5.0`（当前 `0.4.0`）
 > **本文件**：总纲与执行纪律。细则见 `NOVA-BOUNDARIES.md` / `NOVA-UI-ARCHITECTURE.md` / `NOVA-DESIGN-SYSTEM.md` / `NOVA-TESTING.md`。
 
