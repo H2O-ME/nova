@@ -52,7 +52,7 @@ export async function assembleRequest(opts: AgentOptions, notices: NoticeState):
   if (projected.messages !== request.messages) {
     request = { ...request, messages: projected.messages as typeof request.messages };
   }
-  notices.unaccounted = opts.jobs?.drainFinished(opts.sessionId) ?? [];
+  notices.unaccounted = opts.jobs?.drainFinished(opts.scope?.sessionId) ?? [];
   notices.consumed = notices.unaccounted.length === 0;
   // Request-level middle compression on a fresh array: the hook chain above
   // saw (and possibly spliced) the true log; the wire snapshot trims from

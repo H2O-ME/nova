@@ -143,12 +143,13 @@ async function runOnce(
     signal,
     maxTurns: opts.maxTurns,
     // The nested run belongs to the conversation that asked for it: its tool
-    // calls carry the parent's scope (the gate decides with the parent's
-    // engine, the audit lands in the parent's session), its background jobs
-    // are owned by that session, its log-only writes reach the parent's log
-    // instead of vanishing, and oversized tool results spill into the
-    // parent's cacheDir. See `NestedRunSession`.
-    ...(session.sessionId !== undefined ? { sessionId: session.sessionId } : {}),
+    // calls carry the parent's SESSION (the gate decides with the parent's
+    // engine, the audit lands in the parent's session), its background jobs are
+    // owned by that session, its log-only writes reach the parent's log instead
+    // of vanishing, and oversized tool results spill into the parent's
+    // cacheDir. See `NestedRunSession`. The nested loop mints its OWN runId, so
+    // the parent's run is not credited with the subagent's calls.
+    ...(session.sessionId !== undefined ? { scope: { sessionId: session.sessionId } } : {}),
     ...(session.jobs !== undefined ? { jobs: session.jobs } : {}),
     ...(session.emit !== undefined ? { emit: session.emit } : {}),
     ...(session.cacheDir !== undefined ? { cacheDir: session.cacheDir } : {}),

@@ -146,16 +146,13 @@ async function preflightToolCall(call: ToolCall, opts: AgentOptions): Promise<Pr
   // tool_calls keep their required result messages.
   if (opts.signal?.aborted) return { kind: 'skip' };
 
-  // WHICH run this call belongs to, captured once and handed to every hook
-  // round. A hook that decides something session-specific (the approval gate
-  // reading a permission tier) must read it from here: one kernel runs several
-  // sessions concurrently, so "the current session" is a UI selection and would
-  // let one conversation's tier decide another's call.
-  const scope: ToolCallScope = {
-    ...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
-    ...(opts.runId !== undefined ? { runId: opts.runId } : {}),
-    ...(opts.principal !== undefined ? { principal: opts.principal } : {}),
-  };
+  // WHICH run this call belongs to, handed to every hook round. A hook that
+  // decides something session-specific (the approval gate reading a permission
+  // tier) must read it from here: one kernel runs several sessions concurrently,
+  // so "the current session" is a UI selection and would let one conversation's
+  // tier decide another's call. The run froze this object when it was created
+  // (`Run.scope`), so it is read, never re-derived.
+  const scope: ToolCallScope = opts.scope ?? {};
 
   let effective = call;
   for (let round = 0; ; round++) {
@@ -316,7 +313,7 @@ async function executeTool(
         rootDir: opts.rootDir,
         signal,
         ...(opts.jobs !== undefined ? { jobs: opts.jobs } : {}),
-        ...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
+        ...(opts.scope?.sessionId !== undefined ? { sessionId: opts.scope.sessionId } : {}),
         ...(opts.emit !== undefined ? { emit: opts.emit } : {}),
         ...(opts.cacheDir !== undefined ? { cacheDir: opts.cacheDir } : {}),
         ...(opts.onToolProgress !== undefined

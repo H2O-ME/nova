@@ -61,7 +61,7 @@ Session → runAgent → ToolCall → Approval → Persistence
 
 ### 2.2 保留 0.5.0 已规定的 Run 与 ExecutionScope
 
-"不新增抽象层"**不豁免**已有契约。`Run` 生命周期（`created → running → cancelling → completed / failed / cancelled`）与 `ExecutionScope`（`sessionId / runId / parentRunId / principal / channel / workspace / provider / permissions`，Run 创建时冻结）按 0.5.0 原文执行。
+"不新增抽象层"**不豁免**已有契约。`Run` 生命周期（`created → running → cancelling → completed / failed / cancelled`）与 `ExecutionScope`（Run 创建时冻结）按 0.5.0 原文执行。字段集**逐字段接入**：0.5.0 列的八字段是**目标契约**，不是一次到位的实现清单——每个字段落地时同批带生产者与消费者（见 §6 G1b 修订）。
 
 ### 2.3 现状证据（G0a 源码核对）
 
@@ -211,7 +211,7 @@ G8  封板         版本 + changeset + verify + smoke
 | `AgentStatus` | `'idle' \| 'running' \| 'compacting'`，**非** 0.5.0 期望的六态生命周期 | `core/src/kernel/session.ts:142` |
 | Protocol | 无 `PROTOCOL_VERSION` / `eventId` / 帧级 `runId` | `web/src/protocol.ts` |
 
-**② Target ownership**：0.5.0 Batch 2/3 原文（`Run` 实体 + 六态生命周期；`ExecutionScope` 八字段；Run 创建时冻结；`RunContext = { scope, signal }`）。
+**② Target ownership**：0.5.0 Batch 2/3 原文（`Run` 实体 + 六态生命周期；`ExecutionScope` 八字段为目标契约、逐字段接入；Run 创建时冻结；`RunContext = { scope, signal }`）。八字段的逐字段判据见下方 **G1b 修订**。
 
 **③ Current dependencies**：`ExecutionScope` 消费者 = `core/{approval, agent/tools, tools/nested-run, plugin/capabilities, kernel/session}` + `plugins/{hooks, permission-gate}`。`runId` 消费者 = **无**。`anchoredRunStats` 的 key 是 `afterMessageId`（**消息 id**，`session-projection.ts:29`），**不是** runId。
 
@@ -228,12 +228,27 @@ G8  封板         版本 + changeset + verify + smoke
 
 ```text
 G1a  Run 实体 + 六态生命周期（core/src/runtime/run.ts）；runId 由 Run 提供，删除 loop 自铸
-G1b  ExecutionScope 扩至八字段；Run 创建时冻结；RunContext = { scope, signal }
+G1b  scope 所有权归位：Run 持有并冻结 ExecutionScope；AgentOptions 三扁平字段 → scope?: ExecutionScope
 G1c  消费者接入：run/stats 带 runId、surface 状态走 Run 生命周期（G1a 的"消费者"另一半）
 G1d  Protocol Contract：PROTOCOL_VERSION + 帧级 eventId + 帧级 runId + 握手校验
 ```
 
 > **G1a 不得单独提交**——它必须与 G1c 的至少一条真实消费者同时落地，否则 `runId` 从"零消费"变成"新字段零消费"，缺陷只是换了个名字。
+
+#### G1b 修订（2026-10-10，按源码证据取消"扩八字段"）
+
+0.5.0 §8 Batch 2 把 `ExecutionScope` 定为八字段（`sessionId / runId / parentRunId / principal / channel / workspace / provider / permissions`）。开工前现算显示，**照此扩字段会一次制造 5 个无人读的死字段**，正是本仓缺陷族 #3：
+
+| 字段 | 生产者 | 消费者 | 判定 |
+| --- | --- | --- | --- |
+| `sessionId` | `kernel/session.ts`（Run 创建时） | `plugins/permission-gate.ts`（唯一读点） | 保留 |
+| `runId` | `kernel/session.ts`（Run 创建时） | **无**（仅 `subagent-scope.test.ts` 断言） | 保留，消费者在 G1d 落地 |
+| `principal` | **无** —— 全仓无人给 `AgentOptions.principal` 赋值 | **无** | 保留为**声明契约**（见下） |
+| `parentRunId` / `channel` / `workspace` / `provider` / `permissions` | 无 | 无 | **本次不新增** |
+
+`principal` 的设计用途（让 QQ 中继会话按"随调用者走的主体"钳制档位）在当前通道**不存在**：`qqbot/src/peers.ts:454 capOwnedTier` 改用**会话创建时钳制**达成同一目的，而 `peers.ts:451` 自己写明中继路径"does not have yet"这个主体。按 `NOVA-GENERALIST.md` §2 的"契约进 Core ≠ 实现进 Core"，它**留作声明契约**，不删；将来 QQ 中继接通时**必须与生产者同批**加回消费者，否则按缺陷族 #3 删除。
+
+**因此 G1b 的交付改为"所有权归位"，不含字段扩张**：`Run` 在创建时构造并冻结一份 `ExecutionScope`（`Run.scope`），`AgentOptions` 的三个扁平字段合并为 `scope?: ExecutionScope`，`agent/tools.ts` 删除现场投影改为直接读取。字段扩张留给**每个字段各自接入时**同批完成（生产者 + 消费者一起），判据与 G1a/G1c 同一条。
 
 ### G2 — Session 所有权
 

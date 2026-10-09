@@ -42,8 +42,7 @@ describe('runAgent / scope threading', () => {
         rootDir: '.',
         tools: [probe()],
         maxTurns: 2,
-        sessionId: 'sess-1',
-        principal: 'qq:cap:read-only',
+        scope: { sessionId: 'sess-1', principal: 'qq:cap:read-only' },
         hooks: {
           beforeToolCall: async (_call, scope) => {
             scopes.push(scope ?? {});
@@ -83,7 +82,7 @@ describe('subagent / nested scope inheritance', () => {
         rootDir: '.',
         tools: [subagent],
         maxTurns: 2,
-        sessionId: 'parent-1',
+        scope: { sessionId: 'parent-1' },
         hooks: {
           beforeToolCall: async (call, scope) => {
             byCall.set(call.name, scope ?? {});
@@ -129,7 +128,7 @@ describe('subagent / nested scope inheritance', () => {
         rootDir: '.',
         tools: [subagent],
         maxTurns: 2,
-        sessionId: 'parent-1',
+        scope: { sessionId: 'parent-1' },
         cacheDir: '/nova/tool-outputs/parent-1',
         hooks: { beforeToolCall: async () => ({ action: 'allow' }) },
       }),

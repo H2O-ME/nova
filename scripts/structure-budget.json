@@ -102,7 +102,7 @@
  "packages/core/src/plugin/types.ts": 310,
  "packages/core/src/presentation.ts": 275,
  "packages/core/src/request-trim.ts": 208,
- "packages/core/src/runtime/run.ts": 105,
+ "packages/core/src/runtime/run.ts": 119,
  "packages/core/src/session-aggregate.ts": 257,
  "packages/core/src/session-event-schema.ts": 88,
  "packages/core/src/session-files.ts": 47,

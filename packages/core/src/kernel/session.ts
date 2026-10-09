@@ -893,8 +893,8 @@ export class AgentSession {
       maxTurns: deps.maxTurns,
       cacheDir: deps.cacheDir(),
       jobs: deps.jobs,
-      sessionId: this.deps.session.id,
-      runId: run.id,
+      // The run froze this scope at creation; the loop reads it, never rebuilds it.
+      scope: run.scope,
       emit: async (evt) => {
         await deps.session.appendEvent(evt);
         // The live plan panel cannot poll the log, so the snapshot the log just

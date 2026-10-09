@@ -11,11 +11,12 @@
  *
  * `id` is minted HERE rather than inside `runAgent`, so the loop no longer
  * invents a run the session does not know about (`agent/loop.ts` used to cast a
- * fresh `runId` on every entry). Nothing downstream reads the value yet — the
- * protocol frame that carries it lands with G1d — but it is now the identity of
- * a real entity rather than an orphan string.
+ * fresh `runId` on every entry). The run also OWNS its `ExecutionScope`: built
+ * once from this identity, read by every tool call, never re-derived. The
+ * protocol frame that carries the id downstream lands with G1d.
  */
 import { newId } from '../ids.js';
+import type { ExecutionScope } from '../types.js';
 
 /** Where a run is in its lifecycle. Terminal states never transition again. */
 export type RunState = 'created' | 'running' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
@@ -44,11 +45,23 @@ export class Run {
   readonly id: string;
   /** The session this run belongs to. */
   readonly sessionId: string;
+  /**
+   * WHO and WHICH RUN this execution belongs to, built once here and handed to
+   * the loop verbatim. One owner because the alternative — three loose fields on
+   * `AgentOptions`, re-projected into a scope object at each tool call — put the
+   * same fact in two shapes and gave the next field a fourth place to be added.
+   */
+  readonly scope: ExecutionScope;
   private current: RunState = 'created';
 
-  constructor(sessionId: string, id: string) {
+  constructor(sessionId: string, id: string, principal?: string) {
     this.sessionId = sessionId;
     this.id = id;
+    this.scope = {
+      sessionId,
+      runId: id,
+      ...(principal !== undefined ? { principal } : {}),
+    };
   }
 
   get state(): RunState {
@@ -87,8 +100,8 @@ export class Run {
 }
 
 /** Mint a run for a session and move it to `running` in one step. */
-export function beginRun(sessionId: string): Run {
-  const run = new Run(sessionId, newId('run'));
+export function beginRun(sessionId: string, principal?: string): Run {
+  const run = new Run(sessionId, newId('run'), principal);
   run.start();
   return run;
 }

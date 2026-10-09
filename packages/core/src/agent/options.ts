@@ -7,6 +7,7 @@ import type {
   AgentHooks,
   AgentMessage,
   ChatProvider,
+  ExecutionScope,
   ToolCall,
   ToolDefinition,
   ToolDispatchCall,
@@ -40,26 +41,22 @@ export interface AgentOptions {
   /** Background-job registry exposed to tools through ToolExecuteContext. */
   jobs?: JobRegistry;
   /**
-   * The id of the session this run belongs to.
+   * WHO and WHICH RUN this execution belongs to — the whole scope as ONE
+   * object, handed to the loop instead of three loose fields.
    *
-   * Threaded so a tool that spawns a background job can stamp its owner. The
-   * registry is per-process by design (a job outlives the turn), so without
-   * this the job would be visible to, and announced into, every session.
+   * One object because the scope has one owner: a session builds it when it
+   * creates the run (`Run.scope`) and every tool call of that run reads the same
+   * frozen value, so a fact added later lands in one place instead of becoming a
+   * fourth flat field projected at each call site. `sessionId` is what a job
+   * stamp needs (the registry is per-process by design — a job outlives the turn
+   * — so an unowned job would be listed and announced into every session);
+   * `runId` correlates the calls of one run.
+   *
+   * `runId` is minted by `runAgent` when the caller pinned none, so a subagent's
+   * nested loop gets a DIFFERENT runId from its parent's under the SAME
+   * sessionId. See `ExecutionScope`.
    */
-  sessionId?: string;
-  /**
-   * Which run inside the session this is. Minted by `runAgent` when unset (one
-   * id per invocation, stable across its tool calls) so every hook and audit
-   * record can correlate the calls of one run — a subagent's nested loop gets a
-   * DIFFERENT runId from its parent's, under the SAME sessionId.
-   */
-  runId?: string;
-  /**
-   * The permission subject in force (the principal whose tier the approval
-   * gate consults). A channel that constrains its sessions stamps it; a nested
-   * run inherits it, so delegation can never widen what its caller could do.
-   */
-  principal?: string;
+  scope?: ExecutionScope;
   /** Session-event sink exposed to tools (log-only events like todo/write). */
   emit?: (evt: import('../session.js').SessionEvent) => void | Promise<void>;
   /**

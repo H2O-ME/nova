@@ -7,6 +7,7 @@ import { newId } from '../ids.js';
 import type {
   AgentEvent,
   AssistantMessage,
+  ExecutionScope,
   ToolCall,
 } from '../types.js';
 import {
@@ -30,10 +31,13 @@ export async function* runAgent(opts: AgentOptions): AsyncGenerator<AgentEvent> 
   // One id per invocation, stable across the run's tool calls: hooks and audit
   // records read it off the scope to correlate "the calls of THIS run" — and a
   // subagent's nested loop, being its own invocation, gets a different runId
-  // under the same sessionId. A caller that pinned `runId` (a resumed run
-  // replaying under one identity) wins.
-  const scoped: AgentOptions = opts.runId !== undefined ? opts : { ...opts, runId: newId('run') };
-  opts = scoped;
+  // under the same sessionId. A caller that pinned a runId (a resumed run
+  // replaying under one identity) wins; a caller that brought no scope at all
+  // (an embedder driving the loop bare) gets a scope holding only the minted id.
+  const scope: ExecutionScope = opts.scope?.runId !== undefined
+    ? opts.scope
+    : { ...opts.scope, runId: newId('run') };
+  opts = { ...opts, scope };
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   const maxBytes = opts.maxToolResultBytes ?? DEFAULT_MAX_TOOL_RESULT_BYTES;
   const stats = emptyStats();
