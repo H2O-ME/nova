@@ -114,6 +114,22 @@ Session → runAgent → ToolCall → Approval → Persistence
 
 **边界强调**：`gitClone` 留在 core，**不代表**整个 Git 子系统都留在 core。但 **G3 不得直接搬迁实现**——那会牵动依赖白名单、插件注册与现有消费者。**G3 先完成 ownership 审计，再决定是否拆包**；"编程能力包化"不是预设的必做重写任务。
 
+#### G3 ownership 审计（2026-10-10 现算，事实陈述，不含搬迁）
+
+| 事实 | 证据 |
+| --- | --- |
+| **git 不是模型可用的工具** | `packages/plugins/src/builtin/` 的工具清单里没有 `git_*`；全仓唯一的 `git_status` / `git_diff` / … 名字出现在 `web/src/client-frames.ts:315-333`、`web/src/frame-router.ts:118-137` —— 它们是**客户端帧**，不是工具定义 |
+| `core/src/git.ts`（229 行，8 个导出）与 `core/src/git-clone.ts`（52 行）的消费者**只有 `web`** | `web/src/git-frames.ts:27`、`web/src/session-frames.ts:13`；`ai` / `plugins` / `plugin-*` / `qqbot` / `cli` **零引用** |
+| 两者是**一体**，不能只搬一个 | `core/src/git-clone.ts:10` → `import { git } from './git.js'`（`git()` 是 `git.ts:75` 的 spawn 封装） |
+| `git.ts` 存在的**唯一理由**是右栏"变更"页 | 该面板是 §3.4 的删除目标（G6）；`git-clone.ts` 的理由是"从 URL 建会话"（`session-frames.ts:98`） |
+
+**审计结论（供拍板，不预设答案）**：
+
+- `git.ts` 的消费者与 `gitClone` 的消费者**在同一层**（都在 `web`）。既然"G6 删右栏"会让 `git.ts` 失去唯一理由，那么把 `git.ts` **连同** `git-clone.ts` 一起搬进 `web`（`web` 本可自持模块，依赖白名单不受影响），core 就彻底不含编程专用能力——这是与 §1 核心目标最一致的选项。
+- 但这与 §3.3 已拍板的"`gitClone` 暂留 core"**冲突**，因为 `git-clone.ts` 依赖 `git.ts` 的 `git()`；只搬一半就会复制一份 spawn 实现（缺陷族 #2）。
+- **替代选项**：保留 `git.ts` + `git-clone.ts` 于 core，接受"core 为可选 UI 面板背负编程能力"，并在 §3.3 表里把这条代价写明。
+- **无论选哪个，本次不动实现**（遵守"审计结论出来前不做任何搬迁"）。
+
 ### 3.4 rightbar 删除代价（G6 的输入，量化）
 
 | 项 | 数量 | 明细 |
@@ -152,11 +168,11 @@ Session → runAgent → ToolCall → Approval → Persistence
 ## 5. 批次表
 
 ```text
-G0a 决策冻结     本纲领 + 旧规范权威关系 + 依赖审查 + 批次映射      ← 只改文档（本批）
-G0b 定位落地     system-prompt.ts persona + 产品文案同步            ← 独立提交
-G1  Runtime 所有权 Run + ExecutionScope + Protocol                  ← 0.5.0 Batch 2/3 原契约
+G0a 决策冻结     本纲领 + 旧规范权威关系 + 依赖审查 + 批次映射      ← 只改文档（已完成）
+G0b 定位落地     system-prompt.ts persona + 产品文案同步            ← 已完成 f800c21
+G1  Runtime 所有权 Run + ExecutionScope + Protocol                  ← 实现部分已完成（G1a+G1b）；G1c'/G1d 消费者门控
 G2  Session 所有权 repository/writer/projection/repair + 删除序列    ← 0.5.0 Batch 5 原契约
-G3  能力归位     先做 ownership 审计，再决定 git 是否拆包            ← 0.5.0 Batch 4 剩余；不预设重写
+G3  能力归位     ownership 审计已完成（§3.3 审计补充）；是否搬迁待拍板 ← 0.5.0 Batch 4 剩余；不预设重写
 G4  Client Model ui/src/client/ React-free + App.tsx 拆分            ← 0.5.0 Batch 6 原契约
 G5  UI 原型验证  方案 A：Conversation 主舞台 + 按需抽屉 + 内联结果卡   ← 不改协议/Runtime；可与 G1–G4 并行
 G6  形态重构     删常驻 rightbar                                    ← 有条件通过
@@ -227,11 +243,14 @@ G8  封板         版本 + changeset + verify + smoke
 **G1 拆分（建议，按可独立提交单元）**
 
 ```text
-G1a  Run 实体 + 六态生命周期（core/src/runtime/run.ts）；runId 由 Run 提供，删除 loop 自铸
-G1b  scope 所有权归位：Run 持有并冻结 ExecutionScope；AgentOptions 三扁平字段 → scope?: ExecutionScope
-G1c  消费者接入：run/stats 带 runId、surface 状态走 Run 生命周期（G1a 的"消费者"另一半）
-G1d  Protocol Contract：PROTOCOL_VERSION + 帧级 eventId + 帧级 runId + 握手校验
+G1a  Run 实体 + 六态生命周期（core/src/runtime/run.ts）                                  ✅ 425fb71
+G1b  scope 所有权归位：Run 冻结 ExecutionScope；AgentOptions 三扁平字段 → scope?           ✅ d89a0ea
+G1c  surface 状态走 Run 生命周期                                                          ✅ 随 G1a 达成
+G1c' run/stats 带 runId                                                                   ⏸ 消费者门控
+G1d  Protocol Contract：PROTOCOL_VERSION + 帧级 eventId + 帧级 runId + 握手校验            ⏸ 消费者门控
 ```
+
+> **G1 实现部分已收口**（G1a + G1b）。G1c'/G1d 的现算消费者为空，判据与理由见下方"G1c / G1d 收口"。
 
 > **G1a 不得单独提交**——它必须与 G1c 的至少一条真实消费者同时落地，否则 `runId` 从"零消费"变成"新字段零消费"，缺陷只是换了个名字。
 
@@ -249,6 +268,21 @@ G1d  Protocol Contract：PROTOCOL_VERSION + 帧级 eventId + 帧级 runId + 握�
 `principal` 的设计用途（让 QQ 中继会话按"随调用者走的主体"钳制档位）在当前通道**不存在**：`qqbot/src/peers.ts:454 capOwnedTier` 改用**会话创建时钳制**达成同一目的，而 `peers.ts:451` 自己写明中继路径"does not have yet"这个主体。按 `NOVA-GENERALIST.md` §2 的"契约进 Core ≠ 实现进 Core"，它**留作声明契约**，不删；将来 QQ 中继接通时**必须与生产者同批**加回消费者，否则按缺陷族 #3 删除。
 
 **因此 G1b 的交付改为"所有权归位"，不含字段扩张**：`Run` 在创建时构造并冻结一份 `ExecutionScope`（`Run.scope`），`AgentOptions` 的三个扁平字段合并为 `scope?: ExecutionScope`，`agent/tools.ts` 删除现场投影改为直接读取。字段扩张留给**每个字段各自接入时**同批完成（生产者 + 消费者一起），判据与 G1a/G1c 同一条。
+
+#### G1c / G1d 收口（2026-10-10 现算）：消费者门控，暂缓
+
+G1a（Run 实体）与 G1b（scope 归位）已落地。**G1c 与 G1d 的原定交付内容在现算下都没有消费者**，按本文档 §2.2 与 §6 的同一判据（实体必须与消费者同批）**暂缓**：
+
+| 原定交付 | 现算消费者 | 判定 |
+| --- | --- | --- |
+| G1c：`run/stats` 带 `runId` | **无** —— 该事件的 6 个消费者（`session-aggregate`、`plugin-context/fold`、`web/{totals,trace,transcript}`、`context-insights`）**全部按 `afterMessageId` 锚定**（`session-projection.ts:24 anchoredRunStats`），没有一处需要"哪个 run" | 暂缓 |
+| G1c：surface 状态走 Run 生命周期 | **已达成** —— `cli/src/repl.ts:202` 与 `core/test/kernel.test.ts:137` 已改读 `agent.running` / `agent.compacting`，二者由 `Run` 派生 | 完成 |
+| G1d：帧级 `runId` | **无** —— `web/src/trace.ts` 逐事件成行、保持日志顺序，不按 run 分组 | 暂缓 |
+| G1d：`PROTOCOL_VERSION` + 握手校验 | **弱** —— `ui/src/stale-build.ts` 已用内容哈希比对解决"旧 bundle 继续跑"（重载一次），且 `server-frames.ts:413 ready.version` 已带构建版本；再引入一条协议版本会与之重叠 | 暂缓 |
+
+**收口判据**：`runId` 的真实消费者在 Nova 出现"同一会话内多个 run 需要被区分"的场景（例如 UI 按 run 归属渲染、或按 run 聚合的统计卡）时才会出现。届时**该场景与 `runId` 消费同批落地**，不提前建字段。
+
+> **本节修正了 G1 的范围**：G1 的实现部分 = G1a + G1b，已完成；G1c/G1d 转入"消费者出现即做"。
 
 ### G2 — Session 所有权
 
