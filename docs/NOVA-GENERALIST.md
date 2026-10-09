@@ -197,6 +197,44 @@ G8  封板         版本 + changeset + verify + smoke
 - **验收**：`packages/web/test/session-midrun-switch.test.ts` 保护的"中途切换不改变在跑的 Run"仍然成立。
 - **开工前置**：开工当天重算 `session.ts` / `protocol.ts` / model state 的实际依赖，**不得引用任何过期清单**。
 
+#### G1 开工前核对（2026-10-10，现算）
+
+**① Current ownership**
+
+| 项 | 现状 | 位置 |
+| --- | --- | --- |
+| `ExecutionScope` | **已存在**，3 字段 `sessionId?` / `runId?` / `principal?`，全部可选 | `core/src/types.ts:431` |
+| `ToolCallScope` | `extends ExecutionScope`，纯别名 | `core/src/types.ts:418` |
+| scope 生产 | 从 `AgentOptions` 三字段**投影**（不是"现场拼"） | `core/src/agent/tools.ts:154` |
+| `runId` 生产 | `runAgent` 未设时**自铸** | `core/src/agent/loop.ts:35` |
+| `runId` 消费 | **零** —— 全仓（core/web/cli/qqbot/plugins）无读取者 | 见下 |
+| `AgentStatus` | `'idle' \| 'running' \| 'compacting'`，**非** 0.5.0 期望的六态生命周期 | `core/src/kernel/session.ts:142` |
+| Protocol | 无 `PROTOCOL_VERSION` / `eventId` / 帧级 `runId` | `web/src/protocol.ts` |
+
+**② Target ownership**：0.5.0 Batch 2/3 原文（`Run` 实体 + 六态生命周期；`ExecutionScope` 八字段；Run 创建时冻结；`RunContext = { scope, signal }`）。
+
+**③ Current dependencies**：`ExecutionScope` 消费者 = `core/{approval, agent/tools, tools/nested-run, plugin/capabilities, kernel/session}` + `plugins/{hooks, permission-gate}`。`runId` 消费者 = **无**。`anchoredRunStats` 的 key 是 `afterMessageId`（**消息 id**，`session-projection.ts:29`），**不是** runId。
+
+**④ Target dependencies**：③ + Run 的消费者（`run/stats` 带 runId、surface 的状态显示走 Run 生命周期）。
+
+**⑤ Forbidden**：0.5.0 Batch 4 已封板结论；Provider HTTP/SSE、Tool 执行语义、Session 持久化格式、Web UI 布局、插件公开 API。
+
+**核对结论（两条，均改变 G1 的范围判断）**
+
+1. **scope 已显式贯穿**（有 `.changeset/execution-scope-threading.md` 为证）→ 0.5.0 描述的"每 tool call 现场拼 3 字段"**已部分完成**，G1 的删除目标缩小为"由 `Run` 提供而非 `AgentOptions` 投影"。
+2. **`runId` 只写不读** → 若只建 `Run` 实体而不建消费者，就是**复制本仓高频缺陷族 #3**（`nova-dev` 技能 §三.4）。**G1 必须"实体 + 消费者"同批做**，这与 0.5.0 §7「不单独提前，提前做只会得到没人读的代码」是同一判据。
+
+**G1 拆分（建议，按可独立提交单元）**
+
+```text
+G1a  Run 实体 + 六态生命周期（core/src/runtime/run.ts）；runId 由 Run 提供，删除 loop 自铸
+G1b  ExecutionScope 扩至八字段；Run 创建时冻结；RunContext = { scope, signal }
+G1c  消费者接入：run/stats 带 runId、surface 状态走 Run 生命周期（G1a 的"消费者"另一半）
+G1d  Protocol Contract：PROTOCOL_VERSION + 帧级 eventId + 帧级 runId + 握手校验
+```
+
+> **G1a 不得单独提交**——它必须与 G1c 的至少一条真实消费者同时落地，否则 `runId` 从"零消费"变成"新字段零消费"，缺陷只是换了个名字。
+
 ### G2 — Session 所有权
 
 - **契约**：继承 0.5.0 Batch 5：`core/src/session/{repository,writer,projection,repair}.ts`；删除序列补 PTY 停止、jobs 前置、await run settle、zombie 防护；12 个 `session-*.ts` 收进 `session/`；KernelEvent 分区（**不删事件、不造 wrapper**）。
