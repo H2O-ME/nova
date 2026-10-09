@@ -2,9 +2,9 @@
 name: nova-dev
 description: >-
   NovaAgent 仓库（D:\web\agent）的开发规程：开工前要读哪几份文档、结论必须有哪种证据、
-  如何对齐参照实现 dsh、修复必须配什么测试、收尾跑哪些门禁，以及本仓高频缺陷族
+  参照系是通用化纲领（不再是 dsh）、修复必须配什么测试、收尾跑哪些门禁，以及本仓高频缺陷族
   （声明与实现相反、第二份实现、只写不读）的识别方法。
-  当用户在 NovaAgent 仓库里要求改代码、修 bug、对齐 dsh、调整 UI、加功能，
+  当用户在 NovaAgent 仓库里要求改代码、修 bug、调整 UI、加功能，
   或说「按 nova-dev 规矩做」「按仓库规矩来」时使用。
   其他仓库的通用编码任务不要触发（改用该仓库自己的 AGENTS.md）。
 ---
@@ -21,11 +21,15 @@ description: >-
 1. **`AGENTS.md`** —— 唯一权威。机制的唯一事实来源：内核协议、插件分层、surface 缝、
    审批与权限、PTC、goal、验证与门禁口径。**机制变了就改这里**，行数口径是
    `scripts/structure-budget.json` 的 `split('\n').length`。
-2. **`docs/dsh-parity-inventory.md`** —— 缺陷账本。逐条记着「已修 / 判定有意偏离 /
-   未立项」以及每条的证据。**别把「有意偏离」当 bug 改回去**——它是有理由的。
-3. **参照实现（只读）**：`D:\web\agent\deepseek-harness-master\` 与已安装的
-   `D:\DeepSeek Harness\resources\app.asar\dsh\`。**永远不要修改它们**。
-4. 动手前先确认你要改的文件在依赖白名单里属于哪一层（`AGENTS.md` §4）。
+2. **`docs/NOVA-GENERALIST.md`** —— **通用化纲领**：定位、执行契约、批次表（G 系列）、
+   每批开工条件与删除判据。改任何与"通用化 / UI 形态 / 批次"相关的东西前先读它。
+3. **`docs/dsh-parity-inventory.md`** —— **历史参照（非验收口径）**。它是"哪些 UI 是
+   移植来的"的索引；各条「记名偏离（勿修回）」的结论继续有效——那些是实测否决，
+   别当 bug 改回去。
+4. **历史参照源码（只读）**：`D:\web\agent\deepseek-harness-master\` 与已安装的
+   `D:\DeepSeek Harness\resources\app.asar\dsh\`。**只用于查移植来源，不是对齐权威**。
+   **永远不要修改它们**。
+5. 动手前先确认你要改的文件在依赖白名单里属于哪一层（`AGENTS.md` §3）。
 
 > 只读文档就下结论是不够的：文档常常滞后于代码。**代码是行为的真相，文档是意图的真相**，
 > 两者冲突时以代码为准，然后**把这个冲突本身当成一个缺陷**去修（改文档或改代码）。
@@ -39,20 +43,25 @@ description: >-
 
 ## 三、核心纪律
 
-### 1. 对齐 dsh，不要自创
+### 1. 参照系是通用化纲领，不是 dsh
 
-本仓的界面是 deepseek-harness 的移植（MIT，样式逐份署名）。遇到「这里该长什么样」，
-**先去看 dsh 的实现**，不要凭感觉发明。
+**2026-10-09 起 `docs/NOVA-GENERALIST.md` 把 Nova 定为通用型 agent 并要求脱离 dsh。**
+`docs/dsh-parity-inventory.md` 降级为**历史参照、非验收口径**；新代码**不得**再逐值对齐 dsh。
+（旧纪律"对齐 dsh，不要自创"已作废。）
 
-发现差异时先分类，这决定了你怎么做：
+遇到「这里该长什么样」，权威依次是：
 
-| 情况 | 做法 |
-| --- | --- |
-| dsh 有明确取值，我们是笔误/漏抄 | 照 dsh 逐行对齐，改完记录 |
-| dsh 没有这个形态（我们自创的） | 要么删掉自创形态，要么**先说明理由并让用户拍板** |
-| 有意偏离（用户要求，或 dsh 的值在本仓不适用） | **写进 `dsh-parity-inventory.md` 记名**，注明「勿修回」及理由 |
+1. `docs/NOVA-GENERALIST.md` 的裁决（定位、执行契约、归属划分、批次与删除判据）；
+2. `docs/NOVA-DESIGN-SYSTEM.md` §2 已冻结的视觉方向（中性优先 / 单一 accent /
+   暗色一等公民 / 小圆角 / 无阴影 / 仅 opacity+transform 动效）；
+3. `docs/NOVA-UI-ARCHITECTURE.md` 的结构规范（§2/§5 尚待 G5/G6 重定）。
 
-**自创而不记名，下一个人会当成 bug 改回去。** 这是账本存在的唯一理由。
+dsh 的**唯一**剩余用途：查「哪些 UI 是移植来的、移植自哪个模块」——G7a 删除
+"ported from" 注释与逐值几何时用它定位。
+
+**偏离要记名**：与已冻结方向的有意偏离，写进 `docs/dsh-parity-inventory.md` 并注明理由——
+**自创而不记名，下一个人会当成 bug 改回去**。用户的新意见若与已冻结方向冲突，
+**出方案让他拍板**，不要直接改（2026-10-09 他驳回过一版直接开跑的重构计划）。
 
 ### 2. 结论必须有证据
 
@@ -151,8 +160,8 @@ pnpm gates:update # 同步行数上限（下调静默；上调逐条 RAISED）
 3. `pnpm gates` 通过；lint 0 error（warnings 是存量，不必逐一清）。
 4. 前端改动：`pnpm --filter nova-web-ui build`，确认产物哈希变了、`index.html` 指向新哈希。
 5. 每处修复配 killing test，并**跑过变异验证**。
-6. 意图层面的变化写进 `AGENTS.md`；对齐/偏离写进 `docs/dsh-parity-inventory.md`；
-   用户可见的变化写一份 `.changeset/*.md`。
+6. 意图层面的变化写进 `AGENTS.md` 与 `docs/NOVA-GENERALIST.md`；偏离记进
+   `docs/dsh-parity-inventory.md`；用户可见的变化写一份 `.changeset/*.md`。
 7. 临时文件（脚本/截图/profile）删干净。
 
 ## 七、汇报格式

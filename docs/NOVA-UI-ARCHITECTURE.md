@@ -1,20 +1,19 @@
 # NOVA WebUI 架构规范
 
-> **文档状态**：Normative（**§1 与 §6.2 待 G0b 改写**）
+> **文档状态**：Normative（**§1/§6.2 已于 G0b 改写；§2/§5 待 G5/G6 重定**）
 > **本文件回答**：浏览器前端的目录 ownership、状态分层、布局结构、扩展点边界。
 > 视觉决策见 `NOVA-DESIGN-SYSTEM.md`；依赖边界见 `NOVA-BOUNDARIES.md`；通用化方向见 `NOVA-GENERALIST.md`。
 
-> ⚠️ **待改写标注（2026-10-09）**：§1「Nova 是 Agent Development Workspace」与 §6.2「Nova 是 Coding Agent」的定位，与 `NOVA-GENERALIST.md` §1 的通用型定位冲突，将在 **G0b** 改写。§2 的三栏（含常驻 Inspector）与 §5 的 Slot 白名单将在 **G5/G6** 重定。**在此之前，本文件的目录树、状态分层、React Adapter 规则与组件禁令仍然有效。**
+> ⚠️ **待重定标注（2026-10-09 G0b 更新）**：§1 与 §6.2 已按通用型定位改写。**§2 的三栏结构（含常驻 Inspector）与 §5 的 Slot 白名单仍是旧形态描述**，将在 **G5（原型验证）/ G6（形态重构）** 重定。本文件的目录树、状态分层、React Adapter 规则与组件禁令仍然有效。
 
 ---
 
 ## 1. Nova 的定位
 
-> **[待 G0b 改写]** 本节把 Nova 定位为 "Agent Development Workspace"、界面中心是 "Conversation + Execution + Tools + Context"。`NOVA-GENERALIST.md` §1 已将其改为**通用型本地 agent 工作台**；下方原文保留至 G0b 落地。
-
 ```text
 Nova 不是：AI 聊天应用
-Nova 是：  Agent Development Workspace
+Nova 不是：编程专用 IDE
+Nova 是：  通用型本地 agent 工作台
 ```
 
 所以界面的中心是：
@@ -30,6 +29,10 @@ Conversation + Execution + Tools + Context
 ```
 
 这条定位决定了本文件其余全部内容。
+
+> **编程是 Nova 可以可靠执行的一类任务，不是它组织整个产品的默认假设**（`NOVA-GENERALIST.md` §0）。
+> 工作区（workspace）保留——它回答"在哪干活"，不是"代码库"；`bash` / `fs` / `search` 保留——它们是通用任务的地基。
+> **§2 的三栏结构（含常驻 Inspector）与 §5 的 Slot 白名单仍按旧形态描述，将在 G5/G6 重定**；在此之前它们不是通用化后的目标形态。
 
 ## 2. Nova Workspace 结构原则
 
@@ -277,9 +280,7 @@ Agent Message
 
 ### 6.2 Tool Call 是 Nova WebUI 的核心特色
 
-> **[待 G0b 改写]** 本节原文把 Nova 定义为 "Coding Agent"。`NOVA-GENERALIST.md` §1 改为通用型定位后，Tool UI 仍是核心特色（工具执行是通用任务的可见载体），但不再是"因为 Nova 是编程 Agent"。下方原文保留至 G0b 落地。
-
-Nova 是 Coding Agent，Tool UI 比普通聊天 UI 更重要。
+工具执行是通用任务的可见载体，因此 Tool UI 比普通聊天气泡更重要——**不是**因为 Nova 是编程 Agent，而是因为"做了什么"必须比"说了什么"更可核。
 
 ```text
 默认 compact：

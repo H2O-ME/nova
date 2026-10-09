@@ -53,7 +53,7 @@ nova qqbot                         # QQ 机器人通道
 
 | Surface | 形态 | 说明 |
 | --- | --- | --- |
-| **浏览器 UI**（默认） | `nova` | 单 Node 进程：HTTP 静态托管 + 单 WebSocket 内核事件流；launch token → HMAC 签名 HttpOnly cookie（仅本机）；前端 React 18 + Vite，状态归一处纯 reducer，视觉系统整体移植 deepseek-harness（三层 token / 明暗双档 / 三栏 AppFrame / composer 胶囊 / 真 diff 工具卡） |
+| **浏览器 UI**（默认） | `nova` | 单 Node 进程：HTTP 静态托管 + 单 WebSocket 内核事件流；launch token → HMAC 签名 HttpOnly cookie（仅本机）；前端 React 18 + Vite，状态归一处纯 reducer，视觉为 Nova 自研设计语言（`docs/NOVA-DESIGN-SYSTEM.md`；三层 token / 明暗双档 / 三栏 AppFrame / composer 胶囊 / 真 diff 工具卡） |
 | **终端 TUI** | `nova --tui` | 终端全屏界面：alternate screen + 原始键盘 + 一条内核订阅，与浏览器面**同构**（事件进、帧出）；批准与提问都是接管卡；**管道下自动回落 `--repl`**（绝不朝管道画帧），显式 opt-in |
 | readline REPL | `nova --repl` | 终端最低保障（非 TTY 自动回落）：斜杠命令、审批 y/n/a + 拒绝理由、流式进度行 |
 | headless | `nova exec --json` | 非交互单次执行，`KernelEvent` JSONL 事件流，never 审批（未放行即拒绝） |
