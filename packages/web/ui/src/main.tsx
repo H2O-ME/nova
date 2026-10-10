@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './App.js';
+import { App } from './app/App.js';
 import { ErrorBoundary } from './shell/ErrorBoundary.js';
 import { SHELL_COPY } from './shell/copy.js';
 // Document-wide pointer/keyboard tracking: the focus-ring styles and future
