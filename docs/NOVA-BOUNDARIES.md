@@ -66,6 +66,8 @@ core → plugin implementation
 
 判据：import 说明符匹配 `@nova-agent/<pkg>/<任意后缀>` 即违规。包内部用相对路径（`./`、`../`）不受此规则约束。
 
+**显式子入口豁免**（2026-10-11，随 G4 落地）：在包的 `package.json` `exports` 里**声明**的子路径是该包主动公开的边界，不是内部实现，不受深路径规则约束。清单唯一定义在 `scripts/gates-lib.mjs` 的 `SUBPATH_EXPORTS`（dep-direction 与 test-boundary 共读），当前仅 `core/totals`——它存在的原因：kernel 的 dist 是 Node 产物（顶层 `node:fs`），而 ui 的浏览器 bundle 只需要 totals 这个零依赖叶子；ui 对 core 的其余引用保持 type-only（编译期擦除，bundle 不携带服务端代码）。新增一条子入口 = 改 `exports` + 入清单，两处都在 diff 里显眼可审。
+
 扫描的是**源码文本**而非 AST，因为要抓的包括字符串里的包名——`plugin-tree.ts` 的 `SHIPPED_PACKAGES` 是一张字符串表、运行时 `import()` 装载，**动态边也是边**。代价是注释里的包名也会被算进来，而那不是依赖；因此门禁先剔除注释（字符串保留）。这条修正来自 Batch 4 的实测：摘边时唯一的"违规"就是文件头那句解释历史的注释，而它会把作者推向"把白名单加回去"——正是门禁要阻止的那一步。
 
 **现状**：全仓**零深路径包导入**，本规则是零违规的纯棘轮——它的作用是防止第一条出现。

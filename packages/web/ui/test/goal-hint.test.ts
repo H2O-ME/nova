@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { Goal } from '@nova-agent/core';
 import type { ReadyInfo } from '../../src/protocol.js';
-import { emptyTotals } from '@nova-agent/core';
+import { emptyTotals } from '@nova-agent/core/totals';
 import { initialState, reduce } from '../src/state.js';
 import { GOAL_ACTIVE_HINT, GOAL_HINT, claimHint } from '../src/composer/claim-hint.js';
 import { DraftSurface } from '../src/composer/DraftSurface.js';

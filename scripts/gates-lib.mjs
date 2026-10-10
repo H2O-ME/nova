@@ -135,3 +135,15 @@ export function stripComments(text) {
 export function filterArgs(argv) {
   return argv.filter((a) => !a.startsWith('--'));
 }
+
+/**
+ * Explicit PUBLIC subpath exports (declared in the owning package.json's
+ * `exports`), exempt from the two deep-path rules (dep-direction for src,
+ * test-boundary for test). Those rules ban reaching into a package's
+ * INTERNALS; a declared subpath entry is the opposite — a boundary the owner
+ * publishes on purpose (`core/totals` exists because the kernel dist is a Node
+ * bundle, and the browser side needs the one leaf that imports nothing).
+ * Keeping the exemption a named list in the SHARED lib makes adding one an
+ * explicit, reviewed act — and keeps both gates reading the same list.
+ */
+export const SUBPATH_EXPORTS = new Set(['core/totals']);

@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collectSources, packageLeafDirs, stripComments } from './gates-lib.mjs';
+import { collectSources, packageLeafDirs, stripComments, SUBPATH_EXPORTS } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const packagesDir = join(repoRoot, 'packages');
@@ -77,7 +77,7 @@ for (const { pkg, dirs } of packageLeafDirs(packagesDir, 'src')) {
       } else if (!allowed.includes(target) && target !== pkg) {
         violations.push(`${rel}: @nova-agent/${pkg} → @nova-agent/${target} 不在白名单`);
       }
-      if (deep !== '') {
+      if (deep !== '' && !SUBPATH_EXPORTS.has(`${target}${deep}`)) {
         violations.push(
           `${rel}: @nova-agent/${target}${deep} —— 跨包只能走公开入口 @nova-agent/${target}，不得引用内部实现（NOVA-BOUNDARIES §3.1）`
         );

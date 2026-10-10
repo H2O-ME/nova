@@ -173,7 +173,7 @@ G0b 定位落地     system-prompt.ts persona + 产品文案同步            �
 G1  Runtime 所有权 Run + ExecutionScope + Protocol                  ← 实现部分已完成（G1a+G1b）；G1c'/G1d 消费者门控
 G2  Session 所有权 repository/writer/projection/repair + 删除序列    ← 0.5.0 Batch 5 原契约
 G3  能力归位     ownership 审计已完成（§3.3 审计补充）；是否搬迁待拍板 ← 0.5.0 Batch 4 剩余；不预设重写
-G4  Client Model ui/src/client/ React-free + App.tsx 拆分            ← 0.5.0 Batch 6 原契约
+G4  Client Model ui/src/client/ React-free + App.tsx 拆分            ← 已完成（0722d20 四刀收口，props drilling 留待 G5 后）
 G5  UI 原型验证  方案 A：Conversation 主舞台 + 按需抽屉 + 内联结果卡   ← 不改协议/Runtime；可与 G1–G4 并行
 G6  形态重构     删常驻 rightbar                                    ← 有条件通过
 G7a 视觉自研     --dsw-* → --nova-*；删 design-platform.css         ← 有条件通过
@@ -342,6 +342,22 @@ G1a（Run 实体）与 G1b（scope 归位）已落地。**G1c 与 G1d 的原定�
 - **删除**：`App.tsx` 内 socket / 业务 state；props drilling；越层值导入（`state-events.ts:10` 值导入服务端 `../../src/totals`）。
 - **不可改变**：Runtime 行为、Web 协议语义、视觉设计、Tool 执行。
 - **验收**：Client Model 不依赖 React（可断言）；reducer 纯函数测试仍绿。
+
+#### G4 收口（2026-10-11，四刀落地）
+
+| 刀 | 交付 | 提交 |
+| --- | --- | --- |
+| ① totals 归位 | `web/src/totals.ts`（纯 fold，唯一依赖 core 的 RunStats 类型）迁 `core/src/totals.ts`；web 与 ui 共 13 处 import 不再触服务端实现；**越层值导入删净**。后续修正（b1dbd51 的跟踪提交）：ui 对 core 的运行时值导入走**浏览器安全子入口** `@nova-agent/core/totals`——kernel dist 是 Node 产物（顶层 `node:fs`），ui bundle 的既有契约是"不携带服务端代码"（`ui/src/types.ts` 头注释），totals 是零依赖叶子，以显式子入口公开（`SUBPATH_EXPORTS`，见 NOVA-BOUNDARIES §3.1） | b1dbd51 |
+| ② socket/模型 React-free | `client/{connection,model,protocol}`：socket 生命周期（拨号/退避/重连/帧聚合）与状态容器（reducer+connection+订阅）均为纯 TS；`client.ts` 改薄 hook（useSyncExternalStore；模型在 effect 内创建——StrictMode remount 复用已 dispose 实例会让 socket 永不再建）；`test/client-pure.test.ts` 守卫「client/ 不 import react」 | 7f1e289 |
+| ③ 事件域拆分 | `client/{messages,runs,approvals,sessions}`：transcript/运行状态/阻塞卡/会话列表四域各自成文件；`state-events.ts` 592→160 行只剩分类器+分派（三重覆盖+assertNever 穷尽性原样） | 8d87e55 |
+| ④ App 拆分 | `app/App.tsx`（根：状态+路由+覆盖层）+ `app/AppShell.tsx`（三栏几何）+ `app/routes/{SessionRoute,PluginCenterRoute}` + `app/SettingsOverlay.tsx`；755 行旧 `App.tsx` 删除 | 0722d20 |
+
+**验收证据**：ui 车道 97 文件 1043 断言全绿；typecheck/lint(0 error)/gates 四绿；`pnpm verify` 全环绿。App.tsx 与全部组件的对外行为零改动（AgentClient 接口不变，无测试渲染路径变化）。
+
+**两项留待后续（有意不做的裁决）**：
+
+- **props drilling 的 context 化**：现算约 20 个组件的 props 签名 + 大半 UI 测试夹具重写，且 G5 原型验证将重排组件宿主关系——先做是双重功。留到 G5 结论落地后随形态批一并做。
+- **协议形状的越层 type 导入**（`ui/src/types.ts` ← `../../src/protocol`）：type-only import 编译期擦除，不构成运行时依赖；契约点名的是**值**导入（已删净）。协议类型的宿主归属留给协议契约批。
 
 ### G5 — UI 原型验证（**有条件通过**）
 

@@ -24,7 +24,7 @@ import {
   formatTokens,
   modelThroughput,
 } from '../format.js';
-import type { SessionTotals } from '@nova-agent/core';
+import type { SessionTotals } from '@nova-agent/core/totals';
 
 /** One label/value line of a pill's dialog. */
 export interface StatRow {

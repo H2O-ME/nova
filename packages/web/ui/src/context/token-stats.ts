@@ -17,7 +17,7 @@
  * rather than asserted (see `docs/dsh-parity-inventory.md`).
  */
 import type { ContextTimeline } from '../types.js';
-import type { SessionTotals } from '@nova-agent/core';
+import type { SessionTotals } from '@nova-agent/core/totals';
 import { formatTokens } from '../format.js';
 import { CATEGORY_COLOR, CATEGORY_ORDER, categoryLabel } from './context-model.js';
 import type { DonutSlice } from './donut-model.js';

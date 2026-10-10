@@ -4,7 +4,7 @@
  * transcript half lives in `./messages.ts`, the blocking cards in
  * `./approvals.ts`; this module is the run's own bookkeeping.
  */
-import { addRun } from '@nova-agent/core';
+import { addRun } from '@nova-agent/core/totals';
 import type { KernelEvent } from '../types.js';
 import type { UiState } from '../state.js';
 import { closeStreaming, hint, push } from './messages.js';

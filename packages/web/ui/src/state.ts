@@ -532,7 +532,7 @@ export interface DirectoryState {
  * Session-cumulative numbers and their zero are the web package's (`totals.ts`,
  * shared with the host, which folds the whole log for `ready`).
  */
-import { emptyTotals, type SessionTotals } from '@nova-agent/core';
+import { emptyTotals, type SessionTotals } from '@nova-agent/core/totals';
 
 export type { SessionTotals };
 

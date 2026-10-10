@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -14,6 +15,16 @@ const target = `http://127.0.0.1:${targetPort}`;
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    // The ui bundle must ship no server code (see src/types.ts): type imports
+    // from @nova-agent/core erase at build time, and the one RUNTIME import
+    // goes through the browser-safe subpath entry `@nova-agent/core/totals`
+    // (zero node imports), resolved from SOURCE — the kernel's dist
+    // top-level imports node:fs and must never enter this graph.
+    alias: [
+      { find: /^@nova-agent\/core\/totals$/, replacement: fileURLToPath(new URL('../../../packages/core/src/totals.ts', import.meta.url)) },
+    ],
+  },
   build: { outDir: '../public', emptyOutDir: true },
   server: { proxy: { '/ws': { target, ws: true }, '/index.html': { target }, '/src': { target }, '/@vite': { target } } },
 });

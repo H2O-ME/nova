@@ -10,7 +10,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ContextBreakdown, ContextTimeline } from '../src/types.js';
-import { emptyTotals } from '@nova-agent/core';
+import { emptyTotals } from '@nova-agent/core/totals';
 import { ContextView } from '../src/context/ContextView.js';
 
 function cats(overrides: Partial<ContextBreakdown> = {}): ContextBreakdown {

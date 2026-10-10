@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { chromeView, composerDisabled, modeControlsLocked, workspaceLabel } from '../src/chrome-view.js';
 import { initialState, reduce, type UiState } from '../src/state.js';
 import type { ReadyInfo } from '../../src/protocol.js';
-import { emptyTotals } from '@nova-agent/core';
+import { emptyTotals } from '@nova-agent/core/totals';
 
 function ready(over: Partial<ReadyInfo> = {}): UiState {
   return reduce(initialState, {

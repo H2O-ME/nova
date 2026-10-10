@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { averageFirstToken, cacheHitText, formatClock, formatDuration, formatExactTokens, formatTokens, liveDurationText, modelThroughput, runDurationText, runMetaText, scopedGrant, subagentTotals, throughput } from '../src/format.js';
-import { emptyTotals, type SessionTotals } from '@nova-agent/core';
+import { emptyTotals, type SessionTotals } from '@nova-agent/core/totals';
 
 describe('formatDuration', () => {
   it('grows through the units without ever printing a bare float', () => {

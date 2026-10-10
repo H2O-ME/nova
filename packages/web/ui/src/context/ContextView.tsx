@@ -11,7 +11,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type { ContextTimeline } from '../types.js';
-import type { SessionTotals } from '@nova-agent/core';
+import type { SessionTotals } from '@nova-agent/core/totals';
 import { scrollportOf } from '../scroll-follow.js';
 import { CompositionCard, StatsStrip } from './ContextCards.js';
 import { DashboardCard } from './DashboardCard.js';

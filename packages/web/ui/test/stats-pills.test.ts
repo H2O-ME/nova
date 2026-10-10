@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { timePill, usagePill } from '../src/composer/stats-model.js';
-import { emptyTotals, type SessionTotals } from '@nova-agent/core';
+import { emptyTotals, type SessionTotals } from '@nova-agent/core/totals';
 
 function totals(overrides: Partial<SessionTotals>): SessionTotals {
   return { ...emptyTotals, ...overrides };

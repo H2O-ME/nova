@@ -19,7 +19,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collectSources, isDir, stripComments, workspaceLeafDirs } from './gates-lib.mjs';
+import { collectSources, isDir, stripComments, workspaceLeafDirs, SUBPATH_EXPORTS } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const packagesDir = join(repoRoot, 'packages');
@@ -53,6 +53,12 @@ for (const dir of workspaceLeafDirs(packagesDir, 'test')) {
     const code = stripComments(readFileSync(file, 'utf8'));
     for (const [, spec] of code.matchAll(SPEC_RE)) {
       if (DEEP_PKG_RE.test(spec)) {
+        // A declared subpath export IS the public entry (see gates-lib's
+        // SUBPATH_EXPORTS) — `@nova-agent/core/totals` is not an internals reach.
+        if (SUBPATH_EXPORTS.has(spec.replace(/^@nova-agent\//, ''))) {
+          publicEntry++;
+          continue;
+        }
         violations.push(
           `${rel}: ${spec} —— 测试跨包只能走公开入口（NOVA-TESTING §3.3）`
         );
