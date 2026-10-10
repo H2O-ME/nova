@@ -136,8 +136,13 @@ pnpm gates:update # 同步行数上限（下调静默；上调逐条 RAISED）
   `index.html` 是 `no-cache`、资产是内容哈希，所以**刷新浏览器即可**生效。
 - 测试调用方式：`pnpm exec vitest run <路径>`（仓库根跑）可以；
   **`pnpm --filter <pkg> exec vitest run <pattern>` 会报 "No test files found"**，别用这种。
-- `packages/web/ui/src`（全仓最大的一块代码）**既无行数预算、也无依赖方向检查**——
-  `pnpm gates` 兜不住它，得人工守（只允许 `@nova-agent/core` 的类型/纯数据形状 + React）。
+- `packages/web/ui/src`（嵌套工作区成员 `nova-web-ui`）**已被 `pnpm gates` 覆盖**：
+  行数预算与依赖方向都扫 `packages/<pkg>/<sub>/src` 二趟（归宿主包 `web` 的白名单管，
+  只允许 `@nova-agent/core`/`@nova-agent/plugins` + React）。人工要守的只剩
+  "不 import 服务端实现文件"（`ui/src/** → ../../src/*` 的越层导入）。
+- 门禁脚本共享原语在 `scripts/gates-lib.mjs`（collectSources / workspaceLeafDirs /
+  packageLeafDirs / stripComments / filterArgs）——改目录扫描或注释剥离语义时改它，
+  不要在单个脚本里再写一份。
 - 改 `core` / `plugins` 后，依赖方的 typecheck 读的是**已构建的 `dist/index.d.mts`**，
   所以要先 `pnpm build` 再 typecheck。
 - 行数超上限时用 `pnpm gates:update [子串]`，**增长必须显式发生过**（它会打印 RAISED）。

@@ -17,9 +17,10 @@
 // 语义：
 //   check（默认）：任一文件任一规则超出基线即失败；低于基线的条目打印为可收紧。
 //   --update [子串...]：把基线同步为当前计数；上调逐条打印 (RAISED)。
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { filterArgs } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const uiSrc = join(repoRoot, 'packages', 'web', 'ui', 'src');
@@ -140,7 +141,7 @@ try {
 }
 
 if (process.argv.includes('--update')) {
-  const filters = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+  const filters = filterArgs(process.argv.slice(2));
   const next = { ...baseline };
   let raised = 0;
   let lowered = 0;

@@ -16,64 +16,20 @@
 // 现状：两条都是**零违规的纯棘轮**——跨包引用全走公开入口，零深度 ≥3 的相对
 // 引用。作用与 dep-direction 的深路径规则相同：让第一次出现时门禁就把理由说
 // 出来，而不是等 review 发现。
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectSources, isDir, stripComments, workspaceLeafDirs } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const packagesDir = join(repoRoot, 'packages');
-
-/** 该路径是目录吗（不存在即否）。 */
-function isDir(path) {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-/** 递归收集 .ts / .tsx。 */
-function sources(dir) {
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (isDir(full)) out.push(...sources(full));
-    else if (name.endsWith('.ts') || name.endsWith('.tsx')) out.push(full);
-  }
-  return out;
-}
-
-/**
- * 全部测试目录：`packages/<pkg>/test` 加**嵌套工作区成员**的 `packages/<pkg>/<sub>/test`。
- *
- * 第二趟是必需的：`packages/web/ui`（`nova-web-ui`）是真实的工作区成员，它的
- * 测试和任何包的测试一样受管。单层 glob 看不见它。
- * @returns 测试目录的绝对路径列表。
- */
-function testDirs() {
-  const out = [];
-  for (const pkg of readdirSync(packagesDir)) {
-    const top = join(packagesDir, pkg, 'test');
-    if (isDir(top)) out.push(top);
-    let subs;
-    try {
-      subs = readdirSync(join(packagesDir, pkg));
-    } catch {
-      continue;
-    }
-    for (const sub of subs) {
-      const nested = join(packagesDir, pkg, sub, 'test');
-      if (isDir(nested)) out.push(nested);
-    }
-  }
-  return out;
-}
 
 /**
  * 模块说明符：`from '…'`、`import('…')`、副作用 `import '…'`。
  *
  * 先剥注释再匹配——注释里写一句 `import x from '@nova-agent/core/src/…'` 是在
- * 解释规则，不是在违反规则。
+ * 解释规则，不是在违反规则。（stripComments 来自 gates-lib：字符串字面量保持
+ * 原样，字符串里的注释标记不会被误剥。）
  */
 const SPEC_RE = /(?:\bfrom\b|\bimport\b\s*\(?)\s*['"]([^'"]+)['"]/g;
 
@@ -83,17 +39,12 @@ const DEEP_PKG_RE = /^@nova-agent\/[a-z-]+\/.+/;
 /** 裸包说明符（公开入口）：`@nova-agent/<pkg>`。 */
 const BARE_PKG_RE = /^@nova-agent\/[a-z-]+$/;
 
-/** 去掉注释，保留字符串里的 `https://`（`//` 前是冒号时不当作行注释）。 */
-function stripComments(text) {
-  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
-}
-
 const violations = [];
 let scanned = 0;
 let publicEntry = 0;
 
-for (const dir of testDirs()) {
-  for (const file of sources(dir)) {
+for (const dir of workspaceLeafDirs(packagesDir, 'test')) {
+  for (const file of collectSources(dir)) {
     scanned++;
     const rel = relative(repoRoot, file).replace(/\\/g, '/');
     // 本包根：`packages/<pkg>`——嵌套成员的测试（`packages/web/ui/test`）也归

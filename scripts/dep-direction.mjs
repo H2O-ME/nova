@@ -5,9 +5,10 @@
 // 除白名单外另有两条**棘轮**（现状均零违规，作用是让第一次出现时理由清楚）：
 //   · 深路径包导入——跨包只能走公开入口（internal import gate / surface-to-runtime gate）；
 //   · 插件互赖——插件之间不得直接依赖（plugin-to-plugin gate）。
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectSources, packageLeafDirs, stripComments } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const packagesDir = join(repoRoot, 'packages');
@@ -45,44 +46,6 @@ const ALLOW = {
   cli: ['plugins', 'ai', 'core', 'qqbot', 'web'],
 };
 
-/** 递归收集 .ts / .tsx 源文件（前端子包是 .tsx）。 */
-function sources(dir) {
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...sources(full));
-    else if (name.endsWith('.ts') || name.endsWith('.tsx')) out.push(full);
-  }
-  return out;
-}
-
-/**
- * 一个包要扫的全部 `src/` 目录：自身，加上**嵌套工作区成员**的 `src/`。
- *
- * 原先只扫 `packages/<pkg>/src`，于是 `packages/web/ui/src`（前端子包
- * `nova-web-ui`，全仓最大的一块代码）从未被检查过——它 import 什么都不会失败。
- * 嵌套成员归**宿主包**的白名单管：`web/ui` 按 `web` 的规则（core / plugins）。
- * @param pkg - 包目录名。
- * @returns 该包名下的 `src` 目录列表。
- */
-function srcDirsOf(pkg) {
-  const out = [join(packagesDir, pkg, 'src')];
-  let subs;
-  try {
-    subs = readdirSync(join(packagesDir, pkg));
-  } catch {
-    return out;
-  }
-  for (const sub of subs) out.push(join(packagesDir, pkg, sub, 'src'));
-  return out.filter((dir) => {
-    try {
-      return statSync(dir).isDirectory();
-    } catch {
-      return false;
-    }
-  });
-}
-
 /**
  * 包说明符与它的**深路径尾巴**。
  *
@@ -100,65 +63,11 @@ function srcDirsOf(pkg) {
 const IMPORT_RE = /@nova-agent\/([a-z-]+)((?:\/[A-Za-z0-9._-]+)*)/g;
 const violations = [];
 
-/**
- * 去掉注释，只留代码。
- *
- * 扫描的是**源码文本**，不是 AST——因为这里要抓的包括字符串里的包名（
- * `plugin-tree.ts` 的 `SHIPPED_PACKAGES` 是一张字符串表，运行时 `import()` 装载，
- * 它必须过门禁：动态边也是边）。代价是注释里的包名也会被算成依赖。
- *
- * 那个代价不是理论上的：Batch 4 摘掉 web → plugin-context 这条边时，**唯一**报
- * 违规的是文件头那句解释"这里以前静态 import 过谁"的注释——于是作者面对的选择
- * 是「把注释删掉」还是「把白名单加回去」，而门禁恰恰是为了阻止后者存在的。
- *
- * 所以只剔除注释：字符串保留（否则动态装载就漏检），注释剔除（它不构成依赖）。
- * 状态机而不是正则，因为注释标记会出现在字符串里（`'https://…'`、`'/*'`）。
- * @param text - 一个源文件的全文。
- * @returns 等长语义的文本，注释被替换为单个空格。
- */
-function stripComments(text) {
-  let out = '';
-  let quote = null;
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    const next = text[i + 1];
-    if (quote !== null) {
-      out += ch;
-      if (ch === '\\') {
-        out += next ?? '';
-        i += 1;
-      } else if (ch === quote) {
-        quote = null;
-      }
-      continue;
-    }
-    if (ch === '/' && next === '/') {
-      while (i < text.length && text[i] !== '\n') i += 1;
-      out += '\n';
-      continue;
-    }
-    if (ch === '/' && next === '*') {
-      i += 2;
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i += 1;
-      i += 1;
-      out += ' ';
-      continue;
-    }
-    if (ch === "'" || ch === '"' || ch === '`') quote = ch;
-    out += ch;
-  }
-  return out;
-}
-
-for (const [pkg, allowed] of Object.entries(ALLOW)) {
+for (const { pkg, dirs } of packageLeafDirs(packagesDir, 'src')) {
+  const allowed = ALLOW[pkg];
+  if (allowed === undefined) continue; // not a gated package (no allowlist entry)
   const files = [];
-  for (const dir of srcDirsOf(pkg)) {
-    try {
-      files.push(...sources(dir));
-    } catch {
-      /* no src/ here */
-    }
-  }
+  for (const dir of dirs) files.push(...collectSources(dir));
   for (const file of files) {
     const text = stripComments(readFileSync(file, 'utf8'));
     const rel = relative(repoRoot, file).replace(/\\/g, '/');

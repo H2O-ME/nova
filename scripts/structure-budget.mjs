@@ -9,23 +9,13 @@
 // 定位：这是「粗护栏」——真正治巨型闭包的是 oxlint 的 max-lines-per-function/
 // complexity 警告（拆壳阶段的靶单）。行数上限只兜底「文件整体别再无节制地长」，
 // 所以刻意做得低摩擦：正常消重使某文件 ±1 行时，跑一次 --update <该文件> 即可。
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { collectSources, filterArgs, workspaceLeafDirs } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const budgetPath = join(repoRoot, 'scripts', 'structure-budget.json');
-
-/** 递归收集包 `src/` 下全部 `.ts`（含嵌套目录）。 */
-function sources(dir) {
-  const out = [];
-  for (const name of readdirSync(dir)) {
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) out.push(...sources(full));
-    else if (name.endsWith('.ts') || name.endsWith('.tsx')) out.push(full);
-  }
-  return out;
-}
 
 /**
  * 纯转出桶（barrel）？——只有注释、空行与 `export *` / `export { … } from` 的文件。
@@ -60,45 +50,8 @@ function isBarrel(source) {
 
 const packagesDir = join(repoRoot, 'packages');
 const current = {};
-/**
- * Every `src/` tree in the workspace, including a NESTED member's own `src/`.
- *
- * `packages/*` alone missed `packages/web/ui/src` — the largest block of code in
- * the repo (172 files). It is a real pnpm workspace member (`nova-web-ui`), so
- * its files are exactly as much "our source" as any other package's; leaving it
- * unscanned meant a file there could grow without bound, and `pnpm gates` would
- * still report "all within budget". A single-level glob could not see it, hence
- * the explicit second pass for `<pkg>/<sub>/src`.
- * @returns the absolute `src` directories to scan.
- */
-function srcDirs() {
-  const out = [];
-  for (const pkg of readdirSync(packagesDir)) {
-    const top = join(packagesDir, pkg, 'src');
-    try {
-      if (statSync(top).isDirectory()) out.push(top);
-    } catch {
-      /* not a package with src/ */
-    }
-    let subs;
-    try {
-      subs = readdirSync(join(packagesDir, pkg));
-    } catch {
-      continue;
-    }
-    for (const sub of subs) {
-      const nested = join(packagesDir, pkg, sub, 'src');
-      try {
-        if (statSync(nested).isDirectory()) out.push(nested);
-      } catch {
-        /* no nested src/ */
-      }
-    }
-  }
-  return out;
-}
-for (const srcDir of srcDirs()) {
-  for (const f of sources(srcDir)) {
+for (const srcDir of workspaceLeafDirs(packagesDir, 'src')) {
+  for (const f of collectSources(srcDir)) {
     const rel = relative(repoRoot, f).replace(/\\/g, '/');
     const source = readFileSync(f, 'utf8');
     // A pure re-export barrel is exempt: its length is a module COUNT, not a
@@ -120,7 +73,7 @@ try {
 }
 
 if (process.argv.includes('--update')) {
-  const filters = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+  const filters = filterArgs(process.argv.slice(2));
   const next = { ...baseline };
   let lowered = 0;
   let raised = 0;
