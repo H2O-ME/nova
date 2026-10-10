@@ -22,6 +22,7 @@ import type {
   WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow,
 } from './types.js';
 import { reduceEvent } from './state-events.js';
+import { sessionListAnswered, sessionListRequested } from './client/sessions.js';
 import { hostErrorText } from './host-messages.js';
 import { treeAsk, treeError, treeLevel, emptyTree, type TreeState } from './rightbar/files-model.js';
 import { applyTerm, emptyTerm, termForSession, type TermFrame, type TermState } from './rightbar/terminal-model.js';
@@ -740,7 +741,8 @@ export function reduce(state: UiState, action: Action): UiState {
       if (action.frame.type === 'list_sessions') {
         // Same rule as the catalog: the request went out, so the answer is
         // what settles it — and the list stays on screen until it does.
-        return { ...state, sessionsStale: false, sessionsPending: true };
+        // (The rule lives in the sessions domain: `client/sessions.ts`.)
+        return sessionListRequested(state);
       }
       if (action.frame.type === 'list_files') {
         // The in-flight flag rides the query: the menu shows its loading row
@@ -907,7 +909,9 @@ export function reduce(state: UiState, action: Action): UiState {
       return { ...state, pluginAnswers: kept };
     }
     case 'sessions':
-      return { ...state, sessions: action.items, sessionsStale: false, sessionsPending: false };
+      // The answer settles both flags — the rule lives in the sessions domain
+      // (`client/sessions.ts`).
+      return sessionListAnswered(state, action.items);
     case 'files':
       // A reply for text the user has already typed past is dropped: replacing
       // the rows now would show candidates for a query nobody is asking.
