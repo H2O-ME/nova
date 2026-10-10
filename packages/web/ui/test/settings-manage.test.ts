@@ -12,7 +12,7 @@
  *    in-flight row; without it a single refusal left every switch disabled.
  */
 import { describe, expect, it } from 'vitest';
-import { frameAction } from '../src/frame-actions.js';
+import { frameAction } from '../src/client/protocol.js';
 import { initialState, reduce, type Action } from '../src/state.js';
 import type { ServerFrame } from '../src/types.js';
 

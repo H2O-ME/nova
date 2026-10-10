@@ -1,6 +1,6 @@
 /**
  * Server frame → reducer action: the browser's ONE routing table. It lives
- * apart from the socket (`client.ts`) because the socket is untestable here and
+ * apart from the socket (`client/connection.ts`) because the socket is untestable here and
  * this table is pure — and because the table is where a new frame gets
  * forgotten. The `Mapper` record type makes that a compile error: every variant
  * of `ServerFrame` must have an entry, so a frame the host learned to send
@@ -10,8 +10,8 @@
  * `null` is a frame this surface deliberately does not act on; sneaking one in
  * as `null` is a decision, not an omission.
  */
-import type { Action } from './state.js';
-import type { ServerFrame } from './types.js';
+import type { Action } from '../state.js';
+import type { ServerFrame } from '../types.js';
 
 type Of<K extends ServerFrame['type']> = Extract<ServerFrame, { type: K }>;
 
@@ -149,7 +149,7 @@ const MAPPERS: Mapper = {
  *
  * The lookup is guarded with `Object.hasOwn` because the KEY is not trustworthy:
  * `MAPPERS` is an object literal, and the frames this sees are whatever
- * `JSON.parse` produced from the socket (`client.ts`) — nothing validates the
+ * `JSON.parse` produced from the socket (`client/connection.ts`) — nothing validates the
  * discriminant before this point. A frame whose `type` happens to be an
  * inherited member name therefore resolves to `Object.prototype`'s own member
  * instead of `undefined`, and is then CALLED as a mapper: `valueOf` and

@@ -1,154 +1,66 @@
 /**
- * The browser's only socket: connect to /ws (same-origin — the launch
- * cookie rides automatically), feed frames into the reducer, expose a send.
- * Reconnect with capped backoff; a `ready` on each (re)open re-baselines the
- * transcript from the durable log, so a dropped run is never "lost" — the
- * next open catches it up.
- */
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
-import { frameAction } from './frame-actions.js';
-import { reduce, initialState, type Action } from './state.js';
-import { StreamCoalescer } from './stream-coalesce.js';
-import type { ClientFrame, ServerFrame } from './types.js';
-
-/** First reconnect delay: fast enough to feel automatic on a blip. */
-const RETRY_MIN_MS = 500;
-
-/** Largest reconnect delay: a long outage keeps trying, twice a minute. */
-const RETRY_MAX_MS = 5000;
-
-/**
- * The backoff schedule, as a pure function.
+ * The React binding over the client model (`./client/model.ts`) — the only
+ * place React and the model meet. The model owns the socket, the reducer and
+ * the send path; this hook reads snapshots, forwards callbacks and disposes on
+ * unmount. Keeping it thin is the point: everything with a rule in it is
+ * React-free and directly assertable.
  *
- * Split out because the socket effect cannot be asserted without a DOM, and this
- * is the part with a rule in it: a normal drop waits `retryMs` and then doubles,
- * capped at {@link RETRY_MAX_MS}; a MANUAL retry waits nothing and re-seeds the
- * schedule rather than inheriting the grown delay — otherwise a reader pressing
- * 重试 against a long outage would be pushed further away by their own click.
- * @param previousMs - the delay used before this close.
- * @param immediate - the close was caused by a manual retry.
- * @returns the delay to wait, and the delay to use next time.
+ * The model is created INSIDE the effect, not in render or a ref: StrictMode
+ * mounts, unmounts and remounts the same fiber (state and refs survive), so a
+ * client disposed in the cleanup must never be reused — each effect cycle gets
+ * a fresh one. The window before the first effect (and SSR) renders against a
+ * stable idle model: `initialState` snapshots, no-op gestures, `connecting`.
  */
-export function nextRetry(previousMs: number, immediate: boolean): { delayMs: number; nextMs: number } {
-  if (immediate) return { delayMs: 0, nextMs: RETRY_MIN_MS };
-  return { delayMs: previousMs, nextMs: Math.min(previousMs * 2, RETRY_MAX_MS) };
-}
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { createAgentClient, type AgentClientModel } from './client/model.js';
+import { initialState, type Action } from './state.js';
+import type { ClientFrame } from './types.js';
+
+// The retry schedule's rules live with the socket machine; re-exported here
+// because the pure-function tests import it from this module's path.
+export { nextRetry, RETRY_MIN_MS, RETRY_MAX_MS } from './client/connection.js';
 
 export interface AgentClient {
-  state: ReturnType<typeof reduce>;
+  state: ReturnType<typeof import('./state.js').reduce>;
   dispatch: (action: Action) => void;
   send: (frame: ClientFrame) => void;
   connection: 'connecting' | 'open' | 'closed';
   /**
    * Drop the current socket and dial again at once, skipping the backoff.
-   *
-   * The backoff is capped at 5s, so without this the indicator's retry is only
-   * a promise: a reader watching a dead socket waits up to five seconds with no
-   * way to hurry it. Reconnecting instead of merely re-dialling matters when the
-   * socket is still OPEN but the peer is a zombie — `close()` runs the same
-   * `onclose` that re-arms the schedule, so there is exactly one reconnect path.
+   * (The rule lives in `client/connection.ts`; the model forwards it.)
    */
   reconnect: () => void;
 }
 
+const noop = (): void => undefined;
+const idleSubscribe = (_listener: () => void): (() => void) => () => undefined;
+
+/** The pre-connection model: stable snapshots, inert gestures. */
+const IDLE_MODEL: AgentClientModel = {
+  getState: () => initialState,
+  getConnection: () => 'connecting',
+  subscribe: idleSubscribe,
+  dispatch: noop,
+  send: noop,
+  reconnect: noop,
+  dispose: noop,
+};
+
 export function useAgent(): AgentClient {
-  const [state, dispatch] = useReducer(reduce, initialState);
-  const [connection, setConnection] = useState<AgentClient['connection']>('connecting');
-  const socketRef = useRef<WebSocket | undefined>(undefined);
-  // Set by `reconnect()` to collapse the pending backoff the next time the
-  // socket closes, so a manual retry is immediate rather than "as soon as the
-  // timer happens to fire".
-  const retryNowRef = useRef(false);
-
+  const [client, setClient] = useState<AgentClientModel>(() => IDLE_MODEL);
   useEffect(() => {
-    let closedByUs = false;
-    let retryMs = RETRY_MIN_MS;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const open = (): void => {
-      setConnection('connecting');
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(`${proto}://${location.host}/ws`);
-      socketRef.current = ws;
-      // Stream deltas render at FRAME rate, not chunk rate (stream-coalesce.ts):
-      // the buffer releases at most once per painted frame, and any other frame
-      // flushes it first so the reducer still sees the kernel's exact order.
-      const coalescer = new StreamCoalescer((frames) => {
-        for (const flushed of frames) handleFrame(flushed, dispatch);
-      });
-      ws.onopen = () => {
-        retryMs = RETRY_MIN_MS;
-        setConnection('open');
-        // NO reducer dispatch here. The socket being open is not the session
-        // being serviceable: until the host's `ready` lands, `meta` is null and
-        // a prompt sent now is answered by nobody (the connect handler has not
-        // attached the socket to a session yet). `connected` is lit by the
-        // `ready` reduction alone — the one fact every control gates on.
-      };
-      ws.onmessage = (msg: MessageEvent<string>) => {
-        let frame: ServerFrame;
-        try {
-          frame = JSON.parse(msg.data) as ServerFrame;
-        } catch {
-          return; // foreign bytes on the socket: ignore, never eval
-        }
-        if (!coalescer.absorb(frame)) {
-          coalescer.flushNow();
-          handleFrame(frame, dispatch);
-        }
-      };
-      ws.onclose = () => {
-        // The tail the buffer still holds belongs to the transcript that just
-        // ended: land it before the disconnect state reads "the run is over".
-        coalescer.flushNow();
-        setConnection('closed');
-        // The reducer's `connected` gates every control: a dropped socket must
-        // dark them all, not leave buttons that silently do nothing.
-        dispatch({ type: 'connection', connected: false });
-        if (closedByUs) return;
-        if (timer !== undefined) clearTimeout(timer);
-        // A manual retry collapses the wait and re-seeds the backoff, so a
-        // reader who keeps pressing 重试 is not left on an ever-growing delay.
-        const step = nextRetry(retryMs, retryNowRef.current);
-        retryNowRef.current = false;
-        timer = setTimeout(open, step.delayMs);
-        retryMs = step.nextMs;
-      };
-    };
-    open();
+    const model = createAgentClient();
+    setClient(model);
     return () => {
-      closedByUs = true;
-      if (timer !== undefined) clearTimeout(timer);
-      socketRef.current?.close();
+      model.dispose();
+      setClient(IDLE_MODEL);
     };
   }, []);
 
-  const send = useCallback((frame: ClientFrame): void => {
-    const ws = socketRef.current;
-    if (ws === undefined || ws.readyState !== ws.OPEN) return;
-    ws.send(JSON.stringify(frame));
-    // Request-side bookkeeping (the pagination in-flight flag) belongs to the
-    // same reducer as the replies — one owner for client state.
-    dispatch({ type: 'sent', frame });
-  }, []);
+  // `getServerSnapshot` mirrors the initial snapshots: nothing renders against
+  // a live socket during SSR, and the values are the store's own initials.
+  const state = useSyncExternalStore(client.subscribe, client.getState, client.getState);
+  const connection = useSyncExternalStore(client.subscribe, client.getConnection, client.getConnection);
 
-  const reconnect = useCallback((): void => {
-    retryNowRef.current = true;
-    const ws = socketRef.current;
-    if (ws === undefined) return;
-    // A CONNECTING socket cannot be re-dialled usefully yet; `close()` on it
-    // still fires `onclose`, which is what re-arms the schedule.
-    ws.close();
-  }, []);
-
-  return { state, dispatch, send, connection, reconnect };
-}
-
-/**
- * Route one inbound frame through the pure table (`frame-actions.ts`), so the
- * socket carries no routing of its own.
- */
-function handleFrame(frame: ServerFrame, dispatch: (a: Action) => void): void {
-  const action = frameAction(frame);
-  if (action !== null) dispatch(action);
+  return { state, dispatch: client.dispatch, send: client.send, connection, reconnect: client.reconnect };
 }

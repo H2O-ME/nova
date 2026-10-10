@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerFrame } from '../../src/protocol.js';
 import { emptyTotals } from '@nova-agent/core';
-import { frameAction } from '../src/frame-actions.js';
+import { frameAction } from '../src/client/protocol.js';
 
 /**
  * The routing table between the socket and the reducer. Its value is
