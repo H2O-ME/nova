@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import type { ContextTimeline } from '../types.js';
-import type { SessionTotals } from '../../../src/totals.js';
+import type { SessionTotals } from '@nova-agent/core';
 import { formatTokens } from '../format.js';
 import { Donut } from './Donut.js';
 import { tokenStats } from './token-stats.js';

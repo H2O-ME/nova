@@ -6,7 +6,7 @@
  * surface already has. The vocabulary is deliberately terse (dsh-style):
  * `13m59s`, `5.6s`, `42 tok/s`, `4.1M`, `60%`.
  */
-import type { SessionTotals } from '../../src/totals';
+import type { SessionTotals } from '@nova-agent/core';
 
 /** `950ms` / `5.6s` / `13m59s` / `2h05m` — growing units, never a bare float. */
 export function formatDuration(ms: number): string {

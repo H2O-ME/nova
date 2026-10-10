@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ServerFrame } from '../../src/protocol.js';
-import { emptyTotals } from '../../src/totals.js';
+import { emptyTotals } from '@nova-agent/core';
 import { frameAction } from '../src/frame-actions.js';
 
 /**

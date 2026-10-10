@@ -11,7 +11,7 @@
  */
 import type { KernelEvent, SubagentProgress, ToolCallView, ToolResultView } from './types.js';
 import type { Block, Draft, SubRow, UiState } from './state.js';
-import { addRun } from '../../src/totals';
+import { addRun } from '@nova-agent/core';
 import { upsertJobRow } from './rightbar/tasks-model.js';
 
 /** A notice code without an entry below still renders (its `text` is the fallback). */

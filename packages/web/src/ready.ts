@@ -18,7 +18,7 @@ import type { Kernel } from '@nova-agent/plugins';
 import type { ModelSeat } from './model-seat.js';
 import type { SessionPages } from './session-pages.js';
 import { toWireRosterEntry } from './roster-wire.js';
-import { foldRuns, loggedRuns } from './totals.js';
+import { foldRuns, loggedRuns } from '@nova-agent/core';
 import type { ReadyInfo } from './protocol.js';
 
 /**

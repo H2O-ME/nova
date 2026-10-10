@@ -48,3 +48,4 @@ export * from './model-catalog-rules.js';
 export * from './images.js';
 export * from './image-store.js';
 export * from './image-projection.js';
+export * from './totals.js';

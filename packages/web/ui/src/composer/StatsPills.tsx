@@ -23,7 +23,7 @@ import { DatabaseIcon, GaugeIcon } from './Icons.js';
 import { useDismissOutside } from '../shell/anchored-popover.js';
 import { useEscapeToClose } from '../shell/use-escape.js';
 import { timePill, usagePill, type PillReading } from './stats-model.js';
-import type { SessionTotals } from '../../../src/totals';
+import type { SessionTotals } from '@nova-agent/core';
 import css from './StatsPills.module.css';
 
 /** Which pill's dialog is open (one exclusive slot, the reference's rule). */

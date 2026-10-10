@@ -11,7 +11,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { ContextBreakdown, ContextTimeline } from '../src/types.js';
-import { emptyTotals, type SessionTotals } from '../../src/totals.js';
+import { emptyTotals, type SessionTotals } from '@nova-agent/core';
 import { donutArcs, SEG_GAP } from '../src/context/donut-model.js';
 import { tokenStats } from '../src/context/token-stats.js';
 import { TokenStatsCard } from '../src/context/TokenStatsCard.js';

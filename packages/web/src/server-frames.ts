@@ -34,7 +34,7 @@ import type { CommandSummary, ShellFamily } from '@nova-agent/plugins';
 import type { WireRosterEntry } from './roster-entry.js';
 import type { WireProviderRow } from './provider-wire.js';
 import type { TermStatus } from './term-session.js';
-import type { SessionTotals } from './totals.js';
+import type { SessionTotals } from '@nova-agent/core';
 
 export type ServerFrame =
   /**

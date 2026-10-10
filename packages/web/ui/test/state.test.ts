@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ApprovalRequest, KernelEvent, QuestionRequest, ToolCallView, ToolResultView } from '@nova-agent/core';
 import type { ReadyInfo, WireBlock, WireTraceRow } from '../../src/protocol.js';
 import type { ContextTimeline } from '../src/types.js';
-import { emptyTotals } from '../../src/totals.js';
+import { emptyTotals } from '@nova-agent/core';
 import { initialState, reduce, type Block, type UiState } from '../src/state.js';
 import { isIgnoredEvent } from '../src/state-events.js';
 

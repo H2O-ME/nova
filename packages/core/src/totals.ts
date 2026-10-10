@@ -6,7 +6,7 @@
  * live `run_stats` onto that baseline — the same `addRun`, so the two cannot
  * disagree about what a turn adds to the totals.
  */
-import type { RunStats } from '@nova-agent/core';
+import type { RunStats } from './kernel.js';
 
 /** Running totals for the session's stats bar. */
 export interface SessionTotals {
