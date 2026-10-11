@@ -1,6 +1,5 @@
 /**
- * The conversation column's width axis, ported from the harness
- * `ui-conversation` ConversationRoot (c) 2026 DeepSeek — MIT License.
+ * The conversation column's width axis.
  *
  * The skeleton resolves ONE content width W for the transcript and the dock
  * cards (the input card alone is W + 32px, both expressed in CSS); this module

@@ -16,12 +16,12 @@
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: dsh-text-shimmer 1.5s cubic-bezier(0.33, 0, 0.67, 1) infinite;
+  animation: nova-text-shimmer 1.5s cubic-bezier(0.33, 0, 0.67, 1) infinite;
 }
 
 /* The 66.67% hold: the sweep completes in the first two thirds and rests, so
    repeated passes have a beat between them rather than running continuously. */
-@keyframes dsh-text-shimmer {
+@keyframes nova-text-shimmer {
   66.6667%, 100% { background-position: 0% center; }
 }
 

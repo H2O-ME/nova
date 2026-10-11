@@ -1,6 +1,5 @@
 /**
- * The conversation column's three phases, ported from the harness
- * `ui-conversation` ConversationRoot (c) 2026 DeepSeek — MIT License.
+ * The conversation column's three phases.
  *
  * The skeleton renders the composer seat in every phase (the textarea must
  * survive a session landing) and picks the layout with `data-phase`:

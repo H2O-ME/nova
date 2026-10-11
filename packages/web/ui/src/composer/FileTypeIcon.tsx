@@ -1,7 +1,6 @@
 /**
- * File-type glyphs for the attachment rail, ported from the harness
- * `ui-primitives/src/FileTypeIcon.tsx` (c) 2026 DeepSeek — MIT License: the
- * 28px sheet-of-paper body with a folded corner, carrying one category mark,
+ * File-type glyphs for the attachment rail:
+ * the 28px sheet-of-paper body with a folded corner, carrying one category mark,
  * plus the folder body.
  *
  * The reference paints the body with `currentColor` and the fold with a static
@@ -9,7 +8,7 @@
  * body's own class (see `FileCard.module.css`), so a card's glyph and the
  * reference's are the same drawing with the same colours.
  *
- * Not ported: the code-file subsystem's per-language marks (`code-file-types.ts`)
+ * Omitted: the code-file subsystem's per-language marks (`code-file-types.ts`)
  * — this rail's `code` category draws the reference's generic code mark.
  */
 import { classifyFileType } from './file-type.js';

@@ -1,7 +1,6 @@
 /**
- * File classification and size text for the composer's attachment rail, ported
- * from the harness `ui-primitives` (`file-size.ts`, `FileTypeIcon.tsx`'s
- * extension tables — MIT License): a pending file card names the file, its
+ * File classification and size text for the composer's attachment rail: a
+ * pending file card names the file, its
  * extension and its size, and draws a glyph for the category.
  *
  * The tables keep the reference's own entries and its lookup order (a known

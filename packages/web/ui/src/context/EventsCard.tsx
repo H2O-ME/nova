@@ -1,7 +1,7 @@
 /**
  * The 上下文 pane's events card: why the window changed.
  *
- * Ported from dsh-context `events.tsx` (MIT) in shape, not in enumeration: dsh
+ * The shape follows the reference, not its enumeration: the reference
  * has six event kinds (compaction / prune / inject / model / mode / genealogy),
  * nova's fold today emits two — compaction and workspace — so the card reads
  * whatever the timeline carries and renders each kind with its own glyph and

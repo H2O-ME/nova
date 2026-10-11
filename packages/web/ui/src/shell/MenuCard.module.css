@@ -1,7 +1,5 @@
 /* The one menu card every anchored menu on this surface wears: the shell's
-   view options and the composer's model seat. Ported from the harness
-   `ui-model-selection` ModelSelect.module.css + `ui-primitives` Menu
-   (c) 2026 DeepSeek — MIT License.
+   view options and the composer's model seat.
  *
  * One sheet, because a dropdown is one material: two cards that drifted apart
  * would read as two kinds of control. The card is portaled to body and placed

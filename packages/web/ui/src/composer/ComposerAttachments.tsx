@@ -1,7 +1,6 @@
 /**
- * The composer's staged references and images, ported from the harness
- * `ui-attachment/src/client/ComposerAttachments.tsx` (c) 2026 DeepSeek — MIT
- * License: the box that owns the rail's placement inside the card and renders
+ * The composer's staged references and images: the box that owns the rail's
+ * placement inside the card and renders
  * one card per staged item.
  *
  * TWO kinds share one rail, because they are staged by the same gesture and

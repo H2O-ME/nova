@@ -1,6 +1,6 @@
 /**
- * The transcript's tool row — the ported the harness `ui-tool` row
- * (MIT, see `ToolRow.module.css`) over this frontend's card vocabulary.
+ * The transcript's tool row — the harness `ui-tool` row's shape over this
+ * frontend's card vocabulary.
  *
  * All reasoning lives in `card-view.ts` (which card, which headline, did it
  * fail, what footnote) and `model.ts` (title/summary/suffix slots, the expanded

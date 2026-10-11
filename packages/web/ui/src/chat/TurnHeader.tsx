@@ -1,13 +1,12 @@
 /**
- * The turn-process disclosure — port of the harness `ui-chat`'s
- * `TurnProcessNodeView.tsx` / `.module.css` (c) 2026 DeepSeek — MIT License:
- * one full-width 33px row per turn that names what the turn did and folds the
+ * The turn-process disclosure: one full-width
+ * 33px row per turn that names what the turn did and folds the
  * turn's process rows (reasoning, tools, jobs) behind a chevron when they
  * exist.
  *
  * Running and settled read as one string in the reference: the live row says
  * what the turn is doing WITH its elapsed time (`深度求索中，用时 4秒`), the
- * settled one how long it took (`用时 4秒`). This port keeps this product's
+ * settled one how long it took (`用时 4秒`). This row keeps this product's
  * phase vocabulary for the doing-part and composes the same single string, so
  * the row has exactly the reference's shape: [label][chevron].
  *

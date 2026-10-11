@@ -1,7 +1,5 @@
 /**
- * The one menu material every dropdown on this surface wears, ported from
- * the harness `ui-primitives/MenuSurface.tsx` + `MenuSurface.module.css`
- * (c) 2026 DeepSeek — MIT License.
+ * The one menu material every dropdown on this surface wears.
  *
  * Why the material is a layer and not a `background` on the card: the fill is
  * translucent (`--nova-surface-menu`, 58% light / 45% dark) and carries

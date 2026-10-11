@@ -29,7 +29,7 @@ export const BAR_PITCH = BAR_WIDTH + BAR_GAP;
  * Columns sit on a fixed pitch (unlike a stretched chart), so the walk skips
  * straight to the first column whose box can still reach the window and stops
  * at the first one past the right edge. A partially visible column counts — it
- * is what the reader is looking at — and the per-column test (dsh's own) is
+ * is what the reader is looking at — and the per-column test (the harness's own) is
  * what actually decides visibility, so the arithmetic bounds only have to be
  * generous, never exact.
  * @param points - the chart's requests, oldest first (the same array the bars draw).

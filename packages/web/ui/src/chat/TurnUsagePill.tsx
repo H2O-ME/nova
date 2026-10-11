@@ -1,9 +1,9 @@
 /**
- * The turn-usage pill — port of the harness `ui-chat`'s `TurnUsagePanel.tsx`
- * (c) 2026 DeepSeek — MIT License: a database pill on the assistant tail that
+ * The turn-usage pill: a database pill on the
+ * assistant tail that
  * reads `用量 24.2K tok` and opens the settled run's accounting panel (model,
  * cache hit, uncached input, cache read, output). The dialog skin is the
- * stats pills' (the same sheet this port already carries); the numbers come
+ * stats pills' (the same sheet this surface already carries); the numbers come
  * from the kernel's `run_stats` for that turn — the surface measures nothing.
  *
  * The panel is PORTALED, as the reference portals it: the tail lives in the

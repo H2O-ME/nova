@@ -1,6 +1,5 @@
 /*
- * The question card, ported from the harness `ui-user-questions`
- * (c) 2026 DeepSeek — MIT License: a clean card (no banner strip — the header
+ * The question card: a clean card (no banner strip — the header
  * carries the title and the collapse/close actions), a scroll body whose option
  * list is a set of option-shaped rows led by a number (single) or a checkbox
  * (multi), an option-shaped custom-answer row, and a footer that pages the batch
@@ -29,7 +28,7 @@
      this card is rendered in; the fallback is the same value the composer's own
      card uses, so a card drawn outside that seat still has an axis. The cap
      keeps the reference's relation: the card lands 32px narrower than the
-     composer capsule beside it (dsh QuestionComposer `.card`). */
+     composer capsule beside it (the reference's QuestionComposer `.card`). */
   max-width: var(--nova-chat-content-width, 100%);
   /* Composer seat sits in a fixed-height conversation column (overflow hidden):
      cap the card against the viewport and scroll the option list so header and

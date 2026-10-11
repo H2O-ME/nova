@@ -1,6 +1,5 @@
 /**
- * Three-column shell frame, ported from the harness
- * `ui-layout/src/client/AppFrame.tsx` (MIT). Owns the grid tracks (sidebar |
+ * Three-column shell frame. Owns the grid tracks (sidebar |
  * center | rightbar), the drag handles (pointer capture + rAF throttle), the
  * column solve (`columns.ts`), and the child render decisions: the sidebar
  * occupant receives the resolved collapse state and width, the right column

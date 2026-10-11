@@ -2,7 +2,7 @@
  * A settings section's content column: the scroll area's inner stack that
  * strips the last row's separator (the reference's rule —
  * `GeneralSection.module.css`: "the section strips the trailing separator
- * wherever the column ends"), (c) 2026 DeepSeek — MIT License.
+ * wherever the column ends").
  */
 import type { ReactNode } from 'react';
 import css from './Section.module.css';

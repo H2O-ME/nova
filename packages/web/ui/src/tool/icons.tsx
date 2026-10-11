@@ -2,8 +2,7 @@
  * Tool-row and detail-panel glyphs.
  *
  * The panel's two presentation glyphs (`FullscreenIcon`, `ExitFullscreenIcon`)
- * are ported verbatim from the harness ui-sidebar-right `SidebarRight.tsx`
- * (c) 2026 DeepSeek — MIT License: figma extracts, kept byte-for-byte.
+ * are figma extracts, kept byte-for-byte.
  *
  * The row's card glyphs follow this frontend's own icon set (16px box, stroke =
  * currentColor, sized by CSS — `../icons.tsx`): the harness's `ic_ds_*` artwork is

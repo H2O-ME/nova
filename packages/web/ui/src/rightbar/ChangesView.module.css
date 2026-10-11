@@ -1,8 +1,7 @@
 /*
  * 变更: the lens head, the two status groups, the diff, the commit bar, the log.
  *
- * Geometry is the reference's (`dsh-better-sidebar` `changes/changes.module.css`
- * + `diff/diff.module.css`, MIT): a 36px band, 28px rows with a 4px radius and
+ * Geometry is the reference's: a 36px band, 28px rows with a 4px radius and
  * the accent bar inset 4px, hover-revealed row verbs that occupy their column at
  * all times (so revealing one never reflows the name beside it), and diff rows
  * that WRAP rather than panning sideways — a diff read at a 300px column cannot

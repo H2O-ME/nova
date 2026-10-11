@@ -1,8 +1,6 @@
 /**
  * Connection feedback: one badge that reads the socket's state and, when the
  * surface can act on it, becomes the reconnect control.
- * Ported from the harness `ui-primitives/src/client/ConnectionIndicator.tsx`
- * + `ConnectionIndicator.module.css` (c) 2026 DeepSeek — MIT License.
  *
  * One deliberate deviation: the reference's caller always has a reconnect
  * action, so its indicator is always a button. Here `onReconnect` is passed by

@@ -3,7 +3,7 @@
  *
  * Pure and DOM-free so the reducer lane can assert it: every string the user
  * reads about time and tokens is produced here, in one place, from numbers a
- * surface already has. The vocabulary is deliberately terse (dsh-style):
+ * surface already has. The vocabulary is deliberately terse (the reference's style):
  * `13m59s`, `5.6s`, `42 tok/s`, `4.1M`, `60%`.
  */
 import type { SessionTotals } from '@nova-agent/core/totals';
@@ -51,10 +51,9 @@ export function modelThroughput(totals: SessionTotals): number | undefined {
  * Prompt-cache hit text (cached / prompt), or undefined when nothing was ever
  * billed — with no input there is no hit or miss to speak of.
  *
- * Ported from the harness `ui-chat/src/client/chat/token-format.ts`
- * (`formatCacheHitPercent`, MIT): billed input with zero cache reads reads
+ * Billed input with zero cache reads reads
  * `0` — the reference's rule, and an honest one for the providers this
- * surface targets (DeepSeek reports cache on every request; a gateway that
+ * surface targets (some providers report cache on every request; a gateway that
  * strips the field shows a 0% that says "check your endpoint"). A partial hit
  * is NEVER rounded up to `100`, because "缓存命中 100%" is a claim about the
  * whole prompt that a 99.9% share does not support. A ratio that would round
@@ -163,8 +162,7 @@ export function subagentTotals(usage: {
 
 /**
  * `23:43` for today, `8月28日 23:43` within the year, the full stamp otherwise —
- * the transcript's clock, local time. Ported from the harness
- * `message-chrome.ts` `formatMessageClock` (MIT): a message written today
+ * the transcript's clock, local time. A message written today
  * reads as a wall clock; only age earns the date back.
  */
 export function formatClock(ts: number, now: number = Date.now()): string {

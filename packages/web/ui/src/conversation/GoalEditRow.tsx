@@ -1,8 +1,7 @@
 /**
  * The goal bar's inline edit form — split from `GoalPanel.tsx` because it owns
  * a different question (what the draft IS, and how it commits) from the strip's
- * job (what the goal currently reads as). Ported from the harness `ui-goal`
- * `GoalBar.tsx`'s editing arm (c) 2026 DeepSeek — MIT License: the same 26px
+ * job (what the goal currently reads as): the same 26px
  * input in the same 36px strip, save/cancel on Enter/Escape, and an empty draft
  * disabling the save.
  */

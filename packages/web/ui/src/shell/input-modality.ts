@@ -1,6 +1,5 @@
 /**
- * Document-wide input tracking, ported from the harness
- * `ui-primitives/input-modality.ts` (c) 2026 DeepSeek — MIT License.
+ * Document-wide input tracking.
  *
  * Tooltips follow the last input; rings follow navigation or a key followed by
  * focus on a different control (`styles/focus.css` reads the attribute it

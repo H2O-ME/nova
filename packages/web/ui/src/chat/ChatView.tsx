@@ -1,9 +1,8 @@
 /**
- * The transcript scroller — port of the harness `ui-chat`'s `ChatView.tsx`
- * (scrollport + centered column + flow rhythm + back-to-bottom + load-older),
- * wired to this repo's `scroll-follow.ts`, which already carries the harness's
- * follow rules (`FOLLOW_THRESHOLD`, the observed-top ledger, `readerMoved`,
- * the paging anchor).
+ * The transcript scroller (scrollport + centered column + flow rhythm +
+ * back-to-bottom + load-older), wired to this repo's `scroll-follow.ts`, which
+ * already carries the harness's follow rules (`FOLLOW_THRESHOLD`, the
+ * observed-top ledger, `readerMoved`, the paging anchor).
  *
  * What the caller owns, and what this file therefore does not do:
  *  - **The rows.** Every block becomes one {@link ChatFlowRow}; turn headers,
@@ -16,7 +15,7 @@
  *    that same root.
  *
  * The harness's turn navigator rail, transcript search and host error dialogs
- * are not part of this port.
+ * are not part of this surface.
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';

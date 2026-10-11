@@ -1,6 +1,6 @@
 /**
  * The 自适应 scale's measure: the peak of the bars currently inside the plot's
- * viewport, kept in step with the scroll (dsh's own toggle — a spike scrolled
+ * viewport, kept in step with the scroll (the harness's own toggle — a spike scrolled
  * out of reach must not flatten the bars on screen).
  *
  * This is only the DOM binding for `visibleMax` (trend-geometry.ts): the

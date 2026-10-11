@@ -87,8 +87,8 @@ export function usagePill(totals: SessionTotals): PillReading | undefined {
   if (hit !== undefined) rows.push({ label: '缓存命中', value: `${hit}%` });
   // `promptTokens` is BILLED input — it already contains the cache reads, so
   // labelling it `输入` next to a `缓存读取` row showed a value that contains the
-  // row beneath it. `未缓存输入` is the disjoint half, which is both what dsh
-  // prints in this slot and what Nova's own turn panel prints (`TurnUsagePill`),
+  // row beneath it. `未缓存输入` is the disjoint half, which is both what the
+  // harness prints in this slot and what Nova's own turn panel prints (`TurnUsagePill`),
   // so one session cannot describe the same number two ways.
   const uncached = Math.max(0, totals.promptTokens - totals.cachedTokens);
   rows.push({ label: '未缓存输入', value: formatTokens(uncached) });

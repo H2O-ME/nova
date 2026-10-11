@@ -8,7 +8,7 @@
  * same file. `SETTINGS_COPY` keeps its name and stays the only thing the panel
  * imports, so no component knows the table has parts.
  *
- * Sources of the words themselves (the harness, MIT, (c) 2026 DeepSeek):
+ * Sources of the words themselves (the harness):
  * the shell's General-nav row and close label (`ui-settings-general/src/client/
  * locales.ts`), the theme feature's rows (`ui-theme/src/client/locales.ts`), the
  * permission row (`ui-permission-presets/src/client/locales.ts`), and the

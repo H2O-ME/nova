@@ -54,7 +54,7 @@ export interface TrendChart {
  * The trend chart's bars.
  *
  * Heights share ONE scale so bars are comparable — the TALLEST request, in
- * dsh's own reading (`maxTotal`). Never the model window: a session using 22K of
+ * the harness's own reading (`maxTotal`). Never the model window: a session using 22K of
  * a 1.05M window would draw every bar as 2% of the axis — flat on the floor,
  * the chart saying nothing. The stack's segments are shares of each bar's OWN
  * total, because a request's composition is a fact about that request, not

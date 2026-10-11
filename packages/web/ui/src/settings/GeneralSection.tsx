@@ -2,8 +2,8 @@
  * The 通用设置 section: the reference's general column (figma 501:29980's
  * Options area) carrying this product's real axes — the permission tier, the
  * appearance preference, and the content font size — in the reference's row
- * order (权限 first, appearance and font size after), (c) 2026 DeepSeek — MIT
- * License. Every control writes through the host the same way its composer seat
+ * order (权限 first, appearance and font size after). Every control writes
+ * through the host the same way its composer seat
  * does, so a pick here and a pick there are one fact, not two.
  *
  * The EXECUTION MODE (native / PTC / 两者) is deliberately NOT a row here. It

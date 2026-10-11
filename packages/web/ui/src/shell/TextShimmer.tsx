@@ -1,7 +1,5 @@
 /**
- * Text-only activity animation with a stable span across lifecycle changes —
- * port of the harness `ui-primitives/src/TextShimmer.tsx` (c) 2026 DeepSeek —
- * MIT License.
+ * Text-only activity animation with a stable span across lifecycle changes.
  *
  * This is the harness's ONE running-text treatment: a gradient painted through
  * the glyphs (`background-clip: text`) whose highlight sweeps on a 1.5s cycle.

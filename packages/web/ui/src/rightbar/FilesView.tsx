@@ -1,7 +1,7 @@
 /**
  * 文件: the workspace tree, full page.
  *
- * The reference's own shape (dsh `ui-sidebar-files`): a single-click on a file
+ * The reference's own shape: a single-click on a file
  * opens it as ITS OWN TAB in the strip (`openFileTab`, reveal-if-opened) — not
  * docked beside the tree, not on a second page. The old in-page dock (draggable
  * width, hide/show, a preview pane living beside the rows) is gone: the tree is

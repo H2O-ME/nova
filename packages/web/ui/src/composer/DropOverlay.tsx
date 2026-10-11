@@ -1,7 +1,5 @@
 /**
- * The full-viewport invitation shown while a file drag is over the page,
- * ported from the harness `ui-attachment/src/DropOverlay.tsx` +
- * `DropOverlay.module.css` (c) 2026 DeepSeek — MIT License.
+ * The full-viewport invitation shown while a file drag is over the page.
  *
  * Decoration only: `pointer-events: none` keeps drag targeting on the page
  * below, so the document-level listeners keep an accurate enter/leave count and
@@ -9,7 +7,7 @@
  * reason as the reference: a transformed ancestor would otherwise shrink the
  * fixed mask.
  *
- * Not ported: the reference's two illustrations (its own brand artwork). Ours
+ * Omitted: the reference's two illustrations (its own brand artwork). Ours
  * is the product's upload mark, drawn here in the same 115 × 84 seat.
  */
 import { createPortal } from 'react-dom';

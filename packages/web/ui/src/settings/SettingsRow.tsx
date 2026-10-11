@@ -1,8 +1,7 @@
 /**
  * One settings row: title + one-line description on the left, a control on
- * the right. Ported from the harness `ui-theme/src/client/
- * FontSizeRow.module.css`'s cell rhythm — the shape every 通用设置 row shares
- * (gap 8, pad 16/0, hairline separator), (c) 2026 DeepSeek — MIT License.
+ * the right — the shape every 通用设置 row shares
+ * (gap 8, pad 16/0, hairline separator).
  * The section column strips the trailing separator wherever it ends.
  */
 import type { ReactNode } from 'react';

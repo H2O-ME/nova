@@ -1,7 +1,6 @@
 /**
  * The queue strip: what the kernel's prompt queue looks like between the
- * transcript and the input card, ported from the harness
- * `ui-conversation/src/client/queue/QueueDock.tsx` (MIT).
+ * transcript and the input card.
  *
  * Two differences, both by what our wire carries:
  *  - The harness's rows are addressable queue items with edit / remove / steer
@@ -10,7 +9,7 @@
  *    and has no frame to mutate a queued row, so the strip is read-only: the
  *    count header, the rows, and their single-line previews, no action seats.
  *    The `.actions` / `.editor` / attachments half of the harness sheet is
- *    therefore not ported — nothing could render it.
+ *    therefore omitted — nothing could render it.
  *  - A queued prompt arrives as its own text (the harness ships a host-computed
  *    preview), so the row collapses the whitespace itself (`queuePreview`).
  */

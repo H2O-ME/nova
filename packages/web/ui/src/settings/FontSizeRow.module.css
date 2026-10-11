@@ -1,6 +1,5 @@
-/* Font-size stepper sheet, ported from the harness
- * `ui-theme/src/client/FontSizeRow.module.css` (c) 2026 DeepSeek — MIT
- * License. The row chrome (title + description + separator) is the shared
+/* Font-size stepper sheet. The row chrome (title + description + separator)
+ * is the shared
  * `SettingsRow`; only the stepper lives here. */
 
 /* Standard-size stepper with an arrow column revealed on hover/focus-within

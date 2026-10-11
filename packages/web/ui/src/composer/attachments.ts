@@ -73,7 +73,7 @@ export interface Attachments {
   clear: () => void;
 }
 
-/** A browser has no way to add a folder (dsh `attachment.directoryDesktopOnly`). */
+/** A browser has no way to add a folder (the harness's `attachment.directoryDesktopOnly`). */
 export const DIRECTORY_REFUSED = '浏览器里无法添加文件夹，请用「引用本地文件」挑文件夹中的单个文件';
 
 /**

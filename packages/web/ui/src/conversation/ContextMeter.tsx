@@ -1,7 +1,6 @@
 /**
- * Composer context-occupancy meter, ported from the harness
- * `ui-conversation` ContextMeter.tsx / ContextMeter.module.css (c) 2026
- * DeepSeek — MIT License: a 14px ring and its percentage reading in the
+ * Composer context-occupancy meter: a 14px ring and its percentage reading
+ * in the
  * composer's dock row — the same seat the source mounts it in (beside the
  * stats pills, under the card) — with a click-open panel carrying the
  * reading, the used/window figures and the occupancy bar.
@@ -9,7 +8,7 @@
  * Data honesty: the source panel splits the reading from provider pressure and
  * a heuristic `contextBreakdown` (system/tools/messages). This surface has no
  * breakdown — only the last request's prompt tokens and the window — so the
- * legend rows are not ported (they would be invented numbers) and the figures
+ * legend rows are omitted (they would be invented numbers) and the figures
  * carry no `~` prefix (ours is a reported count, not a projection). The panel
  * therefore stops where the source stops when its own breakdown is absent:
  * header plus bar, no `dl`.

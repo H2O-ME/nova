@@ -1,7 +1,7 @@
 /**
- * A turn's process group — port of the harness `ui-chat`'s `ChatGroupSeat`
- * (c) 2026 DeepSeek — MIT License: the group's own disclosure header
- * ({@link ProcessGroupHead}) above a bounded body. The reference bounds every
+ * A turn's process group: the group's own
+ * disclosure header ({@link ProcessGroupHead}) above a bounded body. The
+ * reference bounds every
  * settled group: the members scroll inside `min(400px, 50vh)` with gradient
  * fades over whichever end can still scroll. That cap is the whole point — a
  * turn with forty tool calls must not bury its own answer, and the reader must

@@ -138,7 +138,7 @@ export function sendGate(state: { draft: string; readyImages: number; uploadingI
  * running turn is named for what it does (the kernel queues it) rather than
  * promising an immediate send; and a draft whose attachments are still
  * uploading is REFUSED, because the prompt would name a file that does not
- * exist on disk yet (dsh `view-binding.ts:128` refuses for the same reason).
+ * exist on disk yet (the harness's `view-binding.ts:128` refuses for the same reason).
  * @param state - the bar's live facts.
  * @returns the seat's kind, enabled state, and label.
  */

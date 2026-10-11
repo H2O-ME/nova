@@ -1,6 +1,5 @@
 /**
- * Markdown fence card — port of the harness
- * `ui-primitives/src/markdown/CodeBlock.tsx`: a sticky banner carrying the
+ * Markdown fence card: a sticky banner carrying the
  * language label plus wrap and copy controls, and the source below. The harness
  * highlights through shiki's css-variables theme; this build has no shiki, so
  * `highlight.ts` produces the same `--shiki-*` runs and the plain `<pre>` arm
@@ -10,7 +9,7 @@
  * the streaming highlight session (per-delta re-tokenization is cheap enough at
  * this size, and the transcript memoizes a body on its text), the viewport
  * highlighter, and the `contentRef` scrollport seam. The harness routes its
- * labels through a `Tooltip` primitive; this port puts the same accessible name
+ * labels through a `Tooltip` primitive; this build puts the same accessible name
  * on `aria-label` and the visual hint on `title`, which needs no portal.
  */
 import { Fragment, memo, useCallback, useMemo, useState } from 'react';

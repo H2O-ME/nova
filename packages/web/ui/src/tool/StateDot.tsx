@@ -1,6 +1,5 @@
 /**
- * Ported from the harness ui-primitives `StateDot.tsx` (MIT) — the leading
- * run-state mark a tool row and a terminal card share, so the two never disagree
+ * The leading run-state mark a tool row and a terminal card share, so the two never disagree
  * about whether something is still running.
  *
  * Two visual families, exactly as the reference draws them:

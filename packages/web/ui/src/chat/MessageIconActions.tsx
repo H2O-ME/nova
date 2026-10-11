@@ -1,13 +1,13 @@
 /**
  * Copy / branch (/ clock) icon row shared by the user and assistant message
- * chrome — port of the harness `ui-chat`'s `MessageIconActions.tsx`. Copy is
+ * chrome. Copy is
  * live, branch is optional, and the clock sits before the icons on a user row
  * and after them on an assistant tail.
- *
+
  * Two seams stay with the owner (the harness passes them in too):
  * `extraActions` for surface-owned controls, and `usageAction` for the
  * turn-usage trigger. The harness renders its labels through a Tooltip
- * primitive; this port uses the button's `title`, which needs no portal and
+ * primitive; this build uses the button's `title`, which needs no portal and
  * keeps the accessible name (`aria-label`) intact.
  */
 import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
@@ -86,8 +86,9 @@ export const MessageIconActions = memo(function MessageIconActions({
   // `end` seat: there they are one group with its own gap and margin, because as
   // bare siblings they would take the row's 8px gap and lose the reference's
   // extra 8px lead-in. In the `start` seat the clock leads the row instead, so
-  // the usage trigger stands alone — it must still RENDER, though (dsh's tail
-  // does exactly this). Computing `endInfo` for the `end` branch only and then
+  // the usage trigger stands alone — it must still RENDER, though (the
+  // harness's tail does exactly this). Computing `endInfo` for the `end`
+  // branch only and then
   // rendering that alone dropped `usageAction` entirely whenever a caller chose
   // `clock="start"`: a prop accepted, threaded, and silently discarded.
   const endInfo = clock === 'end'

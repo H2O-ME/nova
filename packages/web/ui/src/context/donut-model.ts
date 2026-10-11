@@ -1,7 +1,7 @@
 /**
  * The ring chart's geometry: the stroke-dasharray arcs `Donut.tsx` paints.
  *
- * Ported from dsh-context `components/donut.tsx` (Apache-2.0). One dasharray
+ * One dasharray
  * unit is 1% of the circumference (r = 15.9155 → C ≈ 100), the `+25` offset
  * pins the first slice to 12 o'clock, and neighbouring slices give up half a
  * hairline at each end so the card's own background parts their colours.

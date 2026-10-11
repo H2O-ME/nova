@@ -1,8 +1,6 @@
 /**
- * The process group's summary — port of the harness `ui-chat`'s
- * `conversation-nodes/process-activity.ts` (classification, ranking, live
- * detail) + `chat/step-process.ts` (the closed title's composition), (c) 2026
- * DeepSeek — MIT License, read over this repo's own flow blocks.
+ * The process group's summary (classification, ranking, live detail, the
+ * closed title's composition), read over this repo's own flow blocks.
  *
  * A CLOSED group's title names the work without counts (已读取文件并搜索代码…)
  * so a settled turn's steps collapse to one honest line; a LIVE group's title

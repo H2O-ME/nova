@@ -2,11 +2,10 @@
  * The attachment rail's decisions, as pure functions — the input side of
  * `AttachmentRail.tsx`.
  *
- * Ported from the harness `ui-attachment/src/AttachmentRail.tsx` (MIT): the
- * rail pans sideways with its scrollbar hidden, its edge arrows are recomputed
- * from scroll geometry, a wheel over it becomes a horizontal step, and a page
- * step keeps one card of context. Kept here so the arithmetic is asserted
- * without a DOM.
+ * The rail pans sideways with its scrollbar hidden, its edge arrows are
+ * recomputed from scroll geometry, a wheel over it becomes a horizontal step,
+ * and a page step keeps one card of context. Kept here so the arithmetic is
+ * asserted without a DOM.
  */
 
 /**

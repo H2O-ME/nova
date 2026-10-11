@@ -1,8 +1,6 @@
 /**
- * The sidebar's foot: the settings seat and the connection readout.
- * Ported from the harness `ui-settings-general/src/client/SettingsRoot.tsx`
- * (the bottom-pinned trigger row that carries the `ConnectionIndicator`) +
- * `SettingsRoot.module.css` (c) 2026 DeepSeek — MIT License.
+ * The sidebar's foot: the settings seat and the connection readout. The
+ * trigger row is bottom-pinned and carries the `ConnectionIndicator`.
  *
  * The trigger opens the settings dialog, whose sections the shell (App)
  * registers — placement is not here, for the same reason the menu card's

@@ -1,6 +1,5 @@
 /**
- * Compaction marker — port of the harness `ui-chat`'s `CompactionItem.tsx`:
- * one dim 24px row (context glyph at rest → chevron on hover/focus), a
+ * Compaction marker: one dim 24px row (context glyph at rest → chevron on hover/focus), a
  * `title · summary` line, and the cited summary in a disclosure when the
  * current window still includes it. The row is deliberately not conversation
  * content: it marks where the model's history was folded.

@@ -1,6 +1,6 @@
 /**
- * The terminal card: how a shell call's expanded body reads. Ported from
- * the harness `ui-primitives/TerminalBlock.tsx` (MIT) — the banner (run-state
+ * The terminal card: how a shell call's expanded body reads — the reference's
+ * banner (run-state
  * dot, prompt label, one row per command line, status pill, copy control), the
  * banner-pinned output scroller, and the "no output" placeholder.
  *

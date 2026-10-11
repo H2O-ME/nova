@@ -1,7 +1,6 @@
 /**
  * The search card: grep matches grouped by file (or glob paths), drawn inline.
- * Ported from the harness `ui-primitives/SearchBlock.tsx` + its stylesheet
- * (MIT) — the banner summary, per-file collapse, the head/tail height cap (with
+ * The reference's banner summary, per-file collapse, the head/tail height cap (with
  * the tail's restored file header, so a row below the cut stays attributable)
  * and the copy control.
  *

@@ -34,11 +34,11 @@
     color-mix(in srgb, var(--nova-surface-base) 60%, transparent) 55%,
     transparent 100%
   );
-  animation: dsh-reasoning-row-sweep 2.6s var(--nova-ease-out) infinite;
+  animation: nova-reasoning-row-sweep 2.6s var(--nova-ease-out) infinite;
   pointer-events: none;
 }
 
-@keyframes dsh-reasoning-row-sweep {
+@keyframes nova-reasoning-row-sweep {
   0% { left: -300px; }
   90%, 100% { left: 100%; }
 }

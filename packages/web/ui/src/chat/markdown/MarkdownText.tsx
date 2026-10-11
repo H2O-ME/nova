@@ -1,7 +1,6 @@
 /**
- * Untrusted assistant Markdown → React elements. Port of the harness
- * `ui-primitives/src/markdown/MarkdownText.tsx`, with the two arms that port
- * needs: `parse.ts` (block grammar) → `blocks.tsx` (elements) → `inline.ts`
+ * Untrusted assistant Markdown → React elements, in two arms:
+ * `parse.ts` (block grammar) → `blocks.tsx` (elements) → `inline.ts`
  * (inline grammar) → `inline-view.tsx` (phrasing elements).
  *
  * The sanitizer IS this architecture: text becomes an element tree with string
@@ -10,7 +9,7 @@
  * (`inline.ts`); raw HTML in the source renders as literal text.
  *
  * The harness's streaming arm freezes settled blocks as cached elements and
- * re-parses only the tail; this port re-parses the body per render and leans on
+ * re-parses only the tail; this build re-parses the body per render and leans on
  * memoization at the call site instead (the transcript memoizes a message on
  * its text, so a delta re-parses one growing message, not the transcript).
  * `streaming` therefore only rides through as a DOM hook: on the root, and on

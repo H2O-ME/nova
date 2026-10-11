@@ -1,7 +1,6 @@
 /**
  * The goal bar: the session's durable goal, docked above the plan on the
- * composer stack — port of the harness `ui-goal`'s `GoalBar.tsx` +
- * `GoalBar.module.css` (c) 2026 DeepSeek — MIT License: a single 36px line
+ * composer stack: a single 36px line
  * with the goal glyph, the phase label, the truncated objective, and icon
  * actions (pause / resume, edit — an inline form in the same strip, see
  * `GoalEditRow` — and clear). The three composer-stack cards (queue panel,

@@ -77,9 +77,9 @@
    引用本地文件 opens the HOST's picker instead (a `list_directory` with
    `files: true`), which yields real absolute paths. */
 
-/* Staged attachments sit above the draft, inside the card: dsh's `.rail`
-   (`ui-attachment/ComposerAttachments.module.css`) — the box the rail scroller
-   lives in. `margin-bottom: -6px` matters: the card's own 12px flex gap
+/* Staged attachments sit above the draft, inside the card: the harness's
+   `.rail` (`ui-attachment/ComposerAttachments.module.css`) — the box the rail
+   scroller lives in. `margin-bottom: -6px` matters: the card's own 12px flex gap
    separates every row pair, and the attachments belong closer to the draft than
    the other rows, so the rail pulls back 6. Without it the cards float a full
    12px above the text instead of 6, which is what read as "the position is

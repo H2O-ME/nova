@@ -4,8 +4,8 @@
  * The host answers `git_diff` with unified diff text (that is what git prints),
  * and a `<pre>` of it is what this page used to show: no line numbers, no
  * hunks, and no way to tell an added line from a `+` that is part of the
- * content. Parsing it into rows is the same move the reference makes
- * (`dsh-better-sidebar` `diff/rows.ts`, MIT) and the numbers come from the hunk
+ * content. Parsing it into rows is the same move the reference makes,
+ * and the numbers come from the hunk
  * headers, which are the only place git states them.
  *
  * Two guards ride along, both from the reference: a very long line folds to one

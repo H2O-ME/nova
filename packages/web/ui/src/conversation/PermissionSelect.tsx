@@ -1,7 +1,5 @@
 /**
- * The composer's mode selector, ported from the harness
- * `ui-permission-presets` PermissionSelect.tsx + PermissionSelect.module.css
- * (c) 2026 DeepSeek — MIT License: a 28px chip trigger (glyph + label +
+ * The composer's mode selector: a 28px chip trigger (glyph + label +
  * chevron) opening the shared `shell/Menu.tsx` card — a trailing check on the
  * row in force, and the reference's whole interaction contract (focus stays on
  * the trigger, the arrow keys walk, Escape closes and hands the keyboard
@@ -11,7 +9,7 @@
  *  - the tier vocabulary is ours (`read-only` / `auto-edit` / `full` and
  *    `native` / `ptc` / `both`, owned by `mode-options.ts`), mapped onto the
  *    source's three badge glyphs (check / workspace pencil / exclamation);
- *  - the source's `danger-full-access` acknowledge dialog is not ported — the
+ *  - the source's `danger-full-access` acknowledge dialog is omitted — the
  *    pick applies straight away, as this product's mode controls always have.
  */
 import { useState } from 'react';

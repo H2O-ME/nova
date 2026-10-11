@@ -1,8 +1,7 @@
 /**
  * Which members of one drop are directories.
  *
- * Ported from the harness `ui-attachment/src/client/drop-events.ts` (MIT):
- * the `File` a directory drop yields is indistinguishable from an empty file,
+ * The `File` a directory drop yields is indistinguishable from an empty file,
  * so the entry API is the only source of that fact; a browser without it
  * reports no directories rather than guessing.
  */

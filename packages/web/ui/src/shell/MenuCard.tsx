@@ -3,11 +3,10 @@
  * shapes every menu on this surface uses (a titled section, a radio option with
  * its trailing check, a status or error line).
  *
- * It exists because three callers build the same card — the composer's model
- * seat, the sidebar's view options, the sidebar's settings — and the sheet that
- * dresses them (`MenuCard.module.css`, ported from the harness
- * `ui-model-selection` + `ui-primitives` Menu, MIT) belongs to exactly one of
- * them. Markup lives here too, so a menu that grows a row shape grows it once.
+ * It exists because two callers build the same card — the composer's model
+ * seat and the sidebar's view options — and the sheet that dresses them
+ * (`MenuCard.module.css`) belongs to exactly one of them. Markup lives here
+ * too, so a menu that grows a row shape grows it once.
  *
  * Placement is NOT here: the caller owns where the card goes (this surface uses
  * `shell/anchored-popover.ts` for the portaled cards), and passes the ref and

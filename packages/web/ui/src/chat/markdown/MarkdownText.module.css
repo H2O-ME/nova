@@ -1,8 +1,8 @@
-/* Visual baseline: deepsuite `@deepseek/md` markdown.css, adapted to CSS
+/* Visual baseline: the reference's markdown.css, adapted to CSS
    Modules. Cite pills, header anchors, and thinking-small variants are
    intentionally absent (no matching DOM). Token names match that sheet.
 
-   Ported to this repo's renderer: the KaTeX display rule, the footnote
+   Omitted from this repo's renderer: the KaTeX display rule, the footnote
    section, and the inline file-mention chip are omitted — this build renders
    no math, no footnote section (the block grammar has no definitions), and no
    file-mention vocabulary (there is no file-opener API on this surface).

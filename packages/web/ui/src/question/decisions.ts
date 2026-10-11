@@ -19,7 +19,7 @@ import type { AskUserQuestionAnswer, AskUserQuestionItem } from '../types.js';
 
 /**
  * Split the conventional recommendation suffix from an option label for
- * DISPLAY only. Ported from the reference (`parseRecommendedLabel`): both the
+ * DISPLAY only. Both the
  * ASCII and the full-width parenthesis forms, in either language, since the
  * model writes the suffix in the language it is answering in.
  * @param label - the option label as the asker wrote it.

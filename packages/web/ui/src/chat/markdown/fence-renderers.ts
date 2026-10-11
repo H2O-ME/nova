@@ -11,7 +11,7 @@
  * receives — and returns a React node to splice in between the surrounding
  * paragraph breaks. It MUST NOT mutate the body.
  *
- * Why a registry, not a `lang === 'dsh-ui'` branch in `blocks.tsx`: a fence
+ * Why a registry, not a hardcoded `lang === '…'` branch in `blocks.tsx`: a fence
  * renderer is a plugin-owned capability, and the markdown module is a leaf
  * utility several layers below plugin code. Pulling plugin components into a
  * leaf would invert the package's dependency direction; pushing the branch

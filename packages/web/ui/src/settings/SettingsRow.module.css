@@ -1,6 +1,4 @@
-/* Settings row sheet: the cell rhythm shared by every 通用设置 row, ported
- * from the harness `ui-theme/src/client/FontSizeRow.module.css`
- * (c) 2026 DeepSeek — MIT License. */
+/* Settings row sheet: the cell rhythm shared by every 通用设置 row. */
 
 .row {
   display: flex;

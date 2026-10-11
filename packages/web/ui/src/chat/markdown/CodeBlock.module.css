@@ -1,9 +1,9 @@
-/* Visual baseline: deepsuite `@deepseek/md` code-block.css. Highlight colors
+/* Visual baseline: the reference's code-block.css. Highlight colors
    stay on the existing shiki `--shiki-*` sheet (not Prism highlight.css).
 
    The line-number gutter (`.numbered`, the `--dsl-code-block-line-number-width`
    axis) is omitted: the chat transcript never passes `lineNumbers`, and this
-   port keeps no dead rule. The harness's zero-alpha white copy-button fill
+   sheet keeps no dead rule. The harness's zero-alpha white copy-button fill
    became `transparent` for the same reason as MarkdownText.module.css (no
    literal color functions in component sheets; nothing is painted either
    way). The toolbar below is the card arm of the harness `CodeCard.module.css`,

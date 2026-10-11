@@ -1,6 +1,5 @@
 /**
- * The read card: a file read as a line-numbered window. Ported from
- * the harness `ui-primitives/ReadBlock.tsx` + its stylesheet (MIT) — the
+ * The read card: a file read as a line-numbered window — the reference's
  * banner (path label, the `显示 X / Y 行` window note, copy), the fixed
  * line-number gutter, the head/tail height cap with its fold control.
  *

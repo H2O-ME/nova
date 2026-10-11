@@ -1,6 +1,6 @@
 /**
  * The 上下文 pane's DNA card: each request's composition as a stacked bar of
- * categories (the dsh-context "DNA" mode). The Trend card plots the same
+ * categories (the reference's "DNA" mode). The Trend card plots the same
  * requests on a shared axis scaled by the tallest bar; DNA reads each one's
  * composition as a SHARE — the longest category dominates the row, so a reader
  * compares requests by their makeup rather than their absolute size.

@@ -1,9 +1,6 @@
 /*
  * The plan panel: a collapsed-by-default card above the input bar.
  *
- * Ported from the harness ui-conversation `TodoPanel.module.css`
- * (c) 2026 DeepSeek — MIT License, value for value.
- *
  * The card's horizontal geometry is COMPUTED, not `100%`: the harness takes the
  * full width minus the composer's two side clearances and four dock insets, caps
  * it at the composer card's own max-width minus the same four insets, and

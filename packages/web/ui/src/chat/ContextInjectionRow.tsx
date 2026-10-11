@@ -1,6 +1,6 @@
 /**
- * The disclosure row for one section of the seeded context fragment — port of
- * the harness `ui-chat` `ContextInjectionRow.tsx`: a 24px row naming what the
+ * The disclosure row for one section of the seeded context fragment: a 24px
+ * row naming what the
  * context is and which producer contributed it, expanding into a bounded code
  * body.
  *

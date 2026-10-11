@@ -1,7 +1,6 @@
 /**
- * One pending-file card in the composer's attachment rail, ported from
- * the harness `ui-attachment/src/FileCard.tsx` + `FileCard.module.css`
- * (c) 2026 DeepSeek — MIT License: a fixed 240×64 card carrying the category
+ * One pending-file card in the composer's attachment rail: a fixed 240×64 card
+ * carrying the category
  * glyph, the file's name (14/22 weight 500), and its meta line (12/15: the
  * extension and the size), with a remove control in the top-right corner that
  * appears on hover.

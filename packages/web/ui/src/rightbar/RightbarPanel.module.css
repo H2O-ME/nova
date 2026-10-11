@@ -3,7 +3,7 @@
  * and the way back in. The tab strip — the panel's top edge — carries its own
  * sheet (`RightbarStrip.module.css`).
  *
- * Rebuilt against the reference plugin's shell (dsh-better-sidebar, MIT): a
+ * Rebuilt against the reference plugin's shell: a
  * docked column that borrows the conversation's ground (it is a column of the
  * page, not a card floating over it) and states its edge with one hairline, and
  * one body hosting every open page at once. Each page owns its own sheet too.

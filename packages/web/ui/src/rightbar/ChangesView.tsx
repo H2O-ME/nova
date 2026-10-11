@@ -8,8 +8,8 @@
  * shapes by `changes-model.ts`). They answer different questions, so they are a
  * switch rather than two stacked sections: each lens gets the whole column.
  *
- * The git side is the reference's (`dsh-better-sidebar` `changes/GitLens.tsx`,
- * MIT): sticky group headers with the group's own batch verb, a hover-revealed
+ * The git side is the reference's: sticky group headers with the group's own
+ * batch verb, a hover-revealed
  * stage/unstage button on every row and directory, the diff below with line
  * numbers and hunk headers, and the log's hash + subject rows.
  *

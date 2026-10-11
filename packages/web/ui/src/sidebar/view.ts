@@ -6,8 +6,8 @@
  * arithmetic). The connection indicator's state machine lives in
  * `shell/connection.ts`.
  *
- * Copy is the the harness zh dictionary verbatim (`sidebar` +
- * `workspace` namespaces, (c) 2026 DeepSeek, MIT): the sidebar reads the same
+ * Copy is the harness zh dictionary verbatim (`sidebar` +
+ * `workspace` namespaces): the sidebar reads the same
  * words as the reference column, so a screenshot comparison compares geometry
  * rather than translation. The settings panel's rows carry their own table
  * (`settings/copy.ts`).

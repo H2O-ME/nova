@@ -2,7 +2,7 @@
  * The session header's fixed controls: 新会话 and 设置.
  *
  * They used to live in the session sidebar's foot; the sidebar is gone, and the
- * header is where the shell's chrome consolidated (dsh keeps its settings seat
+ * header is where the shell's chrome consolidated (the harness keeps its settings seat
  * in the sidebar's foot — that is the one recorded deviation, since this
  * surface no longer has that column). The icon seat is the kit's 28px standard;
  * only the text verb keeps its own sheet.

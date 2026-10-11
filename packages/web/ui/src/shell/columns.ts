@@ -1,6 +1,5 @@
 /**
- * Column geometry, ported value-for-value from the harness
- * `ui-layout/src/client/columns.ts` (MIT): the right column shrinks, then
+ * Column geometry, value for value: the right column shrinks, then
  * loses its track, before the center drops below its minimum. The sidebar
  * never concedes here; `AppFrame` supplies its effective preference after
  * responsive collapse.

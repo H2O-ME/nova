@@ -1,7 +1,6 @@
 /**
  * The Token 统计 card's reading: the session's billed tokens split by WHAT they
- * are. Ported from dsh-context `components/statsTokens.tsx` and the
- * `billedParts` builder in its `categories.ts` (Apache-2.0).
+ * are.
  *
  * The total is the SAME figure the composer's usage pill prints — the session
  * totals the host folds over `run/stats` (`promptTokens` is BILLED input, which
@@ -12,7 +11,7 @@
  * closes the ring as its own slice. That is why the category rows carry the `≈`
  * marker and the output row does not.
  *
- * dsh prints `含思考` beside the output figure; Nova's kernel does not separate
+ * The harness prints `含思考` beside the output figure; Nova's kernel does not separate
  * reasoning tokens from completion tokens anywhere, so the note is dropped
  * rather than asserted (see `docs/dsh-parity-inventory.md`).
  */
@@ -26,7 +25,7 @@ import type { DonutSlice } from './donut-model.js';
 const OUTPUT_KEY = 'output';
 const OUTPUT_LABEL = '输出';
 /**
- * dsh paints this slice pink; the token layer ported into `styles/` has no pink
+ * The harness paints this slice pink; the token layer in `styles/` has no pink
  * ramp, so the nearest distinct static hue stands in (every other static 500 is
  * already spoken for by a window category).
  */

@@ -1,6 +1,5 @@
 /**
- * The composer's key contract, ported from the harness composer keymap
- * (`ui-conversation/src/client/input/editor/keymap.ts`, MIT): one pure
+ * The composer's key contract: one pure
  * function so the rules that decide "send / newline / close" can be asserted
  * without a DOM — a plain `<textarea>` has no editor command registry to
  * register them on, so they live here and the component only routes.

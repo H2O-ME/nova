@@ -1,7 +1,5 @@
 /**
- * Message rows of the transcript — port of the harness `ui-chat`'s
- * `MessageItem.tsx` (user bubble), `AssistantMarkdown.tsx` (full-width
- * narration) and `TurnTailNodeView.tsx` (the closing actions row), trimmed to
+ * Message rows of the transcript, trimmed to
  * the block vocabulary this surface's reducer emits:
  *
  *  - `UserMessageRow` — right-aligned capsule whose width is a share of the

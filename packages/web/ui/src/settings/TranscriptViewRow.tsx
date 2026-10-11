@@ -1,7 +1,6 @@
 /**
- * The 工作步骤展示 settings row — port of the harness `ui-chat`'s
- * `settings/TranscriptViewRow.tsx` + `PreferenceRow.tsx` (c) 2026 DeepSeek —
- * MIT License: the title and description on the left, a menu selector on the
+ * The 工作步骤展示 settings row: the title and description on the left, a menu
+ * selector on the
  * right whose four modes (简洁 / 标准 / 详细 / 完全展开) map onto the
  * presentation policy the transcript reads. The trigger recipe is the shared
  * {@link ModeSelect} card, aligned to the row's end like the other settings

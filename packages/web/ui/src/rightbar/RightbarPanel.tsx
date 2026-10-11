@@ -1,7 +1,7 @@
 /**
  * The right sidebar: one panel, its open tabs, and a start page between them.
  *
- * Rebuilt from the reference (dsh-better-sidebar, MIT) rather than patched: the
+ * Rebuilt from the reference rather than patched: the
  * strip is a TAB STRIP over the pages the reader has OPEN ({@link RightbarStrip},
  * its own sheet), and while no tab is in front the body is the reference's guide
  * page ({@link StartView}): a muted compass over entry capsules, a doorway rather

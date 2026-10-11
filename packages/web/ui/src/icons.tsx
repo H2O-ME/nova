@@ -207,8 +207,7 @@ export const SparkleIcon = (p: P): JSX.Element => (
 );
 
 /**
- * Filled glyphs ported from the harness ui-primitives (c) 2026 DeepSeek —
- * MIT License. The sidebar's workspace tree needs geometry the stroke set above
+ * Filled glyphs. The sidebar's workspace tree needs geometry the stroke set above
  * does not carry (the figma folder pair, the tree arrow, and the alert the
  * connection indicator reads with): paths are copied value-for-value, viewBox
  * and currentColor included, with the design box as the intrinsic size — CSS

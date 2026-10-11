@@ -1,7 +1,6 @@
 /* 供应商 sheet：设置页「模型」页的第 1 步。
  *
- * 几何与 token 照搬 the harness `ui-settings-models` 的
- * `ModelsSection.module.css`（MIT，(c) 2026 DeepSeek）：卡片走
+ * 几何与 token 照搬 the harness：卡片走
  * `--nova-surface-raised` / `-stroke` + `--nova-radius-lg`，行内动作是紧凑
  * 按钮（28px 高、12px 字），密钥状态用 8px 的实心点（configured / missing），编辑器
  * 嵌在卡片里换 `--nova-surface-panel` 填充，页头是 `<h2>` + 一行说明。 */

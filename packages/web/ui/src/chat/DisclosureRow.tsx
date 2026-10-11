@@ -1,6 +1,6 @@
 /**
- * Shared 24px disclosure chrome for compact flow rows — port of the harness
- * `ui-primitives/src/DisclosureRow.tsx`. The harness composes class names with
+ * Shared 24px disclosure chrome for compact flow rows. The harness composes
+ * class names with
  * `clsx`; this build has no dependency, so the same order is produced by a
  * local `join` (first argument wins, later ones append).
  *

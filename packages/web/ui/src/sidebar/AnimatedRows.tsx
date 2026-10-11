@@ -1,7 +1,5 @@
 /**
  * Movement and entry/exit fades for the sidebar's keyed rows.
- * Ported from the harness `ui-workspace/src/client/rows/AnimatedRows.tsx`
- * (c) 2026 DeepSeek — MIT License.
  *
  * The technique is FLIP, driven by React's own commit: `getSnapshotBeforeUpdate`
  * runs while the DOM still shows the OLD list, so it can record where every row

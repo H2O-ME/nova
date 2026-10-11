@@ -1,7 +1,6 @@
 /**
- * One anchored dropdown menu, ported from the harness
- * `ui-primitives/Menu.tsx` + `Menu.module.css` (c) 2026 DeepSeek — MIT
- * License: the card, the rows, and every way a keyboard or pointer touches
+ * One anchored dropdown menu: the card, the rows, and every way a keyboard or
+ * pointer touches
  * them, owned once here instead of per select.
  *
  * What the owner does: pass `items`, the `selectedId`, and a trigger as

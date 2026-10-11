@@ -1,8 +1,6 @@
 /**
  * The session list's section header: the section word, the inline search that
  * takes the row when it opens, the view-options control, and the reload.
- * Ported from the harness `ui-workspace` WorkspaceBrowser's `.sectionHeader`
- * block + its `.search` / `.searchSlot` rules (c) 2026 DeepSeek — MIT License.
  *
  * Two structural facts of the reference are kept: the label yields its width to
  * the search when it expands (it is the one part of the row that is not a

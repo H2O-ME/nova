@@ -1,6 +1,6 @@
 /**
- * Escape closes the topmost floating layer, one press per layer (ported from
- * the pre-port shell's `app-hooks.ts`). Text fields are skipped: inside one,
+ * Escape closes the topmost floating layer, one press per layer. Text fields
+ * are skipped: inside one,
  * Escape belongs to that field (the composer aborts the run, the approval
  * dialog clears its reason text), never to the chrome.
  *

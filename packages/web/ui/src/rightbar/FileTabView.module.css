@@ -1,6 +1,6 @@
 /*
- * The file tab viewer's own sheet. Values ported from the reference's
- * document preview (ui-sidebar-documentpreview, MIT) and this panel's own
+ * The file tab viewer's own sheet. Values follow the reference's
+ * document preview and this panel's own
  * diff pane geometry: one row per line, a right-aligned gutter number, and
  * wrapping as the default reading (a 300px column cannot afford a side
  * scroll per long line — the wrap chip restores a pan reading instead).

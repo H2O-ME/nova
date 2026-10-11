@@ -2,7 +2,8 @@
  * One column of the trend plot: a 14px button whose stack rises from the
  * baseline, remembered against its own props.
  *
- * Extracted from `TrendCard.tsx` and memoized for the same reason dsh memoizes
+ * Extracted from `TrendCard.tsx` and memoized for the same reason the harness
+ * memoizes
  * its `ChartBar`: a long log draws hundreds of columns, and a hover (two flag
  * flips) or any unrelated card state must not rebuild the other columns. The
  * card keeps the identities stable — its `chart` comes from a `useMemo`, so a

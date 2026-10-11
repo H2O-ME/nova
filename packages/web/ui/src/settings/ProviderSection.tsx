@@ -1,8 +1,7 @@
 /**
  * 供应商（BYOK）编辑区：设置页「模型」页——**哪个端点在役**。
  *
- * 版式对齐 the harness `ui-settings-models`（`src/client/ModelsSection.tsx` +
- * `ModelsSection.module.css` + `EditorFooter.tsx`，MIT，(c) 2026 DeepSeek）：每个
+ * 版式对齐 the harness：每个
  * 供应商是一张卡，卡头左边是身份（名称 + 标记 + 密钥点），右边是行内动作（编辑 /
  * 设为当前 / 删除）；一次只展开一张卡；「添加模型提供商」是列表末尾的虚线整行按钮，
  * 展开成同一形态的添加卡。

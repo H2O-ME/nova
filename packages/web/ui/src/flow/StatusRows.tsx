@@ -121,8 +121,7 @@ export const JobRow = memo(function JobRow({ job, onStop }: { job: JobSnapshot; 
 });
 
 /**
- * One slash command the user ran (`/compact`) — port of the harness
- * `ui-chat`'s `GenericCommandCard` (c) 2026 DeepSeek — MIT License: the same
+ * One slash command the user ran (`/compact`): the same
  * 24px disclosure row the tool rows use, whose summary is the command's own
  * output (shimmering while it runs) and whose body is the full multiline text
  * when there is one. It is here because a command is a thing the user DID to

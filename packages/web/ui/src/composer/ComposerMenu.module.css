@@ -240,8 +240,7 @@
   }
 }
 
-/* Breadcrumb header of a drilled `@` listing, ported from the harness
-   `ui-input-trigger` `MenuView.module.css` (MIT): pinned outside .viewport so
+/* Breadcrumb header of a drilled `@` listing: pinned outside .viewport so
    the compact shell and crumb padding align its text with item content. */
 .crumbs {
   flex: none;

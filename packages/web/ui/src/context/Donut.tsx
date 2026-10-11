@@ -1,6 +1,6 @@
 /**
  * The stats cards' ring: proportional SVG arcs around an HTML centre label.
- * Ported from dsh-context `components/donut.tsx` (Apache-2.0) — the geometry
+ * The geometry
  * lives in `donut.ts`, so this file is only the drawing.
  *
  * The centre type scales with the ring's size, so the label always fits inside

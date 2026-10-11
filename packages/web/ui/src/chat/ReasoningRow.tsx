@@ -1,7 +1,7 @@
 /**
- * Assistant reasoning disclosure, independent of tool-call presentation —
- * port of the harness `ui-chat`'s `ReasoningRow.tsx`: one 24px step row whose
- * words come from the harness's step-process vocabulary (`locale.ts`
+ * Assistant reasoning disclosure, independent of tool-call presentation: one
+ * 24px step row whose words come from the harness's step-process vocabulary
+ * (`locale.ts`
  * `message.stepProcess.thinking` / `.done.thinking`): a streaming block reads
  * 「正在分析请求」 plus the thought's live tail, a settled one reads
  * 「已完成分析」 — the work is named, and the raw text stays one click away in

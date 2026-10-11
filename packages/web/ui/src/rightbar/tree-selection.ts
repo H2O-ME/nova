@@ -1,8 +1,8 @@
 /**
  * The tree's pick: which rows are selected, and what one click means.
  *
- * Ported from the reference's multi-select rules (`dsh-better-sidebar`
- * `FileTree.tsx`, frozen in its 2026-09-27 files/changes UX contract): a plain
+ * The multi-select rules are the reference's (frozen in its 2026-09-27
+ * files/changes UX contract): a plain
  * click ACTS on the row and clears the pick, Ctrl/Cmd toggles one row and
  * re-anchors, and Shift ranges from the anchor over the rows **currently on
  * screen** — depth-first, expansion decides — which is the gesture every file

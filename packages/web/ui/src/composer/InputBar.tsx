@@ -1,7 +1,6 @@
 /**
- * The composer card: the harness's `conversation.composer.bar` body
- * (`ui-conversation/src/client/skeleton/InputBar.tsx`, MIT), ported to this
- * surface's wire.
+ * The composer card: the harness's `conversation.composer.bar` body, wired to
+ * this surface.
  *
  * Layout, in the harness's own order: a 22px-radius capsule with the soft
  * elevation stroke (`--nova-elevation-soft`, stroke rebound to `border-l2`), the
@@ -443,8 +442,8 @@ export function InputBar({
       overlayOpen: menuOpen,
       // Enter obeys the SAME decision the primary button shows, so the two can
       // never disagree: an upload in flight consumes the key instead of sending
-      // a prompt that would name a file not yet on disk (dsh refuses this in
-      // `view-binding.ts:128` for the same reason).
+      // a prompt that would name a file not yet on disk (the harness refuses
+      // this in `view-binding.ts:128` for the same reason).
       canSubmit: seat.kind === 'send' && !seat.disabled,
     });
     if (action === 'default') return;

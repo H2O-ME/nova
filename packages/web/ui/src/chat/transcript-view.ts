@@ -1,7 +1,6 @@
 /**
- * The work-details preference — port of the harness `ui-chat`'s
- * `chat-settings.ts` (mode vocabulary) + `presentation-policy.ts` (runtime
- * table), (c) 2026 DeepSeek — MIT License. A reader picks how much tool-call
+ * The work-details preference (mode vocabulary + runtime table). A reader
+ * picks how much tool-call
  * detail the transcript shows (设置 · 工作步骤展示), and renderers select
  * single fields of the derived policy; none of them compares the mode enum,
  * so adding a mode changes only the table below.

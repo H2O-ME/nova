@@ -1,8 +1,7 @@
 /**
  * 开始: the doorway page the panel shows while no tab is in front.
  *
- * Ported from the reference's guide body (`dsh ui-sidebar-right`
- * `tabs/guide`, MIT): a muted compass over a centred column of entry
+ * A muted compass over a centred column of entry
  * capsules, no heading — a browser start page shows its doors without a
  * caption. Picking one opens that page in the panel, so this is a doorway
  * rather than a page that stays open.

@@ -1,6 +1,5 @@
 /**
- * The composer's trigger menu (`/` commands, `@` files), a visual port of
- * the harness `ui-input-trigger/src/client/MenuView.tsx` (MIT): the
+ * The composer's trigger menu (`/` commands, `@` files): the
  * overlay that opens ABOVE the input card, edge to edge with it, its rows
  * growing upward until the viewport's top edge clamps them.
  *

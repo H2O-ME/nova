@@ -2,8 +2,8 @@
  * The terminal's shell choice: which row of the host's `shells` answer a
  * `term_open` asks for.
  *
- * Ported in shape from dsh `terminal-controller`'s client shell preference
- * (MIT): the host discovers what is installed and answers with the default
+ * The shape follows the reference's client shell preference: the host
+ * discovers what is installed and answers with the default
  * first; the BROWSER remembers the row the reader picked, and every new
  * terminal asks for it by path. The host validates the path against its own
  * discovery — a remembered path for a shell that has since been uninstalled

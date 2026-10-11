@@ -2,8 +2,7 @@
  * The changes list's hierarchy: a flat `git status` answer folded into the
  * directory tree the 变更 page draws.
  *
- * Ported from the reference (`dsh-better-sidebar` `changes/change-tree.ts`,
- * MIT), including its single-child compression: a `git status` answer is a flat
+ * The single-child compression is kept: a `git status` answer is a flat
  * list of repo-relative paths, and rendering that flat is how a refactor across
  * `src/client/changes/*` becomes a wall of near-identical rows. A directory with
  * no file of its own and exactly one subdirectory is not worth a row — the chain

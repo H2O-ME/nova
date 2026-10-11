@@ -2,10 +2,9 @@
  * Card data derivations: the shapes a tool card draws from. Pure, DOM-free, and
  * the place the collapsed/folded arithmetic lives.
  *
- * Ported from the harness (MIT): `ui-primitives/head-tail-cap.ts` (the
- * head/tail split), `ui-primitives/DiffBlock.tsx` (`contentLines`' terminator
- * rule and the copy text), `ui-tool/toolviews/plan-summary.ts` (the
- * parallel-active plan summary) and the `read.*` / `search.*` locale templates.
+ * The harness contributes: the head/tail split, `contentLines`' terminator
+ * rule and the copy text, the parallel-active plan summary, and the `read.*` /
+ * `search.*` locale templates.
  * The interleaved diff rows themselves come from our own `diff-lines.ts`, which
  * is the one place this surface differs from the harness by design (the harness
  * prints the removed block then the added block).
@@ -247,7 +246,7 @@ export function planSummary(items: readonly PlanItem[]): PlanSummary {
   };
 }
 
-/** The head/tail split metrics for a capped list (port of `head-tail-cap.ts`). */
+/** The head/tail split metrics for a capped list (the harness's rule). */
 export interface HeadTailCap {
   hidden: number;
   capped: boolean;

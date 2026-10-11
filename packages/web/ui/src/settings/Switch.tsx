@@ -1,7 +1,5 @@
 /**
- * The two-state toggle, ported from the harness
- * `ui-primitives/src/Switch.tsx` + `Switch.module.css`, (c) 2026 DeepSeek — MIT
- * License.
+ * The two-state toggle.
  *
  * It lives here, once, because three settings sections drew their own pill and
  * all three had the same defect: the track's "on" fill was

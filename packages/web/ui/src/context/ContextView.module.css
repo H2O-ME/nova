@@ -7,7 +7,7 @@
    Colours come from the token layer (static hues for categories, alias tiers for
    chrome) — never a literal. Chart geometry (16px composition bar, 130px plot
    with an 18px head, 14px bars on a 2px rhythm, the axis/quarter-line offsets)
-   follows dsh-context's stackedBar/trendChart (Apache-2.0), the reference this
+   follows the reference's stackedBar/trendChart — the reference this
    pane is aligned to. */
 
 /* The pane is a plain column: the SCROLLPORT is the conversation's shared one
@@ -17,7 +17,7 @@
 .root {
   display: flex;
   flex-direction: column;
-  /* The pane's base tier (dsh .lc-root's 13px): a row that declares no size of
+  /* The pane's base tier (the reference's .lc-root 13px): a row that declares no size of
      its own inherits THIS, not the browser's 16px — the trend detail's rows
      did exactly that and read a size larger than every other row in the pane. */
   font-size: var(--nova-content-font-size-secondary, 13px);
@@ -102,7 +102,7 @@
 
 /* ── head band (会话统计 beside Token 统计) ────────────────────────────── */
 
-/* dsh's `lc-cols lc-head`: the head band pairs two cards on one row and wraps
+/* The reference's `lc-cols lc-head`: the head band pairs two cards on one row and wraps
    them into one column when the pane is narrow. The 360px floor is the
    reference's own (`min-w-[min(360px,100%)]`). */
 .headRow {
@@ -113,7 +113,7 @@
 
 /* ── token stats (donut + legend) ──────────────────────────────────────── */
 
-/* dsh .lc-donut-row: the ring hugs the card's left edge and the legend fills
+/* The reference's .lc-donut-row: the ring hugs the card's left edge and the legend fills
    the rest of the row. */
 .donutRow {
   display: flex;
@@ -132,7 +132,7 @@
   display: block;
 }
 
-/* The empty ring's neutral track (dsh .lc-donut-track): a session that has
+/* The empty ring's neutral track (the reference's .lc-donut-track): a session that has
    billed nothing shows a track, never a full circle that reads "100%". */
 .donutTrack {
   fill: none;
@@ -189,7 +189,7 @@
   white-space: nowrap;
 }
 
-/* dsh .lc-sl: the legend rows flow into as many ≥160px columns as the card
+/* The reference's .lc-sl: the legend rows flow into as many ≥160px columns as the card
    offers — two in a half-width head card, one in a narrow pane. */
 .sliceList {
   flex: 1 1 auto;
@@ -315,7 +315,7 @@
 .slot {
   flex-basis: 0;
   min-width: 0;
-  /* dsh .lc-stacked-seg: hover dims recede while the active slot brightens,
+  /* The reference's .lc-stacked-seg: hover dims recede while the active slot brightens,
      both easing over the shared duration token. */
   transition:
     filter var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
@@ -342,7 +342,7 @@
   );
 }
 
-/* dsh animate-lc-stacked-in: segments and the free track scaleX-open from
+/* The reference's animate-lc-stacked-in: segments and the free track scaleX-open from
    their own left edge, staggered in layout order (the `--lc-i` slot comes from
    the model, capped there). Mount-only — flexGrow is token-proportional, so
    live hover never replays the sweep. */
@@ -352,7 +352,7 @@
   animation: lc-stacked-in 0.4s var(--nova-ease-inout) calc(var(--lc-i, 0) * 40ms) backwards;
 }
 
-/* dsh-context's in-pane tip chrome (base.css .lc-tip): the bubble follows the
+/* The reference's in-pane tip chrome (its base.css .lc-tip): the bubble follows the
    THEME (bg-layer-2 + label tokens) — the shell Tooltip's always-dark
    `tooltip-bg` is chrome vocabulary and mixes to dark-on-dark in light theme. */
 .barTip {
@@ -379,7 +379,7 @@
   color: var(--nova-text-secondary);
 }
 
-/* dsh .lc-legend + .lc-chip: a column-aligned grid of chips; hover lights a
+/* The reference's .lc-legend + .lc-chip: a column-aligned grid of chips; hover lights a
    chip with the interactive bg and rings its swatch. */
 .legend {
   display: grid;
@@ -439,8 +439,8 @@
 
 /* ── trend ─────────────────────────────────────────────────────────────── */
 
-/* dsh .lc-gran / .lc-trend-adaptive / .lc-gran-btn: the 自适应 switch rides
-   the title's right (margin-right instead of dsh's margin-left: auto, because
+/* The reference's .lc-gran / .lc-trend-adaptive / .lc-gran-btn: the 自适应 switch rides
+   the title's right (margin-right instead of the reference's margin-left: auto, because
    the card head also carries a trailing reading — the auto margin is what keeps
    the pair title-adjacent while the reading stays at the far end). */
 .scaleToggle {
@@ -485,7 +485,7 @@
 }
 
 /* The axis column: five ticks pinned to the same offsets as the grid lines
-   (dsh .lc-axis: 40px wide, labels right-aligned against the plot). */
+   (the reference's .lc-axis: 40px wide, labels right-aligned against the plot). */
 .axis {
   position: relative;
   width: 40px;
@@ -538,7 +538,7 @@
   padding-bottom: var(--nova-scrollbar-width, 8px);
 }
 
-/* The bar grid: dsh's own box — fixed 14px columns on a 2px rhythm, packed
+/* The bar grid: the reference's own box — fixed 14px columns on a 2px rhythm, packed
    left to right (NO spreading: a sparse log pools at the left edge and the
    scroller takes over once the columns outgrow the pane). The tooltip's
    analytic anchor and the 自适应 measure both read these numbers. */
@@ -579,7 +579,7 @@
 }
 
 /* The solid zero baseline, drawn after the dashed guides — one weight above
-   them (dsh paints it with a neutral mix; l3 is this layer's equivalent). */
+   them (the reference paints it with a neutral mix; l3 is this layer's equivalent). */
 .gridZero {
   top: 130px;
   border-top-style: solid;
@@ -634,7 +634,7 @@
     opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
-/* dsh animate-lc-bar-in: each stack scaleY-opens from the baseline, staggered
+/* The reference's animate-lc-bar-in: each stack scaleY-opens from the baseline, staggered
    left to right (the model's capped `--lc-i` slot). Keyed mounts only — an
    appended request grows in, bars already on screen never replay it. */
 .trendStack {
@@ -642,8 +642,8 @@
   animation: lc-bar-in 0.35s var(--nova-ease-inout) calc(var(--lc-i, 0) * 15ms) backwards;
 }
 
-/* The hover bubble: floats ABOVE the plot, outside the scroller (dsh
-   .lc-chart-tip). left: 0 + the transform the card writes imperatively — the
+/* The hover bubble: floats ABOVE the plot, outside the scroller (the
+   reference's .lc-chart-tip). left: 0 + the transform the card writes imperatively — the
    horizontal placement is analytic (column x minus scroll, clamped), so the
    bubble stays glued to its column while the chart scrolls. */
 .chartTip {
@@ -678,7 +678,7 @@
   border-top: 1px solid var(--nova-border-subtle);
 }
 
-/* One row per category (dsh .lc-detail-rows): two columns on a wide card, a
+/* One row per category (the reference's .lc-detail-rows): two columns on a wide card, a
    single one below ~424px — a fixed 1fr 1fr cannot shrink under a row's
    min-content and would spill. */
 .detailRows {
@@ -711,7 +711,7 @@
   color: var(--nova-text-secondary);
 }
 
-/* The mini track echoes the row's share of this request (dsh .lc-bar-track). */
+/* The mini track echoes the row's share of this request (the reference's .lc-bar-track). */
 .detailTrack {
   flex: 1;
   height: 5px;
@@ -1305,7 +1305,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── motion (dsh-context's entrance sweeps + tip fade) ─────────────────── */
+/* ── motion (the reference's entrance sweeps + tip fade) ────────────────── */
 
 @keyframes lc-stacked-in {
   from {

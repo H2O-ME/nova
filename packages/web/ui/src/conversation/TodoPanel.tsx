@@ -4,8 +4,7 @@
  * Collapsed by default and absent when there is no plan, because the list is
  * context for the reader rather than the product — an expanded panel over every
  * conversation would push the composer down for a plan that is usually longer
- * than it is useful. Ported from the harness
- * `ui-conversation/src/client/skeleton/TodoPanel.tsx` (MIT): the same header
+ * than it is useful. The same header
  * counts, the same per-status dots, the same collapsed default.
  */
 import { useState } from 'react';
@@ -60,7 +59,7 @@ export function progressLabel(todos: readonly TodoItem[]): string {
 export function TodoPanel({ todos, defaultCollapsed = true }: {
   todos: readonly TodoItem[] | null;
   /**
-   * Whether the list starts folded. Defaults to folded (dsh's choice): the plan
+   * Whether the list starts folded. Defaults to folded (the harness's choice): the plan
    * is context for the reader, and an open list over every conversation pushes
    * the composer down for something usually longer than it is useful.
    */

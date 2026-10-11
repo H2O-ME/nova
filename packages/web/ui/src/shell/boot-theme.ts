@@ -1,6 +1,5 @@
 /**
- * Theme bootstrap for the pre-mount interval, ported from the harness
- * `ui-theme/src/boot-theme.ts` (MIT). The index's inline script resolves the
+ * Theme bootstrap for the pre-mount interval. The index's inline script resolves the
  * stored preference (only `system` asks the browser) and writes the same DOM
  * fields `theme.ts` owns afterwards, so the first paint is already in the
  * right palette with no flash.

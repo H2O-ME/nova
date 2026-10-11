@@ -1,6 +1,5 @@
 /**
- * Project the selected session's title into the browser title, ported from
- * the harness `ui-layout/src/client/DocumentTitle.tsx` (MIT): the product
+ * Project the selected session's title into the browser title: the product
  * title is the floor, a session title prefixes it, and unmount restores it.
  */
 import { useEffect } from 'react';

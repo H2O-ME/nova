@@ -1,8 +1,7 @@
 /* Session stats under the composer: two icon pills side by side, 13/20
    tertiary text with a hover-pill affordance, each opening its own panel.
-   Ported from the harness ui-chat `StatsPills.module.css` +
-   `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License. The panel takes the
-   source's `--nova-surface-menu` material and its 1100 layer, exactly as
+   The panel takes the
+   reference's `--nova-surface-menu` material and its 1100 layer, exactly as
    `chat/TurnUsagePill` does: both tokens are defined by this sheet
    (`styles/design-platform.css`, `styles/gradient-shadow-text.css`), so the
    earlier `--nova-surface-raised` substitution had no reason to exist. */

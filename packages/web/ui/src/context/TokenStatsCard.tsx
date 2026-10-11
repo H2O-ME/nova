@@ -1,7 +1,6 @@
 /**
  * The 上下文 pane's Token 统计 card: the ring, its legend, and the billed total
- * in the middle. Ported from dsh-context `components/statsTokens.tsx` +
- * `sliceList.tsx` (Apache-2.0).
+ * in the middle.
  *
  * The card answers a different question than the composition card below it —
  * that one reads the window NOW, this one reads what the session has BILLED —
@@ -17,7 +16,7 @@ import { Donut } from './Donut.js';
 import { tokenStats } from './token-stats.js';
 import css from './ContextView.module.css';
 
-/** The ring's outer size, in px (dsh's `statsTokens` value). */
+/** The ring's outer size, in px (the reference's `statsTokens` value). */
 const RING_SIZE = 96;
 
 export interface TokenStatsCardProps {

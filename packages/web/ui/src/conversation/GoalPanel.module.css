@@ -1,6 +1,5 @@
-/* GoalBar: the second standalone card in the composer context stack — ported
-   from the harness `ui-goal/src/client/GoalBar.module.css` (c) 2026
-   DeepSeek — MIT License. Its dock column (card cap minus four insets) matches
+/* GoalBar: the second standalone card in the composer context stack.
+   Its dock column (card cap minus four insets) matches
    the plan card and the queue panel, so the three read as one stack.
 
    The strip is a single 36px line; 12px (`--nova-radius-lg`) is the reference's

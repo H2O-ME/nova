@@ -1,8 +1,5 @@
 /**
  * A session row's trailing stamp, as a compact relative age.
- * Ported from the harness `ui-primitives/src/relative-time.ts` (bucketing)
- * plus the `workspace` namespace's `time.*` words, (c) 2026 DeepSeek — MIT
- * License.
  *
  * The reference never prints a wall clock in a session row: the buckets answer
  * "how stale is this", which is the question a list of sessions is scanned for,

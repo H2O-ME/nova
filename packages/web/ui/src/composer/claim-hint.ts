@@ -2,10 +2,8 @@
  * The composer's claim hint: the ghost line drawn after the draft while a
  * command's arguments are still blank.
  *
- * Ported from the reference's composer (`ui-conversation/src/client/skeleton/
- * InputBar.tsx`, its `hint` prop, and `ui-conversation/src/client/locales.ts`
- * for the copy — the reference ships a zh sheet, so the wording below is its
- * own, not a translation of it).
+ * The hint's copy follows the reference's zh sheet — the wording below is its
+ * own, not a translation of it.
  *
  * The one decision worth pinning is the DISAMBIGUATION. `/goal` means two
  * different things depending on whether a goal is already in force, so the hint

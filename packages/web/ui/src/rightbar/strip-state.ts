@@ -1,7 +1,7 @@
 /**
  * The strip's open-set transitions — the reference's tab rules, as pure functions.
  *
- * Four rules, each lifted from `dsh ui-sidebar-right` and each one a red test if
+ * Four rules, each lifted from the reference and each one a red test if
  * inverted:
  * 1. the start page is a TAB (`GUIDE_KIND`), not the absence of one;
  * 2. a pane holds at most one (`canAddTab` hides the `+` while it is open);

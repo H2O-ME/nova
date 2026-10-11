@@ -1,7 +1,6 @@
 /**
- * Resident conversation skeleton, ported from the harness
- * `ui-conversation/src/client/skeleton/ConversationRoot.tsx` (c) 2026 DeepSeek
- * — MIT License. Hero chrome, composer positioning, the scrollport, the shared
+ * Resident conversation skeleton. Hero chrome, composer positioning, the
+ * scrollport, the shared
  * width axis and the transcript width handles stay mounted across
  * hero/settling/active transitions, so a session landing never remounts the
  * composer.

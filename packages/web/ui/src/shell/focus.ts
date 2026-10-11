@@ -1,6 +1,5 @@
 /**
- * Focus presentation for automatic entry and restoration, ported from
- * the harness `ui-primitives/focus.ts` (c) 2026 DeepSeek — MIT License.
+ * Focus presentation for automatic entry and restoration.
  */
 
 const releases = new WeakMap<HTMLElement, () => void>();

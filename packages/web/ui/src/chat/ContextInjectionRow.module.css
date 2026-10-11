@@ -1,7 +1,6 @@
 /* Figma 10:2482: 24px Tool calls header, 4px gap, 141px code block cap.
-   Ported from the harness ui-chat ContextInjectionRow.module.css
-   (c) 2026 DeepSeek — MIT License. The harness reuses this sheet for its
-   SystemPromptRow too, so both disclosures share one body. */
+   The harness reuses this sheet for its SystemPromptRow too, so both
+   disclosures share one body. */
 
 .root {
   min-width: 0;

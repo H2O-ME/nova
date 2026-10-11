@@ -1,8 +1,7 @@
 /**
- * Keyboard walking for a select menu, reduced from the harness
- * `ui-primitives` Menu's arrow-key navigation (c) 2026 DeepSeek — MIT License
- * to its index arithmetic, so the wrap-around behaviour is asserted without a
- * DOM (the component lane here is deliberately element-free).
+ * Keyboard walking for a select menu, reduced to its index arithmetic, so the
+ * wrap-around behaviour is asserted
+ * without a DOM (the component lane here is deliberately element-free).
  */
 
 /** An empty menu has no focus target at all. */

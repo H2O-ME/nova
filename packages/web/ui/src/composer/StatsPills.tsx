@@ -2,9 +2,7 @@
  * Session stats under the composer: two icon pills — a gauge pill (turns and
  * steps, plus speed) and a database pill (billed tokens and cache hit), each
  * opening a small dialog with its rows.
- * Ported from the harness `ui-chat/src/client/chat/StatsPills.tsx` +
- * `StatsPills.module.css` + the `stat-dialog.module.css` skin (c) 2026 DeepSeek
- * — MIT License; the data contract is this surface's (`stats-model.ts`, fed by
+ * The data contract is this surface's (`stats-model.ts`, fed by
  * the kernel's `run_stats` totals).
  *
  * Two differences, both because the reference has more seats than this product:

@@ -1,7 +1,6 @@
 /**
- * Hover and focus tooltips, ported from the harness
- * `ui-primitives/Tooltip.tsx` + `Tooltip.module.css` (c) 2026 DeepSeek — MIT
- * License. It exists here because a native `title` attribute is hover-only:
+ * Hover and focus tooltips. It exists here because a native `title` attribute
+ * is hover-only:
  * it never appears for a keyboard user and is not announced from the control
  * that owns it.
  *

@@ -4,7 +4,7 @@
  * The rows are a fold over what the host has answered (`files-model.ts`) plus
  * the reader's expansion set — the browser cannot read a directory, so the tree
  * is exactly the levels that have been asked for. Row geometry and the selection
- * marker are the reference's (`dsh-better-sidebar` `FileTree.tsx`, MIT): 28px
+ * marker are the reference's: 28px
  * rows, 22px per depth, the accent bar inset on the left of a selected row, and
  * a hover-revealed `@` pill at the row's right edge.
  *

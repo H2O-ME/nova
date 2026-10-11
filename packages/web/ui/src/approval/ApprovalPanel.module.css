@@ -1,7 +1,7 @@
 /* The approval card, value for value: warn strip, 20px card, scroll body,
  * action row whose reject capsule turns danger on hover. The reference's
- * Button/Input/Pager recipes (ui-primitives, ui-user-questions) are ported
- * locally where this card needs them — nothing here imports another package's
+ * Button/Input/Pager recipes are the reference's, copied locally where this
+ * card needs them — nothing here imports another package's
  * component, and every class below is rendered by ApprovalPanel.tsx,
  * ReasonInput.tsx or PreviewBlock.tsx.
  *
@@ -145,7 +145,7 @@
   padding: 14px var(--nova-space-16);
 }
 
-/* Ported from ui-primitives Button.module.css: the H36 geometry (padding 14,
+/* The H36 geometry (padding 14,
    gap 4) and the three variants this card uses. The reference Button is R12;
    this card's row has always been a full capsule, and at H36 that is a
    deliberate pill rather than a scale rung — so it is written as one

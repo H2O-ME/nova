@@ -106,8 +106,8 @@ export function referenceDraft(
  * quoted when it carries whitespace or a quote.
  *
  * A DIRECTORY is the special case, and it is what makes drill-down possible: the
- * token keeps its quote OPEN after the trailing slash (port of the harness
- * `formatFileMention`, which returns `@"path/`). Closing it would terminate the
+ * token keeps its quote OPEN after the trailing slash (the harness's
+ * `formatFileMention` behaves the same, returning `@"path/`). Closing it would terminate the
  * token, so the next keystroke would start a new word and the menu could never
  * descend a level — the pick would be born dead.
  *

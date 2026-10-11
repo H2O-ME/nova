@@ -1,8 +1,5 @@
 /**
  * Hover marquee for a session row's clipped title.
- * Ported from the harness `ui-workspace/src/client/rows/Rows.tsx`
- * (`useTitleMarquee` / `placeTitle` / `restTitle`), (c) 2026 DeepSeek — MIT
- * License.
  *
  * A row's title is one line with an ellipsis, so a long title (a fork's
  * incremented name, say) hides its own distinguishing tail exactly when the

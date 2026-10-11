@@ -1,5 +1,5 @@
-/* The dropdown menu primitive, ported from the harness `ui-primitives`
- * Menu.module.css (c) 2026 DeepSeek — MIT License. Values verbatim except: the
+/* The dropdown menu primitive. Values kept
+ * verbatim except: the
  * card's material is the shared `shell/MenuSurface` layer (the theme-owned
  * `--nova-surface-menu` + `--nova-material-menu-backdrop`, which this sheet
  * never redeclares), the row rhythm is `shell/MenuCard.module.css`'s (min-h 38,

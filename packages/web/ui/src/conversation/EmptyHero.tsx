@@ -1,6 +1,5 @@
 /**
- * The blank-column hero chrome, ported from the harness `ui-conversation`
- * EmptyHero.tsx / HeroShell.module.css (c) 2026 DeepSeek — MIT License: the
+ * The blank-column hero chrome: the
  * mark + headline lockup (34px mark leading a 26/32 headline, gap 10) with the
  * superscript preview badge, centered above the composer card.
  *
@@ -10,7 +9,7 @@
  *    name elsewhere, and the hero speaks to the reader);
  *  - the mark is our own artwork — the harness's fish is its brand, and its
  *    SMIL path morph only makes sense for that geometry; ours is a four-point
- *    star inside an orbit (a nova), riding the same ported CSS sway;
+ *    star inside an orbit (a nova), riding the same CSS sway;
  *  - the workspace chip is exported as its own `WorkspaceRow` rather than living
  *    inside `HeroShell`. The reference does the same (its `HeroShell` renders an
  *    empty `.body` and `heroWorkspaceRow` is a SIBLING of it, inside the

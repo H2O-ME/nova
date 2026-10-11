@@ -219,10 +219,10 @@
 }
 
 
-/* One mention inside a sent bubble, ported from the harness `ui-primitives`
-   `user-text.module.css` (MIT). Plain inline, NOT inline-flex: a flex container
-   takes its baseline from its first item — the icon svg, which has no text
-   baseline — and the chip's label would ride above the surrounding text. */
+/* One mention inside a sent bubble. Plain inline, NOT inline-flex: a flex
+   container takes its baseline from its first item — the icon svg, which has
+   no text baseline — and the chip's label would ride above the surrounding
+   text. */
 .refChip {
   display: inline;
   max-width: 100%;

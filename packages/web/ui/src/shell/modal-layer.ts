@@ -1,10 +1,9 @@
 /**
- * Shared modal keyboard ownership and focus lifetime, ported from
- * the harness `ui-primitives/useModalLayer.ts` (c) 2026 DeepSeek —
- * MIT License. Two Nova differences, both deliberate:
+ * Shared modal keyboard ownership and focus lifetime. Two Nova differences,
+ * both deliberate:
  *  - text fields keep their own Escape (the shell's standing rule: inside one,
  *    Escape belongs to that field, never to the chrome);
- *  - `closeTopModal` is not ported — nothing here needs to close a modal from
+ *  - `closeTopModal` is omitted — nothing here needs to close a modal from
  *    outside its own tree.
  */
 import { useLayoutEffect, useRef } from 'react';

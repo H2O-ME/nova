@@ -1,7 +1,6 @@
 /**
- * The draft-attachment rail, ported from the harness
- * `ui-attachment/src/AttachmentRail.tsx` + `AttachmentRail.module.css` (c) 2026
- * DeepSeek — MIT License: a scrollbar-less horizontal rail paged by edge
+ * The draft-attachment rail: a scrollbar-less
+ * horizontal rail paged by edge
  * arrows, with its items at their intrinsic size (a FileCard is 240 × 64) and a
  * vertical wheel converted to a horizontal pan.
  *

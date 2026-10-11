@@ -1,9 +1,8 @@
 /**
  * The tool row's decision layer: everything a row decides *before* it draws.
  *
- * Ported from the harness `ui-tool`'s `models/tool-call-model.ts` (MIT) —
- * the variant→title mapping, `formatToolBody`, and the row-state semantics — and
- * `toolviews/todo-row.tsx`, whose summary/suffix split (the count clause
+ * From the harness: the variant→title mapping, `formatToolBody`, and the
+ * row-state semantics — and the todo row's summary/suffix split (the count clause
  * truncates, the parallel-active `+n` must not) is reproduced here.
  *
  * The harness keyed variants by **tool name**; this surface keys by the card the

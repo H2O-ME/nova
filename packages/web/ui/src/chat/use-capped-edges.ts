@@ -1,6 +1,5 @@
 /**
- * The scroll-edge observer for a capped body — port of the harness
- * `ui-chat`'s `ChatGroupSeat` fade measure (c) 2026 DeepSeek — MIT License:
+ * The scroll-edge observer for a capped body:
  * which of the two ends can still scroll, so the gradient fades mark 「还有更多」
  * rather than 「到头了」. Both signals move on scroll AND on content growth
  * (an arriving row changes what is clipped), hence the ResizeObserver. An
