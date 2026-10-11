@@ -1,6 +1,6 @@
 /**
  * Sidebar shell: column geometry and the column's own controls.
- * Ported from deepseek-harness `ui-sidebar/src/client/SidebarRoot.tsx` +
+ * Ported from the harness `ui-sidebar/src/client/SidebarRoot.tsx` +
  * `SidebarRoot.module.css` (c) 2026 DeepSeek — MIT License.
  *
  * Collapse is a slide plus crossfade: content freezes at its expanded width

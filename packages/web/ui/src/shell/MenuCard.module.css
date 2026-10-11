@@ -1,5 +1,5 @@
 /* The one menu card every anchored menu on this surface wears: the shell's
-   view options and the composer's model seat. Ported from deepseek-harness
+   view options and the composer's model seat. Ported from the harness
    `ui-model-selection` ModelSelect.module.css + `ui-primitives` Menu
    (c) 2026 DeepSeek — MIT License.
  *
@@ -35,8 +35,6 @@
      Declared here rather than on the scrolling `.groups` child so the elevation
      choice sits with the surface; the custom properties inherit down to
      whichever descendant actually scrolls. */
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 .status,

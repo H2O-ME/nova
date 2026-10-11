@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-primitives (c) 2026 DeepSeek — MIT License. */
 /**
  * Host clipboard write shared by the copy controls in this surface. Success
  * feedback stays with each control; this helper only reports whether the host

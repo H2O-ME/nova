@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-layout (c) 2026 DeepSeek — MIT License. */
 .frame {
   position: relative; /* anchors the drag handles, which straddle column borders */
   display: grid;

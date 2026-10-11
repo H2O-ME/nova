@@ -1,5 +1,5 @@
 /*
- * The tab strip's own sheet — ported from deepseek-harness ui-dockkit
+ * The tab strip's own sheet — ported from the harness ui-dockkit
  * (dockkit.module.css, MIT): a 28px chip row with 10px of air above it, the
  * hairline slots between chips, the active chip as a filled tab whose
  * neighbours' slots go blank, and a hover-revealed 20px close inside each

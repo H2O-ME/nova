@@ -1,6 +1,6 @@
 /**
  * The settings modal: full-viewport mask + centered 800×800 panel with the
- * section nav rail. Ported from deepseek-harness `ui-settings-general/src/
+ * section nav rail. Ported from the harness `ui-settings-general/src/
  * client/SettingsRoot.tsx` (the `SettingsPanel` composition) +
  * `SettingsRoot.module.css`, (c) 2026 DeepSeek — MIT License.
  *

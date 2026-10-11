@@ -1,7 +1,7 @@
 /**
  * The tool row's decision layer: everything a row decides *before* it draws.
  *
- * Ported from deepseek-harness `ui-tool`'s `models/tool-call-model.ts` (MIT) —
+ * Ported from the harness `ui-tool`'s `models/tool-call-model.ts` (MIT) —
  * the variant→title mapping, `formatToolBody`, and the row-state semantics — and
  * `toolviews/todo-row.tsx`, whose summary/suffix split (the count clause
  * truncates, the parallel-active `+n` must not) is reproduced here.

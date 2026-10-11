@@ -1,7 +1,7 @@
 /**
  * The sidebar's 插件 entry: the plugin center's door.
  *
- * Ported from deepseek-harness `ui-plugin-manager` (c) 2026 DeepSeek — MIT
+ * Ported from the harness `ui-plugin-manager` (c) 2026 DeepSeek — MIT
  * License, which contributes a SIDEBAR panel entry (`PANEL_ID = 'plugins'`)
  * whose page owns the main column. Nova shipped the same page as a section
  * inside the settings dialog, so the plugin center sat two clicks deep behind

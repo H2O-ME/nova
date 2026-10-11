@@ -1,5 +1,5 @@
 /**
- * The composer dock stack, ported from deepseek-harness
+ * The composer dock stack, ported from the harness
  * `ui-conversation/src/client/skeleton/ConversationRoot.module.css`
  * `.composerStack` (MIT): one rhythm for the cards that stand above the input
  * card, so a dock card (the queue strip, a todo strip) and the card read as one

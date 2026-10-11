@@ -1,6 +1,6 @@
 /**
  * Shared modal keyboard ownership and focus lifetime, ported from
- * deepseek-harness `ui-primitives/useModalLayer.ts` (c) 2026 DeepSeek —
+ * the harness `ui-primitives/useModalLayer.ts` (c) 2026 DeepSeek —
  * MIT License. Two Nova differences, both deliberate:
  *  - text fields keep their own Escape (the shell's standing rule: inside one,
  *    Escape belongs to that field, never to the chrome);

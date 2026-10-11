@@ -1,5 +1,5 @@
 /**
- * Ported from deepseek-harness ui-primitives `StateDot.tsx` (MIT) — the leading
+ * Ported from the harness ui-primitives `StateDot.tsx` (MIT) — the leading
  * run-state mark a tool row and a terminal card share, so the two never disagree
  * about whether something is still running.
  *

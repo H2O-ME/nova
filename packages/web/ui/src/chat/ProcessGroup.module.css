@@ -1,11 +1,3 @@
-/* Ported from deepseek-harness ui-chat `ChatGroupSeat.module.css`
-   (c) 2026 DeepSeek — MIT License. The reference's group is
-   `.root > [title button] + .body > .content > members`; this port carries the
-   same two halves — the disclosure header (`.head`, the reference's `.title`
-   without the activity-icon crossfade: this repo's glyph library has no
-   per-activity set, so the chevron leads and rotates) and the bounded body
-   with its inner scroll container, reserved gutter and edge fades. */
-
 .root {
   min-width: 0;
 }

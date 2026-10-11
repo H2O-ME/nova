@@ -1,6 +1,6 @@
 /**
  * Composition lifetime for local keyboard handlers, including a late closing
- * keydown. Ported from deepseek-harness `ui-primitives/keyboard-composition.ts`
+ * keydown. Ported from the harness `ui-primitives/keyboard-composition.ts`
  * (c) 2026 DeepSeek — MIT License.
  */
 

@@ -4,7 +4,7 @@
  * grouping preference (the durable boundary sits at the foot, like
  * `conversation/content-width.ts`, so the logic above it stays testable).
  *
- * Copy is the deepseek-harness zh dictionary verbatim (`workspace` namespace,
+ * Copy is the the harness zh dictionary verbatim (`workspace` namespace,
  * (c) 2026 DeepSeek, MIT) — one deliberate narrowing: the reference searches
  * session history *content* through its host (`search.unavailable` is its own
  * degraded mode), and this kernel has no such index, so the search box here is

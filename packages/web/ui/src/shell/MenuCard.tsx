@@ -5,7 +5,7 @@
  *
  * It exists because three callers build the same card — the composer's model
  * seat, the sidebar's view options, the sidebar's settings — and the sheet that
- * dresses them (`MenuCard.module.css`, ported from deepseek-harness
+ * dresses them (`MenuCard.module.css`, ported from the harness
  * `ui-model-selection` + `ui-primitives` Menu, MIT) belongs to exactly one of
  * them. Markup lives here too, so a menu that grows a row shape grows it once.
  *

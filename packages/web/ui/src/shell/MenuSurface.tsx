@@ -1,6 +1,6 @@
 /**
  * The one menu material every dropdown on this surface wears, ported from
- * deepseek-harness `ui-primitives/MenuSurface.tsx` + `MenuSurface.module.css`
+ * the harness `ui-primitives/MenuSurface.tsx` + `MenuSurface.module.css`
  * (c) 2026 DeepSeek — MIT License.
  *
  * Why the material is a layer and not a `background` on the card: the fill is

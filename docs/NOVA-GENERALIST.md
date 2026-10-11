@@ -41,7 +41,7 @@ Nova = 通用型本地 agent 工作台
 | Git 变更面板（右栏"变更"页） | 常驻界面 + 内核假设 | 可选 UI；底层能力保留 |
 | 文件树面板、常驻终端、任务面板 | 常驻右栏四页 | 按需入口（见 §6 G5/G6） |
 | `system-prompt` 的 persona | "local coding agent" | 通用 agent（见 §6 G0b） |
-| `--dsw-*` 视觉底座 | 新代码的过渡契约 | 迁移完成后删除（见 §6 G7a） |
+| `--dsw-*` 视觉底座 | 新代码的过渡契约 | **已删除（2026-10-11，G7a 收口）** |
 
 ## 2. 执行契约（P0）
 
@@ -382,13 +382,20 @@ G1a（Run 实体）与 G1b（scope 归位）已落地。**G1c 与 G1d 的原定�
 - **不可改变**：协议语义、后端能力、已通过 G5 验证的能力入口。
 - **验收**：`pnpm check` 绿；G5 的 5 个问题在新形态下仍成立。
 
-### G7a — 视觉自研（**有条件通过**）
+### G7a — 视觉自研（**已完成，2026-10-11**）
 
 - **开工判据**：**必须确认新 token 与组件已迁移完成**才删 `--dsw-*`——**不得单纯按批次编号删除**。
 - **改**：95 个引用 `--dsw-*` 的 CSS 文件逐个迁移到 `--nova-*`；token 基线单调下降。
 - **删除**：`styles/design-platform.css`；149 个文件的 "ported from deepseek-harness" 注释头；逐值抄来的几何常量。
 - **不可改变**：`NOVA-DESIGN-SYSTEM.md` §2 已冻结的视觉方向；停靠列不画阴影（`style-guard` 已钉住）。
 - **验收**：`ui-token-guard` 基线下降；`style-guard` / `motion-guard` 绿；视觉差异以实机量测为证据。
+- **收口（2026-10-11，四批落地 `388ebd1`/`9bdae34`/`d3d55d2`/本批）**：
+  - **词表换代**：`design/tokens/` 值内联（亮 `:root` + 暗 `body[data-nova-dark]`），从 172 个 `--dsw-*` 语义收敛为 nova 封闭集（surface/text/color/interactive/diff/material/typography，全部新词有既有消费背书，记名见 DESIGN-SYSTEM §2/§3）；
+  - **消费迁移**：全仓 98 文件机械映射（批 B1）+ 264 处特判逐场景映射（批 B2）→ src 消费层**零 `--dsw-*`/`--ds-*`/`--dsh-*` 残留**；
+  - **删除**：`styles/` 七文件全删（design-platform/base/corner-shape/focus/gradient-shadow-text/motion/shiki 持值化后迁入 `design/`）；"Ported from" 头 47 个删除 + 94 文件的 dsh 点名改中性表述（MIT 版权署名按 license 保留）；
+  - **守卫翻转**：`style-guard` 从「`--dsw-*` 必须已声明」翻转为「**禁止出现**」；`motion-guard` 断言指 `design/`；
+  - **记名的有意视觉变化**：radius 阶梯收敛（12–28px 圆角统一落 8px，冻结方向「刻意小一档」的落点）；motion 时长按 §4.1 收敛（140/220/400 → 120/180/260）；3 处 error 底映射 `danger-soft`（红字红底改浅红底，可读性修复方向）。其余映射值不变或近似（≤10 灰阶，逐条见提交信息）。
+  - **留待批 F**：token 基线（767/82/…）的下降在组件重构批（字面量真正消除时）执行；`dsh-parity-inventory.md` 保持历史参照。
 
 ### G7b — 测试与清理（**有条件通过**）
 

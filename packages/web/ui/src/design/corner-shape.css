@@ -1,5 +1,4 @@
-/* Ported from deepseek-harness (c) 2026 DeepSeek — MIT License.
- * Smooth corner curvature for every rounded surface. Inside the support
+/* Smooth corner curvature for every rounded surface. Inside the support
  * guard, all corners curve along superellipse(1.5) — between a circular arc
  * (round = superellipse(1)) and a squircle (superellipse(2)) — instead of the
  * default arc; engines without corner-shape keep circular corners because the
@@ -16,12 +15,12 @@
  * sheet. The corner-shape stylesheet spec enforces that pairing. */
 @supports (corner-shape: superellipse(1.5)) {
   :root {
-    --dsw-corner-shape: superellipse(1.5);
+    --nova-corner-shape: superellipse(1.5);
   }
 
   *,
   *::before,
   *::after {
-    corner-shape: var(--dsw-corner-shape);
+    corner-shape: var(--nova-corner-shape);
   }
 }

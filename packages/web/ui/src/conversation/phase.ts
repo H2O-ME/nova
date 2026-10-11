@@ -1,5 +1,5 @@
 /**
- * The conversation column's three phases, ported from deepseek-harness
+ * The conversation column's three phases, ported from the harness
  * `ui-conversation` ConversationRoot (c) 2026 DeepSeek — MIT License.
  *
  * The skeleton renders the composer seat in every phase (the textarea must

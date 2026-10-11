@@ -1,5 +1,5 @@
 /**
- * Resident conversation skeleton, ported from deepseek-harness
+ * Resident conversation skeleton, ported from the harness
  * `ui-conversation/src/client/skeleton/ConversationRoot.tsx` (c) 2026 DeepSeek
  * — MIT License. Hero chrome, composer positioning, the scrollport, the shared
  * width axis and the transcript width handles stay mounted across

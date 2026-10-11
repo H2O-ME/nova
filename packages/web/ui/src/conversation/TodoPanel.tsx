@@ -4,7 +4,7 @@
  * Collapsed by default and absent when there is no plan, because the list is
  * context for the reader rather than the product — an expanded panel over every
  * conversation would push the composer down for a plan that is usually longer
- * than it is useful. Ported from deepseek-harness
+ * than it is useful. Ported from the harness
  * `ui-conversation/src/client/skeleton/TodoPanel.tsx` (MIT): the same header
  * counts, the same per-status dots, the same collapsed default.
  */

@@ -1,5 +1,5 @@
 /**
- * Composer context-occupancy meter, ported from deepseek-harness
+ * Composer context-occupancy meter, ported from the harness
  * `ui-conversation` ContextMeter.tsx / ContextMeter.module.css (c) 2026
  * DeepSeek — MIT License: a 14px ring and its percentage reading in the
  * composer's dock row — the same seat the source mounts it in (beside the

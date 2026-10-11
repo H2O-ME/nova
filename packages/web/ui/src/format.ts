@@ -51,7 +51,7 @@ export function modelThroughput(totals: SessionTotals): number | undefined {
  * Prompt-cache hit text (cached / prompt), or undefined when nothing was ever
  * billed — with no input there is no hit or miss to speak of.
  *
- * Ported from deepseek-harness `ui-chat/src/client/chat/token-format.ts`
+ * Ported from the harness `ui-chat/src/client/chat/token-format.ts`
  * (`formatCacheHitPercent`, MIT): billed input with zero cache reads reads
  * `0` — the reference's rule, and an honest one for the providers this
  * surface targets (DeepSeek reports cache on every request; a gateway that
@@ -163,7 +163,7 @@ export function subagentTotals(usage: {
 
 /**
  * `23:43` for today, `8月28日 23:43` within the year, the full stamp otherwise —
- * the transcript's clock, local time. Ported from deepseek-harness
+ * the transcript's clock, local time. Ported from the harness
  * `message-chrome.ts` `formatMessageClock` (MIT): a message written today
  * reads as a wall clock; only age earns the date back.
  */

@@ -1,6 +1,6 @@
 /**
  * The full-viewport invitation shown while a file drag is over the page,
- * ported from deepseek-harness `ui-attachment/src/DropOverlay.tsx` +
+ * ported from the harness `ui-attachment/src/DropOverlay.tsx` +
  * `DropOverlay.module.css` (c) 2026 DeepSeek — MIT License.
  *
  * Decoration only: `pointer-events: none` keeps drag targeting on the page

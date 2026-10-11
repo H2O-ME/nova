@@ -1,6 +1,6 @@
 /**
  * A session row's trailing stamp, as a compact relative age.
- * Ported from deepseek-harness `ui-primitives/src/relative-time.ts` (bucketing)
+ * Ported from the harness `ui-primitives/src/relative-time.ts` (bucketing)
  * plus the `workspace` namespace's `time.*` words, (c) 2026 DeepSeek — MIT
  * License.
  *

@@ -1,5 +1,5 @@
 /**
- * The strict session header above the scrollport, ported from deepseek-harness
+ * The strict session header above the scrollport, ported from the harness
  * `ui-conversation` ConversationSession.tsx's header host + the header block of
  * ConversationRoot.module.css (c) 2026 DeepSeek — MIT License: 76px of column
  * chrome (10px top inset, a 30px title row, then the tab strip with its 10px

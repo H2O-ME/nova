@@ -1,6 +1,6 @@
 /* 模型参数 sheet：一行一个模型，展开后是逐字段的能力覆盖。
  *
- * 几何与 token 全部照搬 deepseek-harness `ui-settings-models` 的
+ * 几何与 token 全部照搬 the harness `ui-settings-models` 的
  * `ModelsSection.module.css`（MIT，(c) 2026 DeepSeek）：卡片圆角 `--nova-radius-lg`
  * 与 `--nova-border-strong` 描边、输入框 32px 高 / `--nova-radius-lg` /
  * `--nova-surface-sunken`、行内图标按钮 28px 见方、删除悬停用

@@ -1,6 +1,6 @@
 /**
  * File classification and size text for the composer's attachment rail, ported
- * from deepseek-harness `ui-primitives` (`file-size.ts`, `FileTypeIcon.tsx`'s
+ * from the harness `ui-primitives` (`file-size.ts`, `FileTypeIcon.tsx`'s
  * extension tables — MIT License): a pending file card names the file, its
  * extension and its size, and draws a glyph for the category.
  *

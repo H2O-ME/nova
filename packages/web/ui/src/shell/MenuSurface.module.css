@@ -1,10 +1,3 @@
-/* Ported from deepseek-harness ui-primitives/MenuSurface.module.css
-   (c) 2026 DeepSeek — MIT License. Value for value except the macOS `.backing`
-   rules, dropped because a browser tab has no native vibrancy to blur (see the
-   module doc) and the compact variant, which no menu here uses. Standard menus
-   are outer R16 with 4px padding and R12 items (docs/ui-radius.md, "Nested
-   geometry and hover"). */
-
 /* Zero specificity: the fallback positioning must never outrank the consumer's
    own placement class (`position: fixed` on both cards here). */
 :where(.surface) {

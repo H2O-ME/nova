@@ -23,7 +23,8 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: var(--nova-layer-panel);
+  /* The docked panel is a column of the page: under the frame resize handle (11). */
+  z-index: 10;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -33,8 +34,6 @@
   /* No elevation: a docked column is flat page furniture; the reference gives
      its shadow to floating panes only, and this frontend has none in the
      column. A docked panel carrying one reads as a card over the conversation. */
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
   animation: rightbar-in var(--nova-dur-slow) var(--nova-ease-inout);
 }
 
@@ -48,7 +47,8 @@
 .panel[data-rightbar='fullscreen'] {
   position: fixed;
   inset: 0;
-  z-index: var(--nova-layer-panel-fullscreen);
+  /* Fullscreen variant covers the frame but stays under the dialogs (each owns its 1200). */
+  z-index: 60;
   border: none;
 }
 

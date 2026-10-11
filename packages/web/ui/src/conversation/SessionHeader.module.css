@@ -1,9 +1,3 @@
-/* Ported from deepseek-harness ui-conversation (c) 2026 DeepSeek — MIT License.
- * Source: the header/tab block of ConversationRoot.module.css (the
- * `conversation.session.header` host lives in ConversationSession.tsx there;
- * here it is its own module). Values and comments verbatim except the two
- * product additions at the foot. */
-
 /* 76px with its rule: the height of the Sidebar's tab strip and header row
    (ui-dockkit `.tabStrip` 38px + the pane header's 38px), so the two rules
    meet at the column edge. The rows add up to it — 10px top inset, the 30px

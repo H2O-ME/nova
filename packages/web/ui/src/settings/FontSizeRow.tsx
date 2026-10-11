@@ -2,7 +2,7 @@
  * Font-size preference row: title + body-text description + stepper pill
  * (centered value; hover reveals the up/down arrow column anchored to the
  * pill's right edge) + a px unit label after the pill. Ported from
- * deepseek-harness `ui-theme/src/client/FontSizeRow.tsx` +
+ * the harness `ui-theme/src/client/FontSizeRow.tsx` +
  * `FontSizeRow.module.css`, (c) 2026 DeepSeek — MIT License. The displayed
  * value follows the persisted setting, never the click echo.
  */

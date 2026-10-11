@@ -1,8 +1,3 @@
-/* Ported from deepseek-harness ui-permission-presets PermissionSelect.module.css
- * (c) 2026 DeepSeek — MIT License, values verbatim. Only the chip trigger lives
- * here now: the card and rows are the shell's shared menu
- * (`shell/Menu.module.css`); `.modeList` is its one consumer-side widening. */
-
 /* Menu wrapper (shell/Menu.module.css .root) — mirrored here only for the
    container query's sake; the primitive paints it. The trigger is the query's
    subject, so the sheet must own a wrapper-scoped rule. */

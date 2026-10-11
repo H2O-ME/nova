@@ -1,7 +1,7 @@
 /**
  * 模型参数（第 3 步）：把配置里的 `models[]` 当成**可增删、可逐字段改能力**的名单来编。
  *
- * 版式对齐 deepseek-harness `ui-settings-models`（`src/client/ModelListEditor.tsx` +
+ * 版式对齐 the harness `ui-settings-models`（`src/client/ModelListEditor.tsx` +
  * `ModelRow.tsx` + `ModelInputTypes.tsx`，MIT，(c) 2026 DeepSeek）：一行一个模型，
  * 行内是 ID 与显示名两个输入框，右侧一个展开箭头（`modelAdvanced` = 模型选项）与一个
  * 删除按钮；展开后是上下文窗口 / 最大输出 / 输入类型；容量字段接受 `256K` / `1M`

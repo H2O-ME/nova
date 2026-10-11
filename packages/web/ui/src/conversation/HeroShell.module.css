@@ -1,9 +1,3 @@
-/* Ported from deepseek-harness ui-conversation (c) 2026 DeepSeek — MIT License.
- * Source: skeleton/HeroShell.module.css, values and comments verbatim except:
- * the agent-preset seat, the picker-dialog field recipes and `.previewBadge`
- * are not ported (no preset roster and no preview badge in this product), and
- * the workspace chip renders as a label (no workspace menu — see EmptyHero.tsx). */
-
 /* NEW SESSION hero (figma Input_Bottom 75:8208): fish + title, workspace chip
    above the shared InputBar card. The input itself is InputBar — only stack
    geometry and the chip live here. */

@@ -1,5 +1,5 @@
 /**
- * The blank-column hero chrome, ported from deepseek-harness `ui-conversation`
+ * The blank-column hero chrome, ported from the harness `ui-conversation`
  * EmptyHero.tsx / HeroShell.module.css (c) 2026 DeepSeek — MIT License: the
  * mark + headline lockup (34px mark leading a 26/32 headline, gap 10) with the
  * superscript preview badge, centered above the composer card.

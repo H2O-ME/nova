@@ -1,5 +1,5 @@
 /**
- * The composer's staged references and images, ported from deepseek-harness
+ * The composer's staged references and images, ported from the harness
  * `ui-attachment/src/client/ComposerAttachments.tsx` (c) 2026 DeepSeek — MIT
  * License: the box that owns the rail's placement inside the card and renders
  * one card per staged item.

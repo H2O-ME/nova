@@ -1,10 +1,3 @@
-/* Ported from deepseek-harness ui-conversation (c) 2026 DeepSeek — MIT License.
- * Source: ContextMeter.module.css, values and comments verbatim except the
- * breakdown legend rows (system/tools/messages tints), which are not ported —
- * this surface has no breakdown data, and the source itself renders header plus
- * bar alone when its own breakdown is absent. No compact action is ported
- * either: the source panel has none, and `/compact` is the command path. */
-
 /* Context-occupancy pill in the composer's dock row (beside the stats pills)
    plus its click-open breakdown panel (menu surface: r12, elevation-prominent). */
 

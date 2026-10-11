@@ -1,6 +1,6 @@
 /**
  * Hover marquee for a session row's clipped title.
- * Ported from deepseek-harness `ui-workspace/src/client/rows/Rows.tsx`
+ * Ported from the harness `ui-workspace/src/client/rows/Rows.tsx`
  * (`useTitleMarquee` / `placeTitle` / `restTitle`), (c) 2026 DeepSeek — MIT
  * License.
  *

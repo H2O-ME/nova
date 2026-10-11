@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-tool (c) 2026 DeepSeek — MIT License. */
 /* Row chrome (`.root`, the sweep, `.sep`, `.summary`, `.summarySuffix`,
    `.diffStat`, `.errorSummary`, `.stoppedSummary`, the `.row:hover` lift,
    `.bodyWrap`, `.visuallyHidden`) is ToolRow.module.css;

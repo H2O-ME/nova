@@ -1,6 +1,6 @@
 /**
  * Session-list rows: one workspace header row and one session row.
- * Ported from deepseek-harness `ui-workspace/src/client/rows/Rows.tsx`
+ * Ported from the harness `ui-workspace/src/client/rows/Rows.tsx`
  * (`ProjectRowItem` / `SessionNodeItem`) + `Rows.module.css`
  * (c) 2026 DeepSeek — MIT License.
  *

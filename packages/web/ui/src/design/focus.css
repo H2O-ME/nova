@@ -1,0 +1,30 @@
+/* Focus ring: components own offsets; dense tables and toolbars may keep a
+ * 1px ring. The width token lives in the token layer; the colour resolves to
+ * the accent unless a surface rebinds it. */
+:focus-visible {
+  outline-color: var(--nova-focus-ring-color, var(--nova-color-accent));
+  outline-width: var(--nova-focus-ring-width);
+}
+
+/* The fallback names the colour and the standard width, never the style: a
+ * control that disables its outline keeps `none` and paints nothing. Without
+ * the width, Chromium's unnamed ring stayed at `auto 1px` while every
+ * declared ring used the standard geometry. Declared rings also read this
+ * color, including rings on descendants and pseudo-elements. */
+
+/* shell/input-modality publishes the attribute. Editable controls keep their
+ * focus feedback on click; other controls reveal rings on keyboard navigation.
+ * Only ring paint is suppressed, not elevation or selected borders. */
+html[data-input-modality='pointer'] body :focus-visible:not(:read-write) {
+  --nova-focus-ring-color: transparent;
+  outline-color: transparent;
+}
+
+/* shell/focus publishes the attribute on automatic destinations (a dialog's
+ * entry focus, a menu's focus return). The move was not the user's navigation,
+ * so no ring paints; Tab and the arrow keys restore normal focus styling by
+ * removing it. */
+[data-nova-automatic-focus]:focus,
+[data-nova-automatic-focus]:focus:focus-visible {
+  outline: none;
+}

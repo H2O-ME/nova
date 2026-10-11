@@ -1,5 +1,3 @@
-/* Ported from deepseek-harness ui-sidebar (c) 2026 DeepSeek — MIT License. */
-
 /* Sidebar column (figma 133:7629): vertical stack, padding 12/6, sidebar
    fill + 1px right border painted by the layout column. Collapse is a
    slide + crossfade, not a morph: the content holds its frozen expanded
@@ -20,8 +18,6 @@
   font-size: 14px;
   /* The sidebar is elevated above the conversation surface, so a revealed
      scrollbar uses the l2 pair. .quietBars hides it without changing layout. */
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 /* Rail geometry (figma rail spec): 36x36 control boxes centered in the 56px

@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-primitives (c) 2026 DeepSeek — MIT License. */
 /* DiffBlock.module.css, plus the two row kinds an interleaved diff needs that the
    harness's side-by-side body does not have (`.ctx` context rows, `.skip` the
    collapsed unchanged run). Their values are this frontend's previous diff card,

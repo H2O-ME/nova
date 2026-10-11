@@ -1,8 +1,3 @@
-/* Ported from deepseek-harness ui-chat `TurnUsagePanel.module.css` +
-   `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License; the trigger rides
-   the IconActions row's own metric styling and the panel is the shared stat
-   dialog's skin, so this panel and the session stats pills are one family. */
-
 .root {
   position: relative;
   display: inline-flex;

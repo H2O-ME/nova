@@ -1,7 +1,7 @@
 /**
  * The panel's tab vocabulary and the one thing that outlives a reload.
  *
- * Ported in shape from deepseek-harness `ui-sidebar-right` (MIT): the strip is
+ * Ported in shape from the harness `ui-sidebar-right` (MIT): the strip is
  * a TAB STRIP over the pages the reader has OPEN (the reference's `openTabs`),
  * and while none is in front the body is that harness's guide page. Nothing is
  * remembered across reloads: a fresh page load opens on the guide — the

@@ -1,11 +1,3 @@
-/* Ported from deepseek-harness ui-input-trigger MenuView.module.css
-   (c) 2026 DeepSeek — MIT License: the menu's own geometry, the scrolling
-   viewport, the row, the two heading rungs, the drill seat, the pending
-   skeleton and the overflow hint. The container's material is the reference's
-   shared one (`ui-primitives/MenuSurface`), applied here as `.menu::before`,
-   which is why `--nova-surface-menu` — a token this sheet really carries — is
-   the surface fill. */
-
 .menu {
   position: absolute;
   bottom: calc(100% + 4px);
@@ -21,8 +13,6 @@
   overflow: hidden;
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens
      (see styles/scrollbar.css for the rebinding contract). */
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
   /* The shared menu material's rail: 6px wide, a quiet 2px thumb, inset from
      the card's rounded ends (the reference's own values). */
   --nova-scrollbar-width: 6px;

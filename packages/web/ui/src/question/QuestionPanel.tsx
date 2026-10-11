@@ -2,7 +2,7 @@
  * The question card: the model's `ask_user_question` batch, on the composer dock
  * beside where the approval card sits.
  *
- * Ported from deepseek-harness `ui-user-questions` (MIT) — the clean header
+ * Ported from the harness `ui-user-questions` (MIT) — the clean header
  * (heading + title over the collapse/close actions), the option list with its
  * number / checkbox leading indicator, the recommendation badge, the
  * option-shaped custom-answer row, and the footer pager (‹ progress › plus

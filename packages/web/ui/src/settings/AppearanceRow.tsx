@@ -1,6 +1,6 @@
 /**
  * Appearance preference row: title + three preference cubes. Ported from
- * deepseek-harness `ui-theme/src/client/AppearanceRow.tsx` +
+ * the harness `ui-theme/src/client/AppearanceRow.tsx` +
  * `AppearanceRow.module.css` (figma 501:30012 'Frame 2117131228'),
  * (c) 2026 DeepSeek — MIT License. Selection follows the persisted
  * preference, never the resolved active theme.

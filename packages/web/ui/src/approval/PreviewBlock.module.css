@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-primitives (c) 2026 DeepSeek — MIT License. */
 /* The approval card's effect preview: the same diff body the transcript draws
  * (DiffBlock.module.css), so an approval shows the change exactly as the
  * applied result will. Two deltas from the source sheet, both because this

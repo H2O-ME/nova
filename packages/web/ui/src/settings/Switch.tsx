@@ -1,5 +1,5 @@
 /**
- * The two-state toggle, ported from deepseek-harness
+ * The two-state toggle, ported from the harness
  * `ui-primitives/src/Switch.tsx` + `Switch.module.css`, (c) 2026 DeepSeek — MIT
  * License.
  *

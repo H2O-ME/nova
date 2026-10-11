@@ -1,11 +1,3 @@
-/* Ported from deepseek-harness ui-attachment FileCard.module.css
-   (c) 2026 DeepSeek — MIT License, with the same geometry: a fixed 240 × 64
-   card on the input surface, the glyph in a 28px box, the name at 14/22 weight
-   500 and its meta line at 12/15. Two token substitutions, noted at the rules
-   that carry them: the reference's literal colour fallbacks are dropped for this
-   sheet's alias tokens, and the file-type colours come from the shared static
-   scale instead of `ui-primitives`' own sheet. */
-
 .card {
   position: relative;
   display: inline-flex;

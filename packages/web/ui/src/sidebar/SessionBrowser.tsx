@@ -2,7 +2,7 @@
  * The session list under the sidebar's controls: the section header (its own
  * module), the scrolling body in whichever shape the view options ask for, and
  * the bottom fade.
- * Ported from deepseek-harness `ui-workspace/src/client/rows/WorkspaceBrowser.tsx`
+ * Ported from the harness `ui-workspace/src/client/rows/WorkspaceBrowser.tsx`
  * (the grouped body and its flat/search result shapes) +
  * `WorkspaceBrowser.module.css` (c) 2026 DeepSeek — MIT License.
  *

@@ -1,5 +1,5 @@
 /**
- * The transcript's tool row — the ported deepseek-harness `ui-tool` row
+ * The transcript's tool row — the ported the harness `ui-tool` row
  * (MIT, see `ToolRow.module.css`) over this frontend's card vocabulary.
  *
  * All reasoning lives in `card-view.ts` (which card, which headline, did it

@@ -1,5 +1,5 @@
 /**
- * Frame measurement and column preferences, ported from deepseek-harness
+ * Frame measurement and column preferences, ported from the harness
  * `ui-layout/src/client/stores.ts` (MIT) with its Cordis store replaced by
  * plain pure functions — no DOM, no React, directly testable.
  *

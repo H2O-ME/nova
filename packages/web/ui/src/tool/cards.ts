@@ -2,7 +2,7 @@
  * Card data derivations: the shapes a tool card draws from. Pure, DOM-free, and
  * the place the collapsed/folded arithmetic lives.
  *
- * Ported from deepseek-harness (MIT): `ui-primitives/head-tail-cap.ts` (the
+ * Ported from the harness (MIT): `ui-primitives/head-tail-cap.ts` (the
  * head/tail split), `ui-primitives/DiffBlock.tsx` (`contentLines`' terminator
  * rule and the copy text), `ui-tool/toolviews/plan-summary.ts` (the
  * parallel-active plan summary) and the `read.*` / `search.*` locale templates.

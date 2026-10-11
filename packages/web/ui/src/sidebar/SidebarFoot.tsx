@@ -1,6 +1,6 @@
 /**
  * The sidebar's foot: the settings seat and the connection readout.
- * Ported from deepseek-harness `ui-settings-general/src/client/SettingsRoot.tsx`
+ * Ported from the harness `ui-settings-general/src/client/SettingsRoot.tsx`
  * (the bottom-pinned trigger row that carries the `ConnectionIndicator`) +
  * `SettingsRoot.module.css` (c) 2026 DeepSeek — MIT License.
  *

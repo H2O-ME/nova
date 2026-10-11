@@ -1,6 +1,6 @@
 /**
  * The queue strip: what the kernel's prompt queue looks like between the
- * transcript and the input card, ported from deepseek-harness
+ * transcript and the input card, ported from the harness
  * `ui-conversation/src/client/queue/QueueDock.tsx` (MIT).
  *
  * Two differences, both by what our wire carries:

@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-user-questions (c) 2026 DeepSeek — MIT License. */
 /* The denial-reason field: the source's AnswerField from QuestionComposer
  * (mirror-sized auto-growing textarea) wearing its `.customBlock` frame. Two
  * deltas, both because this field is the card's action row and not a question's

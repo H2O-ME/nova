@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-approval (c) 2026 DeepSeek — MIT License. */
 /* The approval card, value for value: warn strip, 20px card, scroll body,
  * action row whose reject capsule turns danger on hover. The reference's
  * Button/Input/Pager recipes (ui-primitives, ui-user-questions) are ported
@@ -35,8 +34,6 @@
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-raised);
   box-shadow: var(--nova-shadow-2);
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 /* The card-wide box sizing the question card declares (QuestionComposer): the

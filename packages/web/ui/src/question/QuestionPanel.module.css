@@ -1,5 +1,5 @@
 /*
- * The question card, ported from deepseek-harness `ui-user-questions`
+ * The question card, ported from the harness `ui-user-questions`
  * (c) 2026 DeepSeek — MIT License: a clean card (no banner strip — the header
  * carries the title and the collapse/close actions), a scroll body whose option
  * list is a set of option-shaped rows led by a number (single) or a checkbox
@@ -40,8 +40,6 @@
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-raised);
   box-shadow: var(--nova-shadow-2);
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 .card,

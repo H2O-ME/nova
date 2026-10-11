@@ -1,7 +1,7 @@
 /**
  * 模型版块的文案：页面头、供应商（BYOK 多端点）、端点模型目录与模型参数。
  *
- * 词汇对齐 deepseek-harness `ui-settings-models`（`src/client/locales.ts` 的 zh 表，
+ * 词汇对齐 the harness `ui-settings-models`（`src/client/locales.ts` 的 zh 表，
  * MIT，(c) 2026 DeepSeek）：标题/说明（`title` / `intro`）、行内动作（`edit` /
  * `remove` / `add`）、密钥状态（`credentialConfigured` / `credentialMissing` /
  * `keyStored`）、模型字段（`contextWindow` / `maxTokens` / `modelId` / `modelName` /

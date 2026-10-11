@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-primitives (c) 2026 DeepSeek — MIT License. */
 /* Two families, exactly as the reference draws them: solid states keep the 10px
    layout slot and paint one 6px currentColor core; ongoing is a rotating ring
    with a breathing arc. */

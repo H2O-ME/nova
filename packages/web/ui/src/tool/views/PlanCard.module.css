@@ -1,4 +1,4 @@
-/* Surface-local sheet, NOT a harness port: deepseek-harness has no expanded card
+/* Surface-local sheet, NOT a harness port: the harness has no expanded card
    for a plan update (its todo row shows the counts and falls back to the generic
    IN/OUT body). This card keeps the row's plan visible, and borrows the card
    family's values from ui-primitives SearchBlock.module.css (banner, rows, fold)

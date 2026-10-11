@@ -1,0 +1,82 @@
+/* Scrollbar skin. Without it every scrolling region renders the UA
+ * scrollbar, which ignores the theme — a light native bar over the dark
+ * palette. The thumb colour is the token layer's --nova-scrollbar-thumb pair;
+ * the geometry variables below are rebind points a scroll container may
+ * override (ConversationRoot's overlay composer seat reads
+ * --nova-scrollbar-width to align itself beside the space-consuming bar).
+ *
+ * The rules sit on `body`, not `html`: the token sheets declare the palette
+ * on `:root`/`body`, and custom properties only inherit downward, so an
+ * `html` rule would resolve the colour to the guaranteed-invalid value and
+ * `scrollbar-color` falls back to `auto`. */
+body {
+  --nova-scrollbar-thumb-border: 0px;
+  --nova-scrollbar-track-margin: 0px;
+  --nova-scrollbar-width: 5px;
+}
+
+/* The two paths are mutually exclusive, and the gate is load-bearing rather
+   than defensive. A non-`auto` `scrollbar-width` or `scrollbar-color` makes
+   Chromium and Safari drop every `::-webkit-scrollbar*` rule for that
+   element, including `::-webkit-scrollbar-thumb:hover` — measured in chromium
+   as a `::-webkit-scrollbar` width taking effect on its own and being
+   ignored as soon as `scrollbar-width: thin` is added. Declaring both
+   unconditionally therefore leaves the hover tokens with no rendering at all,
+   because the engines that implement the hover pseudo-element are exactly the
+   ones the standard properties silence, and Firefox has no hover
+   pseudo-element to fall back on.
+
+   `not selector(::-webkit-scrollbar)` is true only where the pseudo-element
+   is unimplemented, so Firefox takes the standard path and WebKit-based
+   engines take the pseudo-element path. An engine too old for the
+   `selector()` function makes the condition invalid, which evaluates false
+   and selects the pseudo-element path — the correct side for the pre-16.4
+   Safari that is the realistic case. */
+@supports not selector(::-webkit-scrollbar) {
+  /* Declared on every element rather than inherited from `body`: re-declaring
+     makes each element substitute the variable as it sees it.
+     `scrollbar-width` is not an inherited property at all, so it needs the
+     per-element declaration regardless.
+
+     No hover counterpart exists on this path: `scrollbar-color` states one
+     thumb colour and the engine derives its own hover treatment. */
+  body,
+  body * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--nova-scrollbar-thumb) transparent;
+  }
+}
+
+/* Not gated in turn: an engine that does not implement these pseudo-elements
+   drops the rules as unknown selectors, so the gate would only restate what
+   selector matching already does. Not inherited either, hence the unscoped
+   selectors. */
+::-webkit-scrollbar {
+  width: var(--nova-scrollbar-width);
+  height: var(--nova-scrollbar-width);
+}
+
+/* Track stays transparent so the thumb reads against whatever surface scrolls
+   under it; only the thumb carries a token colour. */
+::-webkit-scrollbar-track {
+  margin-block: var(--nova-scrollbar-track-margin);
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: var(--nova-scrollbar-thumb-border) solid transparent;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--nova-scrollbar-thumb);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--nova-scrollbar-thumb-hover);
+}
+
+/* Both scrollbars meeting in a corner: no separate token, so the corner
+   matches the transparent track rather than the UA's opaque default. */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

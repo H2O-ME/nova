@@ -1,5 +1,5 @@
 /* GoalBar: the second standalone card in the composer context stack — ported
-   from deepseek-harness `ui-goal/src/client/GoalBar.module.css` (c) 2026
+   from the harness `ui-goal/src/client/GoalBar.module.css` (c) 2026
    DeepSeek — MIT License. Its dock column (card cap minus four insets) matches
    the plan card and the queue panel, so the three read as one stack.
 

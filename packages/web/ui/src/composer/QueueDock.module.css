@@ -1,6 +1,3 @@
-/* Ported from deepseek-harness ui-conversation QueueDock.module.css
-   (c) 2026 DeepSeek — MIT License. */
-
 /* Figma .FileContainerText 1:791: the wrapper uses the shared dock inset
    inside the composer card around the inset panel. */
 
@@ -42,8 +39,6 @@
   /* Menu material, not the opaque tip token: the queue panel is a floating
      surface over the transcript (the reference's `.panel::before`), and the
      opaque fill read as a flat gray box. */
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 .panel::before {

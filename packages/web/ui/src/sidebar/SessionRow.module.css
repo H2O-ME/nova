@@ -1,12 +1,3 @@
-/* Ported from deepseek-harness ui-workspace
-   `src/client/rows/Rows.module.css` (c) 2026 DeepSeek — MIT License.
-   Classes for the row menus (rename/fork/archive), the session hover card, the
-   drag insert markers, and the schedule indicator are not ported: this app's
-   session list carries titles, times, and a selection, and nothing else. The
-   reference's `--nova-workspace-indent` is dropped for the same reason — it
-   exists to express nested workspaces, which this list does not have, so the
-   token would only ever resolve to its 0px fallback. */
-
 .projectRow,
 .sessionRow {
   display: flex;

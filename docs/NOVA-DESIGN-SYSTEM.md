@@ -24,13 +24,13 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 
 > **目标不是禁止 CSS，而是禁止每个业务组件自行发明设计规则。**
 
-## 1. 与 dsh 参照的关系（已拍板）
+## 1. 与 dsh 参照的关系（已拍板并执行完毕）
 
-现有调色板与排版移植自 `deepseek-harness`（MIT 授权，`design-platform.css` 文件头有署名）。**自 0.5.0 起 Nova 另起自己的设计语言**：
+现有调色板与排版**曾**移植自 `deepseek-harness`（MIT 授权）。**自 0.5.0 起 Nova 另起自己的设计语言**：
 
 - `docs/dsh-parity-inventory.md` 降级为**历史参照**，不再是验收口径；
-- `--dsw-*` 只作为**过渡底座**存在，最终在 Batch 10 删除；
-- 从 Batch 1 起，**`--dsw-*` 不再是任何新代码的契约**。
+- ~~`--dsw-*` 只作为过渡底座存在~~ → **2026-10-11 调色板换代后已全部删除**：`design/tokens/` 直接持值，移植层 `styles/`（含 `design-platform.css`）整体删除，`style-guard` 禁止任何 `--dsw-*`/`--ds-*`/`--dsh-*` 出现；
+- 从 Batch 1 起，**`--dsw-*` 不再是任何新代码的契约**——这条现在是机器禁令而非约定。
 
 ## 2. Visual Direction v1
 
@@ -93,7 +93,7 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 
 **不引入可变字重中间值。** 移植层的注释记录了原因：Figma 的 510 是 SF Pro 可变字体值，非可变 webfont 上会跨平台不可预测地吸附。
 
-> 移植来的 `--dsw-font-*` 是 `font:` **简写**（`16px/24px <family>`），不是尺寸。拿它当 `font-size` 是静默 bug——所以 Nova 把轴分开命名，不做别名。迁移时简写拆成 `font-size: var(--nova-text-size-*)` + 字面行高（行高不在五条守卫规则内）。
+> 移植来的 `--dsw-font-*` 是 `font:` **简写**（`16px/24px <family>`），不是尺寸。拿它当 `font-size` 是静默 bug——所以 Nova 把轴分开命名，不做别名。7A 迁移时整条配方以 `--nova-font-*` 原形态迁入 `tokens/typography.css`（只迁有消费者的），拆解随组件重构批进行。
 
 `2xs`（11px）是调色板换代时记名补入的密集档：代码块与紧凑标签的既有消费（约 24 处）需要它，非凑数。用户内容字号轴 `--nova-content-font-size`（12–17，主题 presenter 写在 body 上）及派生的 `-delta` / `-size-secondary` 也定义在 token 层。
 
@@ -208,7 +208,7 @@ Token 纪律由**机器守卫**执行，不靠 review。
 
 | 守卫 | 位置 | 管什么 |
 | --- | --- | --- |
-| 字面颜色 / 死类 / svg 设计盒 / `--dsw-*` 必须已声明 | `ui/test/style-guard.test.ts` | 既有规则，保留 |
+| 字面颜色 / 死类 / svg 设计盒 / **禁止任何 `--dsw-*`/`--ds-*`/`--dsh-*` 出现** | `ui/test/style-guard.test.ts` | 翻转后规则（7A 收口） |
 | 动效表挂载 / 共享 keyframe / reduced-motion 钳制 | `ui/test/motion-guard.test.ts` | 既有规则，保留 |
 | spacing / radius / shadow / duration / ease 字面量棘轮 | `scripts/ui-token-guard.mjs`（在 `pnpm gates` 内） | **本批新增** |
 
@@ -291,10 +291,10 @@ Freeze（Batch 1）  →  Migrate（Batch 7A / 7B / 8）  →  Delete（Batch 10
 | 阶段 | 做什么 | 状态 |
 | --- | --- | --- |
 | **Batch 1** | 定稿本文件 + 建立 token 层 + 扩守卫 + 删 Tailwind 死依赖。**不迁移业务 UI** | ✅ 已落地 |
-| **Batch 2–6** | 只允许**新代码**使用 `--nova-*`；旧 CSS 原样存在，不改 | 进行中 |
-| **Batch 7A** | 结构迁移，**不改视觉** | 待 |
-| **Batch 7B / 8** | 大规模迁移到 `--nova-*`，基线逐批下降 | 待 |
-| **Batch 10** | 删除 `--dsw-*` 与 `styles/design-platform.css`，把色值内联进 `design/tokens` | 待 |
+| **Batch 2–6** | 只允许**新代码**使用 `--nova-*`；旧 CSS 原样存在，不改 | ✅ |
+| **Batch 7A** | 结构迁移，**不改视觉** | ✅ 2026-10-11（radius/时长按冻结方向收敛，记名见纲领 G7a） |
+| **Batch 7B / 8** | 大规模迁移到 `--nova-*`，基线逐批下降 | ✅ 2026-10-11（消费层清零；基线下降留组件重构批） |
+| **Batch 10** | 删除 `--dsw-*` 与 `styles/design-platform.css`，把色值内联进 `design/tokens` | ✅ 2026-10-11（`styles/` 七文件全删） |
 
 > **设计语言可以晚迁移，但不能晚定义。** 否则 Agent 会在"半套设计系统"上继续写 UI，最后形成新的过渡泥潭。
 
@@ -302,16 +302,22 @@ Freeze（Batch 1）  →  Migrate（Batch 7A / 7B / 8）  →  Delete（Batch 10
 
 ```text
 packages/web/ui/src/design/
-├── index.css              挂载表（由 main.tsx 在 index.css 之后挂载，Nova token 覆盖移植层）
+├── index.css              唯一挂载表（token 层 + keyframes + 全局 paint 规则）
 ├── motion.css             共享 keyframes + reduced-motion 全局钳制
+├── corner-shape.css       superellipse 圆角（@supports 守卫）
+├── focus.css              focus-visible 环规则
+├── scrollbar.css          滚动条皮肤（几何变量是重绑点）
 └── tokens/
     ├── space.css          --nova-space-* / --nova-row-*
     ├── radius.css         --nova-radius-*
     ├── shadow.css         --nova-shadow-* / --nova-elevation-*
-    ├── surface.css        --nova-surface-* / --nova-border-* / --nova-interactive-*
-    ├── text.css           --nova-font-* / --nova-text-* / --nova-content-font-*
-    ├── color.css          --nova-color-*
-    └── motion.css         --nova-dur-* / --nova-ease-*
+    ├── surface.css        --nova-surface-* / --nova-border-* / --nova-interactive-* / material / scrollbar / focus-ring
+    ├── text.css           --nova-font-family/mono / --nova-text-* / --nova-content-font-*
+    ├── color.css          --nova-color-*（含 ink / soft / chart）
+    ├── motion.css         --nova-dur-* / --nova-ease-*
+    ├── typography.css     --nova-font-*（font: 简写配方，非尺寸）
+    ├── diff.css           --nova-diff-*（added/deleted 三层 + line 洗色）
+    └── shiki.css          --shiki-*（语法高亮调色板）
 ```
 
 **为什么从 `main.tsx` 挂载而不是追加进 `index.css`**：`index.css` 是移植层的遗留挂载表，`design/index.css` 是它的继任者；一个文件两个写手正是上一轮丢编辑的成因。
@@ -343,4 +349,4 @@ packages/web/ui/src/design/
 - 三级阴影与 elevation 复合配方的具体数值（沿用移植层）；
 - motion 时长按 §4.1 收敛为 120/180/260（如需回到 140/220/400 在此改）。
 
-调色板换代（2026-10-11）**保持值不变、只换所有权**：`--nova-*` 直接持值，不再桥接 `--dsw-*`；移植层 `styles/design-platform.css` 在全部消费迁移完成前保留（判据见通用化纲领批次 7A）。
+调色板换代（2026-10-11）**保持值不变、只换所有权**：`--nova-*` 直接持值，不再桥接 `--dsw-*`；移植层 `styles/` 七文件已全部删除，消费层零旧词残留（`style-guard` 翻转为禁令）。

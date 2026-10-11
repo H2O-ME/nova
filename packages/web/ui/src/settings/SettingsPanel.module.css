@@ -1,4 +1,4 @@
-/* Settings modal sheet, ported from deepseek-harness
+/* Settings modal sheet, ported from the harness
  * `ui-settings-general/src/client/SettingsRoot.module.css`
  * (c) 2026 DeepSeek — MIT License. Figma anchors kept in the comments. */
 
@@ -58,8 +58,6 @@
      Declared on the panel rather than the scrolling `.options` child so the
      elevation choice sits with the surface; the custom properties inherit
      down to whichever descendant scrolls. */
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
   animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 

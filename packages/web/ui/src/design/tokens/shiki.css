@@ -1,13 +1,11 @@
-/* Ported from deepseek-harness ui-theme (c) 2026 DeepSeek — MIT License. */
 /* Syntax-highlight token palette: the values behind shiki's css-variables
-   theme (--shiki-* custom properties emitted by the ui-primitives CodeBlock).
-   Light values on :root, dark overrides on the body attribute — the same
-   cascade as every other token sheet. Background/foreground deliberately
-   alias the markdown code-block tokens so highlighted and plain blocks agree. */
-
+ * theme (--shiki-* custom properties emitted by the CodeBlock). Light values
+ * on :root, dark overrides on the body attribute — the same cascade as every
+ * other token sheet. Background/foreground deliberately alias the markdown
+ * code-block tokens so highlighted and plain blocks agree. */
 :root {
-  --shiki-foreground: var(--dsw-alias-label-primary);
-  --shiki-background: var(--dsw-alias-markdown-code-block);
+  --shiki-foreground: var(--nova-text-primary);
+  --shiki-background: var(--nova-surface-code);
   --shiki-token-constant: #1c7ed6;
   --shiki-token-string: #2f9e44;
   --shiki-token-comment: #868e96;

@@ -1,27 +1,11 @@
-/* Global sheets, in the order upstream `ui-theme/src/client/styles.ts` mounts
- * them (base → corner-shape → design-platform → focus → scrollbar →
- * gradient-shadow-text → shiki) so the two cascades stay comparable. No sheet
- * declares a property another already declares for the same selector, so the
- * order is not load-bearing today — it is kept aligned so that a future sheet
- * that does overlap lands where upstream would put it. `onboarding.css` is
- * deliberately absent: NovaAgent has no onboarding surface, so its seven tokens
- * would have no consumer (§8 "不引入其 UI 框架，只搬 token 与组件配方").
- * Everything a component paints lives in a CSS module beside that component —
- * a rule here is either a token or a mount default, never a surface.
+/* Mount defaults: the frame fills the viewport, and the page's own text and
+ * colors come from the Nova token layer so the pre-paint theme script's choice
+ * (body [data-nova-dark]) is the only thing that has to change.
  *
- * Motion and the Nova token layer mount separately from `design/index.css`
- * (main.tsx, after this sheet). */
-@import "./styles/base.css";
-@import "./styles/corner-shape.css";
-@import "./styles/design-platform.css";
-@import "./styles/focus.css";
-@import "./styles/scrollbar.css";
-@import "./styles/gradient-shadow-text.css";
-@import "./styles/shiki.css";
-
-/* Mount defaults: the frame fills the viewport, and the page's own text colors
- * come from the Nova token layer so the pre-paint theme script's choice (body
- * [data-nova-dark]) is the only thing that has to change. */
+ * Every sheet — the Nova token layer, the shared keyframes, corner-shape,
+ * focus, scrollbar and the shiki palette — mounts from `design/index.css`
+ * (main.tsx, after this file). This file only carries mount defaults; a rule
+ * here is never a surface. */
 html,
 body,
 #root {
@@ -35,6 +19,7 @@ body {
    * Firefox macOS equivalent; other engines ignore both lines. */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-autospace: normal;
   color: var(--nova-text-primary);
   background: var(--nova-surface-base);
 }

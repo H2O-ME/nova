@@ -1,6 +1,6 @@
 /**
  * The read card: a file read as a line-numbered window. Ported from
- * deepseek-harness `ui-primitives/ReadBlock.tsx` + its stylesheet (MIT) — the
+ * the harness `ui-primitives/ReadBlock.tsx` + its stylesheet (MIT) — the
  * banner (path label, the `显示 X / Y 行` window note, copy), the fixed
  * line-number gutter, the head/tail height cap with its fold control.
  *

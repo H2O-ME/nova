@@ -1,5 +1,5 @@
 /**
- * File-type glyphs for the attachment rail, ported from deepseek-harness
+ * File-type glyphs for the attachment rail, ported from the harness
  * `ui-primitives/src/FileTypeIcon.tsx` (c) 2026 DeepSeek — MIT License: the
  * 28px sheet-of-paper body with a folded corner, carrying one category mark,
  * plus the folder body.

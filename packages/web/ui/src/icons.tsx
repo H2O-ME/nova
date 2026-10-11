@@ -207,7 +207,7 @@ export const SparkleIcon = (p: P): JSX.Element => (
 );
 
 /**
- * Filled glyphs ported from deepseek-harness ui-primitives (c) 2026 DeepSeek —
+ * Filled glyphs ported from the harness ui-primitives (c) 2026 DeepSeek —
  * MIT License. The sidebar's workspace tree needs geometry the stroke set above
  * does not carry (the figma folder pair, the tree arrow, and the alert the
  * connection indicator reads with): paths are copied value-for-value, viewBox

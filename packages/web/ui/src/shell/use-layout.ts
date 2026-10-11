@@ -1,6 +1,6 @@
 /**
  * Frame measurement and column preferences as a React binding, ported from
- * deepseek-harness `ui-layout` (MIT). All the decisions live in
+ * the harness `ui-layout` (MIT). All the decisions live in
  * `layout-store.ts` (pure, directly tested); this module only owns the state
  * cell, the `dragging` flag the tracks read, and the stable action identities
  * `AppFrame`'s effects depend on.

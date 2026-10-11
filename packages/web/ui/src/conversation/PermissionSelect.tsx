@@ -1,5 +1,5 @@
 /**
- * The composer's mode selector, ported from deepseek-harness
+ * The composer's mode selector, ported from the harness
  * `ui-permission-presets` PermissionSelect.tsx + PermissionSelect.module.css
  * (c) 2026 DeepSeek — MIT License: a 28px chip trigger (glyph + label +
  * chevron) opening the shared `shell/Menu.tsx` card — a trailing check on the

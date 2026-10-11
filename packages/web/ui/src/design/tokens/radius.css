@@ -1,5 +1,5 @@
-/* Nova corner ladder — deliberately smaller than the ported `--dsw-radius-*`
- * rungs (4 / 8 / 12 / 16 / 20 / 28).
+/* Nova corner ladder — deliberately smaller than the ported ladder
+ * (4 / 8 / 12 / 16 / 20 / 28).
  *
  * Nova's direction is Quiet / Dense / Precise: a 12–16px corner on a 28px row
  * reads as a card, and cards-on-cards is exactly the visual layering this

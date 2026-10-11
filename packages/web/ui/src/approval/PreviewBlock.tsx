@@ -1,7 +1,7 @@
 /**
  * The approval card's effect preview: the diff a `write_file` / `edit_file`
  * approval WOULD apply, drawn with the tool group's diff block values
- * (deepseek-harness `ui-primitives` DiffBlock) so an approval preview and the
+ * (the harness `ui-primitives` DiffBlock) so an approval preview and the
  * transcript's applied diff read as the same object.
  *
  * The copy button and the fold toggle are deliberately absent: the card body is

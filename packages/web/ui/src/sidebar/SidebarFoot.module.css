@@ -1,9 +1,3 @@
-/* Ported from deepseek-harness ui-settings-general
-   `src/client/SettingsRoot.module.css` (c) 2026 DeepSeek — MIT License: the
-   trigger row that holds the settings seat, which is where the reference's
-   foot puts its connection indicator too. The panel, overlay, and dialog
-   classes are not ported (no settings panel in this app). */
-
 .triggerRow {
   flex: none;
   display: flex;

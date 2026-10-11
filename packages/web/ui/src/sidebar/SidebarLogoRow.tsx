@@ -1,6 +1,6 @@
 /**
  * The column's top row: the brand seat and the collapse toggle.
- * Ported from deepseek-harness `ui-sidebar/src/client/SidebarRoot.tsx`
+ * Ported from the harness `ui-sidebar/src/client/SidebarRoot.tsx`
  * (the `.logoRow` block) (c) 2026 DeepSeek — MIT License.
  *
  * Expanded, the brand doubles as a New Session shortcut; the rail has no brand

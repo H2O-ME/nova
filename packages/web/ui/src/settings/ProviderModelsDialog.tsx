@@ -1,7 +1,7 @@
 /**
  * 「获取可用模型」的挑选弹窗：端点公布了几十个模型，**挑几个加进这张卡**。
  *
- * 版式对齐 deepseek-harness `ui-settings-models` 的取模流程（`ModelListEditor.tsx`
+ * 版式对齐 the harness `ui-settings-models` 的取模流程（`ModelListEditor.tsx`
  * 的 `fetchDialog` / `candidateToolbar` / `candidateList` + `ModelsSection.module.css`，
  * MIT，(c) 2026 DeepSeek）：一个搜索框 + 一个全选/清空动词 + 一个**自带滚动、上限
  * 320px** 的勾选清单 + 「取消 / 添加所选」卡脚。

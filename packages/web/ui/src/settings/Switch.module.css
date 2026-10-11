@@ -1,4 +1,4 @@
-/* The shared two-state toggle, ported from deepseek-harness
+/* The shared two-state toggle, ported from the harness
  * `ui-primitives/src/Switch.module.css`, (c) 2026 DeepSeek — MIT License.
  *
  * The on/off appearance keys off `aria-checked` rather than a parallel

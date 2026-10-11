@@ -1,6 +1,6 @@
 /**
  * Theme preference, content font size, and the DOM projection, ported from
- * deepseek-harness `ui-theme` (MIT): the browser resolves only `system`, then
+ * the harness `ui-theme` (MIT): the browser resolves only `system`, then
  * one presenter writes the same fields the boot script writes pre-paint —
  * `html { color-scheme }` for native UA chrome, `body[data-nova-dark]` for
  * the token palette, and the content font-size axis.

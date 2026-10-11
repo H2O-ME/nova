@@ -1,9 +1,3 @@
-/* Ported from deepseek-harness ui-conversation (c) 2026 DeepSeek — MIT License.
- * Source: ConversationRoot.module.css, values and comments verbatim except
- * where noted: the header/tab block lives in SessionHeader.module.css, and the
- * composer-overlay branch and hero workspace row are not ported at all (this
- * surface has neither overlay views nor a workspace selector). */
-
 .root {
   position: relative; /* positioning context for slot-owned absolute chrome */
   display: flex;

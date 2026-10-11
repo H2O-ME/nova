@@ -1,5 +1,5 @@
 /**
- * The denial-reason field (deepseek-harness `ui-user-questions` AnswerField):
+ * The denial-reason field (the harness `ui-user-questions` AnswerField):
  * an auto-growing textarea over a hidden mirror that owns the height.
  *
  * The mirror renders the draft plus a trailing newline in normal flow and so

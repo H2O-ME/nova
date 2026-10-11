@@ -1,8 +1,3 @@
-/* Ported from deepseek-harness ui-primitives/Tooltip.module.css
-   (c) 2026 DeepSeek — MIT License. Value for value except the shortcut-keycap
-   rules (`data-has-shortcut`): this surface has no keycap vocabulary to place
-   beside a label. */
-
 .bubble {
   display: inline-flex;
   align-items: center;

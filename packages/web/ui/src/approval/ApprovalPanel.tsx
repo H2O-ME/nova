@@ -1,5 +1,5 @@
 /**
- * The approval card: deepseek-harness `ui-approval` ApprovalPanel, ported value
+ * The approval card: the harness `ui-approval` ApprovalPanel, ported value
  * for value (the warn strip, the 20px card and its scroll body, the action row
  * whose reject button turns danger on hover) and then answered through OUR
  * kernel's protocol: three verdicts (`allow` / `deny` / `always`), a denial that

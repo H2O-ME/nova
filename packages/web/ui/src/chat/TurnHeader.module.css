@@ -1,9 +1,3 @@
-/* Ported from deepseek-harness ui-chat `TurnProcessNodeView.module.css`
-   (c) 2026 DeepSeek — MIT License. The row is the reference's exactly: a 33px
-   full-width button carrying [label][chevron]. Nothing else belongs here — the
-   reference's sheet has no detail class, and the per-run readings live in the
-   session-stats dialog and the trajectory table, not under this header. */
-
 .root {
   box-sizing: border-box;
   display: flex;

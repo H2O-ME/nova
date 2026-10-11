@@ -1,6 +1,6 @@
 /**
  * The diff card: an applied file change, drawn inline. Ported from
- * deepseek-harness `ui-primitives/DiffBlock.tsx` + its stylesheet (MIT) — the
+ * the harness `ui-primitives/DiffBlock.tsx` + its stylesheet (MIT) — the
  * code-block surface and radius, the bold path header, the sign-prefixed
  * add/remove colors, the head/tail height cap with its fold control and the
  * `└ +A -R` footer.

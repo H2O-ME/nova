@@ -1,5 +1,5 @@
 /**
- * The draft's height contract, ported from deepseek-harness ui-conversation
+ * The draft's height contract, ported from the harness ui-conversation
  * (MIT): the harness caps the draft scrollport at 14 lines × 24px = 336px
  * (`--nova-composer-text-max-height` — InputBar.module.css `.scroll` reads it,
  * ConversationRoot.module.css `.composerSeat` declares it) and floors a docked

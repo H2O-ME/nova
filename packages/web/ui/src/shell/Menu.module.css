@@ -1,4 +1,4 @@
-/* The dropdown menu primitive, ported from deepseek-harness `ui-primitives`
+/* The dropdown menu primitive, ported from the harness `ui-primitives`
  * Menu.module.css (c) 2026 DeepSeek — MIT License. Values verbatim except: the
  * card's material is the shared `shell/MenuSurface` layer (the theme-owned
  * `--nova-surface-menu` + `--nova-material-menu-backdrop`, which this sheet
@@ -34,8 +34,6 @@
      declaration sits on the card rather than on the viewport child because the
      elevation is a property of this surface, and the custom properties inherit
      down to whichever descendant actually scrolls. */
-  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
-  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
   min-width: 144px;
   max-width: min(360px, calc(100vw - 24px));
   /* Viewport fit: the card stops 12px short of the viewport's edges and

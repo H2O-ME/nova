@@ -1,6 +1,6 @@
 /**
  * Project the selected session's title into the browser title, ported from
- * deepseek-harness `ui-layout/src/client/DocumentTitle.tsx` (MIT): the product
+ * the harness `ui-layout/src/client/DocumentTitle.tsx` (MIT): the product
  * title is the floor, a session title prefixes it, and unmount restores it.
  */
 import { useEffect } from 'react';

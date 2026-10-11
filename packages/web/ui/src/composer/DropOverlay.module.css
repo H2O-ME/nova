@@ -1,8 +1,3 @@
-/* Ported from deepseek-harness ui-attachment DropOverlay.module.css
-   (c) 2026 DeepSeek — MIT License: the fixed, blurred, click-through mask and
-   the centered stack inside it. The card marks take this sheet's tokens in
-   place of the reference's own illustration colours. */
-
 /* Drag events must keep reaching the page so the owner's enter/leave count
    stays balanced. */
 .mask {

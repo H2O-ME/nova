@@ -1,25 +1,17 @@
-/* The Nova design layer.
- *
- * Mounted from `main.tsx` AFTER `../index.css`, so a Nova token that shadows a
- * ported one wins the cascade.
- *
- * Ownership: `styles/` is the ported harness layer (the colour palette, the
- * legacy motion vocabulary, the font shorthand ladder) and is being retired;
- * `design/` is Nova's own vocabulary and is where every new decision lands. A
- * component reads `--nova-*` only.
- *
- * Mounted from `main.tsx` rather than appended to `index.css` on purpose:
- * `index.css` is the legacy mount sheet of the port, this is the successor.
- *
- * Motion is reconciled: the timing tokens live in `tokens/motion.css`
- * (120/180/260ms plus `instant`, per `docs/NOVA-DESIGN-SYSTEM.md` §4.1) and
- * the shared keyframes plus the reduced-motion clamp in `motion.css` here.
+/* The Nova design layer — the single mount sheet for everything the page
+ * wears: the token vocabulary, the shared keyframes, and the global paint
+ * rules (corner curvature, focus rings, scrollbar skin, the shiki palette).
+ * Mounted from `main.tsx` AFTER `../index.css`, whose mount defaults resolve
+ * against the tokens declared here.
  *
  * The dark palette keys off `body[data-nova-dark]`, written by `theme.ts` and
- * pre-paint by the boot script in `index.html`.
- *
- * Timeline: the ported `styles/` sheets are deleted once every consumer reads
- * `--nova-*` (see `docs/NOVA-GENERALIST.md`, batch 7A). */
+ * pre-paint by the boot script in `index.html`. A component reads `--nova-*`
+ * only; the ported harness layer (`styles/`) is deleted as of this sweep, so
+ * there is no second vocabulary left to drift into. */
+@import "./corner-shape.css";
+@import "./focus.css";
+@import "./scrollbar.css";
+@import "./tokens/shiki.css";
 @import "./tokens/space.css";
 @import "./tokens/radius.css";
 @import "./tokens/shadow.css";

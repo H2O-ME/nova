@@ -1,5 +1,5 @@
 /**
- * The conversation column's width axis, ported from deepseek-harness
+ * The conversation column's width axis, ported from the harness
  * `ui-conversation` ConversationRoot (c) 2026 DeepSeek — MIT License.
  *
  * The skeleton resolves ONE content width W for the transcript and the dock

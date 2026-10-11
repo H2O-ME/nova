@@ -1,6 +1,6 @@
 /* Session stats under the composer: two icon pills side by side, 13/20
    tertiary text with a hover-pill affordance, each opening its own panel.
-   Ported from deepseek-harness ui-chat `StatsPills.module.css` +
+   Ported from the harness ui-chat `StatsPills.module.css` +
    `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License. The panel takes the
    source's `--nova-surface-menu` material and its 1100 layer, exactly as
    `chat/TurnUsagePill` does: both tokens are defined by this sheet

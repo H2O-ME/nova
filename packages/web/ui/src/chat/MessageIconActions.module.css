@@ -1,4 +1,3 @@
-/* Ported from deepseek-harness ui-chat (c) 2026 DeepSeek — MIT License. */
 /* Shared message IconActions row (user + assistant). Parent modules own
    layout offsets via the composed className. Row containers gate visibility
    by recency through data-actions-reveal. */

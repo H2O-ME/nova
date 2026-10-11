@@ -1,5 +1,5 @@
 /**
- * One anchored dropdown menu, ported from deepseek-harness
+ * One anchored dropdown menu, ported from the harness
  * `ui-primitives/Menu.tsx` + `Menu.module.css` (c) 2026 DeepSeek — MIT
  * License: the card, the rows, and every way a keyboard or pointer touches
  * them, owned once here instead of per select.

@@ -29,10 +29,10 @@ const baselinePath = join(repoRoot, 'scripts', 'ui-token-baseline.json');
 /**
  * token 层：字面值的唯一合法住处，不参与计数。
  *
- * `styles/` 是移植来的 harness 层，`design/` 是 Nova 自己的层；两者都只出现在
- * `src/` 的顶层，所以按路径第一段判即可。
+ * `design/` 是 Nova 自己的层（移植层 `styles/` 已在 7A 扫尾中删除），只出现在
+ * `src/` 顶层，所以按路径第一段判即可。
  */
-const TOKEN_DIRS = new Set(['styles', 'design']);
+const TOKEN_DIRS = new Set(['design']);
 
 /** 五条规则，顺序即报告顺序。 */
 const RULES = ['spacing', 'radius', 'shadow', 'duration', 'ease'];

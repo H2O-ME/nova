@@ -25,11 +25,9 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
 
-/** The token layers: the only subtrees that may hold raw color values —
- *  `styles/` is the ported harness palette (licensed and attributed; it
- *  retires once every consumer reads `--nova-*`), `design/tokens/` is the
- *  Nova palette that replaces it. */
-const TOKEN_DIRS = ['styles', 'design/tokens'];
+/** The token layer: the only subtree that may hold raw color values — the
+ *  Nova palette. (The ported `styles/` layer it replaced is deleted.) */
+const TOKEN_DIRS = ['design/tokens'];
 
 /** Literal color matchers: hex (#abc / #aabbcc) and bare rgb()/rgba() calls. */
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
@@ -212,19 +210,17 @@ describe('token ownership', () => {
    * from the shimmer), so requiring a static declaration would fail correct code.
    * The `--dsw-*` palette is static by contrast — a name that is not in the
    * stylesheet is not a palette entry at all.
+   *
+   * The ported vocabulary is GONE as of the 7A sweep (`styles/` deleted, every
+   * consumer on `--nova-*`), so the rule flips: no `--dsw-*` / `--ds-*` /
+   * `--dsh-*` name may appear anywhere in the frontend source — a leftover is
+   * a consumer the token layer cannot answer, not a style.
    */
-  it('every --dsw-* token a component consumes is declared in the token layer', () => {
-    // Declared anywhere in the tree, and also by inline `style` maps that set a
-    // token as a typed key (kept in the net so a future dynamic token passes).
-    const declared = new Set<string>();
-    for (const file of [...listSources(/\.css$/, true), ...listSources(/\.(ts|tsx)$/, true)]) {
-      for (const match of file.text.matchAll(/(--dsw-[a-z0-9-]+)\s*:/g)) declared.add(match[1] ?? '');
-    }
+  it('no ported vocabulary remains in the frontend source', () => {
     const offenders: string[] = [];
-    for (const file of listSources(/\.(css|ts|tsx)$/)) {
-      for (const match of file.text.matchAll(/var\(\s*(--dsw-[a-z0-9-]+)/g)) {
-        const name = match[1] ?? '';
-        if (!declared.has(name)) offenders.push(`${file.rel}: ${name}`);
+    for (const file of [...listSources(/\.(css|ts|tsx)$/, true), ...htmlEntries()]) {
+      for (const match of file.text.matchAll(/--(?:dsw|dsh|ds)-[a-z0-9-]*/g)) {
+        offenders.push(`${file.rel}: ${match[0]}`);
       }
     }
     expect([...new Set(offenders)].sort()).toEqual([]);
