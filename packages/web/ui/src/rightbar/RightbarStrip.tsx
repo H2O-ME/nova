@@ -3,8 +3,8 @@
  *
  * Split from `RightbarPanel` because the two answer different questions — this
  * file is how the strip is drawn and clicked, that one is how the panel mounts
- * its pages. Rebuilt against the reference plugin's shell (dsh-better-sidebar,
- * MIT): one tab per OPEN page (icon + title + close), capped and ellipsized,
+ * its pages. Rebuilt against the reference plugin's shell: one tab per OPEN
+ * page (icon + title + close), capped and ellipsized,
  * and the panel's own controls at the strip's end — so the strip carries the
  * column's chrome instead of a title row above it.
  *
@@ -17,6 +17,7 @@
  */
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CloseIcon, FileIcon, PlusIcon } from '../icons.js';
+import { IconButton } from '../kit/IconButton.js';
 import { ExitFullscreenIcon, FullscreenIcon } from '../tool/icons.js';
 import { CompassGlyph, DiffTabIcon, FilesTabIcon, TasksTabIcon, TerminalTabIcon } from './panel-icons.js';
 import { RIGHTBAR_COPY } from './copy.js';
@@ -147,24 +148,12 @@ export function RightbarStrip(props: RightbarStripProps): JSX.Element {
       {/* The strip's END: the panel's own controls, so the tab strip IS the
           panel's top edge and no title row is drawn above it. */}
       <div className={css.stripEnd}>
-        <button
-          type="button"
-          className={css.iconButton}
-          aria-label={modeLabel}
-          title={modeLabel}
-          onClick={props.onToggleFullscreen}
-        >
+        <IconButton label={modeLabel} onClick={props.onToggleFullscreen}>
           {props.fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
-        </button>
-        <button
-          type="button"
-          className={css.iconButton}
-          aria-label={RIGHTBAR_COPY['panel.close']}
-          title={RIGHTBAR_COPY['panel.close']}
-          onClick={props.onClose}
-        >
+        </IconButton>
+        <IconButton label={RIGHTBAR_COPY['panel.close']} onClick={props.onClose}>
           <CloseIcon />
-        </button>
+        </IconButton>
       </div>
     </div>
   );

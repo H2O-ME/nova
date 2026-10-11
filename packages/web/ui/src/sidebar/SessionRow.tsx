@@ -1,8 +1,5 @@
 /**
  * Session-list rows: one workspace header row and one session row.
- * Ported from the harness `ui-workspace/src/client/rows/Rows.tsx`
- * (`ProjectRowItem` / `SessionNodeItem`) + `Rows.module.css`
- * (c) 2026 DeepSeek — MIT License.
  *
  * Both are presentational: every fact arrives as a prop, and both are
  * `role=treeitem` elements inside the browser's `role=tree` list. The

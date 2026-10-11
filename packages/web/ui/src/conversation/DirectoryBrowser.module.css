@@ -84,7 +84,7 @@
 /* The path-edit affordance. It sits at the trailing edge of the crumb bar: the
    crumbs alone can never express a location off the home subtree, so this is
    the general way to type one. It is the bar's whole remainder rather than a
-   glyph-sized button — dsh's `.crumbEditZone` — because a reader looking for a
+   glyph-sized button — the harness's `.crumbEditZone` — because a reader looking for a
    14px pencil at the far right is how the entry point went unnoticed. `margin-left:
    auto` plus `flex: 1` makes the empty stretch past the last crumb the target,
    with the glyph pinned where the typed text will begin. */
@@ -357,46 +357,3 @@
   margin-left: auto;
 }
 
-.secondary,
-.primary {
-  min-width: 72px;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: var(--nova-radius-lg);
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 20px;
-  cursor: pointer;
-}
-
-.secondary {
-  border: 1px solid var(--nova-border-strong);
-  background: transparent;
-  color: var(--nova-text-primary);
-}
-
-.secondary:hover:not(:disabled) {
-  background: var(--nova-interactive-hover);
-}
-
-.primary {
-  border: none;
-  background: var(--nova-color-ink);
-  color: var(--nova-text-inverse);
-}
-
-.primary:hover:not(:disabled) {
-  background: var(--nova-color-ink-hover);
-}
-
-.secondary:disabled,
-.primary:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.secondary:focus-visible,
-.primary:focus-visible {
-  outline: var(--nova-focus-ring-width) solid var(--nova-focus-ring-color, var(--nova-color-accent));
-  outline-offset: 2px;
-}

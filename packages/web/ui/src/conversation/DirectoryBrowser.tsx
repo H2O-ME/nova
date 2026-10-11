@@ -1,7 +1,7 @@
 /**
  * The workspace picker's directory browser.
  *
- * dsh gets a folder chooser from Electron (`ui-directory-picker-native`) and
+ * The harness gets a folder chooser from Electron (`ui-directory-picker-native`) and
  * falls back to an in-page browser (`ui-directory-picker-browse`). A browser
  * tab has neither: `showDirectoryPicker()` does exist on a loopback origin, but
  * the handle it resolves carries no path (no `File.path` off Electron), and a
@@ -30,6 +30,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
+import { Button } from '../kit/Button.js';
 import { Dialog } from '../kit/Dialog.js';
 import kitCss from '../kit/Dialog.module.css';
 import { ChevronRightIcon, FolderOpenIcon, PencilIcon } from '../icons.js';
@@ -250,8 +251,8 @@ export function DirectoryBrowserDialog({
               }}
             >
               {/* The zone fills the bar's remainder rather than hugging the
-                  glyph: dsh's `.crumbEditZone` makes the whole empty stretch
-                  the way into typing a path, and a reader who has to find a
+                  glyph: the harness's `.crumbEditZone` makes the whole empty
+                  stretch the way into typing a path, and a reader who has to find a
                   14px pencil at the right edge is the confusion this fixes. */}
               <PencilIcon />
             </button>
@@ -404,25 +405,22 @@ export function DirectoryBrowserDialog({
               file, and a stray new folder in the tree is not what was asked
               for. */}
           {!pickingFiles && (
-            <button
-              type="button"
-              className={css.secondary}
+            <Button
               disabled={level === null || pending}
               onClick={() => { setDraft(''); }}
             >
               新建文件夹
-            </button>
+            </Button>
           )}
-          <button type="button" className={css.secondary} onClick={onClose}>取消</button>
+          <Button onClick={onClose}>取消</Button>
           {!pickingFiles && (
-            <button
-              type="button"
-              className={css.primary}
+            <Button
+              variant="primary"
               disabled={target === null || pending}
               onClick={() => { if (target !== null) onOpen(target); }}
             >
               打开
-            </button>
+            </Button>
           )}
         </div>
       </div>

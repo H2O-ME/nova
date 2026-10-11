@@ -1,15 +1,14 @@
 /*
- * The tab strip's own sheet — ported from the harness ui-dockkit
- * (dockkit.module.css, MIT): a 28px chip row with 10px of air above it, the
+ * The tab strip's own sheet: a 28px chip row with 10px of air above it, the
  * hairline slots between chips, the active chip as a filled tab whose
  * neighbours' slots go blank, and a hover-revealed 20px close inside each
  * chip. The strip draws no border: a body that wants a rule under it draws
- * its own (the dockkit contract).
+ * its own (the reference contract).
  */
 
 /* The strip row: chips, the `+` control, and the panel's own chrome all centre
    on one 28px band; the 10px top margin is inside the box so the hit area is
-   one element. Geometry verbatim (dockkit `.tabStrip`). */
+   one element. Geometry verbatim (the reference's `.tabStrip`). */
 .strip {
   display: flex;
   flex: none;
@@ -23,7 +22,7 @@
    keep their 80px floor, so what no longer fits scrolls here with no
    scrollbar drawn. `data-strip-scroll` names the hidden sides (`start`, `end`,
    or both); each hidden side fades the chips out over 24px into the pane's
-   ground, so the row reads as continuing under the controls (dockkit
+   ground, so the row reads as continuing under the controls (the reference's
    `.stripTabs` + its mask variants). */
 .tabs {
   display: flex;
@@ -52,7 +51,7 @@
   mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
 }
 
-/* The chip: a 28px tab whose title runs to the right inset (dockkit `.tab`).
+/* The chip: a 28px tab whose title runs to the right inset the reference's `.tab`).
    The close control is not in the flow — it sits over the title's last 14px
    and shows while the chip is active, hovered, or holds focus — so a chip is
    the same width with and without it and nothing shifts on hover. */
@@ -81,7 +80,7 @@
   background: var(--nova-interactive-hover);
 }
 
-/* The active chip is the filled tab, in the tag fill (dockkit `.tabActive`). */
+/* The active chip is the filled tab, in the tag fill the reference's `.tabActive`). */
 .tab[aria-selected='true'] {
   color: var(--nova-text-primary);
   background: var(--nova-surface-code);
@@ -103,7 +102,7 @@
 }
 
 /* While the close shows, the title fades out under the close's circle
-   (dockkit's 30px→14px mask). */
+   (the reference's 30px→14px mask). */
 .tab:hover .tabTitle,
 .tab:focus-within .tabTitle,
 .tab[aria-selected='true'] .tabTitle {
@@ -129,7 +128,7 @@
   white-space: nowrap;
 }
 
-/* A 20px icon button inset 4px from the chip's end (dockkit `.tabClose`). */
+/* A 20px icon button inset 4px from the chip's end the reference's `.tabClose`). */
 .tabClose {
   position: absolute;
   top: 4px;
@@ -176,7 +175,7 @@
 }
 
 /* The slot between two chips: a 10px box with a hairline down its centre
-   (dockkit `.slot`). The slots beside the active chip go blank, so the row
+   the reference's `.slot`). The slots beside the active chip go blank, so the row
    reads as the tab between bare chips. */
 .slot {
   display: flex;
@@ -200,7 +199,7 @@
 }
 
 /* The `+` that opens more pages: chip height and corner, so it reads as one
-   more tab in the row (dockkit `.addTab`). */
+   more tab in the row the reference's `.addTab`). */
 .plus {
   display: flex;
   flex: none;
@@ -236,7 +235,7 @@
 }
 
 /* The strip's END: the panel's own controls, spaced from the `+` as they are
-   from each other (dockkit `.stripChrome`). */
+   from each other the reference's `.stripChrome`). */
 .stripEnd {
   display: flex;
   flex: none;
@@ -246,39 +245,3 @@
   margin-left: var(--nova-space-4);
 }
 
-/* The geometry of every control in this surface: a 28px box around a 15px
-   glyph (dockkit `.iconButton`). The strip keeps its copy for these two
-   buttons; the pages read the same recipe from `kit.module.css`. */
-.iconButton {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: var(--nova-space-6);
-  color: var(--nova-text-secondary);
-  line-height: 1;
-  background: transparent;
-  border: none;
-  border-radius: var(--nova-radius-lg);
-  cursor: pointer;
-  transition:
-    background-color var(--nova-dur-base) var(--nova-ease-inout),
-    color var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.iconButton svg {
-  width: 15px;
-  height: 15px;
-}
-
-.iconButton:hover {
-  background: var(--nova-interactive-hover);
-  color: var(--nova-text-primary);
-}
-
-.iconButton:focus-visible {
-  outline: 2px solid var(--nova-interactive-hover-strong);
-  outline-offset: -1px;
-}
