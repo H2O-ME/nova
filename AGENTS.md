@@ -104,6 +104,7 @@
 - **内置工具集**：`packages/plugins/src/builtin/`（`fs.ts`, `bash.ts`, `search.ts` 等）[cite: 1]
 - **Web 服务端与帧协议**：`packages/web/src/controller.ts`、`packages/web/src/server.ts`[cite: 1]
 - **WebUI 状态与 Reducer**：`packages/web/ui/src/state.ts`、`packages/web/ui/src/state-events.ts`[cite: 1]
+- **WebUI 标准组件层**：`packages/web/ui/src/kit/`（Dialog/Button/IconButton——新弹窗与按钮一律组合 kit，禁止再写本地配方）[cite: 1]
 - **CLI 装配与 Surface 分发**：`packages/cli/src/kernel-boot.ts`、`packages/cli/src/surfaces.ts`[cite: 1]
 
 ---

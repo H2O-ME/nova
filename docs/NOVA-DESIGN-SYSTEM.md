@@ -318,6 +318,11 @@ packages/web/ui/src/design/
     ├── typography.css     --nova-font-*（font: 简写配方，非尺寸）
     ├── diff.css           --nova-diff-*（added/deleted 三层 + line 洗色）
     └── shiki.css          --shiki-*（语法高亮调色板）
+
+packages/web/ui/src/kit/       标准可复用组件（消费上面的 token，自身零字面色）
+├── Dialog.tsx/.module.css     弹窗骨架：overlay/mask/panel/title/body/footer + 入场动画单处声明
+├── Button.tsx/.module.css     动作按钮：secondary / primary(墨填充) / dangerOutline 三档意图
+└── IconButton.tsx/.module.css 图标按钮：28/24px 方形、radius-sm、inset 焦点环、active/danger
 ```
 
 **为什么从 `main.tsx` 挂载而不是追加进 `index.css`**：`index.css` 是移植层的遗留挂载表，`design/index.css` 是它的继任者；一个文件两个写手正是上一轮丢编辑的成因。
