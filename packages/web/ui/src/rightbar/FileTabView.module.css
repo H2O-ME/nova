@@ -18,7 +18,7 @@
 .bar {
   display: flex;
   flex: none;
-  gap: 6px;
+  gap: var(--nova-space-6);
   align-items: center;
   padding: 5px 10px;
   border-bottom: 0.5px solid var(--nova-border-subtle);
@@ -27,7 +27,7 @@
 /* The code reading: mono font, one row per line, gutter numbers in the
    tertiary ink. */
 .code {
-  padding: 8px 0 16px;
+  padding: var(--nova-space-8) 0 var(--nova-space-16);
   font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 18px;
@@ -36,7 +36,7 @@
 .line {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--nova-space-8);
   padding: 0 10px;
 }
 
@@ -65,5 +65,5 @@
 
 /* Markdown renders as reading matter, not source. */
 .markdown {
-  padding: 12px 14px 16px;
+  padding: var(--nova-space-12) 14px var(--nova-space-16);
 }

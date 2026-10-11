@@ -25,27 +25,27 @@
 
 .markdown h1 {
   font: var(--nova-font-markdown-h1);
-  margin: 32px 0 16px;
+  margin: var(--nova-space-32) 0 var(--nova-space-16);
 }
 
 .markdown h2 {
   font: var(--nova-font-markdown-h2);
-  margin: 32px 0 16px;
+  margin: var(--nova-space-32) 0 var(--nova-space-16);
 }
 
 .markdown h3 {
   font: var(--nova-font-markdown-h3);
-  margin: 32px 0 16px;
+  margin: var(--nova-space-32) 0 var(--nova-space-16);
 }
 
 .markdown h4 {
   font: var(--nova-font-markdown-h4);
-  margin: 16px 0;
+  margin: var(--nova-space-16) 0;
 }
 
 .markdown :where(h5, h6) {
   font: var(--nova-font-markdown-base-strong);
-  margin: 16px 0;
+  margin: var(--nova-space-16) 0;
 }
 
 .markdown :where(h1, h2, h3, h4, h5, h6) strong {
@@ -53,16 +53,16 @@
 }
 
 .markdown p {
-  margin: 16px 0;
+  margin: var(--nova-space-16) 0;
 }
 
 /* Tighten h4–h6 against a following list (design: 8px gap). */
 .markdown :where(h4, h5, h6) + :where(ul, ol) {
-  margin-top: 8px;
+  margin-top: var(--nova-space-8);
 }
 
 .markdown :where(h4, h5, h6):has(+ :where(ul, ol)) {
-  margin-bottom: 8px;
+  margin-bottom: var(--nova-space-8);
 }
 
 .markdown a {
@@ -108,16 +108,16 @@
 }
 
 .markdown :where(ul, ol) {
-  margin: 16px 0;
+  margin: var(--nova-space-16) 0;
   padding-left: 18px;
 }
 
 .markdown li:not(:first-child) {
-  margin-top: 6px;
+  margin-top: var(--nova-space-6);
 }
 
 .markdown li > :where(ul, ol) {
-  margin-top: 4px;
+  margin-top: var(--nova-space-4);
 }
 
 .markdown li::marker {
@@ -136,7 +136,7 @@
 }
 
 .markdown li > p {
-  margin: 8px 0;
+  margin: var(--nova-space-8) 0;
 }
 
 .markdown li > *:first-child {
@@ -152,18 +152,18 @@
   display: block;
   border: none;
   height: 0.5px;
-  margin: 32px 0;
+  margin: var(--nova-space-32) 0;
   background: var(--nova-border-strong);
 }
 
 .markdown blockquote {
   border-left: 2px solid var(--nova-text-faint);
-  margin: 16px 0 0;
+  margin: var(--nova-space-16) 0 0;
   padding-left: 14px;
 }
 
 .markdown pre {
-  margin: 16px 0;
+  margin: var(--nova-space-16) 0;
   font-family: var(--nova-font-mono);
   overflow: auto;
 }
@@ -187,7 +187,7 @@
 }
 
 .markdown input[type='checkbox'] {
-  margin: 0 8px 0 0;
+  margin: 0 var(--nova-space-8) 0 0;
   accent-color: var(--nova-text-secondary);
 }
 
@@ -244,7 +244,7 @@
 
 .tableScroll th {
   text-align: start;
-  padding: 10px 16px;
+  padding: 10px var(--nova-space-16);
   border-bottom: 0.5px solid var(--nova-border-strong);
   border-top: none;
   font: var(--nova-font-markdown-table-head);
@@ -254,7 +254,7 @@
 }
 
 .tableScroll td {
-  padding: 10px 16px;
+  padding: 10px var(--nova-space-16);
   border-bottom: 0.5px solid var(--nova-border-strong);
   font: var(--nova-font-markdown-table);
   max-width: 320px;
@@ -314,22 +314,22 @@
 }
 
 .compact :is(h1, h2, h3, h4, h5, h6) {
-  margin: 8px 0 4px;
+  margin: var(--nova-space-8) 0 var(--nova-space-4);
   font: inherit;
   font-weight: 600;
   color: inherit;
 }
 
 .compact :is(p, ul, ol, blockquote) {
-  margin: 4px 0;
+  margin: var(--nova-space-4) 0;
 }
 
 .compact li:not(:first-child) {
-  margin-top: 2px;
+  margin-top: var(--nova-space-2);
 }
 
 .compact li > p {
-  margin: 4px 0;
+  margin: var(--nova-space-4) 0;
 }
 
 .compact li::marker {
@@ -338,11 +338,11 @@
 }
 
 .compact blockquote {
-  padding-left: 8px;
+  padding-left: var(--nova-space-8);
 }
 
 .compact hr {
-  margin: 8px 0;
+  margin: var(--nova-space-8) 0;
 }
 
 .compact a {
@@ -367,7 +367,7 @@
 }
 
 .markdown.compact :global(.md-code-block) {
-  margin: 4px 0;
+  margin: var(--nova-space-4) 0;
   color: inherit;
 }
 
@@ -386,7 +386,7 @@
 .markdown.compact .tableScroll {
   width: 100%;
   max-width: 100%;
-  margin: 4px 0;
+  margin: var(--nova-space-4) 0;
   padding-left: 0;
 }
 
@@ -395,7 +395,7 @@
 }
 
 .compact :is(th, td) {
-  padding: 4px 8px;
+  padding: var(--nova-space-4) var(--nova-space-8);
   font: inherit;
 }
 

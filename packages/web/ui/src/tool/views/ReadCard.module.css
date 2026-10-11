@@ -10,7 +10,7 @@
 
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
-  margin: 4px 0 4px 4px;
+  margin: var(--nova-space-4) 0 var(--nova-space-4) var(--nova-space-4);
   color: var(--nova-text-primary);
   background: var(--nova-surface-code);
   border-radius: var(--dsl-read-radius);
@@ -20,7 +20,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--nova-space-12);
   padding: 9px 14px;
   background: var(--nova-surface-code-head);
   border-top-left-radius: var(--dsl-read-radius);
@@ -42,7 +42,7 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 12px;
+  gap: var(--nova-space-12);
 }
 
 .count {
@@ -61,7 +61,7 @@
 }
 
 .body {
-  padding: 12px 0;
+  padding: var(--nova-space-12) 0;
   font: var(--nova-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
@@ -111,7 +111,7 @@
 /* No lines to number (a read whose flattened text never reached the surface):
    the banner alone would leave an empty rounded box. */
 .empty {
-  padding: 12px 14px;
+  padding: var(--nova-space-12) 14px;
   font: var(--nova-font-markdown-code-block);
   color: var(--nova-text-muted);
 }

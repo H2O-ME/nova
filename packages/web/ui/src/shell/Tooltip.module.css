@@ -1,7 +1,7 @@
 .bubble {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   position: fixed;
   z-index: 100;
   /* Fixed-position shrink-to-fit measures only the space from `left` to the

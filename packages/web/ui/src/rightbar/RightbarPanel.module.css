@@ -100,7 +100,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  padding: 6px;
+  padding: var(--nova-space-6);
   color: var(--nova-text-secondary);
   line-height: 1;
   background: transparent;

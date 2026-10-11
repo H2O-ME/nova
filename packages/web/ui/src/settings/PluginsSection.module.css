@@ -19,7 +19,7 @@
 
 .intro {
   margin: 0;
-  padding-top: 4px;
+  padding-top: var(--nova-space-4);
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
@@ -28,8 +28,8 @@
 .search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-8) 0;
   border-bottom: 0.5px solid var(--nova-border-strong);
   color: var(--nova-text-muted);
 }
@@ -58,8 +58,8 @@
 .group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 4px 0 12px;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-4) 0 var(--nova-space-12);
   border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
@@ -70,8 +70,8 @@
 .groupTitle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 0;
+  gap: var(--nova-space-6);
+  padding: var(--nova-space-4) 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-muted);
@@ -85,9 +85,9 @@
 .groupHead {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   margin: 0;
-  padding: 2px 6px 2px 0;
+  padding: var(--nova-space-2) var(--nova-space-6) var(--nova-space-2) 0;
   border: none;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -134,7 +134,7 @@
    sentence lands. */
 .feedbackSlot {
   min-height: 18px;
-  margin: 2px 0 0;
+  margin: var(--nova-space-2) 0 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-secondary);
@@ -143,8 +143,8 @@
 /* A count over the whole page, for the case where the failures are spread
    across groups and the reader has scrolled past one of them. */
 .failureBanner {
-  margin: 8px 0;
-  padding: 8px 12px;
+  margin: var(--nova-space-8) 0;
+  padding: var(--nova-space-8) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
   font-size: 12px;
@@ -155,7 +155,7 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--nova-space-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -169,9 +169,9 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--nova-space-8);
   margin: 0 -8px;
-  padding: 9px 8px;
+  padding: 9px var(--nova-space-8);
   border-radius: var(--nova-radius-lg);
   transition:
       color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
@@ -191,7 +191,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   padding: 0;
   border: none;
   background: transparent;
@@ -227,7 +227,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
 }
 
 .pluginName {
@@ -255,7 +255,7 @@
 .pluginMeta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
@@ -274,7 +274,7 @@
 /* The 默认关闭 mark on an 扩展能力 row. */
 .tag {
   flex: none;
-  padding: 0 6px;
+  padding: 0 var(--nova-space-6);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
   font-size: 11px;
@@ -293,7 +293,7 @@
   padding: 0 0 0 48px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
 }
 
 .detailLine {
@@ -310,7 +310,7 @@
 }
 
 .status {
-  padding: 16px 0;
+  padding: var(--nova-space-16) 0;
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
@@ -331,7 +331,7 @@
 
 .copy {
   flex: none;
-  padding: 5px 12px;
+  padding: 5px var(--nova-space-12);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);

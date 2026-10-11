@@ -2,14 +2,14 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   width: calc(100% + 4px);
-  margin: 4px -2px;
+  margin: var(--nova-space-4) -2px;
 }
 
 .triggerRow.railRow {
   width: 36px;
-  margin: 8px 0 10px;
+  margin: var(--nova-space-8) 0 10px;
 }
 
 .trigger {
@@ -17,11 +17,11 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   width: auto;
   height: 42px;
   margin: 0;
-  padding: 0 10px 0 8px;
+  padding: 0 10px 0 var(--nova-space-8);
   box-sizing: border-box;
   border: none;
   /* The reference states `--nova-radius-lg` here, not a literal: this row must
@@ -80,7 +80,7 @@
 /* Wide-only content fades back in on expand remount (the shell's rule, for
    the seat the shell does not animate). */
 .wide {
-  animation: wide-in 200ms var(--nova-ease-inout);
+  animation: wide-in var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 @keyframes wide-in {

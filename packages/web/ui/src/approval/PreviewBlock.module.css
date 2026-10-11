@@ -28,7 +28,7 @@
      a wash and a left bar (below), and both must reach the block's own edges
      the way the transcript's diff draws them. Padding the scrollport instead
      would inset every band by 14px on each side. */
-  padding: 12px 0;
+  padding: var(--nova-space-12) 0;
   font: var(--nova-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
@@ -88,7 +88,7 @@
    transcript's diff card draws (the source appends `· N file(s)`; a preview
    covers exactly one path, named by the header row). */
 .footer {
-  padding: 0 14px 12px;
+  padding: 0 14px var(--nova-space-12);
   font: var(--nova-font-markdown-code-block);
   color: var(--nova-text-muted);
 }

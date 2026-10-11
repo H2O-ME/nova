@@ -7,9 +7,9 @@
 .notice {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 16px;
-  padding: 16px;
+  gap: var(--nova-space-8);
+  margin: var(--nova-space-16);
+  padding: var(--nova-space-16);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-sunken);
@@ -30,7 +30,7 @@
 
 .reload {
   align-self: flex-start;
-  padding: 6px 12px;
+  padding: var(--nova-space-6) var(--nova-space-12);
   border: none;
   border-radius: var(--nova-radius-lg);
   corner-shape: round;

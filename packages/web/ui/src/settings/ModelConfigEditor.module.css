@@ -8,8 +8,8 @@
  * 页头由 `StepHeading` 提供，本表不再自带。 */
 
 .notice {
-  margin: 8px 0 0;
-  padding: 10px 12px;
+  margin: var(--nova-space-8) 0 0;
+  padding: 10px var(--nova-space-12);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
@@ -21,8 +21,8 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 12px 0 0;
+  gap: var(--nova-space-8);
+  margin: var(--nova-space-12) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -30,8 +30,8 @@
 .card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-8);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
 }
@@ -45,7 +45,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
 }
 
 .input {
@@ -145,14 +145,14 @@
 .fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px 12px;
-  padding: 2px 0 4px;
+  gap: 10px var(--nova-space-12);
+  padding: var(--nova-space-2) 0 var(--nova-space-4);
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--nova-space-4);
   min-width: 0;
 }
 
@@ -163,7 +163,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--nova-space-8);
   min-width: 0;
 }
 
@@ -195,13 +195,13 @@
 
 .modalities legend {
   padding: 0;
-  margin-bottom: 4px;
+  margin-bottom: var(--nova-space-4);
 }
 
 .choices {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--nova-space-12);
   min-height: 22px;
   align-items: center;
 }
@@ -209,7 +209,7 @@
 .choice {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-primary);
@@ -227,7 +227,7 @@
 /* The automatic value under a choice group: the placeholder the single-line
  * fields carry in their `placeholder` attribute. */
 .autoLine {
-  margin: 4px 0 0;
+  margin: var(--nova-space-4) 0 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-disabled);
@@ -236,14 +236,14 @@
 .addBlock {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--nova-space-8);
+  margin-top: var(--nova-space-12);
 }
 
 .addRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
 }
 
 .button,
@@ -303,7 +303,7 @@
 .pool {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--nova-space-6);
 }
 
 .poolTitle {
@@ -315,7 +315,7 @@
 .poolRows {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--nova-space-6);
   max-height: 160px;
   overflow-y: auto;
 }
@@ -331,7 +331,7 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   border: 0.5px solid var(--nova-border-strong);
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   background: transparent;
   font-family: var(--nova-font-mono);
@@ -360,7 +360,7 @@
 /* A refused field: the message names the rule, so the field only has to mark
  * itself rather than repeat it. */
 .problem {
-  margin: 8px 0 0;
+  margin: var(--nova-space-8) 0 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-color-danger);
@@ -369,8 +369,8 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 12px;
+  gap: var(--nova-space-12);
+  margin-top: var(--nova-space-12);
 }
 
 .readOnly {
@@ -384,15 +384,15 @@
 /* The advanced disclosure: native <details>, so collapsed is the browser's job,
    not a second piece of state. The summary is the settings heading rhythm. */
 .advanced {
-  margin-top: 16px;
+  margin-top: var(--nova-space-16);
   border-top: 0.5px solid var(--nova-border-strong);
 }
 
 .advancedSummary {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 12px 0;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-12) 0;
   list-style: none;
   cursor: pointer;
   border-radius: var(--nova-radius-lg);
@@ -443,5 +443,5 @@
 }
 
 .advancedBody {
-  padding: 4px 0 8px;
+  padding: var(--nova-space-4) 0 var(--nova-space-8);
 }

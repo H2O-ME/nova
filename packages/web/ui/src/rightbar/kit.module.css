@@ -9,11 +9,11 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   height: 22px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border: 1px solid var(--nova-border-strong);
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   background: transparent;
   color: var(--nova-text-secondary);
   font: var(--nova-font-xxxs-11);
@@ -45,9 +45,9 @@
 .sectionHeader {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   height: 28px;
-  padding: 0 8px 0 12px;
+  padding: 0 var(--nova-space-8) 0 var(--nova-space-12);
   border-bottom: 1px solid var(--nova-border-subtle);
   font: var(--nova-font-xxs-strong-12);
   color: var(--nova-text-secondary);
@@ -72,7 +72,7 @@
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--nova-space-2);
 }
 
 .countPill {
@@ -80,7 +80,7 @@
   min-width: 16px;
   height: 16px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   background: var(--nova-interactive-hover);
   color: var(--nova-text-secondary);
   font: var(--nova-font-xxxs-strong-11);
@@ -91,7 +91,7 @@
 
 .notice {
   margin: 0;
-  padding: 16px;
+  padding: var(--nova-space-16);
   font: var(--nova-font-xxs-12);
   color: var(--nova-text-muted);
   text-align: center;
@@ -107,7 +107,7 @@
 }
 
 .noticeHint {
-  padding: 4px 12px 8px;
+  padding: var(--nova-space-4) var(--nova-space-12) var(--nova-space-8);
   text-align: left;
   font: var(--nova-font-xxxs-11);
   line-height: 1.45;
@@ -116,7 +116,7 @@
 
 .statusBadge {
   flex: none;
-  padding: 0 4px;
+  padding: 0 var(--nova-space-4);
   border-radius: 2px;
   font: var(--nova-font-xxxs-strong-11);
   font-family: var(--nova-font-mono);

@@ -34,7 +34,7 @@
     color-mix(in srgb, var(--nova-surface-base) 60%, transparent) 55%,
     transparent 100%
   );
-  animation: dsh-reasoning-row-sweep 2.6s ease-out infinite;
+  animation: dsh-reasoning-row-sweep 2.6s var(--nova-ease-out) infinite;
   pointer-events: none;
 }
 
@@ -59,7 +59,7 @@
   flex: none;
   width: 2px;
   height: 2px;
-  margin: 0 8px;
+  margin: 0 var(--nova-space-8);
   border-radius: 1px;
   background: var(--nova-text-faint);
 }
@@ -104,7 +104,7 @@
    only indents it under the title and gives the flex row a shrinkable box. */
 .thinkBody {
   /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
-  padding: 4px 0 4px calc(22px + var(--nova-content-font-delta, 0px));
+  padding: var(--nova-space-4) 0 var(--nova-space-4) calc(22px + var(--nova-content-font-delta, 0px));
   min-width: 0;
 }
 

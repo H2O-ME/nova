@@ -42,7 +42,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-right: 6px;
+  margin-right: var(--nova-space-6);
   color: var(--nova-text-muted);
 }
 
@@ -98,7 +98,7 @@
   width: 2px;
   height: 2px;
   border-radius: 1px;
-  margin: 0 8px;
+  margin: 0 var(--nova-space-8);
   background: var(--nova-text-faint);
 }
 
@@ -134,7 +134,7 @@
    which would break the one-line row in the narrow case the slot exists for. */
 .summarySuffix {
   flex: none;
-  margin-left: 4px;
+  margin-left: var(--nova-space-4);
   white-space: nowrap;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
@@ -201,7 +201,7 @@
    kernel streams bash output as a line the row can show). Reads as one muted
    code line under the title row, indented to the summary column. */
 .liveTail {
-  margin: 0 0 2px 22px;
+  margin: 0 0 var(--nova-space-2) 22px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;

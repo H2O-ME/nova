@@ -8,7 +8,7 @@
   justify-content: center;
   height: 100%;
   min-width: 0;
-  padding: 0 24px;
+  padding: 0 var(--nova-space-24);
 }
 
 /* Cap matches the InputBar card. Glow may paint past the sides. */
@@ -17,7 +17,7 @@
   flex-direction: column;
   align-items: stretch;
   /* figma 75:8208: 12 between title block / workspace / card. */
-  gap: 12px;
+  gap: var(--nova-space-12);
   width: 100%;
   max-width: var(--nova-composer-card-max-width);
   overflow: visible;
@@ -35,7 +35,7 @@
   column-gap: 10px;
   /* Wrapped, the fish sits on its own line; more air than the 10px side gap
      keeps it reading as a mark above the title, not a squeezed inline glyph. */
-  row-gap: 12px;
+  row-gap: var(--nova-space-12);
   align-items: center;
   justify-content: center;
   font-size: 26px;
@@ -55,18 +55,18 @@
   align-items: center;
   /* Superscript sits 7 from the title. */
   column-gap: 7px;
-  row-gap: 4px;
+  row-gap: var(--nova-space-4);
   min-width: 0;
 }
 
 .previewBadge {
   align-self: flex-start;
-  margin-top: 2px;
+  margin-top: var(--nova-space-2);
   padding: 1px 7px 0;
   border: 0.5px solid var(--nova-interactive-hover);
   /* The reference's pill treatment: uncapped radius, so it must opt out of the
      universal superellipse (styles/corner-shape.css) or the ends square off. */
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   background: var(--nova-color-accent-soft);
   color: var(--nova-text-primary-bluish);
@@ -135,7 +135,7 @@
 
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   .fishHitbox:hover .fish {
-    animation: hero-fish-swim 1.6s ease-in-out infinite;
+    animation: hero-fish-swim 1.6s var(--nova-ease-inout) infinite;
   }
 }
 
@@ -155,10 +155,10 @@
 .workspaceRow {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--nova-space-2);
   min-width: 0;
-  margin-top: 4px;
-  padding: 0 16px 0 20px;
+  margin-top: var(--nova-space-4);
+  padding: 0 var(--nova-space-16) 0 20px;
 }
 
 /* Folder + label + chevron — transparent at rest; fill only on hover / open.
@@ -168,10 +168,10 @@
 .workspace {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   max-width: min(100%, 360px);
   min-height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border: none;
   border-radius: var(--nova-radius-lg, 8px);
   background: transparent;

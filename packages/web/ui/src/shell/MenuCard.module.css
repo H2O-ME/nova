@@ -20,7 +20,7 @@
   max-width: min(420px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 96px));
   overflow: hidden;
-  padding: 4px;
+  padding: var(--nova-space-4);
   /* The material is the shared `shell/MenuSurface` layer — the theme-owned
      `--nova-surface-menu` + `--nova-material-menu-backdrop`, exactly what the
      reference's `MenuSurface` paints and what `docs/web-styling.md` makes the
@@ -39,7 +39,7 @@
 
 .status,
 .empty {
-  padding: 8px;
+  padding: var(--nova-space-8);
   color: var(--nova-text-muted);
   font-size: 12px;
   line-height: 18px;
@@ -49,9 +49,9 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 6px;
+  gap: var(--nova-space-6);
   margin-bottom: 3px;
-  padding: 6px 7px;
+  padding: var(--nova-space-6) 7px;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-interactive-hover-danger);
   color: var(--nova-color-danger);
@@ -83,7 +83,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 4px 7px 2px;
+  padding: var(--nova-space-4) 7px var(--nova-space-2);
   /* The sticky heading covers rows scrolling under it, so it needs the
      overlay fill rather than the card's own transparent background: the
      reference's ModelSelect does the same (`--nova-surface-menu`, the
@@ -99,7 +99,7 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   width: auto;
   min-width: 100%;
   min-height: 34px;

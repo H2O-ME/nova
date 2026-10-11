@@ -11,7 +11,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 6px var(--nova-sidebar-inline-padding);
+  padding: var(--nova-space-6) var(--nova-sidebar-inline-padding);
   box-sizing: border-box;
   background: var(--nova-surface-sunken);
   color: var(--nova-text-primary);
@@ -24,7 +24,7 @@
    rail (10px side padding), 12px vertical rhythm, 18px from the rail top to
    the toggle's box (24px to the 24-wide glyph itself). */
 .root.collapsed {
-  padding: 18px 10px 6px;
+  padding: 18px 10px var(--nova-space-6);
 }
 
 /* Scrollbars in the column are a pointer affordance: the shell adds this
@@ -48,7 +48,7 @@
 
 /* Wide-only content fades back in on expand remount. */
 .wide {
-  animation: wide-in 200ms var(--nova-ease-inout);
+  animation: wide-in var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 @keyframes wide-in {
@@ -89,10 +89,10 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--nova-space-8);
   height: 60px;
-  padding: 8px 0 8px 4px;
-  margin-bottom: 4px;
+  padding: var(--nova-space-8) 0 var(--nova-space-8) var(--nova-space-4);
+  margin-bottom: var(--nova-space-4);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -100,7 +100,7 @@
 .collapsed .logoRow {
   height: 36px;
   padding: 0;
-  margin-bottom: 12px;
+  margin-bottom: var(--nova-space-12);
   justify-content: flex-start;
   /* The settled rail's 36px toggle is wider than this 35px row, so the base
      row's clip would cut the control's right edge: the rail stops clipping once
@@ -130,7 +130,7 @@
 .brandIdentity {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   height: 24px;
   min-width: 0;
 }
@@ -138,7 +138,7 @@
 .brandName {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   min-width: 0;
   height: 24px;
   font-size: 18px;
@@ -220,10 +220,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   height: 38px;
-  padding: 8px 12px;
-  margin: 0 2px 12px;
+  padding: var(--nova-space-8) var(--nova-space-12);
+  margin: 0 var(--nova-space-2) var(--nova-space-12);
   box-sizing: border-box;
   border: 0.5px solid var(--nova-border-strong);
   /* The token, not its 12px value: the reference states `--nova-radius-lg` here,
@@ -249,7 +249,7 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  margin: 0 0 12px;
+  margin: 0 0 var(--nova-space-12);
   gap: 0;
   border-color: transparent;
   background: transparent;
@@ -292,10 +292,10 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   height: 36px;
   padding: 0 10px;
-  margin: 0 2px 8px;
+  margin: 0 var(--nova-space-2) var(--nova-space-8);
   box-sizing: border-box;
   border: none;
   border-radius: var(--nova-radius-lg);
@@ -325,7 +325,7 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  margin: 0 0 8px;
+  margin: 0 0 var(--nova-space-8);
   gap: 0;
 }
 
@@ -362,7 +362,7 @@
   flex-direction: column;
   margin-left: -4px;
   margin-right: calc(-1 * var(--nova-sidebar-inline-padding));
-  padding-left: 4px;
+  padding-left: var(--nova-space-4);
   overflow: hidden;
 }
 

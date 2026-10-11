@@ -42,7 +42,7 @@
   overflow-y: auto;
   /* Sides = composer clearance + 16px: on narrow viewports the transcript
      stays exactly 32px narrower than the input card (the shared width rule). */
-  padding: 16px calc(var(--nova-composer-side-clearance) + 16px);
+  padding: var(--nova-space-16) calc(var(--nova-composer-side-clearance) + var(--nova-space-16));
   /* Inline-size query container: wide markdown tables size their breakout
      against this box's content width (100cqw in AssistantMessage's
      md-table-wide rule) — the CSS stand-in for deepsuite chat's JS-measured
@@ -153,7 +153,7 @@
 .older button {
   border: none;
   border-radius: var(--nova-radius-lg);
-  padding: 4px 12px;
+  padding: var(--nova-space-4) var(--nova-space-12);
   font-size: 12px;
   color: var(--nova-text-secondary);
   background: var(--nova-interactive-hover-solid);
@@ -183,7 +183,7 @@
   display: flex;
   justify-content: flex-end;
   padding-right: max(
-    calc(var(--nova-composer-side-clearance) + 16px),
+    calc(var(--nova-composer-side-clearance) + var(--nova-space-16)),
     calc((100% - var(--nova-chat-content-width)) / 2)
   );
   pointer-events: none;

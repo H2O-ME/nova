@@ -23,9 +23,9 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   height: 32px;
-  padding: 0 4px 0 12px;
+  padding: 0 var(--nova-space-4) 0 var(--nova-space-12);
   border-bottom: 1px solid var(--nova-border-subtle);
 }
 
@@ -44,12 +44,12 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   margin: 0;
-  padding: 6px;
+  padding: var(--nova-space-6);
   list-style: none;
 }
 
@@ -62,14 +62,14 @@
    full width stays clickable whatever trailing controls appear. */
 .rowLine {
   display: flex;
-  gap: 6px;
+  gap: var(--nova-space-6);
   align-items: stretch;
 }
 
 /* Live rows are filled cards: running work outranks the settled tail, and the
    hover wash sits on the card so the trailing controls never escape it. */
 .rowLineLive {
-  padding: 4px 8px 4px 2px;
+  padding: var(--nova-space-4) var(--nova-space-8) var(--nova-space-4) var(--nova-space-2);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-raised);
   transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
@@ -93,11 +93,11 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   box-sizing: border-box;
   width: 100%;
   min-height: 28px;
-  padding: 4px 7px;
+  padding: var(--nova-space-4) 7px;
   border: 0;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -135,21 +135,21 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   min-width: 0;
 }
 
 .primary {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--nova-space-8);
   min-width: 0;
 }
 
 .secondary {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   min-width: 0;
 }
 
@@ -211,7 +211,7 @@
 .chevron {
   flex: none;
   color: var(--nova-text-muted);
-  transition: transform 120ms var(--nova-ease-inout);
+  transition: transform var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .chevronOpen {
@@ -254,7 +254,7 @@
 .stopArmed,
 .stopArmed:hover,
 .stopArmed:focus-visible {
-  gap: 4px;
+  gap: var(--nova-space-4);
   width: auto;
   padding: 0 7px;
   border-color: color-mix(in srgb, var(--nova-color-danger) 45%, transparent);
@@ -274,8 +274,8 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  margin: 2px 8px 8px;
-  padding: 6px 9px;
+  margin: var(--nova-space-2) var(--nova-space-8) var(--nova-space-8);
+  padding: var(--nova-space-6) 9px;
   border: 0.5px solid var(--nova-border-subtle);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-raised);
@@ -283,7 +283,7 @@
 
 .metaRow {
   display: flex;
-  gap: 8px;
+  gap: var(--nova-space-8);
   min-width: 0;
 }
 
@@ -316,8 +316,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 24px;
+  gap: var(--nova-space-6);
+  padding: var(--nova-space-24);
   text-align: center;
 }
 

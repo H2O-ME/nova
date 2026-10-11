@@ -13,10 +13,10 @@
 .strip {
   display: flex;
   flex: none;
-  gap: 4px;
+  gap: var(--nova-space-4);
   align-items: center;
   height: 28px;
-  padding: 10px 6px 0 10px;
+  padding: 10px var(--nova-space-6) 0 10px;
 }
 
 /* The chip run. Shrinks to nothing before any control after it moves; chips
@@ -240,10 +240,10 @@
 .stripEnd {
   display: flex;
   flex: none;
-  gap: 8px;
+  gap: var(--nova-space-8);
   align-items: center;
   height: 28px;
-  margin-left: 4px;
+  margin-left: var(--nova-space-4);
 }
 
 /* The geometry of every control in this surface: a 28px box around a 15px
@@ -256,7 +256,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  padding: 6px;
+  padding: var(--nova-space-6);
   color: var(--nova-text-secondary);
   line-height: 1;
   background: transparent;

@@ -62,7 +62,7 @@
 
 .spinnerArc {
   stroke-dasharray: 12 150;
-  animation: dsh-state-dot-dash 1.5s ease-in-out infinite;
+  animation: dsh-state-dot-dash 1.5s var(--nova-ease-inout) infinite;
 }
 
 @keyframes dsh-state-dot-spin {

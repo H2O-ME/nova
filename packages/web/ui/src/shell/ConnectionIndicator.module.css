@@ -3,11 +3,11 @@
   display: inline-grid;
   grid-template-columns: 14px max-content;
   align-items: center;
-  column-gap: 4px;
+  column-gap: var(--nova-space-4);
   /* 28px, not 32: the reference's height, and the same as the settings trigger
      it sits beside — a taller pill made the foot row grow on an outage. */
   height: 28px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   box-sizing: border-box;
   /* A transparent border keeps the box the same size in every state; the
      warning/success rules then colour it instead of adding it. */
@@ -19,12 +19,12 @@
   line-height: 18px;
   white-space: nowrap;
   transition:
-    background-color 160ms ease-out,
-    color 160ms ease-out,
-    border-color 160ms ease-out,
-    opacity 150ms ease-out;
+    background-color 160ms var(--nova-ease-out),
+    color 160ms var(--nova-ease-out),
+    border-color 160ms var(--nova-ease-out),
+    opacity 150ms var(--nova-ease-out);
   /* Enter from transparent; the exit is the `.leaving` class below. */
-  animation: indicator-enter 150ms ease-out;
+  animation: indicator-enter 150ms var(--nova-ease-out);
 }
 
 /* Fade-out state: the component keeps rendering the last state for EXIT_MS

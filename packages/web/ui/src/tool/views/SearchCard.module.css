@@ -7,7 +7,7 @@
 
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
-  margin: 4px 0 4px 4px;
+  margin: var(--nova-space-4) 0 var(--nova-space-4) var(--nova-space-4);
   color: var(--nova-text-primary);
   background: var(--nova-surface-code);
   border-radius: var(--dsl-search-radius);
@@ -16,7 +16,7 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--nova-space-12);
   padding: 9px 14px;
   background: var(--nova-surface-code-head);
   border-top-left-radius: var(--dsl-search-radius);
@@ -45,7 +45,7 @@
 }
 
 .body {
-  padding: 8px 14px 12px 0;
+  padding: var(--nova-space-8) 14px var(--nova-space-12) 0;
   font: var(--nova-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
@@ -70,7 +70,7 @@
 .fileHeader {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--nova-space-8);
   width: 100%;
   min-height: var(--dsl-search-line-height);
   padding: 0 14px;
@@ -111,7 +111,7 @@
 }
 
 .empty {
-  padding: 12px 14px;
+  padding: var(--nova-space-12) 14px;
   font: var(--nova-font-markdown-code-block);
   color: var(--nova-text-muted);
 }

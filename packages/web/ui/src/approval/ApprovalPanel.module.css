@@ -20,7 +20,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0 12px;
+  padding: var(--nova-space-8) 0 var(--nova-space-12);
 }
 
 .card {
@@ -47,8 +47,8 @@
 .strip {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: var(--nova-space-8);
+  padding: 10px var(--nova-space-16);
   background: var(--nova-color-warn-soft);
   color: var(--nova-color-warn);
   font-size: 13px;
@@ -70,7 +70,7 @@
    one tinted capsule we have in both themes, on the accent that always means
    "the surface's own blue" here. */
 .badge {
-  padding: 0 4px;
+  padding: 0 var(--nova-space-4);
   border-radius: var(--nova-radius-sm);
   background: var(--nova-color-accent-soft);
   color: var(--nova-color-accent);
@@ -82,11 +82,11 @@
 .body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--nova-space-6);
   box-sizing: border-box;
   max-height: var(--nova-composer-text-max-height, 336px);
   overflow-y: auto;
-  padding: 12px 16px 0;
+  padding: var(--nova-space-12) var(--nova-space-16) 0;
   /* The card is the elevated surface; its scroll region takes the l2 thumb pair
      rebound by .card (see the scrollbar sheet's rebinding contract). */
   overscroll-behavior: contain;
@@ -114,7 +114,7 @@
 .scope {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   flex-shrink: 0;
   color: var(--nova-text-muted);
   font-size: 13px;
@@ -126,7 +126,7 @@
 }
 
 .progress {
-  padding: 0 4px;
+  padding: 0 var(--nova-space-4);
   color: var(--nova-text-secondary);
   font: var(--nova-font-markdown-code);
   white-space: nowrap;
@@ -141,8 +141,8 @@
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 14px 16px;
+  gap: var(--nova-space-8);
+  padding: 14px var(--nova-space-16);
 }
 
 /* Ported from ui-primitives Button.module.css: the H36 geometry (padding 14,
@@ -156,11 +156,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   height: 36px;
   padding: 0 14px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   cursor: pointer;
   font-size: 14px;
@@ -168,7 +168,7 @@
   color: var(--nova-text-primary);
   background: transparent;
   flex: none;
-  transition: background-color 120ms ease;
+  transition: background-color var(--nova-dur-fast) ease;
 }
 
 .button:disabled {
@@ -226,7 +226,7 @@
   }
 
   .actionRow {
-    padding: 12px 12px;
+    padding: var(--nova-space-12) var(--nova-space-12);
   }
 }
 

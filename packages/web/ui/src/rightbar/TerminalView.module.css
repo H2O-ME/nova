@@ -23,7 +23,7 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  padding: 8px;
+  padding: var(--nova-space-8);
   background: var(--nova-surface-sunken);
 }
 
@@ -39,7 +39,7 @@
    line sits between the screen and the band, and the next open replaces it. */
 .error {
   flex: none;
-  padding: 10px 12px;
+  padding: 10px var(--nova-space-12);
   background: var(--nova-surface-raised);
   color: var(--nova-color-danger);
   font: var(--nova-font-xxs-12);
@@ -53,8 +53,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 5px 12px;
+  gap: var(--nova-space-8);
+  padding: 5px var(--nova-space-12);
   background: var(--nova-surface-raised);
 }
 
@@ -79,7 +79,7 @@
 .retry {
   display: inline-flex;
   flex: none;
-  gap: 4px;
+  gap: var(--nova-space-4);
   align-items: center;
   height: 24px;
   padding: 0 10px;
@@ -113,7 +113,7 @@
 .newButton {
   flex: none;
   height: 24px;
-  padding: 0 12px;
+  padding: 0 var(--nova-space-12);
   color: var(--nova-text-inverse);
   font: var(--nova-font-xxs-strong-12);
   background: var(--nova-color-ink);

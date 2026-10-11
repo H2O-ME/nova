@@ -21,7 +21,7 @@
   width: var(--nova-chat-content-width);
   max-width: 100%;
   margin: 0 auto;
-  padding: 12px var(--nova-composer-side-clearance) 24px;
+  padding: var(--nova-space-12) var(--nova-composer-side-clearance) var(--nova-space-24);
 }
 
 .toolbar {
@@ -31,8 +31,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 4px 0 8px;
+  gap: var(--nova-space-12);
+  padding: var(--nova-space-4) 0 var(--nova-space-8);
   background: var(--nova-surface-base);
   border-bottom: 0.5px solid var(--nova-border-strong);
 }
@@ -46,7 +46,7 @@
 
 .action,
 .more {
-  padding: 2px 10px;
+  padding: var(--nova-space-2) 10px;
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -76,7 +76,7 @@
 
 .more {
   align-self: center;
-  margin: 12px 0 4px;
+  margin: var(--nova-space-12) 0 var(--nova-space-4);
 }
 
 /* One event per line: clock, what it is, its body, its reading. The label column
@@ -84,8 +84,8 @@
 .row {
   display: flex;
   align-items: baseline;
-  gap: 12px;
-  padding: 6px 8px;
+  gap: var(--nova-space-12);
+  padding: var(--nova-space-6) var(--nova-space-8);
   margin: 0 -8px;
   /* The reference cell (ui-trajectory TrajectoryCell): radius-md, one step
      rounder than the old hand-written 8px so the row highlight matches the
@@ -129,7 +129,7 @@
 }
 
 .empty {
-  padding: 24px 0;
+  padding: var(--nova-space-24) 0;
   color: var(--nova-text-muted);
   font-size: var(--nova-content-font-size-secondary, 13px);
 }

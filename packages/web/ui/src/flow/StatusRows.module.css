@@ -7,9 +7,9 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   min-height: 24px;
-  padding-left: 2px;
+  padding-left: var(--nova-space-2);
   font: var(--nova-font-xs-13);
   color: var(--nova-text-secondary);
 }
@@ -68,9 +68,9 @@
    rows share. */
 .subRow {
   align-items: flex-start;
-  gap: 6px;
+  gap: var(--nova-space-6);
   min-height: 44px;
-  padding: 6px 7px 6px 9px;
+  padding: var(--nova-space-6) 7px var(--nova-space-6) 9px;
   border-radius: var(--nova-radius-lg);
   font-size: 12px;
   line-height: 17px;
@@ -150,7 +150,7 @@
 .stop {
   flex: none;
   height: 20px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border-radius: var(--nova-radius-lg);
   /* The upstream job-row stop control (`ui-jobs/JobListAction.module.css`)
    * writes this border explicitly; the port never carried a hairline token
@@ -210,7 +210,7 @@
   flex: none;
   width: 2px;
   height: 2px;
-  margin: 0 8px;
+  margin: 0 var(--nova-space-8);
   border-radius: 1px;
   background: var(--nova-text-faint);
 }
@@ -233,7 +233,7 @@
 /* The command's multiline output, revealed in place under its row. */
 .commandBody {
   margin: 0;
-  padding: 8px 0 8px 22px;
+  padding: var(--nova-space-8) 0 var(--nova-space-8) 22px;
   overflow-x: auto;
   font: var(--nova-font-markdown-code-block-small);
   color: var(--nova-text-muted);

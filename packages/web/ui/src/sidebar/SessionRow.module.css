@@ -2,9 +2,9 @@
 .sessionRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   border-radius: var(--nova-radius-lg);
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   cursor: pointer;
   user-select: none;
   color: var(--nova-text-primary);
@@ -45,7 +45,7 @@
 }
 
 .sessionRow .title {
-  margin: 0 6px 0 4px;
+  margin: 0 var(--nova-space-6) 0 var(--nova-space-4);
 }
 
 @keyframes row-in {
@@ -87,7 +87,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
 }
 
 .title {

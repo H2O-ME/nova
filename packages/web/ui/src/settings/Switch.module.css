@@ -10,9 +10,9 @@
   flex: 0 0 auto;
   width: 36px;
   height: 20px;
-  padding: 2px;
+  padding: var(--nova-space-2);
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   background: var(--nova-border-strong);
   cursor: pointer;
@@ -53,7 +53,7 @@
   border-radius: 50%;
   corner-shape: round;
   background: var(--nova-text-inverse);
-  transition: transform 120ms ease;
+  transition: transform var(--nova-dur-fast) ease;
 }
 
 .switch[aria-checked='true'] .thumb {

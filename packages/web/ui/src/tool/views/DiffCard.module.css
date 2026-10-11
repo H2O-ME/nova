@@ -9,7 +9,7 @@
 
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
-  margin: 4px 0 4px 4px;
+  margin: var(--nova-space-4) 0 var(--nova-space-4) var(--nova-space-4);
   color: var(--nova-text-primary);
   background: var(--nova-surface-code);
   border-radius: var(--dsl-diff-radius);
@@ -33,7 +33,7 @@
 }
 
 .body {
-  padding: 12px 14px;
+  padding: var(--nova-space-12) 14px;
   font: var(--nova-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
@@ -125,7 +125,7 @@
 /* The change summary, dim under the body: `└ +A -R · N 个文件` — the harness's
    footer shape (which prints the same totals the TUI card draws). */
 .footer {
-  padding: 0 14px 12px;
+  padding: 0 14px var(--nova-space-12);
   font: var(--nova-font-markdown-code-block);
   color: var(--nova-text-muted);
 }

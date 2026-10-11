@@ -27,7 +27,7 @@
 .body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--nova-space-16);
 }
 
 /* Wide markdown tables (the renderer's ≥4-column md-table-wide hook) span
@@ -72,7 +72,7 @@
    that would fall to an illegible 9px at the 12px floor. */
 .stopped {
   align-self: flex-start;
-  padding: 0 6px;
+  padding: 0 var(--nova-space-6);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-interactive-hover);
   color: var(--nova-text-muted);

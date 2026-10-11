@@ -18,7 +18,7 @@
 
 .intro {
   margin: 0;
-  padding-top: 4px;
+  padding-top: var(--nova-space-4);
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
@@ -30,9 +30,9 @@
 .failure {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 12px;
-  padding: 10px 12px;
+  gap: var(--nova-space-4);
+  margin-top: var(--nova-space-12);
+  padding: 10px var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-color-danger-soft);
   font-size: 13px;
@@ -48,9 +48,9 @@
 .guide {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin: 8px 0 0;
-  padding: 10px 12px;
+  gap: var(--nova-space-4);
+  margin: var(--nova-space-8) 0 0;
+  padding: 10px var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
 }
@@ -84,20 +84,20 @@
 .status {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin: 12px 0 0;
+  gap: var(--nova-space-6);
+  margin: var(--nova-space-12) 0 0;
 }
 
 .statusRow {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--nova-space-8);
 }
 
 .statusTerm {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   min-width: 96px;
   margin: 0;
   font-size: 13px;
@@ -115,8 +115,8 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
+  gap: var(--nova-space-6);
+  margin-top: var(--nova-space-12);
 }
 
 .label {
@@ -128,7 +128,7 @@
 .input {
   width: 100%;
   box-sizing: border-box;
-  padding: 8px 10px;
+  padding: var(--nova-space-8) 10px;
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-sunken);
@@ -163,16 +163,16 @@
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin: 16px -24px 0;
-  padding: 12px 24px 16px;
+  gap: var(--nova-space-8);
+  margin: var(--nova-space-16) -24px 0;
+  padding: var(--nova-space-12) var(--nova-space-24) var(--nova-space-16);
   border-top: 0.5px solid var(--nova-border-strong);
 }
 
 .actionSuccess,
 .actionFailure {
-  margin-top: 12px;
-  padding: 10px 12px;
+  margin-top: var(--nova-space-12);
+  padding: 10px var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   font-size: 13px;
   line-height: 20px;
@@ -217,7 +217,7 @@
 }
 
 .note {
-  margin: 12px 0 0;
+  margin: var(--nova-space-12) 0 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-muted);
@@ -229,9 +229,9 @@
 .copyBlock {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 10px 12px;
+  gap: var(--nova-space-6);
+  margin-top: var(--nova-space-12);
+  padding: 10px var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
 }
@@ -246,7 +246,7 @@
 .copyRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
 }
 
 .copyValue {

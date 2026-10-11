@@ -19,7 +19,7 @@
   --dsl-code-block-background: var(--nova-surface-code);
 
   position: relative;
-  margin: 16px 0;
+  margin: var(--nova-space-16) 0;
   color: var(--nova-text-primary);
   background: var(--dsl-code-block-background);
   border-radius: var(--dsl-code-block-border-radius);
@@ -44,7 +44,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: var(--nova-space-12);
   font: var(--dsl-code-block-banner-font);
   border-top-left-radius: var(--dsl-code-block-border-radius);
   border-top-right-radius: var(--dsl-code-block-border-radius);
@@ -85,7 +85,7 @@
 
 .block :where(pre) {
   font: var(--dsl-code-block-content-font);
-  padding: 16px;
+  padding: var(--nova-space-16);
   margin: 0 !important;
   overflow-x: auto;
   white-space: pre-wrap;
@@ -118,8 +118,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 18px 8px 22px;
+  gap: var(--nova-space-12);
+  padding: 10px 18px var(--nova-space-8) 22px;
   background: var(--dsl-code-block-background);
   border-top-left-radius: inherit;
   border-top-right-radius: inherit;
@@ -130,7 +130,7 @@
 .heading {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--nova-space-12);
   min-width: 0;
 }
 
@@ -144,7 +144,7 @@
   display: flex;
   align-items: center;
   flex: none;
-  gap: 4px;
+  gap: var(--nova-space-4);
 }
 
 .toolbarAction {
@@ -176,7 +176,7 @@
 /* With the toolbar the source sits tighter under the banner than the plain
    arm's 16px box. `data-code-wrap` is present exactly when the toolbar renders. */
 .block[data-code-wrap] :where(pre) {
-  padding: 6px 22px 20px;
+  padding: var(--nova-space-6) 22px 20px;
   word-break: normal;
   overflow-wrap: anywhere;
 }

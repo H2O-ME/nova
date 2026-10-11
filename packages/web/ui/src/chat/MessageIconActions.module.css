@@ -5,7 +5,7 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   height: calc(28px + var(--nova-content-font-delta, 0px));
 }
 
@@ -13,7 +13,7 @@
    Both read the secondary tier so the user row's clock matches the assistant
    tail's meta line. */
 .timeStart {
-  padding-right: 12px;
+  padding-right: var(--nova-space-12);
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-muted);
@@ -26,9 +26,9 @@
 .endInfo {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   min-width: 0;
-  margin-left: 8px;
+  margin-left: var(--nova-space-8);
   color: var(--nova-text-muted);
 }
 
@@ -71,7 +71,7 @@
   justify-content: center;
   width: calc(28px + var(--nova-content-font-delta, 0px));
   height: calc(28px + var(--nova-content-font-delta, 0px));
-  padding: 6px;
+  padding: var(--nova-space-6);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: transparent;

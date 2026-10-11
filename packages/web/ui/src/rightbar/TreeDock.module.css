@@ -20,9 +20,9 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   height: 32px;
-  padding: 0 4px 0 8px;
+  padding: 0 var(--nova-space-4) 0 var(--nova-space-8);
   border-bottom: 1px solid var(--nova-border-subtle);
 }
 
@@ -30,9 +30,9 @@
   flex: 1 1 auto;
   min-width: 0;
   height: 24px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border: 1px solid var(--nova-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--nova-radius-sm);
   background: var(--nova-surface-sunken);
   color: var(--nova-text-primary);
   font: var(--nova-font-xxs-12);
@@ -51,7 +51,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 6px 12px;
+  padding: var(--nova-space-4) var(--nova-space-6) var(--nova-space-12);
   scrollbar-width: thin;
 }
 
@@ -67,9 +67,9 @@
   gap: 5px;
   width: 100%;
   height: 28px;
-  padding: 0 6px;
+  padding: 0 var(--nova-space-6);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-primary);
   font: var(--nova-font-xxs-strong-12);
@@ -98,13 +98,13 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   box-sizing: border-box;
   width: 100%;
   height: 28px;
-  padding-right: 4px;
+  padding-right: var(--nova-space-4);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-primary);
   font: var(--nova-font-xxs-12);
@@ -217,7 +217,7 @@
 
 .hiddenMark {
   flex: none;
-  padding: 0 4px;
+  padding: 0 var(--nova-space-4);
   border-radius: 2px;
   background: var(--nova-interactive-hover);
   color: var(--nova-text-muted);
@@ -233,7 +233,7 @@
 .rowRail {
   display: none;
   align-items: center;
-  gap: 2px;
+  gap: var(--nova-space-2);
   flex: none;
   margin-left: auto;
 }
@@ -257,9 +257,9 @@
   justify-content: center;
   height: 20px;
   min-width: 20px;
-  padding: 0 6px;
+  padding: 0 var(--nova-space-6);
   border: 1px solid var(--nova-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   background: var(--nova-surface-raised);
   color: var(--nova-text-muted);
   font: var(--nova-font-xxxs-strong-11);
@@ -276,9 +276,9 @@
 
 .copyPill {
   height: 20px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border: 1px solid var(--nova-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   background: var(--nova-surface-raised);
   color: var(--nova-text-muted);
   font: var(--nova-font-xxxs-11);
@@ -296,7 +296,7 @@
 /* A level's own note (loading / empty / refused / truncated), indented to the
    depth it describes. */
 .note {
-  padding-right: 8px;
+  padding-right: var(--nova-space-8);
   height: 24px;
   line-height: 24px;
   font: var(--nova-font-xxxs-11);
@@ -315,12 +315,12 @@
   display: flex;
   align-items: center;
   min-height: 28px;
-  padding-right: 4px;
+  padding-right: var(--nova-space-4);
 }
 .inlineInput {
   width: 100%;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 var(--nova-space-6);
   border: 1px solid var(--nova-color-accent);
   border-radius: 3px;
   background: var(--nova-surface-sunken);
@@ -338,10 +338,10 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin: 0 6px 6px;
-  padding: 4px 6px;
-  border-radius: 4px;
+  gap: var(--nova-space-4);
+  margin: 0 var(--nova-space-6) var(--nova-space-6);
+  padding: var(--nova-space-4) var(--nova-space-6);
+  border-radius: var(--nova-radius-sm);
   background: var(--nova-surface-raised);
 }
 
@@ -356,9 +356,9 @@
 .batchVerb {
   flex: none;
   height: 22px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border: 1px solid var(--nova-border-strong);
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   background: transparent;
   color: var(--nova-text-secondary);
   font: var(--nova-font-xxxs-11);

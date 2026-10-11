@@ -4,12 +4,12 @@
 .root {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--nova-space-16);
 }
 
 .actions {
   /* With tail content, this adds to the root gap; without it, the Chat flow's
      preceding-item offset supplies the other 16px. */
-  margin-top: 4px;
+  margin-top: var(--nova-space-4);
   margin-left: -6px;
 }

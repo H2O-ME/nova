@@ -9,14 +9,14 @@
 .trigger {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   min-width: 0;
   /* Legacy fallback, then a row-relative cap that grants long names more
      room without letting this trailing control consume the composer. */
   max-width: 220px;
   max-width: min(360px, 45cqw);
   height: 28px;
-  padding: 0 4px 0 8px;
+  padding: 0 var(--nova-space-4) 0 var(--nova-space-8);
   border: none;
   /* Rounded chip chrome, matching the sibling permission trigger. */
   border-radius: var(--nova-radius-lg);
@@ -67,7 +67,7 @@
 .chevron {
   flex: 0 0 auto;
   color: var(--nova-text-faint);
-  transition: transform 120ms ease;
+  transition: transform var(--nova-dur-fast) ease;
 }
 
 .chevronOpen {

@@ -21,16 +21,16 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   height: 36px;
-  padding: 0 4px 0 12px;
+  padding: 0 var(--nova-space-4) 0 var(--nova-space-12);
   border-bottom: 1px solid var(--nova-border-subtle);
 }
 
 .lens {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   flex: none;
 }
 
@@ -56,7 +56,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding-bottom: 4px;
+  padding-bottom: var(--nova-space-4);
 }
 
 /* Each group is its own block so its sticky header releases exactly when the
@@ -64,7 +64,7 @@
 .group {
   display: flex;
   flex-direction: column;
-  padding-bottom: 2px;
+  padding-bottom: var(--nova-space-2);
 }
 
 .groupHead {
@@ -90,7 +90,7 @@
   transition:
     background-color var(--nova-dur-base) var(--nova-ease-inout),
     color var(--nova-dur-base) var(--nova-ease-inout),
-    opacity 120ms var(--nova-ease-inout);
+    opacity var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .headVerb svg {
@@ -122,17 +122,17 @@
 .tree {
   display: flex;
   flex-direction: column;
-  padding: 0 6px;
+  padding: 0 var(--nova-space-6);
 }
 
 .row {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--nova-space-2);
   min-height: 28px;
-  padding-right: 2px;
-  border-radius: 4px;
+  padding-right: var(--nova-space-2);
+  border-radius: var(--nova-radius-sm);
   animation: change-row-in 150ms var(--nova-ease-inout);
 }
 
@@ -164,11 +164,11 @@
 .rowMain {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   flex: 1 1 auto;
   min-width: 0;
   height: 28px;
-  padding-right: 6px;
+  padding-right: var(--nova-space-6);
   border: none;
   background: transparent;
   color: var(--nova-text-primary);
@@ -251,7 +251,7 @@
   transition:
     background-color var(--nova-dur-base) var(--nova-ease-inout),
     color var(--nova-dur-base) var(--nova-ease-inout),
-    opacity 120ms var(--nova-ease-inout);
+    opacity var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .rowVerb svg {
@@ -298,9 +298,9 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   height: 38px;
-  padding: 0 6px 0 4px;
+  padding: 0 var(--nova-space-6) 0 var(--nova-space-4);
   border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
@@ -311,10 +311,10 @@
   display: inline-flex;
   flex: 0 1 auto;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   min-width: 0;
   height: 28px;
-  padding: 0 6px 0 8px;
+  padding: 0 var(--nova-space-6) 0 var(--nova-space-8);
   border: 0;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -348,7 +348,7 @@
 
 .diffStat {
   display: inline-flex;
-  gap: 6px;
+  gap: var(--nova-space-6);
   flex: none;
   margin-right: auto;
   font-family: var(--nova-font-mono);
@@ -367,7 +367,7 @@
 .diffTools {
   display: inline-flex;
   flex: none;
-  gap: 2px;
+  gap: var(--nova-space-2);
   align-items: center;
   margin-left: auto;
 }
@@ -379,7 +379,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  padding: 6px;
+  padding: var(--nova-space-6);
   border: 0;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -406,7 +406,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 8px 0 16px;
+  padding: var(--nova-space-8) 0 var(--nova-space-16);
   font-family: var(--nova-font-mono);
   font-size: 12px;
 }
@@ -465,7 +465,7 @@
 }
 
 .lineNo {
-  padding-right: 8px;
+  padding-right: var(--nova-space-8);
   color: var(--nova-text-muted);
   text-align: right;
   user-select: none;
@@ -477,7 +477,7 @@
 }
 
 .lineText {
-  padding-right: 16px;
+  padding-right: var(--nova-space-16);
 }
 
 /* Wrapping is opt-in (the tool in the head): without it the body pans, which is
@@ -556,19 +556,19 @@
 }
 
 .diffHunk {
-  padding: 4px 16px;
+  padding: var(--nova-space-4) var(--nova-space-16);
   color: var(--nova-text-muted);
   white-space: pre;
 }
 
 .diffMeta {
-  padding: 4px 16px;
+  padding: var(--nova-space-4) var(--nova-space-16);
   color: var(--nova-text-muted);
   font-style: italic;
 }
 
 .diffMore {
-  padding: 4px 16px;
+  padding: var(--nova-space-4) var(--nova-space-16);
   color: var(--nova-text-muted);
 }
 
@@ -577,8 +577,8 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: var(--nova-space-6);
+  padding: var(--nova-space-8) var(--nova-space-12);
   border-top: 1px solid var(--nova-border-subtle);
 }
 
@@ -588,7 +588,7 @@
   height: 28px;
   padding: 0 10px;
   border: 1px solid var(--nova-border-subtle);
-  border-radius: 4px;
+  border-radius: var(--nova-radius-sm);
   background: var(--nova-surface-sunken);
   color: var(--nova-text-primary);
   font: var(--nova-font-xxs-12);
@@ -606,9 +606,9 @@
 .commitButton {
   flex: none;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 var(--nova-space-12);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--nova-radius-sm);
   background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
   font: var(--nova-font-xxs-strong-12);
@@ -636,19 +636,19 @@
 .log {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   margin: 0;
-  padding: 4px 6px 8px;
+  padding: var(--nova-space-4) var(--nova-space-6) var(--nova-space-8);
   list-style: none;
 }
 
 .logRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   min-height: 24px;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: var(--nova-space-2) var(--nova-space-6);
+  border-radius: var(--nova-radius-sm);
   transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
@@ -658,7 +658,7 @@
 
 .logHash {
   flex: none;
-  padding: 1px 4px;
+  padding: 1px var(--nova-space-4);
   border-radius: 2px;
   background: var(--nova-interactive-hover);
   color: var(--nova-text-secondary);
@@ -688,7 +688,7 @@
   min-height: 0;
   overflow-y: auto;
   margin: 0;
-  padding: 4px 6px;
+  padding: var(--nova-space-4) var(--nova-space-6);
   list-style: none;
 }
 

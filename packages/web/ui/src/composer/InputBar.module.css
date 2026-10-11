@@ -6,7 +6,7 @@
      the sides narrow with the shared width axis); the bottom gradient mask
      is owned by the chat scroller. No top pad: the composer stack's gap owns
      the space above; the status strip still carries its own margin. */
-  padding: 0 var(--nova-composer-side-clearance) 4px;
+  padding: 0 var(--nova-composer-side-clearance) var(--nova-space-4);
 }
 
 /* The dock row under the card (the source's `.dock`): the stats pills and the
@@ -15,9 +15,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--nova-space-12);
   max-width: 100%;
-  padding-top: 4px;
+  padding-top: var(--nova-space-4);
 }
 
 /* The hero centers a tall card, so an empty dock would still spend its 4px top
@@ -40,10 +40,10 @@
   flex-direction: column;
   /* figma Input 75:8208: 12px between the text area and the button row; the
      card's top pad before .input tightened from the drawn 10 to 8. */
-  gap: 12px;
+  gap: var(--nova-space-12);
   width: 100%;
   max-width: var(--nova-composer-card-max-width);
-  padding-top: 8px;
+  padding-top: var(--nova-space-8);
   /* Input stroke: the light neutral (l2, one step above the menus' l1),
      drawn as the elevation hairline so it costs no layout; the shadow is the
      soft elevation tier. Fill: the input surface token (elevated in dark). */
@@ -87,7 +87,7 @@
    gutter. */
 .rail {
   min-width: 0;
-  padding: 2px 10px 0;
+  padding: var(--nova-space-2) 10px 0;
   margin-bottom: -6px;
 }
 
@@ -96,7 +96,7 @@
    inside the draft's. */
 .intakeError {
   max-width: var(--nova-composer-card-max-width);
-  margin-top: 4px;
+  margin-top: var(--nova-space-4);
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-color-danger);
@@ -117,7 +117,7 @@
   bottom: calc(100% + 4px);
   left: 0;
   right: 0;
-  margin-top: 8px;
+  margin-top: var(--nova-space-8);
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-secondary);
@@ -131,7 +131,7 @@
   overflow-y: auto;
   /* Keeps the bar off the card's right border; .input's right pad gives the
      4px back so the text column is unchanged. */
-  margin-right: 4px;
+  margin-right: var(--nova-space-4);
 }
 
 /* The card's 22px corner arc still overlaps the scrollport's top (8px top
@@ -139,7 +139,7 @@
    pokes outside the capsule. WebKit-path only; Firefox's thin bar has no
    track margin, an accepted remainder. */
 .scroll::-webkit-scrollbar-track {
-  margin-top: 8px;
+  margin-top: var(--nova-space-8);
 }
 
 /* Auto-grow anchor: the textarea is in normal flow and sets the draft's
@@ -162,7 +162,7 @@
   /* Docked floor: one 24px line + 4px top pad = 28 content height; 36 leaves
      an 8px breath below the line (the hero keeps its own 52px floor below). */
   min-height: 36px;
-  padding: 4px 8px 0 14px;
+  padding: var(--nova-space-4) var(--nova-space-8) 0 14px;
   font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
@@ -295,11 +295,11 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--nova-space-12);
   /* 2px moved from the bottom pad to the top: the whole control row sits 2px
      lower in the card (it read too high against the textarea) while the
      controls' own centering stays untouched. */
-  padding: 2px 8px 6px;
+  padding: var(--nova-space-2) var(--nova-space-8) var(--nova-space-6);
   min-width: 0;
   /* Size container so the chips inside can collapse to icon-only when the
      card runs out of row width (ModelSeat @container rule). Anonymous
@@ -320,11 +320,11 @@
    Read-only; both gaps settled on 12 so the pill chips read as separate
    controls without drifting from the + control. */
 .tools {
-  gap: 12px;
+  gap: var(--nova-space-12);
 }
 
 .modes {
-  gap: 12px;
+  gap: var(--nova-space-12);
 }
 
 .trailing {
@@ -335,7 +335,7 @@
      model trigger (external:107). The auto margin re-anchors it right on the
      wrapped line; on a single line space-between already pins it right. */
   margin-left: auto;
-  gap: 12px;
+  gap: var(--nova-space-12);
 }
 
 /* Tighten the row before it wraps. The 12px gaps above are the roomy default;
@@ -346,7 +346,7 @@
   .tools,
   .modes,
   .trailing {
-    gap: 8px;
+    gap: var(--nova-space-8);
   }
 }
 
@@ -366,7 +366,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   background: var(--nova-surface-panel);
   color: var(--nova-text-primary);
@@ -400,7 +400,7 @@
   height: 34px;
   padding: 0;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   background: var(--nova-color-accent);
   /* Static white, not the foreground token: the arrow stays white on the blue

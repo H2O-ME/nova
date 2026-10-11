@@ -8,7 +8,7 @@
 }
 
 .root[data-open] {
-  padding-bottom: 4px;
+  padding-bottom: var(--nova-space-4);
 }
 
 .chevron {
@@ -21,7 +21,7 @@
   flex: none;
   width: 2px;
   height: 2px;
-  margin: 0 8px;
+  margin: 0 var(--nova-space-8);
   border-radius: 1px;
   background: var(--nova-text-faint);
 }
@@ -42,9 +42,9 @@
   /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
   width: calc(100% - 22px - var(--nova-content-font-delta, 0px));
   max-height: 141px;
-  margin: 4px 0 0 calc(22px + var(--nova-content-font-delta, 0px));
+  margin: var(--nova-space-4) 0 0 calc(22px + var(--nova-content-font-delta, 0px));
   overflow: auto;
-  padding: 10px 16px 12px 12px;
+  padding: 10px var(--nova-space-16) var(--nova-space-12) var(--nova-space-12);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-code);
@@ -66,14 +66,14 @@
 .sections {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--nova-space-4);
   margin: 0;
 }
 
 .section {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--nova-space-12);
 }
 
 .sectionName {
@@ -93,7 +93,7 @@
 .entries {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--nova-space-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -102,7 +102,7 @@
 .entry {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--nova-space-8);
 }
 
 .entryName {
@@ -120,7 +120,7 @@
 
 /* The lines that were not entries; the list above already shows the rest. */
 .note {
-  margin: 6px 0 0;
+  margin: var(--nova-space-6) 0 0;
   font: inherit;
 }
 

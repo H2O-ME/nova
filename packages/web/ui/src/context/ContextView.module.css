@@ -30,24 +30,24 @@
   width: var(--nova-chat-content-width);
   max-width: 100%;
   margin: 0 auto;
-  padding: 12px var(--nova-composer-side-clearance) 24px;
+  padding: var(--nova-space-12) var(--nova-composer-side-clearance) var(--nova-space-24);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--nova-space-12);
 }
 
 .card {
   border: 0.5px solid var(--nova-border-strong);
   border-radius: 12px;
   background: var(--nova-surface-raised, var(--nova-surface-sunken));
-  padding: 12px 14px;
+  padding: var(--nova-space-12) 14px;
 }
 
 .cardHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--nova-space-12);
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
@@ -67,7 +67,7 @@
 
 .empty {
   margin: 0;
-  padding: 8px 0;
+  padding: var(--nova-space-8) 0;
   color: var(--nova-text-muted);
   font-size: var(--nova-content-font-size-secondary, 13px);
 }
@@ -77,7 +77,7 @@
 .stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 18px;
+  gap: var(--nova-space-8) 18px;
   margin: 0;
 }
 
@@ -92,7 +92,7 @@
 }
 
 .statValue {
-  margin: 2px 0 0;
+  margin: var(--nova-space-2) 0 0;
   color: var(--nova-text-primary);
   font-size: 20px;
   font-weight: 600;
@@ -108,7 +108,7 @@
 .headRow {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
-  gap: 12px;
+  gap: var(--nova-space-12);
 }
 
 /* ── token stats (donut + legend) ──────────────────────────────────────── */
@@ -119,7 +119,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: var(--nova-space-12);
   min-width: 0;
 }
 
@@ -147,7 +147,7 @@
   /* The entrance sweep: a `from`-only keyframe takes each arc's own painted
      dasharray as its implicit end value, so the slices grow clockwise from 12
      o'clock in reading order (the pane's `--lc-i` slot convention). */
-  animation: lc-donut-in 0.45s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 60ms) backwards;
+  animation: lc-donut-in 0.45s var(--nova-ease-inout) calc(var(--lc-i, 0) * 60ms) backwards;
 }
 
 /* The legend row ↔ segment link: hovering either side recedes the other arcs. */
@@ -195,7 +195,7 @@
   flex: 1 1 auto;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 4px 20px;
+  gap: var(--nova-space-4) 20px;
   min-width: 0;
   overflow: hidden;
 }
@@ -207,9 +207,9 @@
   flex-direction: column;
   gap: 1px;
   min-width: 0;
-  padding: 1px 6px;
+  padding: 1px var(--nova-space-6);
   margin: 0 -6px;
-  border-radius: 6px;
+  border-radius: var(--nova-radius-md);
   font-size: var(--nova-font-xxs-12, 12px);
   transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
@@ -226,7 +226,7 @@
 .sliceMain {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   min-width: 0;
 }
 
@@ -272,7 +272,7 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--nova-space-6);
   margin-bottom: 10px;
 }
 
@@ -305,10 +305,10 @@
 
 .bar {
   display: flex;
-  gap: 2px;
+  gap: var(--nova-space-2);
   height: 16px;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: var(--nova-radius-lg);
   background: var(--nova-interactive-hover, var(--nova-surface-raised));
 }
 
@@ -349,7 +349,7 @@
 .slot,
 .free {
   transform-origin: 0 50%;
-  animation: lc-stacked-in 0.4s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 40ms) backwards;
+  animation: lc-stacked-in 0.4s var(--nova-ease-inout) calc(var(--lc-i, 0) * 40ms) backwards;
 }
 
 /* dsh-context's in-pane tip chrome (base.css .lc-tip): the bubble follows the
@@ -362,11 +362,11 @@
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   background: var(--nova-surface-raised);
   border: 1px solid var(--nova-border-subtle);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: var(--nova-radius-md);
+  padding: var(--nova-space-4) var(--nova-space-8);
   font-size: var(--nova-font-xxs-12, 12px);
   color: var(--nova-text-primary);
   box-shadow: var(--nova-shadow-3);
@@ -384,7 +384,7 @@
 .legend {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 6px 14px;
+  gap: var(--nova-space-6) 14px;
   margin: 10px 0 0;
   padding: 0;
   list-style: none;
@@ -395,8 +395,8 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
-  padding: 1px 6px;
-  border-radius: 6px;
+  padding: 1px var(--nova-space-6);
+  border-radius: var(--nova-radius-md);
   font-size: var(--nova-content-font-size-secondary, 13px);
   color: var(--nova-text-primary);
   transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
@@ -445,13 +445,13 @@
    the pair title-adjacent while the reading stays at the far end). */
 .scaleToggle {
   display: flex;
-  gap: 2px;
+  gap: var(--nova-space-2);
   flex: none;
   margin-right: auto;
   padding: 1px;
   background: var(--nova-surface-raised);
   border: 1px solid var(--nova-border-strong);
-  border-radius: 6px;
+  border-radius: var(--nova-radius-md);
 }
 
 .scaleBtn {
@@ -461,7 +461,7 @@
   font-family: inherit;
   font-size: 11px;
   line-height: 1;
-  padding: 3px 8px;
+  padding: 3px var(--nova-space-8);
   border-radius: 5px;
   cursor: pointer;
   transition: color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
@@ -480,7 +480,7 @@
 
 .chartRow {
   display: flex;
-  gap: 6px;
+  gap: var(--nova-space-6);
   align-items: stretch;
 }
 
@@ -546,9 +546,9 @@
   position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 2px;
+  gap: var(--nova-space-2);
   height: 130px;
-  padding: 18px 2px 0;
+  padding: 18px var(--nova-space-2) 0;
   box-sizing: border-box;
   width: max-content;
   min-width: 100%;
@@ -639,7 +639,7 @@
    appended request grows in, bars already on screen never replay it. */
 .trendStack {
   transform-origin: 50% 100%;
-  animation: lc-bar-in 0.35s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--lc-i, 0) * 15ms) backwards;
+  animation: lc-bar-in 0.35s var(--nova-ease-inout) calc(var(--lc-i, 0) * 15ms) backwards;
 }
 
 /* The hover bubble: floats ABOVE the plot, outside the scroller (dsh
@@ -653,14 +653,14 @@
   z-index: 5;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   max-width: 100%;
   box-sizing: border-box;
   overflow-wrap: break-word;
   background: var(--nova-surface-raised);
   border: 1px solid var(--nova-border-subtle);
-  border-radius: 6px;
-  padding: 3px 8px;
+  border-radius: var(--nova-radius-md);
+  padding: 3px var(--nova-space-8);
   font-size: var(--nova-font-xxs-12, 12px);
   color: var(--nova-text-primary);
   box-shadow: var(--nova-shadow-3);
@@ -673,8 +673,8 @@
 }
 
 .detail {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: var(--nova-space-12);
+  padding-top: var(--nova-space-12);
   border-top: 1px solid var(--nova-border-subtle);
 }
 
@@ -684,7 +684,7 @@
 .detailRows {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 4px 24px;
+  gap: var(--nova-space-4) var(--nova-space-24);
 }
 
 /* Padding + matching negative margin: the row's hover highlight paints past
@@ -692,10 +692,10 @@
 .detailRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 1px 4px;
+  gap: var(--nova-space-8);
+  padding: 1px var(--nova-space-4);
   margin: -1px -4px;
-  border-radius: 4px;
+  border-radius: var(--nova-radius-sm);
 }
 
 .detailRow i {
@@ -745,7 +745,7 @@
 .detailDelta {
   flex: none;
   min-width: 56px;
-  padding: 0 6px;
+  padding: 0 var(--nova-space-6);
   border-radius: var(--nova-radius-lg);
   corner-shape: round;
   font-family: var(--nova-font-mono);
@@ -770,9 +770,9 @@
 .detailCacheHit {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  margin: 6px 0 0;
-  padding: 4px 0 0;
+  gap: var(--nova-space-6);
+  margin: var(--nova-space-6) 0 0;
+  padding: var(--nova-space-4) 0 0;
   border-top: 0.5px solid var(--nova-border-subtle);
   font: var(--nova-font-xxs-12);
   color: var(--nova-text-muted);
@@ -805,12 +805,12 @@
 .catList {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--nova-space-6);
 }
 
 .catCard {
   border: 1px solid var(--nova-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-raised);
   overflow: hidden;
 }
@@ -818,7 +818,7 @@
 .catHead {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--nova-space-8);
   width: 100%;
   padding: 7px 10px;
   border: 0;
@@ -828,7 +828,7 @@
   font-size: var(--nova-content-font-size-secondary, 13px);
   text-align: left;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color var(--nova-dur-base) ease;
 }
 
 .catHead:hover {
@@ -854,7 +854,7 @@
   border-right: 1px solid currentColor;
   border-bottom: 1px solid currentColor;
   transform: rotate(-45deg);
-  transition: transform 0.2s ease;
+  transition: transform var(--nova-dur-base) ease;
 }
 
 .catChev[data-open='true']::before {
@@ -895,7 +895,7 @@
 
 .catBody {
   margin: 0;
-  padding: 4px 6px;
+  padding: var(--nova-space-4) var(--nova-space-6);
   border-top: 1px solid var(--nova-border-subtle);
   list-style: none;
 }
@@ -903,9 +903,9 @@
 .elementRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  border-radius: 6px;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-4) var(--nova-space-6);
+  border-radius: var(--nova-radius-md);
   font-size: var(--nova-content-font-size-secondary, 13px);
   transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
@@ -952,7 +952,7 @@
 .fileList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -963,10 +963,10 @@
 .fileRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-4) var(--nova-space-6);
   margin: 0 -6px;
-  border-radius: 6px;
+  border-radius: var(--nova-radius-md);
   font-size: var(--nova-content-font-size-secondary, 13px);
   transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
@@ -988,8 +988,8 @@
 
 .fileBadge {
   flex: none;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 1px var(--nova-space-6);
+  border-radius: var(--nova-radius-sm);
   background: color-mix(in srgb, currentColor 14%, transparent);
   font-size: var(--nova-font-xxs-12, 11px);
   white-space: nowrap;
@@ -1008,7 +1008,7 @@
 }
 
 .badgeCount {
-  margin-left: 4px;
+  margin-left: var(--nova-space-4);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -1035,7 +1035,7 @@
 .timingList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1047,10 +1047,10 @@
   display: grid;
   grid-template-columns: 64px 1fr 1fr;
   align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-4) var(--nova-space-6);
   margin: 0 -6px;
-  border-radius: 6px;
+  border-radius: var(--nova-radius-md);
   font-size: var(--nova-content-font-size-secondary, 13px);
   font-variant-numeric: tabular-nums;
   transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
@@ -1082,9 +1082,9 @@
 .timingSummary {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 14px;
-  margin: 8px 0 0;
-  padding-top: 8px;
+  gap: var(--nova-space-8) 14px;
+  margin: var(--nova-space-8) 0 0;
+  padding-top: var(--nova-space-8);
   border-top: 0.5px solid var(--nova-border-strong);
   color: var(--nova-text-faint);
   font-size: var(--nova-content-font-size-secondary, 13px);
@@ -1106,8 +1106,8 @@
   align-items: flex-end;
   gap: 3px;
   height: 48px;
-  margin: 4px 0 12px;
-  padding: 0 2px;
+  margin: var(--nova-space-4) 0 var(--nova-space-12);
+  padding: 0 var(--nova-space-2);
 }
 
 .dashSparkBar {
@@ -1125,7 +1125,7 @@
 .dashWorkspaces {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1137,10 +1137,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 4px 6px;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-4) var(--nova-space-6);
   margin: 0 -6px;
-  border-radius: 6px;
+  border-radius: var(--nova-radius-md);
   font-size: var(--nova-content-font-size-secondary, 13px);
   transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
@@ -1168,8 +1168,8 @@
 }
 
 .dashTotals {
-  margin: 8px 0 0;
-  padding-top: 8px;
+  margin: var(--nova-space-8) 0 0;
+  padding-top: var(--nova-space-8);
   border-top: 0.5px solid var(--nova-border-strong);
   color: var(--nova-text-faint);
   font-size: var(--nova-content-font-size-secondary, 13px);
@@ -1181,7 +1181,7 @@
 .dnaList {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--nova-space-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1199,10 +1199,10 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 4px 6px;
+  padding: var(--nova-space-4) var(--nova-space-6);
   margin: 0 -6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--nova-radius-md);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -1226,7 +1226,7 @@
   flex: 1 1 auto;
   display: flex;
   height: 10px;
-  border-radius: 4px;
+  border-radius: var(--nova-radius-sm);
   overflow: hidden;
   background: color-mix(in srgb, var(--nova-text-faint) 14%, transparent);
 }
@@ -1252,9 +1252,9 @@
 .dnaBreakdown {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 4px 0 8px;
-  padding: 0 6px 0 18px;
+  gap: var(--nova-space-2);
+  margin: var(--nova-space-4) 0 var(--nova-space-8);
+  padding: 0 var(--nova-space-6) 0 18px;
   list-style: none;
 }
 
@@ -1262,8 +1262,8 @@
   display: grid;
   grid-template-columns: 16px 56px 1fr 96px;
   align-items: center;
-  gap: 8px;
-  padding: 2px 0;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-2) 0;
   font-size: var(--nova-font-xxs-12, 12px);
 }
 
@@ -1355,8 +1355,8 @@
 .eventRow {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 4px 0;
+  gap: var(--nova-space-6);
+  padding: var(--nova-space-4) 0;
   font: var(--nova-font-xxs-12);
   color: var(--nova-text-secondary);
   border-bottom: 0.5px solid var(--nova-border-subtle);
@@ -1376,7 +1376,7 @@
 
 .eventChip {
   flex: none;
-  padding: 1px 6px;
+  padding: 1px var(--nova-space-6);
   border-radius: var(--nova-radius-lg);
   corner-shape: round;
   background: var(--nova-interactive-active);

@@ -5,7 +5,7 @@
   width: 100%;
   min-width: 0;
   height: calc(33px + var(--nova-content-font-delta, 0px));
-  padding: 0 0 8px;
+  padding: 0 0 var(--nova-space-8);
   border: none;
   border-bottom: 0.5px solid var(--nova-border-strong);
   background: none;
@@ -24,14 +24,14 @@
 }
 
 .root:not([data-open]) {
-  margin-bottom: 8px;
+  margin-bottom: var(--nova-space-8);
 }
 
 .chevron {
   flex: none;
   width: 14px;
   height: 14px;
-  margin-left: 4px;
+  margin-left: var(--nova-space-4);
   color: var(--nova-text-faint);
   transition: transform 100ms ease;
 }

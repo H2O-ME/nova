@@ -8,9 +8,9 @@
 .error {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  margin: 12px 0;
-  padding: 10px 12px;
+  gap: var(--nova-space-2);
+  margin: var(--nova-space-12) 0;
+  padding: 10px var(--nova-space-12);
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-sunken);

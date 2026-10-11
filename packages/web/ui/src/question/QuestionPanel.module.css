@@ -17,7 +17,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0 12px;
+  padding: var(--nova-space-8) 0 var(--nova-space-12);
 }
 
 .card {
@@ -62,9 +62,9 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--nova-space-16);
   flex-shrink: 0;
-  padding: 20px 16px 0 24px;
+  padding: 20px var(--nova-space-16) 0 var(--nova-space-24);
 }
 
 .headingBlock {
@@ -90,7 +90,7 @@
 .headerActions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   flex-shrink: 0;
 }
 
@@ -109,10 +109,10 @@
    for a human to read. The cap keeps a long plan from pushing the options off
    the card. */
 .detail {
-  margin: 0 2px 8px;
+  margin: 0 var(--nova-space-2) var(--nova-space-8);
   max-height: 240px;
   overflow: auto;
-  padding: 8px 12px;
+  padding: var(--nova-space-8) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
   color: var(--nova-text-secondary);
@@ -132,8 +132,8 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin: 8px 0 0;
-  padding: 4px 12px;
+  margin: var(--nova-space-8) 0 0;
+  padding: var(--nova-space-4) var(--nova-space-12);
 }
 
 /* An option-shaped row: number (single) or checkbox (multi) leading, then the
@@ -142,18 +142,18 @@
 .option {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--nova-space-8);
   width: 100%;
   min-height: 40px;
   flex-shrink: 0;
-  padding: 8px 12px 8px 8px;
+  padding: var(--nova-space-8) var(--nova-space-12) var(--nova-space-8) var(--nova-space-8);
   border: 1px solid transparent;
   border-radius: var(--nova-radius-lg);
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color var(--nova-dur-fast) ease, border-color var(--nova-dur-fast) ease;
 }
 
 .option:hover:not(:disabled),
@@ -180,7 +180,7 @@
   height: 20px;
   /* (24px first-line box − 20px indicator) / 2: centers the indicator against
      the first text line under the row's flex-start alignment. */
-  margin-top: 2px;
+  margin-top: var(--nova-space-2);
   border-radius: var(--nova-radius-sm);
   background: var(--nova-surface-overlay);
   color: var(--nova-text-secondary);
@@ -203,7 +203,7 @@
   flex: 0 0 20px;
   width: 20px;
   height: 20px;
-  margin-top: 2px;
+  margin-top: var(--nova-space-2);
 }
 
 .checkbox::before {
@@ -213,7 +213,7 @@
   height: 14px;
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-sm);
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color var(--nova-dur-fast) ease, border-color var(--nova-dur-fast) ease;
 }
 
 .checkbox > svg {
@@ -242,7 +242,7 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 2px 6px;
+  gap: var(--nova-space-2) var(--nova-space-6);
 }
 
 .optionLabel {
@@ -253,7 +253,7 @@
 }
 
 .badge {
-  padding: 0 4px;
+  padding: 0 var(--nova-space-4);
   border-radius: var(--nova-radius-sm);
   background: var(--nova-color-accent-soft);
   color: var(--nova-color-accent);
@@ -274,14 +274,14 @@
 .customRow {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--nova-space-8);
   width: 100%;
   min-height: 40px;
   flex-shrink: 0;
-  padding: 8px 12px 8px 8px;
+  padding: var(--nova-space-8) var(--nova-space-12) var(--nova-space-8) var(--nova-space-8);
   border: 1px solid transparent;
   border-radius: var(--nova-radius-lg);
-  transition: background-color 120ms ease, border-color 120ms ease;
+  transition: background-color var(--nova-dur-fast) ease, border-color var(--nova-dur-fast) ease;
 }
 
 .customRow:hover,
@@ -351,7 +351,7 @@
 .customBlock {
   min-height: 64px;
   flex-shrink: 0;
-  margin: 0 12px;
+  margin: 0 var(--nova-space-12);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
@@ -366,21 +366,21 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--nova-space-12);
   flex-shrink: 0;
-  margin-top: 12px;
+  margin-top: var(--nova-space-12);
   padding: 0 10px 0 18px;
 }
 
 .pager {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   flex-shrink: 0;
 }
 
 .progress {
-  padding: 0 4px;
+  padding: 0 var(--nova-space-4);
   color: var(--nova-text-secondary);
   font-size: 14px;
   line-height: 24px;
@@ -401,18 +401,18 @@
 .footerActions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--nova-space-12);
   flex-shrink: 0;
 }
 
 .button {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--nova-space-4);
   height: 36px;
   padding: 0 14px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   cursor: pointer;
   font-size: 14px;
@@ -420,7 +420,7 @@
   color: var(--nova-text-primary);
   background: transparent;
   flex: none;
-  transition: background-color 120ms ease;
+  transition: background-color var(--nova-dur-fast) ease;
 }
 
 .button:disabled {
@@ -452,11 +452,11 @@
   }
 
   .header {
-    padding: 10px 12px 0 18px;
+    padding: 10px var(--nova-space-12) 0 18px;
   }
 
   .options {
-    padding: 4px 8px;
+    padding: var(--nova-space-4) var(--nova-space-8);
   }
 
   .title {
@@ -466,7 +466,7 @@
 
   .option,
   .customRow {
-    padding: 8px 6px;
+    padding: var(--nova-space-8) var(--nova-space-6);
   }
 
   .footer {

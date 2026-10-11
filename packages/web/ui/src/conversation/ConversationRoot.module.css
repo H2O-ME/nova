@@ -100,7 +100,7 @@
   );
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity var(--nova-dur-fast) ease;
 }
 
 .widthHandle[data-side='left']::after {
@@ -182,7 +182,7 @@
   /* The product-wide 2px scrollbar offset (ui-workspace WorkspaceBrowser
      `.list`, ui-sidebar-files FilesBody `.body`): the bar sits 2px clear of
      the column's edge instead of flush against it. */
-  margin-right: 2px;
+  margin-right: var(--nova-space-2);
   overflow-y: auto;
   /* Reserved unconditionally: the composer seat rides this box's content box in
      Chat and its padding box under a view's composer overlay, so an `auto`
@@ -194,7 +194,7 @@
 /* The bar also stops 2px short of the scroller's ends, matching its 2px edge
    offset. WebKit-only: the Firefox path has no track to inset. */
 .scrollBody::-webkit-scrollbar-track {
-  margin: 2px;
+  margin: var(--nova-space-2);
 }
 
 .root[data-phase='active'] .viewArea {
@@ -241,9 +241,9 @@
   align-self: center;
   /* figma 75:8208 drew 12 between all three rows; the workspace row now sits
      8 above the card (its margin-top restores 12 under the hero chrome). */
-  gap: 8px;
+  gap: var(--nova-space-8);
   /* Foot inside the centered box floats the stack a bit above true center. */
-  padding-bottom: 32px;
+  padding-bottom: var(--nova-space-32);
   /* Card cap + both clearances: the hero input card lands at exactly the same
      width as the docked composer at every viewport. */
   width: min(calc(var(--nova-composer-card-max-width) + 2 * var(--nova-composer-side-clearance)), 100%);

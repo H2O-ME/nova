@@ -12,9 +12,9 @@
 .trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   flex: none;
-  padding: 1px 8px;
+  padding: 1px var(--nova-space-8);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -68,7 +68,7 @@
   box-sizing: border-box;
   /* Clamped like the reference so a narrow window never clips the panel. */
   width: min(264px, calc(100vw - 24px));
-  padding: 12px;
+  padding: var(--nova-space-12);
   border: 0;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-menu);
@@ -84,7 +84,7 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
 }
 
 .figures {
@@ -112,9 +112,9 @@
 .bar {
   display: flex;
   gap: 1px;
-  margin: 10px 0 12px;
+  margin: 10px 0 var(--nova-space-12);
   height: 4px;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   background: var(--nova-interactive-hover);
   overflow: hidden;

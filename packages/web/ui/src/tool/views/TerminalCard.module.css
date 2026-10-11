@@ -15,7 +15,7 @@
 
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
-  margin: 4px 0 4px 4px;
+  margin: var(--nova-space-4) 0 var(--nova-space-4) var(--nova-space-4);
   border: 0.5px solid var(--nova-border-subtle);
   /* The gutter is the card's OWN padding, not a margin: every consumer rewrites
      `margin` wholesale, which silently cancelled the reservation and let the dot
@@ -36,7 +36,7 @@
 .header {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--nova-space-12);
   /* Pulled back across the card's gutter padding so the banner spans the FULL
      surface, then re-inset by the same amount so the prompt text and the dot
      keep their positions. */
@@ -58,7 +58,7 @@
 }
 
 .header::-webkit-scrollbar-track {
-  margin: 6px;
+  margin: var(--nova-space-6);
 }
 
 /* Full-width l2 hairline between the command banner and the body — the same
@@ -82,7 +82,7 @@
   position: relative;
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--nova-space-8);
   min-width: 0;
   line-height: var(--dsl-terminal-line-height);
 }
@@ -130,9 +130,9 @@
   position: sticky;
   top: 0;
   height: var(--dsl-terminal-line-height);
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border: 0.5px solid var(--nova-border-subtle);
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   corner-shape: round;
   font: var(--nova-font-xxs-12);
   color: var(--nova-color-danger);
@@ -159,7 +159,7 @@
    the banner stays pinned and the bar sits inside the output's right padding. */
 .output {
   max-height: var(--dsl-terminal-output-max-height, none);
-  padding: 12px 14px 12px 0;
+  padding: var(--nova-space-12) 14px var(--nova-space-12) 0;
   font: var(--dsl-terminal-font);
   overflow-x: auto;
   overflow-y: auto;
@@ -174,7 +174,7 @@
 }
 
 .output::-webkit-scrollbar-track {
-  margin: 6px;
+  margin: var(--nova-space-6);
 }
 
 /* No wrapping, no word-break: alignment is the payload of terminal output. */
@@ -184,7 +184,7 @@
 }
 
 .empty {
-  padding: 12px 14px 12px 0;
+  padding: var(--nova-space-12) 14px var(--nova-space-12) 0;
   font: var(--dsl-terminal-font);
   color: var(--nova-text-muted);
 }

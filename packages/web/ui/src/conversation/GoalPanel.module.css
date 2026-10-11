@@ -34,7 +34,7 @@
   max-width: calc(var(--nova-composer-card-max-width) - 4 * var(--nova-composer-dock-inset));
   height: 36px;
   margin: 0 auto;
-  padding: 4px 5px 4px 12px;
+  padding: var(--nova-space-4) 5px var(--nova-space-4) var(--nova-space-12);
   border: 0;
   --nova-elevation-stroke-color: var(--nova-border-subtle);
   border-radius: var(--nova-radius-lg);
@@ -90,7 +90,7 @@
   flex: 1;
   min-width: 0;
   height: 26px;
-  padding: 0 8px;
+  padding: 0 var(--nova-space-8);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-base);

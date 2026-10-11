@@ -51,7 +51,7 @@
 /* The failure text replaces the picture: there is nothing to show, and the
    reason is what the reader needs. */
 .error {
-  padding: 4px 6px;
+  padding: var(--nova-space-4) var(--nova-space-6);
   color: var(--nova-color-danger);
   font-size: 10px;
   line-height: 12px;
@@ -75,7 +75,7 @@
   color: var(--nova-text-inverse);
   opacity: 0;
   cursor: pointer;
-  transition: opacity 0.2s ease-in-out;
+  transition: opacity var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .card:hover .remove,

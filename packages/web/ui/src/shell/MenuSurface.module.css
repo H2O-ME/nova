@@ -28,7 +28,7 @@
  * menu material enters instantly — the recorded deviation ("菜单浮层入场")
  * keeps every menu from reading as a hard cut. */
 .surface {
-  animation: menu-surface-in 140ms ease-out;
+  animation: menu-surface-in 140ms var(--nova-ease-out);
 }
 
 @keyframes menu-surface-in {

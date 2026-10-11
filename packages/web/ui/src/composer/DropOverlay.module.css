@@ -10,7 +10,7 @@
   pointer-events: none;
   background-color: var(--nova-material-mask-drop);
   backdrop-filter: blur(10px);
-  animation: drop-overlay-in 160ms ease-out;
+  animation: drop-overlay-in 160ms var(--nova-ease-out);
 }
 
 @keyframes drop-overlay-in {
@@ -59,14 +59,14 @@
 }
 
 .title {
-  margin-top: 16px;
+  margin-top: var(--nova-space-16);
   font-size: 20px;
   line-height: 28px;
   font-weight: 500;
 }
 
 .desc {
-  margin-top: 16px;
+  margin-top: var(--nova-space-16);
   font-size: 14px;
   line-height: 22px;
   color: var(--nova-text-muted);

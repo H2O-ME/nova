@@ -34,7 +34,7 @@
   isolation: isolate;
   overflow: hidden;
   width: 100%;
-  padding: 2px 0;
+  padding: var(--nova-space-2) 0;
   border-radius: var(--nova-radius-lg) var(--nova-radius-lg) 0 0;
   /* Menu material, not the opaque tip token: the queue panel is a floating
      surface over the transcript (the reference's `.panel::before`), and the
@@ -72,7 +72,7 @@
   height: 36px;
   /* Right inset 12px puts the chevron on the same vertical line as the Todo
      header's chevron (12px body padding there). */
-  padding: 4px 12px;
+  padding: var(--nova-space-4) var(--nova-space-12);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -130,7 +130,7 @@
   gap: 10px;
   width: 100%;
   height: 36px;
-  padding: 4px 5px 4px 12px;
+  padding: var(--nova-space-4) 5px var(--nova-space-4) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
 }
 
@@ -158,7 +158,7 @@
 /* The queued-messages dock pops with dsh dockkit's `dockHintIn` entrance
  * (140ms fade + settle) instead of appearing mid-typing. */
 .dock {
-  animation: queue-dock-in 140ms ease-out;
+  animation: queue-dock-in 140ms var(--nova-ease-out);
 }
 
 @keyframes queue-dock-in {

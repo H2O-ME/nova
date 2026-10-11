@@ -14,7 +14,7 @@
 .root {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: var(--nova-space-12);
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
@@ -33,12 +33,12 @@
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   box-sizing: border-box;
   max-width: 100%;
-  padding: 1px 8px;
+  padding: 1px var(--nova-space-8);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--nova-radius-full);
   /* Uncapped radius: the pill's ends are a capsule, which a superellipse would
      square off. Paired here because corner-shape does not inherit and the
      universal rule in styles/corner-shape.css would otherwise deform them. */
@@ -94,7 +94,7 @@ button.pill[aria-expanded='true'] {
   width: max-content;
   min-width: min(300px, calc(100vw - 24px));
   max-width: min(440px, calc(100vw - 24px));
-  padding: 16px;
+  padding: var(--nova-space-16);
   border: 0;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-menu);
@@ -113,8 +113,8 @@ button.pill[aria-expanded='true'] {
 .panelTitle {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 8px;
+  gap: var(--nova-space-16);
+  margin-bottom: var(--nova-space-8);
   color: var(--nova-text-primary);
   font-weight: 500;
 }
@@ -122,7 +122,7 @@ button.pill[aria-expanded='true'] {
 .panelTitleLabel {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   min-width: 0;
 }
 
@@ -141,7 +141,7 @@ button.pill[aria-expanded='true'] {
 .details {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--nova-space-6);
   margin: 0;
 }
 
@@ -151,7 +151,7 @@ button.pill[aria-expanded='true'] {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--nova-space-24);
 }
 
 .detailKey {

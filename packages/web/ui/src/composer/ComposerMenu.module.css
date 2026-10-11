@@ -18,7 +18,7 @@
   --nova-scrollbar-width: 6px;
   --nova-scrollbar-thumb-border: 2px;
   --nova-scrollbar-track-margin: 12px;
-  padding: 4px;
+  padding: var(--nova-space-4);
   display: flex;
   flex-direction: column;
   border: 0;
@@ -67,10 +67,10 @@
 .item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--nova-space-6);
   width: 100%;
   min-height: 34px;
-  padding: 6px 8px;
+  padding: var(--nova-space-6) var(--nova-space-8);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -90,7 +90,7 @@
 .sectionTitle {
   flex: none;
   min-height: 23px;
-  padding: 5px 8px 2px;
+  padding: 5px var(--nova-space-8) var(--nova-space-2);
   color: var(--nova-text-muted);
   font-size: 11px;
   font-weight: 500;
@@ -169,7 +169,7 @@
 
 .drillHint {
   display: none;
-  padding: 0 4px;
+  padding: 0 var(--nova-space-4);
   border-radius: var(--nova-radius-sm);
   background: var(--nova-interactive-hover);
   color: var(--nova-text-faint);
@@ -203,7 +203,7 @@
 /* Heading row above a source group: non-interactive small grey text, padding
  * aligned with items (mirrors the reference's own menu label). */
 .groupTitle {
-  padding: 6px 8px;
+  padding: var(--nova-space-6) var(--nova-space-8);
   font-size: 11px;
   line-height: 15px;
   color: var(--nova-text-muted);
@@ -218,7 +218,7 @@
   /* border-box keeps the skeleton row aligned with the compact item buttons. */
   box-sizing: border-box;
   min-height: 34px;
-  padding: 6px 8px;
+  padding: var(--nova-space-6) var(--nova-space-8);
 }
 
 .skeletonBar {
@@ -248,9 +248,9 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: var(--nova-space-2);
   padding: 3px 3px 5px;
-  margin-bottom: 2px;
+  margin-bottom: var(--nova-space-2);
   /* l1, not border-inverted (the menu frame's dark-only stroke): the divider
      needs to survive light mode too; in dark both resolve to white/0.06. */
   border-bottom: 0.5px solid var(--nova-border-subtle);
@@ -262,7 +262,7 @@
   flex: 0 1 auto;
   max-width: 40%;
   overflow: hidden;
-  padding: 2px 5px;
+  padding: var(--nova-space-2) 5px;
   border: none;
   border-radius: var(--nova-radius-lg);
   background: transparent;

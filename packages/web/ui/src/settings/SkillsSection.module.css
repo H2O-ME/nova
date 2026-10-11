@@ -12,7 +12,7 @@
 
 .intro {
   margin: 0;
-  padding-top: 4px;
+  padding-top: var(--nova-space-4);
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
@@ -20,7 +20,7 @@
 
 .hint {
   margin: 0;
-  padding: 12px 0 0;
+  padding: var(--nova-space-12) 0 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-muted);
@@ -31,8 +31,8 @@
 .search {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 0;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-12) 0;
   border-bottom: 0.5px solid var(--nova-border-strong);
   color: var(--nova-text-muted);
 }
@@ -62,8 +62,8 @@
 .group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 0 16px;
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-8) 0 var(--nova-space-16);
   border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
@@ -76,8 +76,8 @@
 .groupTitle {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 8px 0 4px;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-8) 0 var(--nova-space-4);
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-muted);
@@ -103,9 +103,9 @@
 .skill {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--nova-space-12);
   margin: 0 -8px;
-  padding: 9px 8px;
+  padding: 9px var(--nova-space-8);
   border-radius: var(--nova-radius-lg);
   transition:
       color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
@@ -124,7 +124,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--nova-space-2);
 }
 
 .skillName {
@@ -162,14 +162,14 @@
    cursor. */
 .feedbackSlot {
   min-height: 18px;
-  margin: 8px 0;
+  margin: var(--nova-space-8) 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-secondary);
 }
 
 .status {
-  padding: 16px 0;
+  padding: var(--nova-space-16) 0;
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
