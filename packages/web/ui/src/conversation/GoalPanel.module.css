@@ -117,35 +117,3 @@
   flex: none;
 }
 
-.iconBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  corner-shape: round;
-  background: transparent;
-  color: var(--nova-text-muted);
-  cursor: pointer;
-  transition:
-    color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-    background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
-}
-
-.iconBtn svg {
-  width: 14px;
-  height: 14px;
-}
-
-.iconBtn:hover {
-  background: var(--nova-interactive-hover);
-  color: var(--nova-text-secondary);
-}
-
-.iconBtn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}

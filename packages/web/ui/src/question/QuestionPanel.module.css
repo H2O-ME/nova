@@ -94,35 +94,6 @@
   flex-shrink: 0;
 }
 
-.iconButton {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  corner-shape: round;
-  background: transparent;
-  color: var(--nova-text-muted);
-  cursor: pointer;
-}
-
-.iconButton:hover:not(:disabled) {
-  background: var(--nova-interactive-hover);
-  color: var(--nova-text-primary);
-}
-
-.iconButton:disabled {
-  color: var(--nova-text-disabled);
-  cursor: default;
-}
-
-.iconButton > svg {
-  width: 16px;
-  height: 16px;
-}
-
 .body {
   display: flex;
   flex: 1 1 auto;

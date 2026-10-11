@@ -31,35 +31,6 @@
   outline-offset: -1px;
 }
 
-.iconButton {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--nova-text-secondary);
-  line-height: 1;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  transition:
-    background-color var(--nova-dur-base) var(--nova-ease-inout),
-    color var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.iconButton:hover {
-  background: var(--nova-interactive-hover);
-  color: var(--nova-text-primary);
-}
-
-.iconButton:focus-visible {
-  outline: 2px solid var(--nova-interactive-hover-strong);
-  outline-offset: -1px;
-}
-
 .glyph {
   display: inline-flex;
   flex: none;

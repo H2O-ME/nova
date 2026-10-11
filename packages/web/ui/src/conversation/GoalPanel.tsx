@@ -19,6 +19,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { ClientFrame, Goal, GoalStatus } from '../types.js';
+import { IconButton } from '../kit/IconButton.js';
 import { GoalIcon, PauseIcon, PencilIcon, PlayIcon, TrashIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
 import { GoalEditRow } from './GoalEditRow.js';
@@ -75,32 +76,27 @@ export function GoalPanel({ goal, send }: {
         <div className={css.actions}>
           {goal.status === 'active' && (
             <Tooltip label="暂停目标" side="bottom" delayMs={500}>
-              <button type="button" className={css.iconBtn} onClick={() => { run('pause'); }} aria-label="暂停目标">
+              <IconButton label="暂停目标" onClick={() => { run('pause'); }}>
                 <PauseIcon />
-              </button>
+              </IconButton>
             </Tooltip>
           )}
           {goal.status === 'paused' && (
             <Tooltip label="恢复目标" side="bottom" delayMs={500}>
-              <button type="button" className={css.iconBtn} onClick={() => { run('resume'); }} aria-label="恢复目标">
+              <IconButton label="恢复目标" onClick={() => { run('resume'); }}>
                 <PlayIcon />
-              </button>
+              </IconButton>
             </Tooltip>
           )}
           <Tooltip label="编辑目标" side="bottom" delayMs={500}>
-            <button
-              type="button"
-              className={css.iconBtn}
-              onClick={() => { setEditing(true); }}
-              aria-label="编辑目标"
-            >
+            <IconButton label="编辑目标" onClick={() => { setEditing(true); }}>
               <PencilIcon />
-            </button>
+            </IconButton>
           </Tooltip>
           <Tooltip label="清除目标" side="bottom" delayMs={500}>
-            <button type="button" className={css.iconBtn} onClick={() => { run('clear'); }} aria-label="清除目标">
+            <IconButton label="清除目标" onClick={() => { run('clear'); }}>
               <TrashIcon />
-            </button>
+            </IconButton>
           </Tooltip>
         </div>
       </div>

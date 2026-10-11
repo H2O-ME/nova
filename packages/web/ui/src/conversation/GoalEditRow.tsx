@@ -7,6 +7,7 @@
  * disabling the save.
  */
 import { useRef, useState } from 'react';
+import { IconButton } from '../kit/IconButton.js';
 import { CheckIcon, CloseIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
 import { COMPOSING_GRACE_MS, composing } from '../composer-keys.js';
@@ -58,25 +59,14 @@ export function GoalEditRow({ objective, onSave, onCancel }: GoalEditRowProps): 
       />
       <div className={css.actions}>
         <Tooltip label="保存目标" side="bottom" delayMs={500}>
-          <button
-            type="button"
-            className={css.iconBtn}
-            onClick={save}
-            disabled={draft.trim() === ''}
-            aria-label="保存目标"
-          >
+          <IconButton label="保存目标" onClick={save} disabled={draft.trim() === ''}>
             <CheckIcon />
-          </button>
+          </IconButton>
         </Tooltip>
         <Tooltip label="取消编辑" side="bottom" delayMs={500}>
-          <button
-            type="button"
-            className={css.iconBtn}
-            onClick={onCancel}
-            aria-label="取消编辑"
-          >
+          <IconButton label="取消编辑" onClick={onCancel}>
             <CloseIcon />
-          </button>
+          </IconButton>
         </Tooltip>
       </div>
     </>

@@ -23,7 +23,8 @@ import { RIGHTBAR_COPY } from './copy.js';
 import type { EditorDoc } from './editor-model.js';
 import { langOfPath } from './diff-highlight.js';
 import { RefreshGlyph } from './panel-icons.js';
-import { Chip, IconButton, Notice } from './kit.js';
+import { IconButton } from '../kit/IconButton.js';
+import { Chip, Notice } from './kit.js';
 import css from './FileTabView.module.css';
 
 export interface FileTabViewProps {

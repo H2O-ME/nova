@@ -29,6 +29,7 @@
  * `answered` lock.
  */
 import { useEffect, useRef, useState } from 'react';
+import { IconButton } from '../kit/IconButton.js';
 import { PreviewBlock } from './PreviewBlock.js';
 import { ReasonInput } from './ReasonInput.js';
 import { alwaysAnswer, approvalKey, denyAnswer, scopeLimit, stepScope } from './decisions.js';
@@ -247,25 +248,23 @@ function ApprovalDetail({
         {limit > 0 && (
           <div className={css.scope}>
             <span className={css.scopeLabel}>总是允许范围</span>
-            <button
-              type="button"
-              className={css.iconButton}
-              aria-label="缩小授权范围"
+            <IconButton
+              size="sm"
+              label="缩小授权范围"
               disabled={locked || scope <= 1}
               onClick={() => onScope(stepScope(scope, limit, -1))}
             >
               <ChevronLeftIcon />
-            </button>
+            </IconButton>
             <code className={css.progress}>{scopedGrant(words ?? [], scope)}</code>
-            <button
-              type="button"
-              className={css.iconButton}
-              aria-label="扩大授权范围"
+            <IconButton
+              size="sm"
+              label="扩大授权范围"
               disabled={locked || scope >= limit}
               onClick={() => onScope(stepScope(scope, limit, 1))}
             >
               <ChevronRightIcon />
-            </button>
+            </IconButton>
           </div>
         )}
       </div>

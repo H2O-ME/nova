@@ -30,7 +30,8 @@ import {
   entryPaths, filterRows, needsListing, toggleExpanded, treeRows, type TreeRow, type TreeState,
 } from './files-model.js';
 import { RIGHTBAR_COPY } from './copy.js';
-import { IconButton, Notice, StatusBadge, type StatusTone } from './kit.js';
+import { IconButton } from '../kit/IconButton.js';
+import { Notice, StatusBadge, type StatusTone } from './kit.js';
 import { clickSelection, emptySelection, isPicked, pruneSelection, selectionText, type TreeSelection } from './tree-selection.js';
 import { cx } from '../composer/cx.js';
 import css from './TreeDock.module.css';

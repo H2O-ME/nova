@@ -4,10 +4,11 @@
  * They used to live in the session sidebar's foot; the sidebar is gone, and the
  * header is where the shell's chrome consolidated (dsh keeps its settings seat
  * in the sidebar's foot — that is the one recorded deviation, since this
- * surface no longer has that column). Both are the shell's 28px recipe: a 28px
- * box around a 15px glyph, tokens only.
+ * surface no longer has that column). The icon seat is the kit's 28px standard;
+ * only the text verb keeps its own sheet.
  */
 import type { ReactNode } from 'react';
+import { IconButton } from '../kit/IconButton.js';
 import { PlusIcon, SettingsIcon } from '../icons.js';
 import { SHELL_COPY } from '../shell/copy.js';
 import css from './HeaderButtons.module.css';
@@ -28,25 +29,23 @@ export function NewSessionButton({ onClick }: { onClick: () => void }): JSX.Elem
   );
 }
 
-/** A 28px icon button in the shell's own recipe (the header's settings seat). */
+/** The header's icon seat (the settings gear), on the kit's standard button. */
 export function HeaderIconButton(props: {
   label: string;
   active?: boolean;
   onClick: () => void;
   children: ReactNode;
 }): JSX.Element {
+  const isSettings = props.label === SHELL_COPY['settings.label'];
   return (
-    <button
-      type="button"
-      className={css.iconButton}
-      aria-label={props.label}
-      aria-haspopup={props.label === SHELL_COPY['settings.label'] ? 'dialog' : undefined}
-      aria-expanded={props.label === SHELL_COPY['settings.label'] ? props.active : undefined}
-      title={props.label}
+    <IconButton
+      label={props.label}
+      active={props.active}
       onClick={props.onClick}
+      {...(isSettings ? { 'aria-haspopup': 'dialog' as const, 'aria-expanded': props.active } : {})}
     >
       {props.children}
-    </button>
+    </IconButton>
   );
 }
 

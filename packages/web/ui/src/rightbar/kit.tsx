@@ -1,14 +1,15 @@
 /**
  * The right panel's primitives: the handful of shapes its four pages share.
  *
- * Ported in shape from the reference plugin's `ui/kit.tsx` (dsh-better-sidebar,
- * MIT), because the alternative is what this panel shipped first: five icon
- * button recipes, four empty-state classes and three pill sizes, each page
- * inventing its own. One kit means the 28px control, the 22px chip, the 36px
- * header band and the three-ink-rung discipline are properties of the panel
- * rather than of whichever page a reader happens to be on.
+ * The panel shipped its first cut with five icon button recipes, four
+ * empty-state classes and three pill sizes, each page inventing its own. One
+ * kit means the 28px control, the 22px chip, the 28px header band and the
+ * three-ink-rung discipline are properties of the panel rather than of
+ * whichever page a reader happens to be on. (The icon button itself has since
+ * become the app-wide `kit/IconButton`; the chip, the header band and the
+ * badges remain panel shapes.)
  *
- * Two rules from the reference are carried whole:
+ * Two rules are carried whole:
  *   - **Loading is text, never a spinner.** {@link Notice} has no `spinner`
  *     sibling and must not grow one: a spinner says "wait" where the honest
  *     reading is usually "this directory has no answer yet".
@@ -19,45 +20,6 @@
 import type { ReactNode } from 'react';
 import { cx } from '../composer/cx.js';
 import css from './kit.module.css';
-
-/** The panel's icon button: 28px (`md`) or 24px (`sm`), borderless, hover-filled. */
-export interface IconButtonProps {
-  /** The accessible name; also the tooltip (the reference's own rule for rows). */
-  label: string;
-  children: ReactNode;
-  onClick?: (() => void) | undefined;
-  disabled?: boolean;
-  /** A persistent on-state (the reference's `iconButtonActive`). */
-  active?: boolean;
-  /** A destructive verb (`iconButtonDanger`) — still needs its own confirm. */
-  danger?: boolean;
-  size?: 'md' | 'sm';
-  type?: 'button' | 'submit';
-}
-
-export function IconButton({
-  label,
-  children,
-  onClick,
-  disabled = false,
-  active = false,
-  danger = false,
-  size = 'md',
-  type = 'button',
-}: IconButtonProps): JSX.Element {
-  return (
-    <button
-      type={type}
-      className={cx(css.iconButton, size === 'sm' && css.iconButtonSm, active && css.iconButtonActive, danger && css.iconButtonDanger)}
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {children}
-    </button>
-  );
-}
 
 /** A pill toggle: the panel's chips (lens switch, batch verbs). */
 export interface ChipProps {

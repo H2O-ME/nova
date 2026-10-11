@@ -31,7 +31,8 @@ import { readDiffLayout, readDiffWrap, writeDiffLayout, writeDiffWrap, type Diff
 import { highlightDiffRows } from './diff-highlight.js';
 import { TOKEN_VAR, type HlLine } from '../chat/markdown/highlight.js';
 import { EditGlyph, NoWrapGlyph, SplitGlyph, StageGlyph, UnstageGlyph, WrapGlyph } from './panel-icons.js';
-import { Chip, CountPill, IconButton, Notice, SectionHeader, StatusBadge, type StatusTone } from './kit.js';
+import { IconButton } from '../kit/IconButton.js';
+import { Chip, CountPill, Notice, SectionHeader, StatusBadge, type StatusTone } from './kit.js';
 import { Menu } from '../shell/Menu.js';
 import { GitSetup } from './GitSetup.js';
 import { cx } from '../composer/cx.js';

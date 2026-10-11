@@ -1,67 +1,10 @@
-/* The right panel's primitives — see `kit.tsx` for the port's provenance.
+/* The right panel's primitives — see `kit.tsx`. The icon button has moved to
+ * the app-wide `kit/IconButton`; this sheet keeps the panel's own shapes.
  *
- * Geometry is the reference's native scale, carried as literal px: 28px
- * controls, 22px chips, 28px section bands, radii 2/3/4px. Colour only ever
- * through tokens (the surface's `style-guard` test enforces it), and no
- * elevation: a docked column floats over nothing. */
-
-.iconButton {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--nova-text-secondary);
-  cursor: pointer;
-  transition:
-    background-color var(--nova-dur-base) var(--nova-ease-inout),
-    color var(--nova-dur-base) var(--nova-ease-inout),
-    opacity var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.iconButton:hover:not(:disabled) {
-  background: var(--nova-interactive-hover);
-  color: var(--nova-text-primary);
-}
-
-.iconButton:focus-visible {
-  outline: 2px solid var(--nova-interactive-hover-strong);
-  outline-offset: -1px;
-}
-
-.iconButton:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.iconButton svg {
-  width: 15px;
-  height: 15px;
-}
-
-.iconButtonSm {
-  width: 24px;
-  height: 24px;
-}
-
-.iconButtonSm svg {
-  width: 14px;
-  height: 14px;
-}
-
-.iconButtonActive {
-  color: var(--nova-color-accent);
-}
-
-.iconButtonDanger:hover:not(:disabled) {
-  color: var(--nova-color-danger);
-  background: var(--nova-interactive-hover-danger);
-}
+ * Geometry is the panel's native scale, carried as literal px: 22px chips,
+ * 28px section bands, small radii. Colour only ever through tokens (the
+ * surface's `style-guard` test enforces it), and no elevation: a docked
+ * column floats over nothing. */
 
 .chip {
   display: inline-flex;

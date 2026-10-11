@@ -21,6 +21,7 @@
  *    "unanswered" is stated rather than inferred from an absence.
  */
 import { useEffect, useRef, useState } from 'react';
+import { IconButton } from '../kit/IconButton.js';
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -274,27 +275,18 @@ export function QuestionPanel({
             <h2 className={css.title}>{title}</h2>
           </div>
           <div className={css.headerActions}>
-            <button
-              type="button"
-              className={css.iconButton}
-              title={minimized ? COPY['nav.maximize'] : COPY['nav.minimize']}
-              aria-label={minimized ? COPY['nav.maximize'] : COPY['nav.minimize']}
+            <IconButton
+              size="sm"
+              label={minimized ? COPY['nav.maximize'] : COPY['nav.minimize']}
               aria-expanded={!minimized}
               disabled={locked}
               onClick={() => { setMinimized((at) => !at); }}
             >
               {minimized ? <ChevronUpIcon /> : <ChevronDownIcon />}
-            </button>
-            <button
-              type="button"
-              className={css.iconButton}
-              title={COPY['nav.cancel']}
-              aria-label={COPY['nav.cancel']}
-              disabled={locked}
-              onClick={cancel}
-            >
+            </IconButton>
+            <IconButton size="sm" label={COPY['nav.cancel']} disabled={locked} onClick={cancel}>
               <CloseIcon />
-            </button>
+            </IconButton>
           </div>
         </header>
 
@@ -420,27 +412,25 @@ export function QuestionPanel({
 
             <footer className={css.footer}>
               <div className={css.pager}>
-                <button
-                  type="button"
-                  className={css.iconButton}
-                  aria-label={COPY['nav.prev']}
+                <IconButton
+                  size="sm"
+                  label={COPY['nav.prev']}
                   disabled={locked || index === 0}
                   onClick={() => { setError(null); setIndex((at) => stepQuestion(at, -1, questions.length)); }}
                 >
                   <ChevronLeftIcon />
-                </button>
+                </IconButton>
                 {questions.length > 1 && (
                   <span className={css.progress}>{`${index + 1} / ${questions.length}`}</span>
                 )}
-                <button
-                  type="button"
-                  className={css.iconButton}
-                  aria-label={COPY['nav.next']}
+                <IconButton
+                  size="sm"
+                  label={COPY['nav.next']}
                   disabled={locked || last}
                   onClick={() => { setError(null); setIndex((at) => stepQuestion(at, 1, questions.length)); }}
                 >
                   <ChevronRightIcon />
-                </button>
+                </IconButton>
               </div>
               <div className={css.feedback} role="status">{feedback}</div>
               <div className={css.footerActions}>

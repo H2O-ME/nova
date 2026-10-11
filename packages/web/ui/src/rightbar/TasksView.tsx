@@ -21,7 +21,8 @@ import type { ClientFrame, WireJobRow } from '../types.js';
 import { ChevronDownIcon, RefreshIcon, StopIcon } from '../icons.js';
 import { formatDuration } from '../format.js';
 import { RIGHTBAR_COPY } from './copy.js';
-import { IconButton, Notice } from './kit.js';
+import { IconButton } from '../kit/IconButton.js';
+import { Notice } from './kit.js';
 import { StateDot } from '../tool/StateDot.js';
 import {
   isLiveJob,
