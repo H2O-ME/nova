@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { nextRetry } from '../src/client.js';
-import { ConnectionIndicator } from '../src/sidebar/ConnectionIndicator.js';
+import { ConnectionIndicator } from '../src/shell/ConnectionIndicator.js';
 import { Sidebar } from '../src/sidebar/Sidebar.js';
-import { indicatorState, indicatorTransition } from '../src/sidebar/view.js';
+import { indicatorState, indicatorTransition } from '../src/shell/connection.js';
 
 /**
  * The socket's retry schedule. The effect that uses it needs a DOM, so the rule

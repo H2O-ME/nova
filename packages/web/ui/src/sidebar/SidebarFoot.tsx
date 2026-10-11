@@ -15,9 +15,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { SettingsIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
-import { ConnectionIndicator } from './ConnectionIndicator.js';
-import { CONNECTING_MIN_VISIBLE_MS, RECOVERY_CONFIRMATION_MS, SIDEBAR_COPY as COPY, cls, indicatorState } from './view.js';
-import type { SocketState } from './view.js';
+import { ConnectionIndicator } from '../shell/ConnectionIndicator.js';
+import { CONNECTING_MIN_VISIBLE_MS, RECOVERY_CONFIRMATION_MS, indicatorState, type SocketState } from '../shell/connection.js';
+import { SIDEBAR_COPY as COPY } from './view.js';
+import { cx } from '../composer/cx.js';
 import css from './SidebarFoot.module.css';
 
 export interface SidebarFootProps {
@@ -85,14 +86,14 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
 
   const label = COPY['settings.label'];
   return (
-    <div className={cls(css.triggerRow, rail && css.railRow)}>
+    <div className={cx(css.triggerRow, rail && css.railRow)}>
       {/* The rail's settings seat is a bare glyph (the label is wide-only), so
           it needs a real tooltip: `title` never shows for a keyboard user, and
           the reference wraps this same trigger in its Tooltip primitive. */}
       <Tooltip label={label} side="right" delayMs={500} disabled={!rail}>
         <button
           type="button"
-          className={cls(css.trigger, rail && css.rail)}
+          className={cx(css.trigger, rail && css.rail)}
           aria-label={label}
           aria-haspopup="dialog"
           aria-expanded={settingsOpen}
@@ -100,7 +101,7 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
           onClick={onOpenSettings}
         >
           <SettingsIcon className={css.triggerIcon} />
-          {!rail && <span className={cls(css.triggerLabel, css.wide)}>{label}</span>}
+          {!rail && <span className={cx(css.triggerLabel, css.wide)}>{label}</span>}
         </button>
       </Tooltip>
       <ConnectionIndicator

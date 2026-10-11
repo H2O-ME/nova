@@ -29,7 +29,7 @@ import { StateDot, type StateDotState } from '../tool/StateDot.js';
 import { parsePageDescriptor } from './page-descriptor.js';
 import { nextPluginRequestId } from './plugin-request-id.js';
 import { draftDirty, nextArmedDanger } from './plugin-state.js';
-import { cls } from '../sidebar/view.js';
+import { cx } from '../composer/cx.js';
 import type { ClientFrame, PluginPageDescriptor } from '../types.js';
 import type { PluginRequestAnswer } from '../state.js';
 import css from './PluginPageSection.module.css';
@@ -352,7 +352,7 @@ export function PluginPageSection({
           <button
             key={action.id}
             type="button"
-            className={cls(
+            className={cx(
               action.kind === 'primary' ? css.primary : css.plain,
               action.danger === true && css.danger,
             )}

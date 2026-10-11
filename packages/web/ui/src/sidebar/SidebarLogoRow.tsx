@@ -15,7 +15,8 @@
  */
 import { PanelIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
-import { SIDEBAR_COPY as COPY, cls } from './view.js';
+import { SIDEBAR_COPY as COPY } from './view.js';
+import { cx } from '../composer/cx.js';
 import css from './Sidebar.module.css';
 
 export function SidebarLogoRow({
@@ -49,7 +50,7 @@ export function SidebarLogoRow({
       {wide && (
         <button
           type="button"
-          className={cls(css.brand, css.wide)}
+          className={cx(css.brand, css.wide)}
           aria-label={COPY['session.new.label']}
           onClick={onStartSession}
         >

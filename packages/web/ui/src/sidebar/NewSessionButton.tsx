@@ -8,7 +8,8 @@
  */
 import { PlusIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
-import { SIDEBAR_COPY as COPY, cls } from './view.js';
+import { SIDEBAR_COPY as COPY } from './view.js';
+import { cx } from '../composer/cx.js';
 import css from './Sidebar.module.css';
 
 export function NewSessionButton({
@@ -30,7 +31,7 @@ export function NewSessionButton({
         onClick={onStartSession}
       >
         <PlusIcon className={css.newSessionIcon} />
-        {wide && <span className={cls(css.newSessionLabel, css.wide)}>{COPY['session.new']}</span>}
+        {wide && <span className={cx(css.newSessionLabel, css.wide)}>{COPY['session.new']}</span>}
       </button>
     </Tooltip>
   );

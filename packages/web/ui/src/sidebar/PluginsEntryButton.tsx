@@ -13,7 +13,8 @@
  */
 import { PluginIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
-import { SIDEBAR_COPY as COPY, cls } from './view.js';
+import { SIDEBAR_COPY as COPY } from './view.js';
+import { cx } from '../composer/cx.js';
 import css from './Sidebar.module.css';
 
 export function PluginsEntryButton({
@@ -32,7 +33,7 @@ export function PluginsEntryButton({
     <Tooltip label={label} side="right" delayMs={500} disabled={wide}>
       <button
         type="button"
-        className={cls(css.pluginsEntry, active && css.pluginsEntryActive)}
+        className={cx(css.pluginsEntry, active && css.pluginsEntryActive)}
         aria-label={label}
         title={label}
         /* The row is the current page, not a link to one: `aria-current` is what
@@ -41,7 +42,7 @@ export function PluginsEntryButton({
         onClick={onOpen}
       >
         <PluginIcon className={css.pluginsEntryIcon} />
-        {wide && <span className={cls(css.pluginsEntryLabel, css.wide)}>{label}</span>}
+        {wide && <span className={cx(css.pluginsEntryLabel, css.wide)}>{label}</span>}
       </button>
     </Tooltip>
   );

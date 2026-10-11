@@ -29,7 +29,7 @@ import { ChevronDownIcon, ChevronRightIcon, TrashIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { SettingsSection } from './Section.js';
 import { TitleModelRow } from './TitleModelRow.js';
-import { cls } from '../sidebar/view.js';
+import { cx } from '../composer/cx.js';
 import type { ClientFrame, ConfiguredModel } from '../types.js';
 import type { ModelConfigSnapshot } from '../state.js';
 import css from './ModelConfigEditor.module.css';
@@ -406,7 +406,7 @@ export function ModelConfigEditor({ config, writable, onDirtyChange, send }: Mod
                   </button>
                   <button
                     type="button"
-                    className={cls(css.iconButton, css.iconButtonDanger)}
+                    className={cx(css.iconButton, css.iconButtonDanger)}
                     data-model-remove={row.id}
                     aria-label={`${SETTINGS_COPY['models.configRemove']} ${row.id}`}
                     title={SETTINGS_COPY['models.configRemove']}
@@ -454,7 +454,7 @@ export function ModelConfigEditor({ config, writable, onDirtyChange, send }: Mod
                           </span>
                           <span className={css.selectWrap}>
                             <select
-                              className={cls(css.input, css.select)}
+                              className={cx(css.input, css.select)}
                               value={state}
                               aria-label={`${SETTINGS_COPY[field.label]} ${row.id}`}
                               disabled={!writable}

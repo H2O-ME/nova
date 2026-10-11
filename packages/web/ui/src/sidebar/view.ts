@@ -1,9 +1,10 @@
 /**
  * Sidebar view logic, pure and DOM-free: the workspace-fold keys, the
- * five-row chunk rule, the current group's auto-expand target, the connection
- * indicator's state, and the column's copy. Everything a row needs beyond its
- * own data is computed here so the vitest lane can assert it without a DOM
- * (the component lane holds no arithmetic).
+ * five-row chunk rule, the current group's auto-expand target, and the
+ * column's copy. Everything a row needs beyond its own data is computed here
+ * so the vitest lane can assert it without a DOM (the component lane holds no
+ * arithmetic). The connection indicator's state machine lives in
+ * `shell/connection.ts`.
  *
  * Copy is the the harness zh dictionary verbatim (`sidebar` +
  * `workspace` namespaces, (c) 2026 DeepSeek, MIT): the sidebar reads the same
@@ -14,23 +15,10 @@
 import type { SessionGroup } from '../session-groups.js';
 import type { SessionListItem } from '../types.js';
 import { LIST_COPY, filterItems } from './list-view.js';
-import type { ConnectionIndicatorState } from './ConnectionIndicator.js';
 
 /** Ordinary session rows one workspace shows before its local overflow control
  * (ui-workspace `COLLAPSED_SESSION_LIMIT`). */
 export const COLLAPSED_SESSION_LIMIT = 5;
-
-/** How long a healed connection keeps reading as connected before the indicator
- * retires (ui-settings-general `RECOVERY_CONFIRMATION_MS`). */
-export const RECOVERY_CONFIRMATION_MS = 2_000;
-
-/** Minimum time the connecting pill stays up once shown; a retry that lands
- * faster than this would otherwise flash it for a frame
- * (ui-settings-general `CONNECTING_MIN_VISIBLE_MS`). */
-export const CONNECTING_MIN_VISIBLE_MS = 800;
-
-/** The three states of the browser's one socket (client.ts). */
-export type SocketState = 'connecting' | 'open' | 'closed';
 
 /** Words the column renders; keys are the reference's dictionary keys. */
 export const SIDEBAR_COPY = {
@@ -82,11 +70,6 @@ export function overflowLabel(hiddenCount: number, expanded: boolean): string {
   return expanded
     ? SIDEBAR_COPY['sessions.collapse']
     : SIDEBAR_COPY['sessions.expand'].replace('{n}', String(hiddenCount));
-}
-
-/** Class-name joiner for the module classes (no clsx dependency by policy). */
-export function cls(...parts: readonly (string | false | undefined)[]): string {
-  return parts.filter((part): part is string => typeof part === 'string' && part.length > 0).join(' ');
 }
 
 /**
@@ -277,51 +260,4 @@ export function rowKeysOf(rows: readonly SidebarRow[]): string[] {
   };
   walk(rows);
   return keys;
-}
-
-/**
- * The indicator's state: an outage or a retry is always worth showing, a
- * healthy socket only while the recovery confirmation is running (undefined
- * renders nothing).
- *
- * `holdConnecting` is the reference's minimum-visible rule: a retry that
- * succeeds in 40ms would otherwise flash the connecting pill for one frame,
- * which reads as a glitch rather than as progress. While the hold is running it
- * wins over `recovered`, so the pill finishes its sentence before the
- * confirmation replaces it (the reference orders the same three branches).
- * @param connection - the socket's state.
- * @param recovered - the recovery confirmation window is running.
- * @param holdConnecting - the connecting pill's minimum-visible hold is running.
- * @returns the state to render, or undefined for nothing.
- */
-export function indicatorState(
-  connection: SocketState,
-  recovered: boolean,
-  holdConnecting = false,
-): ConnectionIndicatorState | undefined {
-  if (connection === 'connecting' || holdConnecting) return 'connecting';
-  if (connection === 'closed') return 'disconnected';
-  return recovered ? 'recovered' : undefined;
-}
-
-/**
- * What the indicator should be showing, and whether it is on its way out.
- *
- * The badge fades rather than vanishing: when the target state becomes
- * `undefined` the last rendered state stays on screen for the exit transition,
- * and only then is dropped. Written as a pure step so the rule can be asserted
- * without a DOM — the component only schedules the timer that feeds `undefined`
- * back in afterwards.
- * @param rendered - the state currently on screen, or undefined for nothing.
- * @param target - the state the connection now calls for, or undefined for none.
- * @returns the state to draw, and whether it is fading out.
- */
-export function indicatorTransition(
-  rendered: ConnectionIndicatorState | undefined,
-  target: ConnectionIndicatorState | undefined,
-): { rendered: ConnectionIndicatorState | undefined; leaving: boolean } {
-  // Coming back is immediate: a new outage must not wait for a stale fade.
-  if (target !== undefined) return { rendered: target, leaving: false };
-  if (rendered === undefined) return { rendered: undefined, leaving: false };
-  return { rendered, leaving: true };
 }

@@ -465,7 +465,6 @@
  "packages/web/ui/src/settings/use-manage-refusal.ts": 101,
  "packages/web/ui/src/shell/AppFrame.tsx": 373,
  "packages/web/ui/src/shell/ConnectionBadge.tsx": 99,
- "packages/web/ui/src/shell/ConnectionIndicator.tsx": 168,
  "packages/web/ui/src/shell/DocumentTitle.tsx": 33,
  "packages/web/ui/src/shell/ErrorBoundary.tsx": 89,
  "packages/web/ui/src/shell/Menu.tsx": 386,
@@ -490,7 +489,6 @@
  "packages/web/ui/src/shell/use-layout.ts": 89,
  "packages/web/ui/src/shell/workspaces.ts": 78,
  "packages/web/ui/src/sidebar/AnimatedRows.tsx": 264,
- "packages/web/ui/src/sidebar/ConnectionIndicator.tsx": 173,
  "packages/web/ui/src/sidebar/DeleteSessionDialog.tsx": 85,
  "packages/web/ui/src/sidebar/ListHeader.tsx": 186,
  "packages/web/ui/src/sidebar/NewSessionButton.tsx": 47,
@@ -526,5 +524,6 @@
  "packages/web/ui/src/trace-view.ts": 134,
  "packages/web/ui/src/trace/TraceView.tsx": 90,
  "packages/web/ui/src/types.ts": 114,
- "packages/web/ui/src/vite-env.d.ts": 11
+ "packages/web/ui/src/vite-env.d.ts": 11,
+ "packages/web/ui/src/shell/ConnectionIndicator.tsx": 168
 }

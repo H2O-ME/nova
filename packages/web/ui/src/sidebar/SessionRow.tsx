@@ -16,7 +16,8 @@
 import { useRef } from 'react';
 import { FolderClosedIcon, FolderOpenIcon, TrashIcon, TriangleRightIcon } from '../icons.js';
 import type { SessionListItem } from '../types.js';
-import { cls, sessionTitle } from './view.js';
+import { sessionTitle } from './view.js';
+import { cx } from '../composer/cx.js';
 import { relativeStamp } from './relative-time.js';
 import { useTitleMarquee } from './use-title-marquee.js';
 import css from './SessionRow.module.css';
@@ -59,13 +60,13 @@ export function ProjectRow({
       }}
     >
       {/* Folder by default, the expand arrow while the pointer is on the row. */}
-      <span className={cls(css.slot, css.folder, active && css.folderActive)}>
+      <span className={cx(css.slot, css.folder, active && css.folderActive)}>
         {expanded
           ? <FolderOpenIcon className={css.folderIcon} />
           : <FolderClosedIcon className={css.folderIcon} />}
       </span>
-      <span className={cls(css.slot, css.chevron)}>
-        <TriangleRightIcon className={cls(css.arrowIcon, css.arrow, expanded && css.arrowOpen)} />
+      <span className={cx(css.slot, css.chevron)}>
+        <TriangleRightIcon className={cx(css.arrowIcon, css.arrow, expanded && css.arrowOpen)} />
       </span>
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
@@ -99,7 +100,7 @@ export function SessionRow({
   const marquee = useTitleMarquee(titleRef);
   return (
     <div
-      className={cls(css.sessionRow, selected && css.selected)}
+      className={cx(css.sessionRow, selected && css.selected)}
       role="treeitem"
       aria-selected={selected}
       tabIndex={0}

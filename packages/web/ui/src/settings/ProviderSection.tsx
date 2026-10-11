@@ -33,7 +33,7 @@ import { SettingsSection } from './Section.js';
 import { parseCapacityField } from './ModelConfigEditor.js';
 import { ProviderModelsPicker } from './ProviderModelsDialog.js';
 import { useManageRefusal, type ManageErrorValue } from './use-manage-refusal.js';
-import { cls } from '../sidebar/view.js';
+import { cx } from '../composer/cx.js';
 import type { ClientFrame } from '../types.js';
 import type { WireProviderModel, WireProviderRow } from '../types.js';
 import type { ProvidersSnapshot, ProviderProbe } from '../state.js';
@@ -661,7 +661,7 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
           return (
             <li
               key={entry.id}
-              className={cls(css.card, isActive && css.cardActive)}
+              className={cx(css.card, isActive && css.cardActive)}
               data-provider={entry.id}
               data-active={isActive ? 'true' : undefined}
             >
@@ -701,7 +701,7 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
                   )}
                   <button
                     type="button"
-                    className={cls(css.rowButton, css.rowButtonDanger)}
+                    className={cx(css.rowButton, css.rowButtonDanger)}
                     data-provider-remove={entry.id}
                     title={SETTINGS_COPY['models.providerRemoveNow']}
                     onClick={() => { removeRow(entry.id); }}
@@ -711,7 +711,7 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
                 </span>
               </div>
               <div className={css.rowMeta}>
-                <span className={cls(css.rowUrl, row.baseURL.trim() === '' && css.rowUrlEmpty)}>
+                <span className={cx(css.rowUrl, row.baseURL.trim() === '' && css.rowUrlEmpty)}>
                   {row.baseURL.trim() === '' ? SETTINGS_COPY['models.providerNoUrl'] : row.baseURL}
                 </span>
                 <span className={css.rowCount}>

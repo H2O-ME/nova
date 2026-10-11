@@ -19,7 +19,8 @@ import { useEffect, useRef } from 'react';
 import { CloseIcon, RefreshIcon, SearchIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
 import { LIST_COPY, sectionLabel, type GroupMode } from './list-view.js';
-import { SIDEBAR_COPY, cls } from './view.js';
+import { SIDEBAR_COPY } from './view.js';
+import { cx } from '../composer/cx.js';
 import { ViewOptions } from './ViewOptions.js';
 import css from './SessionBrowser.module.css';
 
@@ -69,7 +70,7 @@ export function ListHeader({
     // and the reference wraps these seats in its Tooltip primitive for exactly
     // that reason.
     return (
-      <div className={cls(css.railControls)}>
+      <div className={cx(css.railControls)}>
         <Tooltip label={LIST_COPY['search.sessions.aria']} side="right" delayMs={500}>
           <button
             type="button"
@@ -102,12 +103,12 @@ export function ListHeader({
   const expanded = searchOpen || query.length > 0;
   return (
     <div className={css.sectionHeader}>
-      <span className={cls(css.sectionLabel, expanded && css.sectionLabelHidden)}>
+      <span className={cx(css.sectionLabel, expanded && css.sectionLabelHidden)}>
         {sectionLabel(mode)}
       </span>
-      <div className={cls(css.searchSlot, expanded && css.searchSlotExpanded)}>
+      <div className={cx(css.searchSlot, expanded && css.searchSlotExpanded)}>
         <div
-          className={cls(css.search, expanded && css.searchExpanded)}
+          className={cx(css.search, expanded && css.searchExpanded)}
           onClick={() => { onSearchOpen(true); }}
         >
           <button
@@ -152,7 +153,7 @@ export function ListHeader({
           )}
         </div>
       </div>
-      <div className={cls(css.headerActions, expanded && css.headerActionsHidden)}>
+      <div className={cx(css.headerActions, expanded && css.headerActionsHidden)}>
         <ViewOptions mode={mode} onPick={onPickMode} triggerClassName={css.iconButton} />
         <button
           type="button"

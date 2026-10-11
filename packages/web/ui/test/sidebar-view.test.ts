@@ -4,20 +4,20 @@
  * expanded-key derivation, `settings-root` for the recovery window).
  */
 import { describe, expect, it } from 'vitest';
+import { cx } from '../src/composer/cx.js';
 import {
   COLLAPSED_SESSION_LIMIT,
   SIDEBAR_COPY,
   autoExpandKey,
-  cls,
   foldedRows,
   groupKey,
-  indicatorState,
   overflowLabel,
   nextSessionLimit,
   rowKeysOf,
   sessionTitle,
   sidebarRows,
 } from '../src/sidebar/view.js';
+import { indicatorState } from '../src/shell/connection.js';
 import { groupByWorkspace } from '../src/session-groups.js';
 import type { SessionListItem } from '../src/types.js';
 
@@ -102,8 +102,8 @@ describe('sessionTitle', () => {
 
 describe('cls', () => {
   it('joins what is on and drops what is not', () => {
-    expect(cls('a', false, undefined, 'b')).toBe('a b');
-    expect(cls()).toBe('');
+    expect(cx('a', false, undefined, 'b')).toBe('a b');
+    expect(cx()).toBe('');
   });
 });
 

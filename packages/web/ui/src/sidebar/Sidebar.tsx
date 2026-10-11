@@ -22,7 +22,7 @@ import { PluginsEntryButton } from './PluginsEntryButton.js';
 import { SessionBrowser } from './SessionBrowser.js';
 import { SidebarFoot } from './SidebarFoot.js';
 import { SidebarLogoRow } from './SidebarLogoRow.js';
-import { cls } from './view.js';
+import { cx } from '../composer/cx.js';
 import css from './Sidebar.module.css';
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
@@ -178,7 +178,7 @@ export function Sidebar({
 
   return (
     <div
-      className={cls(
+      className={cx(
         css.root,
         !wide && css.collapsed,
         !wide && everWide.current && css.railIn,

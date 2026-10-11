@@ -10,7 +10,7 @@
  */
 import { ChevronDownIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
-import { cls } from '../sidebar/view.js';
+import { cx } from '../composer/cx.js';
 import type { ClientFrame } from '../types.js';
 import type { ModelConfigSnapshot } from '../state.js';
 import css from './ModelConfigEditor.module.css';
@@ -40,7 +40,7 @@ export function TitleModelRow({ config, writable, send }: TitleModelRowProps): J
         </span>
         <span className={css.selectWrap}>
           <select
-            className={cls(css.input, css.select)}
+            className={cx(css.input, css.select)}
             value={config.titleModel ?? ''}
             aria-label={SETTINGS_COPY['models.titleRow']}
             disabled={!writable}

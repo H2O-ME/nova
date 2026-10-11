@@ -21,11 +21,11 @@ import { AnimatedRows } from './AnimatedRows.js';
 import { DeleteSessionDialog } from './DeleteSessionDialog.js';
 import { ListHeader } from './ListHeader.js';
 import { SessionRow, ProjectRow } from './SessionRow.js';
+import { cx } from '../composer/cx.js';
 import { readGroupMode, writeGroupMode, type GroupMode } from './list-view.js';
 import {
   SIDEBAR_COPY as COPY,
   autoExpandKey,
-  cls,
   groupKey,
   nextSessionLimit,
   rowKeysOf,
@@ -217,7 +217,7 @@ export function SessionBrowser({
   };
 
   return (
-    <div className={cls(css.root, rail && css.rail)}>
+    <div className={cx(css.root, rail && css.rail)}>
       <ListHeader
         mode={mode}
         onPickMode={pickMode}
@@ -240,7 +240,7 @@ export function SessionBrowser({
           // run had no rhythm at all and read as a tighter block than the tree
           // beside it — the reference expresses the same distinction with its
           // `.flatList` / `.searchTree` classes.
-          <div className={cls(css.treeBody, css.wide)} data-flat={flatRows ? '' : undefined}>
+          <div className={cx(css.treeBody, css.wide)} data-flat={flatRows ? '' : undefined}>
             <AnimatedRows
               className={css.list}
               label={COPY['section.sessions']}

@@ -5,7 +5,7 @@
  * (c) 2026 DeepSeek — MIT License. Selection follows the persisted
  * preference, never the resolved active theme.
  */
-import { cls } from '../sidebar/view.js';
+import { cx } from '../composer/cx.js';
 import { MoonIcon, SunIcon, FollowSystemIcon } from '../icons.js';
 import type { ThemePreference } from '../theme.js';
 import { SETTINGS_COPY } from './copy.js';
@@ -39,7 +39,7 @@ export function AppearanceRow({ preference, onPick }: AppearanceRowProps): JSX.E
           <button
             key={id}
             type="button"
-            className={cls(css.themeCube, preference === id && css.selected)}
+            className={cx(css.themeCube, preference === id && css.selected)}
             aria-pressed={preference === id}
             onClick={() => { onPick(id); }}
           >

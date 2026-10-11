@@ -20,7 +20,7 @@
  *    `label-primary-foreground`, which is a real luminance inversion in both
  *    themes rather than two shades of the same gray.
  */
-import { cls } from '../sidebar/view.js';
+import { cx } from '../composer/cx.js';
 import css from './Switch.module.css';
 
 export interface SwitchProps {
@@ -55,7 +55,7 @@ export function Switch({ checked, onChange, label, disabled = false, busy = fals
       aria-label={label}
       title={title}
       disabled={disabled}
-      className={cls(css.switch, className)}
+      className={cx(css.switch, className)}
       onClick={() => { onChange(!checked); }}
     >
       <span className={css.thumb} />

@@ -23,7 +23,7 @@ import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
 import { CloseIcon } from '../icons.js';
-import { cls } from '../sidebar/view.js';
+import { cx } from '../composer/cx.js';
 import { UnsavedConfirmDialog } from './UnsavedConfirmDialog.js';
 import a11yCss from '../chat/accessibility.module.css';
 import css from './SettingsPanel.module.css';
@@ -102,7 +102,7 @@ export function SettingsDialog({
               <button
                 key={section.id}
                 type="button"
-                className={cls(css.navCell, section.id === active?.id && css.active)}
+                className={cx(css.navCell, section.id === active?.id && css.active)}
                 aria-current={section.id === active?.id ? 'true' : undefined}
                 // The modal layer's entry focus lands here (the reference's
                 // `data-modal-autofocus` on the active nav row).
