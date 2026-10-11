@@ -1,41 +1,31 @@
-/* Settings modal sheet, ported from the harness
- * `ui-settings-general/src/client/SettingsRoot.module.css`
- * (c) 2026 DeepSeek — MIT License. Figma anchors kept in the comments. */
+/* Settings modal sheet. The skeleton — overlay geometry, mask material, the
+ * arrival animation and its reduced-motion clamp — composes the kit dialog
+ * (kit/Dialog); the panel is this surface's own full-height 800×800 form.
+ * Figma anchors kept in the comments. */
 
-/* Full-viewport layer (figma Mask 501:29946, black @ 24%): mask tokens match
-   the Modal primitive (--nova-material-mask + --nova-material-mask-blur). */
+/* Full-viewport layer (figma Mask 501:29946, black @ 24%): the overlay and the
+   shared mask material are the kit dialog's; this sheet adds only the stacking
+   order above the app chrome. */
 .overlay {
-  position: fixed;
-  inset: 0;
+  composes: overlay from '../kit/Dialog.module.css';
   z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .mask {
-  position: absolute;
-  inset: 0;
-  background: var(--nova-material-mask);
-  backdrop-filter: var(--nova-material-mask-blur);
-  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
+  composes: mask from '../kit/Dialog.module.css';
 }
 
-/* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
-   fade in together over the same duration and easing. Without it the sheet
-   appears between one frame and the next, which reads as a flash rather than as
-   a panel arriving — the tool side panel has always animated and the dialogs
-   did not. */
+/* The panel's own arrival (the reference's `modalEnter`): it fades in with the
+   kit-composed mask over the same duration and easing. CSS modules hash the
+   keyframes a sheet defines, so this copy stays local for the panel — the
+   mask's is the kit dialog's `dialog-enter`. Without it the sheet appears
+   between one frame and the next, which reads as a flash rather than as a
+   panel arriving. The reduced-motion clamp is not repeated here: the kit
+   dialog clamps its mask, and the global clamp in design/motion.css covers
+   the panel. */
 @keyframes modal-enter {
   from { opacity: 0; }
   to { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mask,
-  .panel {
-    animation: none;
-  }
 }
 
 /* Settings uses a shared 800×800 panel; longer sections scroll inside the
