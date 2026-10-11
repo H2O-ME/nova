@@ -11,7 +11,7 @@
   position: relative;
   /* 4px indent: the flow's row rhythm, matching the other cards. */
   margin: 4px 0 4px 4px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: var(--dsw-alias-markdown-code-block);
   border-radius: var(--dsl-plan-radius);
 }
@@ -32,13 +32,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--dsw-font-xs-13);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xs-13);
+  color: var(--nova-text-secondary);
 }
 
 .body {
   padding: 8px 14px 12px;
-  font: var(--dsw-font-markdown-code-block);
+  font: var(--nova-font-markdown-code-block);
 }
 
 /* One item: the status mark in a fixed column, then the text (which wraps —
@@ -56,25 +56,25 @@
   flex: none;
   width: 12px;
   height: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .line[data-status='completed'] {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   text-decoration: line-through;
-  text-decoration-color: var(--dsw-alias-label-caption);
+  text-decoration-color: var(--nova-text-faint);
 }
 
 .line[data-status='completed'] .mark {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .line[data-status='in_progress'] .mark {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 .line[data-status='in_progress'] {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .expand {
@@ -83,13 +83,13 @@
   padding: 0;
   border: none;
   background-color: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+  transition: color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .expand:hover {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }

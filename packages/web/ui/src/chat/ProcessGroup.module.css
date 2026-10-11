@@ -21,13 +21,13 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: pointer;
   text-align: left;
 }
 
 .head:hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .headChevron {
@@ -37,7 +37,7 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   transition: transform 100ms ease;
 }
 
@@ -71,7 +71,7 @@
    chaining into the transcript, and the reserved gutter keeps the transcript
    from reflowing when the scrollbar appears. */
 .body {
-  --dsh-chat-flow-gap: 8px;
+  --nova-chat-flow-gap: 8px;
   max-height: min(400px, 50vh);
   overflow-y: auto;
   overscroll-behavior-y: auto;
@@ -111,13 +111,13 @@
 /* The group's own rhythm is 8px (one step under the transcript's 16px): the
    members are one act, not separate contributions to the conversation. */
 .content > :not([hidden]):not(:empty) ~ :not([hidden]):not(:empty) {
-  margin-top: var(--dsh-chat-flow-gap, 8px);
+  margin-top: var(--nova-chat-flow-gap, 8px);
 }
 
 /* A settled turn read with its process open keeps the wider rhythm: the
    reader asked for the detail, so it reads as ordinary progression. */
 .expandedBody {
-  --dsh-chat-flow-gap: 16px;
+  --nova-chat-flow-gap: 16px;
   max-height: none;
   overflow: visible;
   scrollbar-gutter: auto;

@@ -13,14 +13,14 @@
   width: 64px;
   height: 64px;
   overflow: hidden;
-  border: 0.5px solid var(--dsw-alias-border-l2-darkmode-thin);
-  border-radius: var(--dsw-radius-xl);
+  border: 0.5px solid var(--nova-border-strong-darkmode-thin);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-input-major);
   box-sizing: border-box;
 }
 
 .failed {
-  border-color: var(--dsw-alias-state-error-primary);
+  border-color: var(--nova-color-danger);
 }
 
 .thumb {
@@ -52,7 +52,7 @@
    reason is what the reader needs. */
 .error {
   padding: 4px 6px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
   font-size: 10px;
   line-height: 12px;
   text-align: center;
@@ -72,7 +72,7 @@
   border-radius: 50%;
   corner-shape: round;
   background: var(--dsw-alias-button-contrast-fill);
-  color: var(--dsw-alias-label-primary-inverted);
+  color: var(--nova-text-inverse);
   opacity: 0;
   cursor: pointer;
   transition: opacity 0.2s ease-in-out;

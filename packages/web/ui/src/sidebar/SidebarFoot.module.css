@@ -30,24 +30,24 @@
   padding: 0 10px 0 8px;
   box-sizing: border-box;
   border: none;
-  /* The reference states `--dsw-radius-md` here, not a literal: this row must
+  /* The reference states `--nova-radius-lg` here, not a literal: this row must
      round with every other 12px control if the scale ever moves. */
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   cursor: pointer;
   overflow: hidden;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
 }
 
 .trigger:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .trigger:focus-visible {
-  outline: 2px solid var(--dsw-alias-label-tertiary);
+  outline: 2px solid var(--nova-text-muted);
   outline-offset: -2px;
 }
 
@@ -86,7 +86,7 @@
 /* Wide-only content fades back in on expand remount (the shell's rule, for
    the seat the shell does not animate). */
 .wide {
-  animation: wide-in 200ms var(--ds-ease-in-out);
+  animation: wide-in 200ms var(--nova-ease-inout);
 }
 
 @keyframes wide-in {

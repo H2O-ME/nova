@@ -14,7 +14,7 @@
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .intro {
@@ -22,7 +22,7 @@
   padding-top: 4px;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .search {
@@ -30,8 +30,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 0;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-tertiary);
+  border-bottom: 0.5px solid var(--nova-border-strong);
+  color: var(--nova-text-muted);
 }
 
 .searchIcon {
@@ -48,7 +48,7 @@
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .searchInput:focus {
@@ -60,7 +60,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 4px 0 12px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
 /* The group label aligns with the page head and the search box above it: the
@@ -74,7 +74,7 @@
   padding: 4px 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* A group with no switches is REFERENCE, and it was burying the switches: the
@@ -89,24 +89,24 @@
   margin: 0;
   padding: 2px 6px 2px 0;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .groupHead:hover {
   background: var(--dsw-specific-sidebar-nav-item-hover);
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .groupHeadIcon {
@@ -116,13 +116,13 @@
 }
 
 .groupCount {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
   font-variant-numeric: tabular-nums;
 }
 
 /* The per-group failure count: the one figure up here that asks for action. */
 .failed {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* The section's one feedback row: "applying…", the confirmation that a flip
@@ -137,7 +137,7 @@
   margin: 2px 0 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* A count over the whole page, for the case where the failures are spread
@@ -145,11 +145,11 @@
 .failureBanner {
   margin: 8px 0;
   padding: 8px 12px;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .list {
@@ -172,13 +172,13 @@
   gap: 8px;
   margin: 0 -8px;
   padding: 9px 8px;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .plugin:hover {
@@ -212,9 +212,9 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-md);
-  color: var(--dsw-alias-label-secondary);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  color: var(--nova-text-secondary);
 }
 
 .rowIconGlyph {
@@ -234,7 +234,7 @@
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -246,7 +246,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -259,7 +259,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -268,18 +268,18 @@
 /* The identifier: the name `/plugins` prints and the config file uses. Kept
    beside the Chinese title rather than replacing it — a reader needs both. */
 .pluginId {
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
 }
 
 /* The 默认关闭 mark on an 扩展能力 row. */
 .tag {
   flex: none;
   padding: 0 6px;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The expanded area: prose, indented to the title's left edge so it reads as
@@ -300,20 +300,20 @@
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* A failed row: the mark and the state word already say so, so this only
    carries the weight, never a second sentence of explanation. */
 .plugin[data-failed="true"] .pluginName {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .status {
   padding: 16px 0;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .path {
@@ -326,28 +326,28 @@
   font-size: 12px;
   line-height: 18px;
   font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .copy {
   flex: none;
   padding: 5px 12px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
   cursor: pointer;
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .copy:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }

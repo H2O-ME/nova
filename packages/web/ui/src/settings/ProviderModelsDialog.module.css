@@ -16,7 +16,7 @@
   inset: 0;
   background: var(--dsw-alias-bg-mask-1);
   backdrop-filter: var(--dsw-mask-blur);
-  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 /* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
@@ -44,10 +44,10 @@
   max-height: min(520px, calc(100vh - 48px));
   padding: 16px;
   gap: 12px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-2);
-  box-shadow: var(--dsw-elevation-prominent);
-  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  box-shadow: var(--nova-elevation-prominent);
+  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .panel:focus {
@@ -64,7 +64,7 @@
   font-size: 15px;
   line-height: 22px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 /* 搜索框 + 全选动词同一行：参考实现的 `candidateToolbar`。 */
@@ -86,7 +86,7 @@
 .searchIcon {
   position: absolute;
   left: 8px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   pointer-events: none;
 }
 
@@ -95,22 +95,22 @@
   width: 100%;
   height: 32px;
   padding: 0 10px 0 30px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-base);
-  color: var(--dsw-alias-label-primary);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-base);
+  color: var(--nova-text-primary);
   font-size: 13px;
   line-height: 20px;
-  transition: border-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: border-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .searchInput:hover {
-  border-color: var(--dsw-alias-border-l3);
+  border-color: var(--nova-border-strong);
 }
 
 .searchInput:focus {
   outline: none;
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--nova-color-accent);
 }
 
 .verb {
@@ -118,19 +118,19 @@
   height: 28px;
   padding: 0 8px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-size: 12px;
   line-height: 18px;
   cursor: pointer;
-  transition: color var(--ds-transition-duration) var(--ds-ease-in-out),
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: color var(--nova-dur-base) var(--nova-ease-inout),
+    background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .verb:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 /* 参考实现的 `candidateList`：自带滚动、上限 320px——清单再长，弹窗高度不变。 */
@@ -155,13 +155,13 @@
   gap: 8px;
   min-height: 32px;
   padding: 4px 8px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .row:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* 锁定的行（已在清单）不是「不可点」而是「没什么可点」：光标保持默认，
@@ -182,7 +182,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-size: 13px;
   line-height: 20px;
 }
@@ -190,11 +190,11 @@
 .tag {
   flex: none;
   padding: 1px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-bg-module-platform);
-  color: var(--dsw-alias-label-secondary);
+  background: var(--nova-surface-panel);
+  color: var(--nova-text-secondary);
   font-size: 11px;
   line-height: 16px;
 }
@@ -202,7 +202,7 @@
 .empty {
   flex: none;
   padding: 12px 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-size: 13px;
   line-height: 20px;
 }
@@ -220,32 +220,32 @@
   box-sizing: border-box;
   height: 32px;
   padding: 0 14px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
   cursor: pointer;
   transition:
-    color var(--ds-transition-duration) var(--ds-ease-in-out),
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    border-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    opacity var(--ds-transition-duration) var(--ds-ease-in-out);
+    color var(--nova-dur-base) var(--nova-ease-inout),
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    border-color var(--nova-dur-base) var(--nova-ease-inout),
+    opacity var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .secondary {
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .secondary:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .primary {
   border: none;
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {

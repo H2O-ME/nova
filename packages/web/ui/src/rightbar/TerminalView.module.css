@@ -24,7 +24,7 @@
   min-width: 0;
   overflow: hidden;
   padding: 8px;
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--nova-surface-sunken);
 }
 
 /* xterm's own sheet (loaded with the emulator, so it arrives AFTER this file)
@@ -40,9 +40,9 @@
 .error {
   flex: none;
   padding: 10px 12px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-state-error-primary);
-  font: var(--dsw-font-xxs-12);
+  background: var(--nova-surface-raised);
+  color: var(--nova-color-danger);
+  font: var(--nova-font-xxs-12);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -55,7 +55,7 @@
   align-items: center;
   gap: 8px;
   padding: 5px 12px;
-  background: var(--dsw-alias-bg-layer-2);
+  background: var(--nova-surface-raised);
 }
 
 .status {
@@ -64,16 +64,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xxs-12);
+  color: var(--nova-text-secondary);
 }
 
 .status[data-status='exited'] {
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
 }
 
 .status[data-status='unavailable'] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .retry {
@@ -83,23 +83,23 @@
   align-items: center;
   height: 24px;
   padding: 0 10px;
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-12);
+  color: var(--nova-text-primary);
+  font: var(--nova-font-xxs-12);
   background: none;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
   transition:
-    border-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+    border-color var(--nova-dur-base) var(--nova-ease-inout),
+    background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .retry:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .retry:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 
@@ -114,13 +114,13 @@
   flex: none;
   height: 24px;
   padding: 0 12px;
-  color: var(--dsw-alias-label-primary-inverted);
-  font: var(--dsw-font-xxs-strong-12);
+  color: var(--nova-text-inverse);
+  font: var(--nova-font-xxs-strong-12);
   background: var(--dsw-alias-button-primary-fill);
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .newButton:hover:not(:disabled) {
@@ -128,7 +128,7 @@
 }
 
 .newButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 

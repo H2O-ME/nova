@@ -18,7 +18,7 @@
   inset: 0;
   background: var(--dsw-alias-bg-mask-1);
   backdrop-filter: var(--dsw-mask-blur);
-  animation: unsaved-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: unsaved-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 @keyframes unsaved-enter {
@@ -43,10 +43,10 @@
   width: 400px;
   max-width: calc(100vw - 48px);
   padding: 20px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-2);
-  box-shadow: var(--dsw-elevation-prominent);
-  animation: unsaved-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  box-shadow: var(--nova-elevation-prominent);
+  animation: unsaved-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .panel:focus {
@@ -57,14 +57,14 @@
   font-size: 15px;
   line-height: 22px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .body {
   margin: 0;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -80,7 +80,7 @@
   min-width: 72px;
   height: 32px;
   padding: 0 14px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
@@ -93,7 +93,7 @@
 .stay {
   border: none;
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .stay:hover {
@@ -105,17 +105,17 @@
  * recommended choice, and solid-on-solid made both buttons look equally
  * committed. */
 .discard {
-  border: 1px solid var(--dsw-alias-state-error-primary);
+  border: 1px solid var(--nova-color-danger);
   background: transparent;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .discard:hover {
-  background: var(--dsw-alias-interactive-bg-hover-danger);
+  background: var(--nova-interactive-hover-danger);
 }
 
 .stay:focus-visible,
 .discard:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--nova-color-accent));
   outline-offset: 2px;
 }

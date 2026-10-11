@@ -147,7 +147,7 @@ export function useTheme(): {
 
 /** Severity color for a usage ratio in [0,1] (≥0.9 error / ≥0.7 warn / business). */
 export function severityForUsage(ratio: number): string {
-  if (ratio >= 0.9) return 'var(--dsw-alias-state-error-primary)';
-  if (ratio >= 0.7) return 'var(--dsw-alias-state-warn-primary)';
-  return 'var(--dsw-alias-state-business-primary)';
+  if (ratio >= 0.9) return 'var(--nova-color-danger)';
+  if (ratio >= 0.7) return 'var(--nova-color-warn)';
+  return 'var(--nova-color-accent)';
 }

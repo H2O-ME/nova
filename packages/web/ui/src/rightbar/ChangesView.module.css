@@ -24,7 +24,7 @@
   gap: 6px;
   height: 36px;
   padding: 0 4px 0 12px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--nova-border-subtle);
 }
 
 .lens {
@@ -40,9 +40,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .lensBody {
@@ -71,7 +71,7 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--dsw-alias-bg-base);
+  background: var(--nova-surface-base);
 }
 
 .headVerb {
@@ -84,13 +84,13 @@
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   opacity: 0;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out),
-    opacity 120ms var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout),
+    opacity 120ms var(--nova-ease-inout);
 }
 
 .headVerb svg {
@@ -104,8 +104,8 @@
 }
 
 .headVerb:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .headVerb:disabled {
@@ -133,7 +133,7 @@
   min-height: 28px;
   padding-right: 2px;
   border-radius: 4px;
-  animation: change-row-in 150ms var(--ds-ease-in-out);
+  animation: change-row-in 150ms var(--nova-ease-inout);
 }
 
 @keyframes change-row-in {
@@ -143,11 +143,11 @@
 }
 
 .row:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .row[data-selected] {
-  background: var(--dsw-alias-interactive-bg-active);
+  background: var(--nova-interactive-active);
 }
 
 .row[data-selected]::before {
@@ -158,7 +158,7 @@
   bottom: 4px;
   width: 2px;
   border-radius: 1px;
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--nova-color-accent);
 }
 
 .rowMain {
@@ -171,8 +171,8 @@
   padding-right: 6px;
   border: none;
   background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-12);
+  color: var(--nova-text-primary);
+  font: var(--nova-font-xxs-12);
   text-align: left;
   cursor: pointer;
 }
@@ -184,7 +184,7 @@
   flex: none;
   width: 14px;
   height: 14px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .chevron svg {
@@ -206,7 +206,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--dsw-font-xxs-strong-12);
+  font: var(--nova-font-xxs-strong-12);
 }
 
 .fileName {
@@ -217,19 +217,19 @@
 }
 
 .inkModified {
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
 }
 
 .inkAdded {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .inkDeleted {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .inkRenamed {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 /* The row's stage verb: its column is reserved on every row (the button is
@@ -245,13 +245,13 @@
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   opacity: 0;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out),
-    opacity 120ms var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout),
+    opacity 120ms var(--nova-ease-inout);
 }
 
 .rowVerb svg {
@@ -265,8 +265,8 @@
 }
 
 .rowVerb:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .rowVerb:disabled {
@@ -291,7 +291,7 @@
   flex-direction: column;
   min-height: 160px;
   max-height: 58%;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px solid var(--nova-border-subtle);
 }
 
 .diffHead {
@@ -301,7 +301,7 @@
   gap: 6px;
   height: 38px;
   padding: 0 6px 0 4px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+  border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
 /* The file selector: a button that reads as the open file's name (the menu's
@@ -316,16 +316,16 @@
   height: 28px;
   padding: 0 6px 0 8px;
   border: 0;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   cursor: pointer;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .diffFile:hover,
 .diffFile[aria-expanded='true'] {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .diffPath {
@@ -334,7 +334,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
 }
 
@@ -342,8 +342,8 @@
 .diffVerdict {
   flex: none;
   margin-left: auto;
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-xxxs-11);
+  color: var(--nova-text-muted);
 }
 
 .diffStat {
@@ -351,17 +351,17 @@
   gap: 6px;
   flex: none;
   margin-right: auto;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 20px;
 }
 
 .statAdd {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .statDel {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .diffTools {
@@ -381,19 +381,19 @@
   height: 28px;
   padding: 6px;
   border: 0;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .diffTool:hover,
 .diffTool:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 /* The mark says split either way; the press rotates it into the other reading
@@ -407,7 +407,7 @@
   min-height: 0;
   overflow: auto;
   padding: 8px 0 16px;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
 }
 
@@ -461,12 +461,12 @@
 }
 
 .diffRow[data-kind='ctx'] .lineText {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .lineNo {
   padding-right: 8px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   text-align: right;
   user-select: none;
 }
@@ -519,7 +519,7 @@
 }
 
 .splitCell + .splitCell {
-  border-left: 0.5px solid var(--dsw-alias-border-l3);
+  border-left: 0.5px solid var(--nova-border-strong);
 }
 
 .splitCell[data-kind='del'] {
@@ -548,28 +548,28 @@
 /* The side a run left empty: filled, so a deletion with no counterpart reads as
    "there is nothing here", not as a line that happens to be blank. */
 .splitCell[data-kind='empty'] {
-  background: color-mix(in srgb, var(--dsw-alias-interactive-bg-hover) 50%, transparent);
+  background: color-mix(in srgb, var(--nova-interactive-hover) 50%, transparent);
 }
 
 .splitCell[data-kind='ctx'] .lineText {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .diffHunk {
   padding: 4px 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   white-space: pre;
 }
 
 .diffMeta {
   padding: 4px 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-style: italic;
 }
 
 .diffMore {
   padding: 4px 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The commit box: pinned to the page's foot, above the log. */
@@ -579,7 +579,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px solid var(--nova-border-subtle);
 }
 
 .commitInput {
@@ -587,20 +587,20 @@
   min-width: 0;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--nova-border-subtle);
   border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-12);
+  background: var(--nova-surface-sunken);
+  color: var(--nova-text-primary);
+  font: var(--nova-font-xxs-12);
 }
 
 .commitInput::placeholder {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .commitInput:focus {
   outline: none;
-  border-color: var(--dsw-alias-border-l2);
+  border-color: var(--nova-border-strong);
 }
 
 .commitButton {
@@ -610,10 +610,10 @@
   border: none;
   border-radius: 4px;
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-inverted);
-  font: var(--dsw-font-xxs-strong-12);
+  color: var(--nova-text-inverse);
+  font: var(--nova-font-xxs-strong-12);
   cursor: pointer;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .commitButton:hover:not(:disabled) {
@@ -630,7 +630,7 @@
   flex: none;
   max-height: 30%;
   overflow-y: auto;
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: 1px solid var(--nova-border-subtle);
 }
 
 .log {
@@ -649,20 +649,20 @@
   min-height: 24px;
   padding: 2px 6px;
   border-radius: 4px;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .logRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .logHash {
   flex: none;
   padding: 1px 4px;
   border-radius: 2px;
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
-  font-family: var(--ds-font-family-code);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-secondary);
+  font-family: var(--nova-font-mono);
   font-size: 10px;
 }
 
@@ -672,14 +672,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-primary);
+  font: var(--nova-font-xxs-12);
+  color: var(--nova-text-primary);
 }
 
 .logMeta {
   flex: none;
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-xxxs-11);
+  color: var(--nova-text-muted);
 }
 
 /* The session lens: its own file list (the transcript's edits). */
@@ -694,17 +694,17 @@
 
 .fileStats {
   flex: none;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 10px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .fileStats[data-verdict='running'] {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 .fileStats[data-verdict='fail'] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {

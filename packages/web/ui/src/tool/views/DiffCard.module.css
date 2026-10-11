@@ -11,7 +11,7 @@
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
   margin: 4px 0 4px 4px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: var(--dsw-alias-markdown-code-block);
   border-radius: var(--dsl-diff-radius);
 }
@@ -28,14 +28,14 @@
   border: none;
   padding: 0;
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: pointer;
-  font: var(--dsw-font-xs-13);
+  font: var(--nova-font-xs-13);
 }
 
 .body {
   padding: 12px 14px;
-  font: var(--dsw-font-markdown-code-block);
+  font: var(--nova-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -54,7 +54,7 @@
    scrolls under the button otherwise, and the button's hit area would eat
    clicks on the path's tail. */
 .path {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-weight: 500;
   padding-right: 56px;
 }
@@ -65,12 +65,12 @@
    The collapsed unchanged run's own marker stays one step down, in the tertiary
    tone, because it is an annotation about the diff rather than diff content. */
 .ctx {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* The collapsed unchanged run's marker, in the tertiary tone. */
 .skip {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The diff's own meaning-carrying colors: removed on the error token, added on
@@ -82,24 +82,24 @@
    Two spaces prefix a context row so all three columns line up. */
 .del::before {
   content: '- ';
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .del {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
   background: var(--dsw-alias-code-diff-deleted);
-  box-shadow: inset 3px 0 0 var(--dsw-alias-state-error-primary);
+  box-shadow: inset 3px 0 0 var(--nova-color-danger);
 }
 
 .add::before {
   content: '+ ';
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .add {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
   background: var(--dsw-alias-code-diff-added);
-  box-shadow: inset 3px 0 0 var(--dsw-alias-state-success-primary);
+  box-shadow: inset 3px 0 0 var(--nova-color-success);
 }
 
 .ctx::before {
@@ -112,21 +112,21 @@
   padding: 0;
   border: none;
   background-color: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+  transition: color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .expand:hover {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* The change summary, dim under the body: `└ +A -R · N 个文件` — the harness's
    footer shape (which prints the same totals the TUI card draws). */
 .footer {
   padding: 0 14px 12px;
-  font: var(--dsw-font-markdown-code-block);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-markdown-code-block);
+  color: var(--nova-text-muted);
 }

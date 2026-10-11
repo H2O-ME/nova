@@ -9,7 +9,7 @@
      the sides narrow with the shared width axis); the bottom gradient mask
      is owned by the chat scroller. No top pad: the composer stack's gap owns
      the space above; the status strip still carries its own margin. */
-  padding: 0 var(--dsh-composer-side-clearance) 4px;
+  padding: 0 var(--nova-composer-side-clearance) 4px;
 }
 
 /* The dock row under the card (the source's `.dock`): the stats pills and the
@@ -33,7 +33,7 @@
   /* No bottom pad in the centered hero, but the side clearance must survive:
      the hero wrapper is full-width on narrow viewports, so this padding is
      the only thing keeping the card off the edges there. */
-  padding: 0 var(--dsh-composer-side-clearance);
+  padding: 0 var(--nova-composer-side-clearance);
 }
 
 .card {
@@ -45,19 +45,19 @@
      card's top pad before .input tightened from the drawn 10 to 8. */
   gap: 12px;
   width: 100%;
-  max-width: var(--dsh-composer-card-max-width);
+  max-width: var(--nova-composer-card-max-width);
   padding-top: 8px;
   /* Input stroke: the light neutral (l2, one step above the menus' l1),
      drawn as the elevation hairline so it costs no layout; the shadow is the
      soft elevation tier. Fill: the input surface token (elevated in dark). */
   border: 0;
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
-  /* The harness writes this as `var(--dsw-radius-panel)`; the ladder is carried
+  --nova-elevation-stroke-color: var(--nova-border-strong);
+  /* The harness writes this as `var(--nova-radius-lg)`; the ladder is carried
      whole in `styles/base.css`, so a literal here was a 6px deviation on the
      product's most prominent surface. */
-  border-radius: var(--dsw-radius-panel);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-input-major);
-  box-shadow: var(--dsw-elevation-soft);
+  box-shadow: var(--nova-elevation-soft);
   /* The draft text follows the Settings font-size preference (the textarea,
      mirror, and backdrop all inherit from here, so the three layers stay in
      step); the line height keeps the default 10px leading via the shared px
@@ -69,8 +69,8 @@
      pair. Declared on the card because the elevation belongs to the surface,
      and the custom properties inherit down to the box that actually scrolls
      (see ui-theme styles/scrollbar.css for the rebinding contract). */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 /* The document-level drop overlay moved to its own sheet
@@ -100,11 +100,11 @@
    as an answer to the gesture, so it sits outside the card's frame rather than
    inside the draft's. */
 .intakeError {
-  max-width: var(--dsh-composer-card-max-width);
+  max-width: var(--nova-composer-card-max-width);
   margin-top: 4px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 /* Floating overlay anchor (menu / popupSelect shell): entries position
@@ -125,14 +125,14 @@
   margin-top: 8px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* The draft's scrollport, and the ONLY scrolling box in the composer. The
    textarea grows with its content inside; the 14-line cap lives here
    because this is the box the cap describes. */
 .scroll {
-  max-height: var(--dsh-composer-text-max-height);
+  max-height: var(--nova-composer-text-max-height);
   overflow-y: auto;
   /* Keeps the bar off the card's right border; .input's right pad gives the
      4px back so the text column is unchanged. */
@@ -168,7 +168,7 @@
      an 8px breath below the line (the hero keeps its own 52px floor below). */
   min-height: 36px;
   padding: 4px 8px 0 14px;
-  font-family: var(--dsw-font-family);
+  font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
   white-space: pre-wrap;
@@ -181,7 +181,7 @@
      business blue the harness gives it — because the caret IS the textarea's. */
   color: transparent;
   /* Business blue, not brand-primary: that token resolves to ink in this sheet. */
-  caret-color: var(--dsw-alias-state-business-primary);
+  caret-color: var(--nova-color-accent);
   display: block;
   width: 100%;
   border: none;
@@ -203,7 +203,7 @@
 .placeholder {
   position: absolute;
   inset: 4px 8px auto 14px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -223,19 +223,19 @@
 .mirror {
   position: absolute;
   inset: 4px 8px auto 14px;
-  font-family: var(--dsw-font-family);
+  font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   pointer-events: none;
   user-select: none;
 }
 
 .mirrorDisabled {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* One mention, dressed as a chip (the harness `ui-reference`'s `.reference`:
@@ -245,8 +245,8 @@
 .mention {
   padding: 0 3px;
   margin: 0 -3px;
-  border-radius: var(--dsw-radius-sm);
-  color: var(--dsw-alias-state-business-primary);
+  border-radius: var(--nova-radius-lg);
+  color: var(--nova-color-accent);
   background: var(--dsw-alias-state-business-tertiary);
   font-weight: 500;
 }
@@ -262,12 +262,12 @@
 .hint {
   position: absolute;
   inset: 4px 8px auto 14px;
-  font-family: var(--dsw-font-family);
+  font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
   white-space: pre;
   overflow: hidden;
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
   pointer-events: none;
   user-select: none;
 }
@@ -374,7 +374,7 @@
   border-radius: 999px;
   corner-shape: round;
   background: var(--dsw-specific-selector);
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   cursor: pointer;
 }
 
@@ -385,7 +385,7 @@
 }
 
 .add:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover-solid);
+  background: var(--nova-interactive-hover-solid);
 }
 
 .add:disabled {
@@ -409,7 +409,7 @@
   corner-shape: round;
   background: var(--dsw-alias-button-info-fill);
   /* Static white, not the foreground token: the arrow stays white on the blue
-     fill in both themes (design 34:10465) — `--dsw-alias-label-primary-foreground`
+     fill in both themes (design 34:10465) — `--nova-text-inverse`
      flips to near-black in dark and would put an ink glyph on the fill. Our
      token layer's theme-stable white is the static bluish-00 the alias takes
      its light value from. */

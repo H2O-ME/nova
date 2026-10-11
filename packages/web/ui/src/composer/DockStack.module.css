@@ -10,14 +10,14 @@
    renders a `.composerStack` around its `composer` slot, which makes this
    wrapper a same-gap nest when the composer is mounted there; it exists for
    compositions that bring the cards without that stack, and it relies on an
-   ancestor for `--dsh-composer-card-max-width` / `--dsh-composer-side-clearance`
-   / `--dsh-composer-dock-inset` exactly as the harness does. */
+   ancestor for `--nova-composer-card-max-width` / `--nova-composer-side-clearance`
+   / `--nova-composer-dock-inset` exactly as the harness does. */
 .stack {
   /* Horizontal geometry (card width, clearance, dock inset) rides the shared
      .root variables above so takeover siblings match the stack. */
-  --dsh-composer-stack-gap: 6px;
+  --nova-composer-stack-gap: 6px;
 
   display: flex;
   flex-direction: column;
-  gap: var(--dsh-composer-stack-gap);
+  gap: var(--nova-composer-stack-gap);
 }

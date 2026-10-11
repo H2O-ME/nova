@@ -16,8 +16,8 @@
 .markdown {
   min-width: 0;
   overflow-wrap: anywhere;
-  font: var(--dsw-font-markdown-base);
-  color: var(--dsw-alias-label-primary);
+  font: var(--nova-font-markdown-base);
+  color: var(--nova-text-primary);
 }
 
 .markdown strong {
@@ -25,27 +25,27 @@
 }
 
 .markdown h1 {
-  font: var(--dsw-font-markdown-h1);
+  font: var(--nova-font-markdown-h1);
   margin: 32px 0 16px;
 }
 
 .markdown h2 {
-  font: var(--dsw-font-markdown-h2);
+  font: var(--nova-font-markdown-h2);
   margin: 32px 0 16px;
 }
 
 .markdown h3 {
-  font: var(--dsw-font-markdown-h3);
+  font: var(--nova-font-markdown-h3);
   margin: 32px 0 16px;
 }
 
 .markdown h4 {
-  font: var(--dsw-font-markdown-h4);
+  font: var(--nova-font-markdown-h4);
   margin: 16px 0;
 }
 
 .markdown :where(h5, h6) {
-  font: var(--dsw-font-markdown-base-strong);
+  font: var(--nova-font-markdown-base-strong);
   margin: 16px 0;
 }
 
@@ -70,9 +70,9 @@
   /* deepsuite markdown.css uses brand-text (blue in newDesign); this sheet
      keeps design-platform brand-text as near-black, so links use the
      dedicated link alias instead. */
-  color: var(--dsw-alias-link);
+  color: var(--nova-color-link);
   font-weight: 500;
-  transition: box-shadow var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: box-shadow var(--nova-dur-base) var(--nova-ease-inout);
   position: relative;
   text-decoration: none;
   /* Transparent hit-area padding; literal zero-alpha only (no painted color). */
@@ -87,12 +87,12 @@
 .markdown a:hover,
 .markdown a:focus {
   outline: none;
-  text-decoration: underline dotted var(--dsw-alias-link);
+  text-decoration: underline dotted var(--nova-color-link);
   text-underline-offset: 3px;
 }
 
 .markdown a:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--nova-color-accent));
 }
 
 /* Leading link-category glyph inside anchors and URL-promoted inline code:
@@ -123,7 +123,7 @@
 
 .markdown li::marker {
   line-height: 24px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* Nested ol under ul/ol: markers inside (models sometimes emit this shape). */
@@ -154,18 +154,18 @@
   border: none;
   height: 0.5px;
   margin: 32px 0;
-  background: var(--dsw-alias-border-l2);
+  background: var(--nova-border-strong);
 }
 
 .markdown blockquote {
-  border-left: 2px solid var(--dsw-alias-label-caption);
+  border-left: 2px solid var(--nova-text-faint);
   margin: 16px 0 0;
   padding-left: 14px;
 }
 
 .markdown pre {
   margin: 16px 0;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   overflow: auto;
 }
 
@@ -173,23 +173,23 @@
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  font: var(--dsw-font-markdown-code);
-  font-family: var(--ds-font-family-code);
+  font: var(--nova-font-markdown-code);
+  font-family: var(--nova-font-mono);
   font-size: 0.875em !important;
   background-color: var(--dsw-alias-markdown-inline-code);
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-sm);
+  border: 0.5px solid var(--nova-border-subtle);
+  border-radius: var(--nova-radius-lg);
   padding: 0 5px;
 }
 
 .markdown :where(h1, h2, h3, h4, h5, h6) code {
   font: inherit;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
 }
 
 .markdown input[type='checkbox'] {
   margin: 0 8px 0 0;
-  accent-color: var(--dsw-alias-label-secondary);
+  accent-color: var(--nova-text-secondary);
 }
 
 .tableScroll {
@@ -209,7 +209,7 @@
    already the hover that re-enables `auto`. */
 .tableScroll:global(.md-table-wide) {
   overflow-x: hidden;
-  padding-bottom: var(--dsh-scrollbar-width, 5px);
+  padding-bottom: var(--nova-scrollbar-width, 5px);
 }
 
 .tableScroll:global(.md-table-wide):hover,
@@ -222,7 +222,7 @@
    the sheet's link focus color. */
 .tableScroll:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--nova-color-accent));
 }
 
 /* Many-column tables (the renderer's `md-table-wide` hook) keep their
@@ -246,9 +246,9 @@
 .tableScroll th {
   text-align: start;
   padding: 10px 16px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+  border-bottom: 0.5px solid var(--nova-border-strong);
   border-top: none;
-  font: var(--dsw-font-markdown-table-head);
+  font: var(--nova-font-markdown-table-head);
   max-width: 320px;
   max-width: min(30vw, 320px);
   min-width: 100px;
@@ -256,8 +256,8 @@
 
 .tableScroll td {
   padding: 10px 16px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
-  font: var(--dsw-font-markdown-table);
+  border-bottom: 0.5px solid var(--nova-border-strong);
+  font: var(--nova-font-markdown-table);
   max-width: 320px;
   max-width: min(30vw, 320px);
   min-width: 100px;
@@ -287,7 +287,7 @@
 }
 
 .imageAlt {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-style: italic;
 }
 
@@ -297,8 +297,8 @@
   max-width: 100%;
   height: auto;
   margin: 0;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-base);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-base);
   object-fit: contain;
 }
 
@@ -311,7 +311,7 @@
   max-width: 100%;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(20px + var(--nova-content-font-delta-secondary, 0px));
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .compact :is(h1, h2, h3, h4, h5, h6) {
@@ -360,9 +360,9 @@
 .compact :not(pre) > code {
   display: inline;
   font: inherit;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 1em !important;
-  border-radius: var(--dsw-radius-xs);
+  border-radius: var(--nova-radius-sm);
   padding: 0 3px;
   box-decoration-break: clone;
 }

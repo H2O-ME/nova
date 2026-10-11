@@ -3,7 +3,7 @@
    DeepSeek — MIT License. Its dock column (card cap minus four insets) matches
    the plan card and the queue panel, so the three read as one stack.
 
-   The strip is a single 36px line; 12px (`--dsw-radius-md`) is the reference's
+   The strip is a single 36px line; 12px (`--nova-radius-lg`) is the reference's
    own radius. The material rides a `::before` at z-index -1 (menu fill +
    backdrop blur): the blur then applies to the surface only, and nothing inside
    the bar becomes a backdrop root. */
@@ -13,12 +13,12 @@
   flex: none;
   width: calc(
     100% -
-    var(--dsh-composer-side-clearance) -
-    var(--dsh-composer-side-clearance) -
-    var(--dsh-composer-dock-inset) -
-    var(--dsh-composer-dock-inset) -
-    var(--dsh-composer-dock-inset) -
-    var(--dsh-composer-dock-inset)
+    var(--nova-composer-side-clearance) -
+    var(--nova-composer-side-clearance) -
+    var(--nova-composer-dock-inset) -
+    var(--nova-composer-dock-inset) -
+    var(--nova-composer-dock-inset) -
+    var(--nova-composer-dock-inset)
   );
   margin: 0 auto;
 }
@@ -31,14 +31,14 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  max-width: calc(var(--dsh-composer-card-max-width) - 4 * var(--dsh-composer-dock-inset));
+  max-width: calc(var(--nova-composer-card-max-width) - 4 * var(--nova-composer-dock-inset));
   height: 36px;
   margin: 0 auto;
   padding: 4px 5px 4px 12px;
   border: 0;
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-md);
-  box-shadow: var(--dsw-elevation-panel);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  border-radius: var(--nova-radius-lg);
+  box-shadow: var(--nova-elevation-panel);
 }
 
 .bar::before {
@@ -55,7 +55,7 @@
 .goalGlyph {
   display: inline-flex;
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .goalGlyph svg {
@@ -70,7 +70,7 @@
   font-size: 13px;
   line-height: 24px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .objective {
@@ -79,7 +79,7 @@
   overflow: hidden;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary-dimmed);
+  color: var(--nova-text-primary-dimmed);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -91,21 +91,21 @@
   min-width: 0;
   height: 26px;
   padding: 0 8px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-base);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-base);
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   outline: none;
 }
 
 .objectiveInput:focus {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--nova-color-accent);
 }
 
 .objectiveInput::placeholder {
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
 }
 
 /* ---- Icon actions ---- */
@@ -128,11 +128,11 @@
   border-radius: 999px;
   corner-shape: round;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   transition:
-    color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-    background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+    color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+    background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .iconBtn svg {
@@ -141,8 +141,8 @@
 }
 
 .iconBtn:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-secondary);
 }
 
 .iconBtn:disabled {

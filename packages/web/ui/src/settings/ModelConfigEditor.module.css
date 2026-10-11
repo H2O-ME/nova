@@ -1,21 +1,21 @@
 /* 模型参数 sheet：一行一个模型，展开后是逐字段的能力覆盖。
  *
  * 几何与 token 全部照搬 deepseek-harness `ui-settings-models` 的
- * `ModelsSection.module.css`（MIT，(c) 2026 DeepSeek）：卡片圆角 `--dsw-radius-lg`
- * 与 `--dsw-alias-border-l4` 描边、输入框 32px 高 / `--dsw-radius-md` /
- * `--dsw-alias-bg-layer-1`、行内图标按钮 28px 见方、删除悬停用
- * `--dsw-alias-interactive-bg-hover-danger`、占位符 `--dsw-alias-label-dimmed`。
+ * `ModelsSection.module.css`（MIT，(c) 2026 DeepSeek）：卡片圆角 `--nova-radius-lg`
+ * 与 `--nova-border-strong` 描边、输入框 32px 高 / `--nova-radius-lg` /
+ * `--nova-surface-sunken`、行内图标按钮 28px 见方、删除悬停用
+ * `--nova-interactive-hover-danger`、占位符 `--nova-text-disabled`。
  * 页头由 `StepHeading` 提供，本表不再自带。 */
 
 .notice {
   margin: 8px 0 0;
   padding: 10px 12px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-module-platform);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .list {
@@ -32,8 +32,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 8px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-lg);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
 }
 
 /* The row's own line: id | display name | disclosure | remove. A GRID rather
@@ -53,22 +53,22 @@
   width: 100%;
   height: 32px;
   padding: 0 10px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-sunken);
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .input::placeholder {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
 }
 
 .input:focus-visible {
   outline: none;
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--nova-color-accent);
 }
 
 .input:disabled {
@@ -98,7 +98,7 @@
   width: 12px;
   height: 12px;
   transform: translateY(-50%);
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   pointer-events: none;
 }
 
@@ -112,21 +112,21 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .iconButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .iconButton:disabled {
@@ -135,8 +135,8 @@
 }
 
 .iconButtonDanger:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
+  background: var(--nova-interactive-hover-danger);
+  color: var(--nova-color-danger);
 }
 
 /* The capability fields: two columns inside the card. No horizontal padding —
@@ -171,7 +171,7 @@
   flex: none;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .effective {
@@ -181,7 +181,7 @@
   text-overflow: ellipsis;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* The modality choices span both columns: a checkbox group is one field, not two. */
@@ -212,7 +212,7 @@
   gap: 6px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   cursor: pointer;
 }
 
@@ -220,7 +220,7 @@
   width: 14px;
   height: 14px;
   margin: 0;
-  accent-color: var(--dsw-alias-state-business-primary);
+  accent-color: var(--nova-color-accent);
   cursor: pointer;
 }
 
@@ -230,7 +230,7 @@
   margin: 4px 0 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
 }
 
 .addBlock {
@@ -256,38 +256,38 @@
   height: 32px;
   padding: 0 14px;
   border: none;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .button {
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .button:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .primary {
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
@@ -309,7 +309,7 @@
 .poolTitle {
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .poolRows {
@@ -330,26 +330,26 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   border-radius: 999px;
   corner-shape: round;
   background: transparent;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .poolRow:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .poolRow:disabled {
@@ -363,7 +363,7 @@
   margin: 8px 0 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .actions {
@@ -376,7 +376,7 @@
 .readOnly {
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* ── 高级折叠（重写后新增） ─────────────────────────────────────────── */
@@ -385,7 +385,7 @@
    not a second piece of state. The summary is the settings heading rhythm. */
 .advanced {
   margin-top: 16px;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--nova-border-strong);
 }
 
 .advancedSummary {
@@ -395,13 +395,13 @@
   padding: 12px 0;
   list-style: none;
   cursor: pointer;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .advancedSummary::-webkit-details-marker {
@@ -409,7 +409,7 @@
 }
 
 .advancedSummary:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .advancedChevron {
@@ -417,8 +417,8 @@
   align-self: center;
   width: 14px;
   height: 14px;
-  color: var(--dsw-alias-label-tertiary);
-  transition: transform var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+  color: var(--nova-text-muted);
+  transition: transform var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .advanced[open] .advancedChevron {
@@ -429,7 +429,7 @@
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .advancedHint {
@@ -439,7 +439,7 @@
   text-overflow: ellipsis;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .advancedBody {

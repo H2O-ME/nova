@@ -63,20 +63,20 @@
   max-width: 100%;
   min-height: 56px;
   padding: 14px 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font: inherit;
   text-align: left;
-  background: var(--dsw-alias-bg-layer-1);
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-xl);
+  background: var(--nova-surface-sunken);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .entry:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* The terminal card is TWO controls on one pill (the reference's TerminalGuide):
@@ -105,28 +105,28 @@
   width: 26px;
   height: 26px;
   padding: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   background: none;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .entryTrigger:hover {
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--nova-text-primary);
+  background: var(--nova-interactive-hover);
 }
 
 .entryTrigger:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 
 .entry:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: 2px;
 }
 
@@ -139,7 +139,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .entryIcon svg {
@@ -167,7 +167,7 @@
 
 .entryDescription {
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 11px;
   line-height: 1.4;
   white-space: nowrap;

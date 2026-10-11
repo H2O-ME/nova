@@ -16,21 +16,21 @@
   border: none;
   border-radius: 3px;
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out),
-    opacity var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout),
+    opacity var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .iconButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .iconButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 
@@ -55,12 +55,12 @@
 }
 
 .iconButtonActive {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 .iconButtonDanger:hover:not(:disabled) {
-  color: var(--dsw-alias-state-error-primary);
-  background: var(--dsw-alias-interactive-bg-hover-danger);
+  color: var(--nova-color-danger);
+  background: var(--nova-interactive-hover-danger);
 }
 
 .chip {
@@ -69,22 +69,22 @@
   gap: 4px;
   height: 22px;
   padding: 0 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--nova-border-strong);
   border-radius: 999px;
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-xxxs-11);
+  color: var(--nova-text-secondary);
+  font: var(--nova-font-xxxs-11);
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    border-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    border-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .chip:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .chip:disabled {
@@ -94,9 +94,9 @@
 
 /* Selected is a third picture, not a darker hover: accent fill AND accent edge. */
 .chipSelected {
-  background: var(--dsw-alias-interactive-bg-hover-accent);
-  border-color: var(--dsw-alias-state-business-primary);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover-strong);
+  border-color: var(--nova-color-accent);
+  color: var(--nova-text-primary);
 }
 
 .sectionHeader {
@@ -105,9 +105,9 @@
   gap: 6px;
   height: 28px;
   padding: 0 8px 0 12px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
-  font: var(--dsw-font-xxs-strong-12);
-  color: var(--dsw-alias-label-secondary);
+  border-bottom: 1px solid var(--nova-border-subtle);
+  font: var(--nova-font-xxs-strong-12);
+  color: var(--nova-text-secondary);
 }
 
 .sectionLabel {
@@ -119,8 +119,8 @@
 
 .sectionCount {
   flex: none;
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-xxxs-11);
+  color: var(--nova-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -138,9 +138,9 @@
   height: 16px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-xxxs-strong-11);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-secondary);
+  font: var(--nova-font-xxxs-strong-11);
   line-height: 16px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -149,24 +149,24 @@
 .notice {
   margin: 0;
   padding: 16px;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-xxs-12);
+  color: var(--nova-text-muted);
   text-align: center;
   white-space: pre-wrap;
 }
 
 .noticeError {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .noticeWarn {
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
 }
 
 .noticeHint {
   padding: 4px 12px 8px;
   text-align: left;
-  font: var(--dsw-font-xxxs-11);
+  font: var(--nova-font-xxxs-11);
   line-height: 1.45;
 }
 
@@ -175,26 +175,26 @@
   flex: none;
   padding: 0 4px;
   border-radius: 2px;
-  font: var(--dsw-font-xxxs-strong-11);
-  font-family: var(--ds-font-family-code);
+  font: var(--nova-font-xxxs-strong-11);
+  font-family: var(--nova-font-mono);
 }
 
 .statusBadge[data-tone='modified'] {
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
 }
 
 .statusBadge[data-tone='added'] {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .statusBadge[data-tone='deleted'] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .statusBadge[data-tone='renamed'] {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 .statusBadge[data-tone='neutral'] {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }

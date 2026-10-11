@@ -25,7 +25,7 @@
   /* figma 75:8208: 12 between title block / workspace / card. */
   gap: 12px;
   width: 100%;
-  max-width: var(--dsh-composer-card-max-width);
+  max-width: var(--nova-composer-card-max-width);
   overflow: visible;
 }
 
@@ -47,7 +47,7 @@
   font-size: 26px;
   line-height: 32px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 /* Title text + badge as one wrap unit so the title never breaks mid-text with
@@ -69,14 +69,14 @@
   align-self: flex-start;
   margin-top: 2px;
   padding: 1px 7px 0;
-  border: 0.5px solid var(--dsw-alias-interactive-bg-hover);
+  border: 0.5px solid var(--nova-interactive-hover);
   /* The reference's pill treatment: uncapped radius, so it must opt out of the
      universal superellipse (styles/corner-shape.css) or the ends square off. */
   border-radius: 999px;
   corner-shape: round;
   background: var(--dsw-alias-state-business-tertiary);
-  color: var(--dsw-alias-label-primary-bluish);
-  font-family: var(--ds-font-family-code);
+  color: var(--nova-text-primary-bluish);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 18px;
   font-weight: 500;
@@ -99,7 +99,7 @@
   display: block;
   overflow: visible;
   transform-origin: 50% 60%;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 /* Hover swim: a slow continuous sway about the body center — the head
@@ -179,9 +179,9 @@
   min-height: 28px;
   padding: 0 8px;
   border: none;
-  border-radius: var(--dsw-radius-sm, 8px);
+  border-radius: var(--nova-radius-lg, 8px);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
@@ -191,7 +191,7 @@
 
 .workspace:not(:disabled):hover,
 .workspace[aria-expanded='true'] {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* Locked form (no picker to open): a static echo — no hover feedback, no
@@ -204,7 +204,7 @@
   flex: none;
   display: inline-flex;
   align-items: center;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The picker's chevron reads as a quiet affordance, one step down from the
@@ -216,7 +216,7 @@
 
 .folder {
   flex: none;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .workspaceLabel {

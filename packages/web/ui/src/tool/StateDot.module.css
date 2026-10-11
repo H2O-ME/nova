@@ -20,20 +20,20 @@
 }
 
 .dot[data-state='done'] {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .dot[data-state='warning'] {
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
 }
 
 .dot[data-state='error'] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 /* Idle is the absence of activity and uses the theme's neutral state step. */
 .dot[data-state='idle'] {
-  color: var(--dsw-alias-state-idle-primary);
+  color: var(--nova-color-idle);
 }
 
 /* Ongoing is the sole non-dot state: a quiet full ring sits behind a centered
@@ -41,7 +41,7 @@
  * share one 1.5s period so pinning their start times aligns them together. */
 .spinner {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .spinnerMotion {
@@ -109,13 +109,13 @@
   box-sizing: border-box;
   border-radius: 50%;
   corner-shape: round;
-  border: 1.5px solid var(--dsw-alias-label-tertiary);
-  color: var(--dsw-alias-label-primary-foreground);
+  border: 1.5px solid var(--nova-text-muted);
+  color: var(--nova-text-inverse);
 }
 
 .step[data-state='done'] {
-  border-color: var(--dsw-alias-state-success-primary);
-  background: var(--dsw-alias-state-success-primary);
+  border-color: var(--nova-color-success);
+  background: var(--nova-color-success);
   /* Tick draws itself in (keyframe from styles/motion.css); the path length
      is ~11 units, 16 covers it at any stroke scaling. */
   animation: nova-pop-in var(--nova-dur-fast, 140ms) var(--nova-ease-out, ease-out);
@@ -128,10 +128,10 @@
 }
 
 .step[data-state='error'] {
-  border-color: var(--dsw-alias-state-error-primary);
-  background: var(--dsw-alias-state-error-primary);
+  border-color: var(--nova-color-danger);
+  background: var(--nova-color-danger);
 }
 
 .step[data-state='warning'] {
-  border-color: var(--dsw-alias-state-warn-primary);
+  border-color: var(--nova-color-warn);
 }

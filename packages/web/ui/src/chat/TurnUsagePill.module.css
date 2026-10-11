@@ -28,20 +28,20 @@
   height: calc(28px + var(--nova-content-font-delta, 0px));
   padding: 6px 8px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: calc(var(--nova-content-font-size-secondary, 13px) - 1px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .trigger svg {
@@ -52,8 +52,8 @@
 
 .trigger:hover,
 .trigger[aria-expanded='true'] {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-tertiary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-muted);
 }
 
 .label {
@@ -96,14 +96,14 @@
   max-width: min(440px, calc(100vw - 24px));
   padding: 16px;
   border: 0;
-  border-radius: var(--dsw-radius-lg);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-menu);
   backdrop-filter: var(--dsw-menu-backdrop-filter);
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-elevation-prominent);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  box-shadow: var(--nova-elevation-prominent);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: default;
   text-align: left;
 }
@@ -113,7 +113,7 @@
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 8px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-weight: 500;
 }
 
@@ -136,7 +136,7 @@
 
 .panelRule {
   margin-bottom: 10px;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--nova-border-strong);
 }
 
 /* Two columns so every value lands on one right-aligned edge: the keys size to
@@ -146,7 +146,7 @@
   grid-template-columns: minmax(76px, auto) minmax(0, 1fr);
   gap: 6px 16px;
   margin: 0;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .details dt,
@@ -156,7 +156,7 @@
 }
 
 .details dd {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }

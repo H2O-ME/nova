@@ -28,21 +28,21 @@
      elevation and ink only; it never redeclares either token. */
   border: 0;
   background: transparent;
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-elevation-prominent);
-  color: var(--dsw-alias-label-primary);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  box-shadow: var(--nova-elevation-prominent);
+  color: var(--nova-text-primary);
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
      Declared here rather than on the scrolling `.groups` child so the elevation
      choice sits with the surface; the custom properties inherit down to
      whichever descendant actually scrolls. */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .status,
 .empty {
   padding: 8px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 12px;
   line-height: 18px;
 }
@@ -54,9 +54,9 @@
   gap: 6px;
   margin-bottom: 3px;
   padding: 6px 7px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-interactive-hover-danger);
+  color: var(--nova-color-danger);
   font-size: 11px;
   line-height: 16px;
 }
@@ -91,7 +91,7 @@
      reference's ModelSelect does the same (`--dsw-specific-menu`, the
      near-opaque macOS variant of the menu fill). */
   background: var(--dsw-specific-menu);
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;
@@ -107,27 +107,27 @@
   min-height: 34px;
   padding: 5px 7px;
   border: none;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   outline: none;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .option:hover:not(:disabled),
 .option:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .option:disabled {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
   cursor: default;
 }
 
@@ -152,7 +152,7 @@
 
 .optionHint {
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 12px;
   line-height: 16px;
   text-overflow: ellipsis;
@@ -166,7 +166,7 @@
   display: grid;
   place-items: center;
   flex: 0 0 14px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .check svg {

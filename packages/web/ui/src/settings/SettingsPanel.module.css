@@ -18,7 +18,7 @@
   inset: 0;
   background: var(--dsw-alias-bg-mask-1);
   backdrop-filter: var(--dsw-mask-blur);
-  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 /* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
@@ -48,19 +48,19 @@
   z-index: 1;
   display: flex;
   width: 800px;
-  height: min(800px, calc(100vh - 2 * max(24px, var(--dsh-frame-top-clearance, 24px))));
+  height: min(800px, calc(100vh - 2 * max(24px, var(--nova-frame-top-clearance, 24px))));
   max-width: calc(100vw - 48px);
-  border-radius: var(--dsw-radius-panel);
+  border-radius: var(--nova-radius-lg);
   overflow: hidden;
-  background: var(--dsw-alias-bg-layer-2);
-  box-shadow: var(--dsw-elevation-prominent);
+  background: var(--nova-surface-raised);
+  box-shadow: var(--nova-elevation-prominent);
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
      Declared on the panel rather than the scrolling `.options` child so the
      elevation choice sits with the surface; the custom properties inherit
      down to whichever descendant scrolls. */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
-  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .panel:focus {
@@ -85,7 +85,7 @@
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .navTitle:focus {
@@ -111,14 +111,14 @@
   padding: 9px 16px 9px 12px;
   box-sizing: border-box;
   border: none;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   cursor: pointer;
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
   font-weight: 400;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   text-align: left;
 }
 
@@ -189,14 +189,14 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   cursor: pointer;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .close:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .close svg {

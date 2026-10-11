@@ -5,7 +5,7 @@
    source's `--dsw-specific-menu` material and its 1100 layer, exactly as
    `chat/TurnUsagePill` does: both tokens are defined by this sheet
    (`styles/design-platform.css`, `styles/gradient-shadow-text.css`), so the
-   earlier `--dsw-alias-bg-layer-2` substitution had no reason to exist. */
+   earlier `--nova-surface-raised` substitution had no reason to exist. */
 
 /* The dock row owns the line's width, clearance and gap: this row is one
    child of it (the context meter is the other), so it shrink-wraps its pills
@@ -44,17 +44,17 @@
      universal rule in styles/corner-shape.css would otherwise deform them. */
   corner-shape: round;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font: inherit;
   font-variant-numeric: tabular-nums;
   line-height: inherit;
   white-space: nowrap;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .pill svg {
@@ -71,8 +71,8 @@ button.pill {
 
 button.pill:hover,
 button.pill[aria-expanded='true'] {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-secondary);
 }
 
 .label {
@@ -96,14 +96,14 @@ button.pill[aria-expanded='true'] {
   max-width: min(440px, calc(100vw - 24px));
   padding: 16px;
   border: 0;
-  border-radius: var(--dsw-radius-lg);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-menu);
   backdrop-filter: var(--dsw-menu-backdrop-filter);
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-elevation-prominent);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  box-shadow: var(--nova-elevation-prominent);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: default;
   text-align: left;
 }
@@ -115,7 +115,7 @@ button.pill[aria-expanded='true'] {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 8px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-weight: 500;
 }
 
@@ -135,7 +135,7 @@ button.pill[aria-expanded='true'] {
 /* Rule under the heading, above its rows. */
 .panelRule {
   margin-bottom: 10px;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--nova-border-strong);
 }
 
 .details {
@@ -157,11 +157,11 @@ button.pill[aria-expanded='true'] {
 .detailKey {
   flex: none;
   margin: 0;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .detailValue {
   margin: 0;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-variant-numeric: tabular-nums;
 }

@@ -9,9 +9,9 @@
   height: 100%;
   min-width: 0;
   overflow-y: auto;
-  background: var(--dsw-alias-bg-base);
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  background: var(--nova-surface-base);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 /* A wider axis than the transcript's: the reference's plugin page spans the

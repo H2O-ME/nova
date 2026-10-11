@@ -4,7 +4,7 @@
  *
  *  1. **Components consume tokens, never literal colors.** `.ts`/`.tsx` and
  *     every component module (`src/**\/*.module.css`) must reach color only
- *     through `var(--dsw-*)` / `var(--dsh-*)`. The token layer under
+ *     through `var(--dsw-*)` / `var(--nova-*)`. The token layer under
  *     `src/styles/` is the one place raw values live (it is the ported harness
  *     palette, licensed and attributed); `src/index.css` is a mount sheet and
  *     is held to the component rule.
@@ -207,8 +207,8 @@ describe('token ownership', () => {
    * there — a typo that propagates by being plausible.
    *
    * Only the `--dsw-*` layer is checked, and only against CSS declarations: the
-   * `--dsh-*` component-local family is published at RUNTIME for several of them
-   * (`--dsh-chat-user-width` from the width observer, `--dsh-text-shimmer-spread`
+   * `--nova-*` component-local family is published at RUNTIME for several of them
+   * (`--nova-chat-user-width` from the width observer, `--nova-text-shimmer-spread`
    * from the shimmer), so requiring a static declaration would fail correct code.
    * The `--dsw-*` palette is static by contrast — a name that is not in the
    * stylesheet is not a palette entry at all.

@@ -94,7 +94,7 @@ describe('menu row rhythm', () => {
     for (const name of ['Menu.module.css', 'MenuCard.module.css']) {
       const css = sheet(name);
       expect(css, name).toContain('min-height: 34px');
-      expect(css, name).toContain('border-radius: var(--dsw-radius-md)');
+      expect(css, name).toContain('border-radius: var(--nova-radius-lg)');
       expect(css, name).toContain('font-size: 13px');
     }
   });
@@ -146,7 +146,7 @@ describe('Tooltip', () => {
   it('animates the bubble on the shared curve and drops it under reduced motion', () => {
     const css = sheet('Tooltip.module.css');
     // 150ms in / out, the stack's curve — the same entry the reference uses.
-    expect(css).toContain('animation: tooltip-in 150ms var(--ds-ease-in-out)');
+    expect(css).toContain('animation: tooltip-in 150ms var(--nova-ease-inout)');
     // A bubble that fades is decoration; the reduced-motion reader gets it
     // instantly rather than not at all.
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none/);

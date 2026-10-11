@@ -21,14 +21,14 @@
   gap: 6px;
   align-items: center;
   padding: 5px 10px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+  border-bottom: 0.5px solid var(--nova-border-subtle);
 }
 
 /* The code reading: mono font, one row per line, gutter numbers in the
    tertiary ink. */
 .code {
   padding: 8px 0 16px;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 18px;
 }
@@ -45,7 +45,7 @@
   width: 2.5em;
   text-align: right;
   font-size: 10px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   user-select: none;
 }
 

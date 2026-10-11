@@ -9,7 +9,7 @@
   /* Rebindable by consumers (CodeBlock's --dsl-code-block-content-font
      pattern): a surface wanting the smaller code size rebinds this together
      with --dsl-terminal-line-height on its own container. */
-  --dsl-terminal-font: var(--dsw-font-markdown-code-block-small);
+  --dsl-terminal-font: var(--nova-font-markdown-code-block-small);
   /* The card's own left inset, holding the run-state dot in a column of its own
      so it never competes with the commands for horizontal space. */
   --dsl-terminal-gutter: 30px;
@@ -17,12 +17,12 @@
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
   margin: 4px 0 4px 4px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
+  border: 0.5px solid var(--nova-border-subtle);
   /* The gutter is the card's OWN padding, not a margin: every consumer rewrites
      `margin` wholesale, which silently cancelled the reservation and let the dot
      fall outside the card into a container that clips it. */
   padding-left: var(--dsl-terminal-gutter);
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: var(--dsw-alias-markdown-code-block);
   border-radius: var(--dsl-terminal-radius);
   /* Clip the banner to the card's own radius: when a consumer adds a border, the
@@ -55,7 +55,7 @@
 .header::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
 }
 
 .header::-webkit-scrollbar-track {
@@ -66,7 +66,7 @@
    divider the IN/OUT card draws between its sections. A running card is
    banner-only, so it draws none. */
 .block:not([data-running]) .header {
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
 /* One row per command line. The prompt column is the only element allowed to
@@ -109,7 +109,7 @@
 
 .cwd {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* `pre`, not `nowrap`: the prompt row renders the command verbatim, and
@@ -117,7 +117,7 @@
    continuation. Both hold the single row and the ellipsis. */
 .command {
   min-width: 0;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;
@@ -132,11 +132,11 @@
   top: 0;
   height: var(--dsl-terminal-line-height);
   padding: 0 8px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
+  border: 0.5px solid var(--nova-border-subtle);
   border-radius: 999px;
   corner-shape: round;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-state-error-primary);
+  font: var(--nova-font-xxs-12);
+  color: var(--nova-color-danger);
 }
 
 .copyButton {
@@ -149,9 +149,9 @@
   border: none;
   padding: 0;
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: pointer;
-  font: var(--dsw-font-xs-13);
+  font: var(--nova-font-xs-13);
   line-height: var(--dsl-terminal-line-height);
 }
 
@@ -171,7 +171,7 @@
 .output::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
 }
 
 .output::-webkit-scrollbar-track {
@@ -187,5 +187,5 @@
 .empty {
   padding: 12px 14px 12px 0;
   font: var(--dsl-terminal-font);
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }

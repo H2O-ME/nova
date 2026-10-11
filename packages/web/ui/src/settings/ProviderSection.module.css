@@ -2,16 +2,16 @@
  *
  * 几何与 token 照搬 deepseek-harness `ui-settings-models` 的
  * `ModelsSection.module.css`（MIT，(c) 2026 DeepSeek）：卡片走
- * `--dsw-alias-settings-card-fill` / `-stroke` + `--dsw-radius-xl`，行内动作是紧凑
+ * `--nova-surface-raised` / `-stroke` + `--nova-radius-lg`，行内动作是紧凑
  * 按钮（28px 高、12px 字），密钥状态用 8px 的实心点（configured / missing），编辑器
- * 嵌在卡片里换 `--dsw-alias-bg-module-platform` 填充，页头是 `<h2>` + 一行说明。 */
+ * 嵌在卡片里换 `--nova-surface-panel` 填充，页头是 `<h2>` + 一行说明。 */
 
 .heading {
   margin: 0;
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .intro {
@@ -19,25 +19,25 @@
   padding-top: 4px;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .status {
   padding: 16px 0;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .notice {
   margin: 8px 0 0;
   padding: 10px 12px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-module-platform);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .rows {
@@ -54,17 +54,17 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
-  border-radius: var(--dsw-radius-xl);
-  background: var(--dsw-alias-settings-card-fill);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
 }
 
 /* The endpoint in force: a different fill from its neighbours, plus the word
-   「当前使用」. The border cannot carry it — `--dsw-alias-settings-card-stroke`
-   IS `--dsw-alias-border-l4`, so "stronger border-colour" was a no-op, and a
+   「当前使用」. The border cannot carry it — `--nova-border-strong`
+   IS `--nova-border-strong`, so "stronger border-colour" was a no-op, and a
    colour-only signal is exactly what a reader could not tell apart before.
    The fill is the nav's own "current item" colour, and it is the one fill that
-   differs in BOTH grades: `--dsw-alias-bg-layer-1/2/3` and the card fill all
+   differs in BOTH grades: `--nova-surface-sunken/2/3` and the card fill all
    resolve to plain white in light mode, where "one step lighter" would be
    nothing at all. */
 .cardActive {
@@ -88,7 +88,7 @@
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -99,13 +99,13 @@
 .activeTag {
   flex: none;
   padding: 1px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-bg-module-platform);
+  background: var(--nova-surface-panel);
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* The missing-key state as a word, in the same capsule shape as the active
@@ -114,13 +114,13 @@
 .keyMissing {
   flex: none;
   padding: 1px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-bg-module-platform);
+  background: var(--nova-surface-panel);
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .rowActions {
@@ -141,24 +141,24 @@
   gap: 4px;
   height: 28px;
   padding: 0 10px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-sm);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   font-family: inherit;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .rowButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .rowButton:disabled {
@@ -168,17 +168,17 @@
 
 .rowButtonDanger {
   border-color: transparent;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .rowButtonDanger:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover-danger);
+  background: var(--nova-interactive-hover-danger);
 }
 
 .rowButtonIcon {
@@ -202,26 +202,26 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .rowUrlEmpty {
   font-family: inherit;
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
 }
 
 .rowCount {
   flex: none;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The editor: an inset module inside the card. Its fill is deliberately
-   `--dsw-alias-bg-module-platform` (not a `bg-layer-*`, which is plain white in
+   `--nova-surface-panel` (not a `bg-layer-*`, which is plain white in
    light mode) so the boundary survives both grades — the card may itself be the
    active fill above. */
 .editor {
@@ -229,8 +229,8 @@
   flex-direction: column;
   gap: 14px;
   padding: 14px 16px;
-  border-radius: var(--dsw-radius-lg);
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
 }
 
 .fields {
@@ -249,7 +249,7 @@
 .fieldLabel {
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .input {
@@ -258,29 +258,29 @@
   min-width: 0;
   height: 32px;
   padding: 0 10px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-sunken);
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .input::placeholder {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
 }
 
 .input:focus-visible {
   outline: none;
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--nova-color-accent);
 }
 
 .fieldHint {
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* 请求参数：端点级字段，用 fieldset 圈起来，因为它们的写盘位置与模型能力不同。 */
@@ -289,7 +289,7 @@
   margin: 0;
   padding: 10px 0 0;
   border: none;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--nova-border-strong);
 }
 
 .paramsLegend {
@@ -298,7 +298,7 @@
   font-size: 12px;
   line-height: 18px;
   font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .models {
@@ -306,7 +306,7 @@
   flex-direction: column;
   gap: 8px;
   padding-top: 10px;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--nova-border-strong);
 }
 
 .modelsHead {
@@ -320,7 +320,7 @@
   font-size: 12px;
   line-height: 18px;
   font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .linkButton {
@@ -329,24 +329,24 @@
   height: 28px;
   padding: 0 10px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   font-family: inherit;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .linkButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-secondary);
 }
 
 .linkButton:disabled {
@@ -371,9 +371,9 @@
   gap: 4px;
   max-width: 100%;
   padding: 2px 4px 2px 10px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-sunken);
 }
 
 .modelChipId {
@@ -381,10 +381,10 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .chipRemove {
@@ -393,24 +393,24 @@
   height: 20px;
   padding: 0 6px;
   border: none;
-  border-radius: var(--dsw-radius-xs);
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   font-family: inherit;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .chipRemove:hover {
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
+  background: var(--nova-interactive-hover-danger);
+  color: var(--nova-color-danger);
 }
 
 .addRow {
@@ -424,24 +424,24 @@
   flex: none;
   height: 32px;
   padding: 0 14px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-md);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .button:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* 探针失败的那一行。挑模型的地方是弹窗（`ProviderModelsDialog`），所以卡里只剩
@@ -452,13 +452,13 @@
   gap: 4px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .error {
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .footer {
@@ -479,31 +479,31 @@
   justify-content: center;
   height: 44px;
   padding: 0 14px;
-  border: 1px dashed var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-lg);
+  border: 1px dashed var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .addButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .problem {
   margin: 8px 0 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 /* ── 重写后的新增类 ─────────────────────────────────────────────────── */
@@ -518,14 +518,14 @@
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .sectionIntro {
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The card's own footer (the reference's `editorActions`): cancel left, commit
@@ -549,33 +549,33 @@
   box-sizing: border-box;
   height: 32px;
   padding: 0 14px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .cancelButton {
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .cancelButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .saveButton {
   border: none;
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .saveButton:hover:not(:disabled) {

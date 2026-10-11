@@ -5,17 +5,17 @@
   grid-template-rows: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--dsw-alias-bg-base);
+  background: var(--nova-surface-base);
 }
 
 /* Only a discrete collapse/expand toggle eases the tracks (the TSX holds
    data-animating across the toggle on the deepsuite sider curve —
-   --ds-ease-in-out / --ds-transition-duration-slow). Steady-state tracks move
+   --nova-ease-inout / --nova-dur-slow). Steady-state tracks move
    only with the viewport, and those updates must land instantly: an eased
    track chases the live window edge and the centre column visibly
    rubber-bands while the user resizes the window. */
 .frame[data-animating] {
-  transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  transition: grid-template-columns var(--nova-dur-slow) var(--nova-ease-inout);
 }
 
 /* Dragging writes widths at pointer cadence; easing them would detach the
@@ -34,7 +34,7 @@
   min-width: 0;
   overflow: hidden;
   background: var(--dsw-specific-sidebar-fill);
-  border-right: 0.5px solid var(--dsw-alias-border-l3);
+  border-right: 0.5px solid var(--nova-border-strong);
 }
 
 .centerCol {
@@ -65,7 +65,7 @@
    during collapse/expand; instant at steady state (viewport-driven moves) and
    while dragging. */
 .frame[data-animating] .handle {
-  transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  transition: left var(--nova-dur-slow) var(--nova-ease-inout);
 }
 
 .frame[data-dragging] .handle {

@@ -13,21 +13,21 @@
   border: none;
   border-radius: 5px;
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-xxs-12);
+  color: var(--nova-text-secondary);
+  font: var(--nova-font-xxs-12);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .textButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .textButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 
@@ -39,24 +39,24 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   line-height: 1;
   background: transparent;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .iconButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .iconButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 

@@ -21,20 +21,20 @@
   overflow: hidden;
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens
      (see styles/scrollbar.css for the rebinding contract). */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   /* The shared menu material's rail: 6px wide, a quiet 2px thumb, inset from
      the card's rounded ends (the reference's own values). */
-  --dsh-scrollbar-width: 6px;
-  --dsh-scrollbar-thumb-border: 2px;
-  --dsh-scrollbar-track-margin: 12px;
+  --nova-scrollbar-width: 6px;
+  --nova-scrollbar-thumb-border: 2px;
+  --nova-scrollbar-track-margin: 12px;
   padding: 4px;
   display: flex;
   flex-direction: column;
   border: 0;
-  border-radius: var(--dsw-radius-lg);
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-elevation-prominent);
+  border-radius: var(--nova-radius-lg);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  box-shadow: var(--nova-elevation-prominent);
   /* Contain the material layer below without letting its negative z-index
      escape the menu (the reference's `isolation: isolate`). */
   isolation: isolate;
@@ -82,26 +82,26 @@
   min-height: 34px;
   padding: 6px 8px;
   border: none;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   text-align: left;
 }
 
 /* One shared highlight: pointer motion parks it here through the hover event,
    so there is no separate :hover tint competing with the keyboard's. */
 .item.active {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .sectionTitle {
   flex: none;
   min-height: 23px;
   padding: 5px 8px 2px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 11px;
   font-weight: 500;
   line-height: 16px;
@@ -137,7 +137,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 12px;
   line-height: 18px;
 }
@@ -151,7 +151,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 12px;
   line-height: 18px;
 }
@@ -171,7 +171,7 @@
    quiet. */
 .drillHintText {
   display: none;
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
   font-size: 10px;
   line-height: 16px;
   white-space: nowrap;
@@ -180,9 +180,9 @@
 .drillHint {
   display: none;
   padding: 0 4px;
-  border-radius: var(--dsw-radius-xs);
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-caption);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-faint);
   font-family: inherit;
   font-size: 10px;
   line-height: 16px;
@@ -201,13 +201,13 @@
   place-items: center;
   width: 18px;
   height: 18px;
-  border-radius: var(--dsw-radius-xs);
+  border-radius: var(--nova-radius-sm);
   color: var(--dsw-alias-menu-icon);
 }
 
 .drill:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 /* Heading row above a source group: non-interactive small grey text, padding
@@ -216,7 +216,7 @@
   padding: 6px 8px;
   font-size: 11px;
   line-height: 15px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* Pending-source skeleton: two item-cell rows around a breathing bar (the
@@ -233,7 +233,7 @@
 
 .skeletonBar {
   height: 18px;
-  border-radius: var(--dsw-radius-xs);
+  border-radius: var(--nova-radius-sm);
   background: var(--dsw-alias-bg-skeleton);
   animation: composer-menu-skeleton 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
 }
@@ -263,7 +263,7 @@
   margin-bottom: 2px;
   /* l1, not border-inverted (the menu frame's dark-only stroke): the divider
      needs to survive light mode too; in dark both resolve to white/0.06. */
-  border-bottom: 0.5px solid var(--dsw-alias-border-l1);
+  border-bottom: 0.5px solid var(--nova-border-subtle);
 }
 
 /* Crumbs sit outside the listbox and take no keyboard highlight, so unlike
@@ -274,9 +274,9 @@
   overflow: hidden;
   padding: 2px 5px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   font-family: inherit;
   font-size: 11px;
@@ -286,15 +286,15 @@
 }
 
 .crumb:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 /* The step the list is already showing reads as a label, not an action. */
 .crumbCurrent,
 .crumbCurrent:hover {
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   cursor: default;
 }
 

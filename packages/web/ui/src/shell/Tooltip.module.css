@@ -15,7 +15,7 @@
   width: max-content;
   max-width: 50vw;
   padding: 3px 7px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-alias-tooltip-bg);
   color: var(--dsw-static-neutral-bluish-00);
   font-size: 13px;
@@ -24,7 +24,7 @@
   /* Unbreakable tokens (URLs, paths) must not push past max-width. */
   overflow-wrap: break-word;
   pointer-events: none;
-  animation: tooltip-in 150ms var(--ds-ease-in-out);
+  animation: tooltip-in 150ms var(--nova-ease-inout);
 }
 
 .bubble[data-portal] {

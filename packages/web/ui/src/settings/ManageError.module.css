@@ -11,19 +11,19 @@
   gap: 2px;
   margin: 12px 0;
   padding: 10px 12px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-sunken);
   font-size: 12px;
   line-height: 18px;
 }
 
 .title {
   font-weight: 600;
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
 }
 
 .detail {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   overflow-wrap: anywhere;
 }

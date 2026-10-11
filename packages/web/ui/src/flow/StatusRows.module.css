@@ -10,15 +10,15 @@
   gap: 8px;
   min-height: 24px;
   padding-left: 2px;
-  font: var(--dsw-font-xs-13);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xs-13);
+  color: var(--nova-text-secondary);
 }
 
 /* The job's own handle: it is not the tool id and not prose. */
 .id {
   flex: none;
-  font: var(--dsw-font-markdown-code);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-markdown-code);
+  color: var(--nova-text-muted);
 }
 
 .label {
@@ -40,14 +40,14 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--dsw-font-markdown-code-block-small);
-  color: var(--dsw-alias-label-caption);
+  font: var(--nova-font-markdown-code-block-small);
+  color: var(--nova-text-faint);
 }
 
 .meta {
   flex: none;
   font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The subagent's own state mark, on the harness's fixed 14x17 leading slot so a
@@ -71,7 +71,7 @@
   gap: 6px;
   min-height: 44px;
   padding: 6px 7px 6px 9px;
-  border-radius: var(--dsw-radius-lg);
+  border-radius: var(--nova-radius-lg);
   font-size: 12px;
   line-height: 17px;
 }
@@ -85,19 +85,19 @@
 }
 
 .content > .label {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 /* `title · mode · activity` in the harness; here the lead fact plus the
    activity word, one step down from the label's own color. The tier is 10px
    because that is the harness's `.summary` size in this catalog row — the
-   token named `--dsw-font-xxs-12` is a `font` SHORTHAND, so it could not serve
+   token named `--nova-font-xxs-12` is a `font` SHORTHAND, so it could not serve
    as `font-size` and the row inherited 13px instead. */
 .summary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 10px;
   line-height: 15px;
 }
@@ -114,8 +114,8 @@
   font-variant-numeric: tabular-nums;
   text-align: right;
   white-space: nowrap;
-  color: var(--dsw-alias-label-tertiary);
-  /* The harness's `.summary, .metrics` tier. `--dsw-font-xxs-12` is a `font`
+  color: var(--nova-text-muted);
+  /* The harness's `.summary, .metrics` tier. `--nova-font-xxs-12` is a `font`
      SHORTHAND and cannot supply the size — writing it as `font-size` dropped
      the declaration and left both rows at the inherited 13px. */
   font-size: 10px;
@@ -134,7 +134,7 @@
 }
 
 .row[data-state='failed'] .meta {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .progress {
@@ -143,34 +143,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;
-  font: var(--dsw-font-markdown-code-block-small);
-  color: var(--dsw-alias-label-caption);
+  font: var(--nova-font-markdown-code-block-small);
+  color: var(--nova-text-faint);
 }
 
 .stop {
   flex: none;
   height: 20px;
   padding: 0 8px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   /* The upstream job-row stop control (`ui-jobs/JobListAction.module.css`)
    * writes this border explicitly; there is no `--dsw-hairline` token upstream
    * or here, so the value is spelled the way the other twelve hairline sites
    * in this tree spell it. */
-  border: 0.5px solid var(--dsw-alias-border-l2);
+  border: 0.5px solid var(--nova-border-strong);
   background: transparent;
-  font: var(--dsw-font-xxs-12);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xxs-12);
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .stop:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .stop:disabled {
@@ -199,11 +199,11 @@
   flex: none;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .chevron {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .sep {
@@ -212,7 +212,7 @@
   height: 2px;
   margin: 0 8px;
   border-radius: 1px;
-  background: var(--dsw-alias-label-caption);
+  background: var(--nova-text-faint);
 }
 
 .commandSummary {
@@ -223,11 +223,11 @@
   white-space: nowrap;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .commandRoot[data-state='error'] .commandSummary {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 /* The command's multiline output, revealed in place under its row. */
@@ -235,12 +235,12 @@
   margin: 0;
   padding: 8px 0 8px 22px;
   overflow-x: auto;
-  font: var(--dsw-font-markdown-code-block-small);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-markdown-code-block-small);
+  color: var(--nova-text-muted);
 }
 
 .commandBody[data-error] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .visuallyHidden {

@@ -11,10 +11,10 @@
   display: flex;
   flex-direction: column;
   margin: 4px 0 4px 4px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-lg);
+  border: 0.5px solid var(--nova-border-subtle);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-alias-markdown-code-block);
-  font: var(--dsw-font-markdown-code-block-small);
+  font: var(--nova-font-markdown-code-block-small);
 }
 
 /* One card section (IN or OUT): the gutter-label grid, capped and scrolling
@@ -34,7 +34,7 @@
 .ioSection::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   background-clip: padding-box;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
 }
 
 /* Track end-margins keep the thumb's travel out of the rounded corners. */
@@ -50,24 +50,24 @@
   position: sticky;
   top: 0;
   align-self: start;
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
 }
 
 /* l2 hairline between the IN and OUT sections, spanning the full card width. */
 .ioDivider {
   flex: none;
   height: 0.5px;
-  background: var(--dsw-alias-border-l2);
+  background: var(--nova-border-strong);
 }
 
 .ioText {
   min-width: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* A failed call's OUT text shares the collapsed summary's error color. */
 .ioText[data-error] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }

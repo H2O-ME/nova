@@ -27,15 +27,15 @@
   padding: 4px;
   border: 0;
   background: transparent;
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-elevation-prominent);
-  color: var(--dsw-alias-label-primary);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  box-shadow: var(--nova-elevation-prominent);
+  color: var(--nova-text-primary);
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens. The
      declaration sits on the card rather than on the viewport child because the
      elevation is a property of this surface, and the custom properties inherit
      down to whichever descendant actually scrolls. */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   min-width: 144px;
   max-width: min(360px, calc(100vw - 24px));
   /* Viewport fit: the card stops 12px short of the viewport's edges and
@@ -64,7 +64,7 @@
   min-height: 34px;
   padding: 6px 8px;
   border: none;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   outline: none;
   background: transparent;
   color: inherit;
@@ -73,27 +73,27 @@
   text-align: left;
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .item:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* Arrow navigation moves real focus, so the row the keyboard is on carries the
    same fill the pointer gets: the fill is the row's focus indication, and the
    browser's default ring would double it. */
 .item:focus-visible:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
   outline: none;
 }
 
 .item:disabled {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
   cursor: default;
 }
 
@@ -123,7 +123,7 @@
   display: grid;
   place-items: center;
   flex: 0 0 14px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .check svg,

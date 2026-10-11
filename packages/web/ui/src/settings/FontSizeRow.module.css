@@ -18,8 +18,8 @@
   justify-content: center;
   min-width: 72px;
   height: 36px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
 }
 
 .value {
@@ -28,13 +28,13 @@
   font-size: 14px;
   line-height: 22px;
   font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .unit {
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* Arrow column: anchored right so the value stays pill-centered whether or
@@ -49,11 +49,11 @@
   gap: 2px;
   opacity: 0;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .stepper:hover .arrows,
@@ -72,24 +72,24 @@
   height: 12px;
   padding: 0;
   border: none;
-  border-radius: var(--dsw-radius-xs);
-  background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 75%, transparent);
-  color: var(--dsw-alias-label-primary);
+  border-radius: var(--nova-radius-sm);
+  background: color-mix(in srgb, var(--nova-surface-sunken) 75%, transparent);
+  color: var(--nova-text-primary);
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .arrow:hover:not(:disabled) {
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--nova-surface-sunken);
 }
 
 .arrow:disabled {
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
   cursor: default;
 }
 

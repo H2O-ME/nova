@@ -14,15 +14,15 @@
   width: 240px;
   height: 64px;
   padding: 0 12px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-lg);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-input-major);
   box-sizing: border-box;
   text-align: left;
 }
 
 .failed {
-  border-color: var(--dsw-alias-state-error-primary);
+  border-color: var(--nova-color-danger);
 }
 
 .icon {
@@ -41,7 +41,7 @@
   border-top-color: transparent;
   border-radius: 50%;
   corner-shape: round;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   animation: file-card-spin 0.8s linear infinite;
 }
 
@@ -53,12 +53,12 @@
    takes the category colour, the folded corner and the mark stay neutral, so
    the mark reads on top of any category. */
 .iconFold {
-  fill: var(--dsw-alias-label-primary-inverted);
+  fill: var(--nova-text-inverse);
   fill-opacity: 0.7;
 }
 
 .iconMark {
-  color: var(--dsw-alias-label-primary-inverted);
+  color: var(--nova-text-inverse);
 }
 
 /* A stroked mark (code, excel, folder) takes its ink from the surrounding
@@ -104,7 +104,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
@@ -114,13 +114,13 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 12px;
   line-height: 15px;
 }
 
 .metaFailed {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .remove {
@@ -137,7 +137,7 @@
   border-radius: 50%;
   corner-shape: round;
   background: var(--dsw-alias-button-contrast-fill);
-  color: var(--dsw-alias-label-primary-inverted);
+  color: var(--nova-text-inverse);
   opacity: 0;
   cursor: pointer;
   transition: opacity 0.2s ease-in-out;
@@ -172,8 +172,8 @@
 }
 
 .removeFailed {
-  background: var(--dsw-alias-state-error-primary);
-  color: var(--dsw-alias-label-primary-inverted);
+  background: var(--nova-color-danger);
+  color: var(--nova-text-inverse);
   opacity: 1;
 }
 
@@ -189,7 +189,7 @@
      `--dsw-alias-fill-tertiary` (which IT never defines — only this one rule
      reads it there, so it always fell back to its literal). This sheet's border
      ladder is defined in both themes, which is what a 2px track wants. */
-  background: var(--dsw-alias-border-l2);
+  background: var(--nova-border-strong);
 }
 
 .progressBar {
@@ -202,7 +202,7 @@
      says so at the top: brand-primary is neutral, and every blue accent rides
      `state-business-primary`). Copying the reference verbatim here would draw a
      neutral bar where the reference's own literal fallback was blue. */
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--nova-color-accent);
   animation: file-card-progress 1.2s ease-in-out infinite alternate;
 }
 

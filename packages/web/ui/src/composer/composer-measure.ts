@@ -1,7 +1,7 @@
 /**
  * The draft's height contract, ported from deepseek-harness ui-conversation
  * (MIT): the harness caps the draft scrollport at 14 lines × 24px = 336px
- * (`--dsh-composer-text-max-height` — InputBar.module.css `.scroll` reads it,
+ * (`--nova-composer-text-max-height` — InputBar.module.css `.scroll` reads it,
  * ConversationRoot.module.css `.composerSeat` declares it) and floors a docked
  * draft at one 24px line plus its 4px top pad (36px, `.input` min-height).
  *
@@ -19,7 +19,7 @@
 export const TEXT_MAX_LINES = 14;
 /** The line the cap is drawn from (InputBar `.card` line-height). */
 export const TEXT_LINE_HEIGHT_PX = 24;
-/** The cap itself: `--dsh-composer-text-max-height` in the sheet, one value. */
+/** The cap itself: `--nova-composer-text-max-height` in the sheet, one value. */
 export const TEXT_MAX_PX = TEXT_MAX_LINES * TEXT_LINE_HEIGHT_PX;
 /** Docked floor: one 24px line + the 4px top pad (`.input` min-height: 36px). */
 export const TEXT_MIN_PX = 36;

@@ -7,7 +7,7 @@
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .intro {
@@ -15,7 +15,7 @@
   padding-top: 4px;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .hint {
@@ -23,7 +23,7 @@
   padding: 12px 0 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The reference inventory's search box (same rhythm as the plugins section):
@@ -33,8 +33,8 @@
   align-items: center;
   gap: 8px;
   padding: 12px 0;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-tertiary);
+  border-bottom: 0.5px solid var(--nova-border-strong);
+  color: var(--nova-text-muted);
 }
 
 .searchIcon {
@@ -51,7 +51,7 @@
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .searchInput:focus {
@@ -64,7 +64,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 8px 0 16px;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
 /* The source group's header: the level name, the discovery ROOT, and the count.
@@ -80,7 +80,7 @@
   padding: 8px 0 4px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .rootPath {
@@ -88,7 +88,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
 }
 
 /* Pushed to the row's end: the count is a reading, not a second label. */
@@ -106,13 +106,13 @@
   gap: 12px;
   margin: 0 -8px;
   padding: 9px 8px;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .skill:hover {
@@ -131,7 +131,7 @@
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -141,7 +141,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -151,7 +151,7 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   opacity: 0.6;
 }
 
@@ -165,12 +165,12 @@
   margin: 8px 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .status {
   padding: 16px 0;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }

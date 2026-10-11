@@ -44,7 +44,7 @@
   align-items: center;
   justify-content: center;
   margin-right: 6px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* Flow-row glyphs render at 14px inside the 16px box; the CSS edge overrides
@@ -81,14 +81,14 @@
 }
 
 .chevron {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .title {
   flex: none;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-weight: 400;
   /* The hover lift below animates this like the summary's (harness `.title`). */
   transition: color 100ms ease;
@@ -100,7 +100,7 @@
   height: 2px;
   border-radius: 1px;
   margin: 0 8px;
-  background: var(--dsw-alias-label-caption);
+  background: var(--nova-text-faint);
 }
 
 /* The summary's flex box lives on a wrapper because the text itself is a
@@ -119,13 +119,13 @@
   white-space: nowrap;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   transition: color 100ms ease;
 }
 
 /* Commands, queries and paths read as code (the row's own mono flag). */
 .summaryWrap[data-mono] .summary {
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
 }
 
 /* Trailing summary fragment kept out of .summary's ellipsis, for a count whose
@@ -139,7 +139,7 @@
   white-space: nowrap;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   transition: color 100ms ease;
 }
 
@@ -152,9 +152,9 @@
    the row's box-centering (a transform, so flex layout is untouched). */
 .diffStat {
   margin-left: 10px;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: calc(var(--nova-content-font-size-secondary, 13px) - 2px);
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
   transform: translateY(0.5px);
 }
 
@@ -164,13 +164,13 @@
 .row:hover .title,
 .row:hover .summary:not(.errorSummary):not(.stoppedSummary),
 .row:hover .summarySuffix {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 /* A failure's own line, in the error color: it replaces the summary/verdict
    rather than sitting beside them. */
 .errorSummary {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 /* An interrupted row keeps its business glyph and turns the summary amber
@@ -206,6 +206,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: pre;
-  font: var(--dsw-font-markdown-code-block-small);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-markdown-code-block-small);
+  color: var(--nova-text-muted);
 }

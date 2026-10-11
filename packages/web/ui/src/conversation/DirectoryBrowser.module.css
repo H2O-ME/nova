@@ -17,7 +17,7 @@
   inset: 0;
   background: var(--dsw-alias-bg-mask-1);
   backdrop-filter: var(--dsw-mask-blur);
-  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 /* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
@@ -48,10 +48,10 @@
   max-height: min(520px, calc(100vh - 48px));
   padding: 16px;
   gap: 12px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-2);
-  box-shadow: var(--dsw-elevation-prominent);
-  animation: modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  box-shadow: var(--nova-elevation-prominent);
+  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .panel:focus {
@@ -70,13 +70,13 @@
   font-size: 15px;
   line-height: 22px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .status {
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* The chain the host reported. It scrolls sideways instead of wrapping: a deep
@@ -110,9 +110,9 @@
   white-space: nowrap;
   padding: 2px 6px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-family: inherit;
   font-size: 12px;
   line-height: 18px;
@@ -120,11 +120,11 @@
 }
 
 .crumb:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .crumbCurrent {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-weight: 500;
   cursor: default;
 }
@@ -133,7 +133,7 @@
   display: inline-flex;
   align-items: center;
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .crumbSep svg {
@@ -157,14 +157,14 @@
   margin-left: auto;
   padding: 0;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: text;
 }
 
 .crumbEdit:hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .crumbEdit svg {
@@ -178,11 +178,11 @@
   width: 100%;
   min-width: 0;
   padding: 2px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-3);
-  color: var(--dsw-alias-label-primary);
-  font-family: var(--ds-font-family-code);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  color: var(--nova-text-primary);
+  font-family: var(--nova-font-mono);
   font-size: 12px;
   line-height: 18px;
 }
@@ -200,7 +200,7 @@
 
 .rootsLabel {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 12px;
   line-height: 18px;
 }
@@ -217,10 +217,10 @@
 .root {
   flex: none;
   padding: 2px 8px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-family: inherit;
   font-size: 12px;
   line-height: 18px;
@@ -228,21 +228,21 @@
 }
 
 .root:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .root[aria-current='true'] {
-  border-color: var(--dsw-alias-label-primary);
-  color: var(--dsw-alias-label-primary);
+  border-color: var(--nova-text-primary);
+  color: var(--nova-text-primary);
 }
 
 .error {
   flex: none;
   padding: 8px 10px;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-3);
-  color: var(--dsw-alias-state-error-primary);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  color: var(--nova-color-danger);
   font-size: 12px;
   line-height: 18px;
   overflow-wrap: anywhere;
@@ -256,8 +256,8 @@
   min-height: 120px;
   overflow-y: auto;
   padding: 4px;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-3);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
 }
 
 .row {
@@ -269,9 +269,9 @@
   min-height: 34px;
   padding: 0 8px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
@@ -280,14 +280,14 @@
 }
 
 .row:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .rowIcon {
   display: inline-flex;
   align-items: center;
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .rowIcon svg {
@@ -305,7 +305,7 @@
 .empty,
 .note {
   padding: 12px 8px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-size: 12px;
   line-height: 18px;
 }
@@ -318,9 +318,9 @@
   z-index: 1;
   flex: none;
   padding: 6px 8px;
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-secondary);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  color: var(--nova-text-secondary);
   font-size: 12px;
   line-height: 18px;
 }
@@ -332,7 +332,7 @@
 .empty[data-body-state='unavailable'] {
   margin: auto;
   padding: 24px 8px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   text-align: center;
 }
 
@@ -361,17 +361,17 @@
   height: 32px;
   box-sizing: border-box;
   padding: 0 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-3);
-  color: var(--dsw-alias-label-primary);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
 }
 
 .draftInput:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--nova-color-accent));
   outline-offset: 1px;
 }
 
@@ -381,9 +381,9 @@
   height: 32px;
   padding: 0 14px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
@@ -404,7 +404,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-size: 12px;
   line-height: 18px;
 }
@@ -422,7 +422,7 @@
   min-width: 72px;
   height: 32px;
   padding: 0 14px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
@@ -430,19 +430,19 @@
 }
 
 .secondary {
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--nova-border-strong);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .secondary:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .primary {
   border: none;
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
@@ -457,6 +457,6 @@
 
 .secondary:focus-visible,
 .primary:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--nova-color-accent));
   outline-offset: 2px;
 }

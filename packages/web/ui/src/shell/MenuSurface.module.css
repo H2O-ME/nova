@@ -12,7 +12,7 @@
 }
 
 .surface {
-  border-radius: var(--dsw-radius-lg);
+  border-radius: var(--nova-radius-lg);
   /* Contain the material's `z-index: -1`: without its own stacking context the
      layer would paint behind the card's own background instead of over it. */
   isolation: isolate;

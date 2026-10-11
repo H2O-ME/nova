@@ -6,7 +6,7 @@
  *
  * The copy button and the fold toggle are deliberately absent: the card body is
  * the scrollport (the approval reference caps it at
- * `--dsh-composer-text-max-height`), and the kernel already bounds a preview
+ * `--nova-composer-text-max-height`), and the kernel already bounds a preview
  * (`plugins/builtin/fs.ts` cuts it at 17 lines). Nothing here decides anything
  * — `preview-model.ts` classifies the lines, this file projects them.
  */

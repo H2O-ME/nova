@@ -5,8 +5,8 @@
  *
  * It lives here, once, because three settings sections drew their own pill and
  * all three had the same defect: the track's "on" fill was
- * `--dsw-alias-interactive-bg-active`, a 14% white overlay, while "off" was
- * `--dsw-alias-bg-module-platform`, a solid dark gray. In dark mode those two
+ * `--nova-interactive-active`, a 14% white overlay, while "off" was
+ * `--nova-surface-panel`, a solid dark gray. In dark mode those two
  * are nearly the same color, so a reader could not tell an enabled row from a
  * disabled one — the reported "按钮开关我都看不出是开还是关". Three copies meant
  * three chances to get it wrong; one component means the appearance cannot

@@ -3,7 +3,7 @@
    Classes for the row menus (rename/fork/archive), the session hover card, the
    drag insert markers, and the schedule indicator are not ported: this app's
    session list carries titles, times, and a selection, and nothing else. The
-   reference's `--dsh-workspace-indent` is dropped for the same reason — it
+   reference's `--nova-workspace-indent` is dropped for the same reason — it
    exists to express nested workspaces, which this list does not have, so the
    token would only ever resolve to its 0px fallback. */
 
@@ -12,20 +12,20 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   padding: 0 8px;
   cursor: pointer;
   user-select: none;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .projectRow:hover,
 .sessionRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .sessionRow.selected {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* Both rows are role=treeitem elements rather than buttons (the reference
@@ -33,7 +33,7 @@
    keyboard, which the reference leaves to its tree owner. */
 .projectRow:focus-visible,
 .sessionRow:focus-visible {
-  outline: 2px solid var(--dsw-alias-label-tertiary);
+  outline: 2px solid var(--nova-text-muted);
   outline-offset: -2px;
 }
 
@@ -50,7 +50,7 @@
   gap: 0;
   /* Mount fade: session rows appear by unfolding a group (or the list
      mounting). Stable row keys keep already-visible rows from replaying it. */
-  animation: row-in 150ms var(--ds-ease-in-out);
+  animation: row-in 150ms var(--nova-ease-inout);
 }
 
 .sessionRow .title {
@@ -68,13 +68,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The folder rides the business blue while the open group holds the current
    session (the reference's `containsCurrent` fact). */
 .folderActive {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 /* Project leading slot: folder by default, expand arrow on row hover. */
@@ -84,7 +84,7 @@
 
 /* Expand arrow (filled triangle): points right closed, rotates to point down open. */
 .arrow {
-  transition: transform 150ms var(--ds-ease-in-out);
+  transition: transform 150ms var(--nova-ease-inout);
 }
 
 .arrowOpen {
@@ -153,7 +153,7 @@
   flex: none;
   font-size: 10px;
   line-height: 16px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* Trailing action buttons surface on hover only (the reference's rule): the
@@ -190,15 +190,15 @@
   width: 16px;
   height: 16px;
   border: none;
-  border-radius: var(--dsw-radius-xs);
+  border-radius: var(--nova-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .iconButton:hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .actionIcon {
@@ -210,7 +210,7 @@
 /* Chevrons ride the caption ink; the folder glyph stays one step darker (the
    tertiary label ink) per the cell spec. */
 .chevron {
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
 }
 
 /* The tree glyphs are CSS-sized like every icon in this bundle: the folder

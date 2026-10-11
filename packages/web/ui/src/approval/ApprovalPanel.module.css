@@ -11,7 +11,7 @@
  *  - `.root` keeps the source's 8px/12px vertical insets but gives up its
  *    horizontal `clearance + 16px`: the dock seat already carries that
  *    clearance on a content-width + 32px track, and the card's own
- *    `--dsh-chat-content-width` cap keeps the reference's relation (the card
+ *    `--nova-chat-content-width` cap keeps the reference's relation (the card
  *    lands exactly 32px narrower than the composer capsule beside it).
  *  - `.actionRow` aligns its children to the end rather than stretching them,
  *    because this card's action row leads with a field that grows (the
@@ -30,13 +30,13 @@
   /* The two axis tokens are declared by the conversation root and the dock seat
      this card is rendered in; the fallbacks are the same values the composer's
      own card uses, so a card drawn outside that seat still has an axis. */
-  max-width: var(--dsh-chat-content-width, 100%);
+  max-width: var(--nova-chat-content-width, 100%);
   border: 1px solid var(--dsw-alias-state-warn-secondary);
-  border-radius: var(--dsw-radius-xl);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-input-major);
-  box-shadow: var(--dsw-shadow-lv2);
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  box-shadow: var(--nova-shadow-2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 /* The card-wide box sizing the question card declares (QuestionComposer): the
@@ -53,7 +53,7 @@
   gap: 8px;
   padding: 10px 16px;
   background: var(--dsw-alias-state-warn-tertiary);
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
   font-size: 13px;
   line-height: 18px;
 }
@@ -63,7 +63,7 @@
   height: 8px;
   border-radius: 50%;
   corner-shape: round;
-  background: var(--dsw-alias-state-warn-primary);
+  background: var(--nova-color-warn);
 }
 
 /* The permission kind as a chip on the warn band. The source sheet has no such
@@ -74,9 +74,9 @@
    "the surface's own blue" here. */
 .badge {
   padding: 0 4px;
-  border-radius: var(--dsw-radius-xs);
+  border-radius: var(--nova-radius-sm);
   background: var(--dsw-alias-state-business-tertiary);
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
   font-size: 11px;
   line-height: 18px;
   font-weight: 600;
@@ -87,7 +87,7 @@
   flex-direction: column;
   gap: 6px;
   box-sizing: border-box;
-  max-height: var(--dsh-composer-text-max-height, 336px);
+  max-height: var(--nova-composer-text-max-height, 336px);
   overflow-y: auto;
   padding: 12px 16px 0;
   /* The card is the elevated surface; its scroll region takes the l2 thumb pair
@@ -96,15 +96,15 @@
 }
 
 .headline {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-size: 15px;
   font-weight: 500;
   line-height: 24px;
 }
 
 .command {
-  color: var(--dsw-alias-label-tertiary);
-  font-family: var(--ds-font-family-code);
+  color: var(--nova-text-muted);
+  font-family: var(--nova-font-mono);
   font-size: 13px;
   line-height: 20px;
   word-break: break-all;
@@ -119,7 +119,7 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 13px;
   line-height: 20px;
 }
@@ -130,8 +130,8 @@
 
 .progress {
   padding: 0 4px;
-  color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-markdown-code);
+  color: var(--nova-text-secondary);
+  font: var(--nova-font-markdown-code);
   white-space: nowrap;
   /* Narrow the plain spaces around the slash without touching glyph tracking.
      Kept from the source readout: a word prefix reads the same way. */
@@ -150,17 +150,17 @@
   border-radius: 999px;
   corner-shape: round;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
 }
 
 .iconButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .iconButton:disabled {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
   cursor: default;
 }
 
@@ -199,7 +199,7 @@
   cursor: pointer;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: transparent;
   flex: none;
   transition: background-color 120ms ease;
@@ -213,7 +213,7 @@
 /* The affirmative answer: the reference's `variant="primary"` capsule. */
 .primary {
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
@@ -221,22 +221,22 @@
 }
 
 .ghost:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* Dialog Cancel (figma 451:18655): bordered capsule on transparent fill. */
 .outline {
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   background: transparent;
 }
 
 .outline:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .reject:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
+  background: var(--nova-interactive-hover-danger);
+  color: var(--nova-color-danger);
   border-color: transparent;
 }
 
@@ -246,9 +246,9 @@
    rides whatever the capsule's own tone is. */
 .kbd {
   padding: 0 5px;
-  border-radius: var(--dsw-radius-xs);
-  background: var(--dsw-alias-interactive-bg-hover);
-  font-family: var(--ds-font-family-code);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-interactive-hover);
+  font-family: var(--nova-font-mono);
   font-size: 11px;
   line-height: 18px;
   opacity: 0.7;
@@ -256,7 +256,7 @@
 
 @media (max-width: 720px) {
   .card {
-    border-radius: var(--dsw-radius-lg);
+    border-radius: var(--nova-radius-lg);
   }
 
   .actionRow {

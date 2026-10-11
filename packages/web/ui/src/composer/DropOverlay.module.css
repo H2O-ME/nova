@@ -35,7 +35,7 @@
   align-items: center;
   margin-top: -3%;
   padding: 0 40px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   text-align: center;
 }
 
@@ -55,11 +55,11 @@
 }
 
 .cardFront {
-  fill: var(--dsw-alias-state-business-primary);
+  fill: var(--nova-color-accent);
 }
 
 .arrow {
-  stroke: var(--dsw-alias-label-primary-foreground);
+  stroke: var(--nova-text-inverse);
   fill: none;
 }
 
@@ -74,6 +74,6 @@
   margin-top: 16px;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   white-space: pre-wrap;
 }

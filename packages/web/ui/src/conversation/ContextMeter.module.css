@@ -23,9 +23,9 @@
   flex: none;
   padding: 1px 8px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-family: inherit;
   font-size: var(--nova-content-font-size-secondary, 13px);
   font-variant-numeric: tabular-nums;
@@ -33,27 +33,27 @@
   white-space: nowrap;
   cursor: pointer;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .trigger:hover,
 .trigger[aria-expanded='true'] {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-secondary);
 }
 
 .trigger:focus-visible {
-  outline: 2px solid var(--dsw-alias-label-tertiary);
+  outline: 2px solid var(--nova-text-muted);
   outline-offset: -2px;
 }
 
 .track {
   fill: none;
-  stroke: var(--dsw-alias-border-l3);
+  stroke: var(--nova-border-strong);
   stroke-width: 2;
 }
 
@@ -62,7 +62,7 @@
    the dock row stays calm at every fill level. */
 .fill {
   fill: none;
-  stroke: var(--dsw-alias-label-tertiary);
+  stroke: var(--nova-text-muted);
   stroke-width: 2;
   stroke-linecap: round;
 }
@@ -77,14 +77,14 @@
   width: min(264px, calc(100vw - 24px));
   padding: 12px;
   border: 0;
-  border-radius: var(--dsw-radius-lg);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-menu);
   backdrop-filter: var(--dsw-menu-backdrop-filter);
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);
-  box-shadow: var(--dsw-elevation-prominent);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  box-shadow: var(--nova-elevation-prominent);
   font-size: 12px;
   line-height: 20px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: default;
 }
 
@@ -98,16 +98,16 @@
   margin-left: auto;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .percent {
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .headline {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The headline brackets the reading, so the side a locale leaves empty must
@@ -123,7 +123,7 @@
   height: 4px;
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
   overflow: hidden;
 }
 
@@ -132,5 +132,5 @@
   min-width: 2px;
   height: 100%;
   border-radius: 1px;
-  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+  background: var(--meter-tint, var(--nova-text-muted));
 }

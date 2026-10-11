@@ -26,18 +26,18 @@
   gap: 6px;
   height: 32px;
   padding: 0 4px 0 12px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--nova-border-subtle);
 }
 
 .title {
-  font: var(--dsw-font-xxs-strong-12);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xxs-strong-12);
+  color: var(--nova-text-secondary);
 }
 
 .count {
   flex: 1 1 auto;
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-xxxs-11);
+  color: var(--nova-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -70,13 +70,13 @@
    hover wash sits on the card so the trailing controls never escape it. */
 .rowLineLive {
   padding: 4px 8px 4px 2px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-2);
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .rowLineLive:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .rowLine .row {
@@ -99,25 +99,25 @@
   min-height: 28px;
   padding: 4px 7px;
   border: 0;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-size: 12px;
   line-height: 17px;
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .row:hover,
 .row:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* A settled row recedes in ink, not in opacity: its status word keeps the one
    colour that says "failed" or "cancelled". */
 .rowSettled {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* A row with nothing behind its chevron offers no interaction. */
@@ -156,9 +156,9 @@
 .kind {
   flex: none;
   padding: 0 5px;
-  border-radius: var(--dsw-radius-xs);
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-secondary);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-secondary);
   font-size: 10px;
   line-height: 16px;
 }
@@ -167,7 +167,7 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -178,7 +178,7 @@
   flex: none;
   max-width: 60%;
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 10px;
   line-height: 16px;
   white-space: nowrap;
@@ -187,7 +187,7 @@
 
 .duration {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 11px;
   line-height: 18px;
   font-variant-numeric: tabular-nums;
@@ -203,15 +203,15 @@
   justify-content: center;
   width: 20px;
   height: 20px;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-sunken);
 }
 
 .chevron {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
-  transition: transform 120ms var(--ds-ease-in-out);
+  color: var(--nova-text-muted);
+  transition: transform 120ms var(--nova-ease-inout);
 }
 
 .chevronOpen {
@@ -228,21 +228,21 @@
   width: 20px;
   height: 20px;
   padding: 0;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-secondary);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-sunken);
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-    border-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    border-color var(--nova-dur-base) var(--nova-ease-inout),
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .stop:hover,
 .stop:focus-visible {
-  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
-  color: var(--dsw-alias-state-error-primary);
+  border-color: color-mix(in srgb, var(--nova-color-danger) 45%, transparent);
+  color: var(--nova-color-danger);
 }
 
 .stop:disabled {
@@ -257,9 +257,9 @@
   gap: 4px;
   width: auto;
   padding: 0 7px;
-  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 45%, transparent);
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
+  border-color: color-mix(in srgb, var(--nova-color-danger) 45%, transparent);
+  background: var(--nova-interactive-hover-danger);
+  color: var(--nova-color-danger);
 }
 
 .stopLabel {
@@ -276,9 +276,9 @@
   gap: 3px;
   margin: 2px 8px 8px;
   padding: 6px 9px;
-  border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-layer-2);
+  border: 0.5px solid var(--nova-border-subtle);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
 }
 
 .metaRow {
@@ -290,7 +290,7 @@
 .metaKey {
   flex: none;
   min-width: 44px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 10px;
   line-height: 16px;
 }
@@ -299,8 +299,8 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--dsw-alias-label-secondary);
-  font-family: var(--ds-font-family-code);
+  color: var(--nova-text-secondary);
+  font-family: var(--nova-font-mono);
   font-size: 10px;
   line-height: 16px;
   white-space: nowrap;
@@ -322,12 +322,12 @@
 }
 
 .emptyTitle {
-  font: var(--dsw-font-xxs-strong-12);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xxs-strong-12);
+  color: var(--nova-text-secondary);
 }
 
 .emptyNote {
   max-width: 260px;
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-xxxs-11);
+  color: var(--nova-text-muted);
 }

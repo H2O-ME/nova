@@ -21,8 +21,8 @@
   /* The rail scrolls on the composer's elevated input surface: bind the l2
      pair (styles/scrollbar.css rebinding contract) so anything that does draw
      a thumb here matches the surface. */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .rail::-webkit-scrollbar {
@@ -46,24 +46,24 @@
   height: 24px;
   padding: 0;
   border: 0;
-  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2-darkmode-thin);
+  --nova-elevation-stroke-color: var(--nova-border-strong-darkmode-thin);
   border-radius: 999px;
   corner-shape: round;
   background: var(--dsw-specific-input-major);
-  color: var(--dsw-alias-label-secondary);
-  box-shadow: var(--dsw-elevation-panel);
+  color: var(--nova-text-secondary);
+  box-shadow: var(--nova-elevation-panel);
   cursor: pointer;
   transform: translateY(-50%);
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .arrow:hover {
-  background: var(--dsw-alias-interactive-bg-hover-solid);
+  background: var(--nova-interactive-hover-solid);
 }
 
 .arrowLeft {

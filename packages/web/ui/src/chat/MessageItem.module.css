@@ -26,8 +26,8 @@
   width: auto;
   height: auto;
   object-fit: contain;
-  border: 0.5px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsw-radius-xl);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-input-major);
 }
 
@@ -50,7 +50,7 @@
      resolves to the original 525px on the default column and widens with a
      dragged or adaptive column. The 748px fallback covers mounts outside the
      conversation column, where the axis variable is absent. */
-  max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%);
+  max-width: min(calc(var(--nova-chat-content-width, 748px) * 0.702), 82%);
 }
 .bubble {
   /* Figma's 525px cap held as a share of the width axis (525/748 ≈ 0.702) so
@@ -58,14 +58,14 @@
      keeps narrow windows sane. */
   max-width: 100%;
   background: var(--dsw-specific-bubble);
-  border-radius: var(--dsw-radius-xl);
+  border-radius: var(--nova-radius-lg);
   /* 42px single-line bubble at the default size: 22 line + 10 vertical
      padding each side; the Settings font-size preference moves size and line
      height together through the body-published axis. */
   padding: 10px 16px;
   font-size: var(--nova-content-font-size, 14px);
   line-height: calc(22px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   /* The projected user text is inline runs; the bubble owns wrapping so a
      decorated single-line message stays one line. */
   white-space: pre-wrap;
@@ -79,7 +79,7 @@
   /* The toggle's line, and the band a pinned toggle occupies. The button's
      height and the offset that holds a summary's code banner below that band
      are the same measurement, so both read it from here. */
-  --dsh-compaction-header-height: calc(24px + var(--nova-content-font-delta, 0px));
+  --nova-compaction-header-height: calc(24px + var(--nova-content-font-delta, 0px));
   padding: 2px 0;
 }
 
@@ -87,21 +87,21 @@
   display: flex;
   align-items: center;
   width: 100%;
-  height: var(--dsh-compaction-header-height);
+  height: var(--nova-compaction-header-height);
   min-width: 0;
   padding: 0;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   background: none;
   color: inherit;
   font: inherit;
   text-align: left;
   transition:
-      color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      border-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      opacity var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
-      box-shadow var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
+      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 /* The summary body flows uncapped with the page, so a long checkpoint summary
@@ -118,7 +118,7 @@
   top: 0;
   z-index: 7;
   border-radius: 0;
-  background: var(--dsw-alias-bg-base);
+  background: var(--nova-surface-base);
 }
 
 /* A fenced code block in the summary pins its banner at the scrollport top,
@@ -126,14 +126,14 @@
    banner's Copy control. Stop the banner below the toggle instead, on the same
    measurement the toggle's own height uses. */
 .compactionBody :has(> [data-code-block-banner]) {
-  top: var(--dsh-compaction-header-height);
+  top: var(--nova-compaction-header-height);
 }
 
 /* Pinned, the toggle needs an opaque hover fill: the default translucent hover
    token below would let the scrolling prose show through the moment the pointer
    lands on the toggle to collapse it. */
 .compactionRow:has(.compactionBody) .compactionButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover-solid);
+  background: var(--nova-interactive-hover-solid);
 }
 
 .compactionButton:not(:disabled) {
@@ -141,7 +141,7 @@
 }
 
 .compactionButton:not(:disabled):hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .compactionLeading {
@@ -151,7 +151,7 @@
   width: calc(16px + var(--nova-content-font-delta, 0px));
   height: calc(16px + var(--nova-content-font-delta, 0px));
   margin-right: 6px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 /* Same glyph-scaling rule as DisclosureRow's leading: the CSS edge overrides
@@ -188,7 +188,7 @@
   flex: none;
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-primary-dimmed);
+  color: var(--nova-text-primary-dimmed);
 }
 
 .compactionSep {
@@ -197,14 +197,14 @@
   height: 2px;
   margin: 0 8px;
   border-radius: 1px;
-  background: var(--dsw-alias-label-caption);
+  background: var(--nova-text-faint);
 }
 
 .compactionSummary {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   text-overflow: ellipsis;
@@ -214,7 +214,7 @@
 .compactionBody {
   /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
   padding: 4px 0 4px calc(22px + var(--nova-content-font-delta, 0px));
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
 }
@@ -228,7 +228,7 @@
   display: inline;
   max-width: 100%;
   margin: 0 2px;
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
   font-weight: 500;
   white-space: inherit;
   overflow-wrap: anywhere;

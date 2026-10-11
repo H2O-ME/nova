@@ -9,7 +9,7 @@
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
   margin: 4px 0 4px 4px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: var(--dsw-alias-markdown-code-block);
   border-radius: var(--dsl-search-radius);
 }
@@ -30,8 +30,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--dsw-font-xs-13);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xs-13);
+  color: var(--nova-text-secondary);
 }
 
 .copyButton {
@@ -40,14 +40,14 @@
   border: none;
   padding: 0;
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   cursor: pointer;
-  font: var(--dsw-font-xs-13);
+  font: var(--nova-font-xs-13);
 }
 
 .body {
   padding: 8px 14px 12px 0;
-  font: var(--dsw-font-markdown-code-block);
+  font: var(--nova-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -63,7 +63,7 @@
 /* The 1-based line number ahead of a grep match line, dimmed so the match text
    stays the salient content. */
 .lineNumber {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* A file group's header: a bold path label plus its match count, the whole row
@@ -85,13 +85,13 @@
 .filePath {
   min-width: 0;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   white-space: pre;
 }
 
 .fileCount {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .expand {
@@ -100,19 +100,19 @@
   padding: 0 14px;
   border: none;
   background-color: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+  transition: color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .expand:hover {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .empty {
   padding: 12px 14px;
-  font: var(--dsw-font-markdown-code-block);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-markdown-code-block);
+  color: var(--nova-text-muted);
 }

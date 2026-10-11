@@ -9,19 +9,19 @@
    mid-slide. */
 
 .root {
-  --dsh-sidebar-inline-padding: 12px;
+  --nova-sidebar-inline-padding: 12px;
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 6px var(--dsh-sidebar-inline-padding);
+  padding: 6px var(--nova-sidebar-inline-padding);
   box-sizing: border-box;
   background: var(--dsw-specific-sidebar-fill);
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-size: 14px;
   /* The sidebar is elevated above the conversation surface, so a revealed
      scrollbar uses the l2 pair. .quietBars hides it without changing layout. */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 /* Rail geometry (figma rail spec): 36x36 control boxes centered in the 56px
@@ -39,20 +39,20 @@
    (`scrollbar-gutter: stable` on the list) stays in force, so revealing the
    thumb never reflows a row. */
 .root.quietBars {
-  --dsh-scrollbar-thumb: transparent;
-  --dsh-scrollbar-thumb-hover: transparent;
+  --nova-scrollbar-thumb: transparent;
+  --nova-scrollbar-thumb-hover: transparent;
 }
 
 /* Collapse phase 1: the whole frozen-width content fades out in place over
    150ms; at settle the children unmount/snap to the rail layout. */
 .fading > * {
   opacity: 0;
-  transition: opacity 150ms var(--ds-ease-in-out);
+  transition: opacity 150ms var(--nova-ease-inout);
 }
 
 /* Wide-only content fades back in on expand remount. */
 .wide {
-  animation: wide-in 200ms var(--ds-ease-in-out);
+  animation: wide-in 200ms var(--nova-ease-inout);
 }
 
 @keyframes wide-in {
@@ -67,11 +67,11 @@
 .railIn .iconButton,
 .railIn .newSession,
 .railIn .regionArea {
-  animation: rail-in 150ms var(--ds-ease-in-out) backwards;
+  animation: rail-in 150ms var(--nova-ease-inout) backwards;
 }
 
 .railIn .footArea {
-  animation: rail-fade-in 150ms var(--ds-ease-in-out) backwards;
+  animation: rail-fade-in 150ms var(--nova-ease-inout) backwards;
 }
 
 @keyframes rail-in {
@@ -167,28 +167,28 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   padding: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .iconButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .collapsed .iconButton {
   width: 36px;
   height: 36px;
   /* Rail hovers share the panel rows' and New Session's 12px rounding. */
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
 }
 
 /* Rail icons ride the primary ink (figma rail spec); expanded keeps the
    secondary icon-button ink. */
 .collapsed .iconButton {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 /* An AUTO-collapse (the frame is narrower than the breakpoint) is not the
@@ -229,14 +229,14 @@
   padding: 8px 12px;
   margin: 0 2px 12px;
   box-sizing: border-box;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  /* The token, not its 12px value: the reference states `--dsw-radius-md` here,
+  border: 0.5px solid var(--nova-border-strong);
+  /* The token, not its 12px value: the reference states `--nova-radius-lg` here,
      and this button must round with every other 12px control if the scale ever
      moves. (`gap: 6px` above stays on this element because the reference splits
      it into a `.newSessionContent` wrapper — same 6px, one fewer element.) */
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-alias-button-elevated-fill);
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
@@ -260,7 +260,7 @@
 }
 
 .collapsed .newSession:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* The bar's glyph: 14px expanded, 18px in the rail (the reference's two
@@ -302,16 +302,16 @@
   margin: 0 2px 8px;
   box-sizing: border-box;
   border: none;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 14px;
   font-weight: 500;
   line-height: 22px;
   cursor: pointer;
   overflow: hidden;
-  transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
+  transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .pluginsEntry:hover {
@@ -365,7 +365,7 @@
   display: flex;
   flex-direction: column;
   margin-left: -4px;
-  margin-right: calc(-1 * var(--dsh-sidebar-inline-padding));
+  margin-right: calc(-1 * var(--nova-sidebar-inline-padding));
   padding-left: 4px;
   overflow: hidden;
 }

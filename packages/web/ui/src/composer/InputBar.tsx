@@ -4,7 +4,7 @@
  * surface's wire.
  *
  * Layout, in the harness's own order: a 22px-radius capsule with the soft
- * elevation stroke (`--dsw-elevation-soft`, stroke rebound to `border-l2`), the
+ * elevation stroke (`--nova-elevation-soft`, stroke rebound to `border-l2`), the
  * draft scrollport capped at 14 × 24px lines (`DraftSurface`), then one toolbar
  * row (`InputToolbar`) whose left group carries the `+` control (and, in the
  * hero, the access chip) and whose trailing group carries the model seat and

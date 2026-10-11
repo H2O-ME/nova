@@ -65,30 +65,30 @@
   max-width: 170px;
   height: 28px;
   padding: 0 10px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-size: 13px;
   line-height: 1;
   white-space: nowrap;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
   user-select: none;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .tab:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 /* The active chip is the filled tab, in the tag fill (dockkit `.tabActive`). */
 .tab[aria-selected='true'] {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: var(--dsw-alias-markdown-tag);
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -2px;
 }
 
@@ -140,17 +140,17 @@
   width: 20px;
   height: 20px;
   padding: 0;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   line-height: 1;
   background: transparent;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
   opacity: 0;
   /* Hidden means untouchable too: without this a press on the chip's trailing
      20px would close the tab instead of activating it. */
   pointer-events: none;
-  transition: opacity var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: opacity var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .tab:hover .tabClose,
@@ -161,12 +161,12 @@
 }
 
 .tabClose:hover {
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--nova-text-primary);
+  background: var(--nova-interactive-hover);
 }
 
 .tabClose:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 
@@ -191,7 +191,7 @@
   content: '';
   width: 0.5px;
   height: 14px;
-  background: var(--dsw-alias-border-l4);
+  background: var(--nova-border-strong);
 }
 
 .slotAfterActive::before,
@@ -209,24 +209,24 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   line-height: 1;
   background: transparent;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .plus:hover {
-  color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--nova-text-primary);
+  background: var(--nova-interactive-hover);
 }
 
 .plus:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 
@@ -257,15 +257,15 @@
   width: 28px;
   height: 28px;
   padding: 6px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   line-height: 1;
   background: transparent;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .iconButton svg {
@@ -274,11 +274,11 @@
 }
 
 .iconButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .iconButton:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }

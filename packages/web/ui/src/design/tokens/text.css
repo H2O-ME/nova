@@ -1,5 +1,5 @@
 /* Nova type scale and text colors — the family, size and weight axes live
- * apart (the ported `--dsw-font-*` tokens were `font:` SHORTHANDS
+ * apart (the ported `--nova-font-*` tokens were `font:` SHORTHANDS
  * (`16px/24px <family>`), and reusing one as a `font-size` is a silent bug;
  * Nova names the axes separately instead of aliasing them).
  *

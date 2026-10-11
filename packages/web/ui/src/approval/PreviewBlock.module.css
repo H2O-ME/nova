@@ -11,7 +11,7 @@
      consumer-owned property (`DiffBlock.module.css` declares no corner of its
      own), so the approval preview names the ladder rung instead of a literal
      and stays pixel-identical to the transcript's diff card. */
-  --dsl-diff-radius: var(--dsw-radius-md);
+  --dsl-diff-radius: var(--nova-radius-lg);
   --dsl-diff-line-height: 22px;
 
   position: relative;
@@ -19,7 +19,7 @@
   /* The source's own `.block { overflow: hidden }`, now load-bearing: a change
      row's wash reaches the block's edges, so the corner has to clip it. */
   overflow: hidden;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: var(--dsw-alias-markdown-code-block);
   border-radius: var(--dsl-diff-radius);
 }
@@ -30,7 +30,7 @@
      the way the transcript's diff draws them. Padding the scrollport instead
      would inset every band by 14px on each side. */
   padding: 12px 0;
-  font: var(--dsw-font-markdown-code-block);
+  font: var(--nova-font-markdown-code-block);
   overflow-x: auto;
   overflow-y: hidden;
 }
@@ -45,7 +45,7 @@
 
 /* A file header: the path in the primary tone, set apart by weight. */
 .path {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   font-weight: 600;
 }
 
@@ -53,7 +53,7 @@
    (`首行: …`) and its truncation markers. The source sheet's `.gap` tone, under
    a name that says what it is (this block has no second-hunk separators). */
 .dim {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The diff's own meaning-carrying colors: removed on the error token, added on
@@ -65,24 +65,24 @@
    strips the tool's own prefix before these rules re-add it. */
 .del::before {
   content: '- ';
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 .del {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
   background: var(--dsw-alias-code-diff-deleted);
-  box-shadow: inset 3px 0 0 var(--dsw-alias-state-error-primary);
+  box-shadow: inset 3px 0 0 var(--nova-color-danger);
 }
 
 .add::before {
   content: '+ ';
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .add {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
   background: var(--dsw-alias-code-diff-added);
-  box-shadow: inset 3px 0 0 var(--dsw-alias-state-success-primary);
+  box-shadow: inset 3px 0 0 var(--nova-color-success);
 }
 
 /* The change summary, dim under the body: `└ +A -R`, the same footer the
@@ -90,6 +90,6 @@
    covers exactly one path, named by the header row). */
 .footer {
   padding: 0 14px 12px;
-  font: var(--dsw-font-markdown-code-block);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-markdown-code-block);
+  color: var(--nova-text-muted);
 }

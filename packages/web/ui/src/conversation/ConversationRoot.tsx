@@ -9,9 +9,9 @@
  * Ownership: this file owns placement and measurement, never content. The
  * header, the hero block, the transcript and the composer arrive as slots.
  * Outward it publishes the three measurements floating chrome reads off the
- * column: `--dsh-conversation-column-width` (the width axis every child
- * measures against), `--dsh-composer-height` and
- * `--dsh-conversation-viewport-height` (both off the scroll body, which is
+ * column: `--nova-conversation-column-width` (the width axis every child
+ * measures against), `--nova-composer-height` and
+ * `--nova-conversation-viewport-height` (both off the scroll body, which is
  * also the scrollport the transcript finds via `[data-conversation-scroll]`).
  */
 import { useCallback, useRef, useState } from 'react';
@@ -97,7 +97,7 @@ function WidthHandle(props: {
   }, []);
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>): void => {
     const box = e.currentTarget.getBoundingClientRect();
-    e.currentTarget.style.setProperty('--dsh-width-handle-pointer-y', `${e.clientY - box.top}px`);
+    e.currentTarget.style.setProperty('--nova-width-handle-pointer-y', `${e.clientY - box.top}px`);
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
     latest.current = e.clientX;
     frame.current ??= requestAnimationFrame(() => {
@@ -170,9 +170,9 @@ export function ConversationRoot({
   composer,
 }: ConversationRootProps): JSX.Element {
   // Publishes the two live measurements floating View chrome reads off the
-  // scroll body: the seat's height as --dsh-composer-height, so controls clear
+  // scroll body: the seat's height as --nova-composer-height, so controls clear
   // the composer as it grows, and the scrollport's own height as
-  // --dsh-conversation-viewport-height, so a control can sit in the band the
+  // --nova-conversation-viewport-height, so a control can sit in the band the
   // seat leaves visible. Callback ref, not an effect; stable identity prevents
   // observer churn while the first blank session fills the resident body
   // outlet.
@@ -183,9 +183,9 @@ export function ConversationRoot({
     const scroller = seat?.parentElement ?? null;
     if (seat === null || scroller === null) return;
     seatObserver.current = new ResizeObserver(() => {
-      scroller.style.setProperty('--dsh-composer-height', `${seat.offsetHeight}px`);
+      scroller.style.setProperty('--nova-composer-height', `${seat.offsetHeight}px`);
       scroller.style.setProperty(
-        '--dsh-conversation-viewport-height',
+        '--nova-conversation-viewport-height',
         `${scroller.clientHeight}px`,
       );
     });
@@ -193,7 +193,7 @@ export function ConversationRoot({
     seatObserver.current.observe(scroller);
   }, []);
 
-  // Publishes the column's live width as --dsh-conversation-column-width so
+  // Publishes the column's live width as --nova-conversation-column-width so
   // the shared width axis can adapt (see the .root CSS), and re-clamps a
   // dragged preference against the shrunken column WITHOUT rewriting the
   // stored preference — widening the window restores it (the AppFrame
@@ -202,12 +202,12 @@ export function ConversationRoot({
   const rootObserver = useRef<ResizeObserver | null>(null);
   const publishWidths = useCallback((root: HTMLDivElement): void => {
     const column = root.offsetWidth;
-    root.style.setProperty('--dsh-conversation-column-width', `${column}px`);
+    root.style.setProperty('--nova-conversation-column-width', `${column}px`);
     const preference = readWidthPreference();
     if (preference === null) {
-      root.style.removeProperty('--dsh-chat-user-width');
+      root.style.removeProperty('--nova-chat-user-width');
     } else {
-      root.style.setProperty('--dsh-chat-user-width', `${resolveContentWidth(column, preference)}px`);
+      root.style.setProperty('--nova-chat-user-width', `${resolveContentWidth(column, preference)}px`);
     }
   }, []);
   const rootResizeRef = useCallback((root: HTMLDivElement | null): void => {
@@ -236,7 +236,7 @@ export function ConversationRoot({
   const onHandleDrag = useCallback((width: number): void => {
     const root = rootEl.current;
     if (root === null) return;
-    root.style.setProperty('--dsh-chat-user-width', `${resolveContentWidth(root.offsetWidth, width)}px`);
+    root.style.setProperty('--nova-chat-user-width', `${resolveContentWidth(root.offsetWidth, width)}px`);
   }, []);
   const onHandleCommit = useCallback((width: number): void => {
     const root = rootEl.current;

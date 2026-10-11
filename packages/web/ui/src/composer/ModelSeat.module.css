@@ -22,10 +22,10 @@
   padding: 0 4px 0 8px;
   border: none;
   /* Rounded chip chrome, matching the sibling permission trigger. */
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   outline: none;
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-size: 13px;
   line-height: 20px;
   /* Regular, not medium: the reference's Figma note reads "13/20 regular
@@ -39,15 +39,15 @@
    open (`ModelSelect`'s trigger is a button with a menu); the seat below
    neutralizes them. */
 .trigger:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .trigger:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--nova-color-accent));
 }
 
 .trigger:disabled {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
   cursor: default;
 }
 
@@ -69,7 +69,7 @@
 
 .chevron {
   flex: 0 0 auto;
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
   transition: transform 120ms ease;
 }
 

@@ -13,7 +13,7 @@
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .intro {
@@ -21,7 +21,7 @@
   padding-top: 4px;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* A refused operation: the plugin's own sentence, not a generic apology. It is
@@ -33,16 +33,16 @@
   gap: 4px;
   margin-top: 12px;
   padding: 10px 12px;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-alias-state-error-secondary);
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .failureReason {
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .guide {
@@ -51,8 +51,8 @@
   gap: 4px;
   margin: 8px 0 0;
   padding: 10px 12px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
 }
 
 /* The guide collapses: the summary is the only visible line until the operator
@@ -63,14 +63,14 @@
 }
 
 .guide summary::marker {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .guideTitle {
   font-size: 13px;
   line-height: 20px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .guideList {
@@ -78,7 +78,7 @@
   padding-left: 18px;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .status {
@@ -102,14 +102,14 @@
   margin: 0;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .statusValue {
   margin: 0;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .field {
@@ -122,20 +122,20 @@
 .label {
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .input {
   width: 100%;
   box-sizing: border-box;
   padding: 8px 10px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-sunken);
   font: inherit;
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .input:disabled {
@@ -146,7 +146,7 @@
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The page's commit row: the reference's `editorActions` — a plain row at the
@@ -166,32 +166,32 @@
   gap: 8px;
   margin: 16px -24px 0;
   padding: 12px 24px 16px;
-  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  border-top: 0.5px solid var(--nova-border-strong);
 }
 
 .actionSuccess,
 .actionFailure {
   margin-top: 12px;
   padding: 10px 12px;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   font-size: 13px;
   line-height: 20px;
 }
 
 .actionSuccess {
   background: var(--dsw-alias-state-success-secondary);
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .actionFailure {
   background: var(--dsw-alias-state-error-secondary);
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .primary,
 .plain {
   padding: 7px 14px;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   border: 1px solid transparent;
   font: inherit;
   font-size: 13px;
@@ -201,13 +201,13 @@
 
 .primary {
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .plain {
-  border-color: var(--dsw-alias-border-l3);
+  border-color: var(--nova-border-strong);
   background: transparent;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .primary:disabled,
@@ -220,7 +220,7 @@
   margin: 12px 0 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 /* The copy block: one value the operator takes away verbatim, in a mono box
@@ -232,15 +232,15 @@
   gap: 6px;
   margin-top: 12px;
   padding: 10px 12px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-module-platform);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
 }
 
 .copyLabel {
   font-size: 13px;
   line-height: 20px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .copyRow {
@@ -253,19 +253,19 @@
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-family: var(--ds-font-family-code);
+  font-family: var(--nova-font-mono);
   font-size: 13px;
   line-height: 20px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 /* A danger action reads as danger BEFORE it is armed: red border and label on
  * the plain fill, the same reading ProviderSection's row delete uses. */
 .danger {
-  border-color: var(--dsw-alias-state-error-primary);
-  color: var(--dsw-alias-state-error-primary);
+  border-color: var(--nova-color-danger);
+  color: var(--nova-color-danger);
 }
 
 .danger:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover-danger);
+  background: var(--nova-interactive-hover-danger);
 }

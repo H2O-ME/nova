@@ -1,0 +1,55 @@
+/* Nova typography recipes — `font:` SHORTHANDS (`12px/18px <family>`), not
+ * size tokens. The ported ladder proved why these are dangerous when mistaken
+ * for sizes (a shorthand resets weight/style and sets family), so they are
+ * named as what they are: whole type recipes for a specific role. Components
+ * that need a bare size read `--nova-text-size-*` instead.
+ *
+ * Sizes/line-heights follow the ported 0.875 markdown scale (body 16 → 14),
+ * rounded to whole pixels; the content font-size axis (`--nova-content-font-*`,
+ * user preference 12–17 written by the theme presenter) drives titles and
+ * secondary variants via the shared pixel delta so the reading column scales
+ * together. Re-deriving from a design tool must keep that scaling.
+ *
+ * Only recipes with a live consumer live here — the ported sheet carried
+ * several with none, and those died with the port layer. */
+
+:root {
+  /* --- UI ladder (whole-pixel, fixed) --- */
+  --nova-font-xxxs-11: 11px/14px var(--nova-font-family);
+  --nova-font-xxxs-strong-11: 500 11px/14px var(--nova-font-family);
+  --nova-font-xxs-12: 12px/18px var(--nova-font-family);
+  --nova-font-xxs-strong-12: 500 12px/18px var(--nova-font-family);
+  --nova-font-xs-13: 13px/20px var(--nova-font-family);
+  --nova-font-s-14: 14px/22px var(--nova-font-family);
+  --nova-font-s-strong-14: 500 14px/22px var(--nova-font-family);
+
+  /* --- Markdown ladder (tracks the content font-size axis) --- */
+  --nova-font-markdown-h1: 700 calc(21px + var(--nova-content-font-delta)) /
+    calc(30px + var(--nova-content-font-delta)) var(--nova-font-family);
+  --nova-font-markdown-h2: 700 calc(19px + var(--nova-content-font-delta)) /
+    calc(28px + var(--nova-content-font-delta)) var(--nova-font-family);
+  --nova-font-markdown-h3: 700 calc(18px + var(--nova-content-font-delta)) /
+    calc(26px + var(--nova-content-font-delta)) var(--nova-font-family);
+  --nova-font-markdown-h4: 600 var(--nova-content-font-size, 14px) /
+    calc(24px + var(--nova-content-font-delta)) var(--nova-font-family);
+  --nova-font-markdown-base: var(--nova-content-font-size, 14px) /
+    calc(24px + var(--nova-content-font-delta)) var(--nova-font-family);
+  --nova-font-markdown-base-strong: 600 var(--nova-content-font-size, 14px) /
+    calc(24px + var(--nova-content-font-delta)) var(--nova-font-family);
+  --nova-font-markdown-table: var(--nova-content-font-size-secondary, 13px) /
+    calc(22px + var(--nova-content-font-delta-secondary, 0px)) var(--nova-font-family);
+  --nova-font-markdown-table-head: 500 var(--nova-content-font-size-secondary, 13px) /
+    calc(22px + var(--nova-content-font-delta-secondary, 0px)) var(--nova-font-family);
+
+  /* Dense small text (tool rows, tables' siblings) stays fixed, does not track. */
+  --nova-font-markdown-small: 12px/20px var(--nova-font-family);
+  --nova-font-markdown-small-strong: 600 12px/20px var(--nova-font-family);
+  --nova-font-markdown-small-italic: italic 12px/20px var(--nova-font-family);
+  --nova-font-markdown-small-strong-italic: italic 600 12px/20px var(--nova-font-family);
+
+  /* --- Code --- */
+  --nova-font-markdown-code: 12px/19px var(--nova-font-mono);
+  --nova-font-markdown-code-block: 11px/19px var(--nova-font-mono);
+  /* Tool row expanded-card small code, added by hand in the port. */
+  --nova-font-markdown-code-block-small: 11px/16px var(--nova-font-mono);
+}

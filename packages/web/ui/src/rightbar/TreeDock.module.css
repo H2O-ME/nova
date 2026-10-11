@@ -23,7 +23,7 @@
   gap: 4px;
   height: 32px;
   padding: 0 4px 0 8px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--nova-border-subtle);
 }
 
 .search {
@@ -31,20 +31,20 @@
   min-width: 0;
   height: 24px;
   padding: 0 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--nova-border-subtle);
   border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-12);
+  background: var(--nova-surface-sunken);
+  color: var(--nova-text-primary);
+  font: var(--nova-font-xxs-12);
 }
 
 .search::placeholder {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .search:focus {
   outline: none;
-  border-color: var(--dsw-alias-border-l2);
+  border-color: var(--nova-border-strong);
 }
 
 .rows {
@@ -71,15 +71,15 @@
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-strong-12);
+  color: var(--nova-text-primary);
+  font: var(--nova-font-xxs-strong-12);
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--ds-transition-duration) var(--ds-ease-in-out);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .rootPick:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .rootName {
@@ -106,11 +106,11 @@
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-12);
+  color: var(--nova-text-primary);
+  font: var(--nova-font-xxs-12);
   text-align: left;
   cursor: pointer;
-  animation: dock-row-in 150ms var(--ds-ease-in-out);
+  animation: dock-row-in 150ms var(--nova-ease-inout);
 }
 
 @keyframes dock-row-in {
@@ -120,18 +120,18 @@
 }
 
 .row:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .row:focus-visible {
-  outline: 2px solid var(--dsw-alias-interactive-bg-hover-accent);
+  outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -2px;
 }
 
 /* Selected is not hover: the active fill PLUS a 2px accent bar, so a pick stays
    legible under the pointer that made it. */
 .row[data-picked] {
-  background: var(--dsw-alias-interactive-bg-active);
+  background: var(--nova-interactive-active);
 }
 
 .row[data-picked]::before {
@@ -142,12 +142,12 @@
   bottom: 4px;
   width: 2px;
   border-radius: 1px;
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--nova-color-accent);
 }
 
 /* The document on screen, when it is not also picked. */
 .row[data-current] .rowName {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 .chevron {
@@ -157,8 +157,8 @@
   flex: none;
   width: 14px;
   height: 14px;
-  color: var(--dsw-alias-label-tertiary);
-  transition: transform 140ms var(--ds-ease-in-out);
+  color: var(--nova-text-muted);
+  transition: transform 140ms var(--nova-ease-inout);
 }
 
 .chevron svg {
@@ -179,11 +179,11 @@
   display: inline-flex;
   align-items: center;
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
 }
 
 .rowIconDir {
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
 }
 
 .rowName {
@@ -194,34 +194,34 @@
 }
 
 .rowName[data-git-tone='changed'] {
-  color: var(--dsw-alias-state-warn-primary);
+  color: var(--nova-color-warn);
 }
 
 .rowName[data-git-tone='staged'] {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .rowName[data-git-tone='untracked'] {
-  color: var(--dsw-alias-state-success-primary);
+  color: var(--nova-color-success);
 }
 
 .rowName[data-git-tone='conflict'] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 /* A directory with changes under it is tinted, never lettered: git has no status
    for a folder, and a letter would be a claim it cannot make. */
 .rowName[data-dir-changed] {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
 }
 
 .hiddenMark {
   flex: none;
   padding: 0 4px;
   border-radius: 2px;
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-tertiary);
-  font: var(--dsw-font-xxxs-11);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-muted);
+  font: var(--nova-font-xxxs-11);
 }
 
 /* The row's verbs, revealed only when the row is hovered or focused — the
@@ -258,39 +258,39 @@
   height: 20px;
   min-width: 20px;
   padding: 0 6px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--nova-border-subtle);
   border-radius: 999px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-tertiary);
-  font: var(--dsw-font-xxxs-strong-11);
+  background: var(--nova-surface-raised);
+  color: var(--nova-text-muted);
+  font: var(--nova-font-xxxs-strong-11);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .refPill:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .copyPill {
   height: 20px;
   padding: 0 8px;
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: 1px solid var(--nova-border-subtle);
   border-radius: 999px;
-  background: var(--dsw-alias-bg-layer-2);
-  color: var(--dsw-alias-label-tertiary);
-  font: var(--dsw-font-xxxs-11);
+  background: var(--nova-surface-raised);
+  color: var(--nova-text-muted);
+  font: var(--nova-font-xxxs-11);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .copyPill:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 /* A level's own note (loading / empty / refused / truncated), indented to the
@@ -299,15 +299,15 @@
   padding-right: 8px;
   height: 24px;
   line-height: 24px;
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-tertiary);
+  font: var(--nova-font-xxxs-11);
+  color: var(--nova-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .note[data-tone='error'] {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
 }
 
 /* The in-place name box (rename / new entry). */
@@ -321,11 +321,11 @@
   width: 100%;
   height: 24px;
   padding: 0 6px;
-  border: 1px solid var(--dsw-alias-state-business-primary);
+  border: 1px solid var(--nova-color-accent);
   border-radius: 3px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-primary);
-  font: var(--dsw-font-xxs-12);
+  background: var(--nova-surface-sunken);
+  color: var(--nova-text-primary);
+  font: var(--nova-font-xxs-12);
 }
 
 .inlineInput:focus {
@@ -342,14 +342,14 @@
   margin: 0 6px 6px;
   padding: 4px 6px;
   border-radius: 4px;
-  background: var(--dsw-alias-bg-layer-2);
+  background: var(--nova-surface-raised);
 }
 
 .batchCount {
   flex: 1 1 auto;
   min-width: 0;
-  font: var(--dsw-font-xxxs-11);
-  color: var(--dsw-alias-label-secondary);
+  font: var(--nova-font-xxxs-11);
+  color: var(--nova-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -357,20 +357,20 @@
   flex: none;
   height: 22px;
   padding: 0 8px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: 1px solid var(--nova-border-strong);
   border-radius: 999px;
   background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  font: var(--dsw-font-xxxs-11);
+  color: var(--nova-text-secondary);
+  font: var(--nova-font-xxxs-11);
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .batchVerb:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {

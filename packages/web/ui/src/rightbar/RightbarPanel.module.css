@@ -28,14 +28,14 @@
   flex-direction: column;
   min-width: 0;
   box-sizing: border-box;
-  background: var(--dsw-alias-bg-base);
-  border-left: 0.5px solid var(--dsw-alias-border-l4);
+  background: var(--nova-surface-base);
+  border-left: 0.5px solid var(--nova-border-strong);
   /* No elevation: a docked column is flat page furniture; the reference gives
      its shadow to floating panes only, and this frontend has none in the
      column. A docked panel carrying one reads as a card over the conversation. */
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
-  animation: rightbar-in var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  animation: rightbar-in var(--nova-dur-slow) var(--nova-ease-inout);
 }
 
 @keyframes rightbar-in {
@@ -101,21 +101,21 @@
   width: 28px;
   height: 28px;
   padding: 6px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   line-height: 1;
   background: transparent;
   border: none;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--nova-radius-lg);
   corner-shape: round;
   cursor: pointer;
   transition:
-    background-color var(--ds-transition-duration) var(--ds-ease-in-out),
-    color var(--ds-transition-duration) var(--ds-ease-in-out);
+    background-color var(--nova-dur-base) var(--nova-ease-inout),
+    color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .openButton:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {

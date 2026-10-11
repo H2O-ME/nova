@@ -25,12 +25,12 @@ const FONT_VAR = '--nova-content-font-size';
 
 describe('severityForUsage', () => {
   it('climbs the ladder business → warn → error and never returns a literal', () => {
-    expect(severityForUsage(0)).toBe('var(--dsw-alias-state-business-primary)');
-    expect(severityForUsage(0.69)).toBe('var(--dsw-alias-state-business-primary)');
-    expect(severityForUsage(0.7)).toBe('var(--dsw-alias-state-warn-primary)');
-    expect(severityForUsage(0.89)).toBe('var(--dsw-alias-state-warn-primary)');
-    expect(severityForUsage(0.9)).toBe('var(--dsw-alias-state-error-primary)');
-    expect(severityForUsage(1)).toBe('var(--dsw-alias-state-error-primary)');
+    expect(severityForUsage(0)).toBe('var(--nova-color-accent)');
+    expect(severityForUsage(0.69)).toBe('var(--nova-color-accent)');
+    expect(severityForUsage(0.7)).toBe('var(--nova-color-warn)');
+    expect(severityForUsage(0.89)).toBe('var(--nova-color-warn)');
+    expect(severityForUsage(0.9)).toBe('var(--nova-color-danger)');
+    expect(severityForUsage(1)).toBe('var(--nova-color-danger)');
   });
 });
 

@@ -66,9 +66,9 @@ describe('tasks page', () => {
     expect(tasksTsx).toContain("import { StateDot } from '../tool/StateDot.js';");
     expect(tasksTsx).toContain('<StateDot state={jobDot(job.status)} />');
     expect(dotTsx).toContain("'done' | 'warning' | 'ongoing' | 'error' | 'idle'");
-    expect(dotCss).toMatch(/\.dot\[data-state='done'\][^{]*\{[^}]*state-success-primary/);
-    expect(dotCss).toMatch(/\.dot\[data-state='error'\][^{]*\{[^}]*state-error-primary/);
-    expect(dotCss).toMatch(/\.dot\[data-state='warning'\][^{]*\{[^}]*state-warn-primary/);
+    expect(dotCss).toMatch(/\.dot\[data-state='done'\][^{]*\{[^}]*nova-color-success/);
+    expect(dotCss).toMatch(/\.dot\[data-state='error'\][^{]*\{[^}]*nova-color-danger/);
+    expect(dotCss).toMatch(/\.dot\[data-state='warning'\][^{]*\{[^}]*nova-color-warn/);
   });
 
   it('keeps the stop out of the row and the confirm inside it', () => {
@@ -77,8 +77,8 @@ describe('tasks page', () => {
     // confirmation nobody can read without hovering is not a confirmation.
     expect(tasksTsx).toContain("job.status === 'running' &&");
     expect(tasksTsx).toContain('phase === \'armed\' && <span className={css.stopLabel}>');
-    expect(tasksCss).toMatch(/\.stopArmed,[\s\S]*?background: var\(--dsw-alias-interactive-bg-hover-danger\);/);
-    expect(tasksCss).toMatch(/\.stopArmed,[\s\S]*?color: var\(--dsw-alias-state-error-primary\);/);
+    expect(tasksCss).toMatch(/\.stopArmed,[\s\S]*?background: var\(--nova-interactive-hover-danger\);/);
+    expect(tasksCss).toMatch(/\.stopArmed,[\s\S]*?color: var\(--nova-color-danger\);/);
   });
 
   it('answers the empty state with one card, not stacked notices', () => {

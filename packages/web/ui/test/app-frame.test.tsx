@@ -54,14 +54,14 @@ describe('AppFrame track easing', () => {
     // change animate, and the centre column visibly chases the window edge.
     expect(rule('.frame')).not.toContain('transition');
     expect(rule('.frame[data-animating]'))
-      .toContain('transition: grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out)');
+      .toContain('transition: grid-template-columns var(--nova-dur-slow) var(--nova-ease-inout)');
     expect(rule('.frame[data-dragging]')).toContain('transition: none');
   });
 
   it('keeps the handle on the same gate', () => {
     expect(rule('.handle')).not.toContain('transition');
     expect(rule('.frame[data-animating] .handle'))
-      .toContain('transition: left var(--ds-transition-duration-slow) var(--ds-ease-in-out)');
+      .toContain('transition: left var(--nova-dur-slow) var(--nova-ease-inout)');
     expect(rule('.frame[data-dragging] .handle')).toContain('transition: none');
   });
 

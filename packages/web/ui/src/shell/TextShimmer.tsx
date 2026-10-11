@@ -35,7 +35,7 @@ export interface TextShimmerProps {
  */
 export const TextShimmer = memo(function TextShimmer({ children, active, className }: TextShimmerProps): JSX.Element {
   const style = useMemo(
-    () => ({ '--dsh-text-shimmer-spread': `${children.length * 8}px` }) as CSSProperties,
+    () => ({ '--nova-text-shimmer-spread': `${children.length * 8}px` }) as CSSProperties,
     [children.length],
   );
   return (

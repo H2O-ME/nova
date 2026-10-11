@@ -13,9 +13,9 @@
   height: calc(33px + var(--nova-content-font-delta, 0px));
   padding: 0 0 8px;
   border: none;
-  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+  border-bottom: 0.5px solid var(--nova-border-strong);
   background: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
   text-align: left;
   transition: color 100ms ease;
@@ -26,7 +26,7 @@
 }
 
 .root:not(:disabled):hover {
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
 }
 
 .root:not([data-open]) {
@@ -38,7 +38,7 @@
   width: 14px;
   height: 14px;
   margin-left: 4px;
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
   transition: transform 100ms ease;
 }
 

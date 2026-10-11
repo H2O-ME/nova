@@ -30,18 +30,18 @@
      card uses, so a card drawn outside that seat still has an axis. The cap
      keeps the reference's relation: the card lands 32px narrower than the
      composer capsule beside it (dsh QuestionComposer `.card`). */
-  max-width: var(--dsh-chat-content-width, 100%);
+  max-width: var(--nova-chat-content-width, 100%);
   /* Composer seat sits in a fixed-height conversation column (overflow hidden):
      cap the card against the viewport and scroll the option list so header and
      footer actions stay reachable on long batches. */
   max-height: min(60vh, 520px);
   padding: 0 0 10px;
   border: 0;
-  border-radius: var(--dsw-radius-xl);
+  border-radius: var(--nova-radius-lg);
   background: var(--dsw-specific-input-major);
-  box-shadow: var(--dsw-shadow-lv2);
-  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  box-shadow: var(--nova-shadow-2);
+  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 .card,
@@ -76,7 +76,7 @@
 .eyebrow {
   /* Eyebrow-to-title gap widened from the figma 2px (user-tuned). */
   margin-bottom: 5px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 11px;
   line-height: 16px;
 }
@@ -106,17 +106,17 @@
   border-radius: 999px;
   corner-shape: round;
   background: transparent;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   cursor: pointer;
 }
 
 .iconButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .iconButton:disabled {
-  color: var(--dsw-alias-label-dimmed);
+  color: var(--nova-text-disabled);
   cursor: default;
 }
 
@@ -144,9 +144,9 @@
   max-height: 240px;
   overflow: auto;
   padding: 8px 12px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-bg-module-platform);
-  color: var(--dsw-alias-label-secondary);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
+  color: var(--nova-text-secondary);
   font-size: 13px;
   line-height: 20px;
 }
@@ -179,7 +179,7 @@
   flex-shrink: 0;
   padding: 8px 12px 8px 8px;
   border: 1px solid transparent;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -189,11 +189,11 @@
 
 .option:hover:not(:disabled),
 .optionSelected {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .optionSelected {
-  border-color: var(--dsw-alias-border-l2);
+  border-color: var(--nova-border-strong);
 }
 
 .option:disabled {
@@ -212,9 +212,9 @@
   /* (24px first-line box − 20px indicator) / 2: centers the indicator against
      the first text line under the row's flex-start alignment. */
   margin-top: 2px;
-  border-radius: var(--dsw-radius-xs);
-  background: var(--dsw-alias-bg-overlay);
-  color: var(--dsw-alias-label-secondary);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-overlay);
+  color: var(--nova-text-secondary);
   font-size: 12px;
   font-weight: 500;
   line-height: 18px;
@@ -242,8 +242,8 @@
   grid-area: 1 / 1;
   width: 14px;
   height: 14px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-xs);
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-sm);
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 
@@ -256,12 +256,12 @@
 }
 
 .checkboxChecked {
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .checkboxChecked::before {
-  border-color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-label-primary);
+  border-color: var(--nova-text-primary);
+  background: var(--nova-text-primary);
 }
 
 .optionCopy {
@@ -285,16 +285,16 @@
 
 .badge {
   padding: 0 4px;
-  border-radius: var(--dsw-radius-xs);
+  border-radius: var(--nova-radius-sm);
   background: var(--dsw-alias-state-business-tertiary);
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-color-accent);
   font-size: 11px;
   line-height: 18px;
   font-weight: 600;
 }
 
 .description {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--nova-text-muted);
   font-size: 14px;
   line-height: 24px;
   font-weight: 400;
@@ -311,19 +311,19 @@
   flex-shrink: 0;
   padding: 8px 12px 8px 8px;
   border: 1px solid transparent;
-  border-radius: var(--dsw-radius-md);
+  border-radius: var(--nova-radius-lg);
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 
 .customRow:hover,
 .customRow:focus-within,
 .customRowActive {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 .customRow:focus-within,
 .customRowActive {
-  border-color: var(--dsw-alias-border-l2);
+  border-color: var(--nova-border-strong);
 }
 
 /* Auto-growing free-text answer: mirror and textarea share one grid cell, the
@@ -333,13 +333,13 @@
 .field {
   display: grid;
   min-width: 0;
-  --dsh-answer-field-padding: 0;
+  --nova-answer-field-padding: 0;
 }
 
 .field > * {
   grid-area: 1 / 1;
   min-width: 0;
-  padding: var(--dsh-answer-field-padding);
+  padding: var(--nova-answer-field-padding);
   font: inherit;
   font-size: 14px;
   line-height: 24px;
@@ -363,12 +363,12 @@
   border: none;
   outline: none;
   background: transparent;
-  color: var(--dsw-alias-label-primary);
-  caret-color: var(--dsw-alias-state-business-primary);
+  color: var(--nova-text-primary);
+  caret-color: var(--nova-color-accent);
 }
 
 .fieldInput::placeholder {
-  color: var(--dsw-alias-label-caption);
+  color: var(--nova-text-faint);
 }
 
 /* Inline variant: the custom row's copy column, borrowing the row's chrome. */
@@ -383,14 +383,14 @@
   min-height: 64px;
   flex-shrink: 0;
   margin: 0 12px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-lg);
-  background: var(--dsw-alias-bg-module-platform);
-  --dsh-answer-field-padding: 8px 12px;
+  border: 0.5px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-panel);
+  --nova-answer-field-padding: 8px 12px;
 }
 
 .customBlock:focus-within {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--nova-color-accent);
 }
 
 .footer {
@@ -412,7 +412,7 @@
 
 .progress {
   padding: 0 4px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--nova-text-secondary);
   font-size: 14px;
   line-height: 24px;
   font-weight: 500;
@@ -423,7 +423,7 @@
 .feedback {
   flex: 1;
   min-height: 16px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--nova-color-danger);
   font-size: 11px;
   line-height: 16px;
   text-align: right;
@@ -448,7 +448,7 @@
   cursor: pointer;
   font-size: 14px;
   line-height: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--nova-text-primary);
   background: transparent;
   flex: none;
   transition: background-color 120ms ease;
@@ -461,7 +461,7 @@
 
 .primary {
   background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
@@ -469,17 +469,17 @@
 }
 
 .outline {
-  border: 0.5px solid var(--dsw-alias-border-l3);
+  border: 0.5px solid var(--nova-border-strong);
   background: transparent;
 }
 
 .outline:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--nova-interactive-hover);
 }
 
 @media (max-width: 720px) {
   .card {
-    border-radius: var(--dsw-radius-lg);
+    border-radius: var(--nova-radius-lg);
   }
 
   .header {

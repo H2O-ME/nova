@@ -2,7 +2,7 @@
  * The draft's height contract: the cap the harness draws (14 lines × 24px =
  * 336px) and the height the auto-grow writes back. Two things this pins:
  * the cap is the scrollport's single value (the sheet's
- * `--dsh-composer-text-max-height` — the surface itself is NOT clamped, or a
+ * `--nova-composer-text-max-height` — the surface itself is NOT clamped, or a
  * long draft would be clipped instead of scrolled), and a measurement that is
  * not a number never reaches the inline style (a literal `NaN` leaves the
  * previous draft's height in place instead of collapsing the box).
