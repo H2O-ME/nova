@@ -23,7 +23,7 @@
      fall outside the card into a container that clips it. */
   padding-left: var(--dsl-terminal-gutter);
   color: var(--nova-text-primary);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--nova-surface-code);
   border-radius: var(--dsl-terminal-radius);
   /* Clip the banner to the card's own radius: when a consumer adds a border, the
      banner's equal corner radius no longer nests inside it. */
@@ -145,7 +145,7 @@
   top: 0;
   /* Card surface, not transparent: the control is sticky over the banner's own
      scroll, so scrolled command text must not bleed through it. */
-  background-color: var(--dsw-alias-markdown-code-block);
+  background-color: var(--nova-surface-code);
   border: none;
   padding: 0;
   margin: 0;

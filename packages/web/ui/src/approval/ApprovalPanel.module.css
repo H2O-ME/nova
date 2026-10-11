@@ -31,12 +31,12 @@
      this card is rendered in; the fallbacks are the same values the composer's
      own card uses, so a card drawn outside that seat still has an axis. */
   max-width: var(--nova-chat-content-width, 100%);
-  border: 1px solid var(--dsw-alias-state-warn-secondary);
+  border: 1px solid var(--nova-color-warn);
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-input-major);
+  background: var(--nova-surface-raised);
   box-shadow: var(--nova-shadow-2);
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 /* The card-wide box sizing the question card declares (QuestionComposer): the
@@ -52,7 +52,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: var(--dsw-alias-state-warn-tertiary);
+  background: var(--nova-color-warn-soft);
   color: var(--nova-color-warn);
   font-size: 13px;
   line-height: 18px;
@@ -75,7 +75,7 @@
 .badge {
   padding: 0 4px;
   border-radius: var(--nova-radius-sm);
-  background: var(--dsw-alias-state-business-tertiary);
+  background: var(--nova-color-accent-soft);
   color: var(--nova-color-accent);
   font-size: 11px;
   line-height: 18px;
@@ -212,12 +212,12 @@
 
 /* The affirmative answer: the reference's `variant="primary"` capsule. */
 .primary {
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
+  background: var(--nova-color-ink-hover);
 }
 
 .ghost:hover:not(:disabled) {

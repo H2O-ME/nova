@@ -22,7 +22,7 @@
   overflow: hidden;
   padding: 4px;
   /* The material is the shared `shell/MenuSurface` layer — the theme-owned
-     `--dsw-menu-surface-fill` + `--dsw-menu-backdrop-filter`, exactly what the
+     `--nova-surface-menu` + `--nova-material-menu-backdrop`, exactly what the
      reference's `MenuSurface` paints and what `docs/web-styling.md` makes the
      one legal way for a dropdown to get its fill. This sheet supplies geometry,
      elevation and ink only; it never redeclares either token. */
@@ -35,8 +35,8 @@
      Declared here rather than on the scrolling `.groups` child so the elevation
      choice sits with the surface; the custom properties inherit down to
      whichever descendant actually scrolls. */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 .status,
@@ -88,9 +88,9 @@
   padding: 4px 7px 2px;
   /* The sticky heading covers rows scrolling under it, so it needs the
      overlay fill rather than the card's own transparent background: the
-     reference's ModelSelect does the same (`--dsw-specific-menu`, the
+     reference's ModelSelect does the same (`--nova-surface-menu`, the
      near-opaque macOS variant of the menu fill). */
-  background: var(--dsw-specific-menu);
+  background: var(--nova-surface-menu);
   color: var(--nova-text-muted);
   font-size: 11px;
   line-height: 16px;

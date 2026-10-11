@@ -212,7 +212,7 @@
   border-radius: 100px;
   corner-shape: round;
   color: var(--nova-text-primary);
-  background: var(--dsw-alias-button-floating-fill);
+  background: var(--nova-surface-base);
   box-shadow: var(--nova-elevation-panel);
   cursor: pointer;
   pointer-events: auto;
@@ -225,7 +225,7 @@
 }
 
 .toBottom:hover {
-  background: var(--dsw-alias-button-floating-hover);
+  background: var(--nova-surface-panel);
 }
 
 /* This repo's glyphs carry no size attributes (the house rule: CSS sizes

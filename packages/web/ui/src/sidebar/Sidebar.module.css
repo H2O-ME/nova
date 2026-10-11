@@ -15,13 +15,13 @@
   height: 100%;
   padding: 6px var(--nova-sidebar-inline-padding);
   box-sizing: border-box;
-  background: var(--dsw-specific-sidebar-fill);
+  background: var(--nova-surface-sunken);
   color: var(--nova-text-primary);
   font-size: 14px;
   /* The sidebar is elevated above the conversation surface, so a revealed
      scrollbar uses the l2 pair. .quietBars hides it without changing layout. */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 /* Rail geometry (figma rail spec): 36x36 control boxes centered in the 56px
@@ -197,8 +197,8 @@
    disappearing" was a rail whose only control said nothing about why it was
    there. */
 .collapsed .iconButton[data-auto-collapsed] {
-  background: var(--dsw-specific-sidebar-nav-item-active);
-  color: var(--dsw-alias-brand-primary);
+  background: var(--nova-interactive-hover-strong);
+  color: var(--nova-color-ink);
 }
 
 /* The toggle's own glyph: 16px expanded, 18px in the rail (figma rail spec
@@ -235,7 +235,7 @@
      moves. (`gap: 6px` above stays on this element because the reference splits
      it into a `.newSessionContent` wrapper — same 6px, one fewer element.) */
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-alias-button-elevated-fill);
+  background: var(--nova-surface-base);
   color: var(--nova-text-primary);
   font-size: 14px;
   font-weight: 500;
@@ -245,7 +245,7 @@
 }
 
 .newSession:hover {
-  background: var(--dsw-alias-button-floating-hover);
+  background: var(--nova-surface-panel);
 }
 
 .collapsed .newSession {
@@ -315,12 +315,12 @@
 }
 
 .pluginsEntry:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--nova-surface-panel);
 }
 
 .pluginsEntryActive,
 .pluginsEntryActive:hover {
-  background: var(--dsw-specific-sidebar-nav-item-active);
+  background: var(--nova-interactive-hover-strong);
 }
 
 .collapsed .pluginsEntry {

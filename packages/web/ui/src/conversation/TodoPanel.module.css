@@ -37,13 +37,13 @@
   border: 0;
   --nova-elevation-stroke-color: var(--nova-border-subtle);
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-menu);
-  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  background: var(--nova-surface-menu);
+  backdrop-filter: var(--nova-material-menu-backdrop);
   box-shadow: var(--nova-elevation-panel);
   /* The menu surface and the scrolling `.list` use the l2 scrollbar colors.
      Declared here because the custom properties inherit into `.list`. */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 /* The card's own inset: 6px vertical is what makes the collapsed card 36px

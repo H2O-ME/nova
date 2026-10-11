@@ -37,12 +37,12 @@ const CATEGORY_LABEL: Record<ContextCategory, string> = {
  * declared can only follow a name it can read.
  */
 export const CATEGORY_COLOR: Record<ContextCategory, string> = {
-  system: 'var(--dsw-static-indigo-500)',
-  tools: 'var(--dsw-static-amber-500)',
-  injected: 'var(--dsw-static-purple-500)',
-  user: 'var(--dsw-static-green-500)',
-  assistant: 'var(--dsw-static-blue-500)',
-  tool: 'var(--dsw-static-teal-500)',
+  system: 'var(--nova-color-chart-indigo)',
+  tools: 'var(--nova-color-warn)',
+  injected: 'var(--nova-color-chart-purple)',
+  user: 'var(--nova-color-success)',
+  assistant: 'var(--nova-color-accent)',
+  tool: 'var(--nova-color-chart-teal)',
 };
 
 /** A category's drawn label (the legend, the chips, the stack's tooltips). */

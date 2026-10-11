@@ -42,16 +42,16 @@
 }
 
 .warning {
-  background: var(--dsw-alias-state-warn-tertiary);
-  color: var(--dsw-alias-state-warn-label);
-  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-label) 20%, transparent);
+  background: var(--nova-color-warn-soft);
+  color: var(--nova-color-warn);
+  border-color: color-mix(in srgb, var(--nova-color-warn) 20%, transparent);
   cursor: pointer;
 }
 
 .warning:hover {
   background: color-mix(
     in srgb,
-    var(--dsw-alias-state-warn-tertiary),
+    var(--nova-color-warn-soft),
     var(--nova-color-warn) 6%
   );
 }
@@ -59,18 +59,18 @@
 .warning:active {
   background: color-mix(
     in srgb,
-    var(--dsw-alias-state-warn-tertiary),
+    var(--nova-color-warn-soft),
     var(--nova-color-warn) 10%
   );
 }
 
 .warning:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--nova-color-accent));
+  outline: var(--nova-focus-ring-width) solid var(--nova-focus-ring-color, var(--nova-color-accent));
   outline-offset: 2px;
 }
 
 .success {
-  background: var(--dsw-alias-state-success-tertiary);
+  background: var(--nova-color-success-soft);
   color: var(--nova-color-success);
   /* The success ring mirrors the warning ring's construction: the same 20%
      tint of the state color over the transparent 1px border the base rule

@@ -92,7 +92,7 @@
 }
 
 .markdown a:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--nova-color-accent));
+  box-shadow: 0 0 0 2px var(--nova-focus-ring-color, var(--nova-color-accent));
 }
 
 /* Leading link-category glyph inside anchors and URL-promoted inline code:
@@ -176,7 +176,7 @@
   font: var(--nova-font-markdown-code);
   font-family: var(--nova-font-mono);
   font-size: 0.875em !important;
-  background-color: var(--dsw-alias-markdown-inline-code);
+  background-color: var(--nova-surface-code);
   border: 0.5px solid var(--nova-border-subtle);
   border-radius: var(--nova-radius-lg);
   padding: 0 5px;
@@ -222,7 +222,7 @@
    the sheet's link focus color. */
 .tableScroll:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--nova-color-accent));
+  box-shadow: 0 0 0 2px var(--nova-focus-ring-color, var(--nova-color-accent));
 }
 
 /* Many-column tables (the renderer's `md-table-wide` hook) keep their

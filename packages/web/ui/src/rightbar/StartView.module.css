@@ -37,7 +37,7 @@
 .hero {
   display: flex;
   margin-bottom: 16px;
-  color: var(--dsw-static-neutral-200);
+  color: var(--nova-text-disabled);
 }
 
 /* The glyph rides currentColor; its design box is 16, drawn at the
@@ -48,7 +48,7 @@
 }
 
 :global(body[data-nova-dark]) .hero {
-  color: var(--dsw-static-neutral-700);
+  color: var(--nova-text-disabled);
 }
 
 /* A filled pill, 380px wide, its icon and text anchored at the left inset;

@@ -105,7 +105,7 @@
 }
 
 .groupHead:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--nova-surface-panel);
   color: var(--nova-text-secondary);
 }
 
@@ -182,7 +182,7 @@
 }
 
 .plugin:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--nova-surface-panel);
 }
 
 /* The disclosure control: everything left of the switch, as one button. */

@@ -15,7 +15,7 @@
   overflow: hidden;
   border: 0.5px solid var(--nova-border-strong-darkmode-thin);
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-input-major);
+  background: var(--nova-surface-raised);
   box-sizing: border-box;
 }
 
@@ -71,7 +71,7 @@
   border: none;
   border-radius: 50%;
   corner-shape: round;
-  background: var(--dsw-alias-button-contrast-fill);
+  background: var(--nova-color-ink-hover);
   color: var(--nova-text-inverse);
   opacity: 0;
   cursor: pointer;

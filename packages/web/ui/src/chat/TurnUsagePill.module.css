@@ -97,8 +97,8 @@
   padding: 16px;
   border: 0;
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-menu);
-  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  background: var(--nova-surface-menu);
+  backdrop-filter: var(--nova-material-menu-backdrop);
   --nova-elevation-stroke-color: var(--nova-border-subtle);
   box-shadow: var(--nova-elevation-prominent);
   font-size: 12px;

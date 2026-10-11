@@ -42,8 +42,8 @@
   /* Menu material, not the opaque tip token: the queue panel is a floating
      surface over the transcript (the reference's `.panel::before`), and the
      opaque fill read as a flat gray box. */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 .panel::before {
@@ -51,8 +51,8 @@
   z-index: -1;
   inset: 0;
   border-radius: inherit;
-  background: var(--dsw-specific-menu);
-  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  background: var(--nova-surface-menu);
+  backdrop-filter: var(--nova-material-menu-backdrop);
   content: '';
   pointer-events: none;
 }

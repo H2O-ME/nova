@@ -61,5 +61,5 @@
  * reference's own comment: no alias-layer name for it). */
 .selected {
   background: var(--nova-surface-panel);
-  border-color: var(--dsw-static-neutral-bluish-400);
+  border-color: var(--nova-text-faint);
 }

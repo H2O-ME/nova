@@ -16,7 +16,7 @@
   padding: 0 12px;
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-input-major);
+  background: var(--nova-surface-raised);
   box-sizing: border-box;
   text-align: left;
 }
@@ -68,19 +68,19 @@
   fill: none;
 }
 
-.code { color: var(--dsw-static-deepseek-500); }
-.excel { color: var(--dsw-static-green-500); }
-.folder { color: var(--dsw-static-amber-400); }
-.html { color: var(--dsw-static-deepseek-500); }
+.code { color: var(--nova-color-accent); }
+.excel { color: var(--nova-color-success); }
+.folder { color: var(--nova-color-warn); }
+.html { color: var(--nova-color-accent); }
 /* The reference's image/video violet has no rung in this token sheet; the
    nearest static that stays legible on the fold in both themes is the blue. */
-.image { color: var(--dsw-static-blue-450); }
-.markdown { color: var(--dsw-static-deepseek-500); }
-.other { color: var(--dsw-static-neutral-bluish-300); }
-.pdf { color: var(--dsw-static-red-600); }
-.ppt { color: var(--dsw-static-amber-500); }
-.video { color: var(--dsw-static-blue-450); }
-.word { color: var(--dsw-static-deepseek-450); }
+.image { color: var(--nova-color-accent); }
+.markdown { color: var(--nova-color-accent); }
+.other { color: var(--nova-text-faint); }
+.pdf { color: var(--nova-color-danger); }
+.ppt { color: var(--nova-color-warn); }
+.video { color: var(--nova-color-accent); }
+.word { color: var(--nova-color-accent); }
 
 .body {
   display: flex;
@@ -136,7 +136,7 @@
   border: none;
   border-radius: 50%;
   corner-shape: round;
-  background: var(--dsw-alias-button-contrast-fill);
+  background: var(--nova-color-ink-hover);
   color: var(--nova-text-inverse);
   opacity: 0;
   cursor: pointer;
@@ -186,7 +186,7 @@
   height: 2px;
   border-radius: 1px;
   /* Substitution 1 of 2: the reference draws the track with
-     `--dsw-alias-fill-tertiary` (which IT never defines — only this one rule
+     a fill-tertiary alias (which IT never defines — only this one rule
      reads it there, so it always fell back to its literal). This sheet's border
      ladder is defined in both themes, which is what a 2px track wants. */
   background: var(--nova-border-strong);
@@ -197,7 +197,7 @@
   width: 35%;
   height: 100%;
   border-radius: inherit;
-  /* Substitution 2 of 2: the reference uses `--dsw-alias-brand-primary`, but in
+  /* Substitution 2 of 2: the reference uses `--nova-color-ink`, but in
      this port that alias resolves to INK, not blue (`styles/design-platform.css`
      says so at the top: brand-primary is neutral, and every blue accent rides
      `state-business-primary`). Copying the reference verbatim here would draw a

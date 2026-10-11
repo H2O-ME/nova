@@ -16,8 +16,8 @@
   max-width: 50vw;
   padding: 3px 7px;
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-alias-tooltip-bg);
-  color: var(--dsw-static-neutral-bluish-00);
+  background: var(--nova-surface-tooltip);
+  color: var(--nova-surface-base);
   font-size: 13px;
   line-height: 20px;
   white-space: pre-line;

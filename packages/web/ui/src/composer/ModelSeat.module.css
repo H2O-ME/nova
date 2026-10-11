@@ -43,7 +43,7 @@
 }
 
 .trigger:focus-visible {
-  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--nova-color-accent));
+  box-shadow: 0 0 0 2px var(--nova-focus-ring-color, var(--nova-color-accent));
 }
 
 .trigger:disabled {

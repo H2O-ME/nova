@@ -429,15 +429,15 @@
 }
 
 .diffRow[data-kind='del'] {
-  --diff-gutter-fill: var(--dsw-alias-file-diff-deleted-gutter);
-  --diff-marker: var(--dsw-alias-file-diff-deleted-marker);
-  background: var(--dsw-alias-file-diff-deleted-bg);
+  --diff-gutter-fill: var(--nova-diff-deleted-gutter);
+  --diff-marker: var(--nova-diff-deleted-marker);
+  background: var(--nova-diff-deleted-bg);
 }
 
 .diffRow[data-kind='add'] {
-  --diff-gutter-fill: var(--dsw-alias-file-diff-added-gutter);
-  --diff-marker: var(--dsw-alias-file-diff-added-marker);
-  background: var(--dsw-alias-file-diff-added-bg);
+  --diff-gutter-fill: var(--nova-diff-added-gutter);
+  --diff-marker: var(--nova-diff-added-marker);
+  background: var(--nova-diff-added-bg);
 }
 
 /* The marker ink and the gutter fill belong to the numbers and the sign; the
@@ -523,15 +523,15 @@
 }
 
 .splitCell[data-kind='del'] {
-  --diff-gutter-fill: var(--dsw-alias-file-diff-deleted-gutter);
-  --diff-marker: var(--dsw-alias-file-diff-deleted-marker);
-  background: var(--dsw-alias-file-diff-deleted-bg);
+  --diff-gutter-fill: var(--nova-diff-deleted-gutter);
+  --diff-marker: var(--nova-diff-deleted-marker);
+  background: var(--nova-diff-deleted-bg);
 }
 
 .splitCell[data-kind='add'] {
-  --diff-gutter-fill: var(--dsw-alias-file-diff-added-gutter);
-  --diff-marker: var(--dsw-alias-file-diff-added-marker);
-  background: var(--dsw-alias-file-diff-added-bg);
+  --diff-gutter-fill: var(--nova-diff-added-gutter);
+  --diff-marker: var(--nova-diff-added-marker);
+  background: var(--nova-diff-added-bg);
 }
 
 .splitCell[data-kind='del'] .lineNo,
@@ -609,7 +609,7 @@
   padding: 0 12px;
   border: none;
   border-radius: 4px;
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
   font: var(--nova-font-xxs-strong-12);
   cursor: pointer;
@@ -617,7 +617,7 @@
 }
 
 .commitButton:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
+  background: var(--nova-color-ink-hover);
 }
 
 .commitButton:disabled {

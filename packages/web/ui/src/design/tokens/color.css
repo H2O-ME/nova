@@ -16,6 +16,25 @@
   --nova-color-idle: rgb(212, 212, 212);
 
   --nova-color-link: rgb(65, 118, 230);
+
+  /* Ink: the NOTAN pair a primary action reads as — near-black fill in light
+   * mode, near-white in dark (the ported "brand" slot, minus the trap that it
+   * shared a name with the blue accent). Hover is its pressed-neighbour rung. */
+  --nova-color-ink: rgb(15, 17, 21);
+  --nova-color-ink-hover: rgb(67, 69, 74);
+
+  /* Soft rungs: the tinted WASH behind badges and banners (accent-soft doubles
+   * as the info-banner floor). */
+  --nova-color-accent-soft: rgb(228, 237, 253);
+  --nova-color-success-soft: rgb(230, 250, 237);
+  --nova-color-warn-soft: rgb(254, 245, 231);
+  --nova-color-danger-soft: rgb(254, 226, 226);
+
+  /* Composition-category hues for the Context pane (functional, not themed:
+   * a segment keeps its hue across palettes). */
+  --nova-color-chart-indigo: rgb(99, 102, 241);
+  --nova-color-chart-purple: rgb(168, 85, 247);
+  --nova-color-chart-teal: rgb(20, 184, 166);
 }
 
 body[data-nova-dark] {
@@ -27,4 +46,12 @@ body[data-nova-dark] {
   --nova-color-idle: rgb(84, 85, 87);
 
   --nova-color-link: rgb(122, 170, 255);
+
+  --nova-color-ink: rgb(249, 250, 251);
+  --nova-color-ink-hover: rgb(235, 238, 242);
+
+  --nova-color-accent-soft: rgb(52, 65, 91);
+  --nova-color-success-soft: rgb(35, 60, 44);
+  --nova-color-warn-soft: rgb(39, 36, 31);
+  --nova-color-danger-soft: rgb(87, 12, 12);
 }

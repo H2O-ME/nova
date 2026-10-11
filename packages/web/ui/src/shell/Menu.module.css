@@ -1,7 +1,7 @@
 /* The dropdown menu primitive, ported from deepseek-harness `ui-primitives`
  * Menu.module.css (c) 2026 DeepSeek — MIT License. Values verbatim except: the
  * card's material is the shared `shell/MenuSurface` layer (the theme-owned
- * `--dsw-menu-surface-fill` + `--dsw-menu-backdrop-filter`, which this sheet
+ * `--nova-surface-menu` + `--nova-material-menu-backdrop`, which this sheet
  * never redeclares), the row rhythm is `shell/MenuCard.module.css`'s (min-h 38,
  * R12, 14/20 label weight 500) so every dropdown on this surface reads as one
  * material, and the list is portal-only — the in-place offset rules have no
@@ -34,8 +34,8 @@
      declaration sits on the card rather than on the viewport child because the
      elevation is a property of this surface, and the custom properties inherit
      down to whichever descendant actually scrolls. */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
   min-width: 144px;
   max-width: min(360px, calc(100vw - 24px));
   /* Viewport fit: the card stops 12px short of the viewport's edges and
@@ -104,7 +104,7 @@
   height: 14px;
   align-items: center;
   justify-content: center;
-  color: var(--dsw-alias-menu-icon);
+  color: var(--nova-text-secondary);
 }
 
 .itemLabel {

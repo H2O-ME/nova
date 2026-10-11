@@ -10,7 +10,7 @@
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
   margin: 4px 0 4px 4px;
   color: var(--nova-text-primary);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--nova-surface-code);
   border-radius: var(--dsl-search-radius);
 }
 
@@ -19,7 +19,7 @@
   align-items: center;
   gap: 12px;
   padding: 9px 14px;
-  background: var(--dsw-alias-markdown-code-block-banner);
+  background: var(--nova-surface-code-head);
   border-top-left-radius: var(--dsl-search-radius);
   border-top-right-radius: var(--dsl-search-radius);
 }

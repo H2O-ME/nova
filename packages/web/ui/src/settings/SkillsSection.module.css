@@ -116,7 +116,7 @@
 }
 
 .skill:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--nova-surface-panel);
 }
 
 .skillText {

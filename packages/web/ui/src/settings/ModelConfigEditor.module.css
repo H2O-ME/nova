@@ -286,12 +286,12 @@
 }
 
 .primary {
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
+  background: var(--nova-color-ink-hover);
 }
 
 .button:disabled,

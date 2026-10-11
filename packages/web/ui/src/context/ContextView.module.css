@@ -137,7 +137,7 @@
 .donutTrack {
   fill: none;
   stroke-width: 4;
-  stroke: color-mix(in srgb, var(--dsw-static-neutral-500) 18%, transparent);
+  stroke: color-mix(in srgb, var(--nova-text-faint) 18%, transparent);
 }
 
 .donutSeg {
@@ -295,7 +295,7 @@
 }
 
 .headlinePct b {
-  color: var(--dsw-alias-brand-primary);
+  color: var(--nova-color-ink);
   font-weight: 600;
 }
 
@@ -309,7 +309,7 @@
   height: 16px;
   overflow: hidden;
   border-radius: 8px;
-  background: var(--dsw-alias-bg-skeleton, var(--nova-surface-raised));
+  background: var(--nova-interactive-hover, var(--nova-surface-raised));
 }
 
 .slot {
@@ -416,7 +416,7 @@
 }
 
 .legendItemOn .legendSwatch {
-  box-shadow: 0 0 0 1px var(--dsw-alias-brand-primary);
+  box-shadow: 0 0 0 1px var(--nova-color-ink);
 }
 
 .legendLabel {
@@ -474,7 +474,7 @@
 /* Declared after the hover rule: the lit chip keeps its fill under the pointer. */
 .scaleBtnOn,
 .scaleBtnOn:hover {
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
 }
 
@@ -607,7 +607,7 @@
 }
 
 .trendBarHover {
-  outline-color: var(--dsw-alias-brand-primary);
+  outline-color: var(--nova-color-ink);
 }
 
 /* Declared after the hover rule: a pinned bar keeps its solid frame while the
@@ -756,12 +756,12 @@
 
 .detailDelta[data-tone='grow'] {
   color: var(--nova-color-success);
-  background: var(--dsw-alias-state-success-tertiary);
+  background: var(--nova-color-success-soft);
 }
 
 .detailDelta[data-tone='shrink'] {
   color: var(--nova-color-danger);
-  background: var(--dsw-alias-state-error-secondary);
+  background: var(--nova-color-danger-soft);
 }
 
 /* The 缓存命中 line below the composition: provider-reported cache share of
@@ -996,7 +996,7 @@
 }
 
 .badgeRead {
-  color: var(--dsw-alias-brand-primary);
+  color: var(--nova-color-ink);
 }
 
 .badgeWrite {
@@ -1072,7 +1072,7 @@
 }
 
 .timingCell[data-tone='ttft'] {
-  color: var(--dsw-alias-brand-primary);
+  color: var(--nova-color-ink);
 }
 
 .timingCell[data-tone='duration'] {
@@ -1092,7 +1092,7 @@
 }
 
 .timingSummary [data-tone='ttft'] {
-  color: var(--dsw-alias-brand-primary);
+  color: var(--nova-color-ink);
 }
 
 .timingSummary [data-tone='duration'] {
@@ -1113,7 +1113,7 @@
 .dashSparkBar {
   flex: 1 1 0;
   min-width: 4px;
-  background: color-mix(in srgb, var(--dsw-alias-brand-primary) 70%, transparent);
+  background: color-mix(in srgb, var(--nova-color-ink) 70%, transparent);
   border-radius: 2px 2px 0 0;
   transition: height var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
@@ -1242,11 +1242,11 @@
 
 /* Category colors map to the SAME static tokens the composition card uses —
    the panel never re-invents a category palette. */
-.dnaSegment[data-cat='system'] { background: var(--dsw-static-indigo-500, var(--dsw-alias-brand-primary)); }
-.dnaSegment[data-cat='tools'] { background: var(--dsw-static-purple-500, var(--dsw-alias-brand-primary)); }
-.dnaSegment[data-cat='injected'] { background: var(--dsw-static-teal-500, var(--nova-color-success)); }
+.dnaSegment[data-cat='system'] { background: var(--nova-color-chart-indigo, var(--nova-color-ink)); }
+.dnaSegment[data-cat='tools'] { background: var(--nova-color-chart-purple, var(--nova-color-ink)); }
+.dnaSegment[data-cat='injected'] { background: var(--nova-color-chart-teal, var(--nova-color-success)); }
 .dnaSegment[data-cat='user'] { background: var(--nova-text-secondary); }
-.dnaSegment[data-cat='assistant'] { background: var(--dsw-alias-brand-primary); }
+.dnaSegment[data-cat='assistant'] { background: var(--nova-color-ink); }
 .dnaSegment[data-cat='tool'] { background: var(--nova-color-warn); }
 
 .dnaBreakdown {
@@ -1289,14 +1289,14 @@
   position: absolute;
   inset: 0 auto 0 0;
   border-radius: 3px;
-  background: var(--dsw-alias-brand-primary);
+  background: var(--nova-color-ink);
 }
 
-.dnaBreakdownRow[data-cat='system'] .dnaBarFill { background: var(--dsw-static-indigo-500, var(--dsw-alias-brand-primary)); }
-.dnaBreakdownRow[data-cat='tools'] .dnaBarFill { background: var(--dsw-static-purple-500, var(--dsw-alias-brand-primary)); }
-.dnaBreakdownRow[data-cat='injected'] .dnaBarFill { background: var(--dsw-static-teal-500, var(--nova-color-success)); }
+.dnaBreakdownRow[data-cat='system'] .dnaBarFill { background: var(--nova-color-chart-indigo, var(--nova-color-ink)); }
+.dnaBreakdownRow[data-cat='tools'] .dnaBarFill { background: var(--nova-color-chart-purple, var(--nova-color-ink)); }
+.dnaBreakdownRow[data-cat='injected'] .dnaBarFill { background: var(--nova-color-chart-teal, var(--nova-color-success)); }
 .dnaBreakdownRow[data-cat='user'] .dnaBarFill { background: var(--nova-text-secondary); }
-.dnaBreakdownRow[data-cat='assistant'] .dnaBarFill { background: var(--dsw-alias-brand-primary); }
+.dnaBreakdownRow[data-cat='assistant'] .dnaBarFill { background: var(--nova-color-ink); }
 .dnaBreakdownRow[data-cat='tool'] .dnaBarFill { background: var(--nova-color-warn); }
 
 .dnaValue {

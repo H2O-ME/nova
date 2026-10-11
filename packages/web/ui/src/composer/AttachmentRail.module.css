@@ -21,8 +21,8 @@
   /* The rail scrolls on the composer's elevated input surface: bind the l2
      pair (styles/scrollbar.css rebinding contract) so anything that does draw
      a thumb here matches the surface. */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 .rail::-webkit-scrollbar {
@@ -49,7 +49,7 @@
   --nova-elevation-stroke-color: var(--nova-border-strong-darkmode-thin);
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-specific-input-major);
+  background: var(--nova-surface-raised);
   color: var(--nova-text-secondary);
   box-shadow: var(--nova-elevation-panel);
   cursor: pointer;

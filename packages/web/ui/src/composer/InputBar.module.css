@@ -56,7 +56,7 @@
      whole in `styles/base.css`, so a literal here was a 6px deviation on the
      product's most prominent surface. */
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-input-major);
+  background: var(--nova-surface-raised);
   box-shadow: var(--nova-elevation-soft);
   /* The draft text follows the Settings font-size preference (the textarea,
      mirror, and backdrop all inherit from here, so the three layers stay in
@@ -69,8 +69,8 @@
      pair. Declared on the card because the elevation belongs to the surface,
      and the custom properties inherit down to the box that actually scrolls
      (see ui-theme styles/scrollbar.css for the rebinding contract). */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 /* The document-level drop overlay moved to its own sheet
@@ -247,7 +247,7 @@
   margin: 0 -3px;
   border-radius: var(--nova-radius-lg);
   color: var(--nova-color-accent);
-  background: var(--dsw-alias-state-business-tertiary);
+  background: var(--nova-color-accent-soft);
   font-weight: 500;
 }
 
@@ -373,7 +373,7 @@
   border: none;
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-specific-selector);
+  background: var(--nova-surface-panel);
   color: var(--nova-text-primary);
   cursor: pointer;
 }
@@ -407,13 +407,13 @@
   border: none;
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-button-info-fill);
+  background: var(--nova-color-accent);
   /* Static white, not the foreground token: the arrow stays white on the blue
      fill in both themes (design 34:10465) — `--nova-text-inverse`
      flips to near-black in dark and would put an ink glyph on the fill. Our
      token layer's theme-stable white is the static bluish-00 the alias takes
      its light value from. */
-  color: var(--dsw-static-neutral-bluish-00);
+  color: var(--nova-surface-base);
   cursor: pointer;
   transition: background-color 100ms ease;
   /* Opts out of the row's 2px downward shift (.row top pad): the send circle
@@ -428,7 +428,7 @@
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-info-hover);
+  background: var(--nova-color-accent);
 }
 
 .primary:disabled {

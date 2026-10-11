@@ -84,7 +84,7 @@
 /* The active chip is the filled tab, in the tag fill (dockkit `.tabActive`). */
 .tab[aria-selected='true'] {
   color: var(--nova-text-primary);
-  background: var(--dsw-alias-markdown-tag);
+  background: var(--nova-surface-code);
 }
 
 .tab:focus-visible {

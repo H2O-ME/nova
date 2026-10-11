@@ -3,7 +3,7 @@
  * (c) 2026 DeepSeek — MIT License. Figma anchors kept in the comments. */
 
 /* Full-viewport layer (figma Mask 501:29946, black @ 24%): mask tokens match
-   the Modal primitive (--dsw-alias-bg-mask-1 + --dsw-mask-blur). */
+   the Modal primitive (--nova-material-mask + --nova-material-mask-blur). */
 .overlay {
   position: fixed;
   inset: 0;
@@ -16,8 +16,8 @@
 .mask {
   position: absolute;
   inset: 0;
-  background: var(--dsw-alias-bg-mask-1);
-  backdrop-filter: var(--dsw-mask-blur);
+  background: var(--nova-material-mask);
+  backdrop-filter: var(--nova-material-mask-blur);
   animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
@@ -58,8 +58,8 @@
      Declared on the panel rather than the scrolling `.options` child so the
      elevation choice sits with the surface; the custom properties inherit
      down to whichever descendant scrolls. */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
   animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
@@ -123,11 +123,11 @@
 }
 
 .navCell:hover {
-  background: var(--dsw-specific-sidebar-nav-item-hover);
+  background: var(--nova-surface-panel);
 }
 
 .navCell.active {
-  background: var(--dsw-specific-sidebar-nav-item-active);
+  background: var(--nova-interactive-hover-strong);
 }
 
 .navCell svg {

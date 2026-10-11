@@ -10,8 +10,8 @@
   min-width: 0;
   overflow-y: auto;
   background: var(--nova-surface-base);
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
 }
 
 /* A wider axis than the transcript's: the reference's plugin page spans the

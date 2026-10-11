@@ -14,8 +14,8 @@
 .mask {
   position: absolute;
   inset: 0;
-  background: var(--dsw-alias-bg-mask-1);
-  backdrop-filter: var(--dsw-mask-blur);
+  background: var(--nova-material-mask);
+  backdrop-filter: var(--nova-material-mask-blur);
   animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
@@ -173,7 +173,7 @@
 .box {
   flex: none;
   margin: 0;
-  accent-color: var(--dsw-alias-button-primary-fill);
+  accent-color: var(--nova-color-ink);
 }
 
 .id {
@@ -244,12 +244,12 @@
 
 .primary {
   border: none;
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
+  background: var(--nova-color-ink-hover);
 }
 
 .primary:disabled {

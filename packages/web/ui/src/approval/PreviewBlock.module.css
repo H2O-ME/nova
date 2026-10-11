@@ -20,7 +20,7 @@
      row's wash reaches the block's edges, so the corner has to clip it. */
   overflow: hidden;
   color: var(--nova-text-primary);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--nova-surface-code);
   border-radius: var(--dsl-diff-radius);
 }
 
@@ -70,7 +70,7 @@
 
 .del {
   color: var(--nova-color-danger);
-  background: var(--dsw-alias-code-diff-deleted);
+  background: var(--nova-diff-deleted-line);
   box-shadow: inset 3px 0 0 var(--nova-color-danger);
 }
 
@@ -81,7 +81,7 @@
 
 .add {
   color: var(--nova-color-success);
-  background: var(--dsw-alias-code-diff-added);
+  background: var(--nova-diff-added-line);
   box-shadow: inset 3px 0 0 var(--nova-color-success);
 }
 

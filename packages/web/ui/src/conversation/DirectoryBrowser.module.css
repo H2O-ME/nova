@@ -15,8 +15,8 @@
 .mask {
   position: absolute;
   inset: 0;
-  background: var(--dsw-alias-bg-mask-1);
-  backdrop-filter: var(--dsw-mask-blur);
+  background: var(--nova-material-mask);
+  backdrop-filter: var(--nova-material-mask-blur);
   animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
 }
 
@@ -371,7 +371,7 @@
 }
 
 .draftInput:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--nova-color-accent));
+  outline: var(--nova-focus-ring-width) solid var(--nova-focus-ring-color, var(--nova-color-accent));
   outline-offset: 1px;
 }
 
@@ -382,7 +382,7 @@
   padding: 0 14px;
   border: none;
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
   font-family: inherit;
   font-size: 13px;
@@ -441,12 +441,12 @@
 
 .primary {
   border: none;
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
+  background: var(--nova-color-ink-hover);
 }
 
 .secondary:disabled,
@@ -457,6 +457,6 @@
 
 .secondary:focus-visible,
 .primary:focus-visible {
-  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--nova-color-accent));
+  outline: var(--nova-focus-ring-width) solid var(--nova-focus-ring-color, var(--nova-color-accent));
   outline-offset: 2px;
 }

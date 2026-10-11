@@ -74,7 +74,7 @@
      universal superellipse (styles/corner-shape.css) or the ends square off. */
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-state-business-tertiary);
+  background: var(--nova-color-accent-soft);
   color: var(--nova-text-primary-bluish);
   font-family: var(--nova-font-mono);
   font-size: 12px;

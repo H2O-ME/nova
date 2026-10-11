@@ -177,7 +177,7 @@
    (harness `.stoppedSummary`). Amber, not the idle grey: the call did not
    finish, and that is a thing the reader has to notice. */
 .stoppedSummary {
-  color: var(--dsw-alias-state-warn-label);
+  color: var(--nova-color-warn);
 }
 
 /* Expanded body + Inspect pill wrapper (sibling of .row: clicks never toggle). */

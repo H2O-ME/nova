@@ -4,8 +4,8 @@
  * (c) 2026 DeepSeek — MIT License.
  *
  * Why the material is a layer and not a `background` on the card: the fill is
- * translucent (`--dsw-menu-surface-fill`, 58% light / 45% dark) and carries
- * `backdrop-filter: var(--dsw-menu-backdrop-filter)`. Declaring the filter on
+ * translucent (`--nova-surface-menu`, 58% light / 45% dark) and carries
+ * `backdrop-filter: var(--nova-material-menu-backdrop)`. Declaring the filter on
  * the card itself would make the card a backdrop root and a containing block
  * for `position: fixed` descendants, so it lives on an absolutely positioned
  * child painted behind the content (`z-index: -1` under `isolation: isolate`)
@@ -17,8 +17,8 @@
  * with it.
  *
  * The theme still owns the fill and the filter: no component sheet redeclares
- * either token, so a rebind of `--dsw-menu-surface-fill` or
- * `--dsw-menu-backdrop-filter` reaches every menu at once.
+ * either token, so a rebind of `--nova-surface-menu` or
+ * `--nova-material-menu-backdrop` reaches every menu at once.
  */
 import { forwardRef } from 'react';
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';

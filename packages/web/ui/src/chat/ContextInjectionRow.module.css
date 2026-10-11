@@ -47,7 +47,7 @@
   padding: 10px 16px 12px 12px;
   border: none;
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--nova-surface-code);
   color: var(--nova-text-muted);
   /* Figma 10:2482 code text: the bodies inherit it from the scrollport. */
   font: 400 11px/16px var(--nova-font-mono);

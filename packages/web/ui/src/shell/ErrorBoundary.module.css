@@ -34,12 +34,12 @@
   border: none;
   border-radius: var(--nova-radius-lg);
   corner-shape: round;
-  background: var(--dsw-alias-button-elevated-fill);
+  background: var(--nova-surface-base);
   color: var(--nova-text-primary);
   font: var(--nova-font-xs-13);
   cursor: pointer;
 }
 
 .reload:hover {
-  background: var(--dsw-alias-button-floating-hover);
+  background: var(--nova-surface-panel);
 }

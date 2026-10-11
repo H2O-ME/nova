@@ -11,13 +11,13 @@
    folded into this sheet because both arms share one banner wrapper. */
 
 .block {
-  --dsl-code-block-banner-background-color: var(--dsw-alias-markdown-code-block-banner);
+  --dsl-code-block-banner-background-color: var(--nova-surface-code-head);
   --dsl-code-block-border-radius: var(--nova-radius-lg);
   /* Local 11/18 instead of the shared --nova-font-xs-13: the banner scales
      with the markdown 0.875 ladder without shrinking every other xs-13 use. */
   --dsl-code-block-banner-font: 11px/18px var(--nova-font-family);
   --dsl-code-block-content-font: var(--nova-font-markdown-code-block);
-  --dsl-code-block-background: var(--dsw-alias-markdown-code-block);
+  --dsl-code-block-background: var(--nova-surface-code);
 
   position: relative;
   margin: 16px 0;
@@ -170,7 +170,7 @@
 }
 
 .toolbarAction:focus-visible {
-  outline: 1px solid var(--dsw-focus-ring-color, var(--nova-color-accent));
+  outline: 1px solid var(--nova-focus-ring-color, var(--nova-color-accent));
   outline-offset: 2px;
 }
 

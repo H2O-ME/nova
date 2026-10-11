@@ -28,7 +28,7 @@
   object-fit: contain;
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-input-major);
+  background: var(--nova-surface-raised);
 }
 
 .userRow {
@@ -57,7 +57,7 @@
      the bubble widens with a user-dragged or adaptive column; percentage
      keeps narrow windows sane. */
   max-width: 100%;
-  background: var(--dsw-specific-bubble);
+  background: var(--nova-surface-bubble);
   border-radius: var(--nova-radius-lg);
   /* 42px single-line bubble at the default size: 22 line + 10 vertical
      padding each side; the Settings font-size preference moves size and line

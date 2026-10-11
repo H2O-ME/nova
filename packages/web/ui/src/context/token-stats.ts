@@ -30,7 +30,7 @@ const OUTPUT_LABEL = '输出';
  * ramp, so the nearest distinct static hue stands in (every other static 500 is
  * already spoken for by a window category).
  */
-const OUTPUT_COLOR = 'var(--dsw-static-red-500)';
+const OUTPUT_COLOR = 'var(--nova-color-danger)';
 
 /** One legend row under the ring. */
 export interface TokenStatRow {

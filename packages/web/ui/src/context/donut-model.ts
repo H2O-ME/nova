@@ -13,7 +13,7 @@
 /** One slice as the caller supplies it: an identity, a paint and a weight. */
 export interface DonutSlice {
   key: string;
-  /** A CSS colour — a `var(--dsw-*)` token in this repo, never a literal. */
+  /** A CSS colour — a `var(--nova-*)` token in this repo, never a literal. */
   color: string;
   value: number;
 }

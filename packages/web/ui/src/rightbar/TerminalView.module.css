@@ -116,7 +116,7 @@
   padding: 0 12px;
   color: var(--nova-text-inverse);
   font: var(--nova-font-xxs-strong-12);
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   border: none;
   border-radius: var(--nova-radius-lg);
   cursor: pointer;
@@ -124,7 +124,7 @@
 }
 
 .newButton:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
+  background: var(--nova-color-ink-hover);
 }
 
 .newButton:focus-visible {

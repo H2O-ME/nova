@@ -2,7 +2,7 @@
    tertiary text with a hover-pill affordance, each opening its own panel.
    Ported from deepseek-harness ui-chat `StatsPills.module.css` +
    `stat-dialog.module.css` (c) 2026 DeepSeek — MIT License. The panel takes the
-   source's `--dsw-specific-menu` material and its 1100 layer, exactly as
+   source's `--nova-surface-menu` material and its 1100 layer, exactly as
    `chat/TurnUsagePill` does: both tokens are defined by this sheet
    (`styles/design-platform.css`, `styles/gradient-shadow-text.css`), so the
    earlier `--nova-surface-raised` substitution had no reason to exist. */
@@ -97,8 +97,8 @@ button.pill[aria-expanded='true'] {
   padding: 16px;
   border: 0;
   border-radius: var(--nova-radius-lg);
-  background: var(--dsw-specific-menu);
-  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  background: var(--nova-surface-menu);
+  backdrop-filter: var(--nova-material-menu-backdrop);
   --nova-elevation-stroke-color: var(--nova-border-subtle);
   box-shadow: var(--nova-elevation-prominent);
   font-size: 12px;

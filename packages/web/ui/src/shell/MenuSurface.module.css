@@ -25,8 +25,8 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: var(--dsw-menu-surface-fill);
-  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  background: var(--nova-surface-menu);
+  backdrop-filter: var(--nova-material-menu-backdrop);
   pointer-events: none;
 }
 

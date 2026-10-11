@@ -3,7 +3,7 @@
    viewport, the row, the two heading rungs, the drill seat, the pending
    skeleton and the overflow hint. The container's material is the reference's
    shared one (`ui-primitives/MenuSurface`), applied here as `.menu::before`,
-   which is why `--dsw-specific-menu` — a token this sheet really carries — is
+   which is why `--nova-surface-menu` — a token this sheet really carries — is
    the surface fill. */
 
 .menu {
@@ -21,8 +21,8 @@
   overflow: hidden;
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens
      (see styles/scrollbar.css for the rebinding contract). */
-  --nova-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
-  --nova-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  --nova-scrollbar-thumb: var(--nova-scrollbar-thumb);
+  --nova-scrollbar-thumb-hover: var(--nova-scrollbar-thumb-hover);
   /* The shared menu material's rail: 6px wide, a quiet 2px thumb, inset from
      the card's rounded ends (the reference's own values). */
   --nova-scrollbar-width: 6px;
@@ -49,8 +49,8 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: var(--dsw-specific-menu);
-  backdrop-filter: var(--dsw-menu-backdrop-filter);
+  background: var(--nova-surface-menu);
+  backdrop-filter: var(--nova-material-menu-backdrop);
   pointer-events: none;
 }
 
@@ -63,7 +63,7 @@
   bottom: 4px;
   left: 4px;
   height: 16px;
-  background: linear-gradient(to bottom, transparent, var(--dsw-specific-menu));
+  background: linear-gradient(to bottom, transparent, var(--nova-surface-menu));
   pointer-events: none;
 }
 
@@ -118,7 +118,7 @@
   height: 14px;
   align-items: center;
   justify-content: center;
-  color: var(--dsw-alias-menu-icon);
+  color: var(--nova-text-secondary);
 }
 
 .itemName {
@@ -202,7 +202,7 @@
   width: 18px;
   height: 18px;
   border-radius: var(--nova-radius-sm);
-  color: var(--dsw-alias-menu-icon);
+  color: var(--nova-text-secondary);
 }
 
 .drill:hover {
@@ -234,7 +234,7 @@
 .skeletonBar {
   height: 18px;
   border-radius: var(--nova-radius-sm);
-  background: var(--dsw-alias-bg-skeleton);
+  background: var(--nova-interactive-hover);
   animation: composer-menu-skeleton 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
 }
 
@@ -301,5 +301,5 @@
 .crumbSeparator {
   flex: none;
   display: inline-flex;
-  color: var(--dsw-alias-menu-icon);
+  color: var(--nova-text-secondary);
 }

@@ -4,7 +4,7 @@
  * ported one wins the cascade.
  *
  * Ownership: `styles/` is the ported harness layer (the colour palette, the
- * `--ds-*` motion vocabulary, the font shorthand ladder) and is being retired;
+ * legacy motion vocabulary, the font shorthand ladder) and is being retired;
  * `design/` is Nova's own vocabulary and is where every new decision lands. A
  * component reads `--nova-*` only.
  *
@@ -28,4 +28,5 @@
 @import "./tokens/color.css";
 @import "./tokens/motion.css";
 @import "./tokens/typography.css";
+@import "./tokens/diff.css";
 @import "./motion.css";

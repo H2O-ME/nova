@@ -68,7 +68,7 @@
    resolve to plain white in light mode, where "one step lighter" would be
    nothing at all. */
 .cardActive {
-  background: var(--dsw-specific-sidebar-nav-item-active);
+  background: var(--nova-interactive-hover-strong);
 }
 
 .rowHead {
@@ -574,12 +574,12 @@
 
 .saveButton {
   border: none;
-  background: var(--dsw-alias-button-primary-fill);
+  background: var(--nova-color-ink);
   color: var(--nova-text-inverse);
 }
 
 .saveButton:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
+  background: var(--nova-color-ink-hover);
 }
 
 .saveButton:disabled,

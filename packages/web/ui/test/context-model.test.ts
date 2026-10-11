@@ -53,7 +53,7 @@ describe('composition slots', () => {
 
   it('paints every category from a declared token, never a literal colour', () => {
     for (const slot of compositionSlots(cats({ system: 1 }), 10)) {
-      expect(slot.color.startsWith('var(--dsw-static-')).toBe(true);
+      expect(slot.color.startsWith('var(--nova-')).toBe(true);
     }
     expect(compositionSlots(cats({ system: 1 }), 10).map((slot) => slot.color)).toEqual(
       Array.from(new Set(compositionSlots(cats({ system: 1 }), 10).map((slot) => slot.color))),
@@ -216,7 +216,7 @@ describe('element board', () => {
     expect(board.groups.map((group) => group.cat)).toEqual(['system', 'tools']);
     expect(board.groups.map((group) => group.label)).toEqual(['系统提示', '工具定义']);
     expect(board.groups[1]).toMatchObject({ count: 2, tokens: 350, pct: 78 });
-    expect(board.groups[1]!.color).toBe('var(--dsw-static-amber-500)');
+    expect(board.groups[1]!.color).toBe('var(--nova-color-warn)');
     // Heaviest-first INSIDE the card: the header states the category, the rows
     // answer "what is taking the room".
     expect(board.groups[1]!.rows.map((row) => row.label)).toEqual(['read_file', 'bash']);

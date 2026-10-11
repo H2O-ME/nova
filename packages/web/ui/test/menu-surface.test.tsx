@@ -53,8 +53,8 @@ describe('MenuSurface', () => {
     // The reference's elevation guard: a rule that paints either menu fill must
     // also apply the shared filter, since a translucent fill without the blur
     // lets the page show through unreadably.
-    expect(css).toContain('background: var(--dsw-menu-surface-fill)');
-    expect(css).toContain('backdrop-filter: var(--dsw-menu-backdrop-filter)');
+    expect(css).toContain('background: var(--nova-surface-menu)');
+    expect(css).toContain('backdrop-filter: var(--nova-material-menu-backdrop)');
   });
 
   it('leaves menu-fill ownership with the theme', () => {

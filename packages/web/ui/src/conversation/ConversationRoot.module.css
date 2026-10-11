@@ -100,8 +100,8 @@
   background: linear-gradient(
     to bottom,
     transparent calc(var(--nova-width-handle-pointer-y, 50%) - 36px),
-    var(--dsw-alias-scrollbar-bg-l1) calc(var(--nova-width-handle-pointer-y, 50%) - 8px),
-    var(--dsw-alias-scrollbar-bg-l1) calc(var(--nova-width-handle-pointer-y, 50%) + 8px),
+    var(--nova-scrollbar-thumb) calc(var(--nova-width-handle-pointer-y, 50%) - 8px),
+    var(--nova-scrollbar-thumb) calc(var(--nova-width-handle-pointer-y, 50%) + 8px),
     transparent calc(var(--nova-width-handle-pointer-y, 50%) + 36px)
   );
   opacity: 0;
