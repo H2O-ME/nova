@@ -1,0 +1,73 @@
+/* The standard dialog skeleton (see Dialog.tsx). The mask is the shared modal
+   material; the card is a raised surface carrying the prominent elevation.
+   The arrival fades mask and card together over the same duration and easing,
+   so a dialog arrives rather than flashing between frames. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mask {
+  position: absolute;
+  inset: 0;
+  background: var(--nova-material-mask);
+  backdrop-filter: var(--nova-material-mask-blur);
+  animation: dialog-enter var(--nova-dur-base) var(--nova-ease-inout);
+}
+
+@keyframes dialog-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mask,
+  .panel {
+    animation: none;
+  }
+}
+
+.panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-12);
+  box-sizing: border-box;
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-raised);
+  box-shadow: var(--nova-elevation-prominent);
+  animation: dialog-enter var(--nova-dur-base) var(--nova-ease-inout);
+}
+
+.panel:focus {
+  outline: none;
+}
+
+/* Shared part classes: callers import this module and render their own rows. */
+
+.title {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--nova-text-primary);
+}
+
+.body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--nova-space-8);
+  margin-top: var(--nova-space-4);
+}

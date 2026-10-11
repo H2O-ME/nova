@@ -10,12 +10,15 @@
  *
  * The dialog hands the DECISION back and closes; the panel owns what the
  * decision does. Split body/wrapper like `SettingsDialog`/`SettingsPanel` so
- * the static test lane can walk the markup without a portal.
+ * the static test lane can walk the markup without a portal. The skeleton and
+ * the buttons are the kit's.
  */
 import { useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
-import css from './UnsavedConfirmDialog.module.css';
+import { Dialog } from '../kit/Dialog.js';
+import { Button } from '../kit/Button.js';
+import kitCss from '../kit/Dialog.module.css';
 
 export interface UnsavedConfirmProps {
   /** The nav label of the section holding the edits, named in the body. */
@@ -36,32 +39,24 @@ export function UnsavedConfirmDialogBody({ section, onConfirm, onClose }: Unsave
   const titleId = useId();
   useModalLayer(panelRef, true, onClose);
   return (
-    <div className={css.overlay} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className={css.panel}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        <div className={css.title} id={titleId}>未保存的修改</div>
-        <p className={css.body}>
-          「{section}」还有未保存的修改，离开就会丢失。
-        </p>
-        <div className={css.footer}>
-          {/* Staying takes the autofocus mark: the safe choice is the one a
-              stray Enter lands on. */}
-          <button type="button" className={css.stay} data-modal-autofocus="" onClick={onClose}>
-            留在本页
-          </button>
-          <button type="button" className={css.discard} onClick={onConfirm}>
-            放弃修改并离开
-          </button>
-        </div>
+    <Dialog role="alertdialog" labelledBy={titleId} width={400} z={1300} panelRef={panelRef} onClose={onClose}>
+      <div className={kitCss.title} id={titleId}>未保存的修改</div>
+      <p className={kitCss.body}>
+        「{section}」还有未保存的修改，离开就会丢失。
+      </p>
+      <div className={kitCss.footer}>
+        {/* Staying takes the autofocus mark and the primary fill: the dialog
+            exists to protect the draft, so the recommended action is the one a
+            stray Enter lands on. Discarding reads as danger without a solid
+            fill — solid-on-solid made both buttons look equally committed. */}
+        <Button variant="primary" data-modal-autofocus="" onClick={onClose}>
+          留在本页
+        </Button>
+        <Button variant="dangerOutline" onClick={onConfirm}>
+          放弃修改并离开
+        </Button>
       </div>
-    </div>
+    </Dialog>
   );
 }
 

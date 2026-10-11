@@ -16,12 +16,14 @@
  * host never reports.
  *
  * The modal layer owns focus, Escape and Tab; this component owns the two
- * buttons.
+ * buttons. The skeleton and the buttons are the kit's.
  */
 import { useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
-import css from './DeleteSessionDialog.module.css';
+import { Dialog } from '../kit/Dialog.js';
+import { Button } from '../kit/Button.js';
+import kitCss from '../kit/Dialog.module.css';
 
 export interface DeleteSessionDialogProps {
   /** The session's display title, named in the body so the target is unambiguous. */
@@ -43,32 +45,23 @@ export function DeleteSessionDialog({ title, onConfirm, onClose }: DeleteSession
   useModalLayer(panelRef, true, onClose);
 
   return createPortal(
-    <div className={css.overlay} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className={css.panel}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        <div className={css.title} id={titleId}>删除会话</div>
-        <p className={css.body}>
-          确定删除「{title}」吗？该会话的日志文件会被移除，此操作无法撤销。
-        </p>
-        <div className={css.footer}>
-          {/* Cancel takes the autofocus mark: the safe choice is the one a stray
-              Enter lands on. */}
-          <button type="button" className={css.cancel} data-modal-autofocus="" onClick={onClose}>
-            取消
-          </button>
-          <button type="button" className={css.danger} onClick={onConfirm}>
-            删除
-          </button>
-        </div>
+    <Dialog role="alertdialog" labelledBy={titleId} width={400} panelRef={panelRef} onClose={onClose}>
+      <div className={kitCss.title} id={titleId}>删除会话</div>
+      <p className={kitCss.body}>
+        确定删除「{title}」吗？该会话的日志文件会被移除，此操作无法撤销。
+      </p>
+      <div className={kitCss.footer}>
+        {/* Cancel takes the autofocus mark: the safe choice is the one a stray
+            Enter lands on. The destructive action is the primary fill, not a red
+            one: a solid danger fill reads as the recommended choice. */}
+        <Button data-modal-autofocus="" onClick={onClose}>
+          取消
+        </Button>
+        <Button variant="primary" onClick={onConfirm}>
+          删除
+        </Button>
       </div>
-    </div>,
+    </Dialog>,
     document.body,
   );
 }

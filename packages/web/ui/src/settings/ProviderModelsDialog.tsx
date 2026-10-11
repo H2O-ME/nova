@@ -19,13 +19,17 @@
  *    否则「全选」在一屏 5 行时会悄悄勾上另外 41 个看不见的。
  *
  * 它是**纯呈现**：候选来自调用方的探针答案，勾选与查询是本地状态，确认只回调一次
- * `onApply(ids)`。portal-free 的 `ProviderModelsDialog` 与带 portal 的
- * `ProviderModelsPicker` 分开，前者给无 DOM 的静态车道直测。
+ * `onApply(ids)`。骨架与按钮取自 kit（`kit/Dialog` + `kit/Button`）；portal-free 的
+ * `ProviderModelsDialog` 与带 portal 的 `ProviderModelsPicker` 分开，前者给无 DOM
+ * 的静态车道直测。
  */
 import { useId, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
+import { Dialog } from '../kit/Dialog.js';
+import { Button } from '../kit/Button.js';
+import kitCss from '../kit/Dialog.module.css';
 import { SearchIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import css from './ProviderModelsDialog.module.css';
@@ -98,91 +102,88 @@ export function ProviderModelsDialog({
   };
 
   return (
-    <div className={css.overlay} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className={css.panel}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        <div className={css.header}>
-          {/* The title names the JOB: this dialog adds to the card's list, it does
-              not switch what the session is using. */}
-          <div className={css.title} id={titleId}>{SETTINGS_COPY['models.pickTitle']}</div>
-        </div>
-
-        <div className={css.toolbar}>
-          <div className={css.search}>
-            <SearchIcon className={css.searchIcon} />
-            <input
-              type="search"
-              className={css.searchInput}
-              value={query}
-              autoFocus
-              data-modal-autofocus=""
-              placeholder={SETTINGS_COPY['models.pickSearch']}
-              aria-label={SETTINGS_COPY['models.pickSearch']}
-              onChange={(event) => { setQuery(event.currentTarget.value); }}
-            />
-          </div>
-          {/* One verb, two labels: the reference's `selectAll` / `deselectAll`.
-              Absent when nothing on screen is pickable (all rows locked). */}
-          {pickable.length > 0 && (
-            <button type="button" className={css.verb} data-pick-all onClick={toggleAll}>
-              {allShown ? SETTINGS_COPY['models.pickNone'] : SETTINGS_COPY['models.pickAll']}
-            </button>
-          )}
-        </div>
-
-        {candidates.length === 0 && (
-          <div className={css.empty}>{SETTINGS_COPY['models.providerNoReachable']}</div>
-        )}
-        {candidates.length > 0 && shown.length === 0 && (
-          <div className={css.empty}>{SETTINGS_COPY['models.pickNoMatch']}</div>
-        )}
-        {shown.length > 0 && (
-          <ul className={css.list}>
-            {shown.map((id) => {
-              const already = has.has(id);
-              const checked = already || picked.includes(id);
-              return (
-                <li key={id}>
-                  <label className={css.row} data-pick-row={id}>
-                    <input
-                      type="checkbox"
-                      className={css.box}
-                      checked={checked}
-                      /* 已记录的行锁定：本弹窗只做「加」，移除在卡片上。 */
-                      disabled={already}
-                      onChange={() => { toggle(id); }}
-                    />
-                    <span className={css.id} title={id}>{id}</span>
-                    {already && <span className={css.tag}>{SETTINGS_COPY['models.pickExisting']}</span>}
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        <div className={css.footer}>
-          <button type="button" className={css.secondary} onClick={onClose}>
-            {SETTINGS_COPY['models.pickCancel']}
-          </button>
-          <button
-            type="button"
-            className={css.primary}
-            data-pick-apply
-            disabled={picked.length === 0}
-            onClick={() => { onApply(picked); }}
-          >
-            {SETTINGS_COPY['models.pickApply']}
-          </button>
-        </div>
+    <Dialog
+      panelRef={panelRef}
+      labelledBy={titleId}
+      width={520}
+      maxHeight={520}
+      padding={16}
+      onClose={onClose}
+    >
+      <div className={css.header}>
+        {/* The title names the JOB: this dialog adds to the card's list, it does
+            not switch what the session is using. */}
+        <div className={kitCss.title} id={titleId}>{SETTINGS_COPY['models.pickTitle']}</div>
       </div>
-    </div>
+
+      {/* 搜索框 + 全选动词同一行：参考实现的 `candidateToolbar`。 */}
+      <div className={css.toolbar}>
+        <div className={css.search}>
+          <SearchIcon className={css.searchIcon} />
+          <input
+            type="search"
+            className={css.searchInput}
+            value={query}
+            autoFocus
+            data-modal-autofocus=""
+            placeholder={SETTINGS_COPY['models.pickSearch']}
+            aria-label={SETTINGS_COPY['models.pickSearch']}
+            onChange={(event) => { setQuery(event.currentTarget.value); }}
+          />
+        </div>
+        {/* One verb, two labels: the reference's `selectAll` / `deselectAll`.
+            Absent when nothing on screen is pickable (all rows locked). */}
+        {pickable.length > 0 && (
+          <button type="button" className={css.verb} data-pick-all onClick={toggleAll}>
+            {allShown ? SETTINGS_COPY['models.pickNone'] : SETTINGS_COPY['models.pickAll']}
+          </button>
+        )}
+      </div>
+
+      {candidates.length === 0 && (
+        <div className={css.empty}>{SETTINGS_COPY['models.providerNoReachable']}</div>
+      )}
+      {candidates.length > 0 && shown.length === 0 && (
+        <div className={css.empty}>{SETTINGS_COPY['models.pickNoMatch']}</div>
+      )}
+      {shown.length > 0 && (
+        <ul className={css.list}>
+          {shown.map((id) => {
+            const already = has.has(id);
+            const checked = already || picked.includes(id);
+            return (
+              <li key={id}>
+                <label className={css.row} data-pick-row={id}>
+                  <input
+                    type="checkbox"
+                    className={css.box}
+                    checked={checked}
+                    /* 已记录的行锁定：本弹窗只做「加」，移除在卡片上。 */
+                    disabled={already}
+                    onChange={() => { toggle(id); }}
+                  />
+                  <span className={css.id} title={id}>{id}</span>
+                  {already && <span className={css.tag}>{SETTINGS_COPY['models.pickExisting']}</span>}
+                </label>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className={kitCss.footer}>
+        <Button onClick={onClose}>
+          {SETTINGS_COPY['models.pickCancel']}
+        </Button>
+        <Button
+          variant="primary"
+          data-pick-apply
+          disabled={picked.length === 0}
+          onClick={() => { onApply(picked); }}
+        >
+          {SETTINGS_COPY['models.pickApply']}
+        </Button>
+      </div>
+    </Dialog>
   );
 }

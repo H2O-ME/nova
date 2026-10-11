@@ -1,70 +1,12 @@
-/* 「获取可用模型」的挑选弹窗。overlay / mask / panel 与设置面板、目录浏览器同一族
-   材质（共享的 modal 观感）；panel 是**固定高度**的：这份清单的长度由端点决定，面板
-   绝不能跟着它长——那样弹窗就成了它要修掉的那堵墙。 */
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mask {
-  position: absolute;
-  inset: 0;
-  background: var(--nova-material-mask);
-  backdrop-filter: var(--nova-material-mask-blur);
-  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-/* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
-   fade in together over the same duration and easing. */
-@keyframes modal-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mask,
-  .panel {
-    animation: none;
-  }
-}
-
-.panel {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  width: 520px;
-  max-width: calc(100vw - 48px);
-  max-height: min(520px, calc(100vh - 48px));
-  padding: 16px;
-  gap: 12px;
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-raised);
-  box-shadow: var(--nova-elevation-prominent);
-  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.panel:focus {
-  outline: none;
-}
+/* 「获取可用模型」的挑选弹窗。骨架（overlay / mask / panel）与卡脚按钮取自
+   kit（`kit/Dialog` + `kit/Button`），这里只留挑选器自己的部分：搜索行、勾选
+   清单、空态。panel 是**固定高度**的：这份清单的长度由端点决定，面板绝不能
+   跟着它长——那样弹窗就成了它要修掉的那堵墙。 */
 
 .header {
   display: flex;
   align-items: center;
   flex: none;
-}
-
-.title {
-  font-size: 15px;
-  line-height: 22px;
-  font-weight: 600;
-  color: var(--nova-text-primary);
 }
 
 /* 搜索框 + 全选动词同一行：参考实现的 `candidateToolbar`。 */
@@ -205,54 +147,4 @@
   color: var(--nova-text-secondary);
   font-size: 13px;
   line-height: 20px;
-}
-
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex: none;
-  gap: 8px;
-}
-
-.secondary,
-.primary {
-  box-sizing: border-box;
-  height: 32px;
-  padding: 0 14px;
-  border-radius: var(--nova-radius-lg);
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 20px;
-  cursor: pointer;
-  transition:
-    color var(--nova-dur-base) var(--nova-ease-inout),
-    background-color var(--nova-dur-base) var(--nova-ease-inout),
-    border-color var(--nova-dur-base) var(--nova-ease-inout),
-    opacity var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.secondary {
-  border: 0.5px solid var(--nova-border-strong);
-  background: transparent;
-  color: var(--nova-text-primary);
-}
-
-.secondary:hover {
-  background: var(--nova-interactive-hover);
-}
-
-.primary {
-  border: none;
-  background: var(--nova-color-ink);
-  color: var(--nova-text-inverse);
-}
-
-.primary:hover:not(:disabled) {
-  background: var(--nova-color-ink-hover);
-}
-
-.primary:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
