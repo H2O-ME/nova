@@ -136,14 +136,14 @@
 
 .hint {
   color: var(--dsw-alias-label-tertiary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--nova-content-font-delta-secondary, 0px));
 }
 
 .openError {
   color: var(--dsw-alias-state-error-primary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--nova-content-font-delta-secondary, 0px));
 }
 
 .older {

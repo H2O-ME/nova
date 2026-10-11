@@ -1,14 +1,26 @@
-/* Nova type scale and text colors.
+/* Nova type scale and text colors — the family, size and weight axes live
+ * apart (the ported `--dsw-font-*` tokens were `font:` SHORTHANDS
+ * (`16px/24px <family>`), and reusing one as a `font-size` is a silent bug;
+ * Nova names the axes separately instead of aliasing them).
  *
- * Four size rungs and three weights, and no intermediates. The ported sheet
- * records why the weight axis is closed: a Figma 510 weight is an SF Pro
- * variable-font value, and on non-variable webfonts it snaps unpredictably
- * across platforms — so only 400 / 500 / 600 exist.
+ * Four size rungs plus the dense `2xs`, and three weights, no intermediates.
+ * The ported sheet records why the weight axis is closed: a Figma 510 weight
+ * is an SF Pro variable-font value, and on non-variable webfonts it snaps
+ * unpredictably across platforms — so only 400 / 500 / 600 exist.
  *
- * Note the ported `--dsw-font-*` tokens are `font:` SHORTHANDS
- * (`16px/24px <family>`), not sizes — reusing one as a `font-size` is a silent
- * bug, which is why Nova names the two axes separately instead of aliasing. */
+ * The content font-size axis at the bottom is the user preference written onto
+ * the body by `theme.ts` (and pre-paint by the boot script): markdown ladders
+ * and secondary text derive from it so the whole reading column scales
+ * together. */
 :root {
+  --nova-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  /* Code stack deliberately omits a bare `monospace` tail (Windows CJK falls
+   * back to SimSun otherwise). */
+  --nova-font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas,
+    'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei';
+
+  --nova-text-size-2xs: 11px;
   --nova-text-size-xs: 12px;
   --nova-text-size-sm: 13px;
   --nova-text-size-md: 14px;
@@ -18,8 +30,35 @@
   --nova-text-weight-medium: 500;
   --nova-text-weight-strong: 600;
 
-  --nova-text-primary: var(--dsw-alias-label-primary);
-  --nova-text-secondary: var(--dsw-alias-label-secondary);
-  --nova-text-muted: var(--dsw-alias-label-tertiary);
-  --nova-text-inverse: var(--dsw-alias-label-primary-inverted);
+  --nova-text-primary: rgb(15, 17, 21);
+  --nova-text-secondary: rgb(97, 102, 107);
+  --nova-text-muted: rgb(129, 133, 140);
+  --nova-text-faint: rgb(173, 178, 184);
+  --nova-text-disabled: rgb(225, 229, 238);
+  --nova-text-inverse: rgb(255, 255, 255);
+
+  /* User content font-size axis (integer px, 12–17, default 14 — written by
+   * the theme presenter, not by sheets). Titles and secondary variants ride
+   * the same pixel delta so the hierarchy holds at every setting. */
+  --nova-content-font-size: 14px;
+  --nova-content-font-delta: calc(var(--nova-content-font-size, 14px) - 14px);
+  /* Low-set text (tool row titles/summaries, markdown tables, in-stream
+   * secondary notes): setting ≤14 reads −1, >14 reads −2 (12→11, 13→12,
+   * 14→13, 15→13, 16→14, 17→15). The max(13px, ·) makes low settings take −1
+   * rather than −2 — it is not a result floor; at 12 the ladder bottoms out at
+   * 11px. */
+  --nova-content-font-size-secondary: min(
+    calc(var(--nova-content-font-size, 14px) - 1px),
+    max(13px, calc(var(--nova-content-font-size, 14px) - 2px))
+  );
+  --nova-content-font-delta-secondary: calc(var(--nova-content-font-size-secondary) - 13px);
+}
+
+body[data-nova-dark] {
+  --nova-text-primary: rgb(249, 250, 251);
+  --nova-text-secondary: rgb(207, 211, 214);
+  --nova-text-muted: rgb(173, 178, 184);
+  --nova-text-faint: rgb(129, 133, 140);
+  --nova-text-disabled: rgb(67, 69, 74);
+  --nova-text-inverse: rgb(53, 54, 56);
 }

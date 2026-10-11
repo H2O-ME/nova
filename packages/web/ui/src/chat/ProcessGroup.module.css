@@ -54,7 +54,7 @@
 .headLabel {
   min-width: 0;
   overflow: hidden;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

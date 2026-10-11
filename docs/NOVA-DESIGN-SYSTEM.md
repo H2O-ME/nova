@@ -81,16 +81,21 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 
 **停靠列（右侧 Inspector）不画阴影**——它是一页的列，不是浮起来的卡。这条 `ui/test/style-guard.test.ts` 已钉住，保留。需要第四级说明是层级设计有问题，不是高度不够。
 
+另有 `elevation` 复合词族 `--nova-elevation-stroke / panel / prominent / soft`：0.5px 发丝描边（画在 box-shadow 里，不占布局）+ 一到两层极淡柔光，是浮层/面板/面型按钮的既有配方，从移植层原样继承（`--nova-elevation-stroke-color` 可被组件重绑，因此复合值逐元素声明而非 body 继承——机制注释见 `design/tokens/shadow.css`）。
+
 ### 2.4 Typography
 
 ```text
---nova-text-size-xs/sm/md/lg        12 / 13 / 14 / 16
+--nova-font-family / --nova-font-mono     家族轴（正文栈 / 代码栈）
+--nova-text-size-2xs/xs/sm/md/lg          11 / 12 / 13 / 14 / 16
 --nova-text-weight-normal/medium/strong   400 / 500 / 600
 ```
 
 **不引入可变字重中间值。** 移植层的注释记录了原因：Figma 的 510 是 SF Pro 可变字体值，非可变 webfont 上会跨平台不可预测地吸附。
 
-> 移植来的 `--dsw-font-*` 是 `font:` **简写**（`16px/24px <family>`），不是尺寸。拿它当 `font-size` 是静默 bug——所以 Nova 把两个轴分开命名，不做别名。
+> 移植来的 `--dsw-font-*` 是 `font:` **简写**（`16px/24px <family>`），不是尺寸。拿它当 `font-size` 是静默 bug——所以 Nova 把轴分开命名，不做别名。迁移时简写拆成 `font-size: var(--nova-text-size-*)` + 字面行高（行高不在五条守卫规则内）。
+
+`2xs`（11px）是调色板换代时记名补入的密集档：代码块与紧凑标签的既有消费（约 24 处）需要它，非凑数。用户内容字号轴 `--nova-content-font-size`（12–17，主题 presenter 写在 body 上）及派生的 `-delta` / `-size-secondary` 也定义在 token 层。
 
 ### 2.5 Color（中性优先 + 单一强调色）
 
@@ -107,12 +112,23 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 ### 2.6 Surface / Border / Text
 
 ```text
---nova-surface-sunken / base / raised / overlay
+--nova-surface-sunken / base / raised / panel / overlay
 --nova-border-subtle / strong
---nova-text-primary / secondary / muted / inverse
+--nova-text-primary / secondary / muted / faint / disabled / inverse
 ```
 
-**已记名的事实**：亮色下 `bg-layer-1/2/3` 全是同一个近白色，所以 `sunken` / `base` / `raised` 在亮色里**当前是退化的**——亮色靠描边而不是填充分隔平面（这恰好符合 Quiet / Neutral 方向）；暗色下才真有阶梯（875/850/800）。调色板换代时把亮色阶梯分开；在那之前，组件**不得靠填充差异承载语义**。
+**已记名的事实**：亮色下 `bg-layer-1/2/3` 全是同一个近白色，所以 `sunken` / `base` / `raised` 在亮色里**是退化的**——亮色靠描边而不是填充分隔平面（这恰好符合 Quiet / Neutral 方向）；暗色下才真有阶梯。组件**不得靠填充差异承载语义**。调色板换代（2026-10-11）后 `--nova-surface-*` 直接持值，并新增第五档 `--nova-surface-panel`：内容面板自持的底（侧栏行、模块面板），亮暗两套都有真实差异、16 处既有消费背书——它是收敛既有语义，不是凑数。文本色同理从三档扩到五档（`faint` 为更淡的注释文本、`disabled` 为禁用态），各有 40+ / 12 次既有消费背书。
+
+### 2.7 Interactive（交互填充）
+
+```text
+--nova-interactive-hover           普通悬停洗色
+--nova-interactive-hover-strong    强调悬停（带色温的洗色）
+--nova-interactive-active          按下 / 选中
+--nova-interactive-hover-danger    危险操作的悬停洗色
+```
+
+全部是半透明值，叠加在所在 surface 上合成。四档均有移植层既有消费背书（99 / 13 / 13 / 3 次），从 dsw 的 `interactive-bg-*` 收敛而来。
 
 ## 3. Token 命名规范
 
@@ -125,10 +141,12 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 | `space` | `--nova-space-8` |
 | `radius` | `--nova-radius-md` |
 | `shadow` | `--nova-shadow-2` |
-| `dur` | `--nova-dur-base`（见 §9，尚未落地） |
-| `ease` | `--nova-ease-out`（见 §9，尚未落地） |
+| `elevation` | `--nova-elevation-panel`（描边+柔光复合，见 §2.3） |
+| `dur` | `--nova-dur-base` |
+| `ease` | `--nova-ease-out` |
 | `surface` | `--nova-surface-raised` |
 | `border` | `--nova-border-subtle` |
+| `interactive` | `--nova-interactive-hover`（交互填充，见 §2.7） |
 | `text` | `--nova-text-secondary` |
 | `color` | `--nova-color-accent` |
 
@@ -144,7 +162,7 @@ animation / transition 的 ms 字面量
 
 ## 4. Motion Policy
 
-### 4.1 时长与缓动（方向已定，值待 §9 调和后落地）
+### 4.1 时长与缓动（已落地，见 `design/tokens/motion.css`）
 
 ```text
 --nova-dur-instant   0ms
@@ -182,7 +200,7 @@ Coding Agent UI 最忌讳的是同时存在：message fade + tool slide + card e
 
 ### 4.4 reduced-motion
 
-保留现有实现：`styles/motion.css` 底部的全局钳制是**唯一 off-switch**，单个模块不必重复守卫。
+保留现有实现：`design/motion.css` 底部的全局钳制是**唯一 off-switch**，单个模块不必重复守卫。
 
 ## 5. Guard 规则
 
@@ -285,38 +303,44 @@ Freeze（Batch 1）  →  Migrate（Batch 7A / 7B / 8）  →  Delete（Batch 10
 ```text
 packages/web/ui/src/design/
 ├── index.css              挂载表（由 main.tsx 在 index.css 之后挂载，Nova token 覆盖移植层）
+├── motion.css             共享 keyframes + reduced-motion 全局钳制
 └── tokens/
     ├── space.css          --nova-space-* / --nova-row-*
     ├── radius.css         --nova-radius-*
-    ├── shadow.css         --nova-shadow-*
-    ├── surface.css        --nova-surface-* / --nova-border-*
-    ├── text.css           --nova-text-size/weight/* + 文本色
-    └── color.css          --nova-color-*
+    ├── shadow.css         --nova-shadow-* / --nova-elevation-*
+    ├── surface.css        --nova-surface-* / --nova-border-* / --nova-interactive-*
+    ├── text.css           --nova-font-* / --nova-text-* / --nova-content-font-*
+    ├── color.css          --nova-color-*
+    └── motion.css         --nova-dur-* / --nova-ease-*
 ```
 
-**为什么从 `main.tsx` 挂载而不是追加进 `index.css`**：在途的 motion 批次正在改 `index.css`（一行 `@import`）并拥有 `styles/motion.css`，一个文件两个写手正是上一轮丢编辑的成因。`index.css` 是遗留挂载表，`design/index.css` 是它的继任者。
+**为什么从 `main.tsx` 挂载而不是追加进 `index.css`**：`index.css` 是移植层的遗留挂载表，`design/index.css` 是它的继任者；一个文件两个写手正是上一轮丢编辑的成因。
 
-## 9. Motion 调和（**待办，明确记名**）
+**主题挂点**：暗色面板 = `body[data-nova-dark]`，由 `theme.ts` 在挂载后写、由 `index.html` 的 pre-paint 内联脚本在首帧前写（两者一致性由 `test/theme.test.ts` 钉住）。2026-10-11 起属性名与内容字号轴（`--nova-content-font-*`）均为 Nova 命名，不再是移植层的 `data-ds-dark-theme` / `--dsh-content-font-*`。
 
-`--nova-dur-*` / `--nova-ease-*` **尚未进入 `design/`**，原因是命名冲突：在途批次已在 `styles/motion.css` 声明了这两个前缀，值是 `fast 140ms / base 220ms / slow 400ms`，而本文件批准的方向是 `120 / 180 / 260` 且多一个 `instant` 档。
+## 9. Motion 调和（已收口，2026-10-11）
 
-两个 sheet 声明同一个自定义属性，正是本层存在的意义所要终止的漂移——所以**不叠上去**。
-
-调和动作（在该批次落地后执行）：
+`styles/motion.css` 已删除。收口动作按本文件既定方案执行：
 
 ```text
-1. 把 styles/motion.css 的 ease/dur 与三个共享 keyframe 迁入 design/motion/；
-2. 值按 §4.1 收敛（120/180/260 + instant 0ms），或经操作者裁定沿用 140/220/400；
-3. styles/motion.css 只留 reduced-motion 钳制，或整表并入 design/motion/；
-4. motion-guard.test.ts 的挂载断言改指 design/index.css。
+1. ease/dur token 迁入 design/tokens/motion.css，三个共享 keyframe 与 reduced-motion
+   钳制迁入 design/motion.css；
+2. 值按 §4.1 收敛（instant 0ms / fast 120ms / base 180ms / slow 260ms）——操作者未另行
+   裁定，Normative 值生效；既有 140/220/400 的差异（20–60ms）在感知阈值内；
+3. styles/motion.css 整表删除；
+4. motion-guard.test.ts 的挂载断言改指 design/index.css 与两个新 sheet。
 ```
+
+既有消费者（`nova-fade-up` / `nova-pop-in` / `nova-draw` 的引用点）带 fallback 字面量，不受影响；fallback 属于 token 债务，随批次 7A 的消费迁移一并清除。
 
 ## 10. 待操作者复核的事项
 
 方向（中性优先 + 单一 accent + 暗色一等公民 + 密度优先 + 小圆角 + opacity/transform-only 动效）**已冻结**。以下具体值已按方向落地，复核时可改：
 
-- accent 的色相（当前指向移植层的 state-business，即深蓝）；
-- 中性面的冷暖倾向（当前沿用 bluish 系）；
-- 语义色的具体取值（当前沿用移植层）；
-- 三级阴影的具体数值（当前沿用 `--dsw-shadow-lv1/2/3`）；
-- §9 的 motion 取值二选一。
+- accent 的色相（深蓝，亮色 rgb(65,118,230) / 暗色 rgb(122,170,255)，沿用移植层取值）；
+- 中性面的冷暖倾向（沿用 bluish 系）；
+- 语义色的具体取值（沿用移植层）；
+- 三级阴影与 elevation 复合配方的具体数值（沿用移植层）；
+- motion 时长按 §4.1 收敛为 120/180/260（如需回到 140/220/400 在此改）。
+
+调色板换代（2026-10-11）**保持值不变、只换所有权**：`--nova-*` 直接持值，不再桥接 `--dsw-*`；移植层 `styles/design-platform.css` 在全部消费迁移完成前保留（判据见通用化纲领批次 7A）。

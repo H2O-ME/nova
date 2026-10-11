@@ -309,8 +309,8 @@
    are omitted with the rest of that vocabulary. */
 .compact {
   max-width: 100%;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--nova-content-font-delta-secondary, 0px));
   color: var(--dsw-alias-label-tertiary);
 }
 

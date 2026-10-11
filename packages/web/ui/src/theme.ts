@@ -2,7 +2,7 @@
  * Theme preference, content font size, and the DOM projection, ported from
  * deepseek-harness `ui-theme` (MIT): the browser resolves only `system`, then
  * one presenter writes the same fields the boot script writes pre-paint —
- * `html { color-scheme }` for native UA chrome, `body[data-ds-dark-theme]` for
+ * `html { color-scheme }` for native UA chrome, `body[data-nova-dark]` for
  * the token palette, and the content font-size axis.
  *
  * The severity ladder lives here too: "which token encodes which band" is
@@ -22,9 +22,9 @@ export const DEFAULT_FONT_SIZE = 14;
 
 const THEME_KEY = 'nova.theme';
 const FONT_KEY = 'nova.fontSize';
-const DARK_ATTRIBUTE = 'data-ds-dark-theme';
+const DARK_ATTRIBUTE = 'data-nova-dark';
 /** Body variable carrying the user's content font size in px. */
-export const CONTENT_FONT_SIZE_VARIABLE = '--dsh-content-font-size';
+export const CONTENT_FONT_SIZE_VARIABLE = '--nova-content-font-size';
 
 function read<T extends string | number>(key: string, fallback: T): T {
   try {

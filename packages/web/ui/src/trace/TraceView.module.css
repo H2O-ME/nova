@@ -38,8 +38,8 @@
 }
 
 .count {
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--nova-content-font-delta, 0px));
   color: var(--dsw-alias-label-tertiary);
   font-variant-numeric: tabular-nums;
 }
@@ -51,8 +51,8 @@
   border-radius: var(--dsw-radius-sm);
   background: transparent;
   color: var(--dsw-alias-label-secondary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--nova-content-font-delta, 0px));
   cursor: pointer;
   transition:
       color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out),
@@ -91,8 +91,8 @@
      rounder than the old hand-written 8px so the row highlight matches the
      card scale around it. */
   border-radius: var(--dsw-radius-md);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--nova-content-font-delta, 0px));
   transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
@@ -131,5 +131,5 @@
 .empty {
   padding: 24px 0;
   color: var(--dsw-alias-label-tertiary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
 }

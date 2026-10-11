@@ -191,14 +191,14 @@
 /* The command icon stays a step under the row's text, like every flow-row
    leading slot. */
 .leading svg {
-  width: calc(14px + var(--dsh-content-font-delta, 0px));
-  height: calc(14px + var(--dsh-content-font-delta, 0px));
+  width: calc(14px + var(--nova-content-font-delta, 0px));
+  height: calc(14px + var(--nova-content-font-delta, 0px));
 }
 
 .title {
   flex: none;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--dsw-alias-label-secondary);
 }
 
@@ -221,8 +221,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--dsw-alias-label-tertiary);
 }
 

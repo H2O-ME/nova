@@ -25,8 +25,11 @@ import { describe, expect, it } from 'vitest';
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
 
-/** The token layer: the one subtree that may hold raw color values. */
-const TOKEN_DIR = 'styles';
+/** The token layers: the only subtrees that may hold raw color values —
+ *  `styles/` is the ported harness palette (licensed and attributed; it
+ *  retires once every consumer reads `--nova-*`), `design/tokens/` is the
+ *  Nova palette that replaces it. */
+const TOKEN_DIRS = ['styles', 'design/tokens'];
 
 /** Literal color matchers: hex (#abc / #aabbcc) and bare rgb()/rgba() calls. */
 const HEX_RE = /#[0-9a-fA-F]{3,8}\b/g;
@@ -46,7 +49,7 @@ function listSources(exts: RegExp, includeTokenLayer = false): Entry[] {
       const abs = join(dir, entry.name);
       const relPath = rel === '' ? entry.name : `${rel}/${entry.name}`;
       if (entry.isDirectory()) {
-        if (rel === '' && entry.name === TOKEN_DIR && !includeTokenLayer) continue;
+        if (!includeTokenLayer && TOKEN_DIRS.includes(relPath)) continue;
         walk(abs, relPath);
       } else if (exts.test(entry.name)) {
         out.push({ rel: relPath, text: readFileSync(abs, 'utf8') });

@@ -20,8 +20,8 @@ import {
 } from '../src/theme.js';
 import { FONT_KEY, THEME_KEY, bootThemeScript } from '../src/shell/boot-theme.js';
 
-const ATTR = 'data-ds-dark-theme';
-const FONT_VAR = '--dsh-content-font-size';
+const ATTR = 'data-nova-dark';
+const FONT_VAR = '--nova-content-font-size';
 
 describe('severityForUsage', () => {
   it('climbs the ladder business → warn → error and never returns a literal', () => {

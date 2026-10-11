@@ -3,29 +3,28 @@
  * Mounted from `main.tsx` AFTER `../index.css`, so a Nova token that shadows a
  * ported one wins the cascade.
  *
- * Ownership: `styles/` is the ported harness layer (the colour palette,
- * elevation, the `--ds-*` motion vocabulary) and is being retired; `design/`
- * is Nova's own vocabulary and is where every new decision lands. A component
- * reads `--nova-*` only.
+ * Ownership: `styles/` is the ported harness layer (the colour palette, the
+ * `--ds-*` motion vocabulary, the font shorthand ladder) and is being retired;
+ * `design/` is Nova's own vocabulary and is where every new decision lands. A
+ * component reads `--nova-*` only.
  *
- * Mounted from `main.tsx` rather than appended to `index.css` on purpose: the
- * in-flight motion batch is editing `index.css` (one `@import` line) and owns
- * `styles/motion.css`, and two writers on one file is how the previous round
- * lost an edit. `index.css` is the legacy mount sheet; this is the successor.
+ * Mounted from `main.tsx` rather than appended to `index.css` on purpose:
+ * `index.css` is the legacy mount sheet of the port, this is the successor.
  *
- * Motion (`--nova-dur-*` / `--nova-ease-*`) is NOT here yet: the in-flight
- * batch already declares those exact names in `styles/motion.css`, and two
- * sheets declaring the same custom property is precisely the drift this layer
- * exists to stop. The reconciliation — their values are 140/220/400, the
- * approved direction is 120/180/260 plus an `instant` rung — is recorded in
- * `docs/NOVA-DESIGN-SYSTEM.md` §9 and lands once that batch is committed.
+ * Motion is reconciled: the timing tokens live in `tokens/motion.css`
+ * (120/180/260ms plus `instant`, per `docs/NOVA-DESIGN-SYSTEM.md` §4.1) and
+ * the shared keyframes plus the reduced-motion clamp in `motion.css` here.
  *
- * Timeline: Batch 2–6 write new UI against `--nova-*`; Batch 7/8 migrate the
- * existing sheets; Batch 10 deletes `styles/design-platform.css` and inlines
- * the palette here. */
+ * The dark palette keys off `body[data-nova-dark]`, written by `theme.ts` and
+ * pre-paint by the boot script in `index.html`.
+ *
+ * Timeline: the ported `styles/` sheets are deleted once every consumer reads
+ * `--nova-*` (see `docs/NOVA-GENERALIST.md`, batch 7A). */
 @import "./tokens/space.css";
 @import "./tokens/radius.css";
 @import "./tokens/shadow.css";
 @import "./tokens/surface.css";
 @import "./tokens/text.css";
 @import "./tokens/color.css";
+@import "./tokens/motion.css";
+@import "./motion.css";

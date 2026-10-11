@@ -23,7 +23,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: var(--dsh-layer-panel);
+  z-index: var(--nova-layer-panel);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -48,7 +48,7 @@
 .panel[data-rightbar='fullscreen'] {
   position: fixed;
   inset: 0;
-  z-index: var(--dsh-layer-panel-fullscreen);
+  z-index: var(--nova-layer-panel-fullscreen);
   border: none;
 }
 

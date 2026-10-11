@@ -1,21 +1,48 @@
-/* Nova surfaces and borders — which plane a thing sits on.
+/* Nova surfaces and borders — which plane a thing sits on, and how a thing
+ * reacts to the pointer. Values are Nova's own since the palette swap.
  *
- * Honest note about the ported backing, because a reader will otherwise
- * conclude the tokens are broken: in the LIGHT palette `bg-layer-1/2/3` all
- * resolve to the same near-white, so `sunken` / `base` / `raised` are
- * degenerate there today — light mode separates planes with a border, not with
- * a fill (which is what a Quiet / Neutral direction wants anyway). The dark
- * palette does ladder them (875 / 850 / 800). The palette swap separates the
- * light rungs; until then a component must not rely on a fill difference to
- * carry meaning.
+ * Honest note about the light palette, so a reader does not conclude the tokens
+ * are broken: light mode separates planes with a border, not with a fill —
+ * `sunken` / `base` / `raised` all hold the same near-white there (which is
+ * what a Quiet / Neutral direction wants); the dark palette ladders them for
+ * real. A component must not rely on a fill difference to carry meaning.
  *
  * A component names the plane it belongs to. It does not invent a background. */
 :root {
-  --nova-surface-sunken: var(--dsw-alias-bg-layer-1);
-  --nova-surface-base: var(--dsw-alias-bg-base);
-  --nova-surface-raised: var(--dsw-alias-bg-layer-2);
-  --nova-surface-overlay: var(--dsw-alias-bg-overlay);
+  --nova-surface-sunken: rgb(255, 255, 255);
+  --nova-surface-base: rgb(255, 255, 255);
+  --nova-surface-raised: rgb(255, 255, 255);
+  /* A content panel that carries its own floor (sidebar rows, module chrome) —
+   * one visible step off `base` in both palettes, unlike the degenerate light
+   * `raised`. */
+  --nova-surface-panel: rgb(245, 246, 247);
+  --nova-surface-overlay: rgb(233, 236, 242);
 
-  --nova-border-subtle: var(--dsw-alias-border-l1);
-  --nova-border-strong: var(--dsw-alias-border-l3);
+  --nova-border-subtle: rgba(0, 0, 0, 0.04);
+  --nova-border-strong: rgba(0, 0, 0, 0.12);
+
+  /* Interactive fills: the translucent wash a hoverable row, button or chip
+   * paints while pointed at or pressed. Four rungs — plain hover, emphasized
+   * hover, pressed/selected, and the danger-tinted hover — all translucent so
+   * they composite over whichever surface they sit on. */
+  --nova-interactive-hover: rgba(38, 49, 72, 0.06);
+  --nova-interactive-hover-strong: rgba(38, 49, 72, 0.14);
+  --nova-interactive-active: rgba(38, 49, 72, 0.1);
+  --nova-interactive-hover-danger: rgba(236, 19, 19, 0.05);
+}
+
+body[data-nova-dark] {
+  --nova-surface-sunken: rgb(35, 35, 36);
+  --nova-surface-base: rgb(21, 21, 23);
+  --nova-surface-raised: rgb(44, 44, 46);
+  --nova-surface-panel: rgb(53, 54, 56);
+  --nova-surface-overlay: rgb(97, 102, 107);
+
+  --nova-border-subtle: rgba(255, 255, 255, 0.06);
+  --nova-border-strong: rgba(255, 255, 255, 0.16);
+
+  --nova-interactive-hover: rgba(255, 255, 255, 0.08);
+  --nova-interactive-hover-strong: rgba(255, 255, 255, 0.24);
+  --nova-interactive-active: rgba(255, 255, 255, 0.14);
+  --nova-interactive-hover-danger: rgba(242, 90, 90, 0.15);
 }

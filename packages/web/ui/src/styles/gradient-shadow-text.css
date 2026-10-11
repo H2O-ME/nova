@@ -25,7 +25,7 @@ body {
   --dsw-menu-backdrop-filter: blur(40px) saturate(150%);
 }
 
-body[data-ds-dark-theme] [data-menu-material] {
+body[data-nova-dark] [data-menu-material] {
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l3);
 }
 
@@ -44,7 +44,7 @@ body * {
     var(--dsw-elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.03), 0 0 24px 0 rgba(0, 0, 0, 0.03);
 }
 
-body[data-ds-dark-theme] {
+body[data-nova-dark] {
   --dsw-linear-gradient-think: linear-gradient(180deg, #151517 20.19%, rgba(21, 21, 23, 0) 100%);
   --dsw-linear-think-select: linear-gradient(180deg, #232325 20.19%, rgba(35, 35, 37, 0) 100%);
 }
@@ -53,38 +53,29 @@ body[data-ds-dark-theme] {
 /* 由 @deepseek-figma-plugin/custom-variable-name 插件导出 */
 /* Markdown 阶梯整体按 0.875（正文 16 → 14）等比缩放，四舍五入到整数像素；
    重新从 Figma 导出时需要保留这一缩放。 */
-/* 正文字号调节：--dsh-content-font-size 由主题 bootstrap 与 ThemePresenter
-   写在 body 上（整数 px，12–17，默认 14）。标题与正文变体按同一像素增量
-   （--dsh-content-font-delta）随动，保持层级。低一档文本（think、工具/bash
-   行的标题与摘要、markdown 表格、流内次级说明等）统一读
-   --dsh-content-font-size-secondary：设置 ≤14 时为设置值 −1，>14 时为
-   设置值 −2（12→11、13→12、14→13、15→13、16→14、17→15）。式中
-   max(13px,·) 的作用是让低设置取 −1 而非 −2，不是结果下限——12 设置下
-   层级触底 11px。small、code 属于密集次级文本，保持固定。 */
+/* 正文字号调节轴（--nova-content-font-*，定义在 design/tokens/text.css）：
+   标题与正文变体按同一像素增量随动，保持层级。low 档规则与 small、code
+   的固定值见 text.css 注释。 */
 body {
-  --dsh-content-font-delta: calc(var(--dsh-content-font-size, 14px) - 14px);
-  --dsh-content-font-size-secondary: min(calc(var(--dsh-content-font-size, 14px) - 1px), max(13px, calc(var(--dsh-content-font-size, 14px) - 2px)));
-  --dsh-content-font-delta-secondary: calc(var(--dsh-content-font-size-secondary) - 13px);
+  --dsw-font-markdown-h1: 700 calc(21px + var(--nova-content-font-delta)) / calc(30px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-h1: 700 calc(21px + var(--dsh-content-font-delta)) / calc(30px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-h2: 700 calc(19px + var(--nova-content-font-delta)) / calc(28px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-h2: 700 calc(19px + var(--dsh-content-font-delta)) / calc(28px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-h3: 700 calc(18px + var(--nova-content-font-delta)) / calc(26px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-h3: 700 calc(18px + var(--dsh-content-font-delta)) / calc(26px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-h4: 600 var(--nova-content-font-size, 14px) / calc(24px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-h4: 600 var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-base: var(--nova-content-font-size, 14px) / calc(24px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-base: var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-base-strong: 600 var(--nova-content-font-size, 14px) / calc(24px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-base-strong: 600 var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-base-italic: italic var(--nova-content-font-size, 14px) / calc(24px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-base-italic: italic var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-base-strong-italic: italic 600 var(--nova-content-font-size, 14px) / calc(24px + var(--nova-content-font-delta)) var(--dsw-font-family);
 
-  --dsw-font-markdown-base-strong-italic: italic 600 var(--dsh-content-font-size, 14px) / calc(24px + var(--dsh-content-font-delta)) var(--dsw-font-family);
+  --dsw-font-markdown-table: var(--nova-content-font-size-secondary, 13px)/calc(22px + var(--nova-content-font-delta-secondary, 0px)) var(--dsw-font-family);
 
-  --dsw-font-markdown-table: var(--dsh-content-font-size-secondary, 13px)/calc(22px + var(--dsh-content-font-delta-secondary, 0px)) var(--dsw-font-family);
-
-  --dsw-font-markdown-table-head: 500 var(--dsh-content-font-size-secondary, 13px)/calc(22px + var(--dsh-content-font-delta-secondary, 0px)) var(--dsw-font-family);
+  --dsw-font-markdown-table-head: 500 var(--nova-content-font-size-secondary, 13px)/calc(22px + var(--nova-content-font-delta-secondary, 0px)) var(--dsw-font-family);
 
   --dsw-font-markdown-small: 12px/20px var(--dsw-font-family);
 

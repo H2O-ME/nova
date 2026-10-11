@@ -1,24 +1,12 @@
-/* Motion system: one shared timing/easing vocabulary plus reusable keyframes.
- * Component modules reference these names (e.g. `animation: nova-fade-up …`)
- * so entrances, pops and draws never drift apart. Keyframes declared here are
- * GLOBAL names — CSS modules only hash keyframes defined in their own file, so
- * references from `.module.css` resolve to these untouched.
+/* Nova shared keyframes: entrances, pops and draws reference these GLOBAL
+ * names (e.g. `animation: nova-fade-up …`) so they never drift apart. CSS
+ * modules only hash keyframes defined in their own file, so references from
+ * `.module.css` resolve to these untouched.
  *
  * Everything runs on the compositor (opacity / transform / stroke-dashoffset
  * only) so animations never trigger layout or paint on the main thread. The
- * global reduced-motion clamp at the bottom is the single off-switch. */
-
-:root {
-  /* Easings: out-expo-ish settle for entrances, spring for playful pops,
-   * standard in-out for ambient loops. */
-  --nova-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-  --nova-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --nova-ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
-
-  --nova-dur-fast: 140ms;
-  --nova-dur-base: 220ms;
-  --nova-dur-slow: 400ms;
-}
+ * reduced-motion clamp at the bottom is the single off-switch — individual
+ * modules never repeat the guard. */
 
 /* Entrance: slide up a hairline while fading in. */
 @keyframes nova-fade-up {

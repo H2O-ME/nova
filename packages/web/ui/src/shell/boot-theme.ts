@@ -55,7 +55,7 @@ export function bootThemeScript(
     && matchMedia('(prefers-color-scheme: dark)').matches
   const dark = preference === 'dark' || systemDark
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
-  document.body.toggleAttribute('data-ds-dark-theme', dark)
-  document.body.style.setProperty('--dsh-content-font-size', fontSize + 'px')
+  document.body.toggleAttribute('data-nova-dark', dark)
+  document.body.style.setProperty('--nova-content-font-size', fontSize + 'px')
 })()`;
 }

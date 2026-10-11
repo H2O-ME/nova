@@ -20,7 +20,7 @@
   /* The pane's base tier (dsh .lc-root's 13px): a row that declares no size of
      its own inherits THIS, not the browser's 16px — the trend detail's rows
      did exactly that and read a size larger than every other row in the pane. */
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
 }
 
 /* Same column and side clearance as the transcript and the trace, so switching
@@ -54,14 +54,14 @@
 
 .cardTitle {
   margin: 0;
-  font-size: var(--dsh-content-font-size-body, 14px);
+  font-size: var(--nova-content-font-size-body, 14px);
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
 }
 
 .trailing {
   color: var(--dsw-alias-label-caption);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   font-variant-numeric: tabular-nums;
 }
 
@@ -69,7 +69,7 @@
   margin: 0;
   padding: 8px 0;
   color: var(--dsw-alias-label-tertiary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
 }
 
 /* ── stats strip ───────────────────────────────────────────────────────── */
@@ -285,13 +285,13 @@
 
 .headlineUnit {
   color: var(--dsw-alias-label-secondary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   font-variant-numeric: tabular-nums;
 }
 
 .headlinePct {
   color: var(--dsw-alias-label-secondary);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
 }
 
 .headlinePct b {
@@ -397,7 +397,7 @@
   min-width: 0;
   padding: 1px 6px;
   border-radius: 6px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   color: var(--dsw-alias-label-primary);
   transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
@@ -825,7 +825,7 @@
   background: transparent;
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   text-align: left;
   cursor: pointer;
   transition: background-color 0.2s ease;
@@ -906,7 +906,7 @@
   gap: 8px;
   padding: 4px 6px;
   border-radius: 6px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
@@ -967,7 +967,7 @@
   padding: 4px 6px;
   margin: 0 -6px;
   border-radius: 6px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
@@ -1051,7 +1051,7 @@
   padding: 4px 6px;
   margin: 0 -6px;
   border-radius: 6px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   font-variant-numeric: tabular-nums;
   transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
@@ -1087,7 +1087,7 @@
   padding-top: 8px;
   border-top: 0.5px solid var(--dsw-alias-border-l2);
   color: var(--dsw-alias-label-caption);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1141,7 +1141,7 @@
   padding: 4px 6px;
   margin: 0 -6px;
   border-radius: 6px;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   transition: background-color var(--ds-transition-duration, 0.2s) var(--ds-ease-in-out, ease-in-out);
 }
 
@@ -1172,7 +1172,7 @@
   padding-top: 8px;
   border-top: 0.5px solid var(--dsw-alias-border-l2);
   color: var(--dsw-alias-label-caption);
-  font-size: var(--dsh-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size-secondary, 13px);
   font-variant-numeric: tabular-nums;
 }
 

@@ -105,7 +105,7 @@ export function useTerminalEmulator(): TerminalEmulator {
         themeObserver = new MutationObserver(applyTheme);
         themeObserver.observe(document.documentElement, {
           attributes: true,
-          attributeFilter: ['class', 'data-ds-dark-theme'],
+          attributeFilter: ['class', 'data-nova-dark'],
         });
         instance.onData((data) => { sendRef.current({ type: 'term_input', data }); });
         instance.textarea?.setAttribute('aria-label', RIGHTBAR_COPY['term.output']);

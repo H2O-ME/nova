@@ -1,15 +1,40 @@
-/* Nova elevation — three rungs, and that is the ceiling.
- *
- * Backed by the ported elevation tokens for now, so Batch 1 moves no pixel:
- * the VOCABULARY is Nova's, the values still come from the harness port until
- * the palette swap. A surface that needs a fourth level is telling you it has
- * a layering problem, not an elevation problem.
+/* Nova elevation — three shadow rungs, and that is the ceiling, plus the
+ * composite "hairline stroke + soft glow" recipe that floats, panels and
+ * solid buttons wear INSTEAD of a heavier shadow (the 0.5px stroke is painted
+ * inside box-shadow so it costs no layout; component sheets keep `border: 0`).
  *
  * A docked column (the right Inspector) draws NO elevation — it is a column of
  * the page, not a float. `ui/test/style-guard.test.ts` pins that rule and it
- * stays. */
+ * stays. A surface that needs a fourth level is telling you it has a layering
+ * problem, not an elevation problem.
+ *
+ * The composite rungs are declared per-element (`body, body *`) rather than
+ * inherited on purpose: inheritance would hand down the value with its
+ * `var()` ALREADY substituted, so a descendant rebinding
+ * `--nova-elevation-stroke-color` could not reach it. Declared per element,
+ * every surface re-substitutes with the stroke colour it sees (menus rebind
+ * the faintest, inputs the strong one). */
 :root {
-  --nova-shadow-1: var(--dsw-shadow-lv1);
-  --nova-shadow-2: var(--dsw-shadow-lv2);
-  --nova-shadow-3: var(--dsw-shadow-lv3);
+  --nova-shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+  --nova-shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.02), 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --nova-shadow-3:
+    0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
+
+  --nova-elevation-stroke-color: var(--nova-border-strong);
+}
+
+/* Menus sit on their own blurred material and read lighter than inputs. */
+body[data-nova-dark] [data-menu-material] {
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+}
+
+body,
+body * {
+  --nova-elevation-stroke: 0 0 0 0.5px var(--nova-elevation-stroke-color);
+  --nova-elevation-panel:
+    var(--nova-elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.03), 0 0 16px 0 rgba(0, 0, 0, 0.02);
+  --nova-elevation-prominent:
+    var(--nova-elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.04), 0 0 20px 0 rgba(0, 0, 0, 0.05);
+  --nova-elevation-soft:
+    var(--nova-elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.03), 0 0 24px 0 rgba(0, 0, 0, 0.03);
 }

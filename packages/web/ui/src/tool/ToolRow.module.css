@@ -12,7 +12,7 @@
    The Settings font-size preference rides the body-published axis: the shared
    DisclosureRow chrome scales the row height and leading glyph by the body px
    delta; the title and the summary texts here read the secondary tier
-   (--dsh-content-font-size-secondary: one step under the body — setting −1 at
+   (--nova-content-font-size-secondary: one step under the body — setting −1 at
    ≤14, setting −2 above), matching think text. */
 
 .root {
@@ -27,7 +27,7 @@
   overflow: hidden;
   display: flex;
   align-items: center;
-  height: calc(24px + var(--dsh-content-font-delta, 0px));
+  height: calc(24px + var(--nova-content-font-delta, 0px));
   min-width: 0;
 }
 
@@ -38,8 +38,8 @@
 .leading {
   position: relative; /* .chevronHover overlay anchor */
   flex: none;
-  width: calc(16px + var(--dsh-content-font-delta, 0px));
-  height: calc(16px + var(--dsh-content-font-delta, 0px));
+  width: calc(16px + var(--nova-content-font-delta, 0px));
+  height: calc(16px + var(--nova-content-font-delta, 0px));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -52,8 +52,8 @@
    without a per-callsite size prop. StateDot (its svg carries data-state)
    stays at its fixed figma size — it is a status mark, not text furniture. */
 .leading svg:not([data-state]) {
-  width: calc(14px + var(--dsh-content-font-delta, 0px));
-  height: calc(14px + var(--dsh-content-font-delta, 0px));
+  width: calc(14px + var(--nova-content-font-delta, 0px));
+  height: calc(14px + var(--nova-content-font-delta, 0px));
 }
 
 /* The idle icon crossfades (100ms) into a down chevron while the row is
@@ -86,8 +86,8 @@
 
 .title {
   flex: none;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--dsw-alias-label-secondary);
   font-weight: 400;
   /* The hover lift below animates this like the summary's (harness `.title`). */
@@ -117,8 +117,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--dsw-alias-label-tertiary);
   transition: color 100ms ease;
 }
@@ -137,8 +137,8 @@
   flex: none;
   margin-left: 4px;
   white-space: nowrap;
-  font-size: var(--dsh-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--dsw-alias-label-tertiary);
   transition: color 100ms ease;
 }
@@ -153,7 +153,7 @@
 .diffStat {
   margin-left: 10px;
   font-family: var(--ds-font-family-code);
-  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 2px);
+  font-size: calc(var(--nova-content-font-size-secondary, 13px) - 2px);
   color: var(--dsw-alias-label-caption);
   transform: translateY(0.5px);
 }

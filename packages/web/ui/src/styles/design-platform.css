@@ -1,6 +1,6 @@
 /* Ported from deepseek-harness (c) 2026 DeepSeek — MIT License.
  * Three-tier token system: --dsw-static-* raw scale → --dsw-alias-* semantic →
- * component-local --dsh-*. Dark mode = body[data-ds-dark-theme] (resolved
+ * component-local --dsh-*. Dark mode = body[data-nova-dark] (resolved
  * pre-paint by the inline script in index.html).
  *
  * NOTE: --dsw-alias-brand-primary resolves to ink black in light mode — every
@@ -97,7 +97,7 @@ body {
   --dsw-static-red-900: rgb(87, 12, 12);
 }
 
-body[data-ds-dark-theme] {
+body[data-nova-dark] {
   --dsw-static-amber-100: rgb(254, 245, 231);
   --dsw-static-amber-400: rgb(247, 173, 49);
   --dsw-static-amber-500: rgb(245, 158, 11);
@@ -294,7 +294,7 @@ body {
   background-color: var(--dsw-alias-bg-base);
 }
 
-body[data-ds-dark-theme] {
+body[data-nova-dark] {
   --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-950);
   --dsw-alias-bg-document-preview: var(--dsw-static-neutral-bluish-950);
   --dsw-alias-label-document-preview: var(--dsw-static-neutral-bluish-300);
@@ -408,6 +408,6 @@ html[data-platform='darwin'] body {
   --dsw-specific-menu: rgba(248, 249, 250, 0.94);
 }
 
-html[data-platform='darwin'] body[data-ds-dark-theme] {
+html[data-platform='darwin'] body[data-nova-dark] {
   --dsw-specific-menu: rgba(48, 49, 54, 0.94);
 }
