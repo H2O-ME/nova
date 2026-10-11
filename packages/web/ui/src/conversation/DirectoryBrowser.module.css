@@ -1,62 +1,9 @@
-/* The workspace picker's directory browser. The overlay and mask match the
-   shared modal family (SettingsPanel, DeleteSessionDialog) so every dialog on
-   this surface reads as one material; the panel is a browsing sheet rather than
-   a small confirm, because it holds a scrollable list and a footer readout. */
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mask {
-  position: absolute;
-  inset: 0;
-  background: var(--nova-material-mask);
-  backdrop-filter: var(--nova-material-mask-blur);
-  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-/* The reference's `modalEnter` (ui-primitives Modal.module.css): mask and card
-   fade in together over the same duration and easing, so the sheet arrives
-   rather than flashing between frames. */
-@keyframes modal-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mask,
-  .panel {
-    animation: none;
-  }
-}
-
-.panel {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  width: 560px;
-  max-width: calc(100vw - 48px);
-  /* Short viewports clamp the sheet, and the list is what gives: the header,
-     the crumbs and the footer must all stay reachable. */
-  max-height: min(520px, calc(100vh - 48px));
-  padding: 16px;
-  gap: 12px;
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-raised);
-  box-shadow: var(--nova-elevation-prominent);
-  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.panel:focus {
-  outline: none;
-}
+/* The workspace picker's directory browser. The skeleton (overlay / mask /
+   panel) and the title come from the kit (`kit/Dialog`); this sheet keeps the
+   browsing surface's own parts. The panel is a browsing sheet rather than a
+   small confirm, because it holds a scrollable list and a footer readout —
+   short viewports clamp the sheet, and the list is what gives, so the header,
+   the crumbs and the footer all stay reachable. */
 
 .header {
   display: flex;
@@ -64,13 +11,6 @@
   justify-content: space-between;
   gap: 8px;
   flex: none;
-}
-
-.title {
-  font-size: 15px;
-  line-height: 22px;
-  font-weight: 600;
-  color: var(--nova-text-primary);
 }
 
 .status {
