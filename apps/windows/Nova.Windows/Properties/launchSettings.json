@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Nova.Windows (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Nova.Windows (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

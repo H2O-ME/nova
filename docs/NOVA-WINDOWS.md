@@ -99,7 +99,48 @@ Nova.Windows.exe ──spawn──▶ node.exe（runtime 入口 = nova 的 deskt
 | W4 | 检查器与深集成：Diff/Changes、Git、通知、剪贴板、文件选择器、终端决策 | 编程任务与通用任务都有完整的执行—审查—恢复体验 | 交互终端若上局部 WebView2，需单独拍板 |
 | W5 | 发行：x64（后续 ARM64）、node-pty 双架构、升级/卸载、Store 资产 | 干净 Windows 无 Node 环境装完即用 | — |
 
-## 6. 风险表
+### 5.1 W1 实测记录（2026-11-12，本机）
+
+**环境**：Windows 11 家庭版 build 26200（25H2）· .NET SDK 10.0.404 ·
+WindowsAppSDK 2.6.5（SelfContained + ReadyToRun，未 trim）· 单项目 MSIX
+（`dotnet new winui` 模板）。W1 只验 x64。
+
+**六步验收全过**：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 签名配置 | 证书驻留 `CurrentUser\My`，csproj 按 thumbprint 引用——仓库内无 PFX 文件、无密码；Subject（CN=AppPublisher）与 `Identity/@Publisher` 是同一份合同，不再各自漂移 |
+| 证书信任 | `certutil -addstore TrustedPeople`（一次 UAC 提权；发行期换正式证书） |
+| 安装 | `Add-AppxPackage` 成功，`SignatureKind: Developer`，落入 WindowsApps |
+| 启动 | 原生 WinUI 3 窗口（NavigationView 骨架，无 WebView2 主 UI）：进程出现 354ms、窗口句柄就绪 1029ms（含 ShellExecute 启动开销） |
+| 空闲采样 | 下表：稳定 10s 后连续 60s、每 2s，n=30 |
+| 卸载 | `Remove-AppxPackage` 后包与进程零残留 |
+
+**空闲内存基线（MB）**：
+
+| 指标 | min | median | p95 | max |
+| --- | --- | --- | --- | --- |
+| Working Set（总量） | 114.3 | **114.5** | 118.9 | 120.2 |
+| Private Working Set | 27.4 | 27.5 | 30.5 | 43.0 |
+| Private Commit | 42.1 | 42.1 | 45.0 | 45.3 |
+
+**包体积**：75.24 MB（SelfContained 含 WinAppSDK 2.6.5 运行时；未 trim）。
+
+**口径诚实性**：Electron 419MB 是当年的任务管理器口径（≈WS 总量）。对比特意用
+对 Electron 最有利的「WS 总量」：114.5 vs 419 ≈ **1/3.7**；PWS 口径（27.5MB，
+大量共享页来自 WinAppSDK 运行时 DLL）差距更大。**止损判定：通过，W2 的门开了。**
+
+**工具链事实（记下来防止重踩）**：
+
+- `-AllowUnsigned` 对打包桌面应用是死路：`runFullTrust` 是受限能力，两者互斥
+  （0x80073D2C「发布者不在未签名的命名空间中」，换 Publisher 无解）。签名
+  sideload 是唯一正路。
+- 签名证书必须带 Code Signing EKU（`2.5.29.37=1.3.6.1.5.5.7.3.3`），只有
+  DigitalSignature 会报 APPX0107「证书不能用于签名」。
+- `mspdbcmf.exe` 缺失只影响符号包生成（既有 warning），产物无碍。
+- `PublishTrimmed` 暂关：WinUI XAML 反射密集，trim 是 W5 的优化项，不进 W1 基线。
+
+
 
 | 风险 | 级别 | 处置 |
 | --- | --- | --- |

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Nova_Windows.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Nova_Windows"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!--
+        W1 shell: the NavigationView skeleton is the product's SHAPE (tasks /
+        sessions nav, content stage), deliberately empty — no Agent runtime,
+        no task list, no terminal, no plugin UI. The W1 memory baseline is
+        measured against exactly this app.
+    -->
+    <NavigationView
+        PaneDisplayMode="LeftCompact"
+        IsBackButtonVisible="Collapsed"
+        IsSettingsVisible="False"
+        IsTitleBarAutoPaddingEnabled="False">
+        <NavigationView.MenuItems>
+            <NavigationViewItem Content="任务" Tag="tasks" IsSelected="True">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Play" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem Content="会话" Tag="sessions">
+                <NavigationViewItem.Icon>
+                    <SymbolIcon Symbol="Comment" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.MenuItems>
+        <Grid Padding="24,16">
+            <StackPanel Spacing="8">
+                <TextBlock Text="任务" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock
+                    Text="W1 原生空壳 — Agent Runtime 未接入（Named Pipes 于 W2 接通）"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+        </Grid>
+    </NavigationView>
+</Page>
