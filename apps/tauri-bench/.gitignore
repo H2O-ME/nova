@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Tool state (security scanner session files), never commit
+.mimosa/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
