@@ -97,34 +97,37 @@ export function setRightbar(state: LayoutState, px: number): LayoutState {
 
 /**
  * Open the right panel. The first opening seeds the width preference at 45% of
- * the frame, and opening below the breakpoint collapses the sidebar first (the
- * panel takes the room, not the center).
+ * the frame.
  *
- * A shown panel RESERVES its track — the centre makes room, and that is what
- * keeps the shell three columns instead of a panel floating over the
- * conversation (the reference's `track = shown && !autoFullscreen`). The track
- * is not a parameter: every shown panel bids for it, and the frame solve owns
- * the one case where there is nothing to bid for — a frame too narrow resolves
- * to a zero track and the occupant draws a takeover. The track used to be a
- * caller-supplied `false` (a port slip), which is why an opened panel hung over
- * the centre; with no parameter there is no call site left to get it wrong.
- * Fullscreen keeps the track beneath the covered frame, so leaving fullscreen
- * lands on the same conversation width instead of jumping.
+ * The panel is a DRAWER, not a third column: it floats over the centre and
+ * never squeezes the conversation. That is the W1 decision — the old
+ * `rightbarTrack: true` reserved a grid track for it, so opening 变更/文件
+ * shrank the transcript beside it and the shell read as three crowded columns.
+ * The reader opens the panel to LOOK at something, not to give up half their
+ * conversation while doing it; closing restores nothing because nothing moved.
+ *
+ * The sidebar is left alone as well: it used to collapse on a narrow frame so
+ * the panel could take the room, which yanked the session list out from under
+ * the pointer. A floating drawer needs no concession from either neighbour.
+ *
+ * Fullscreen keeps its own presentation (it covers the frame), and it keeps the
+ * track flag false so a drawer that is later restored does not start reserving
+ * space.
  */
 export function openRightbar(state: LayoutState, fullscreen: boolean): LayoutState {
   // Only a changed presentation rewrites the flag; a repeated report of the
-  // same one leaves a pending instant-exit in place.
-  const presentationChanged =
-    !state.rightbarShown || !state.rightbarTrack || state.rightbarFullscreen !== fullscreen;
+  // same one leaves a pending instant-exit in place. The track is deliberately
+  // NOT part of this comparison any more: it is always false now (the drawer
+  // never reserves one), and folding it in would make every repeat look like a
+  // presentation change and drop the pending flag.
+  const presentationChanged = !state.rightbarShown || state.rightbarFullscreen !== fullscreen;
   return {
     ...state,
     rightbarInstant: presentationChanged ? state.rightbarFullscreen && !fullscreen : state.rightbarInstant,
-    narrowExpanded:
-      !state.rightbarShown && state.viewportWidth < SIDEBAR_AUTO_COLLAPSE ? false : state.narrowExpanded,
     rightbar:
       state.rightbar ?? Math.max(RIGHTBAR_MIN, Math.round(state.viewportWidth * RIGHTBAR_DEFAULT_RATIO)),
     rightbarShown: true,
-    rightbarTrack: true,
+    rightbarTrack: false,
     rightbarFullscreen: fullscreen,
   };
 }

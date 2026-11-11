@@ -13,6 +13,8 @@
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
+  /* The library button is `font-medium`; the kit's capsules are body weight. */
+  font-weight: var(--nova-text-weight-normal);
   cursor: pointer;
   transition:
     color var(--nova-dur-base) var(--nova-ease-inout),

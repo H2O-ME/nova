@@ -54,7 +54,7 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
   width: 100%;
   padding: 0;
   border: none;
@@ -116,7 +116,7 @@
 .item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
   min-width: 0;
   font-size: 13px;
   line-height: 20px;

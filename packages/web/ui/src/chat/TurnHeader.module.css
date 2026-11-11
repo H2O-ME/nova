@@ -1,30 +1,50 @@
+/* The turn divider. It used to be a `--nova-border-strong` hairline spanning the
+ * FULL column, which drew a hard horizontal rule across the transcript between
+ * every turn — at 8–16px of surrounding rhythm a 14%-opacity full-width line is
+ * the strongest thing on the page, and a screen of them reads as a ruled
+ * spreadsheet rather than a conversation. (That heavy divider is what the
+ * operator pointed at.) A full-width rule is the right device for a settings
+ * list, where rows are parallel records; a conversation's turns are not
+ * parallel records, and the whitespace between them already says where one ends.
+ *
+ * The row now carries no rule at all. It still reads as a divider because it is
+ * a full-width, secondary-tier line with 8px below it — hierarchy by type, not
+ * by ink. The `.rule` element below is the fold's opening hairline, so an
+ * EXPANDED turn still shows where its process block begins. */
 .root {
   box-sizing: border-box;
   display: flex;
   align-items: center;
+  /* shadcn's Button centers and gaps its children; the header is a left-aligned
+     run whose spacing is carried by `.sep` / `.chevron` margins. */
+  justify-content: flex-start;
+  gap: 0;
   width: 100%;
   min-width: 0;
-  height: calc(33px + var(--nova-content-font-delta, 0px));
-  padding: 0 0 var(--nova-space-8);
+  /* A 24px text line, not a 33px band: the old 8px bottom pad was a second gap
+   * stacked on the flow's own 8px, so the space under a header never matched the
+   * space above it (measured 14–16 against 8). */
+  height: calc(24px + var(--nova-content-font-delta, 0px));
+  padding: 0;
   border: none;
-  border-bottom: 0.5px solid var(--nova-border-strong);
   background: none;
   color: var(--nova-text-muted);
   cursor: pointer;
   text-align: left;
-  transition: color 100ms ease;
+  /* shadcn's Button is `font-medium`; the header's words are body weight. */
+  font-weight: var(--nova-text-weight-normal);
+  transition: color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .root:disabled {
   cursor: default;
+  /* Button fades disabled controls to 50%; a non-collapsible turn is not a
+     disabled control, it is a header with nothing to fold. */
+  opacity: 1;
 }
 
 .root:not(:disabled):hover {
   color: var(--nova-text-primary);
-}
-
-.root:not([data-open]) {
-  margin-bottom: var(--nova-space-8);
 }
 
 .chevron {
@@ -33,7 +53,7 @@
   height: 14px;
   margin-left: var(--nova-space-4);
   color: var(--nova-text-faint);
-  transition: transform 100ms ease;
+  transition: transform var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 /* The reference rotates its chevron open rather than swapping the asset; the
@@ -43,8 +63,32 @@
 }
 
 .label {
+  flex: none;
   min-width: 0;
   overflow: hidden;
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--nova-content-font-delta, 0px));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The collapsed row's work summary: what the turn did, in the same secondary
+   tier as its duration. It truncates before the duration does — the duration
+   is short and fixed, the summary is the variable half. */
+.sep {
+  flex: none;
+  width: 2px;
+  height: 2px;
+  margin: 0 var(--nova-space-8);
+  border-radius: 1px;
+  background: var(--nova-text-faint);
+}
+
+.work {
+  min-width: 0;
+  overflow: hidden;
+  flex: 0 1 auto;
+  color: var(--nova-text-faint);
   font-size: var(--nova-content-font-size-secondary, 13px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   text-overflow: ellipsis;
@@ -57,3 +101,5 @@
     transition: none;
   }
 }
+
+

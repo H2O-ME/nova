@@ -1,77 +1,42 @@
 /**
- * A turn's process group: the group's own
- * disclosure header ({@link ProcessGroupHead}) above a bounded body. The
- * reference bounds every
- * settled group: the members scroll inside `min(400px, 50vh)` with gradient
- * fades over whichever end can still scroll. That cap is the whole point — a
- * turn with forty tool calls must not bury its own answer, and the reader must
- * be able to tell "the group continues" from "the transcript ends".
+ * A turn's process container: the group's members, nothing more.
  *
- * The disclosure defaults CLOSED, so a settled turn's steps read as one
- * summary line (已读取文件并搜索代码…) until the reader asks for them — the
- * work-details setting's 「工作步骤过多时自动折叠概况」. A LIVE group under the
- * same rule shows the running title instead; the policy decides whether its
- * task detail rides along. Ungrouped (`stepGrouping: 'none'`, or the live turn
- * under `history`) there is no header and no cap: the steps flow flat.
+ * This used to be a SECOND disclosure — its own header with its own
+ * `useState`, closed by default, sitting under the turn header that already
+ * folds the same rows. A reader who opened a turn then met a summary line they
+ * had to click again, and the two states could disagree: the turn says open,
+ * the group says closed, and the steps stay invisible. That is the
+ * "two implementations of one fact" family (`docs/NOVA-GENERALIST.md`), and the
+ * cure is one owner, not a third component.
+ *
+ * The single fold now lives in the turn header (`openTurns` in `flow.tsx`).
+ * This file is the box that fold reveals: it caps its height so a forty-step
+ * turn cannot bury the answer it belongs to, and fades whichever end can still
+ * scroll. The turn header carries the summary words (`ProcessGroupHead` is
+ * gone with its state).
  */
-import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ProcessGroupHead } from './ProcessGroupHead.js';
 import { useCappedEdges } from './use-capped-edges.js';
 import css from './ProcessGroup.module.css';
 
 export interface ProcessGroupProps {
   /** The group's rows, in order. */
   children: ReactNode;
-  /** The turn is still running: the title shimmers and reads the live activity. */
+  /** The group's turn is still running: the cap follows its growth. */
   live: boolean;
-  /** Draw the disclosure header and cap the body; without it the steps flow flat. */
-  grouped?: boolean | undefined;
-  /** A settled group's summary title (the closed disclosure's words). */
-  summary?: string | undefined;
-  /** A live group's running title (activity + task detail per the policy). */
-  liveTitle?: string | undefined;
 }
 
-export function ProcessGroup({ children, live, grouped = false, summary, liveTitle }: ProcessGroupProps): JSX.Element {
-  /** The group's own disclosure, closed by default (the reference's `useDisclosure`). */
-  const [open, setOpen] = useState(false);
-  const toggle = useCallback((): void => { setOpen((current) => !current); }, []);
-  // A capped group's fades follow its scroll position and its content growth.
-  // A live or hidden group has no measurable end, so it never measures.
-  const { bodyRef, up, down } = useCappedEdges(!live && !(grouped && !open), children);
+export function ProcessGroup({ children, live }: ProcessGroupProps): JSX.Element {
+  // The fades follow the scroll position and the content's growth. A live group
+  // has no settled end to measure, so it re-measures on every change.
+  const { bodyRef, up, down } = useCappedEdges(!live, children);
 
-  // The reference's split: an UNGROUPED flow is flat (uncapped, wider rhythm);
-  // a grouped one caps even while live — the reader opened it knowingly, and
-  // a run that never stops growing must not bury the page with it.
-  const bodyClass = !grouped
-    ? `${css.body} ${css.expandedBody}`
-    : [css.body, up ? css.fadeTop : '', down ? css.fadeBottom : ''].filter(Boolean).join(' ');
-
-  if (!grouped) {
-    return (
-      <div className={css.root}>
-        <div ref={bodyRef} className={bodyClass} data-step-process-body="">
-          <div className={css.content} data-step-process-content="">{children}</div>
-        </div>
-      </div>
-    );
-  }
   return (
     <div className={css.root} data-step-process="">
-      <ProcessGroupHead
-        title={live ? liveTitle ?? '正在分析请求' : summary ?? '已完成分析'}
-        live={live}
-        open={open}
-        onToggle={toggle}
-        label={live ? '进行中的工作步骤' : '本次回合的工作步骤'}
-      />
       <div
         ref={bodyRef}
-        className={bodyClass}
-        hidden={!open}
+        className={[css.body, up ? css.fadeTop : '', down ? css.fadeBottom : ''].filter(Boolean).join(' ')}
         data-step-process-body=""
-        data-group-expanded-mode={!grouped || undefined}
       >
         <div className={css.content} data-step-process-content="">{children}</div>
       </div>

@@ -9,7 +9,7 @@
 
 .triggerRow.railRow {
   width: 36px;
-  margin: var(--nova-space-8) 0 10px;
+  margin: var(--nova-space-8) 0 var(--nova-space-10);
 }
 
 .trigger {
@@ -21,7 +21,7 @@
   width: auto;
   height: 42px;
   margin: 0;
-  padding: 0 10px 0 var(--nova-space-8);
+  padding: 0 var(--nova-space-10) 0 var(--nova-space-8);
   box-sizing: border-box;
   border: none;
   /* The reference states `--nova-radius-lg` here, not a literal: this row must
@@ -80,13 +80,8 @@
 /* Wide-only content fades back in on expand remount (the shell's rule, for
    the seat the shell does not animate). */
 .wide {
-  animation: wide-in var(--nova-dur-base) var(--nova-ease-inout);
+  animation: nova-fade-in var(--nova-dur-base) var(--nova-ease-inout);
 }
-
-@keyframes wide-in {
-  from { opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .wide {
     animation: none;

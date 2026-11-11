@@ -6,11 +6,14 @@
  * `--nova-interactive-hover-danger`、占位符 `--nova-text-disabled`。
  * 页头由 `StepHeading` 提供，本表不再自带。 */
 
+/* The notice keeps its fill and drops its border: with the ladder now real, a
+ * `panel` fill on a `base` sheet is enough to set the paragraph apart, and the
+ * outline was drawing a box around two lines of explanatory text. */
 .notice {
   margin: var(--nova-space-8) 0 0;
-  padding: 10px var(--nova-space-12);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  padding: var(--nova-space-10) var(--nova-space-12);
+  border: 0;
+  border-radius: var(--nova-radius-md);
   background: var(--nova-surface-panel);
   font-size: 12px;
   line-height: 18px;
@@ -26,13 +29,19 @@
   list-style: none;
 }
 
+/* De-framed like the provider rows (2026-10-18, same pass): a list of bordered
+ * cards made this the second table-of-boxes on the model page. The row keeps its
+ * own padding and the list keeps a small gap, so a row is defined by the air
+ * around it; the inputs INSIDE it keep their borders, which is where a border
+ * actually carries meaning (an editable field, not a container). */
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  padding: var(--nova-space-8);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  padding: var(--nova-space-10);
+  border: 0;
+  border-radius: var(--nova-radius-md);
+  background: transparent;
 }
 
 /* The row's own line: id | display name | disclosure | remove. A GRID rather
@@ -51,7 +60,7 @@
   box-sizing: border-box;
   width: 100%;
   height: 32px;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-10);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-sunken);
@@ -144,7 +153,7 @@
 .fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px var(--nova-space-12);
+  gap: var(--nova-space-10) var(--nova-space-12);
   padding: var(--nova-space-2) 0 var(--nova-space-4);
 }
 
@@ -253,7 +262,7 @@
   align-items: center;
   justify-content: center;
   height: 32px;
-  padding: 0 14px;
+  padding: 0 var(--nova-space-14);
   border: none;
   border-radius: var(--nova-radius-lg);
   font-family: inherit;
@@ -325,7 +334,7 @@
 .poolRow {
   box-sizing: border-box;
   max-width: 100%;
-  padding: 3px 10px;
+  padding: 3px var(--nova-space-10);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

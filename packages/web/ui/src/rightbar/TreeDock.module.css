@@ -110,15 +110,8 @@
   font: var(--nova-font-xxs-12);
   text-align: left;
   cursor: pointer;
-  animation: dock-row-in 150ms var(--nova-ease-inout);
+  animation: nova-fade-in 150ms var(--nova-ease-inout);
 }
-
-@keyframes dock-row-in {
-  from {
-    opacity: 0;
-  }
-}
-
 .row:hover {
   background: var(--nova-interactive-hover);
 }

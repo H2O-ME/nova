@@ -44,17 +44,19 @@
   width: 100%;
   max-width: var(--nova-composer-card-max-width);
   padding-top: var(--nova-space-8);
-  /* Input stroke: the light neutral (l2, one step above the menus' l1),
-     drawn as the elevation hairline so it costs no layout; the shadow is the
-     soft elevation tier. Fill: the input surface token (elevated in dark). */
+  /* THE REFERENCE'S COMPOSER SURFACE (2026-11-05, measured against DSH).
+
+   The reference's card is a 28px corner with no border, and its soft
+   elevation's first layer is a 0.5px stroke. That pairing — a generous corner
+   + one hairline inside the shadow — is what reads as a panel rather than a
+   form field. The previous pass replaced it with a 12px corner + a CSS
+   border, which is exactly the 「很方」 report. Glow is still gone (that was
+   the actual cartoon cue), but the geometry is the reference's again. */
   border: 0;
-  --nova-elevation-stroke-color: var(--nova-border-strong);
-  /* The harness writes this as `var(--nova-radius-lg)`; the ladder is carried
-     whole in `styles/base.css`, so a literal here was a 6px deviation on the
-     product's most prominent surface. */
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-2xl);
   background: var(--nova-surface-raised);
-  box-shadow: var(--nova-elevation-soft);
+  --nova-elevation-stroke-color: var(--nova-border-subtle);
+  box-shadow: var(--nova-elevation-stroke), var(--nova-elevation-soft);
   /* The draft text follows the Settings font-size preference (the textarea,
      mirror, and backdrop all inherit from here, so the three layers stay in
      step); the line height keeps the default 10px leading via the shared px
@@ -87,7 +89,7 @@
    gutter. */
 .rail {
   min-width: 0;
-  padding: var(--nova-space-2) 10px 0;
+  padding: var(--nova-space-2) var(--nova-space-10) 0;
   margin-bottom: -6px;
 }
 
@@ -159,10 +161,22 @@
    business-blue caret) is the harness's value. */
 .input {
   box-sizing: border-box;
-  /* Docked floor: one 24px line + 4px top pad = 28 content height; 36 leaves
-     an 8px breath below the line (the hero keeps its own 52px floor below). */
-  min-height: 36px;
-  padding: var(--nova-space-4) var(--nova-space-8) 0 14px;
+  /* ONE floor for every state (2026-10-18). Docked used to be 36 and the hero
+     68 — a 32px difference that is exactly the "尺寸忽大忽小" the operator
+     reported: sending the first message re-seats the card from hero to dock and
+     it shrank by nearly a full line in one frame. 44 = one 24px line + 8px top
+     pad + 12px of breath below the line, comfortable at rest and identical in
+     both seats, so the card cannot resize across the transition. The hero buys
+     its landing-state air from the wrapper's padding instead (see `.hero`
+     below), not from a taller text floor.
+     The right pad widened from 8 to 16 with the card's 14px corner: at 8px
+     the draft ran visibly closer to the rounded edge than to the top, which made
+     the corner read as accidental. The left pad is now 16 as well: the card is
+     content + 32 wide, so symmetric 16s put the draft on the transcript's own
+     text axis (measured 457 both). At the old 14 the composer's first glyph sat
+     2px left of every line above it. */
+  min-height: 44px;
+  padding: var(--nova-space-8) var(--nova-space-16) 0 var(--nova-space-16);
   font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
@@ -197,7 +211,7 @@
    against the docked 36px floor. */
 .placeholder {
   position: absolute;
-  inset: 4px 8px auto 14px;
+  inset: 4px 8px auto 16px;
   color: var(--nova-text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -217,7 +231,7 @@
    glyphs. The top/left `inset` mirrors .input's padding. */
 .mirror {
   position: absolute;
-  inset: 4px 8px auto 14px;
+  inset: 4px 8px auto 16px;
   font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
@@ -238,9 +252,13 @@
    equal negative margin so the chip cannot move the text it decorates — the
    mirror's line breaking stays character-for-character the textarea's. */
 .mention {
-  padding: 0 3px;
-  margin: 0 -3px;
-  border-radius: var(--nova-radius-lg);
+  padding: 0 4px;
+  margin: 0 -4px;
+  /* An inline chip inside running text, so it takes the SMALL rung: at the
+   * control rung (12px) a 20px-tall inline mark reads as a lozenge and breaks
+   * the line's texture. `sm` grew to 6 in the global rewrite, which is exactly
+   * the "slightly soft rectangle" an inline mark wants. */
+  border-radius: var(--nova-radius-sm);
   color: var(--nova-color-accent);
   background: var(--nova-color-accent-soft);
   font-weight: 500;
@@ -272,14 +290,10 @@
   visibility: hidden;
 }
 
-/* Hero (centered empty-state) keeps the 2-line floor (figma min-h 52 = ~2 × 24
-   line + 4pt); the docked composer collapses to the content height. */
-.hero .input {
-  min-height: 52px;
-}
-
-/* The hero's 52px floor fits two lines, so its placeholder clamps at two
-   instead of the docked single line. */
+/* The landing state's caption gets two lines of room; the docked one clamps to
+   one, because the dock is a tool under a transcript rather than a landing
+   surface. The CARD's floor no longer differs between the two states (see
+   `.input`), so this is the only thing that changes across the re-seat. */
 .hero .placeholder {
   white-space: normal;
   display: -webkit-box;
@@ -402,19 +416,19 @@
   border: none;
   border-radius: var(--nova-radius-full);
   corner-shape: round;
+  /* FLAT accent (2026-11-05). The ramp + inner highlight + outer bloom made a
+   * 34px circle the loudest object on the page; the reference's send is one
+   * solid accent disc with a white arrow. */
   background: var(--nova-color-accent);
   /* Static white, not the foreground token: the arrow stays white on the blue
-     fill in both themes (design 34:10465) — `--nova-text-inverse`
-     flips to near-black in dark and would put an ink glyph on the fill. Our
-     token layer's theme-stable white is the static bluish-00 the alias takes
-     its light value from. */
+   * fill in both themes (design 34:10465) — `--nova-text-inverse`
+   * flips to near-black in dark and would put an ink glyph on the fill. Our
+   * token layer's theme-stable white is the static bluish-00 the alias takes
+   * its light value from. */
   color: var(--nova-surface-base);
+  box-shadow: none;
   cursor: pointer;
-  transition: background-color 100ms ease;
-  /* Opts out of the row's 2px downward shift (.row top pad): the send circle
-     keeps its original seat while the smaller chips sit lower. Transform, not
-     margin, so flex centering math is untouched. */
-  transform: translateY(-2px);
+  transition: filter 100ms ease;
 }
 
 .primary svg {
@@ -422,8 +436,9 @@
   height: 16px;
 }
 
+/* A flat fill still lifts on hover; there is no bloom to add. */
 .primary:hover:not(:disabled) {
-  background: var(--nova-color-accent);
+  filter: brightness(1.08);
 }
 
 .primary:disabled {

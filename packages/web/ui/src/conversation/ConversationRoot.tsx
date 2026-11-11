@@ -129,16 +129,16 @@ function WidthHandle(props: {
   }, []);
   // The strip sits over the scrollport's gutter, so a wheel over it would
   // otherwise do nothing: forward the gesture to the transcript's scrollport
-  // (the reference's `onWheel`). Under the conversation host the scrolling box
-  // is the `[data-conversation-scroll]` element itself — the chat's own
-  // `.scroll` stands down to `overflow: visible` there — so that is the one to
+  // (the reference's `onWheel`). Under the conversation host that scrollport
+  // is the chat's own MessageScroller Viewport — the element carrying
+  // `[data-conversation-scroll]` inside the body band — so that is the one to
   // move. Ctrl-wheel is the browser's zoom and a zero delta carries no
   // direction, so both are left alone.
   const onWheel = useCallback((e: React.WheelEvent<HTMLDivElement>): void => {
     if (e.ctrlKey || e.deltaY === 0) return;
     const body = e.currentTarget.parentElement;
     if (body === null) return;
-    const scrollport = body.querySelector<HTMLElement>(':scope > [data-conversation-scroll]');
+    const scrollport = body.querySelector<HTMLElement>(':scope > [data-conversation-body] [data-conversation-scroll]');
     if (scrollport === null) return;
     const lineHeight = Number.parseFloat(getComputedStyle(scrollport).lineHeight);
     scrollport.scrollBy({ top: wheelDeltaY(e, { lineHeight, clientHeight: scrollport.clientHeight }) });
@@ -248,17 +248,20 @@ export function ConversationRoot({
   }, [publishWidths]);
 
   const heroPhase = phase === 'hero';
+  const composerStack = (
+    <div className={heroPhase ? `${css.composerStack} ${css.composerHero}` : css.composerStack}>
+      {/* The reference's order: hero chrome, then the workspace row, then the
+          composer. The row is only meaningful with the hero (once a
+          transcript is on screen the header states the workspace), so it
+          rides the same phase gate. */}
+      {heroPhase && hero}
+      {heroPhase && heroWorkspaceRow}
+      {composer}
+    </div>
+  );
   const composerSeat = (
     <div ref={seatResizeRef} className={css.composerSeat} data-composer-seat="">
-      <div className={heroPhase ? `${css.composerStack} ${css.composerHero}` : css.composerStack}>
-        {/* The reference's order: hero chrome, then the workspace row, then the
-            composer. The row is only meaningful with the hero (once a
-            transcript is on screen the header states the workspace), so it
-            rides the same phase gate. */}
-        {heroPhase && hero}
-        {heroPhase && heroWorkspaceRow}
-        {composer}
-      </div>
+      {composerStack}
     </div>
   );
 
@@ -266,7 +269,10 @@ export function ConversationRoot({
     <div ref={rootResizeRef} className={css.root} data-phase={phase}>
       {header?.({ hidden: phase !== 'active' })}
       <div className={css.body}>
-        <div className={css.scrollBody} data-conversation-scroll="">
+        {/* `data-conversation-body` anchors the composer's wheel chaining
+            (InputBar) and the width handles' wheel forwarding; the scrollport
+            itself is the transcript's Viewport under it. */}
+        <div className={css.scrollBody} data-conversation-body="">
           {session === undefined ? null : <div className={css.viewArea}>{session}</div>}
           {composerSeat}
         </div>

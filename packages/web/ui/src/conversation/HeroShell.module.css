@@ -3,6 +3,7 @@
    geometry and the chip live here. */
 
 .root {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11,8 +12,19 @@
   padding: 0 var(--nova-space-24);
 }
 
+/* NOTE (2026-10-19): the aurora wash and the hairline grid used to live here as
+   `.root::before` / `.root::after`. Measured in the browser, `.root` turned out
+   to be a 624x34px box — it wraps only the headline row, because the workspace
+   chip and the composer card are SIBLINGS of this element in the composer
+   stack. Two masked background layers painted into a 34px band are invisible,
+   which is exactly what the screenshot showed. The scenery moved to the
+   full-height hero region in ConversationRoot (`[data-phase='hero'] .scrollBody`),
+   which is the box the operator actually reads the empty state in. */
+
 /* Cap matches the InputBar card. Glow may paint past the sides. */
 .stack {
+  position: relative; /* above both scenery layers */
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -32,7 +44,7 @@
      one centered line while they fit; squeezed, the fish takes its own line
      above the group. No breakpoint. */
   flex-wrap: wrap;
-  column-gap: 10px;
+  column-gap: var(--nova-space-10);
   /* Wrapped, the fish sits on its own line; more air than the 10px side gap
      keeps it reading as a mark above the title, not a squeezed inline glyph. */
   row-gap: var(--nova-space-12);
@@ -42,6 +54,26 @@
   line-height: 32px;
   font-weight: 500;
   color: var(--nova-text-primary);
+}
+
+/* The headline as lit type: a vertical ramp from full ink at the cap line to a
+   dimmer ink at the baseline. This is the reference catalogue's signature move
+   (their hero headings are gradient-clipped), and it is what makes a plain
+   sentence read as "designed" without adding a single decoration.
+   `background-clip: text` needs `color: transparent`, which drops the glyph
+   to the background — so the fallback path must keep a real colour. We keep
+   `color` on `.headline` above (inherited, untouched) and only override it in
+   this rule, so a browser without `background-clip: text` still paints solid
+   primary ink rather than nothing. */
+.headline {
+  background-image: linear-gradient(
+    180deg,
+    var(--nova-text-primary) 24%,
+    var(--nova-text-secondary) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 /* Title text + badge as one wrap unit so the title never breaks mid-text with
@@ -75,6 +107,11 @@
   line-height: 18px;
   font-weight: 500;
   white-space: nowrap;
+  /* The headline's gradient type sets `-webkit-text-fill-color: transparent`,
+     which is INHERITED. The badge is a descendant and would render as a solid
+     background with no glyph in it. Reset it to its own paint. (The fish is an
+     SVG, so the text-fill property never reached it.) */
+  -webkit-text-fill-color: currentColor;
 }
 
 /* Keep hover detection on a stationary box while the mark moves within it;
@@ -157,8 +194,14 @@
   align-items: center;
   gap: var(--nova-space-2);
   min-width: 0;
-  margin-top: var(--nova-space-4);
-  padding: 0 var(--nova-space-16) 0 20px;
+  /* The row sits between the headline and the card, so it must read as attached
+   * to the CARD, not as floating in the gap. The 16px pad is the card's own
+   * clearance from this row's 704px box: the chip's box then starts exactly on
+   * the card's 672px left edge (measured 441 both), and the folder glyph lands
+   * 8px inside it — the same inset as the card's own + control. The old 6px
+   * pad put the glyph 2px OUTSIDE the card, which is what read as a step. */
+  margin-top: 0;
+  padding: 0 var(--nova-space-16);
 }
 
 /* Folder + label + chevron — transparent at rest; fill only on hover / open.
@@ -173,7 +216,9 @@
   min-height: 28px;
   padding: 0 var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-lg, 8px);
+  /* A 28px-tall chip takes the DENSE rung: at the control rung (12px) the ends
+   * round into a lozenge and the chip stops reading as a row-level control. */
+  border-radius: var(--nova-radius-md, 8px);
   background: transparent;
   color: var(--nova-text-primary);
   font-family: inherit;

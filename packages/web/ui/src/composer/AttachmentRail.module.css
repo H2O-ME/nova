@@ -6,7 +6,7 @@
 .rail {
   display: flex;
   align-items: stretch;
-  gap: 10px;
+  gap: var(--nova-space-10);
   overflow-x: auto;
   overflow-y: hidden;
   /* Edge arrows page the overflow; the scrollbar stays hidden (both engines). */

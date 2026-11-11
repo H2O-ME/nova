@@ -3,7 +3,9 @@
    and the 224px output cap (260px card cap minus the ~36px banner). */
 
 .block {
-  --dsl-terminal-radius: 12px;
+  /* The reference's code-card corner is its `lg` rung (2026-11-05: the ladder
+     itself now matches the reference rung for rung). */
+  --dsl-terminal-radius: var(--nova-radius-lg);
   --dsl-terminal-line-height: 18px;
   /* Rebindable by consumers (CodeBlock's --dsl-code-block-content-font
      pattern): a surface wanting the smaller code size rebinds this together
@@ -41,7 +43,7 @@
      surface, then re-inset by the same amount so the prompt text and the dot
      keep their positions. */
   margin-left: calc(-1 * var(--dsl-terminal-gutter));
-  padding: 9px 14px 9px var(--dsl-terminal-gutter);
+  padding: 9px var(--nova-space-14) 9px var(--dsl-terminal-gutter);
   border-top-left-radius: var(--dsl-terminal-radius);
   border-top-right-radius: var(--dsl-terminal-radius);
   /* A long multi-line command scrolls inside the banner (same cap as the
@@ -139,6 +141,7 @@
 }
 
 .copyButton {
+  height: auto;
   flex: none;
   position: sticky;
   top: 0;
@@ -159,7 +162,7 @@
    the banner stays pinned and the bar sits inside the output's right padding. */
 .output {
   max-height: var(--dsl-terminal-output-max-height, none);
-  padding: var(--nova-space-12) 14px var(--nova-space-12) 0;
+  padding: var(--nova-space-12) var(--nova-space-14) var(--nova-space-12) 0;
   font: var(--dsl-terminal-font);
   overflow-x: auto;
   overflow-y: auto;
@@ -184,7 +187,7 @@
 }
 
 .empty {
-  padding: var(--nova-space-12) 14px var(--nova-space-12) 0;
+  padding: var(--nova-space-12) var(--nova-space-14) var(--nova-space-12) 0;
   font: var(--dsl-terminal-font);
   color: var(--nova-text-muted);
 }

@@ -24,7 +24,7 @@
    rail (10px side padding), 12px vertical rhythm, 18px from the rail top to
    the toggle's box (24px to the 24-wide glyph itself). */
 .root.collapsed {
-  padding: 18px 10px var(--nova-space-6);
+  padding: 18px var(--nova-space-10) var(--nova-space-6);
 }
 
 /* Scrollbars in the column are a pointer affordance: the shell adds this
@@ -48,13 +48,8 @@
 
 /* Wide-only content fades back in on expand remount. */
 .wide {
-  animation: wide-in var(--nova-dur-base) var(--nova-ease-inout);
+  animation: nova-fade-in var(--nova-dur-base) var(--nova-ease-inout);
 }
-
-@keyframes wide-in {
-  from { opacity: 0; }
-}
-
 /* At the 150ms rail settle, the upper controls enter from the former
    rail right edge over the remaining 150ms of the AppFrame track transition.
    The bottom-pinned foot seat shares their opacity timeline but stays
@@ -63,22 +58,11 @@
 .railIn .iconButton,
 .railIn .newSession,
 .railIn .regionArea {
-  animation: rail-in 150ms var(--nova-ease-inout) backwards;
+  animation: nova-fade-in 150ms var(--nova-ease-inout) backwards;
 }
 
 .railIn .footArea {
-  animation: rail-fade-in 150ms var(--nova-ease-inout) backwards;
-}
-
-@keyframes rail-in {
-  from {
-    opacity: 0;
-    transform: translateX(49px);
-  }
-}
-
-@keyframes rail-fade-in {
-  from { opacity: 0; }
+  animation: nova-fade-in 150ms var(--nova-ease-inout) backwards;
 }
 
 /* Logo row (figma pad (4,8,4,8)): expanded keeps the panel toggle at the
@@ -294,7 +278,7 @@
   align-items: center;
   gap: var(--nova-space-8);
   height: 36px;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-10);
   margin: 0 var(--nova-space-2) var(--nova-space-8);
   box-sizing: border-box;
   border: none;

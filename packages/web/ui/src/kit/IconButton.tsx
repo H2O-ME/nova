@@ -13,6 +13,7 @@
  * the goal row's 14px glyph becomes the md 15px one.
  */
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { Button as LibraryButton } from '../components/ui/button.js';
 import { cx } from '../composer/cx.js';
 import css from './IconButton.module.css';
 
@@ -43,8 +44,10 @@ export function IconButton({
   ...rest
 }: IconButtonProps): JSX.Element {
   return (
-    <button
+    <LibraryButton
       type={type ?? 'button'}
+      variant="ghost"
+      size="icon-sm"
       className={cx(css.iconButton, size === 'sm' && css.iconButtonSm, active && css.iconButtonActive, danger && css.iconButtonDanger, className)}
       aria-label={label}
       title={label}
@@ -53,6 +56,6 @@ export function IconButton({
       {...rest}
     >
       {children}
-    </button>
+    </LibraryButton>
   );
 }

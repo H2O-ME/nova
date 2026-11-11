@@ -9,7 +9,7 @@
   align-items: center;
   gap: var(--nova-space-6);
   height: 28px;
-  padding: 0 10px 0 var(--nova-space-8);
+  padding: 0 var(--nova-space-10) 0 var(--nova-space-8);
   border: none;
   border-radius: 5px;
   background: transparent;

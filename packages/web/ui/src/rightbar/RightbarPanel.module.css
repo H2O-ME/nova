@@ -13,27 +13,31 @@
 
 /*
  * Anchored to the frame's right edge, which never moves: opening and closing is
- * one slide from that edge, and the panel's width is the track the frame
- * resolved for it — a shown panel reserves that track, so the centre squeezes
- * beside the slide. A frame too narrow for a track drops the panel to the
- * takeover presentation instead.
+ * one slide from that edge. The panel is a DRAWER (W1): it floats over the
+ * transcript at its preference width instead of reserving a grid track, so the
+ * conversation never shrinks beside it and closing needs no relayout.
+ *
+ * Because it floats, it takes the elevation the docked column was denied: a
+ * pane that covers content must read as one layer above it. The hairline alone
+ * was enough when the panel was a column of the page; it is not enough now that
+ * it sits on top of the answer the reader was reading.
  */
 .panel {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  /* The docked panel is a column of the page: under the frame resize handle (11). */
+  /* The drawer is a floating pane: above the page, under the frame's resize
+     handle (11) so the column edge stays grabbable. */
   z-index: 10;
   display: flex;
   flex-direction: column;
   min-width: 0;
   box-sizing: border-box;
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-raised);
   border-left: 0.5px solid var(--nova-border-strong);
-  /* No elevation: a docked column is flat page furniture; the reference gives
-     its shadow to floating panes only, and this frontend has none in the
-     column. A docked panel carrying one reads as a card over the conversation. */
+  border-radius: var(--nova-radius-lg) 0 0 var(--nova-radius-lg);
+  box-shadow: var(--nova-elevation-panel);
   animation: rightbar-in var(--nova-dur-slow) var(--nova-ease-inout);
 }
 

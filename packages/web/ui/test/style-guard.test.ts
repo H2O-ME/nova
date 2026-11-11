@@ -236,24 +236,27 @@ describe('token ownership', () => {
    * the column reserved its track. The sheet said "a column of the page, not
    * a raised surface" while declaring `box-shadow`; the prose and the
    * declaration were opposites, so the declaration is what this pins.
+   *
+   * W1 reversed the premise: the panel is now a DRAWER, not a docked column,
+   * so it must carry the elevation a floating pane needs (a pane over content
+   * that looks flat reads as part of the transcript). The guard pins the new
+   * contract instead of deleting the old one — the strip, which is chrome ON
+   * the panel rather than a pane of its own, still declares no elevation.
    */
-  it('the docked right column declares no elevation', () => {
-    const docked = ['rightbar/RightbarPanel.module.css'];
-    const offenders: string[] = [];
-    for (const rel of docked) {
-      const text = stripComments(readFileSync(join(SRC, rel), 'utf8'));
-      // The `.panel` block specifically: the fullscreen/takeover variants and
-      // the sheet's other rules may legitimately differ.
-      const block = /\.panel\s*\{([^}]*)\}/.exec(text)?.[1] ?? '';
-      // Guard against a vacuous match: the block must be the panel shell.
-      expect(block, `${rel}: .panel block not found`).toContain('position: absolute');
-      if (block.includes('box-shadow')) offenders.push(`${rel}: .panel declares box-shadow`);
-    }
-    // The strip's sheet belongs to the same docked column but has no `.panel`
-    // rule to anchor that check, so it is scanned whole.
+  it('the drawer panel declares the elevation a floating pane needs; its strip does not', () => {
+    const rel = 'rightbar/RightbarPanel.module.css';
+    const text = stripComments(readFileSync(join(SRC, rel), 'utf8'));
+    // The `.panel` block specifically: the fullscreen/takeover variants and
+    // the sheet's other rules may legitimately differ.
+    const block = /\.panel\s*\{([^}]*)\}/.exec(text)?.[1] ?? '';
+    // Guard against a vacuous match: the block must be the panel shell.
+    expect(block, `${rel}: .panel block not found`).toContain('position: absolute');
+    // The drawer floats over the transcript, so its elevation is required:
+    // removing it turns this red.
+    expect(block, `${rel}: the drawer must declare elevation`).toContain('box-shadow');
+    // The strip is chrome on the drawer, never a second pane.
     const strip = stripComments(readFileSync(join(SRC, 'rightbar/RightbarStrip.module.css'), 'utf8'));
-    if (strip.includes('box-shadow')) offenders.push('rightbar/RightbarStrip.module.css: declares box-shadow');
-    expect(offenders).toEqual([]);
+    expect(strip, 'rightbar/RightbarStrip.module.css: the strip must stay flat').not.toContain('box-shadow');
   });
 
   /**
@@ -284,9 +287,23 @@ function svgTags(text: string): string[] {
   return out;
 }
 
-/** The mount document, held to the same no-escapes rule as the bundle. */
+/**
+ * The mount document, held to the same no-escapes rule as the bundle.
+ *
+ * This used to be `index.html`. The Vite entry is gone — the build is Next.js
+ * now (`output: 'export'`) and the mount document is generated from
+ * `app/layout.tsx`, which is where the hand-written `<head>`, the inline boot
+ * script and the `#root` container all moved. Reading `layout.tsx` keeps the
+ * SAME properties under guard (markup that ships to the browser without passing
+ * through a component sheet) instead of deleting the check along with the file.
+ */
 function htmlEntries(): Entry[] {
-  return [{ rel: 'index.html', text: readFileSync(fileURLToPath(new URL('../index.html', import.meta.url)), 'utf8') }];
+  return [
+    {
+      rel: 'app/layout.tsx',
+      text: readFileSync(fileURLToPath(new URL('../app/layout.tsx', import.meta.url)), 'utf8'),
+    },
+  ];
 }
 
 /**

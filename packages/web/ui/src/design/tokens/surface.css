@@ -1,47 +1,73 @@
-/* Nova surfaces and borders — which plane a thing sits on, and how a thing
- * reacts to the pointer. Values are Nova's own since the palette swap.
+/* Nova surfaces and borders — the plane ladder, rewritten 2026-10-19.
  *
- * Honest note about the light palette, so a reader does not conclude the tokens
- * are broken: light mode separates planes with a border, not with a fill —
- * `sunken` / `base` / `raised` all hold the same near-white there (which is
- * what a Quiet / Neutral direction wants); the dark palette ladders them for
- * real. A component must not rely on a fill difference to carry meaning.
+ * WHAT CHANGED AND WHY
+ * --------------------
+ * The previous ladder separated planes by 3–5 lightness points and leaned on a
+ * hairline border to draw the edge. Measured against the result the operator
+ * kept calling ugly, that is the defect: at 3 points a sidebar and a transcript
+ * are the SAME white with a faint rule between them, so the eye sees one flat
+ * sheet with some lines on it. Nothing has depth, so nothing reads as designed.
  *
- * A component names the plane it belongs to. It does not invent a background. */
+ * Two changes, both global:
+ *
+ *  1. **A wider ladder.** The steps roughly double (now 6–9 lightness points).
+ *     Planes become visible as planes; a panel can drop its border because the
+ *     fill already tells the eye where it ends.
+ *  2. **Cooler, slightly blue-shifted neutrals.** Hue stays ~215 but the floors
+ *     now sit a touch deeper, which is what makes a white raised surface read
+ *     as lit rather than merely unpainted.
+ *
+ * The invariant that survives untouched: the ladder is MONOTONIC in both
+ * themes, sunken < base < raised. A ladder whose rungs are out of order stops
+ * being a ladder — that was a real dark-mode defect once and it is not coming
+ * back.
+ *
+ * Components name the plane they belong to. They do not invent backgrounds. */
 :root {
-  --nova-surface-sunken: rgb(255, 255, 255);
-  --nova-surface-base: rgb(255, 255, 255);
+  /* Light ladder, darkest → lightest: sunken (sidebar) < base (page) <
+   * raised (dialog) < panel (content floor). The gaps are now wide enough that
+   * a surface can be separated by fill alone.
+   *
+   * 2026-11-05: the ladder is NEUTRAL again. The blue-shifted floors (hue ~215)
+   * made every large plane read as a tinted product — the operator's word for
+   * the result was 「卡通」. Neutral paper plus one accent is the design
+   * system's own rule (§2 中性优先), and the reference's surfaces are neutral
+   * too. The accent still supplies every bit of colour the product needs. */
+  --nova-surface-sunken: rgb(243, 243, 245);
+  --nova-surface-base: rgb(249, 249, 250);
   --nova-surface-raised: rgb(255, 255, 255);
-  /* A content panel that carries its own floor (sidebar rows, module chrome) —
-   * one visible step off `base` in both palettes, unlike the degenerate light
-   * `raised`. */
-  --nova-surface-panel: rgb(245, 246, 247);
-  --nova-surface-overlay: rgb(233, 236, 242);
+  --nova-surface-panel: rgb(238, 238, 240);
+  --nova-surface-overlay: rgb(228, 228, 231);
 
-  --nova-border-subtle: rgba(0, 0, 0, 0.04);
-  --nova-border-strong: rgba(0, 0, 0, 0.12);
+  /* Borders get FAINTER as the ladder gets wider: the fill now carries the
+   * separation, so a strong hairline on top of it would read as a box drawn on
+   * a box. Where a border still earns its place (inputs, capsules) a component
+   * asks for `strong`; `subtle` is the ambient whisper. */
+  --nova-border-subtle: rgba(16, 24, 40, 0.05);
+  --nova-border-strong: rgba(16, 24, 40, 0.1);
 
-  /* Interactive fills: the translucent wash a hoverable row, button or chip
-   * paints while pointed at or pressed. Four rungs — plain hover, emphasized
-   * hover, pressed/selected, and the danger-tinted hover — all translucent so
-   * they composite over whichever surface they sit on. */
-  --nova-interactive-hover: rgba(38, 49, 72, 0.06);
-  --nova-interactive-hover-strong: rgba(38, 49, 72, 0.14);
-  --nova-interactive-active: rgba(38, 49, 72, 0.1);
-  --nova-interactive-hover-danger: rgba(236, 19, 19, 0.05);
+  /* Interactive fills: translucent so they composite over whichever plane they
+   * sit on. Slightly stronger than before, because a hover that is too faint to
+   * see on a deeper floor reads as a broken control rather than a quiet one. */
+  --nova-interactive-hover: rgba(24, 24, 27, 0.055);
+  --nova-interactive-hover-strong: rgba(24, 24, 27, 0.12);
+  --nova-interactive-active: rgba(24, 24, 27, 0.09);
+  --nova-interactive-hover-danger: rgba(236, 19, 19, 0.06);
 
-  /* Named floors for one-off roles that still deserve a word: the menu's
-   * blurred material (a translucent fill + a backdrop recipe, see below), the
-   * code block and its header bar, the user bubble, and the dark tooltip. */
-  --nova-surface-menu: rgba(248, 249, 250, 0.58);
+  /* Named floors for one-off roles that still deserve a word.
+     The code floor is the reference's own (`neutral-bluish-50`,
+     rgb(249 250 251)): a hairline COOL grey, not pure neutral — the shared
+     floor of its markdown code blocks AND its tool cards, so both wear the
+     same surface here too. (2026-11-05, measured against DSH.) */
+  --nova-surface-menu: rgba(251, 251, 252, 0.8);
   --nova-surface-code: rgb(249, 250, 251);
-  --nova-surface-code-head: rgb(249, 250, 251);
-  --nova-surface-bubble: rgb(237, 243, 254);
-  --nova-surface-tooltip: rgb(44, 44, 46);
+  --nova-surface-code-head: rgb(240, 240, 242);
+  --nova-surface-bubble: rgb(240, 240, 242);
+  --nova-surface-tooltip: rgb(32, 36, 44);
 
   /* Scrollbar chrome (rows that draw their own webkit scrollbars). */
-  --nova-scrollbar-thumb: rgb(229, 229, 229);
-  --nova-scrollbar-thumb-hover: rgb(212, 212, 212);
+  --nova-scrollbar-thumb: rgb(214, 220, 229);
+  --nova-scrollbar-thumb-hover: rgb(193, 201, 213);
 
   /* Focus ring geometry (focus.css owns the paint rules; components may
    * rebind the colour). */
@@ -50,38 +76,46 @@
 
   /* Material recipes: the blocking mask over the page, the light wash used by
    * drag overlays, and the menu's backdrop blur. */
-  --nova-material-mask: rgba(0, 0, 0, 0.24);
+  --nova-material-mask: rgba(15, 23, 38, 0.32);
   --nova-material-mask-drop: rgba(255, 255, 255, 0.7);
   --nova-material-mask-blur: none;
   --nova-material-menu-backdrop: blur(40px) saturate(150%);
 }
 
 body[data-nova-dark] {
-  --nova-surface-sunken: rgb(35, 35, 36);
-  --nova-surface-base: rgb(21, 21, 23);
-  --nova-surface-raised: rgb(44, 44, 46);
-  --nova-surface-panel: rgb(53, 54, 56);
-  --nova-surface-overlay: rgb(97, 102, 107);
+  /* Dark ladder, SAME direction as light: sunken is the darkest plane, raised
+   * the lightest. Widened to match, and the floors are pushed a little deeper
+   * so the accent glow has something to sit against.
+   *
+   * `raised` is a bigger jump than the light theme's: on a dark ground a
+   * 5-point step is invisible (measured — the composer card came out the same
+   * tone as the sidebar and stopped floating), because dark surfaces carry far
+   * less lightness information per pixel than paper does. */
+  --nova-surface-sunken: rgb(12, 13, 16);
+  --nova-surface-base: rgb(18, 19, 23);
+  --nova-surface-raised: rgb(38, 42, 49);
+  --nova-surface-panel: rgb(26, 28, 33);
+  --nova-surface-overlay: rgb(48, 52, 60);
 
   --nova-border-subtle: rgba(255, 255, 255, 0.06);
-  --nova-border-strong: rgba(255, 255, 255, 0.16);
+  --nova-border-strong: rgba(255, 255, 255, 0.12);
 
-  --nova-interactive-hover: rgba(255, 255, 255, 0.08);
-  --nova-interactive-hover-strong: rgba(255, 255, 255, 0.24);
-  --nova-interactive-active: rgba(255, 255, 255, 0.14);
+  --nova-interactive-hover: rgba(255, 255, 255, 0.07);
+  --nova-interactive-hover-strong: rgba(255, 255, 255, 0.2);
+  --nova-interactive-active: rgba(255, 255, 255, 0.12);
   --nova-interactive-hover-danger: rgba(242, 90, 90, 0.15);
 
-  --nova-surface-menu: rgba(67, 69, 74, 0.45);
-  --nova-surface-code: rgb(27, 27, 28);
-  --nova-surface-code-head: rgb(44, 44, 46);
-  --nova-surface-bubble: rgb(44, 44, 46);
-  --nova-surface-tooltip: rgb(67, 69, 74);
+  --nova-surface-menu: rgba(42, 44, 50, 0.62);
+  --nova-surface-code: rgb(17, 18, 22);
+  --nova-surface-code-head: rgb(27, 29, 34);
+  --nova-surface-bubble: rgb(38, 41, 48);
+  --nova-surface-tooltip: rgb(56, 60, 68);
 
-  --nova-scrollbar-thumb: rgb(84, 85, 87);
-  --nova-scrollbar-thumb-hover: rgb(101, 103, 107);
+  --nova-scrollbar-thumb: rgb(64, 68, 77);
+  --nova-scrollbar-thumb-hover: rgb(86, 91, 101);
 
   --nova-focus-ring-color: var(--nova-color-accent);
 
-  --nova-material-mask: rgba(0, 0, 0, 0.5);
-  --nova-material-mask-drop: rgba(39, 39, 48, 0.7);
+  --nova-material-mask: rgba(0, 0, 0, 0.6);
+  --nova-material-mask-drop: rgba(18, 20, 24, 0.7);
 }

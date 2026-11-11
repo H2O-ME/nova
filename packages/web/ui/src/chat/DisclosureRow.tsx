@@ -14,6 +14,7 @@
  */
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { ChevronDownGlyph14, ChevronUpGlyph14 } from './glyphs.js';
+import { Button } from '../components/ui/button.js';
 import { TextShimmer } from '../shell/TextShimmer.js';
 import css from './DisclosureRow.module.css';
 
@@ -93,14 +94,15 @@ export function DisclosureRow({
       >
         {expandable && !rowExpands
           ? (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-xs"
               className={join(css.leading, leadingClassName)}
               aria-expanded={open}
               onClick={toggleFromLeading}
             >
               {leading}
-            </button>
+            </Button>
           )
           : <span className={join(css.leading, leadingClassName)}>{leading}</span>}
         <TextShimmer active={running} className={join(css.title, titleClassName)}>{title}</TextShimmer>

@@ -39,7 +39,7 @@
    line sits between the screen and the band, and the next open replaces it. */
 .error {
   flex: none;
-  padding: 10px var(--nova-space-12);
+  padding: var(--nova-space-10) var(--nova-space-12);
   background: var(--nova-surface-raised);
   color: var(--nova-color-danger);
   font: var(--nova-font-xxs-12);
@@ -82,7 +82,7 @@
   gap: var(--nova-space-4);
   align-items: center;
   height: 24px;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-10);
   color: var(--nova-text-primary);
   font: var(--nova-font-xxs-12);
   background: none;

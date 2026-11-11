@@ -10,6 +10,7 @@
  * the output area, because our kernel streams one and the harness has no such
  * field (it renders a running command banner-only).
  */
+import { Button } from '../../components/ui/button.js';
 import { contentLines, promptLabel } from '../cards.js';
 import { COPY_LABELS, useCopy } from '../copy.js';
 import { terminalDot, type BodyShell } from '../model.js';
@@ -70,9 +71,9 @@ export function TerminalCard({ shell, cwd, home, collapsedSummary }: TerminalCar
         </div>
         {shell.pill !== null && <span className={css.status}>{shell.pill}</span>}
         {!shell.running && !empty && (
-          <button type="button" className={css.copyButton} onClick={copy}>
+          <Button variant="ghost" size="xs" className={css.copyButton} onClick={copy}>
             {copied ? COPY_LABELS.copied : COPY_LABELS.copy}
-          </button>
+          </Button>
         )}
       </div>
       {showOutput &&

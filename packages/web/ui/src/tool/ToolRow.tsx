@@ -79,10 +79,13 @@ export const ToolRow = memo(function ToolRow({
   const open = expanded && expandable;
   const status = rowStatusLabel(model.state);
   const toggle = (): void => setExpanded((value) => !value);
-  // The running tail lives in the card while the row is open, and as one muted
-  // line under the row while it is not (our kernel streams it; the harness has
-  // no equivalent field — the line is marked surface-local in the stylesheet).
-  const showTail = model.state === 'running' && !open && tail !== undefined && tail !== '';
+  // The running tail is the call's live output. It used to be suppressed while
+  // the row was open, on the theory that the card carried it — but a card only
+  // shows what has been FLATTENED into it, so the open+running row was exactly
+  // the case where the reader lost sight of the output they were watching.
+  // Shown whenever it exists (W2); the card body renders it too, but this line
+  // is the one under the row's title and it never disappears mid-run.
+  const showTail = model.state === 'running' && tail !== undefined && tail !== '';
   return (
     <div className={css.root} data-anchor-key={anchorKey} data-state={model.state}>
       {status !== null && <span className={css.visuallyHidden}>{status}</span>}

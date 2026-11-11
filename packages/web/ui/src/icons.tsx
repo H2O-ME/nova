@@ -295,11 +295,3 @@ export const FileIcon = (p: P): JSX.Element => (
     <path d="M9 2v3h3" />
   </Svg>
 );
-
-/** Chat bubble with signal arcs: the QQ 机器人 channel nav row. */
-export const ChatBotIcon = (p: P): JSX.Element => (
-  <Svg {...p}>
-    <path d="M2.75 3.5h10.5v7H8.5l-2.6 2.4v-2.4H2.75v-7Z" />
-    <path d="M6 6.25h4M6 8.5h2.5" />
-  </Svg>
-);

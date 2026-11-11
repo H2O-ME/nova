@@ -26,39 +26,48 @@
 
 /* Appearance cube (figma '.Selector Cube' 276x82, pad 20/32, centered
  * icon-over-label column, gap 4); flexed down from the figma width so all
- * three sit on one row in the 800 panel, wrapping when narrower. */
+ * three sit on one row in the 800 panel, wrapping when narrower.
+ *
+ * The figma pad (20px vertical, 32px horizontal) made each of the three
+ * choices a ~190×80 slab for an icon and a two-character label — more visual
+ * weight than the "权限" and "工作步骤展示" rows above it carry COMBINED, for a
+ * setting with three states and no sub-options. Trimmed to a segmented
+ * control's proportions: still three obvious targets, but the section is no
+ * longer the loudest thing on the page. */
 .themeCube {
   box-sizing: border-box;
-  flex: 1 1 180px;
+  flex: 1 1 140px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--nova-space-4);
-  padding: 20px var(--nova-space-32);
+  gap: var(--nova-space-6);
+  padding: var(--nova-space-12) var(--nova-space-16);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: transparent;
   font: inherit;
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--nova-text-primary);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-base) var(--nova-ease-inout),
+      background-color var(--nova-dur-base) var(--nova-ease-inout),
+      border-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .themeCube:hover:not(.selected) {
   background: var(--nova-interactive-hover);
 }
 
-/* Selected cube: module fill + the bluish-400 step (static token — the
- * reference's own comment: no alias-layer name for it). */
+/* Selected cube: the plane step plus a hairline that actually reads. The old
+ * pair (panel fill + `text-faint` border) was nearly invisible in light mode
+ * because `panel` and `base` used to be the same near-white; with the ladder
+ * fixed the fill shows, and the label steps up to primary so the CHOSEN one is
+ * the darkest text in the row rather than the same weight as its neighbours. */
 .selected {
   background: var(--nova-surface-panel);
-  border-color: var(--nova-text-faint);
+  border-color: var(--nova-border-strong);
+  color: var(--nova-text-primary);
 }

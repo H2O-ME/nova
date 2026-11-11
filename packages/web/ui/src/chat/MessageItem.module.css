@@ -35,9 +35,11 @@
   flex-direction: column;
   align-items: flex-end;
   gap: var(--nova-space-6);
-  /* Compositor-only entrance from the shared motion sheet (styles/motion.css). */
-  animation: nova-fade-up var(--nova-dur-base, 220ms) var(--nova-ease-out, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
+
+/* W3: the reader's own message does not replay an entrance either. Their send
+   already moves the transcript (it scrolls to the bottom); adding a fade on top
+   made one action produce two motions. */
 
 .userStack {
   display: flex;
@@ -51,17 +53,32 @@
      conversation column, where the axis variable is absent. */
   max-width: min(calc(var(--nova-chat-content-width, 748px) * 0.702), 82%);
 }
+
+/* The Bubble wrapper's stock cap is 80% of its parent — a second cap on top of
+   the stack's own share of the column, which would narrow the bubble to ~56% of
+   the transcript. The stack already decided the width; the wrapper must not
+   decide again. */
+.bubbleShell {
+  max-width: 100%;
+}
+
 .bubble {
   /* Figma's 525px cap held as a share of the width axis (525/748 ≈ 0.702) so
      the bubble widens with a user-dragged or adaptive column; percentage
      keeps narrow windows sane. */
   max-width: 100%;
-  background: var(--nova-surface-bubble);
-  border-radius: var(--nova-radius-lg);
+  /* QUIET SEND BUBBLE (2026-11-05). The translucent wash + hairline was an
+   * experiment against the reference's own bubble; on the paper ground it reads
+   * as a tinted sticker rather than as the reader's line. The reference uses one
+   * solid quiet plane with no outline, so this does too: `surface-sunken` is the
+   * same step the sidebar uses, and the 12px corner matches the composer. */
+  background: var(--nova-surface-sunken);
+  border: 0;
+  border-radius: var(--nova-radius-xl);
   /* 42px single-line bubble at the default size: 22 line + 10 vertical
      padding each side; the Settings font-size preference moves size and line
      height together through the body-published axis. */
-  padding: 10px var(--nova-space-16);
+  padding: var(--nova-space-10) var(--nova-space-16);
   font-size: var(--nova-content-font-size, 14px);
   line-height: calc(22px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-primary);
@@ -137,6 +154,12 @@
 
 .compactionButton:not(:disabled) {
   cursor: pointer;
+}
+
+/* shadcn's Button fades disabled controls to 50%. A compaction with no summary
+ * to disclose is still a readable boundary marker, not a disabled action. */
+.compactionButton:disabled {
+  opacity: 1;
 }
 
 .compactionButton:not(:disabled):hover {

@@ -4,6 +4,11 @@
  * already carries the harness's follow rules (`FOLLOW_THRESHOLD`, the
  * observed-top ledger, `readerMoved`, the paging anchor).
  *
+ * The scrollport is the library's MessageScroller Viewport (DOM shell only —
+ * the autoscroll engine stays out by not mounting a Provider), and it carries
+ * `[data-conversation-scroll]` so `scrollportOf` resolves to it both here and
+ * for callers seated inside the conversation root.
+ *
  * What the caller owns, and what this file therefore does not do:
  *  - **The rows.** Every block becomes one {@link ChatFlowRow}; turn headers,
  *    tool cards, reasoning rows, message rows and compactions are the
@@ -21,6 +26,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import type { ReactNode } from 'react';
 import { ChevronDownGlyph14 } from './glyphs.js';
 import { ProcessGroup } from './ProcessGroup.js';
+import { Button } from '../components/ui/button.js';
+import { Marker } from '../components/ui/marker.js';
+import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport } from '../components/ui/message-scroller.js';
 import { anchorRow, atFloor, floorTop, flowTop, lastUserKey, readerMoved, restoredTop, scrollportOf } from '../scroll-follow.js';
 import type { ScrollAnchor } from '../scroll-follow.js';
 import css from './ChatView.module.css';
@@ -40,14 +48,17 @@ export interface ChatFlowRow {
   /** The rendered row. */
   node: ReactNode;
   /**
-   * The bounded process group this row belongs to, when it belongs to one.
+   * The bounded process box this row belongs to, when it belongs to one.
    * Adjacent rows sharing an id are drawn inside a single
-   * {@link ProcessGroup} — the harness's per-Turn step box. Rows without it
-   * stay direct children of the column. `summary` / `liveTitle` are the
-   * disclosure header's two words (settled / live); the policy decides which
-   * one carries task detail.
+   * {@link ProcessGroup} — the bounded step box a turn's fold reveals. Rows
+   * without it stay direct children of the column.
+   *
+   * The box carries NO disclosure and no words: the turn header owns the one
+   * fold and the summary that names the work (W2). `summary`/`liveTitle` are
+   * kept off this type on purpose — they belong to the header, and leaving them
+   * here is how the second disclosure grew back last time.
    */
-  group?: { id: string; live: boolean; summary?: string; liveTitle?: string } | undefined;
+  group?: { id: string; live: boolean } | undefined;
 }
 
 /** The live turn's label (the running turn header's words). */
@@ -77,9 +88,7 @@ export function ChatView({
   onLoadEarlier,
   empty,
 }: ChatViewProps): JSX.Element {
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  const columnRef = useRef<HTMLDivElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);  const columnRef = useRef<HTMLDivElement | null>(null);
   /** The pinned reader follows; the ref is the truth, the state only paints. */
   const atBottomRef = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
@@ -231,32 +240,43 @@ export function ChatView({
 
   return (
     <div className={css.frame}>
-      <div className={css.root} ref={rootRef} data-chat-following-tail={atBottom ? '' : undefined}>
-        <div className={css.scroll} ref={boxRef}>
-          <div className={css.column} data-chat-flow="" ref={columnRef}>
-            {hiddenOlder > 0 && (
-              <div className={css.older}>
-                <button type="button" disabled={loadingOlder} onClick={loadEarlier}>
-                  {loadingOlder ? '加载中…' : `加载更早（还有 ${hiddenOlder} 条）`}
-                </button>
-              </div>
-            )}
-            {rows.length === 0 && hiddenOlder === 0 && empty}
-            {renderFlowRows(rows, css)}
-          </div>
-        </div>
-      </div>
+      {/* The scroller shell is the library's MessageScroller. The Provider is
+          required (the Viewport reads its context) but mounts inert: without
+          `autoScroll` the engine sits in "free-scrolling" and never writes
+          scrollTop — the follow rules remain this repo's `scroll-follow.ts`.
+          The Viewport carries `[data-conversation-scroll]`: it is the real
+          scrollport now, and that attribute is how `scrollportOf` (and the
+          CSS) find it. */}
+      <MessageScrollerProvider>
+        <MessageScroller className={css.root} data-chat-following-tail={atBottom ? '' : undefined}>
+          <MessageScrollerViewport ref={boxRef} className={css.scroll} data-conversation-scroll="">
+            <MessageScrollerContent className={css.column} data-chat-flow="" ref={columnRef}>
+              {hiddenOlder > 0 && (
+                <div className={css.older}>
+                  <button type="button" disabled={loadingOlder} onClick={loadEarlier}>
+                    {loadingOlder ? '加载中…' : `加载更早（还有 ${hiddenOlder} 条）`}
+                  </button>
+                </div>
+              )}
+              {rows.length === 0 && hiddenOlder === 0 && empty}
+              {renderFlowRows(rows, css)}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+        </MessageScroller>
+      </MessageScrollerProvider>
       {!atBottom && (
         <div className={css.toBottomSlot}>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             className={css.toBottom}
             aria-label="回到底部"
             title="回到底部"
             onClick={scrollDown}
           >
             <ChevronDownGlyph14 />
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -265,7 +285,7 @@ export function ChatView({
 
 /** A hint line: quiet secondary prose, or the error tone for a failure. */
 export const ChatHintRow = memo(function ChatHintRow({ text, tone }: { text: string; tone: 'info' | 'warn' }): JSX.Element {
-  return <div className={tone === 'warn' ? css.openError : css.hint}>{text}</div>;
+  return <Marker className={tone === 'warn' ? css.openError : css.hint}>{text}</Marker>;
 });
 
 /**
@@ -334,13 +354,7 @@ function renderFlowRows(
       index += 1;
     }
     out.push(
-      <ProcessGroup
-        key={group.id}
-        live={group.live}
-        grouped
-        {...(group.summary !== undefined ? { summary: group.summary } : {})}
-        {...(group.liveTitle !== undefined ? { liveTitle: group.liveTitle } : {})}
-      >
+      <ProcessGroup key={group.id} live={group.live}>
         {members.map(box)}
       </ProcessGroup>,
     );

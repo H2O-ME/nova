@@ -132,15 +132,8 @@
   min-height: 28px;
   padding-right: var(--nova-space-2);
   border-radius: var(--nova-radius-sm);
-  animation: change-row-in 150ms var(--nova-ease-inout);
+  animation: nova-fade-in 150ms var(--nova-ease-inout);
 }
-
-@keyframes change-row-in {
-  from {
-    opacity: 0;
-  }
-}
-
 .row:hover {
   background: var(--nova-interactive-hover);
 }
@@ -585,7 +578,7 @@
   flex: 1 1 auto;
   min-width: 0;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-10);
   border: 1px solid var(--nova-border-subtle);
   border-radius: var(--nova-radius-sm);
   background: var(--nova-surface-sunken);

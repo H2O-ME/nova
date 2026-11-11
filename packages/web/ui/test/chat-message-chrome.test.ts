@@ -143,7 +143,9 @@ describe('compaction marker', () => {
     // Without a summary the marker is a settled notice, not a control.
     const closed = renderToStaticMarkup(createElement(CompactionItem, {}));
     expect(closed).toContain('disabled=""');
-    expect(closed).not.toContain('aria-expanded');
+    // The ATTRIBUTE, not the substring: shadcn's Button carries
+    // `aria-expanded:` utility classes on every instance.
+    expect(closed).not.toContain('aria-expanded=');
   });
 
   it('counts what it shadowed and otherwise degrades to the fallback text', () => {

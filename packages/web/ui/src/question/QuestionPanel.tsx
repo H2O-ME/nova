@@ -21,6 +21,7 @@
  *    "unanswered" is stated rather than inferred from an absence.
  */
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '../components/ui/button.js';
 import { IconButton } from '../kit/IconButton.js';
 import {
   CheckIcon,
@@ -434,16 +435,18 @@ export function QuestionPanel({
               </div>
               <div className={css.feedback} role="status">{feedback}</div>
               <div className={css.footerActions}>
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className={`${css.button} ${css.outline}`}
                   disabled={locked}
                   onClick={skip}
                 >
                   {COPY['action.skip']}
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className={`${css.button} ${css.primary}`}
                   /* The reference gates this on the CURRENT question only; the batch is
                      checked on submit, which also reveals where it stopped. Requiring
@@ -453,7 +456,7 @@ export function QuestionPanel({
                   onClick={forward}
                 >
                   {last ? (answered ? COPY['submitting'] : COPY.submit) : COPY['nav.next']}
-                </button>
+                </Button>
               </div>
             </footer>
           </>

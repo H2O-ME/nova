@@ -1,24 +1,34 @@
 /**
- * Theme bootstrap for the pre-mount interval. The index's inline script resolves the
+ * Theme bootstrap for the pre-mount interval. The inline script resolves the
  * stored preference (only `system` asks the browser) and writes the same DOM
  * fields `theme.ts` owns afterwards, so the first paint is already in the
  * right palette with no flash.
  *
- * The script body is built here and hand-placed in `index.html`; a test asserts
- * the two agree on the durable keys and the DOM fields, so the pair cannot
- * drift.
+ * The script body is built HERE and injected into the mount document by
+ * `app/layout.tsx`, which calls this function — it does not keep a copy.
+ * `app/layout.tsx` is the direct successor of `index.html` after the Next.js
+ * migration, and `theme.test.ts` still asserts the two cannot drift: it pins
+ * that the layout derives the script from this function rather than pasting
+ * the body in.
+ * Imported from `../theme-constants.js`, deliberately NOT from `../theme.js`:
+ * `theme.ts` exports hooks, and `app/layout.tsx` (a Server Component) calls
+ * `bootThemeScript()` at module scope, so a hook-dependent import in this chain
+ * fails the Next build outright.
  */
 import {
   DEFAULT_FONT_SIZE,
   DEFAULT_PREFERENCE,
+  FONT_KEY,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  THEME_KEY,
   type ThemePreference,
-} from '../theme.js';
+} from '../theme-constants.js';
 
-/** localStorage keys the boot script reads; shared with `theme.ts` by contract. */
-export const THEME_KEY = 'nova.theme';
-export const FONT_KEY = 'nova.fontSize';
+// Re-exported: `THEME_KEY` / `FONT_KEY` were defined here before, and tests and
+// settings import them from this module. One definition now, in
+// `theme-constants.ts`, so the boot script and the runtime cannot disagree.
+export { FONT_KEY, THEME_KEY };
 
 /**
  * Build the inline script body for one theme preference and font size.
@@ -29,7 +39,7 @@ export const FONT_KEY = 'nova.fontSize';
  * corrected on mount, which is a visible jump in every text row.
  * @param preference - durable preference embedded in the page.
  * @param fontSize - durable content font size in px.
- * @returns the script text (also what `index.html` carries by hand).
+ * @returns the script text (what `app/layout.tsx` inlines verbatim).
  */
 export function bootThemeScript(
   preference: ThemePreference = DEFAULT_PREFERENCE,

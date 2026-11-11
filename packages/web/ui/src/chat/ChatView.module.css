@@ -21,12 +21,9 @@
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
-  /* Clip vertically without creating a scroll container (`clip`, not `hidden`:
-     pairing hidden with a visible axis computes the other to auto and would
-     make this box scrollable). The transcript scrolls in the scrollport below;
-     this only stops a row from painting past the frame, and it leaves the
-     sticky composer outside this box to resolve against the real scrollport.
-     The horizontal axis stays visible for the markdown table breakout. */
+  /* The scroller root clips vertically without scrolling itself (`clip`, not
+     `hidden`, keeps the horizontal axis visibly open for the markdown table
+     breakout). The scrollport is the Viewport below. */
   overflow-x: visible;
   overflow-y: clip;
   /* The width axis (--nova-chat-content-width) is declared and published by the
@@ -40,9 +37,24 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* The product-wide 2px scrollbar offset (ConversationRoot `.scrollBody`,
+     ui-workspace WorkspaceBrowser `.list`): the bar sits 2px clear of the
+     column's edge instead of flush against it. */
+  margin-right: var(--nova-space-2);
   /* Sides = composer clearance + 16px: on narrow viewports the transcript
-     stays exactly 32px narrower than the input card (the shared width rule). */
-  padding: var(--nova-space-16) calc(var(--nova-composer-side-clearance) + var(--nova-space-16));
+     stays exactly 32px narrower than the input card (the shared width rule).
+   *
+   * The TOP pad grew from 16 to 28 (2026-10-18). The first row used to start one
+   * 16px tier below the tab bar, so a transcript opened flush against the header
+   * and the first turn's divider read as part of the chrome. 28 is a tier of its
+   * own (not a bespoke number): at the top of a scroller, padding is not rhythm,
+   * it is the seam that tells a reader "this is content, that is the frame".
+   *
+   * Bottom pad stays 16: the composer seat is a flex sibling now (it no longer
+   * rides the scroll stream), so a larger pad here would only add dead scroll
+   * at the tail. */
+  padding: var(--nova-space-24) calc(var(--nova-composer-side-clearance) + var(--nova-space-16))
+    var(--nova-space-16);
   /* Inline-size query container: wide markdown tables size their breakout
      against this box's content width (100cqw in AssistantMessage's
      md-table-wide rule) — the CSS stand-in for deepsuite chat's JS-measured
@@ -50,32 +62,26 @@
   container-type: inline-size;
 }
 
+/* The Viewport's scrollbar track keeps the same 2px inset as the rest of the
+   product's scrollers. WebKit-only: the Firefox path has no track to inset. */
+.scroll::-webkit-scrollbar-track {
+  margin: var(--nova-space-2);
+}
+
 /* A reader pinned to the tail opts out of the engine's scroll anchoring: with
    it on, growth under a pinned viewport can be compensated by the browser and
    fight the follow write. The attribute is set only while following, so a
    reader who scrolled away keeps the engine's anchoring. */
-.root[data-chat-following-tail] .scroll,
-:global([data-conversation-scroll]):has(.root[data-chat-following-tail]) {
+.root[data-chat-following-tail] .scroll {
   overflow-anchor: none;
-}
-
-:global([data-conversation-scroll]) .frame,
-:global([data-conversation-scroll]) .root {
-  flex: 0 0 auto;
-  min-height: auto;
-  height: auto;
-}
-
-:global([data-conversation-scroll]) .scroll {
-  overflow: visible;
-  flex: 0 0 auto;
-  min-height: auto;
 }
 
 /* Message column: shared chat width (--nova-chat-content-width), centered on
    the same axis as the input box (which caps at chat + 16px); the scroller
-   itself stays full-bleed. */
+   itself stays full-bleed. `gap: 0` cancels the library Content's own gap —
+   the rhythm below is margin-based and must not stack on top of it. */
 .column {
+  gap: 0;
   max-width: var(--nova-chat-content-width);
   width: 100%;
   margin: 0 auto;
@@ -85,7 +91,14 @@
 
 /* `hidden="until-found"` retains a zero-height box so browser find can reveal
    its subtree. Direct Chat Node Seats and auxiliary rows share one flow;
-   hidden and empty Seats do not contribute spacing. */
+   hidden and empty Seats do not contribute spacing.
+
+   THE RHYTHM IS 8 + 24 (2026-11-05). The earlier ladder was 6 / 8 / 12 / 16,
+   one exception per row kind; measured on a live transcript that read as
+   「间距忽大忽小」 — the reader cannot learn a scale whose every class has its
+   own value. There are now exactly two: 8px inside a turn (reasoning, tool,
+   answer, tail share it) and 24px at a turn boundary (the reader's own message).
+   Proximity still does the divider's old job; it just does it with one rule. */
 .column > :not([hidden]):not(.flowItem:empty)
   ~ :not([hidden]):not(.flowItem:empty) {
   margin-top: var(--nova-chat-flow-gap, 16px);
@@ -95,11 +108,50 @@
    measurement/mount unit for a virtualizer without changing the column gap. */
 .flowItem {
   min-width: 0;
+  /* ENTRANCE (2026-10-18). Rows used to mount with no motion at all: the sheet
+   * carried sixty-odd animation references, but every one of them belonged to a
+   * DISCLOSURE (opening a turn, revealing reasoning) — nothing animated when a
+   * message arrived. That is why a live turn read as static text appearing in
+   * place rather than as the transcript growing.
+   *
+   * `nova-fade-up` is the existing global entrance (opacity + 6px rise,
+   * compositor-only), so this adds no new motion vocabulary: a new row now
+   * settles into the flow the same way a revealed disclosure does.
+   *
+   * Scope is deliberately narrow. `.flowItem` is the per-row wrapper, so this
+   * runs once per message and never on re-render (React keeps the node; the
+   * animation is bound to mount). Streaming deltas update text INSIDE an
+   * already-mounted row and do not restart it. */
+  animation: nova-fade-up var(--nova-dur-base) var(--nova-ease-out);
+}
+
+/* Rhythm changes are animated the way the reference animates them (`transition:
+   margin-top .16s`): when a row's own gap class flips — a turn settles, a
+   process folds, the tail mounts — the column re-spaces over one short beat
+   instead of snapping. Without this, collapsing a turn made every row below it
+   jump by the height that vanished, which is the "跳一下" that reads as a
+   rendering fault rather than as a fold. */
+.column > :not([data-chat-motion]) {
+  transition: margin-top var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flowItem,
+  .column > :not([data-chat-motion]) {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* A closed process reads as one summary immediately followed by its answer.
-   Expanded process rows return to the ordinary 16px rhythm. */
+   Expanded process rows return to the ordinary rhythm. */
 .flowItem[data-turn-process-answer] {
+  --nova-chat-flow-gap: 8px;
+}
+
+/* The reference's ONE exception: a closed process reads as a summary directly
+   followed by its answer, so that pair sits at half the rhythm (8px). */
+.flowItem[data-chat-group-part='response'] {
   --nova-chat-flow-gap: 8px;
 }
 
@@ -166,17 +218,18 @@
 }
 
 /* Back-to-bottom: a zero-height slot so the control does not extend
-   scrollHeight; the button translates up into the viewport. A standalone Chat
-   anchors it to its frame; under the conversation host the slot goes sticky and
-   clearance sits above the sticky composer stack. */
+   scrollHeight; the button translates up into the viewport. The composer seat
+   is a flex sibling of the scroller (not a sticky element inside it), so the
+   frame's bottom edge IS the viewport's bottom edge and `bottom: 16px` lands
+   the control 16px above the seat — no composer-height offset needed. */
 .toBottomSlot {
   position: absolute;
   right: 0;
   bottom: 16px;
   left: 0;
-  /* Above the sticky composer (z-index 7) so the control stays clickable and
-     visible over the input card. Exception: while an @/slash menu is open the
-     seat lifts to 9 (ui-conversation ConversationRoot) so the menu is never
+  /* Above the seat's own chrome so the control stays clickable and visible
+     over the input card. Exception: while an @/slash menu is open the seat
+     lifts to 9 (ui-conversation ConversationRoot) so the menu is never
      covered by this control. */
   z-index: 8;
   height: 0;
@@ -187,15 +240,6 @@
     calc((100% - var(--nova-chat-content-width)) / 2)
   );
   pointer-events: none;
-}
-
-:global([data-conversation-scroll]) .toBottomSlot {
-  /* Clears the sticky composer stack (docks + input card + stats): the live
-     height rides --nova-composer-height (ConversationRoot's seat observer) so
-     the control follows a growing textarea; the fallback covers the first
-     paint before the observer fires. */
-  position: sticky;
-  bottom: calc(var(--nova-composer-height, 152px) + 16px);
 }
 
 .toBottom {

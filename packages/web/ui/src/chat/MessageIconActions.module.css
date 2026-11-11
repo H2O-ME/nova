@@ -41,26 +41,23 @@
   white-space: nowrap;
 }
 
-/* Earlier user-authored flow rows and opted-in turn tails reveal the complete
-   actions row on hover or focus-within. Opacity keeps layout stable, and
-   devices without hover keep every row visible. */
+/* EVERY user-authored row and every turn tail reveals its actions only on
+   hover or focus-within. The old rule kept the LATEST user row and the newest
+   settled tail always visible; measured against the reference, whose
+   transcripts show no chrome at rest, that was the last standing noise in the
+   flow. Opacity keeps layout stable, and devices without hover keep every row
+   visible. */
 @media (hover: hover) {
   [data-actions-reveal='hover'] .actions,
-  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):has(
-    ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
-  ) .actions {
+  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']) .actions {
     opacity: 0;
     transition: opacity 80ms ease;
   }
 
   [data-actions-reveal='hover']:hover .actions,
   [data-actions-reveal='hover']:focus-within .actions,
-  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):has(
-    ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
-  ):hover .actions,
-  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):has(
-    ~ :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering'])
-  ):focus-within .actions {
+  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):hover .actions,
+  :is([data-chat-flow-kind='user'], [data-chat-flow-kind='steering']):focus-within .actions {
     opacity: 1;
   }
 }

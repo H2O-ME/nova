@@ -11,6 +11,7 @@
  */
 import { memo, useState } from 'react';
 import { ChevronDownGlyph14, ChevronRightGlyph14, ContextGlyph14 } from './glyphs.js';
+import { Button } from '../components/ui/button.js';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import css from './MessageItem.module.css';
 
@@ -40,8 +41,9 @@ export const CompactionItem = memo(function CompactionItem({
 
   return (
     <div className={css.compactionRow}>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         className={css.compactionButton}
         disabled={!expandable}
         aria-expanded={expandable ? open : undefined}
@@ -61,7 +63,7 @@ export const CompactionItem = memo(function CompactionItem({
         <span className={css.compactionTitle}>{title ?? '上下文已压缩'}</span>
         <span className={css.compactionSep} aria-hidden="true" />
         <span className={css.compactionSummary}>{summaryLine}</span>
-      </button>
+      </Button>
       {open && summary !== null && (
         <div className={css.compactionBody}>
           <MarkdownText text={summary} />

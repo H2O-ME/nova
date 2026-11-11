@@ -1,0 +1,19 @@
+/* The single global stylesheet, imported once by `app/layout.tsx`.
+ *
+ * ORDER IS THE WHOLE CONTENT OF THIS FILE. It reproduces exactly what
+ * `src/main.tsx` used to import in sequence, and that sequence is load-bearing:
+ *
+ *   1. `index.css`      — the ported base sheets.
+ *   2. `design/index.css` — the `--nova-*` token layer. Mounts AFTER the base
+ *      sheets so its tokens win the cascade.
+ *   3. `tailwind.css`   — LAST, because its `@theme inline` entries are
+ *      `var(--nova-*)` references and must resolve against an already-declared
+ *      token layer. Mounted first, the Aceternity utilities would resolve
+ *      against nothing and paint with UA defaults.
+ *
+ * Next allows global CSS only from the root layout, so this file is the one
+ * place those three imports can live.
+ */
+@import '../src/index.css';
+@import '../src/design/index.css';
+@import '../src/tailwind.css';

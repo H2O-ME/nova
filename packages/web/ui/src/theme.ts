@@ -9,22 +9,35 @@
  * theme vocabulary, not any one card's business.
  */
 import { useEffect, useState } from 'react';
+import {
+  CONTENT_FONT_SIZE_VARIABLE,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_PREFERENCE,
+  DARK_ATTRIBUTE,
+  FONT_KEY,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  THEME_KEY,
+  THEME_PREFERENCES,
+  type ThemePreference,
+} from './theme-constants.js';
 
-/** Built-in preferences accepted at the settings boundary. */
-export const THEME_PREFERENCES = ['light', 'dark', 'system'] as const;
-export type ThemePreference = (typeof THEME_PREFERENCES)[number];
-/** Default preference when no durable override exists. */
-export const DEFAULT_PREFERENCE: ThemePreference = 'system';
-/** Content font size bounds and default, in px. */
-export const FONT_SIZE_MIN = 12;
-export const FONT_SIZE_MAX = 17;
-export const DEFAULT_FONT_SIZE = 14;
-
-const THEME_KEY = 'nova.theme';
-const FONT_KEY = 'nova.fontSize';
-const DARK_ATTRIBUTE = 'data-nova-dark';
-/** Body variable carrying the user's content font size in px. */
-export const CONTENT_FONT_SIZE_VARIABLE = '--nova-content-font-size';
+// Re-exported so every existing consumer keeps importing from `theme.ts`. The
+// definitions live in `theme-constants.ts` because `boot-theme.ts` needs them
+// from a NON-React module: `app/layout.tsx` is a Server Component and calling
+// `bootThemeScript()` there pulls in whatever `boot-theme.ts` imports.
+export {
+  CONTENT_FONT_SIZE_VARIABLE,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_PREFERENCE,
+  DARK_ATTRIBUTE,
+  FONT_KEY,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  THEME_KEY,
+  THEME_PREFERENCES,
+  type ThemePreference,
+};
 
 function read<T extends string | number>(key: string, fallback: T): T {
   try {

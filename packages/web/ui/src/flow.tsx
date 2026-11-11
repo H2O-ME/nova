@@ -96,27 +96,6 @@ function spanMeta(span: readonly Block[]): RunStats | undefined {
 }
 
 /**
- * Whether a turn closes on a user-facing reply — the reference's
- * `endsWithResponse`. The decisive block is the turn's LAST substantive
- * assistant content, and trailing empty text or reasoning is skipped on the way
- * to it (the reference's `findLast`). A turn whose final act is a tool call is
- * therefore NOT a reply: there is no answer for the closing chrome to sit under,
- * so it stays hover-only even on the newest turn.
- * @param span - one turn's blocks.
- * @returns whether the tail should reveal without hover.
- */
-function endsWithReply(span: readonly Block[]): boolean {
-  for (let at = span.length - 1; at >= 0; at -= 1) {
-    const inner = span[at];
-    if (inner === undefined) continue;
-    if (inner.kind !== 'text' && inner.kind !== 'reasoning' && inner.kind !== 'tool') continue;
-    if (inner.kind !== 'tool' && inner.text.trim() === '') continue;
-    return inner.kind === 'text';
-  }
-  return false;
-}
-
-/**
  * Map the reducer's blocks onto flow rows.
  * @param blocks - the session's blocks in order.
  * @param options - the few facts a row needs from the frame.
@@ -175,15 +154,9 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
       ? liveTitleOf(activity, options.policy.liveProcessDetail)
       : undefined;
     // The box payload every member row carries; absent when the mode does not
-    // group (the rows then flow flat under the turn header alone).
-    const groupOf = (): ChatFlowRow['group'] => stepBox
-      ? {
-        id: `group:${turnKey}`,
-        live: running,
-        ...(summary !== undefined ? { summary } : {}),
-        ...(liveTitle !== undefined ? { liveTitle } : {}),
-      }
-      : undefined;
+    // group (the rows then flow flat under the turn header alone). The box is
+    // geometry only — the fold and its words belong to the turn header (W2).
+    const groupOf = (): ChatFlowRow['group'] => stepBox ? { id: `group:${turnKey}`, live: running } : undefined;
     // The turn's tail sits on its LAST settled text (the answer's closing
     // chrome); the latest settled turn reveals it without hover.
     let tailAt = -1;
@@ -215,6 +188,12 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
               collapsible={!running && hasProcess && options.policy.foldCompletedTurns}
               open={open}
               turnKey={turnKey}
+              // The head's second half: what the turn DID. A collapsed turn
+              // reads as one line naming its work (W2) — the reader learns
+              // 「读取 3 个文件」 without opening anything, which is the whole
+              // reason to fold. A live turn names what it is doing instead.
+              {...(summary !== undefined ? { summary } : {})}
+              {...(liveTitle !== undefined ? { liveTitle } : {})}
               messageCount={span.filter((b) => b.kind === 'text' || b.kind === 'user').length}
               toolCallCount={span.filter((b) => b.kind === 'tool').length}
               subagentCount={span.filter((b) => b.kind === 'sub').length}
@@ -272,14 +251,13 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
             <AssistantTailRow
               text={inner.text}
               time={inner.ts}
-              // The reference's `endsWithResponse`: the tail reveals without
-              // hover when its turn is the last one AND closes on a user-facing
-              // reply. Two deliberate details — it is NOT gated on the turn
-              // still running (the reference reads the timeline, not the run
-              // state), and a turn whose last content is a tool call is
-              // hover-only even on the newest turn, because protocol material
-              // is not an answer to act on.
-              reveal={isLastSpan && endsWithReply(span) ? 'always' : 'hover'}
+              // EVERY tail is hover-gated now. The old rule revealed the newest
+              // settled turn without hover; measured against the reference,
+              // whose transcripts show no chrome at rest (usage and speed live
+              // in the status bar), that always-on row was the last visible
+              // noise in the flow. The numbers are not lost: the status bar
+              // still carries them, and hover brings the pill back.
+              reveal="hover"
               usageAction={<TurnUsagePill stats={meta} modelName={options.modelName} />}
             />
           ),

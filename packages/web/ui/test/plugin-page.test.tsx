@@ -32,7 +32,7 @@ describe('nextPluginRequestId', () => {
 
 describe('parsePageDescriptor', () => {
   const valid = {
-    title: 'QQ 通道',
+    title: '示例插件页',
     intro: '填凭据',
     guide: ['第一步', '第二步'],
     status: [{ label: '连接', value: '已连接', tone: 'ok' }],

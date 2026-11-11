@@ -67,7 +67,7 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
   width: 100%;
   height: 36px;
   /* Right inset 12px puts the chevron on the same vertical line as the Todo
@@ -127,7 +127,7 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
   width: 100%;
   height: 36px;
   padding: var(--nova-space-4) 5px var(--nova-space-4) var(--nova-space-12);

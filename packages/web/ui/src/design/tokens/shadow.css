@@ -1,24 +1,39 @@
-/* Nova elevation — three shadow rungs, and that is the ceiling, plus the
- * composite "hairline stroke + soft glow" recipe that floats, panels and
- * solid buttons wear INSTEAD of a heavier shadow (the 0.5px stroke is painted
- * inside box-shadow so it costs no layout; component sheets keep `border: 0`).
+/* Nova elevation — rewritten 2026-10-19 as LAYERED SOFT LIGHT.
  *
- * A docked column (the right Inspector) draws NO elevation — it is a column of
- * the page, not a float. `ui/test/style-guard.test.ts` pins that rule and it
- * stays. A surface that needs a fourth level is telling you it has a layering
- * problem, not an elevation problem.
+ * WHY THE OLD LADDER WAS THE PROBLEM
+ * ----------------------------------
+ * Every rung used to be a 0.5px hairline stroke painted inside a box-shadow,
+ * followed by 3–16px of blur at 2–4% alpha. That combination does not read as
+ * elevation; it reads as an outlined rectangle with a smudge under it. On a
+ * deeper plane ladder the stroke is the tell — it re-draws the border the
+ * surface was supposed to have dropped.
  *
- * The composite rungs are declared per-element (`body, body *`) rather than
- * inherited on purpose: inheritance would hand down the value with its
- * `var()` ALREADY substituted, so a descendant rebinding
- * `--nova-elevation-stroke-color` could not reach it. Declared per element,
- * every surface re-substitutes with the stroke colour it sees (menus rebind
- * the faintest, inputs the strong one). */
+ * The rewrite follows the reference catalogue's actual recipe, which is what
+ * "glowing cards floating on a dark ground" is made of:
+ *
+ *  - **No stroke on the float rungs.** The shape defines the edge.
+ *  - **Two, sometimes three stacked shadows** at DIFFERENT blur radii and
+ *    alphas: a tight 1–2px contact shadow that anchors the surface to the page,
+ *    a mid 8–16px body, and a wide 32–64px ambient. One shadow always reads
+ *    flat; three read as light falling off an object.
+ *  - **Negative spread on the widest layer**, so it blooms past the sides
+ *    instead of drawing a grey rectangle around the surface.
+ *
+ * The stroke-only recipe (`--nova-elevation-stroke`) is KEPT and still used by
+ * menus and solid buttons, where a crisp 0.5px edge is exactly right. Removing
+ * it everywhere would have broken those; the point is that a floated surface no
+ * longer borrows it.
+ *
+ * A docked column (the right Inspector) still draws NO elevation — it is a
+ * column of the page, not a float. `style-guard.test.ts` pins that and it stays.
+ * A surface that needs a fifth level has a layering problem, not an elevation
+ * problem. */
 :root {
-  --nova-shadow-1: 0 2px 4px 0 rgba(0, 0, 0, 0.05);
-  --nova-shadow-2: 0 4px 12px 0 rgba(0, 0, 0, 0.02), 0 2px 8px 0 rgba(0, 0, 0, 0.04);
+  --nova-shadow-1: 0 1px 2px 0 rgba(16, 24, 40, 0.06), 0 1px 3px 0 rgba(16, 24, 40, 0.04);
+  --nova-shadow-2: 0 2px 4px -1px rgba(16, 24, 40, 0.06), 0 4px 10px -2px rgba(16, 24, 40, 0.07);
   --nova-shadow-3:
-    0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02), 0 12px 32px 0 rgba(0, 0, 0, 0.08);
+    0 4px 8px -2px rgba(16, 24, 40, 0.07), 0 12px 28px -6px rgba(16, 24, 40, 0.1),
+    0 24px 48px -12px rgba(16, 24, 40, 0.1);
 
   --nova-elevation-stroke-color: var(--nova-border-strong);
 }
@@ -31,10 +46,57 @@ body[data-nova-dark] [data-menu-material] {
 body,
 body * {
   --nova-elevation-stroke: 0 0 0 0.5px var(--nova-elevation-stroke-color);
+
   --nova-elevation-panel:
-    var(--nova-elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.03), 0 0 16px 0 rgba(0, 0, 0, 0.02);
+    0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 4px 12px -4px rgba(16, 24, 40, 0.06);
+
   --nova-elevation-prominent:
-    var(--nova-elevation-stroke), 0 3px 8px 0 rgba(0, 0, 0, 0.04), 0 0 20px 0 rgba(0, 0, 0, 0.05);
+    0 1px 2px 0 rgba(16, 24, 40, 0.05), 0 6px 16px -6px rgba(16, 24, 40, 0.09),
+    0 16px 36px -12px rgba(16, 24, 40, 0.1);
+
   --nova-elevation-soft:
-    var(--nova-elevation-stroke), 0 4px 16px 0 rgba(0, 0, 0, 0.03), 0 0 24px 0 rgba(0, 0, 0, 0.03);
+    0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 8px 24px -8px rgba(16, 24, 40, 0.07);
+
+  /* `float` is the lifted rung — the composer card, dialogs, the settings
+   * sheet. Three layers with a wide negative-spread ambient term. No stroke:
+   * at an 18px corner a hairline traces the radius as a seam and converts the
+   * shape back into a bordered box.
+   *
+   * The shadow colour is a COOL near-black. A warm shadow under a cool surface
+   * reads as dirt rather than as depth. */
+  --nova-elevation-float:
+    0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 10px 24px -8px rgba(16, 24, 40, 0.08),
+    0 32px 64px -24px rgba(16, 24, 40, 0.12);
+
+  /* The highest rung: a modal sheet that must read as detached from the page
+   * beneath it. Kept separate from `float` because a dialog and a composer
+   * should not trade places silently. */
+  --nova-elevation-overlay:
+    0 2px 4px 0 rgba(16, 24, 40, 0.06), 0 16px 40px -12px rgba(16, 24, 40, 0.14),
+    0 48px 88px -32px rgba(16, 24, 40, 0.18);
+}
+
+/* Dark mode: black-on-black carries far less information than black-on-paper,
+ * so alpha roughly doubles and pure black is used — the standard inversion. The
+ * ambient term goes wider still, which is what makes a surface read as floating
+ * on a dark ground rather than as a lighter rectangle. */
+body[data-nova-dark],
+body[data-nova-dark] * {
+  --nova-elevation-panel:
+    0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 4px 12px -4px rgba(0, 0, 0, 0.5);
+
+  --nova-elevation-prominent:
+    0 1px 2px 0 rgba(0, 0, 0, 0.5), 0 6px 16px -6px rgba(0, 0, 0, 0.55),
+    0 16px 36px -12px rgba(0, 0, 0, 0.55);
+
+  --nova-elevation-soft:
+    0 1px 2px 0 rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+
+  --nova-elevation-float:
+    0 1px 2px 0 rgba(0, 0, 0, 0.5), 0 10px 24px -8px rgba(0, 0, 0, 0.55),
+    0 32px 64px -24px rgba(0, 0, 0, 0.6);
+
+  --nova-elevation-overlay:
+    0 2px 4px 0 rgba(0, 0, 0, 0.55), 0 16px 40px -12px rgba(0, 0, 0, 0.6),
+    0 48px 88px -32px rgba(0, 0, 0, 0.7);
 }

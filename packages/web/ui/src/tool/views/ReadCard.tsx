@@ -11,6 +11,7 @@
  */
 import { useState } from 'react';
 import { headTailCap, foldLabels, readWindowNote, type ReadWindow } from '../cards.js';
+import { Button } from '../../components/ui/button.js';
 import { COPY_LABELS, useCopy } from '../copy.js';
 import css from './ReadCard.module.css';
 
@@ -49,9 +50,9 @@ export function ReadCard({ path, window, truncated, maxLines = CHAT_READ_MAX_LIN
           {windowed && <span className={css.count}>{readWindowNote(window, truncated)}</span>}
           {/* An empty window omits Copy to avoid replacing the clipboard with nothing. */}
           {window.lines.length > 0 && (
-            <button type="button" className={css.copyButton} onClick={copy}>
+            <Button variant="ghost" size="xs" className={css.copyButton} onClick={copy}>
               {copied ? COPY_LABELS.copied : COPY_LABELS.copy}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -63,15 +64,16 @@ export function ReadCard({ path, window, truncated, maxLines = CHAT_READ_MAX_LIN
             <ReadLine key={index} number={window.offset + index} text={line} />
           ))}
           {hidden > 0 && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               className={css.expand}
               aria-expanded={expanded}
               aria-label={expanded ? LABELS.collapseAria : LABELS.expandAria(hidden)}
               onClick={() => setExpanded((value) => !value)}
             >
               {expanded ? LABELS.collapse : LABELS.expand(hidden)}
-            </button>
+            </Button>
           )}
           {tail.map((line, index) => (
             <ReadLine key={`tail-${index}`} number={window.offset + window.lines.length - tailLines + index} text={line} />

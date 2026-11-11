@@ -11,6 +11,7 @@
  */
 import { useState } from 'react';
 import { headTailCap, foldLabels, searchCopyText, searchSummary } from '../cards.js';
+import { Button } from '../../components/ui/button.js';
 import { COPY_LABELS, useCopy } from '../copy.js';
 import type { BodyShell } from '../model.js';
 import css from './SearchCard.module.css';
@@ -111,9 +112,9 @@ export function SearchCard({ shell, maxLines = CHAT_SEARCH_MAX_LINES }: SearchCa
           })}
         </span>
         {rows.length > 0 && (
-          <button type="button" className={css.copyButton} onClick={copy}>
+          <Button variant="ghost" size="xs" className={css.copyButton} onClick={copy}>
             {copied ? COPY_LABELS.copied : COPY_LABELS.copy}
-          </button>
+          </Button>
         )}
       </div>
       {rows.length === 0 ? (
@@ -126,15 +127,16 @@ export function SearchCard({ shell, maxLines = CHAT_SEARCH_MAX_LINES }: SearchCa
             </div>
           ))}
           {hidden > 0 && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="xs"
               className={css.expand}
               aria-expanded={expanded}
               aria-label={expanded ? LABELS.collapseAria : LABELS.expandAria(hidden)}
               onClick={() => setExpanded((value) => !value)}
             >
               {expanded ? LABELS.collapse : LABELS.expand(hidden)}
-            </button>
+            </Button>
           )}
           {tailHeader !== undefined && (
             <div key={`tailHeader:${rowKey(tailHeader)}`}>
@@ -164,14 +166,15 @@ function SearchLine({ row, onToggle }: { row: SearchRow; onToggle: (index: numbe
     );
   }
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="xs"
       className={css.fileHeader}
       aria-expanded={!row.collapsed}
       onClick={() => onToggle(row.index)}
     >
       <span className={css.filePath}>{row.path}</span>
       <span className={css.fileCount}>{row.count}</span>
-    </button>
+    </Button>
   );
 }

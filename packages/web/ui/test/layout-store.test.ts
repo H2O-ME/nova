@@ -54,17 +54,16 @@ describe('sidebar preference', () => {
 });
 
 describe('right panel preference', () => {
-  it('an open panel reserves its track — three columns, not an overlay', () => {
-    // The rule (the reference's `track = shown && !autoFullscreen`): every
-    // shown panel bids for its track, so the centre makes room. The track used
-    // to be a caller-supplied `false` — the port slip that left the panel
-    // hanging over the conversation — and is now structural: there is no
-    // argument left to get wrong.
-    expect(openRightbar(wide(), false).rightbarTrack).toBe(true);
-    // Fullscreen retains the track beneath the covered frame, so leaving
-    // fullscreen lands on the same conversation width.
-    expect(openRightbar(wide(), true).rightbarTrack).toBe(true);
-    // Hidden is the only trackless state.
+  it('an open panel floats as a drawer — it never reserves a track', () => {
+    // W1: the panel used to reserve a grid track (`rightbarTrack: true`), which
+    // squeezed the conversation into a third column beside it. It now floats
+    // over the centre, so the only states are shown/hidden — never "three
+    // columns". Re-introducing `rightbarTrack: true` turns this red.
+    expect(openRightbar(wide(), false).rightbarTrack).toBe(false);
+    // Fullscreen covers the frame; it also keeps the track flag false so a
+    // restored drawer does not start reserving space.
+    expect(openRightbar(wide(), true).rightbarTrack).toBe(false);
+    expect(openRightbar(openRightbar(wide(), true), false).rightbarTrack).toBe(false);
     expect(closeRightbar(openRightbar(wide(), false)).rightbarTrack).toBe(false);
   });
 
@@ -88,9 +87,12 @@ describe('right panel preference', () => {
     expect(setSidebar(restored, 300).rightbarInstant).toBe(false);
   });
 
-  it('opening on a narrow frame collapses the sidebar first', () => {
+  it('opening the drawer leaves the sidebar expanded', () => {
+    // The drawer needs no concession from its neighbours: opening it must not
+    // yank the session list out from under the pointer.
     const narrowExpanded = toggleSidebar(setViewportWidth(wide(), 900));
-    expect(openRightbar(narrowExpanded, false).narrowExpanded).toBe(false);
+    expect(narrowExpanded.narrowExpanded).toBe(true);
+    expect(openRightbar(narrowExpanded, false).narrowExpanded).toBe(true);
   });
 
   it('a drag clamps into [300, 70% of the frame]', () => {

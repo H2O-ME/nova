@@ -14,7 +14,7 @@ import { UnsavedConfirmDialogBody } from '../src/settings/UnsavedConfirmDialog.j
 
 function markup(): string {
   return renderToStaticMarkup(
-    <UnsavedConfirmDialogBody section="QQ 通道" onConfirm={() => undefined} onClose={() => undefined} />,
+    <UnsavedConfirmDialogBody section="示例插件页" onConfirm={() => undefined} onClose={() => undefined} />,
   );
 }
 
@@ -23,7 +23,7 @@ describe('UnsavedConfirmDialogBody', () => {
     const html = markup();
     expect(html).toContain('alertdialog');
     expect(html).toContain('未保存的修改');
-    expect(html).toContain('「QQ 通道」还有未保存的修改');
+    expect(html).toContain('「示例插件页」还有未保存的修改');
   });
 
   it('puts the autofocus mark on 留在本页, not on 放弃修改并离开', () => {

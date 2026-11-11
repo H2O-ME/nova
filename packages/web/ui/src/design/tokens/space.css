@@ -8,6 +8,16 @@
  * Density-first: Nova is an Agent Development Workspace, and the default step
  * is 8px, not a marketing page's 16px.
  *
+ * The ladder carries two NON-4px rungs (`space-10`, `space-14`) on purpose.
+ * The 4px grid is the rule, but the product had already settled on 10px and
+ * 14px by measurement: at the time these were added, 63 sheets used a 10px
+ * value and 39 used 14px, against 8 and 12 for the neighbouring rungs. Keeping
+ * only 4px multiples left authors choosing between changing the visual and
+ * writing a literal — and they wrote the literal, 102 times, which is the
+ * exact failure the ladder exists to prevent. A rung that names the value the
+ * design actually uses ends that choice; it does not weaken the grid, because
+ * every rung is still a fixed, named value rather than a per-author number.
+ *
  * Consumers write `var(--nova-space-8)`. Never a literal — the machine check
  * is `scripts/ui-token-guard.mjs`, and the allowed literals (border-width,
  * hairlines, icon and SVG geometry) are a closed list in
@@ -18,7 +28,9 @@
   --nova-space-4: 4px;
   --nova-space-6: 6px;
   --nova-space-8: 8px;
+  --nova-space-10: 10px;
   --nova-space-12: 12px;
+  --nova-space-14: 14px;
   --nova-space-16: 16px;
   --nova-space-24: 24px;
   --nova-space-32: 32px;

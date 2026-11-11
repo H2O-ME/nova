@@ -43,7 +43,7 @@
   max-height: 141px;
   margin: var(--nova-space-4) 0 0 calc(22px + var(--nova-content-font-delta, 0px));
   overflow: auto;
-  padding: 10px var(--nova-space-16) var(--nova-space-12) var(--nova-space-12);
+  padding: var(--nova-space-10) var(--nova-space-16) var(--nova-space-12) var(--nova-space-12);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-code);

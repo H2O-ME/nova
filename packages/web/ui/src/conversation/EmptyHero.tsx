@@ -123,6 +123,25 @@ export interface HeroShellProps {
 export function HeroShell({ mark, version }: HeroShellProps): JSX.Element {
   return (
     <div className={css.root}>
+      {/*
+       * THE AURORA IS *NOT* MOUNTED HERE, and that is the lesson of two failed
+       * attempts — both measured, both recorded:
+       *
+       *   `.root`  = 624x34   (wraps the headline row only)
+       *   `.stack` = 656x34   (same row; the composer card is a SIBLING)
+       *
+       * `AuroraBackground` is `absolute inset-0`, so mounted on either box it
+       * paints into a 34px band and reads as nothing — measured at exactly
+       * 656x34 on the first attempt at this change. Scenery only becomes visible
+       * when its containing block is the whole hero region, and `HeroShell`
+       * cannot provide that by construction: the workspace chip and the composer
+       * card live outside it.
+       *
+       * The wash + grid are therefore rendered by `ConversationRoot`, which owns
+       * the full-height hero column (`composerSeat`), as an `AuroraBackground`
+       * inside that seat. Keeping a second copy in this 34px box would be a
+       * duplicate that can never be seen.
+       */}
       <div className={css.stack}>
         <div className={css.headline}>
           {/* figma 34:10412: mark 34 leading the headline, gap 10. */}

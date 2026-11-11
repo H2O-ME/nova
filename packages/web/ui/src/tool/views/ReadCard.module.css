@@ -2,7 +2,9 @@
    (`CHAT_READ_MAX_LINES`). */
 
 .block {
-  --dsl-read-radius: 12px;
+  /* The reference's code-card corner is its `lg` rung; follow the shared ladder
+     instead of pinning a literal that silently fell behind it. */
+  --dsl-read-radius: var(--nova-radius-lg);
   --dsl-read-line-height: 22px;
   /* Fixed-width gutter column for the line numbers, so the content edge stays
      put down the whole window regardless of how wide the numbers grow. */
@@ -11,9 +13,17 @@
   position: relative;
   /* 4px indent: the flow's row rhythm, replacing the primitive's own margin. */
   margin: var(--nova-space-4) 0 var(--nova-space-4) var(--nova-space-4);
+  /* The reference's code-card family wears one hairline inside the surface
+     (border-l1 weight); the terminal card already does, and the read card is
+     the same family. */
+  border: 0.5px solid var(--nova-border-subtle);
   color: var(--nova-text-primary);
   background: var(--nova-surface-code);
   border-radius: var(--dsl-read-radius);
+  /* Clip the banner to the card's own radius: once the card carries a border,
+     the banner's equal corner radius no longer nests inside it (the terminal
+     card's own rule). */
+  overflow: hidden;
 }
 
 .banner {
@@ -21,7 +31,7 @@
   justify-content: space-between;
   align-items: center;
   gap: var(--nova-space-12);
-  padding: 9px 14px;
+  padding: 9px var(--nova-space-14);
   background: var(--nova-surface-code-head);
   border-top-left-radius: var(--dsl-read-radius);
   border-top-right-radius: var(--dsl-read-radius);
@@ -51,6 +61,7 @@
 }
 
 .copyButton {
+  height: auto;
   background-color: transparent;
   border: none;
   padding: 0;
@@ -79,7 +90,7 @@
 .gutter {
   flex: none;
   width: var(--dsl-read-gutter);
-  padding-right: 14px;
+  padding-right: var(--nova-space-14);
   text-align: right;
   color: var(--nova-text-muted);
   /* The gutter is chrome, not content: keep it out of a text selection so a
@@ -92,6 +103,7 @@
 }
 
 .expand {
+  height: auto;
   display: block;
   width: 100%;
   padding: 0 0 0 var(--dsl-read-gutter);
@@ -111,7 +123,7 @@
 /* No lines to number (a read whose flattened text never reached the surface):
    the banner alone would leave an empty rounded box. */
 .empty {
-  padding: var(--nova-space-12) 14px;
+  padding: var(--nova-space-12) var(--nova-space-14);
   font: var(--nova-font-markdown-code-block);
   color: var(--nova-text-muted);
 }

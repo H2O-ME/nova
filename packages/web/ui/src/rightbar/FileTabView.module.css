@@ -20,7 +20,7 @@
   flex: none;
   gap: var(--nova-space-6);
   align-items: center;
-  padding: 5px 10px;
+  padding: 5px var(--nova-space-10);
   border-bottom: 0.5px solid var(--nova-border-subtle);
 }
 
@@ -37,7 +37,7 @@
   display: flex;
   align-items: flex-start;
   gap: var(--nova-space-8);
-  padding: 0 10px;
+  padding: 0 var(--nova-space-10);
 }
 
 .lineNo {
@@ -65,5 +65,5 @@
 
 /* Markdown renders as reading matter, not source. */
 .markdown {
-  padding: var(--nova-space-12) 14px var(--nova-space-16);
+  padding: var(--nova-space-12) var(--nova-space-14) var(--nova-space-16);
 }

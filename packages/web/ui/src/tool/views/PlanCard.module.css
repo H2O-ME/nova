@@ -20,7 +20,7 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-12);
-  padding: 9px 14px;
+  padding: 9px var(--nova-space-14);
   background: var(--nova-surface-code-head);
   border-top-left-radius: var(--dsl-plan-radius);
   border-top-right-radius: var(--dsl-plan-radius);
@@ -37,7 +37,7 @@
 }
 
 .body {
-  padding: var(--nova-space-8) 14px var(--nova-space-12);
+  padding: var(--nova-space-8) var(--nova-space-14) var(--nova-space-12);
   font: var(--nova-font-markdown-code-block);
 }
 
@@ -78,6 +78,7 @@
 }
 
 .expand {
+  height: auto;
   display: block;
   width: 100%;
   padding: 0;

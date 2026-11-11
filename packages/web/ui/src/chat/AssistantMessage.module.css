@@ -20,14 +20,33 @@
   font-size: var(--nova-content-font-size, 14px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-primary);
-  /* Compositor-only entrance from the shared motion sheet (styles/motion.css). */
-  animation: nova-fade-up var(--nova-dur-base, 220ms) var(--nova-ease-out, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
+
+/* W3: no per-message entrance. Every answer used to replay `nova-fade-up` on
+   each render pass that remounted it, so scrolling a long transcript made the
+   whole page move — exactly the 「页面一直在动」 the design system forbids
+   (docs/NOVA-DESIGN-SYSTEM.md §4.3). Arrival is announced ONCE, by the turn
+   header's own cue, and the streaming text is its own progress signal. */
 
 .body {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-16);
+  width: 100%;
+  /* shadcn's BubbleContent sets `text-sm` directly on the element; restate the
+   * content-size axis here so the Settings font-size preference still moves the
+   * reply. */
+  font-size: var(--nova-content-font-size, 14px);
+  line-height: calc(24px + var(--nova-content-font-delta, 0px));
+  color: var(--nova-text-primary);
+}
+
+/* The Message/Bubble wrappers default to `w-fit` plus an 80% cap. The
+ * assistant answer is full-width prose, so both wrappers stretch to the
+ * column. */
+.fill {
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Wide markdown tables (the renderer's ≥4-column md-table-wide hook) span

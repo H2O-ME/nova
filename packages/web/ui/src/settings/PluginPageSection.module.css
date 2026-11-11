@@ -32,7 +32,7 @@
   flex-direction: column;
   gap: var(--nova-space-4);
   margin-top: var(--nova-space-12);
-  padding: 10px var(--nova-space-12);
+  padding: var(--nova-space-10) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-color-danger-soft);
   font-size: 13px;
@@ -50,7 +50,7 @@
   flex-direction: column;
   gap: var(--nova-space-4);
   margin: var(--nova-space-8) 0 0;
-  padding: 10px var(--nova-space-12);
+  padding: var(--nova-space-10) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
 }
@@ -128,7 +128,7 @@
 .input {
   width: 100%;
   box-sizing: border-box;
-  padding: var(--nova-space-8) 10px;
+  padding: var(--nova-space-8) var(--nova-space-10);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-sunken);
@@ -172,7 +172,7 @@
 .actionSuccess,
 .actionFailure {
   margin-top: var(--nova-space-12);
-  padding: 10px var(--nova-space-12);
+  padding: var(--nova-space-10) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   font-size: 13px;
   line-height: 20px;
@@ -190,7 +190,7 @@
 
 .primary,
 .plain {
-  padding: 7px 14px;
+  padding: 7px var(--nova-space-14);
   border-radius: var(--nova-radius-lg);
   border: 1px solid transparent;
   font: inherit;
@@ -231,7 +231,7 @@
   flex-direction: column;
   gap: var(--nova-space-6);
   margin-top: var(--nova-space-12);
-  padding: 10px var(--nova-space-12);
+  padding: var(--nova-space-10) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
 }

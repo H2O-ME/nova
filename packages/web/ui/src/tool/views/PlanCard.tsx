@@ -6,6 +6,7 @@
  * status semantics come from the harness `planSummary`.
  */
 import { useState } from 'react';
+import { Button } from '../../components/ui/button.js';
 import { headTailCap, foldLabels, planSummary, type PlanItem } from '../cards.js';
 import { CheckIcon, CircleIcon, PlayIcon } from '../../icons.js';
 import css from './PlanCard.module.css';
@@ -41,15 +42,16 @@ export function PlanCard({ items, maxLines = CHAT_PLAN_MAX_LINES }: PlanCardProp
           <PlanLine key={index} item={item} />
         ))}
         {hidden > 0 && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="xs"
             className={css.expand}
             aria-expanded={expanded}
             aria-label={expanded ? LABELS.collapseAria : LABELS.expandAria(hidden)}
             onClick={() => setExpanded((value) => !value)}
           >
             {expanded ? LABELS.collapse : LABELS.expand(hidden)}
-          </button>
+          </Button>
         )}
         {tail.map((item, index) => (
           <PlanLine key={`tail-${index}`} item={item} />

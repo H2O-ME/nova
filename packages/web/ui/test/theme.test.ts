@@ -137,34 +137,46 @@ describe('boot script contract', () => {
     vi.unstubAllGlobals();
   });
 
-  it('index.html and the built script agree on the keys, the attribute and the axis', () => {
-    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  it('the mount document takes the script from the single source, not a copy', () => {
+    // REWRITTEN FOR THE NEXT MIGRATION (2026-10-20).
+    //
+    // The old form of this test read `index.html` and asserted the boot body was
+    // present VERBATIM, because that file carried a hand-pasted copy that could
+    // drift from `bootThemeScript()`. The Vite entry is gone; `app/layout.tsx`
+    // no longer embeds a copy at all — it CALLS `bootThemeScript()`. Asserting a
+    // literal copy would now force the very duplication the test existed to
+    // prevent.
+    //
+    // So the property under guard changed shape, not substance. What must hold:
+    //   1. the layout derives the script from `bootThemeScript()` (no literal),
+    //   2. the built script still names the durable keys / attribute / axis,
+    //      so a rename on either side is still caught.
+    const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+    // Comments must be stripped before the "no copy" check: the file's own
+    // rationale mentions the API it is telling you not to duplicate, and a raw
+    // substring test flags that prose as a violation.
+    const code = layout.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code, 'must CALL the single source').toContain('bootThemeScript()');
+    expect(code, 'must not embed a hand-written copy').not.toContain('toggleAttribute');
+
     const script = bootThemeScript();
     for (const field of [ATTR, FONT_VAR]) {
-      expect(html).toContain(field);
       expect(script).toContain(field);
     }
-    // `system` is resolved through matchMedia on both paths — and only there.
-    expect(html).toContain('prefers-color-scheme: dark');
+    // `system` is resolved through matchMedia — and only there.
     expect(script).toContain('prefers-color-scheme: dark');
     for (const key of [THEME_KEY, FONT_KEY]) {
-      expect(html).toContain(`localStorage.getItem('${key}')`);
       expect(script).toContain(key);
     }
   });
 
-  it('index.html carries the built script verbatim, ignoring layout only', () => {
-    // Substring checks above pass even when the two bodies diverge in logic —
-    // which is how the boot read once accepted an unclamped font size while the
-    // runtime clamped it. Compare the statements themselves: whitespace,
-    // semicolons and quote style are the only allowed delta (the built script
-    // interpolates through JSON.stringify, the hand-placed copy is written with
-    // single quotes).
-    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-    const squeeze = (text: string): string =>
-      text.replace(/\s+/g, '').replace(/;/g, '').replace(/["']/g, '');
-    expect(squeeze(html)).toContain(squeeze(bootThemeScript()));
-  });
+  // DELETED: 'the mount document carries the built script verbatim'.
+  //
+  // That test compared a hand-pasted copy in `index.html` against
+  // `bootThemeScript()` character by character. With the Next migration there
+  // is no copy to compare — the layout calls the function — so the assertion
+  // has nothing left to measure. Its replacement above pins the stronger
+  // property: the layout must NOT contain a copy.
 
   // The clause above is a static comparison; it cannot see a wrong VALUE. So the
   // boot script is also executed here against the same storage the runtime reads

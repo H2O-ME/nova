@@ -18,6 +18,8 @@ import type { ReactNode } from 'react';
 import { mentionSegments } from '../mention-tokens.js';
 import { imageRefUrl } from '../composer/image-draft.js';
 import { ReferenceFileIcon, ReferenceFolderIcon } from '../composer/Icons.js';
+import { Bubble, BubbleContent } from '../components/ui/bubble.js';
+import { Message, MessageContent } from '../components/ui/message.js';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import type { MarkdownLabels } from './markdown/labels.js';
 import { MessageIconActions } from './MessageIconActions.js';
@@ -46,12 +48,13 @@ export interface UserMessageRowProps {
 
 export const UserMessageRow = memo(function UserMessageRow({ text, time, pending, echo, images, onBranch }: UserMessageRowProps): JSX.Element {
   return (
-    <div
+    <Message
+      align="end"
       className={css.userRow}
       data-pending-steering={pending ? '' : undefined}
       data-submission-echo={echo ? '' : undefined}
     >
-      <div className={css.userStack}>
+      <MessageContent className={css.userStack}>
         {images !== undefined && images.length > 0 && (
           <div className={css.attachmentRow} data-message-attachments>
             {images.map((image) => (
@@ -68,29 +71,31 @@ export const UserMessageRow = memo(function UserMessageRow({ text, time, pending
             ))}
           </div>
         )}
-        <div className={css.bubble}>
-          {/* The logged text is the single truth; this is its display
-              projection (the harness `projectUserText`), so a reference a user
-              wrote — by picking or by hand — reads as a chip here too. */}
-          {mentionSegments(text).map((segment, index) => segment.kind === 'text'
-            ? <Fragment key={index}>{segment.text}</Fragment>
-            : (
-              <span key={index} className={css.refChip} data-ref-chip={segment.kind} title={segment.raw}>
-                {segment.kind === 'folder'
-                  ? <ReferenceFolderIcon className={css.refIcon} />
-                  : <ReferenceFileIcon className={css.refIcon} />}
-                {segment.label}
-              </span>
-            ))}
-        </div>
-      </div>
+        <Bubble variant="nova" className={css.bubbleShell}>
+          <BubbleContent className={css.bubble}>
+            {/* The logged text is the single truth; this is its display
+                projection (the harness `projectUserText`), so a reference a user
+                wrote — by picking or by hand — reads as a chip here too. */}
+            {mentionSegments(text).map((segment, index) => segment.kind === 'text'
+              ? <Fragment key={index}>{segment.text}</Fragment>
+              : (
+                <span key={index} className={css.refChip} data-ref-chip={segment.kind} title={segment.raw}>
+                  {segment.kind === 'folder'
+                    ? <ReferenceFolderIcon className={css.refIcon} />
+                    : <ReferenceFileIcon className={css.refIcon} />}
+                  {segment.label}
+                </span>
+              ))}
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
       <MessageIconActions
         text={text}
         time={time}
         clock="start"
         {...(onBranch === undefined ? {} : { onBranch })}
       />
-    </div>
+    </Message>
   );
 });
 
@@ -112,12 +117,16 @@ export const AssistantMessage = memo(function AssistantMessage({
   labels,
 }: AssistantMessageProps): JSX.Element {
   return (
-    <div className={assistantCss.root} data-streaming={streaming ? '' : undefined}>
-      <div className={assistantCss.body}>
-        <MarkdownText text={text} streaming={streaming} {...(labels === undefined ? {} : { labels })} />
-        {interrupted && <span className={assistantCss.stopped}>本轮已中断</span>}
-      </div>
-    </div>
+    <Message align="start" className={assistantCss.root} data-streaming={streaming ? '' : undefined}>
+      <MessageContent className={assistantCss.fill}>
+        <Bubble variant="ghost" className={assistantCss.fill}>
+          <BubbleContent className={assistantCss.body}>
+            <MarkdownText text={text} streaming={streaming} {...(labels === undefined ? {} : { labels })} />
+            {interrupted && <span className={assistantCss.stopped}>本轮已中断</span>}
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
   );
 });
 

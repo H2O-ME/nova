@@ -273,8 +273,10 @@ describe('QuestionPanel', () => {
       return html.slice(open, html.indexOf('>', open) + 1);
     };
     // First question: 上一题 goes nowhere. 跳过 is a text button and is enabled.
-    expect(openTag('aria-label="上一题"')).toContain('disabled');
-    expect(openTag('>跳过<')).not.toContain('disabled');
+    expect(openTag('aria-label="上一题"')).toContain('disabled=""');
+    // The ATTRIBUTE, not the substring: shadcn's Button carries
+    // `disabled:` utility classes on every instance.
+    expect(openTag('>跳过<')).not.toContain('disabled=""');
   });
 
   it('disables the primary action until this question is answered', () => {

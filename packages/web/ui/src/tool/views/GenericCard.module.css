@@ -21,7 +21,7 @@
 .ioSection {
   display: grid;
   grid-template-columns: max-content 1fr;
-  column-gap: 14px;
+  column-gap: var(--nova-space-14);
   align-items: baseline;
   padding: var(--nova-space-12) var(--nova-space-16);
   max-height: 150px;

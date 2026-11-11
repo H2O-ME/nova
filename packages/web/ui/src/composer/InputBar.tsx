@@ -232,7 +232,10 @@ export function InputBar({
     const el = scrollRef.current;
     if (el === null) return;
     const onWheel = (event: WheelEvent): void => {
-      const host = el.closest('[data-conversation-scroll]');
+      // The composer seat sits BESIDE the transcript's scrollport (the chat's
+      // MessageScroller Viewport), not inside it, so `closest` cannot reach it:
+      // chain through the conversation body band instead.
+      const host = el.closest('[data-conversation-body]')?.querySelector('[data-conversation-scroll]');
       if (!(host instanceof HTMLElement)) return;
       const chain = chainsWheelToConversation({
         deltaY: event.deltaY,

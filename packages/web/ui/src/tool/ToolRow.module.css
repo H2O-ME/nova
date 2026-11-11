@@ -150,7 +150,7 @@
    half-pixel nudge closes the baseline gap the size difference leaves under
    the row's box-centering (a transform, so flex layout is untouched). */
 .diffStat {
-  margin-left: 10px;
+  margin-left: var(--nova-space-10);
   font-family: var(--nova-font-mono);
   font-size: calc(var(--nova-content-font-size-secondary, 13px) - 2px);
   color: var(--nova-text-faint);
@@ -179,10 +179,24 @@
   color: var(--nova-color-warn);
 }
 
-/* Expanded body + Inspect pill wrapper (sibling of .row: clicks never toggle). */
+/* Expanded body + Inspect pill wrapper (sibling of .row: clicks never toggle).
+   Opening is a real disclosure, not a jump: the body animates from nothing to
+   its own height on `grid-template-rows`, which is the one technique that
+   transitions a content-sized box without measuring it in JS. `overflow:
+   hidden` on the wrapper is what clips the body mid-reveal; the inner row is
+   the `1fr` track that keeps its natural height.
+
+   W2: this is the motion the transcript was missing. Every row revealed
+   instantly, so opening a tool did not read as an opening at all. */
 .bodyWrap {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  animation: nova-collapse var(--nova-dur-base) var(--nova-ease-out);
+}
+
+.bodyWrap > * {
+  min-height: 0;
 }
 
 /* Visually hidden run-state label for assistive technology: the StateDot and

@@ -31,10 +31,12 @@ import { SETTINGS_COPY } from './copy.js';
 import { SettingsSection } from './Section.js';
 import { parseCapacityField } from './ModelConfigEditor.js';
 import { ProviderModelsPicker } from './ProviderModelsDialog.js';
+import { ProviderCardEditor } from './ProviderCardEditor.js';
+import type { ProviderDraft } from './provider-draft.js';
 import { useManageRefusal, type ManageErrorValue } from './use-manage-refusal.js';
 import { cx } from '../composer/cx.js';
 import type { ClientFrame } from '../types.js';
-import type { WireProviderModel, WireProviderRow } from '../types.js';
+import type { WireProviderRow } from '../types.js';
 import type { ProvidersSnapshot, ProviderProbe } from '../state.js';
 import css from './ProviderSection.module.css';
 
@@ -52,26 +54,6 @@ const MAX_PROVIDER_CONTEXT_WINDOW = 200_000_000;
 
 /** One numeric field's outcome: a value, "clear" (blank = no override), or a reason. */
 type Fielded = { ok: true; value: number | undefined } | { ok: false; key: keyof typeof SETTINGS_COPY };
-
-/** 编辑中的一行：数字字段保持文本态（逐击键写回数字会把 `256K` 改写成 `256000`）。 */
-interface ProviderDraft {
-  /** Stable binding id; only a new row mints one, a stored row keeps its own. */
-  id: string;
-  name: string;
-  baseURL: string;
-  apiKey: string;
-  temperature: string;
-  maxTokens: string;
-  contextWindow: string;
-  /**
-   * FULL model entries, not bare ids: `providers[].models` rows carry per-model
-   * overrides (name / window / modality caps), and collapsing them to ids on the
-   * way into the draft silently ERASED every override the moment a card was
-   * saved. A hand-typed addition is an id-only entry; a stored one round-trips
-   * field for field.
-   */
-  models: readonly WireProviderModel[];
-}
 
 export interface ProviderSectionProps {
   /** The host's snapshot; null until the section's first answer lands. */
@@ -416,7 +398,7 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
   /**
    * 探针问的是**哪一张卡**：答案按地址归属，地址不等于 `probeTarget` 的答案不是
    * 这一张的。`poolOpen` 只在答案**成功**时为真——失败没有可挑的东西，那一行留在
-   * 卡片里（见 `renderEditor` 的 `poolFail`）。
+   * 卡片里（见 `ProviderCardEditor` 的 `poolFail`）。
    */
   const probeRow = probeTarget === null
     ? undefined
@@ -426,202 +408,50 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
   const storedIds = new Set(stored.map((entry) => entry.id));
   const storedKey = new Map(stored.map((entry) => [entry.id, entry.hasApiKey]));
 
-  /** 一张卡（已存或添加中）的编辑器体：字段 + 卡脚。 */
-  const renderEditor = (row: ProviderDraft, isNew: boolean): JSX.Element => {
-    const hasKey = storedKey.get(row.id) === true;
-    const problem = draftProblem(row);
-    const canSave = problem === null && (isNew || drafts[row.id] !== undefined);
+  /**
+   * 一张卡（已存或添加中）的编辑器：字段 + 卡脚由 `ProviderCardEditor` 渲染，
+   * 这里只把草稿的读写、探针归属和保存动作接进去。
+   */
+  const editorFor = (row: ProviderDraft, isNew: boolean): JSX.Element => {
     const write = (patch: Partial<ProviderDraft>): void => {
       if (isNew) patchNew(patch);
       else update(row, patch);
     };
+    // The probe's refusal belongs to the card whose address it was asked about,
+    // never to whichever card happens to be open. The frame itself travels (not
+    // its text) so a refusal with no detail line keeps rendering without one.
+    const fail = probeTarget === row.baseURL.trim() && answer !== null && !answer.ok
+      ? answer
+      : null;
     return (
-      <div className={css.editor}>
-        <div className={css.fields}>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{SETTINGS_COPY['models.providerName']}</span>
-            <input
-              className={css.input}
-              value={row.name}
-              placeholder={SETTINGS_COPY['models.providerNamePlaceholder']}
-              aria-label={`${SETTINGS_COPY['models.providerName']} ${row.id}`}
-              onChange={(event) => { write({ name: event.currentTarget.value }); }}
-            />
-          </label>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{SETTINGS_COPY['models.providerBaseUrl']}</span>
-            <input
-              className={css.input}
-              value={row.baseURL}
-              placeholder={SETTINGS_COPY['models.providerBaseUrlPlaceholder']}
-              aria-label={`${SETTINGS_COPY['models.providerBaseUrl']} ${row.id}`}
-              spellCheck={false}
-              onChange={(event) => { write({ baseURL: event.currentTarget.value }); }}
-            />
-          </label>
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{SETTINGS_COPY['models.providerApiKey']}</span>
-            <input
-              className={css.input}
-              type="password"
-              value={row.apiKey}
-              placeholder={hasKey
-                ? SETTINGS_COPY['models.providerApiKeySet']
-                : SETTINGS_COPY['models.providerApiKeyPlaceholder']}
-              aria-label={`${SETTINGS_COPY['models.providerApiKey']} ${row.id}`}
-              spellCheck={false}
-              autoComplete="off"
-              onChange={(event) => { write({ apiKey: event.currentTarget.value }); }}
-            />
-            {/* The one fact this field needs, said where the field is: the empty
-                box is "keep it", not "erase it". */}
-            <p className={css.fieldHint}>{SETTINGS_COPY['models.providerApiKeyHint']}</p>
-          </label>
-        </div>
-
-        {/* 请求参数：端点的采样参数，随端点保存（模型能力在「高级」里）。 */}
-        <fieldset className={css.params}>
-          <legend className={css.paramsLegend}>{SETTINGS_COPY['models.providerParams']}</legend>
-          <div className={css.fields}>
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{SETTINGS_COPY['models.temperature']}</span>
-              <input
-                className={css.input}
-                inputMode="decimal"
-                value={row.temperature}
-                placeholder={SETTINGS_COPY['models.temperatureHint']}
-                aria-label={`${SETTINGS_COPY['models.temperature']} ${row.id}`}
-                onChange={(event) => { write({ temperature: event.currentTarget.value }); }}
-              />
-            </label>
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{SETTINGS_COPY['models.maxTokens']}</span>
-              <input
-                className={css.input}
-                inputMode="numeric"
-                value={row.maxTokens}
-                placeholder={SETTINGS_COPY['models.providerCapacityPlaceholder']}
-                aria-label={`${SETTINGS_COPY['models.maxTokens']} ${row.id}`}
-                onChange={(event) => { write({ maxTokens: event.currentTarget.value }); }}
-              />
-            </label>
-            <label className={css.field}>
-              <span className={css.fieldLabel}>{SETTINGS_COPY['models.contextWindow']}</span>
-              <input
-                className={css.input}
-                inputMode="numeric"
-                value={row.contextWindow}
-                placeholder={SETTINGS_COPY['models.providerCapacityPlaceholder']}
-                aria-label={`${SETTINGS_COPY['models.contextWindow']} ${row.id}`}
-                onChange={(event) => { write({ contextWindow: event.currentTarget.value }); }}
-              />
-            </label>
-          </div>
-          <p className={css.fieldHint}>{SETTINGS_COPY['models.providerParamsHint']}</p>
-        </fieldset>
-
-        {/* 该供应商名下的模型清单（`providers[].models`）。 */}
-        <div className={css.models}>
-          <div className={css.modelsHead}>
-            <span className={css.blockTitle}>{SETTINGS_COPY['models.providerModels']}</span>
-            <button
-              type="button"
-              className={css.linkButton}
-              data-provider-probe={row.id}
-              disabled={probePending || row.baseURL.trim() === ''}
-              title={row.baseURL.trim() === '' ? SETTINGS_COPY['models.providerProbeNeedsUrl'] : undefined}
-              onClick={() => {
-                setProbeTarget(row.baseURL.trim());
-                send({
-                  type: 'probe_provider',
-                  baseURL: row.baseURL.trim(),
-                  // Only a freshly-typed key travels; an empty field means the
-                  // host should reuse the stored one (it never left the server).
-                  ...(row.apiKey !== '' ? { apiKey: row.apiKey } : {}),
-                });
-              }}
-            >
-              {probePending ? SETTINGS_COPY['models.providerProbing'] : SETTINGS_COPY['models.providerProbe']}
-            </button>
-          </div>
-          {row.models.length === 0 && <p className={css.fieldHint}>{SETTINGS_COPY['models.providerModelsEmpty']}</p>}
-          {row.models.length > 0 && (
-            <ul className={css.modelChips}>
-              {row.models.map((model) => (
-                <li key={model.id} className={css.modelChip}>
-                  <span className={css.modelChipId}>{model.id}</span>
-                  <button
-                    type="button"
-                    className={css.chipRemove}
-                    data-provider-model-remove={model.id}
-                    aria-label={`${SETTINGS_COPY['models.providerModelsRemove']} ${model.id}`}
-                    title={SETTINGS_COPY['models.providerModelsRemove']}
-                    onClick={() => { update(row, { models: row.models.filter((entry) => entry.id !== model.id) }); }}
-                  >
-                    {SETTINGS_COPY['models.providerModelsRemove']}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className={css.addRow}>
-            <input
-              className={css.input}
-              value={manualModel}
-              placeholder={SETTINGS_COPY['models.providerAddModelPlaceholder']}
-              aria-label={`${SETTINGS_COPY['models.providerAddModel']} ${row.id}`}
-              spellCheck={false}
-              onChange={(event) => { setManualModel(event.currentTarget.value); }}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter') return;
-                event.preventDefault();
-                addModelTo(row, manualModel);
-              }}
-            />
-            <button
-              type="button"
-              className={css.button}
-              data-provider-model-add
-              disabled={manualModel.trim() === ''}
-              onClick={() => { addModelTo(row, manualModel); }}
-            >
-              {SETTINGS_COPY['models.providerAddModel']}
-            </button>
-          </div>
-          {/* 探针的**失败**留在卡里：答案没来就没有可挑的东西，弹窗无从谈起，
-              而「为什么没来」正是读者此刻要看的那一行。成功则交给弹窗（见下方
-              的 `ProviderModelsPicker`）——它才是挑模型的地方。 */}
-          {probeTarget === row.baseURL.trim() && answer !== null && !answer.ok && (
-            <div className={css.poolFail} data-provider-pool-fail={row.id} role="alert">
-              <span>{SETTINGS_COPY['models.providerProbeFail']}</span>
-              {answer.message !== undefined && <p className={css.error}>{answer.message}</p>}
-            </div>
-          )}
-        </div>
-
-        {/* 卡脚（参考实现的 `EditorFooter`）：取消居左、提交居右。保存这张卡 =
-            整份清单写盘一次；被拒的原因写在这一行里，不弹窗。 */}
-        <div className={css.cardFooter}>
-          {problem !== null && <p className={css.problem} role="alert">{problem}</p>}
-          <button
-            type="button"
-            className={css.cancelButton}
-            data-provider-cancel={row.id}
-            onClick={() => { cancelCard(row.id); }}
-          >
-            {SETTINGS_COPY['models.providerCancel']}
-          </button>
-          <button
-            type="button"
-            className={css.saveButton}
-            data-provider-save-card={row.id}
-            disabled={!canSave}
-            onClick={() => { saveCard(row.id); }}
-          >
-            {SETTINGS_COPY['models.providerSave']}
-          </button>
-        </div>
-      </div>
+      <ProviderCardEditor
+        row={row}
+        isNew={isNew}
+        hasKey={storedKey.get(row.id) === true}
+        problem={draftProblem(row)}
+        dirty={drafts[row.id] !== undefined}
+        probePending={probePending}
+        probeFail={fail}
+        manualModel={manualModel}
+        onEdit={write}
+        onManualModel={setManualModel}
+        onAddModel={() => { addModelTo(row, manualModel); }}
+        onRemoveModel={(modelId) => {
+          write({ models: row.models.filter((entry) => entry.id !== modelId) });
+        }}
+        onProbe={() => {
+          setProbeTarget(row.baseURL.trim());
+          send({
+            type: 'probe_provider',
+            baseURL: row.baseURL.trim(),
+            // Only a freshly-typed key travels; an empty field means the host
+            // should reuse the stored one (it never left the server).
+            ...(row.apiKey !== '' ? { apiKey: row.apiKey } : {}),
+          });
+        }}
+        onSave={() => { saveCard(row.id); }}
+        onCancel={() => { cancelCard(row.id); }}
+      />
     );
   };
 
@@ -719,7 +549,7 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
                     : `${String(row.models.length)} ${SETTINGS_COPY['models.providerModelCount']}`}
                 </span>
               </div>
-              {open && renderEditor(row, false)}
+              {open && editorFor(row, false)}
             </li>
           );
         })}
@@ -731,7 +561,7 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
                 <span className={css.rowName}>{SETTINGS_COPY['models.providerAdd']}</span>
               </span>
             </div>
-            {renderEditor(newDraft, true)}
+            {editorFor(newDraft, true)}
           </li>
         )}
       </ul>

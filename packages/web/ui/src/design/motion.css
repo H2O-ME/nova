@@ -46,6 +46,46 @@
   }
 }
 
+/* Entrance: fade only, no displacement. This is the row/list entrance the
+ * sidebar and the right panel's row lists use.
+ *
+ * It replaces SIX identical private copies — `wide-in` in three sidebar sheets,
+ * `row-in`, `rail-in`, `dock-row-in` and `change-row-in` — each declaring
+ * `from { opacity: 0 }` on its own. A CSS module hashes keyframes declared in
+ * its own file, so those six were six definitions of one motion, free to drift
+ * one at a time; none of them was reachable from another sheet. One global name
+ * makes divergence impossible. */
+@keyframes nova-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Disclosure reveal for a content-sized box: pair with `display: grid;
+ * grid-template-rows: 1fr; overflow: hidden` on the box (the `0fr → 1fr`
+ * track animates the height the content actually needs, with no JS
+ * measurement) and the animation runs from nothing to the natural size.
+ *
+ * This is the ONE opening motion in the product (W2). Before it, tool rows and
+ * reasoning rows appeared whole on the frame they were opened — the transcript
+ * had entrances for MESSAGES but none for the interactions readers perform,
+ * which is why it read as static despite carrying sixty animation references. */
+@keyframes nova-collapse {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+/* A short rise for a box whose height cannot be tracked (a markdown document
+ * inside a flex column). Opacity and transform only. */
+@keyframes nova-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
 /* Reduced motion: collapse every animation and transition to a near-instant
  * end state. One global clamp means individual modules never have to repeat
  * the guard (the `no-preference` gates already present are a stricter form

@@ -314,13 +314,8 @@
 
 /* Wide-only content fades back in on expand remount (mirrors the shell). */
 .wide {
-  animation: wide-in var(--nova-dur-base) var(--nova-ease-inout);
+  animation: nova-fade-in var(--nova-dur-base) var(--nova-ease-inout);
 }
-
-@keyframes wide-in {
-  from { opacity: 0; }
-}
-
 /* List: the only scrolling region. Block children keep their design heights
    under content overflow. The 2px edge offset, stable 5px themed scrollbar,
    and remaining padding equal the shell's right inset, with or without

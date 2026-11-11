@@ -1,0 +1,155 @@
+/* THE BRIDGE: Tailwind's vocabulary, expressed in Nova's tokens.
+ *
+ * Three styling systems now coexist and they must not fork:
+ *
+ *   - `src/**\/*.module.css`  — CSS Modules over `--nova-*` (89 sheets).
+ *   - `src/ui/**`             — Tailwind utilities (the Aceternity layer).
+ *   - `src/components/ui/**`  — shadcn/ui primitives (Tailwind + Radix).
+ *
+ * The meeting point is this file. Every Tailwind theme entry below points at a
+ * `--nova-*` custom property, so a utility like `bg-surface-raised`, a shadcn
+ * `bg-background`, and a module rule writing
+ * `background: var(--nova-surface-raised)` resolve to the SAME colour.
+ * Retuning `tokens/surface.css` therefore moves all three at once; if this file
+ * ever hard-codes a hex, the systems begin to drift and the design layer stops
+ * being the single source of truth.
+ *
+ * `@theme inline` is deliberate: `inline` emits the utilities with the `var()`
+ * expression itself rather than resolving it to a static value at build time,
+ * which is what lets dark mode continue to work through the `--nova-*` cascade
+ * (`body[data-nova-dark]`). With a plain `@theme`, Tailwind would bake the
+ * light values into the utilities and both component layers would ignore the
+ * theme attribute entirely.
+ *
+ * The `dark:` variant is remapped for the same reason: shadcn's sources assume
+ * a `.dark` class on an ancestor, while Nova's boot script sets
+ * `data-nova-dark` on `<body>`. One variant declaration keeps shadcn sources
+ * unmodified instead of forking every `dark:` class.
+ */
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:where([data-nova-dark], [data-nova-dark] *));
+
+@theme inline {
+  /* ---- Planes ---- */
+  --color-surface-sunken: var(--nova-surface-sunken);
+  --color-surface-base: var(--nova-surface-base);
+  --color-surface-raised: var(--nova-surface-raised);
+  --color-surface-panel: var(--nova-surface-panel);
+  --color-surface-overlay: var(--nova-surface-overlay);
+  --color-surface-menu: var(--nova-surface-menu);
+  --color-surface-code: var(--nova-surface-code);
+
+  /* ---- Ink ---- */
+  --color-ink-primary: var(--nova-text-primary);
+  --color-ink-secondary: var(--nova-text-secondary);
+  --color-ink-muted: var(--nova-text-muted);
+  --color-ink-disabled: var(--nova-text-disabled);
+  --color-ink-inverse: var(--nova-text-inverse);
+
+  /* ---- Accent ramp (brand) ---- */
+  --color-brand: var(--nova-color-accent);
+  --color-brand-light: var(--nova-color-accent-light);
+  --color-brand-deep: var(--nova-color-accent-deep);
+  --color-brand-soft: var(--nova-color-accent-soft);
+
+  /* ---- Semantic ---- */
+  --color-success: var(--nova-color-success);
+  --color-warn: var(--nova-color-warn);
+  --color-danger: var(--nova-color-danger);
+
+  /* ---- Borders ---- */
+  --color-border-subtle: var(--nova-border-subtle);
+  --color-border-strong: var(--nova-border-strong);
+
+  /* ---- shadcn semantic aliases ------------------------------------------
+   * shadcn components name their surfaces `background` / `card` / `muted` /
+   * `accent` / … These are NOT new colours: each one points at the same Nova
+   * token the CSS Modules layer already uses, so a migrated `Card` and an
+   * unmigrated panel sitting side by side cannot disagree.
+   *
+   * Note `accent` here is shadcn's meaning (a quiet hover wash), not Nova's
+   * brand blue — the brand lives at `--color-brand` above. Mapping it to
+   * `--nova-color-accent` would paint every hovered menu row blue. */
+  --color-background: var(--nova-surface-base);
+  --color-foreground: var(--nova-text-primary);
+  --color-card: var(--nova-surface-raised);
+  --color-card-foreground: var(--nova-text-primary);
+  --color-popover: var(--nova-surface-raised);
+  --color-popover-foreground: var(--nova-text-primary);
+  --color-primary: var(--nova-color-accent);
+  --color-primary-foreground: var(--nova-text-inverse);
+  --color-secondary: var(--nova-surface-sunken);
+  --color-secondary-foreground: var(--nova-text-primary);
+  --color-muted: var(--nova-surface-sunken);
+  --color-muted-foreground: var(--nova-text-muted);
+  --color-accent: var(--nova-color-accent-soft);
+  --color-accent-foreground: var(--nova-text-primary);
+  --color-destructive: var(--nova-color-danger);
+  --color-destructive-foreground: var(--nova-text-inverse);
+  --color-border: var(--nova-border-subtle);
+  --color-input: var(--nova-border-strong);
+  --color-ring: var(--nova-color-accent);
+  --color-chart-1: var(--nova-color-chart-indigo);
+  --color-chart-2: var(--nova-color-chart-purple);
+  --color-chart-3: var(--nova-color-chart-teal);
+  --color-chart-4: var(--nova-color-warn);
+  --color-chart-5: var(--nova-color-danger);
+  --color-sidebar: var(--nova-surface-sunken);
+  --color-sidebar-foreground: var(--nova-text-primary);
+  --color-sidebar-primary: var(--nova-color-accent);
+  --color-sidebar-primary-foreground: var(--nova-text-inverse);
+  --color-sidebar-accent: var(--nova-interactive-hover);
+  --color-sidebar-accent-foreground: var(--nova-text-primary);
+  --color-sidebar-border: var(--nova-border-subtle);
+  --color-sidebar-ring: var(--nova-color-accent);
+
+  /* ---- Corners: same ladder, same names ---- */
+  --radius-sm: var(--nova-radius-sm);
+  --radius-md: var(--nova-radius-md);
+  --radius-lg: var(--nova-radius-lg);
+  --radius-xl: var(--nova-radius-xl);
+  --radius-2xl: var(--nova-radius-2xl);
+
+  /* ---- Elevation: the glow rungs become shadow utilities ---- */
+  --shadow-float: var(--nova-elevation-float);
+  --shadow-overlay: var(--nova-elevation-overlay);
+  --shadow-panel: var(--nova-elevation-panel);
+  --shadow-glow: var(--nova-glow-float);
+  --shadow-glow-accent: var(--nova-glow-interactive);
+
+  /* ---- Motion: the same three durations, so a shadcn primitive, an
+   * Aceternity component and a module rule animate at the same speed. ---- */
+  --duration-fast: var(--nova-dur-fast);
+  --duration-base: var(--nova-dur-base);
+  --ease-out-nova: var(--nova-ease-out);
+  --ease-inout-nova: var(--nova-ease-inout);
+
+  /* ---- Type ---- */
+  --font-sans: var(--nova-font-family);
+  --font-mono: var(--nova-font-mono);
+  --font-heading: var(--nova-font-family);
+}
+
+/* One base rule, not a reset: Tailwind's preflight already normalises the UA
+ * styles above, and stacking a second reset on top of Nova's own `index.css`
+ * would fight it. This only makes the component layers inherit the product's
+ * type instead of falling back to the UA default. */
+@layer base {
+  .ui-root {
+    font-family: var(--nova-font-family);
+    color: var(--nova-text-primary);
+  }
+  * {
+    @apply border-border outline-ring/50;
+  }
+}
+
+/* shadcn's radii are expressed against a single `--radius` knob in a few
+ * component calc()s. Radius does not vary by theme, so a static alias is safe
+ * where a colour alias would have frozen the light value. */
+:root {
+  --radius: var(--nova-radius-md);
+}

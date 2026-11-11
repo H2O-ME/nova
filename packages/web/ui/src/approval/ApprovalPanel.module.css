@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
-  padding: 10px var(--nova-space-16);
+  padding: var(--nova-space-10) var(--nova-space-16);
   background: var(--nova-color-warn-soft);
   color: var(--nova-color-warn);
   font-size: 13px;
@@ -142,7 +142,7 @@
   align-items: flex-end;
   justify-content: flex-end;
   gap: var(--nova-space-8);
-  padding: 14px var(--nova-space-16);
+  padding: var(--nova-space-14) var(--nova-space-16);
 }
 
 /* The H36 geometry (padding 14,
@@ -158,13 +158,15 @@
   justify-content: center;
   gap: var(--nova-space-4);
   height: 36px;
-  padding: 0 14px;
+  padding: 0 var(--nova-space-14);
   border: none;
   border-radius: var(--nova-radius-full);
   corner-shape: round;
   cursor: pointer;
   font-size: 14px;
   line-height: 22px;
+  /* shadcn's Button is `font-medium`; these capsules are body weight. */
+  font-weight: var(--nova-text-weight-normal);
   color: var(--nova-text-primary);
   background: transparent;
   flex: none;

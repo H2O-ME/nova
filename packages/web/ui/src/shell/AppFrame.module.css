@@ -86,14 +86,10 @@
 }
 
 /*
- * The right column never clips: its occupant anchors a fixed-width panel to the
- * column's right edge (the frame's edge, which never moves) and lets the track
- * decide whether the centre makes room. A shown panel RESERVES its track (the
- * rule in `layout-store.ts`'s `openRightbar`), so the column is a real third
- * track and the centre yields beside it; the zero-width case is the narrow-frame
- * takeover, where the solve gives the panel no track and it covers the frame.
- * While the track animates the panel stays where it is — it rides its own
- * slide-in from that same edge. The occupant draws its own left border.
+ * The right column is a zero-width ANCHOR for the drawer (W1): the occupant
+ * positions a fixed-width panel against the frame's right edge, which never
+ * moves, so the panel hangs over the centre without reserving a track. The
+ * column itself must therefore never clip and never claim width.
  */
 .rightbarCol {
   position: relative;

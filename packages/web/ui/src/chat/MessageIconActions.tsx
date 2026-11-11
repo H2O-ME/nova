@@ -13,6 +13,7 @@
 import { memo, useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { writeClipboard } from '../clipboard.js';
+import { Button } from '../components/ui/button.js';
 import { BranchGlyph, CheckGlyph, CopyGlyph } from './glyphs.js';
 import { formatClock } from '../format.js';
 import { useCalendarDay } from './use-calendar-day.js';
@@ -103,13 +104,14 @@ export const MessageIconActions = memo(function MessageIconActions({
       data-clock={clock}
     >
       {clock === 'start' ? clockEl : null}
-      <button type="button" className={css.action} aria-label={copyLabel} title={copyLabel} onClick={onCopy}>
+      <Button variant="ghost" size="icon-sm" className={css.action} aria-label={copyLabel} title={copyLabel} onClick={onCopy}>
         {copied ? <CheckGlyph /> : <CopyGlyph />}
-      </button>
+      </Button>
       {extraActions}
       {onBranch !== undefined && (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           className={css.action}
           aria-label="在新对话中分支"
           title={branchUnavailable ? '仅可从已完成轮次的最后一条消息分支' : '在新对话中分支'}
@@ -119,7 +121,7 @@ export const MessageIconActions = memo(function MessageIconActions({
           onClick={branchUnavailable ? undefined : onBranch}
         >
           <BranchGlyph />
-        </button>
+        </Button>
       )}
       {onBranch !== undefined && branchUnavailable && (
         <span id={reasonId} className={css.visuallyHidden}>仅可从已完成轮次的最后一条消息分支</span>

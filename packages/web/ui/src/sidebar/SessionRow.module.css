@@ -15,8 +15,15 @@
   background: var(--nova-interactive-hover);
 }
 
+/* The selected row used to paint the SAME wash as hover, so "the session I am
+   reading" and "the row the pointer happens to rest on" were literally the
+   same pixels. The 2026-10 answer was the accent: a tinted wash plus a solid
+   rail. Measured against the reference's sidebar, that blue row + rail was the
+   strongest colour in the whole chrome — the one element that made the app read
+   as 「卡通」. Selection is now a stronger rung of the SAME neutral the pointer
+   uses: hover 5.5% ink, selected 12%. Distinct by strength, not by hue. */
 .sessionRow.selected {
-  background: var(--nova-interactive-hover);
+  background: var(--nova-interactive-hover-strong);
 }
 
 /* Both rows are role=treeitem elements rather than buttons (the reference
@@ -41,17 +48,16 @@
   gap: 0;
   /* Mount fade: session rows appear by unfolding a group (or the list
      mounting). Stable row keys keep already-visible rows from replaying it. */
-  animation: row-in 150ms var(--nova-ease-inout);
+  animation: nova-fade-in 150ms var(--nova-ease-inout);
 }
 
+/* The project row above uses the shared 6px gap; this cell used 4 because the
+ * reference's session cell drew a 4px title gap. Measured against the project
+ * row directly above it, that put every session title 2px left of the
+ * workspace it belongs to — a visible step down the tree. One gap now. */
 .sessionRow .title {
-  margin: 0 var(--nova-space-6) 0 var(--nova-space-4);
+  margin: 0 var(--nova-space-6) 0 var(--nova-space-6);
 }
-
-@keyframes row-in {
-  from { opacity: 0; }
-}
-
 .slot {
   flex: none;
   width: 16px;
@@ -154,7 +160,7 @@
   flex: none;
   display: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
 }
 
 .sessionRow:hover .rowActions,

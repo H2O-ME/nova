@@ -1,0 +1,132 @@
+/* Nova glow — the gradient / luminous vocabulary, tokenised.
+ *
+ * WHY THIS FILE EXISTS (2026-10-19)
+ * ---------------------------------
+ * The operator asked twice for the Aceternity look: a gradient hairline that
+ * catches light, a soft coloured bloom behind the primary surface, an aurora
+ * wash behind the empty state, and a brand-tinted send affordance. The first
+ * answer was to install Tailwind + motion and paste their snippets; that is
+ * the wrong trade for this repo — Aceternity ships NO conversation view, no
+ * settings page, no composer and no message list, which is exactly the part
+ * the operator called ugly. Swapping the decorations while leaving the body
+ * untouched would have changed nothing they look at.
+ *
+ * So the vocabulary is adopted, the dependency is not. Every effect in that
+ * catalogue is `linear-gradient` + `blur` + `box-shadow` — all three are
+ * plain CSS, all three are already in this layer's vocabulary, and a token
+ * makes them reach all 89 component sheets at once instead of one at a time.
+ * Zero new dependencies, zero new build step, and the existing token guards
+ * keep working because these ARE the tokens.
+ *
+ * THE DISCIPLINE THAT KEEPS THIS FROM ROTTING
+ * -------------------------------------------
+ * A glow token is only allowed to say "luminous at this strength", never
+ * "which element". Anything element-specific (the composer's 140deg angle,
+ * the badge's stop positions) stays in that element's own sheet, expressed
+ * with these primitives. Otherwise the next component copies the composer's
+ * angle for a button and the vocabulary stops being a vocabulary.
+ *
+ * `--nova-glow-*` are COLOUR / GRADIENT / SHADOW values only: no geometry,
+ * no spacing, no duration. That is deliberate — it keeps them outside all
+ * five `ui-token-guard` rules, so adopting the vocabulary can never inflate
+ * the literal-debt counters. */
+
+:root {
+  /* The accent as light. `--nova-glow-accent` is the raw bloom colour, used
+   * where a shadow needs an accent hue rather than a neutral one. Kept as a
+   * named ramp position so `color-mix` can derive the weaker rungs instead of
+   * four hand-tuned rgb() literals drifting apart. */
+  --nova-glow-accent: rgb(65, 118, 230);
+  --nova-glow-accent-soft: rgba(65, 118, 230, 0.18);
+  --nova-glow-accent-faint: rgba(65, 118, 230, 0.1);
+  /* A dedicated rung for the aurora blooms. The wash is `radial-gradient` on a
+   * near-white plane, so the same alpha that reads as a clear tint over a dark
+   * ground disappears over paper — first pass used `accent-faint` (0.08) and the
+   * result measured as "nothing there". This rung is the tuned value for a
+   * bloom ON PAPER, and it is deliberately separate from the shadow/glow alphas
+   * so retuning one cannot silently flatten the other. */
+  --nova-glow-wash: rgba(65, 118, 230, 0.16);
+
+  /* The bloom UNDER a lifted surface: a wide, low-alpha accent halo. This is
+   * the "lit from within" read from the reference's glowing cards, kept weak
+   * enough that a white sheet still reads as paper rather than as neon. */
+  --nova-glow-float: 0 0 40px -8px var(--nova-glow-accent-soft);
+
+  /* The bloom ON an interactive affordance (the send button, a focused chip).
+   * Tighter and stronger than the float — it is a highlight, not a room light. */
+  --nova-glow-interactive: 0 0 16px -2px var(--nova-glow-accent-soft);
+
+  /* The gradient hairline that replaces a flat 0.5px border on the surfaces
+   * that should read as CATCHING light: 1px of painted gradient under a
+   * surface with a matching inner radius. The angle is fixed at 135deg here
+   * because it is the vocabulary's canonical "light from upper-left"; a
+   * component that needs a different angle says so in its own sheet and
+   * justifies it there. */
+  --nova-gradient-hairline: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.7),
+    rgba(255, 255, 255, 0.05) 42%,
+    var(--nova-glow-accent-soft)
+  );
+
+  /* The aurora wash behind an empty state: three wide radial blooms on a
+   * transparent ground. Painted by a pseudo-element so it costs one layer and
+   * never enters the layout; `background` so it inherits no box model.
+   * Weighted toward ONE dominant accent bloom rather than three equal ones — an
+   * even split reads as a grey haze (measured), while a dominant bloom with two
+   * supporting tints reads as light. */
+  --nova-aurora-wash:
+    radial-gradient(52% 42% at 50% 26%, var(--nova-glow-wash), transparent 68%),
+    radial-gradient(40% 34% at 16% 10%, rgba(120, 90, 235, 0.1), transparent 70%),
+    radial-gradient(34% 30% at 86% 18%, rgba(14, 165, 233, 0.09), transparent 72%);
+
+  /* The hairline grid. Dropped to a whisper AND tightened: the first pass used
+   * 0.045 alpha on a 46px pitch, which read as smudged glass behind the
+   * headline rather than as a grid. Lines are only legible when they are either
+   * clearly present or clearly absent; the near-present middle is the bad zone. */
+  --nova-glow-rule-line: rgba(16, 24, 40, 0.028);
+  --nova-grid-lines:
+    repeating-linear-gradient(to right, var(--nova-glow-rule-line) 0 0.5px, transparent 0.5px 100%),
+    repeating-linear-gradient(to bottom, var(--nova-glow-rule-line) 0 0.5px, transparent 0.5px 100%);
+
+  /* The inner top highlight painted on a gradient-filled control: the sliver of
+   * light along the upper edge that sells a ramp as a lit dome rather than a
+   * flat disc with a hue. A token because THREE surfaces already want it (send
+   * button, primary button, the accent badge) and a literal copy per sheet is
+   * exactly the drift this layer prevents — the colour guard would also reject
+   * it in a component sheet. */
+  --nova-glow-inner-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.32);
+
+  /* Mask stops. The `radial-gradient` used to scope the empty-state scenery is
+   * written with these instead of `#000` / `transparent`, because a mask still
+   * paints a colour value and component sheets may not carry literals. The
+   * names say what the stop DOES, so an inverted pair is a type error rather
+   * than a silent visual bug. */
+  --nova-mask-keep: rgb(0, 0, 0);
+  --nova-mask-drop: transparent;
+}
+
+/* Dark mode raises every rung. On a near-black ground the same alpha that
+ * reads as "a hint of light" on paper reads as nothing at all, and the accent
+ * itself moves to the dark ramp's lighter blue — the same inversion the
+ * elevation rungs already perform (see tokens/shadow.css). */
+body[data-nova-dark] {
+  --nova-glow-accent: rgb(122, 170, 255);
+  --nova-glow-accent-soft: rgba(122, 170, 255, 0.26);
+  --nova-glow-accent-faint: rgba(122, 170, 255, 0.1);
+  --nova-glow-wash: rgba(122, 170, 255, 0.2);
+
+  --nova-gradient-hairline: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.22),
+    rgba(255, 255, 255, 0.03) 42%,
+    var(--nova-glow-accent-soft)
+  );
+
+  --nova-aurora-wash:
+    radial-gradient(52% 42% at 50% 26%, var(--nova-glow-wash), transparent 68%),
+    radial-gradient(40% 34% at 16% 10%, rgba(120, 90, 235, 0.16), transparent 70%),
+    radial-gradient(34% 30% at 86% 18%, rgba(14, 165, 233, 0.14), transparent 72%);
+
+  --nova-glow-rule-line: rgba(255, 255, 255, 0.04);
+}

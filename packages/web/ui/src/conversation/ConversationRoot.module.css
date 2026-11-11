@@ -20,16 +20,38 @@
      column without resizing the window): the component publishes the column's
      live width as --nova-conversation-column-width (px, via ResizeObserver —
      container-type would re-anchor the subtree's portal-free position:fixed
-     descendants) and the clamp keeps a 680px floor (a step under the figma
-     748px — the full-width reading felt wide on every screen), takes 64% of
-     wider columns, and caps at 920px for line-length
-     readability. A dragged user preference (--nova-chat-user-width, published
-     by the width handles) replaces the adaptive term wholesale. */
+     descendants) and the clamp keeps a floor, takes 64% of wider columns, and
+     caps at 920px for line-length readability. A dragged user preference
+     (--nova-chat-user-width, published by the width handles) replaces the
+     adaptive term wholesale.
+
+     THE FLOOR WAS 680 AND IT ATE THE RATIO (2026-10-19). `clamp` returns the
+     floor whenever the preferred term is smaller — and 64% of the column IS
+     smaller until the column passes 1063px. At a 1139px window the column is
+     859px, 64% is 550px, so the clamp returned 680 and the composer card
+     resolved to 712px: **83% of the column**, a 6.7:1 bar. That is the whole of
+     the "横条 / 太宽太扁" look, and no component library changes a percentage.
+     The floor drops to 560 so the ratio term can actually win in the normal
+     window range (560 starts binding only under ~875px of column), which puts
+     the card at 69% here and keeps it from ever collapsing below a usable
+     measure on a narrow column. */
+  /* WIDTH: adopt the reference's own formula (2026-11-05).
+
+   The previous rule was `clamp(560, 64% of the column, 920)`, which at a
+   1000px column resolved to **640px** — measured next to the reference's
+   920px-max column, that narrow measure is the main reason the transcript read
+   as a boxy form rather than as a reading surface. The reference's numbers,
+   taken from its `ConversationRoot.module.css`:
+
+     chat content  = min(100% - 32px, 920px)
+     composer card = min(100% - 16px, 952px)
+
+   `--nova-chat-user-width` still wins when the reader has dragged the column. */
   --nova-chat-content-width: var(
     --nova-chat-user-width,
-    clamp(680px, calc(var(--nova-conversation-column-width, 0px) * 0.64), 920px)
+    min(calc(100% - 32px), 920px)
   );
-  --nova-composer-card-max-width: calc(var(--nova-chat-content-width) + 32px);
+  --nova-composer-card-max-width: min(calc(100% - 16px), 952px);
   --nova-composer-side-clearance: 16px;
   --nova-composer-dock-inset: 8px;
 }
@@ -146,6 +168,10 @@
   display: flex;
   flex: none;
   flex-direction: column;
+  /* NOT the aurora's containing block: `flex: none` makes this box only as
+     tall as the hero chrome plus the card (measured 994x216). The scenery is
+     mounted on `.scrollBody` (998x680) instead — see `.heroAurora` below. */
+  position: relative;
   /* One cap for every scrolling text region a composer seat can hold: the
      InputBar draft (figma Input 75:8208 max 14 lines × 24px line) and the
      takeover panels' bodies top out at the same height, so electing a
@@ -157,8 +183,9 @@
 }
 
 /* Active phase: header is ordinary column chrome above the scrollport (not
-   sticky). The scroll body holds the transcript and the sticky composer seat
-   so wheel over the footer moves the flow. */
+   sticky). The transcript's Viewport scrolls; the composer seat is a flex
+   sibling below it — fixed, not sticky, because the scroll stream never
+   reaches this box anymore. */
 .root[data-phase='active'] {
   overflow: hidden;
 }
@@ -175,36 +202,22 @@
 }
 
 .scrollBody {
+  position: relative; /* containing block for the hero scenery layers */
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  /* The product-wide 2px scrollbar offset (ui-workspace WorkspaceBrowser
-     `.list`, ui-sidebar-files FilesBody `.body`): the bar sits 2px clear of
-     the column's edge instead of flush against it. */
-  margin-right: var(--nova-space-2);
-  overflow-y: auto;
-  /* Reserved unconditionally: the composer seat rides this box's content box in
-     Chat and its padding box under a view's composer overlay, so an `auto`
-     gutter moves the input card sideways by the bar's width whenever the two
-     differ. */
-  scrollbar-gutter: stable;
+  /* NO overflow of its own in the active phase: the scrollport is the chat's
+     MessageScroller Viewport (`[data-conversation-scroll]`, inside the
+     transcript), which carries the product's scrollbar treatment. This box is
+     the flex band that seats the transcript and the composer side by side.
+     The hero phase still scrolls here (see the `[data-phase='hero']` rule). */
 }
 
-/* The bar also stops 2px short of the scroller's ends, matching its 2px edge
-   offset. WebKit-only: the Firefox path has no track to inset. */
-.scrollBody::-webkit-scrollbar-track {
-  margin: var(--nova-space-2);
-}
-
-.root[data-phase='active'] .viewArea {
-  flex: 1 0 auto;
-  min-height: auto;
-}
-
+/* The transcript's Viewport needs a bounded flex band: the view area stretches
+   (the base rule) instead of growing to its content, which is what let the
+   old scrollBody scroll. */
 .root[data-phase='active'] .composerSeat {
-  position: sticky;
-  bottom: 0;
   /* Above markdown CodeBlock sticky banners (z-index 6) so the footer never
      paints under a sticking code header while scrolling. The pinned compaction
      header (MessageItem.module.css, chat) also takes 7 to clear the same
@@ -212,17 +225,6 @@
      the composer stays above the pinned header on the extreme small-viewport
      overlap. */
   z-index: 7;
-  /* Input mask (figma 1205:27463): transcript fades out under a FIXED 36px
-     band at the seat's top (the figma 24% of the resting ~150px composer),
-     solid below — px stops, not %, so a growing draft only widens the solid
-     region and the fade band never stretches. The 0px stop is bg-base at
-     zero alpha (not white, which the figma export hardcodes) so both themes
-     fade from their own base. */
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--nova-surface-base) 0%, transparent) 0px,
-    var(--nova-surface-base) 36px
-  );
 }
 
 /* An open @/slash menu (data-trigger-menu) renders inside the input card, so
@@ -256,6 +258,16 @@
   justify-content: center;
   overflow-y: auto;
 }
+
+/* THE EMPTY-STATE SCENERY IS GONE (2026-11-05).
+
+   The wash + grid moved three times (`HeroShell .root` 624x34, `composerSeat`
+   994x216, then `.scrollBody`/`.root` 1000x720) trying to find a box that made
+   it read as light rather than as a painted band. It never did: on the product's
+   paper ground it is a coloured rectangle behind the composer, and the operator
+   read the whole surface as "cartoonish" next to the reference's flat one.
+   Removing it is the fix — the empty state is now the base plane, the headline
+   and the card, the same three things the mature reference shows. */
 
 /* Settling (session replaying, hero/docked unknown): keep the composer seat
    mounted but invisible so no wrong layout flashes before the phase lands. */

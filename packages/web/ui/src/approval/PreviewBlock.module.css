@@ -38,7 +38,7 @@
 .line {
   box-sizing: border-box;
   min-height: var(--dsl-diff-line-height);
-  padding: 0 14px;
+  padding: 0 var(--nova-space-14);
   white-space: pre;
 }
 
@@ -88,7 +88,7 @@
    transcript's diff card draws (the source appends `· N file(s)`; a preview
    covers exactly one path, named by the header row). */
 .footer {
-  padding: 0 14px var(--nova-space-12);
+  padding: 0 var(--nova-space-14) var(--nova-space-12);
   font: var(--nova-font-markdown-code-block);
   color: var(--nova-text-muted);
 }

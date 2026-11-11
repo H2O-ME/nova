@@ -1,15 +1,47 @@
-/* Nova corner ladder — deliberately smaller than the ported ladder
- * (4 / 8 / 12 / 16 / 20 / 28).
+/* Nova corner ladder — GENEROUS BY DEFAULT (2026-10-19 rewrite).
  *
- * Nova's direction is Quiet / Dense / Precise: a 12–16px corner on a 28px row
- * reads as a card, and cards-on-cards is exactly the visual layering this
- * system exists to stop. Three rungs is the whole vocabulary.
+ * WHY THIS IS A REWRITE AND NOT A TWEAK
+ * ------------------------------------
+ * Two earlier passes argued about this ladder and both argued the same way:
+ * small corners are "quiet", big corners make a row read as a card. The
+ * operator rejected the result twice ("太难看"), and the second rejection
+ * named the cause precisely: the interface read as a spreadsheet of frames.
  *
- * `full` is for shapes that are circles BY NATURE (status dots, avatars) and
- * is not a way to build a pill — a pill is a card wearing a corner. */
+ * The argument was wrong in its premise. A SMALL RADIUS ON A BORDERED BOX is
+ * what reads as unfinished — the eye sees a hard rectangle with a slightly
+ * softened corner and reads "form control". A LARGE RADIUS is what lets a
+ * surface drop its border entirely, because the shape itself defines the edge.
+ * So corner size and border presence are one decision, not two, and the old
+ * ladder forced every dense surface to keep a hairline it did not want.
+ *
+ * The ladder is therefore doubled across the board. This is a GLOBAL change on
+ * purpose: 89 component sheets read these six names, so the whole UI re-wears
+ * at once instead of drifting sheet by sheet. Nothing else in the layer can
+ * make that claim.
+ *
+ * The ROLE rule survives from the previous pass and still governs which rung a
+ * thing wears: small rungs for parts that repeat inside a list, large rungs for
+ * surfaces that stand alone on the page. Only the VALUES moved.
+ *
+ * 2026-11-05: the values moved AGAIN, and this time by measurement. The
+ * operator's 「很方」 report was the ladder itself being one step smaller than
+ * the reference's at every rung. DSH's ladder, read from
+ * `ui-theme/src/styles/base.css`: sm 8 / md 12 / lg 16 / xl 20 / panel 28.
+ * This ladder now matches it rung for rung, so a Nova card and the reference
+ * card at the same role wear the same corner.
+ *
+ * `full` is for shapes that are circles BY NATURE (status dots, avatars) and is
+ * not a way to build a pill. */
 :root {
-  --nova-radius-sm: 4px;
-  --nova-radius-md: 6px;
-  --nova-radius-lg: 8px;
+  /* Inline marks: badges, tags, the smallest chips. */
+  --nova-radius-sm: 8px;
+  /* Dense repeated rows: list items, menu entries, tree nodes. */
+  --nova-radius-md: 12px;
+  /* Controls: buttons, inputs, the small icon buttons, capsules. */
+  --nova-radius-lg: 16px;
+  /* Standalone surfaces: the composer card, dialogs, the settings sheet. */
+  --nova-radius-xl: 20px;
+  /* The largest single surface on a page: the hero composer, a full dialog. */
+  --nova-radius-2xl: 28px;
   --nova-radius-full: 9999px;
 }

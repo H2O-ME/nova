@@ -46,7 +46,7 @@
 
 .action,
 .more {
-  padding: var(--nova-space-2) 10px;
+  padding: var(--nova-space-2) var(--nova-space-10);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: transparent;

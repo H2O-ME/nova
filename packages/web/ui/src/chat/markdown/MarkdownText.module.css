@@ -159,7 +159,7 @@
 .markdown blockquote {
   border-left: 2px solid var(--nova-text-faint);
   margin: var(--nova-space-16) 0 0;
-  padding-left: 14px;
+  padding-left: var(--nova-space-14);
 }
 
 .markdown pre {
@@ -244,7 +244,7 @@
 
 .tableScroll th {
   text-align: start;
-  padding: 10px var(--nova-space-16);
+  padding: var(--nova-space-10) var(--nova-space-16);
   border-bottom: 0.5px solid var(--nova-border-strong);
   border-top: none;
   font: var(--nova-font-markdown-table-head);
@@ -254,7 +254,7 @@
 }
 
 .tableScroll td {
-  padding: 10px var(--nova-space-16);
+  padding: var(--nova-space-10) var(--nova-space-16);
   border-bottom: 0.5px solid var(--nova-border-strong);
   font: var(--nova-font-markdown-table);
   max-width: 320px;

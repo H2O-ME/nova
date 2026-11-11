@@ -58,7 +58,6 @@ export interface AppShellProps {
   onCloseRightbar: () => void;
   onOpenRightbar: () => void;
 }
-
 export function AppShell(props: AppShellProps): JSX.Element {
   const { state, send, dispatch, connection, reconnect, layout, center } = props;
   // The right panel's 变更 tab folds the conversation's own tool calls into a

@@ -28,7 +28,7 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
   width: 100%;
   max-width: calc(var(--nova-composer-card-max-width) - 4 * var(--nova-composer-dock-inset));
   height: 36px;
@@ -112,7 +112,7 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
   flex: none;
 }
 

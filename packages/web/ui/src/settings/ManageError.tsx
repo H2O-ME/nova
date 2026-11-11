@@ -1,6 +1,6 @@
 /**
  * The management refusal banner, shared by the three sections that write config
- * (插件管理 / Skill 中心 / QQ 机器人).
+ * (插件管理 / Skill 中心 / 插件设置页).
  *
  * It exists because a refusal was invisible. Every managed write answers a
  * rejection with an `error` frame rather than a fresh snapshot, and the reducer

@@ -28,11 +28,14 @@
   color: var(--nova-text-muted);
 }
 
+/* Fill only, no outline: with the ladder real a `panel` fill on a `base` sheet
+   is already a distinct plane, and a 0.5px frame around two lines of help text
+   was one more box on a page that had too many. */
 .notice {
   margin: var(--nova-space-8) 0 0;
-  padding: 10px var(--nova-space-12);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  padding: var(--nova-space-8) var(--nova-space-12);
+  border: 0;
+  border-radius: var(--nova-radius-md);
   background: var(--nova-surface-panel);
   font-size: 12px;
   line-height: 18px;
@@ -42,38 +45,57 @@
 .rows {
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-8);
+  /* No gap: rows are separated by the hairline rule below, not by air. A gap
+     plus a rule would double-space the group, and a gap alone (without the
+     rule) is what the old cards needed to look distinct. */
+  gap: 0;
   margin: var(--nova-space-12) 0 0;
   padding: 0;
   list-style: none;
 }
 
+/* The separator the de-framed rows rely on. Applied to every row but the last,
+   so the group is bracketed by whitespace rather than by a trailing rule. */
+.rows > li:not(:last-child) {
+  border-bottom: 0.5px solid var(--nova-border-subtle);
+}
+
+/* CODEX-STYLE PROVIDER ROW (2026-10-18). This used to be a bordered card:
+ * `0.5px solid` + `radius-lg`. A list of such cards, each with its own frame,
+ * is what made the model settings page look like a table of boxes — every
+ * provider competed for the same visual weight and the section had no
+ * hierarchy at all.
+ *
+ * Rows now sit DIRECTLY on the sheet: no border, no radius, no own fill. What
+ * separates them is a hairline RULE on the list item below (see `.list`) plus
+ * the 12px of vertical padding — the same device the reference uses for its
+ * settings lists. The current provider gets a soft fill, which is now the only
+ * filled thing in the group, so "which one is in force" reads at a glance
+ * instead of having to match two identical frames. */
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  padding: var(--nova-space-12) 14px;
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-raised);
+  padding: var(--nova-space-14) var(--nova-space-12);
+  border: 0;
+  border-radius: var(--nova-radius-md);
+  background: transparent;
 }
 
-/* The endpoint in force: a different fill from its neighbours, plus the word
-   「当前使用」. The border cannot carry it — `--nova-border-strong`
-   IS `--nova-border-strong`, so "stronger border-colour" was a no-op, and a
-   colour-only signal is exactly what a reader could not tell apart before.
-   The fill is the nav's own "current item" colour, and it is the one fill that
-   differs in BOTH grades: `--nova-surface-sunken/2/3` and the card fill all
-   resolve to plain white in light mode, where "one step lighter" would be
-   nothing at all. */
+/* The endpoint in force: a soft fill plus the word 「当前使用」. With the cards
+   de-framed this is the group's only filled surface, which is what makes it
+   read as "this is the one" without needing a second border to compare against.
+   The old comment reasoned about `--nova-border-strong` being unable to carry
+   the state (it compared to itself); that reasoning still holds, and the fill is
+   now doing the job alone. */
 .cardActive {
-  background: var(--nova-interactive-hover-strong);
+  background: var(--nova-interactive-hover);
 }
 
 .rowHead {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-8);
 }
 
 .rowIdentity {
@@ -139,7 +161,7 @@
   justify-content: center;
   gap: var(--nova-space-4);
   height: 28px;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-8);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -226,8 +248,8 @@
 .editor {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 14px var(--nova-space-16);
+  gap: var(--nova-space-12);
+  padding: var(--nova-space-16);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
 }
@@ -235,7 +257,7 @@
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px var(--nova-space-12);
+  gap: var(--nova-space-8) var(--nova-space-12);
 }
 
 .field {
@@ -256,7 +278,7 @@
   width: 100%;
   min-width: 0;
   height: 32px;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-8);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-sunken);
@@ -286,7 +308,7 @@
 .params {
   min-width: 0;
   margin: 0;
-  padding: 10px 0 0;
+  padding: var(--nova-space-8) 0 0;
   border: none;
   border-top: 0.5px solid var(--nova-border-strong);
 }
@@ -304,7 +326,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  padding-top: 10px;
+  padding-top: var(--nova-space-8);
   border-top: 0.5px solid var(--nova-border-strong);
 }
 
@@ -326,7 +348,7 @@
   box-sizing: border-box;
   flex: none;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-8);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -369,7 +391,7 @@
   align-items: center;
   gap: var(--nova-space-4);
   max-width: 100%;
-  padding: var(--nova-space-2) var(--nova-space-4) var(--nova-space-2) 10px;
+  padding: var(--nova-space-2) var(--nova-space-4) var(--nova-space-2) var(--nova-space-8);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-sunken);
@@ -422,7 +444,7 @@
   box-sizing: border-box;
   flex: none;
   height: 32px;
-  padding: 0 14px;
+  padding: 0 var(--nova-space-12);
   border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: transparent;
@@ -467,35 +489,41 @@
   margin-top: var(--nova-space-12);
 }
 
-/* The one entry to the add flow, spanning the width of the cards above it and
-   dashed like every other "nothing here yet" affordance on the page. */
+/* The one entry to the add flow. It used to be a full-width 44px boxed slab with
+ * a DASHED border — a dashed outline that wide is the single loudest thing on
+ * the model page, and it competed with the provider it sits under. A dashed
+ * frame is for a drag-and-drop target or an empty-state placeholder; "add a
+ * provider" is a secondary action, so it reads as one: a text-weight control
+ * that gains a fill on hover, sized to its label.
+ *
+ * `align-self: flex-start` (not `stretch`) is what stops it spanning the group
+ * — a full-width control at the bottom of a list looks like another row. */
 .addButton {
   box-sizing: border-box;
-  flex: 1 1 0;
-  min-width: 180px;
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px dashed var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  gap: var(--nova-space-6);
+  height: 32px;
+  padding: 0 var(--nova-space-10);
+  border: 0;
+  border-radius: var(--nova-radius-md);
   background: transparent;
   font-family: inherit;
   font-size: 13px;
   line-height: 20px;
-  color: var(--nova-text-primary);
+  font-weight: 500;
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-base) var(--nova-ease-inout),
+      background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
 .addButton:hover {
   background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .problem {
@@ -547,7 +575,7 @@
 .saveButton {
   box-sizing: border-box;
   height: 32px;
-  padding: 0 14px;
+  padding: 0 var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   font-family: inherit;
   font-size: 13px;

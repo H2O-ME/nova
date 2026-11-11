@@ -102,48 +102,31 @@ describe('flowRows turns', () => {
     expect(tail).toContain('data-actions-reveal="hover"');
   });
 
-  it('reveals the latest settled turn\'s tail with its usage pill and clock', () => {
+  it('keeps EVERY turn tail hover-gated, including the newest one', () => {
+    // The reference's transcripts show no chrome at rest — usage and speed live
+    // in the status bar. The old rule revealed the newest settled reply's tail
+    // without hover (`endsWithResponse`); that always-on row was the last
+    // visible noise in the flow, so it is gone. The pill and clock still exist:
+    // hover brings them back.
     const rows = flowRows(blocks(), options({ modelName: 'DeepSeek V4 Flash' }));
     const tail = renderToStaticMarkup(rows.find((row) => row.key === 'tail:b5')!.node);
-    expect(tail).toContain('data-actions-reveal="always"');
+    expect(tail).toContain('data-actions-reveal="hover"');
     expect(tail).toContain('用量 24.2K tok');
     // The closing clock rides after the usage slot (the harness passes the
     // message's own time to the tail).
     expect(tail).toContain('12:00');
-    // The first turn's tail stays hover-gated but still exists.
     const earlier = renderToStaticMarkup(rows.find((row) => row.key === 'tail:b1')!.node);
     expect(earlier).toContain('data-actions-reveal="hover"');
-  });
-
-  it('keeps the tail hover-only when the newest turn ends on a tool call', () => {
-    // The reference's `endsWithResponse` asks for the turn's LAST content, not
-    // merely for the newest turn: a turn that goes on to call a tool closes on
-    // protocol material, so there is no reply for the closing chrome to sit
-    // under and the actions stay hover-gated. Reading only "is this the newest
-    // turn" revealed them here.
-    const turn: Block[] = [
+    // A turn that ends on a tool call, or on empty text before the real reply,
+    // is no special case any more: every tail is hover-gated the same way.
+    const toolTurn: Block[] = [
       { id: 'u1', kind: 'user', text: '看一下', ts: 1_000 },
       { id: 't1', kind: 'text', text: '我先看一下', streaming: false, ts: 2_000 },
       { id: 'k1', kind: 'tool', callId: 'c1', name: 'read_file', args: '{}', view: { card: 'generic', kind: 'read', title: 'read_file' } },
       { id: 'm1', kind: 'meta', stats: stats() },
     ];
-    const rows = flowRows(turn, options());
-    const tail = renderToStaticMarkup(rows.find((row) => row.key === 'tail:u1')!.node);
-    expect(tail).toContain('data-actions-reveal="hover"');
-    // Reasoning after the answer is the same material: it is not a reply either.
-    const trailingReasoning: Block[] = [...turn.slice(0, 3), { id: 'r2', kind: 'reasoning', text: '再想想', streaming: false }, turn[3]!];
-    const again = flowRows(trailingReasoning, options());
-    expect(renderToStaticMarkup(again.find((row) => row.key === 'tail:u1')!.node)).toContain('data-actions-reveal="hover"');
-    // An empty settled text is skipped on the way to the real reply, which is
-    // what makes the tail reveal again (the reference's `findLast` step).
-    const emptyTrailing: Block[] = [
-      { id: 'u2', kind: 'user', text: '第二问', ts: 1_000 },
-      { id: 't3', kind: 'text', text: '这是答案', streaming: false, ts: 2_000 },
-      { id: 't4', kind: 'text', text: '   ', streaming: false, ts: 3_000 },
-      { id: 'm2', kind: 'meta', stats: stats() },
-    ];
-    const third = flowRows(emptyTrailing, options());
-    expect(renderToStaticMarkup(third.find((row) => row.key === 'tail:u2')!.node)).toContain('data-actions-reveal="always"');
+    const toolRows = flowRows(toolTurn, options());
+    expect(renderToStaticMarkup(toolRows.find((row) => row.key === 'tail:u1')!.node)).toContain('data-actions-reveal="hover"');
   });
 
   it('keeps the header to the reference shape: one label and a chevron, no readings line', () => {
@@ -201,7 +184,7 @@ describe('flowRows turns', () => {
     // group; the answer and its closing footer do not.
     const grouped = rows.filter((row) => row.group !== undefined).map((row) => row.key);
     expect(grouped).toEqual(['c1', 'r1', 't1', 'k1']);
-    expect(rows.find((row) => row.key === 't1')?.group).toEqual({ id: 'group:u1', live: false, summary: '已读取文件' });
+    expect(rows.find((row) => row.key === 't1')?.group).toEqual({ id: 'group:u1', live: false });
     expect(rows.find((row) => row.key === 't2')?.group).toBeUndefined();
     expect(rows.find((row) => row.key === 'tail:u1')?.group).toBeUndefined();
     // Closed: the mid-turn prose is a step, so it folds with the tools and the
@@ -236,14 +219,26 @@ describe('flowRows × presentation policy', () => {
     tool(),
   ];
 
-  it('standard folds a settled turn; opening it reveals the group with its summary', () => {
+  it('standard folds a settled turn; opening it reveals the bounded group', () => {
     expect(keys(flowRows(turn, options()))).toEqual(['u1', 'turn:u1', 't1', 'tail:u1']);
     const rows = flowRows(turn, options({ openTurns: new Set(['u1']) }));
-    // The group names the turn's ranked work; the answer and its footer are
-    // NOT members.
-    expect(rows.find((row) => row.key === 'r1')?.group).toEqual({ id: 'group:u1', live: false, summary: '已读取文件' });
-    expect(rows.find((row) => row.key === 'k1')?.group).toEqual({ id: 'group:u1', live: false, summary: '已读取文件' });
+    // The box is geometry only (W2): the summary that used to ride it now
+    // belongs to the turn header, which owns the one fold. The answer and its
+    // footer are NOT members.
+    expect(rows.find((row) => row.key === 'r1')?.group).toEqual({ id: 'group:u1', live: false });
+    expect(rows.find((row) => row.key === 'k1')?.group).toEqual({ id: 'group:u1', live: false });
     expect(rows.find((row) => row.key === 't1')?.group).toBeUndefined();
+  });
+
+  it('a COLLAPSED turn names its work on the header; opening it does not repeat it', () => {
+    const headerOf = (openTurns: ReadonlySet<string>): string =>
+      renderToStaticMarkup(flowRows(turn, options({ openTurns })).find((row) => row.key === 'turn:u1')!.node);
+    // Closed: one line that says what happened, so folding costs the reader
+    // nothing they came for.
+    expect(headerOf(new Set())).toContain('已读取文件');
+    // Open: the step rows below are that summary in full, so printing it again
+    // would state one fact twice on one screen.
+    expect(headerOf(new Set(['u1']))).not.toContain('已读取文件');
   });
 
   it('detailed keeps a RUNNING turn ungrouped (steps flat) but folds history', () => {
@@ -259,22 +254,30 @@ describe('flowRows × presentation policy', () => {
     const rows = flowRows(turn, options({ policy: presentationPolicyFor('verbose') }));
     expect(keys(rows)).toEqual(['u1', 'turn:u1', 'r1', 'k1', 't1', 'tail:u1']);
     expect(rows.every((row) => row.group === undefined)).toBe(true);
-    // The header is a plain label here: nothing left to disclose.
-    expect(renderToStaticMarkup(rows.find((row) => row.key === 'turn:u1')!.node)).not.toContain('aria-expanded');
+    // The header is a plain label here: nothing left to disclose. Assert the
+    // ATTRIBUTE, not the substring — shadcn's Button carries
+    // `aria-expanded:` utility classes on every instance, and a bare
+    // `not.toContain('aria-expanded')` would now match those.
+    expect(renderToStaticMarkup(rows.find((row) => row.key === 'turn:u1')!.node)).not.toContain('aria-expanded=');
   });
 
-  it('compact and standard differ only in the LIVE title\'s detail half', () => {
+  it('compact and standard differ only in the LIVE summary\'s detail half', () => {
     const live = (policy: Parameters<typeof presentationPolicyFor>[0]): ReturnType<typeof flowRows> =>
       flowRows(liveTurn, options({ runningStatus: { label: '生成中' }, policy: presentationPolicyFor(policy) }));
+    const headerOf = (rows: ReturnType<typeof flowRows>): string =>
+      renderToStaticMarkup(rows.find((row) => row.key === 'turn:u1')!.node);
     // Both fold the running turn's steps into the same box…
-    const compactGroup = live('compact').find((row) => row.key === 'k1')?.group;
-    const standardGroup = live('standard').find((row) => row.key === 'k1')?.group;
-    expect(compactGroup?.id).toBe('group:u1');
-    expect(standardGroup?.id).toBe('group:u1');
-    // …but compact's live title omits the current-action detail, standard's
-    // carries it (the reference's liveProcessDetail flag).
-    expect(compactGroup?.liveTitle).toBe('正在读取文件');
-    expect(standardGroup?.liveTitle).toBe('正在读取文件 · src/a.ts');
+    expect(live('compact').find((row) => row.key === 'k1')?.group?.id).toBe('group:u1');
+    expect(live('standard').find((row) => row.key === 'k1')?.group?.id).toBe('group:u1');
+    // …and the summary lives on the TURN HEADER, not on the box (W2: one fold,
+    // one owner). compact omits the current-action detail, standard carries it
+    // (the reference's liveProcessDetail flag).
+    expect(headerOf(live('compact'))).toContain('正在读取文件');
+    expect(headerOf(live('compact'))).not.toContain('src/a.ts');
+    expect(headerOf(live('standard'))).toContain('正在读取文件 · src/a.ts');
+    // The box is geometry only: no words, no disclosure state of its own.
+    const box = live('standard').find((row) => row.key === 'k1')?.group;
+    expect(box).toEqual({ id: 'group:u1', live: true });
   });
 
   it('compact withholds the settled reasoning preview that standard shows', () => {

@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../shell/anchored-popover.js';
 import { formatExactTokens, formatTokens, cacheHitText } from '../format.js';
 import { DatabaseIcon } from '../composer/Icons.js';
+import { Button } from '../components/ui/button.js';
 import type { RunStats } from '../types.js';
 import css from './TurnUsagePill.module.css';
 
@@ -97,8 +98,9 @@ export function TurnUsageTrigger({ stats, modelName, open, onToggle }: TurnUsage
 
   return (
     <span ref={rootRef} className={css.root}>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         className={css.trigger}
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -107,7 +109,7 @@ export function TurnUsageTrigger({ stats, modelName, open, onToggle }: TurnUsage
       >
         <DatabaseIcon />
         <span className={css.label}>{`用量 ${formatTokens(total)} tok`}</span>
-      </button>
+      </Button>
       {/* The static render lane (the DOM-free unit tests) has no document to
           portal into; the markup is identical either way. */}
       {open && (typeof document === 'undefined' ? panel : createPortal(panel, document.body))}

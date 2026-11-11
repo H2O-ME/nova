@@ -1,78 +1,37 @@
+/*
+ * The process box a turn's fold reveals. Geometry only: the ONE disclosure is
+ * the turn header above it (W2), so nothing here draws a header, a chevron or
+ * a title — the box that used to carry a second disclosure is gone.
+ *
+ * The cap is the whole point: a turn with forty tool calls must not bury its
+ * own answer, and the reader must be able to tell "the group continues" from
+ * "the transcript ends".
+ */
 .root {
   min-width: 0;
 }
 
-/* The group's own disclosure row: the summary when closed, the running title
-   when live. Secondary words — the members are the evidence, the header only
-   names them. */
-.head {
-  display: flex;
-  max-width: 100%;
-  align-items: center;
-  gap: var(--nova-space-6);
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--nova-text-secondary);
-  cursor: pointer;
-  text-align: left;
-}
-
-.head:hover {
-  color: var(--nova-text-primary);
-}
-
-.headChevron {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: var(--nova-text-muted);
-  transition: transform 100ms ease;
-}
-
-/* The reference rotates its chevron open rather than swapping the asset
-   (same convention as the turn header's own disclosure). */
-.head[aria-expanded="true"] .headChevron {
-  transform: rotate(180deg);
-}
-
-.head[aria-expanded="true"] {
-  padding-bottom: var(--nova-space-16);
-}
-
-.headLabel {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--nova-content-font-size-secondary, 13px);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .headChevron {
-    transition: none;
-  }
-}
-
 /* A long process group scrolls inside this box rather than growing the
-   transcript without bound: the cap keeps a 40-step turn from burying the
-   answer it belongs to. `overscroll-behavior` stops the inner scroller from
+   transcript without bound. `overscroll-behavior` stops the inner scroller from
    chaining into the transcript, and the reserved gutter keeps the transcript
-   from reflowing when the scrollbar appears. */
+   from reflowing when the scrollbar appears.
+
+   W2: the box also carries the turn's opening motion. The fold is the turn
+   header's, so this is the body that fold reveals — it animates from nothing
+   instead of appearing whole, which is what made expanding a turn feel like a
+   page jump rather than a disclosure. */
 .body {
-  --nova-chat-flow-gap: 8px;
+  --nova-chat-flow-gap: var(--nova-space-8);
   max-height: min(400px, 50vh);
   overflow-y: auto;
   overscroll-behavior-y: auto;
   scrollbar-gutter: stable;
+  animation: nova-reveal var(--nova-dur-base) var(--nova-ease-out);
 }
 
 /* Gradient fades over an end that can still scroll: without them a clipped
    row reads as a rendering fault rather than as more content below. `black` is
-   the mask's opaque stop, not a paint color (same as ReasoningRow's fade). */
+   the mask's opaque stop, not a paint color. */
 .fadeTop {
   mask-image: linear-gradient(to bottom, transparent 0, black 24px, black 100%);
 }
@@ -100,17 +59,8 @@
   flex-shrink: 0;
 }
 
-/* The group's own rhythm is 8px (one step under the transcript's 16px): the
-   members are one act, not separate contributions to the conversation. */
+/* The group's own rhythm is one step under the transcript's: the members are
+   one act, not separate contributions to the conversation. */
 .content > :not([hidden]):not(:empty) ~ :not([hidden]):not(:empty) {
-  margin-top: var(--nova-chat-flow-gap, 8px);
-}
-
-/* A settled turn read with its process open keeps the wider rhythm: the
-   reader asked for the detail, so it reads as ordinary progression. */
-.expandedBody {
-  --nova-chat-flow-gap: 16px;
-  max-height: none;
-  overflow: visible;
-  scrollbar-gutter: auto;
+  margin-top: var(--nova-chat-flow-gap, var(--nova-space-8));
 }

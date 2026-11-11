@@ -179,7 +179,7 @@
 
 .error {
   flex: none;
-  padding: var(--nova-space-8) 10px;
+  padding: var(--nova-space-8) var(--nova-space-10);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-raised);
   color: var(--nova-color-danger);
@@ -300,7 +300,7 @@
   min-width: 0;
   height: 32px;
   box-sizing: border-box;
-  padding: 0 10px;
+  padding: 0 var(--nova-space-10);
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-raised);
@@ -319,7 +319,7 @@
   flex: none;
   min-width: 72px;
   height: 32px;
-  padding: 0 14px;
+  padding: 0 var(--nova-space-14);
   border: none;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-color-ink);

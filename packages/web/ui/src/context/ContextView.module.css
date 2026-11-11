@@ -40,7 +40,7 @@
   border: 0.5px solid var(--nova-border-strong);
   border-radius: 12px;
   background: var(--nova-surface-raised, var(--nova-surface-sunken));
-  padding: var(--nova-space-12) 14px;
+  padding: var(--nova-space-12) var(--nova-space-14);
 }
 
 .cardHead {
@@ -49,7 +49,7 @@
   justify-content: space-between;
   gap: var(--nova-space-12);
   flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: var(--nova-space-10);
 }
 
 .cardTitle {
@@ -256,7 +256,7 @@
 }
 
 .sliceSub {
-  margin-left: 14px;
+  margin-left: var(--nova-space-14);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -273,7 +273,7 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: var(--nova-space-6);
-  margin-bottom: 10px;
+  margin-bottom: var(--nova-space-10);
 }
 
 .headlineNumber {
@@ -384,8 +384,8 @@
 .legend {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: var(--nova-space-6) 14px;
-  margin: 10px 0 0;
+  gap: var(--nova-space-6) var(--nova-space-14);
+  margin: var(--nova-space-10) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -820,7 +820,7 @@
   align-items: center;
   gap: var(--nova-space-8);
   width: 100%;
-  padding: 7px 10px;
+  padding: 7px var(--nova-space-10);
   border: 0;
   background: transparent;
   color: var(--nova-text-primary);
@@ -1082,7 +1082,7 @@
 .timingSummary {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--nova-space-8) 14px;
+  gap: var(--nova-space-8) var(--nova-space-14);
   margin: var(--nova-space-8) 0 0;
   padding-top: var(--nova-space-8);
   border-top: 0.5px solid var(--nova-border-strong);
@@ -1197,7 +1197,7 @@
 .dnaButton {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--nova-space-10);
   width: 100%;
   padding: var(--nova-space-4) var(--nova-space-6);
   margin: 0 -6px;

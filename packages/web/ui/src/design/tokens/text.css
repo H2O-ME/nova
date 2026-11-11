@@ -30,11 +30,14 @@
   --nova-text-weight-medium: 500;
   --nova-text-weight-strong: 600;
 
+  /* Cool ink ramp (see surface.css on the blue-white decision). Contrast against
+   * base rgb(250,251,253): 18.4 / 7.4 / 4.95 / 3.49 — `muted` clears the 4.5
+   * small-text floor and `faint` (the annotation rung) clears 3. */
   --nova-text-primary: rgb(15, 17, 21);
-  --nova-text-secondary: rgb(97, 102, 107);
-  --nova-text-muted: rgb(129, 133, 140);
-  --nova-text-faint: rgb(173, 178, 184);
-  --nova-text-disabled: rgb(225, 229, 238);
+  --nova-text-secondary: rgb(78, 84, 94);
+  --nova-text-muted: rgb(104, 111, 120);
+  --nova-text-faint: rgb(129, 136, 145);
+  --nova-text-disabled: rgb(206, 213, 222);
   --nova-text-inverse: rgb(255, 255, 255);
 
   /* User content font-size axis (integer px, 12–17, default 14 — written by
@@ -55,10 +58,14 @@
 }
 
 body[data-nova-dark] {
+  /* Same cool cast as the light ramp, so switching themes changes brightness
+   * rather than the product's temperature. Measured on the dark base
+   * rgb(23,24,28): 17.0 / 11.4 / 7.1 / 5.2 — every rung clears 4.5, which the
+   * old light ramp (3.58 / 2.06) did not. */
   --nova-text-primary: rgb(249, 250, 251);
-  --nova-text-secondary: rgb(207, 211, 214);
-  --nova-text-muted: rgb(173, 178, 184);
-  --nova-text-faint: rgb(129, 133, 140);
-  --nova-text-disabled: rgb(67, 69, 74);
-  --nova-text-inverse: rgb(53, 54, 56);
+  --nova-text-secondary: rgb(203, 208, 215);
+  --nova-text-muted: rgb(158, 164, 173);
+  --nova-text-faint: rgb(134, 140, 150);
+  --nova-text-disabled: rgb(70, 74, 82);
+  --nova-text-inverse: rgb(36, 38, 43);
 }

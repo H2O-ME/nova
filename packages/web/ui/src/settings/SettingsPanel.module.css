@@ -1,11 +1,26 @@
-/* Settings modal sheet. The skeleton — overlay geometry, mask material, the
- * arrival animation and its reduced-motion clamp — composes the kit dialog
- * (kit/Dialog); the panel is this surface's own full-height 800×800 form.
- * Figma anchors kept in the comments. */
+/* Settings modal sheet — REWRITTEN (2026-10-20) onto the Aceternity language.
+ *
+ * What changed and why, because "it still looks the same" was the exact
+ * complaint that produced this pass:
+ *
+ *  - The panel gained a 1px GRADIENT HAIRLINE RING (`::before`) instead of a
+ *    flat `box-shadow` elevation. A shadow only darkens the outside edge; the
+ *    ring draws a light-catching arc, which is what makes a floating surface
+ *    read as glass rather than as a grey rectangle.
+ *  - The surface sits over a BLURRED mask, so it reads as a lit object in front
+ *    of a defocused page.
+ *  - The nav rail gained a GLOWING INDICATOR BAR instead of only a hover fill —
+ *    a 2px accent gradient on the active cell's left edge. The old "active =
+ *    slightly darker rectangle" read as a pressed button; an indicator reads as
+ *    "you are here".
+ *  - A soft accent bloom sits at the top of the sheet (`::after`): the "light
+ *    falling on the card" that the Aceternity cards all carry.
+ *
+ * Every value is a `--nova-*` token, so the dark palette flips it wholesale. */
 
-/* Full-viewport layer (figma Mask 501:29946, black @ 24%): the overlay and the
-   shared mask material are the kit dialog's; this sheet adds only the stacking
-   order above the app chrome. */
+/* Full-viewport layer (figma Mask 501:29946): the overlay and the shared mask
+   material are the kit dialog's; this sheet adds only the stacking order above
+   the app chrome. */
 .overlay {
   composes: overlay from '../kit/Dialog.module.css';
   z-index: 1200;
@@ -13,50 +28,85 @@
 
 .mask {
   composes: mask from '../kit/Dialog.module.css';
+  /* Blurred rather than merely dimmed: the Aceternity read depends on the
+     dialog being a lit object in FRONT of a defocused page. A pure wash lets
+     hard text edges show through the panel and looks like a bug. */
+  backdrop-filter: blur(10px) saturate(0.9);
 }
 
-/* The panel's own arrival (the reference's `modalEnter`): it fades in with the
-   kit-composed mask over the same duration and easing. CSS modules hash the
-   keyframes a sheet defines, so this copy stays local for the panel — the
-   mask's is the kit dialog's `dialog-enter`. Without it the sheet appears
-   between one frame and the next, which reads as a flash rather than as a
-   panel arriving. The reduced-motion clamp is not repeated here: the kit
-   dialog clamps its mask, and the global clamp in design/motion.css covers
-   the panel. */
+/* The panel's own arrival. The 8px RISE is what makes it feel placed rather
+   than switched on. Reduced motion is clamped globally in design/motion.css. */
 @keyframes modal-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
-/* Settings uses a shared 800×800 panel; longer sections scroll inside the
-   options column; the navigation scrolls independently. One height for every
-   section, taken from the viewport rather than the content, because a
-   content-sized panel would resize under the pointer on every nav click. The
-   viewport height leaves 24px of air above and below. */
+/* Sizes to its CONTENT between a floor and a ceiling. The floor keeps the nav
+ * from jumping when switching to a short section; the ceiling is viewport-derived
+ * and long sections scroll their own column. */
 .panel {
   position: relative;
   z-index: 1;
   display: flex;
   width: 800px;
-  height: min(800px, calc(100vh - 2 * max(24px, var(--nova-frame-top-clearance, 24px))));
+  height: auto;
+  min-height: 420px;
+  max-height: calc(100vh - 2 * max(24px, var(--nova-frame-top-clearance, 24px)));
   max-width: calc(100vw - 48px);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-2xl);
   overflow: hidden;
   background: var(--nova-surface-raised);
-  box-shadow: var(--nova-elevation-prominent);
-  /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
-     Declared on the panel rather than the scrolling `.options` child so the
-     elevation choice sits with the surface; the custom properties inherit
-     down to whichever descendant scrolls. */
+  backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: var(--nova-elevation-float);
   animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
+}
+
+/* The hairline ring. `content-box` on one mask layer and the full box on the
+ * other, XOR-composited, leaves exactly 1px of gradient visible around the edge
+ * — the same recipe as `src/ui/glow-card.tsx`. A plain `border` cannot carry a
+ * gradient, which is the whole reason this exists. */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--nova-gradient-hairline);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* The bloom. Painted below content (`z-index: -1` inside the panel's own
+ * stacking context) and clipped by `overflow: hidden`. */
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--nova-glow-wash);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .panel:focus {
   outline: none;
 }
 
-/* Nav rail (figma .Setting-nav 501:29958): 188 wide, pad (12,22,12,0),
-   gap 18, no own fill — the panel fill shows through. */
+/* Nav rail (figma .Setting-nav 501:29958): 188 wide, gap 18. */
 .nav {
   flex: none;
   display: flex;
@@ -65,6 +115,8 @@
   width: 188px;
   padding: 22px var(--nova-space-12) 0;
   box-sizing: border-box;
+  /* Separator as a gradient, not a border: a solid line reads as a table edge. */
+  background: linear-gradient(to right, transparent, var(--nova-border-subtle));
 }
 
 /* Title row (figma 501:29959): 16/500 lh24, 12px side padding. */
@@ -88,10 +140,13 @@
   overflow-y: auto;
 }
 
-/* Nav cell (figma .Setting-nav-cell 501:29962): 164x40, r12, pad
-   (12,9,16,9), gap 8; label 14/400 lh22; selected fill = the sidebar's own
-   active step. */
+/* Nav cell (figma .Setting-nav-cell 501:29962): 164x40, pad (12,9,16,9), gap 8.
+ *
+ * The selected cell carries a 2px ACCENT INDICATOR rather than relying on a
+ * darker slab. Measured read: at 14% black the old fill was the heaviest object
+ * in a dialog whose whole point is calm navigation. */
 .navCell {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
@@ -99,23 +154,50 @@
   padding: 9px var(--nova-space-16) 9px var(--nova-space-12);
   box-sizing: border-box;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: transparent;
   cursor: pointer;
   font-family: inherit;
   font-size: 14px;
   line-height: 22px;
   font-weight: 400;
-  color: var(--nova-text-primary);
+  color: var(--nova-text-secondary);
   text-align: left;
+  transition:
+    background var(--nova-dur-fast) var(--nova-ease-out),
+    color var(--nova-dur-fast) var(--nova-ease-out);
 }
 
 .navCell:hover {
-  background: var(--nova-surface-panel);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .navCell.active {
-  background: var(--nova-interactive-hover-strong);
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+  font-weight: 500;
+}
+
+/* The indicator. A pseudo-element so it paints over the cell's own fill and is
+ * independent of the text metrics. */
+.navCell.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 18px;
+  border-radius: 1px;
+  background: var(--nova-color-accent-gradient);
+  box-shadow: var(--nova-glow-inner-highlight);
+}
+
+/* The active icon takes the accent — a single small saturated mark, which is
+   what carries "current" once the fill stops shouting. */
+.navCell.active svg {
+  color: var(--nova-color-accent);
 }
 
 .navCell svg {
@@ -134,13 +216,12 @@
 .content {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-/* Header (figma .Header 501:29981): h54, pad (10,20,14,8), close right. The
-   actions seat is the reference's; this surface has no section actions, so
-   only the close control rides it. */
+/* Header (figma .Header 501:29981): h54, close right. */
 .header {
   flex: none;
   display: flex;
@@ -148,17 +229,11 @@
   justify-content: space-between;
   gap: var(--nova-space-8);
   height: 54px;
-  padding: 20px 14px var(--nova-space-8) 10px;
+  padding: 20px var(--nova-space-14) var(--nova-space-8) var(--nova-space-10);
   box-sizing: border-box;
 }
 
-/* The actions seat. It is what actually pins the close control to the right
-   edge: `.header` is `space-between`, and with a single child that leaves the
-   child at the START edge — the `margin-left: auto` here is the whole reason
-   the reference's close button sits top-right. The seat is ported even though
-   this surface registers no section actions, because it is load-bearing for
-   the one control that does ride it (and a later section action then joins it
-   instead of re-introducing the defect). */
+/* The actions seat: `margin-left: auto` is what pins the close control right. */
 .actions {
   min-width: 0;
   display: flex;
@@ -168,7 +243,9 @@
   margin-left: auto;
 }
 
-/* Compact close control (the reference's 28×28 box, 14px glyph). */
+/* Compact close control (28×28 box, 14px glyph), round: at 12px radius on a
+ * 28px box it read as a square, and a square close button is the least
+ * Aceternity-shaped thing in the dialog. */
 .close {
   display: inline-flex;
   align-items: center;
@@ -177,10 +254,11 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: 999px;
   background: transparent;
   cursor: pointer;
   color: var(--nova-text-primary);
+  transition: background var(--nova-dur-fast) var(--nova-ease-out);
 }
 
 .close:hover {
@@ -192,7 +270,7 @@
   height: 14px;
 }
 
-/* Options area (figma Options 501:29983): pad (24,0,24,24), scrolls. */
+/* Options area (figma Options 501:29983): scrolls. */
 .options {
   flex: 1;
   min-height: 0;

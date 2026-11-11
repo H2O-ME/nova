@@ -29,6 +29,7 @@
  * `answered` lock.
  */
 import { useEffect, useRef, useState } from 'react';
+import { Button } from '../components/ui/button.js';
 import { IconButton } from '../kit/IconButton.js';
 import { PreviewBlock } from './PreviewBlock.js';
 import { ReasonInput } from './ReasonInput.js';
@@ -302,33 +303,36 @@ function ApprovalActions({
         onCompositionStart={onCompositionStart}
         onCompositionEnd={onCompositionEnd}
       />
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         className={`${css.button} ${css.outline} ${css.reject}`}
         title="拒绝本次调用，理由随结果回给模型"
         disabled={locked}
         onClick={() => onAnswer(denyAnswer(reason))}
       >
         拒绝 <kbd className={css.kbd} aria-hidden="true">n</kbd>
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
         className={`${css.button} ${css.ghost}`}
         title={scoped ? `总是允许，记住「${scopedGrant(words ?? [], scope)}」` : '总是允许，记住该命令'}
         disabled={locked}
         onClick={() => onAnswer(alwaysAnswer(words, scope))}
       >
         总是允许 <kbd className={css.kbd} aria-hidden="true">a</kbd>
-      </button>
-      <button
-        type="button"
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
         className={`${css.button} ${css.primary}`}
         title="只允许本次调用"
         disabled={locked}
         onClick={() => onAnswer('allow')}
       >
         允许一次 <kbd className={css.kbd} aria-hidden="true">y</kbd>
-      </button>
+      </Button>
     </div>
   );
 }

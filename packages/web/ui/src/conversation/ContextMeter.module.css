@@ -112,7 +112,7 @@
 .bar {
   display: flex;
   gap: 1px;
-  margin: 10px 0 var(--nova-space-12);
+  margin: var(--nova-space-10) 0 var(--nova-space-12);
   height: 4px;
   border-radius: var(--nova-radius-full);
   corner-shape: round;
