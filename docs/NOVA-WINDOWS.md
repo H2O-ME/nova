@@ -98,6 +98,7 @@ Nova.Windows.exe ──spawn──▶ node.exe（runtime 入口 = nova 的 deskt
 | W3 | Codex 交互核心：执行时间线（工具行折叠）、审批/问题卡、任务列表投影、Stop/Continue | 内核主要事件不丢失地承载；持久化日志可完整恢复过程 | — |
 | W4 | 检查器与深集成：Diff/Changes、Git、通知、剪贴板、文件选择器、终端决策 | 编程任务与通用任务都有完整的执行—审查—恢复体验 | 交互终端若上局部 WebView2，需单独拍板 |
 | W5 | 发行：x64（后续 ARM64）、node-pty 双架构、升级/卸载、Store 资产 | 干净 Windows 无 Node 环境装完即用 | — |
+| W1b | Tauri 2 + React 对比基准（同机同法，`apps/tauri-bench`） | 双形态 60s 基准 + 包体；30min 漂移与 MSIX 路线可补测 | 数据已落 §5.2，**主路线待拍板** |
 
 ### 5.1 W1 实测记录（2026-11-12，本机）
 
@@ -140,7 +141,51 @@ WindowsAppSDK 2.6.5（SelfContained + ReadyToRun，未 trim）· 单项目 MSIX
 - `mspdbcmf.exe` 缺失只影响符号包生成（既有 warning），产物无碍。
 - `PublishTrimmed` 暂关：WinUI XAML 反射密集，trim 是 W5 的优化项，不进 W1 基线。
 
+### 5.2 W1b 实测记录：Tauri 2 + React 对比基准（2026-11-12，同机同法）
 
+操作者的三硬指标（低占用 / Agent 前端编程友好 / Codex 级交互）把「宿主与渲染
+引擎的内存归属」变成必须实测的题。`apps/tauri-bench`（Tauri 2 + React + Vite，
+模板空壳与 Codex 式工作台静态页两个形态），同 W1 口径：稳定 10s → 60s 每 2s
+（n=30），**进程树聚合**（主进程 + `--user-data-dir` 指向本应用 `EBWebView` 的
+msedgewebview2 实例，命令行标记排除其他应用的实例）。
+
+| 对象 | WS 总量 median | Private Commit median | 进程/窗口就绪 | 包体 |
+| --- | --- | --- | --- | --- |
+| W1 WinUI 3 空壳 | **114.5** | 42.1 | 354 / 1029ms | 75.24 MB（MSIX 含运行时） |
+| Tauri+React 空壳 | 383.4 | 145.8 | 180 / 190ms | 2.05 MiB（MSI） |
+| Tauri+React 工作台静态页 | 418.1 | 162.8 | 309 / 538ms | 2.05 MiB |
+| Electron（2026-10-06 历史） | ≈419 | 未记录 | — | 150 MB+ |
+
+单位 MB。PWS 列在 zh-CN 计数器实例配对下不可靠，弃用（WS 与 Commit 足以裁决）。
+
+**结构性结论（比数字更重要）**：
+
+- **内存由渲染引擎决定，不由宿主决定。** 任何「React 渲染」方案（Tauri /
+  WinUI+WebView2 / Electron）都落在 380–420MB 区间；只有纯原生渲染（WinUI
+  XAML）能进 100MB 级。宿主（Rust vs C# vs Node）本身只贡献 10–30MB。
+- Tauri 的 2.05 MiB 包体是 WebView2 复用**系统已装**运行时——省的是磁盘，
+  不省内存（渲染进程组是本应用专属的）。
+- Tauri 窗口句柄就绪 190–538ms 显著快于 WinUI 的 1029ms；但句柄口径 ≠
+  webview 内容渲染完成，两值不完全可比，如实记录。
+- 工作台静态页比空壳 +34.7MB WS / +17MB Commit——React DOM + CSS 的真实成本。
+- 工具链事实：Rust 全量编译 6 分钟；`pnpm workspace` 会拦截非成员目录的
+  install（apps/tauri-bench 已入 `pnpm-workspace.yaml`）；Git Bash 传 `/S`
+  会被路径转换吃掉，NSIS 静默安装须经 PowerShell `-ArgumentList '/S'`。
+
+**三硬指标对照**：
+
+| 指标 | WinUI 3 | Tauri 2 + React |
+| --- | --- | --- |
+| 低占用 | ✔ 114.5MB | ✘ 383–418MB ≈ Electron |
+| Agent 编程友好 | 中低（XAML/C#） | ✔ React/TS 生态 |
+| Codex 级交互 | 可达成 | 可达成 |
+
+**状态：主路线待操作者拍板。** 本批数据否定的只是「Tauri 更低占用」的预期——
+按当年判 Electron 的同一把尺（WS ≈ 419MB），Tauri 同样过不了低占用关。30 分钟
+完整长跑未跑完（短窗内 WS 波动 ≤17MB，漂移可补测）；MSIX（winapp CLI）打包
+路线未验。
+
+## 6. 风险表
 
 | 风险 | 级别 | 处置 |
 | --- | --- | --- |

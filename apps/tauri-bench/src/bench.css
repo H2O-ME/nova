@@ -1,0 +1,191 @@
+/* W1b 工作台静态页的布局与密度示意（非产品样式；token 级调优属产品阶段）。 */
+* { box-sizing: border-box; }
+
+:root {
+  color-scheme: light dark;
+}
+
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+:root {
+  --bg: #f9f9fa;
+  --panel: #f1f1f3;
+  --border: rgba(16, 24, 40, 0.08);
+  --fg: #1c1c1f;
+  --fg-muted: #6b6b76;
+  --accent: #3b6ef0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417;
+    --panel: #1b1c20;
+    --border: rgba(255, 255, 255, 0.08);
+    --fg: #e8e8ea;
+    --fg-muted: #9a9aa4;
+  }
+}
+
+.workbench {
+  display: grid;
+  grid-template-columns: 240px 1fr 320px;
+  height: 100%;
+}
+
+/* ---- 左：任务导航 ---- */
+.nav {
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  padding: 12px;
+  overflow-y: auto;
+}
+.newTask {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+}
+.navSection {
+  margin: 16px 4px 4px;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+}
+.workspaceRow { padding: 4px; font-size: 12px; }
+.taskList { list-style: none; margin: 4px 0 0; padding: 0; }
+.taskRow {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+.taskRow-active { background: rgba(24, 24, 27, 0.06); }
+.taskTitle { font-size: 13px; }
+.taskMeta { font-size: 11px; color: var(--fg-muted); }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.dot-running { background: var(--accent); }
+.dot-waiting { background: #d97706; }
+.dot-done { background: #16a34a; }
+.dot-failed { background: #dc2626; }
+
+/* ---- 中：执行时间线 ---- */
+.stage { display: flex; flex-direction: column; min-width: 0; }
+.stageHeader {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.stageTitle { font-size: 14px; font-weight: 600; }
+.stageBadge { font-size: 11px; color: var(--fg-muted); }
+.timeline { flex: 1; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+.turnUser {
+  align-self: flex-end;
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--panel);
+}
+.agentText { max-width: 80%; }
+.toolRow {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--panel);
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 80%;
+}
+.toolRow-open { flex-direction: column; align-items: stretch; gap: 2px; }
+.toolRow-open > .toolRow-head { display: flex; gap: 8px; }
+.toolIcon { color: var(--fg-muted); }
+.toolName { font-family: Consolas, monospace; font-size: 12px; }
+.toolMeta { margin-left: auto; font-size: 11px; color: var(--fg-muted); }
+.toolBody { padding: 4px 0 2px 14px; }
+.termLine { font-family: Consolas, monospace; font-size: 12px; color: var(--fg-muted); }
+.approvalCard {
+  border: 1px solid var(--border);
+  border-left: 3px solid #d97706;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 80%;
+}
+.approvalTitle { font-size: 12px; color: var(--fg-muted); }
+.approvalCmd { font-family: Consolas, monospace; font-size: 12px; }
+.approvalActions { display: flex; gap: 8px; }
+.btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-danger { color: #dc2626; }
+.composer { border-top: 1px solid var(--border); padding: 12px 20px 16px; }
+.composerBox {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: var(--fg-muted);
+  min-height: 40px;
+}
+.composerBar { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+}
+.send {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+/* ---- 右：检查器 ---- */
+.inspector { border-left: 1px solid var(--border); background: var(--panel); overflow-y: auto; }
+.inspectorTabs { display: flex; border-bottom: 1px solid var(--border); }
+.inspectorTab { padding: 10px 14px; font-size: 12px; color: var(--fg-muted); }
+.inspectorTab-active { color: var(--fg); border-bottom: 2px solid var(--accent); }
+.changeList { list-style: none; margin: 0; padding: 8px 0; }
+.changeRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 14px;
+  font-size: 12px;
+}
+.changePath { font-family: Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.changeStat em { font-style: normal; font-size: 11px; }
+.add { color: #16a34a; }
+.del { color: #dc2626; }
+.diffBox { margin: 8px 14px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.diffLine { font-family: Consolas, monospace; font-size: 12px; padding: 2px 10px; }
+.diff-add { background: rgba(22, 163, 74, 0.08); }
+.diff-del { background: rgba(220, 38, 38, 0.08); }

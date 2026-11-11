@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-11-11T17:59:43.093Z",
+  "sessionId": "sess_3ba3ee48-deac-441b-b29b-cae683cf9c24",
+  "event": "PostToolUse",
+  "toolName": "Write",
+  "file": "C:/Users/12480/AppData/Local/Temp/nova-tauri-bench-60s.ps1",
+  "outcome": "clear",
+  "coverage": "complete",
+  "findingCount": 0,
+  "durationMs": 14,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}
