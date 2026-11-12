@@ -13,16 +13,19 @@
 //!    ephemeral bind, so the shell instance coexists with a browser instance.
 //! 3. Navigate the webview there. The WS protocol and cookie pairing stay
 //!    untouched: the shell owns window + process lifecycle only.
-//! 4. On exit: kill the runtime child. Session logs are an append-only event
-//!    stream (durable per event), so a hard kill costs at most the turn in
-//!    flight — a graceful-stop channel is a runtime-side concern, tracked.
+//! 4. On exit: ask the runtime to stop gracefully first (`GET /shutdown?t=` —
+//!    the launch token is the bearer credential), wait up to 3s for it to
+//!    exit on its own (jobs/PTYs disposed by the runtime itself), then fall
+//!    back to a hard kill. Session logs are an append-only event stream, so
+//!    even the fallback costs at most the turn in flight.
 //!
 //! Runtime root: an explicit `novaRoot` in the app config
 //! (`%APPDATA%/com.nova.desktop/nova-desktop.json`, `{"novaRoot": ...}`)
 //! wins; the development constant below is the fallback. Bundling the runtime
 //! beside the exe (no config needed) stays the W5 packaging step.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -100,38 +103,87 @@ fn spawn_runtime() -> (Child, mpsc::Receiver<String>) {
     (child, rx)
 }
 
+/// Ask the runtime to stop itself: one HTTP request to the shutdown endpoint,
+/// carrying the launch token. Best effort — every failure falls through to
+/// the hard-kill path in `run()`.
+fn graceful_shutdown(launch_url: &str) {
+    let rest = launch_url.strip_prefix("http://").unwrap_or(launch_url);
+    let host = rest.split('/').next().unwrap_or("");
+    let Some(port) = host.rsplit_once(':').and_then(|(_, p)| p.parse::<u16>().ok()) else {
+        return;
+    };
+    let Some(token) = launch_url.split(['?', '&']).find_map(|p| p.strip_prefix("t=")) else {
+        return;
+    };
+    let Ok(mut stream) = TcpStream::connect_timeout(
+        &SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_secs(2),
+    ) else {
+        return;
+    };
+    let _ = write!(
+        stream,
+        "GET /shutdown?t={token} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+    );
+    let _ = stream.flush();
+    // Drain a little so the request is fully sent before the socket drops.
+    let mut buf = [0u8; 64];
+    let _ = stream.read(&mut buf);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (child, rx) = spawn_runtime();
     let child = Arc::new(Mutex::new(child));
+    let launch_url: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(move |app| {
-            let window: WebviewWindow = app.get_webview_window("main").expect("main window");
-            thread::spawn(move || {
-                let url = match rx.recv_timeout(Duration::from_secs(60)) {
-                    Ok(url) => url,
-                    Err(_) => {
-                        "data:text/html,<body style='font-family:sans-serif;background:#16171a;color:#e8e8ea'><h3>Nova runtime 未在 60 秒内就绪</h3></body>".to_string()
+        .setup({
+            let launch_url = Arc::clone(&launch_url);
+            move |app| {
+                let window: WebviewWindow = app.get_webview_window("main").expect("main window");
+                thread::spawn(move || {
+                    let url = match rx.recv_timeout(Duration::from_secs(60)) {
+                        Ok(url) => url,
+                        Err(_) => {
+                            "data:text/html,<body style='font-family:sans-serif;background:#16171a;color:#e8e8ea'><h3>Nova runtime 未在 60 秒内就绪</h3></body>".to_string()
+                        }
+                    };
+                    match url.parse::<Url>() {
+                        Ok(parsed) => {
+                            if let Ok(mut slot) = launch_url.lock() {
+                                *slot = Some(url.clone());
+                            }
+                            let _ = window.navigate(parsed);
+                        }
+                        Err(err) => eprintln!("nova: launch URL 解析失败: {url} ({err})"),
                     }
-                };
-                match url.parse::<Url>() {
-                    Ok(parsed) => {
-                        let _ = window.navigate(parsed);
-                    }
-                    Err(err) => eprintln!("nova: launch URL 解析失败: {url} ({err})"),
-                }
-            });
-            Ok(())
+                });
+                Ok(())
+            }
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(move |_app, event| {
-            if let RunEvent::Exit = event {
-                if let Ok(mut c) = child.lock() {
-                    let _ = c.kill();
-                    let _ = c.wait();
+        .run({
+            let launch_url = Arc::clone(&launch_url);
+            move |_app, event| {
+                if let RunEvent::Exit = event {
+                    let launch = launch_url.lock().ok().and_then(|u| u.clone());
+                    if let Ok(mut c) = child.lock() {
+                        // Graceful first: the runtime disposes jobs/PTYs itself.
+                        if let Some(url) = launch {
+                            graceful_shutdown(&url);
+                            for _ in 0..30 {
+                                if matches!(c.try_wait(), Ok(Some(_))) {
+                                    return;
+                                }
+                                thread::sleep(Duration::from_millis(100));
+                            }
+                        }
+                        let _ = c.kill();
+                        let _ = c.wait();
+                    }
                 }
             }
         });

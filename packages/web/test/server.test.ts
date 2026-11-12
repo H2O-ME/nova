@@ -16,7 +16,7 @@ import { createLaunchAuth, type LaunchAuth } from '../src/auth.js';
 import { WebController } from '../src/controller.js';
 import { WebRouteRegistry } from '../src/route-registry.js';
 import { bootController } from './controller-rig.js';
-import { startWebServer, type WebServerHandle } from '../src/server.js';
+import { cachePolicy, startWebServer, type WebServerHandle } from '../src/server.js';
 import { wsHandshake } from './helpers/ws-client.js';
 import { pngBytes } from './helpers/png.js';
 
@@ -141,6 +141,25 @@ describe('http surface', () => {
     expect(doc.headers['cache-control']).toBe('no-cache');
     const asset = await http('/assets/index-abc123.js', cookie);
     expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+    // The Next export puts its hashed chunks under `/_next/static/`, NOT
+    // `/assets/`. Both prefixes must take the immutable branch; missing the Next
+    // one is SILENT — the page still loads, it just re-downloads the 200 KiB+
+    // client chunk on every navigation.
+    //
+    // Asserted through `cachePolicy` directly rather than over HTTP: the header
+    // is only emitted after a file is found, so an HTTP assertion would fail on
+    // a missing fixture (measured — it returned `undefined`) and would be testing
+    // "the fixture exists" rather than "the rule covers both prefixes".
+    for (const hashed of [
+      '/_next/static/chunks/7f2356b8-b4a3572b13c98181.js',
+      '/_next/static/media/font-abc.woff2',
+    ]) {
+      expect(cachePolicy(hashed), `${hashed} must be immutable`).toBe(
+        'public, max-age=31536000, immutable'
+      );
+    }
+    // And the document must never be cached, whichever build produced it.
+    expect(cachePolicy('/index.html')).toBe('no-cache');
   });
 
   it('serves a stored image back to the browser, behind the same auth', async () => {
@@ -240,3 +259,51 @@ describe('ws surface', () => {
 function cookieFor(hop: { headers: NodeJS.Dict<string | string[]> }): string {
   return String((hop.headers['set-cookie'] ?? [''])[0]).split(';')[0] as string;
 }
+
+describe('shutdown endpoint', () => {
+  // Closing is destructive (dispose + socket teardown), so the shared handle
+  // above must never be the one under test — each case gets a dedicated rig
+  // over a stub controller.
+  function req(port: number, pathname: string): Promise<{ status: number }> {
+    return new Promise((resolve, rejectPromise) => {
+      const r = httpRequest({ host: '127.0.0.1', port, path: pathname }, (res) => {
+        res.resume();
+        res.on('end', () => resolve({ status: res.statusCode ?? 0 }));
+      });
+      r.on('error', rejectPromise);
+      r.end();
+    });
+  }
+
+  it('refuses a missing or bad token and keeps serving', async () => {
+    const stub = { dispose: async () => undefined } as unknown as WebController;
+    const local = await startWebServer({ controller: stub, auth: createLaunchAuth(), staticDir, host: '127.0.0.1' });
+    expect((await req(local.port, '/shutdown')).status).toBe(403);
+    expect((await req(local.port, '/shutdown?t=wrong')).status).toBe(403);
+    expect((await req(local.port, '/shutdown?t=wrong')).status).toBe(403); // still alive
+    await local.close();
+  });
+
+  it('the real token answers 200 and stops the server, disposing first', async () => {
+    let disposed = 0;
+    const stub = {
+      dispose: async () => {
+        disposed += 1;
+      },
+    } as unknown as WebController;
+    const localAuth = createLaunchAuth();
+    const local = await startWebServer({ controller: stub, auth: localAuth, staticDir, host: '127.0.0.1' });
+    expect((await req(local.port, `/shutdown?t=${localAuth.token}`)).status).toBe(200);
+    let refused = false;
+    for (let i = 0; i < 20 && !refused; i += 1) {
+      try {
+        await req(local.port, '/');
+        await new Promise((resolveTimeout) => setTimeout(resolveTimeout, 50));
+      } catch {
+        refused = true;
+      }
+    }
+    expect(refused).toBe(true);
+    expect(disposed).toBe(1);
+  });
+});

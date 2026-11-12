@@ -83,6 +83,11 @@ export interface StartWebServerOptions {
 export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHandle> {
   const { controller, auth, staticDir, routes } = opts;
   const sessionsRootDir = opts.sessionsRootDir ?? sessionsRoot();
+  // Late-init: the handle only exists once `listenWithPreferredPort` resolves,
+  // and by then the handler may already be running (listen == handler-armed).
+  // The shutdown endpoint needs exactly this handle — its `close()` is the
+  // single graceful-stop implementation (dispose first, then sockets).
+  let live: WebServerHandle | undefined;
   const server = createServer((req, res) => {
     // `handleHttp` is async, so a throw inside it would surface as an unhandled
     // rejection — and Node's default mode for those is to end the process. One
@@ -97,6 +102,9 @@ export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHa
       sessionsRootDir,
       ...(routes !== undefined ? { routes } : {}),
       ...(opts.contextWindow !== undefined ? { contextWindow: opts.contextWindow } : {}),
+      onShutdown: () => {
+        void live?.close();
+      },
     }).catch(() => {
       if (!res.headersSent) deny(res, 500, 'internal error');
       else res.end();
@@ -105,7 +113,10 @@ export function startWebServer(opts: StartWebServerOptions): Promise<WebServerHa
   server.on('upgrade', (req, socket, head) => {
     handleUpgrade(req, socket, head, { controller, auth });
   });
-  return listenWithPreferredPort(server, opts);
+  return listenWithPreferredPort(server, opts).then((handle) => {
+    live = handle;
+    return handle;
+  });
 }
 
 interface HttpCtx {
@@ -115,10 +126,28 @@ interface HttpCtx {
   sessionsRootDir: string;
   routes?: RouteRegistry;
   contextWindow?: () => ContextWindowReader | undefined;
+  /** The shell's graceful-stop trigger: resolves to the handle's own `close()`. */
+  onShutdown?: () => void;
 }
 
 async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCtx): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://localhost');
+  // Shell shutdown: the same URL token that pairs the cookie is the bearer
+  // credential, so the desktop shell can stop the runtime gracefully on exit
+  // (dispose first, then sockets — `close()` is the single implementation).
+  // This MUST sit before the launch hop below, whose `?t=` handling would
+  // otherwise 302 the request instead of stopping the server.
+  if (url.pathname === '/shutdown') {
+    const shutdownToken = url.searchParams.get('t');
+    if (shutdownToken === null || cookieValue(ctx.auth, shutdownToken) === undefined) {
+      deny(res, 403, 'bad token');
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('shutting down');
+    ctx.onShutdown?.();
+    return;
+  }
   // Launch hop: /?t=<token> verifies the token, sets the cookie, redirects.
   const token = url.searchParams.get('t');
   if (token !== null) {
@@ -206,17 +235,29 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse, ctx: HttpCt
 }
 
 /**
- * The one cache policy for the bundle, per path. Vite writes `/assets/<name>-<hash>.<ext>`
- * (content-hashed, so a rebuild changes the URL) and `index.html` (NOT hashed,
- * and the only file that names the current hashes). Answering `index.html` out
- * of a keep-alive browser cache hands the page a script URL the last build
- * deleted — a reload that shows yesterday's UI, or nothing at all — so the
- * document must revalidate while the assets never need to.
+ * The one cache policy for the bundle, per path. The build writes
+ * content-hashed chunk names — Vite used `/assets/<name>-<hash>.<ext>`, the
+ * Next export uses `/_next/static/<kind>/<name>-<hash>.<ext>` — plus
+ * `index.html` (NOT hashed, and the only file that names the current hashes).
+ * Answering `index.html` out of a keep-alive browser cache hands the page a
+ * script URL the last build deleted — a reload that shows yesterday's UI, or
+ * nothing at all — so the document must revalidate while the assets never need
+ * to.
+ *
+ * BOTH hashed prefixes are listed because the build tool changed and a stale
+ * rule is invisible: `/_next/` falling through to `no-cache` still WORKED, it
+ * just made every reload re-download the 200 KiB+ client chunk. Missing the
+ * immutable branch costs bandwidth, not correctness, which is exactly why it
+ * would have gone unnoticed.
  * @param relPath - the request path as served (`/index.html`, `/assets/x.js`).
  * @returns the `cache-control` value for that path.
  */
 export function cachePolicy(relPath: string): string {
-  return relPath.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
+  const hashed =
+    relPath.startsWith('/assets/') ||
+    relPath.startsWith('/_next/static/') ||
+    relPath.startsWith('/_next/image');
+  return hashed ? 'public, max-age=31536000, immutable' : 'no-cache';
 }
 
 function deny(res: ServerResponse, status: number, message: string): void {

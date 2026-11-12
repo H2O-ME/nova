@@ -278,6 +278,23 @@ shutdown 通道（HTTP 路由或 console 事件），属 runtime 侧小改，待
   `serde_json` 拒收 BOM → 解析失败静默回退默认。壳侧已剥 BOM——真实用户用
   记事本/PS 生成配置会踩同一坑。
 
+### 5.6 优雅退通道（2026-11-13，本机）
+
+- **runtime**：`packages/web/src/server.ts` 新增 `GET /shutdown?t=<token>`——
+  launch token 就是 bearer 凭据（与 cookie 配对同源）；分支必须放在 launch hop
+  **之前**（否则任何带 `?t=` 的请求先被它 302）；关闭动作复用 `handle.close()`
+  单一实现（先 dispose 再切 socket），不造第二份。
+- **壳**：`RunEvent::Exit` 先 TCP GET `/shutdown`（std::net 手写，零新依赖）→
+  最多等 3s → kill 兜底。runtime 自己 dispose jobs/PTY。
+- **测试**：`server.test.ts` 两个专项（坏 token → 403 且继续服务；好 token →
+  200 + 端口关闭 + dispose 恰一次），stub controller 独立 rig，不碰共享
+  handle。13/13 过。
+- **真机验证**：独立 `node --web` → GET /shutdown → node 自行退出；壳关窗 →
+  壳/runtime 双双退出，全系统无 `index.mjs --web` 残留（谱系追踪 + 全局清点）。
+- **教训**：改 `packages/web` 必须重建 dist（`pnpm --filter @nova-agent/web
+  build && pnpm --filter @nova-agent/cli build`）——runtime 跑的是 dist；旧
+  产物下验证的第一轮被 launch hop 302 回主页，差点误判路由没生效。
+
 ## 6. 风险表
 
 | 风险 | 级别 | 处置 |
