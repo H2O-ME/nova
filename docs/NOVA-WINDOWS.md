@@ -4,6 +4,13 @@
 > 仓库审计与批次表。批次纪律与 `NOVA-GENERALIST.md` 同源：**批准方向 ≠ 批准
 > 实现顺序，每批开工前现算依赖**。机制变了就改这里。
 
+> **2026-11-12 晚终局拍板（取代 WinUI 3 原案）**：「保留现有 React 前端（Codex
+> 风格的视觉与交互），用轻量壳做成 Windows 桌面应用。」依据是 W1b 的结构性结论
+> （§5.2：内存由渲染引擎决定）——前端确定复用 React WebUI，渲染内存无法回避，
+> 宿主就选前端零改动的轻量壳。WinUI 3 工程（`apps/windows/`）保留为性能基准，
+> 不再扩大投入；§1–§4 的 WinUI 原案随之降为历史参照（其中 §3.2 的协议复用结论
+> 对新路线同样成立且更直接），新路线契约与实测见 §5.3。
+
 ## 1. 定位（已拍板）
 
 产品形态参照 Codex 桌面版的**交互范式**，不复制它的产品边界。三个候选
@@ -98,7 +105,12 @@ Nova.Windows.exe ──spawn──▶ node.exe（runtime 入口 = nova 的 deskt
 | W3 | Codex 交互核心：执行时间线（工具行折叠）、审批/问题卡、任务列表投影、Stop/Continue | 内核主要事件不丢失地承载；持久化日志可完整恢复过程 | — |
 | W4 | 检查器与深集成：Diff/Changes、Git、通知、剪贴板、文件选择器、终端决策 | 编程任务与通用任务都有完整的执行—审查—恢复体验 | 交互终端若上局部 WebView2，需单独拍板 |
 | W5 | 发行：x64（后续 ARM64）、node-pty 双架构、升级/卸载、Store 资产 | 干净 Windows 无 Node 环境装完即用 | — |
-| W1b | Tauri 2 + React 对比基准（同机同法，`apps/tauri-bench`） | 双形态 60s 基准 + 包体；30min 漂移与 MSIX 路线可补测 | 数据已落 §5.2，**主路线待拍板** |
+| W1b | Tauri 2 + React 对比基准（同机同法，`apps/tauri-bench`） | 双形态 60s 基准 + 包体；30min 漂移与 MSIX 路线可补测 | 数据已落 §5.2，**已拍板（§5.3）** |
+
+> **路线改判（2026-11-12 晚）**：终局拍板走「现有 React WebUI + 轻量 Tauri 壳」，
+> W2 最小版已完成并真机验证（§5.3）。本表 W2–W5 是 WinUI 原案，降级为备选不排期；
+> 其关注点（node-pty ABI、配置化、升级/卸载、Store 资产）对新路线的发行批次
+> 同样适用。
 
 ### 5.1 W1 实测记录（2026-11-12，本机）
 
@@ -180,10 +192,47 @@ msedgewebview2 实例，命令行标记排除其他应用的实例）。
 | Agent 编程友好 | 中低（XAML/C#） | ✔ React/TS 生态 |
 | Codex 级交互 | 可达成 | 可达成 |
 
-**状态：主路线待操作者拍板。** 本批数据否定的只是「Tauri 更低占用」的预期——
-按当年判 Electron 的同一把尺（WS ≈ 419MB），Tauri 同样过不了低占用关。30 分钟
-完整长跑未跑完（短窗内 WS 波动 ≤17MB，漂移可补测）；MSIX（winapp CLI）打包
-路线未验。
+**状态：已拍板（2026-11-12 晚）。** 本批数据否定的只是「Tauri 更低占用」的预期，
+但拍板反过来用了这个结论——前端确定复用 React WebUI，渲染内存无法回避，宿主就选
+前端零改动的轻量壳（§5.3）。30 分钟完整长跑未跑完（短窗内 WS 波动 ≤17MB，漂移可
+补测）；MSIX（winapp CLI）打包路线未验。
+
+### 5.3 W2 最小版实测记录：轻量壳 + 现有 WebUI（2026-11-12，本机）
+
+**实现载体**：`apps/tauri-bench`（Tauri 2；crate 名沿用 bench 期未正名，改名
+触发全量重编，挂账不阻塞）。壳逻辑约 100 行 Rust（`src-tauri/src/lib.rs`），
+`packages/web/ui` 前端零改动。
+
+**壳契约（顺序即依赖）**：
+
+1. spawn `node packages/cli/dist/index.mjs --web`，USERPROFILE 指向隔离 home
+   `%TEMP%/nova-desktop-home`（先删后建）——`--web` flag 无 TTY 即 claim，
+   空 home 按设计起未配置壳。
+2. 逐行读 stdout，按 `Nova WebUI：` 标记解析 launch URL（唯一发现通道，不碰
+   内部文件格式；兼容全角冒号）。超时 60s 落错误页。
+3. `window.navigate(tauri::Url)` 加载本地 HTTP 服务——WS 协议、cookie 配对、
+   端口记忆全部原样保留；Tauri IPC 只管壳功能。
+4. `RunEvent::Exit`：kill runtime 子进程 + 删隔离 home。
+
+**真机验证结果**：
+
+| 项 | 结果 |
+| --- | --- |
+| runtime spawn | node 子进程出现（PID 33564）；隔离 home 创建，真实 `~/.nova/` 零接触 |
+| URL 发现与导航 | stdout 标记解析成功，窗口内渲染真实 WebUI |
+| WebUI 功能 | hero「今天想做点什么？」+ composer + 工作区（tauri-bench，继承壳 cwd）+ 左下 WS「连接成功」徽标 |
+| 退出回收 | WM_CLOSE 关窗 → 壳退出、node 终止、隔离 home 已删除 |
+
+验证方法注记：首屏曾误报「内容异常」，实为 CopyFromScreen 截到遮挡窗口；
+PrintWindow / 人眼确认正常。
+
+**挂账（明确不阻塞）**：
+
+- NOVA_REPO 硬编码（开发常量）→ 配置化或随包内置，W5 发行关注点。
+- runtime cwd 继承壳进程目录（工作区显示 tauri-bench）——桌面版需要工作区
+  选择与记忆。
+- 隔离 home 每次启动清空 = 无状态验证壳；正式版接真实 `~/.nova/`（三端共数据）。
+- 30 分钟长跑漂移、MSIX/NSIS 打包形态、crate 正名（tauri-bench → nova-desktop）。
 
 ## 6. 风险表
 
