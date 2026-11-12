@@ -229,10 +229,37 @@ PrintWindow / 人眼确认正常。
 **挂账（明确不阻塞）**：
 
 - NOVA_REPO 硬编码（开发常量）→ 配置化或随包内置，W5 发行关注点。
-- runtime cwd 继承壳进程目录（工作区显示 tauri-bench）——桌面版需要工作区
-  选择与记忆。
-- 隔离 home 每次启动清空 = 无状态验证壳；正式版接真实 `~/.nova/`（三端共数据）。
 - 30 分钟长跑漂移、MSIX/NSIS 打包形态、crate 正名（tauri-bench → nova-desktop）。
+
+### 5.4 W2.1 实测记录：接真实 `~/.nova/` 与工作区定案（2026-11-12，本机）
+
+依赖侦查先行（批准方向 ≠ 批准实现顺序，四条都以真实源码为准）：
+
+- **端口并发安全**：`listenWithPreferredPort` 在记忆端口被占时回退临时绑定并
+  回写记忆——壳实例与用户浏览器实例可并存，各绑各的端口。
+- **cwd 影响面**：`rootDir = path.resolve(process.cwd())`（cli 入口）→ kernel；
+  壳 spawn 设 `current_dir` 即控制新会话默认工作区，runtime 零改动。
+- **工作区能力 WebUI 已有**：`DirectoryBrowser` 就是工作区选择器的目录浏览器，
+  adopt 是内核运行时 re-root（bash/search/fs 工具随行、无需重启 runtime）——
+  **壳不做目录选择 UI、不存工作区偏好**。
+- **会话目录全局**：会话列表按每条日志记录的 workspace 分组、跨工作区全可见，
+  初始 cwd 只影响新会话默认值。
+
+落地（`lib.rs` 约 100 行）：去隔离 home，spawn 直接用用户真实 `~/.nova/`
+（配置/会话/配对跨启动保留），cwd = 用户主目录；`RunEvent::Exit` 仍 kill
+子进程，不再删任何 home。
+
+**真机验证结果**：
+
+| 项 | 结果 |
+| --- | --- |
+| 真实 home | portStore 由 5199 → 14349（写入真实 `~/.nova/cache/`）；模型选择显示既有配置（DeepSeek V4 Flash） |
+| 会话历史 | 工作区分组（12480 / 下载 / cli / agent）跨工作区全可见 |
+| 退出回收 | 关窗 → 壳退出、node 终止；真实 `~/.nova/` 完好，portStore 保留 |
+
+**新挂账**：优雅退通道——runtime 只有 SIGINT/SIGTERM 处理，Windows 上壳→node
+只能硬杀；会话日志逐事件落盘，故最多丢进行中的一轮。要优雅退需 runtime 提供
+shutdown 通道（HTTP 路由或 console 事件），属 runtime 侧小改，待排。
 
 ## 6. 风险表
 

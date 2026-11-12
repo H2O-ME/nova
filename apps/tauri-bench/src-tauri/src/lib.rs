@@ -1,18 +1,24 @@
-//! Nova Desktop shell (W2 minimal): the window IS the existing WebUI.
+//! Nova Desktop shell (W2.1): the window IS the existing WebUI, on the real home.
 //!
 //! Contract, in order:
-//! 1. Spawn `node packages/cli/dist/index.js --web` with an ISOLATED user home
-//!    (temp dir) — the web surface claims without a TTY via the `--web` flag,
-//!    and an empty `~/.nova` boots the unconfigured shell by design.
+//! 1. Spawn `node packages/cli/dist/index.mjs --web` against the user's REAL
+//!    `~/.nova/` — config, sessions and pairing persist across launches. The
+//!    new-session workspace defaults to the user's home dir; adopting another
+//!    workspace is the WebUI's own runtime ability (DirectoryBrowser re-roots
+//!    the kernel without a restart), so the shell has no directory picker and
+//!    keeps no workspace preference.
 //! 2. Parse the launch URL (token included) from the runtime's stdout line
 //!    `Nova WebUI：<url>` — the one discovery channel that needs no internal
-//!    file formats.
-//! 3. Navigate the webview there. The WS protocol, cookie pairing and port
-//!    memory stay untouched: the shell owns window + process lifecycle only.
-//! 4. On exit: kill the runtime child and delete the isolated home.
+//!    file formats. Port memory stays: a busy remembered port falls back to an
+//!    ephemeral bind, so the shell instance coexists with a browser instance.
+//! 3. Navigate the webview there. The WS protocol and cookie pairing stay
+//!    untouched: the shell owns window + process lifecycle only.
+//! 4. On exit: kill the runtime child. Session logs are an append-only event
+//!    stream (durable per event), so a hard kill costs at most the turn in
+//!    flight — a graceful-stop channel is a runtime-side concern, tracked.
 //!
 //! `NOVA_REPO` is a development constant; making it configurable (or bundling
-//! the runtime) is the W5 packaging concern, not this verification step.
+//! the runtime) is the W5 packaging concern, not this step.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
@@ -23,22 +29,16 @@ use std::time::Duration;
 use tauri::{Manager, RunEvent, Url, WebviewWindow};
 
 const NOVA_REPO: &str = "D:\\web\\agent";
-const ISOLATED_HOME: &str = "nova-desktop-home";
 const LAUNCH_MARK: &str = "Nova WebUI";
 
-fn isolated_home() -> std::path::PathBuf {
-    std::env::temp_dir().join(ISOLATED_HOME)
-}
-
 fn spawn_runtime() -> (Child, mpsc::Receiver<String>) {
-    let home = isolated_home();
-    let _ = std::fs::remove_dir_all(&home);
-    std::fs::create_dir_all(&home).expect("create isolated home");
-
+    // New sessions default to the user's home; the WebUI re-roots at any
+    // workspace it adopts, so the shell never needs a directory picker.
+    let cwd = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
     let mut child = Command::new("node")
         .arg(format!("{}\\packages\\cli\\dist\\index.mjs", NOVA_REPO))
         .arg("--web")
-        .env("USERPROFILE", &home)
+        .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
@@ -98,7 +98,6 @@ pub fn run() {
                     let _ = c.kill();
                     let _ = c.wait();
                 }
-                let _ = std::fs::remove_dir_all(isolated_home());
             }
         });
 }
