@@ -17,8 +17,10 @@
 //!    stream (durable per event), so a hard kill costs at most the turn in
 //!    flight — a graceful-stop channel is a runtime-side concern, tracked.
 //!
-//! `NOVA_REPO` is a development constant; making it configurable (or bundling
-//! the runtime) is the W5 packaging concern, not this step.
+//! Runtime root: an explicit `novaRoot` in the app config
+//! (`%APPDATA%/com.nova.desktop/nova-desktop.json`, `{"novaRoot": ...}`)
+//! wins; the development constant below is the fallback. Bundling the runtime
+//! beside the exe (no config needed) stays the W5 packaging step.
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
@@ -28,15 +30,48 @@ use std::thread;
 use std::time::Duration;
 use tauri::{Manager, RunEvent, Url, WebviewWindow};
 
-const NOVA_REPO: &str = "D:\\web\\agent";
+const DEV_NOVA_ROOT: &str = "D:\\web\\agent";
 const LAUNCH_MARK: &str = "Nova WebUI";
+
+/// Runtime root: an explicit `novaRoot` in the app config wins, the dev
+/// constant is the fallback.
+fn runtime_root() -> std::path::PathBuf {
+    let override_root = std::env::var("APPDATA").ok()
+        .map(|base| {
+            std::path::PathBuf::from(base)
+                .join("com.nova.desktop")
+                .join("nova-desktop.json")
+        })
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| {
+            // Windows tooling (PS 5.1, older Notepad) writes UTF-8 with BOM;
+            // serde_json refuses a leading BOM, so strip it before parsing.
+            let text = text.trim_start_matches('\u{feff}');
+            serde_json::from_str::<serde_json::Value>(text).ok()
+        })
+        .and_then(|value| {
+            value
+                .get("novaRoot")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+        .filter(|root| !root.is_empty());
+    override_root
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(DEV_NOVA_ROOT))
+}
 
 fn spawn_runtime() -> (Child, mpsc::Receiver<String>) {
     // New sessions default to the user's home; the WebUI re-roots at any
     // workspace it adopts, so the shell never needs a directory picker.
     let cwd = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+    let entry = runtime_root()
+        .join("packages")
+        .join("cli")
+        .join("dist")
+        .join("index.mjs");
     let mut child = Command::new("node")
-        .arg(format!("{}\\packages\\cli\\dist\\index.mjs", NOVA_REPO))
+        .arg(&entry)
         .arg("--web")
         .current_dir(cwd)
         .stdout(Stdio::piped())

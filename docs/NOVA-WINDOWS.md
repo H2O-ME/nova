@@ -105,7 +105,7 @@ Nova.Windows.exe ──spawn──▶ node.exe（runtime 入口 = nova 的 deskt
 | W3 | Codex 交互核心：执行时间线（工具行折叠）、审批/问题卡、任务列表投影、Stop/Continue | 内核主要事件不丢失地承载；持久化日志可完整恢复过程 | — |
 | W4 | 检查器与深集成：Diff/Changes、Git、通知、剪贴板、文件选择器、终端决策 | 编程任务与通用任务都有完整的执行—审查—恢复体验 | 交互终端若上局部 WebView2，需单独拍板 |
 | W5 | 发行：x64（后续 ARM64）、node-pty 双架构、升级/卸载、Store 资产 | 干净 Windows 无 Node 环境装完即用 | — |
-| W1b | Tauri 2 + React 对比基准（同机同法，`apps/tauri-bench`） | 双形态 60s 基准 + 包体；30min 漂移与 MSIX 路线可补测 | 数据已落 §5.2，**已拍板（§5.3）** |
+| W1b | Tauri 2 + React 对比基准（同机同法，`apps/tauri-bench`，已正名 nova-desktop §5.5） | 双形态 60s 基准 + 包体；30min 漂移与 MSIX 路线可补测 | 数据已落 §5.2，**已拍板（§5.3）** |
 
 > **路线改判（2026-11-12 晚）**：终局拍板走「现有 React WebUI + 轻量 Tauri 壳」，
 > W2 最小版已完成并真机验证（§5.3）。本表 W2–W5 是 WinUI 原案，降级为备选不排期；
@@ -199,8 +199,8 @@ msedgewebview2 实例，命令行标记排除其他应用的实例）。
 
 ### 5.3 W2 最小版实测记录：轻量壳 + 现有 WebUI（2026-11-12，本机）
 
-**实现载体**：`apps/tauri-bench`（Tauri 2；crate 名沿用 bench 期未正名，改名
-触发全量重编，挂账不阻塞）。壳逻辑约 100 行 Rust（`src-tauri/src/lib.rs`），
+**实现载体**：`apps/tauri-bench`（Tauri 2；crate 已正名 nova-desktop，见 §5.5，
+目录名沿用挂账）。壳逻辑约 100 行 Rust（`src-tauri/src/lib.rs`），
 `packages/web/ui` 前端零改动。
 
 **壳契约（顺序即依赖）**：
@@ -228,8 +228,9 @@ PrintWindow / 人眼确认正常。
 
 **挂账（明确不阻塞）**：
 
-- NOVA_REPO 硬编码（开发常量）→ 配置化或随包内置，W5 发行关注点。
-- 30 分钟长跑漂移、MSIX/NSIS 打包形态、crate 正名（tauri-bench → nova-desktop）。
+- 目录名 `apps/tauri-bench` rename（被会话 shell harness 的 cwd 占用阻塞，
+  待收尾/新会话改）。
+- 30 分钟长跑漂移、MSIX/NSIS 打包形态。
 
 ### 5.4 W2.1 实测记录：接真实 `~/.nova/` 与工作区定案（2026-11-12，本机）
 
@@ -260,6 +261,22 @@ PrintWindow / 人眼确认正常。
 **新挂账**：优雅退通道——runtime 只有 SIGINT/SIGTERM 处理，Windows 上壳→node
 只能硬杀；会话日志逐事件落盘，故最多丢进行中的一轮。要优雅退需 runtime 提供
 shutdown 通道（HTTP 路由或 console 事件），属 runtime 侧小改，待排。
+
+### 5.5 B 批实测记录：crate 正名与 runtime root 配置化（2026-11-13，本机）
+
+- **crate/包/产物正名** tauri-bench → nova-desktop（`Cargo.toml` package+lib、
+  `main.rs`、`package.json`；产物 `target/release/nova-desktop.exe`）。目录名
+  `apps/tauri-bench` 沿用挂账：本会话 shell harness 的 cwd 锚在该目录，
+  Windows 拒绝 rename，待收尾或新会话改。
+- **runtime root 配置化**：`%APPDATA%/com.nova.desktop/nova-desktop.json` 的
+  `novaRoot` 字段覆盖，缺省回退开发常量（`DEV_NOVA_ROOT`）。随包内置 runtime
+  仍是 W5 的事。
+- **真机验证三连**：无配置走默认（进程名已正名 nova-desktop）；坏 root
+  （`D:\nonexistent-root`）→ node 秒退 = 覆盖链路真生效；好 root 显式指回
+  仓库 → 正常起 + portStore 更新；关窗回收均正常。
+- **坑**：Windows PowerShell 5.1 `-Encoding UTF8` 写出带 BOM 的文件，
+  `serde_json` 拒收 BOM → 解析失败静默回退默认。壳侧已剥 BOM——真实用户用
+  记事本/PS 生成配置会踩同一坑。
 
 ## 6. 风险表
 
