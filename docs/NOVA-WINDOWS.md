@@ -295,6 +295,30 @@ shutdown 通道（HTTP 路由或 console 事件），属 runtime 侧小改，待
   build && pnpm --filter @nova-agent/cli build`）——runtime 跑的是 dist；旧
   产物下验证的第一轮被 launch hop 302 回主页，差点误判路由没生效。
 
+### 5.7 W5a 实测记录：随包 runtime 与 NSIS 发行形态（2026-11-13，本机）
+
+- **runtime 随包**：`pnpm --filter @nova-agent/cli --prod --legacy
+  --config.node-linker=hoisted deploy` 产出自包含生产树（72MB——cli 的外部
+  依赖只有 zod，不需要背全仓 736MB node_modules）+ 同版本 node.exe（v25.6.1，
+  与 node-pty prebuilds 匹配）。
+- **壳探测三级回退**：exe 旁 `runtime/`（随包）→ `novaRoot` 配置（校验
+  runtime entry 存在才接受）→ 仓库常量。node 可执行 = 随包 root 的 node.exe
+  （PATH 前插，spawn 程序名保持字面量 `node`）或 PATH `node`。
+- **bundle**：tauri `bundle.resources` 用 map 语法 `{ "../runtime":
+  "runtime/" }`——数组语法会把 `../` 编码成 `_up_` 目录（踩过）。产物：
+  MSI 52.03 MiB / NSIS 31.90 MiB（168MB 原始资源压缩后）。
+- **真机闭环**：NSIS 静默装（per-user 免提权）→ **隔离 PATH（无系统 node）**
+  跑安装版 → node 从随包解析、WebUI 完整渲染（既有配置/会话全在）→ 关窗双退
+  → 卸载目录与进程零残留。dev 形态（exe 旁无 runtime → 仓库常量）回归通过。
+  MSI 产物已生成但未做安装验证（NSIS 先行）。
+- **两个坑**：
+  - tauri 资源复制**不保留 pnpm 的 symlink/junction 层**——symlink 版 deploy
+    装出来 node_modules 只剩 `.pnpm` 断链（ESM 解析必死）。必须 hoisted deploy
+    （物理化纯文件树），装完 `@nova-agent/*` 才是真文件。
+  - pnpm deploy 的输出目录相对 **cwd** 解析——shell cwd 漂移曾把产物写进
+    嵌套垃圾目录，后续全部验证跑在假产物上。deploy 一律绝对路径 + 立即 ls
+    验证落点。
+
 ## 6. 风险表
 
 | 风险 | 级别 | 处置 |

@@ -15,6 +15,9 @@ dist-ssr
 # Tool state (security scanner session files), never commit
 .mimosa/
 
+# Bundled runtime tree (pnpm deploy output + node.exe), assembled by packaging
+runtime/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

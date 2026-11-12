@@ -1,12 +1,12 @@
 //! Nova Desktop shell (W2.1): the window IS the existing WebUI, on the real home.
 //!
 //! Contract, in order:
-//! 1. Spawn `node packages/cli/dist/index.mjs --web` against the user's REAL
-//!    `~/.nova/` — config, sessions and pairing persist across launches. The
-//!    new-session workspace defaults to the user's home dir; adopting another
-//!    workspace is the WebUI's own runtime ability (DirectoryBrowser re-roots
-//!    the kernel without a restart), so the shell has no directory picker and
-//!    keeps no workspace preference.
+//! 1. Spawn the runtime against the user's REAL `~/.nova/` — config, sessions
+//!    and pairing persist across launches. The new-session workspace defaults
+//!    to the user's home dir; adopting another workspace is the WebUI's own
+//!    runtime ability (DirectoryBrowser re-roots the kernel without a
+//!    restart), so the shell never needs a directory picker and keeps no
+//!    workspace preference.
 //! 2. Parse the launch URL (token included) from the runtime's stdout line
 //!    `Nova WebUI：<url>` — the one discovery channel that needs no internal
 //!    file formats. Port memory stays: a busy remembered port falls back to an
@@ -19,10 +19,16 @@
 //!    back to a hard kill. Session logs are an append-only event stream, so
 //!    even the fallback costs at most the turn in flight.
 //!
-//! Runtime root: an explicit `novaRoot` in the app config
-//! (`%APPDATA%/com.nova.desktop/nova-desktop.json`, `{"novaRoot": ...}`)
-//! wins; the development constant below is the fallback. Bundling the runtime
-//! beside the exe (no config needed) stays the W5 packaging step.
+//! Runtime root, highest priority first:
+//! 1. Bundled: a `runtime/` dir next to the exe (tauri bundle resources) —
+//!    ships `node.exe` + the deployed package tree, no Node install needed.
+//! 2. An explicit `novaRoot` in the app config
+//!    (`%APPDATA%/com.nova.desktop/nova-desktop.json`, `{"novaRoot": ...}`) —
+//!    the dev override. It is accepted only when the runtime entry it points
+//!    at actually exists, so a stray value can never widen what the shell
+//!    executes: the program stays the literal `node`, resolved from PATH —
+//!    where the runtime dir is prepended when it ships its own node.exe.
+//! 3. The development constant below — the repo checkout.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
@@ -36,9 +42,29 @@ use tauri::{Manager, RunEvent, Url, WebviewWindow};
 const DEV_NOVA_ROOT: &str = "D:\\web\\agent";
 const LAUNCH_MARK: &str = "Nova WebUI";
 
-/// Runtime root: an explicit `novaRoot` in the app config wins, the dev
-/// constant is the fallback.
+/// The runtime entry the dir must contain to count as a runtime root — the
+/// bundled deploy has the cli package at the root, the repo checkout nests it
+/// under `packages/cli`.
+fn runtime_entry(root: &std::path::Path) -> std::path::PathBuf {
+    let bundled = root.join("dist").join("index.mjs");
+    if bundled.is_file() {
+        bundled
+    } else {
+        root.join("packages").join("cli").join("dist").join("index.mjs")
+    }
+}
+
+/// Runtime root: the bundled `runtime/` beside the exe wins, then the app
+/// config override (only if it points at a real runtime entry), then the dev
+/// constant.
 fn runtime_root() -> std::path::PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(bundled) = exe.parent().map(|dir| dir.join("runtime")) {
+            if runtime_entry(&bundled).is_file() {
+                return bundled;
+            }
+        }
+    }
     let override_root = std::env::var("APPDATA").ok()
         .map(|base| {
             std::path::PathBuf::from(base)
@@ -55,24 +81,50 @@ fn runtime_root() -> std::path::PathBuf {
         .and_then(|value| {
             value
                 .get("novaRoot")
-                .and_then(|v| v.as_str())
+            .and_then(|v| v.as_str())
                 .map(str::to_string)
         })
-        .filter(|root| !root.is_empty());
+        .filter(|root| !root.is_empty())
+        .and_then(|root| {
+            // Accept the override only when it actually contains a runtime —
+            // the entry check is what keeps the spawn target bounded.
+            let dir = std::path::PathBuf::from(&root);
+            if runtime_entry(&dir).is_file() {
+                Some(dir)
+            } else {
+                None
+            }
+        });
     override_root
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from(DEV_NOVA_ROOT))
+}
+
+/// Put the bundled runtime dir first on PATH, so the literal `node` in
+/// `spawn_runtime` resolves to the shipped node.exe (ABI matched to the
+/// compiled node-pty). Dev roots without node.exe keep the system PATH.
+fn prepare_node_on_path(root: &std::path::Path) {
+    if root.join("node.exe").is_file() {
+        if let Some(root_str) = root.to_str() {
+            // Edition 2024 marks set_var unsafe (process-wide env race) —
+            // single-threaded here, before the runtime thread starts.
+            unsafe {
+                std::env::set_var(
+                    "PATH",
+                    format!("{root_str};{}", std::env::var("PATH").unwrap_or_default()),
+                );
+            }
+        }
+    }
 }
 
 fn spawn_runtime() -> (Child, mpsc::Receiver<String>) {
     // New sessions default to the user's home; the WebUI re-roots at any
     // workspace it adopts, so the shell never needs a directory picker.
     let cwd = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
-    let entry = runtime_root()
-        .join("packages")
-        .join("cli")
-        .join("dist")
-        .join("index.mjs");
+    let root = runtime_root();
+    prepare_node_on_path(&root);
+    let entry = runtime_entry(&root);
     let mut child = Command::new("node")
         .arg(&entry)
         .arg("--web")
@@ -165,25 +217,22 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run({
-            let launch_url = Arc::clone(&launch_url);
-            move |_app, event| {
-                if let RunEvent::Exit = event {
-                    let launch = launch_url.lock().ok().and_then(|u| u.clone());
-                    if let Ok(mut c) = child.lock() {
-                        // Graceful first: the runtime disposes jobs/PTYs itself.
-                        if let Some(url) = launch {
-                            graceful_shutdown(&url);
-                            for _ in 0..30 {
-                                if matches!(c.try_wait(), Ok(Some(_))) {
-                                    return;
-                                }
-                                thread::sleep(Duration::from_millis(100));
+        .run(move |_app, event| {
+            if let RunEvent::Exit = event {
+                let launch = launch_url.lock().ok().and_then(|u| u.clone());
+                if let Ok(mut c) = child.lock() {
+                    // Graceful first: the runtime disposes jobs/PTYs itself.
+                    if let Some(url) = launch {
+                        graceful_shutdown(&url);
+                        for _ in 0..30 {
+                            if matches!(c.try_wait(), Ok(Some(_))) {
+                                return;
                             }
+                            thread::sleep(Duration::from_millis(100));
                         }
-                        let _ = c.kill();
-                        let _ = c.wait();
                     }
+                    let _ = c.kill();
+                    let _ = c.wait();
                 }
             }
         });
