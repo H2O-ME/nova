@@ -35,83 +35,63 @@
   overflow: visible;
 }
 
-/* figma 34:10411: fish + title, gap 10, centered; 26/32 wt500. The preview
-   badge is a product addition outside that source: a mono superscript pill
-   riding the title's top-right. */
+/* figma 34:10411: fish + title, gap 12, centred; 28/36 wt600. Weight 600 and
+   solid ink are the 2026-11-14 baseline: the headline has to LEAD the empty
+   column now that the composer is a 688px control rather than a 950px slab.
+   The size is `HeroShell`'s fit variable: between 20 and 28 the type shrinks
+   to keep the sentence on one line (the probe writes the variable off the
+   React path); the leading scales with it, so 28px still lands on 36px. */
 .headline {
   display: flex;
   /* Overflow-driven: the fish and the title group are two wrap units sharing
      one centered line while they fit; squeezed, the fish takes its own line
      above the group. No breakpoint. */
   flex-wrap: wrap;
-  column-gap: var(--nova-space-10);
+  /* Was 10: the mark reads as part of the headline, not as a separate badge,
+     only when the gap is on the same ladder as the word spacing around it. */
+  column-gap: var(--nova-space-12);
   /* Wrapped, the fish sits on its own line; more air than the 10px side gap
-     keeps it reading as a mark above the title, not a squeezed inline glyph. */
+     keeps it reading as a mark above the title, not as a squeezed inline glyph. */
   row-gap: var(--nova-space-12);
   align-items: center;
   justify-content: center;
-  font-size: 26px;
-  line-height: 32px;
-  font-weight: 500;
+  font-size: var(--nova-hero-title-size, 28px);
+  line-height: calc(var(--nova-hero-title-size, 28px) / 28 * 36);
+  font-weight: 600;
   color: var(--nova-text-primary);
 }
 
-/* The headline as lit type: a vertical ramp from full ink at the cap line to a
-   dimmer ink at the baseline. This is the reference catalogue's signature move
-   (their hero headings are gradient-clipped), and it is what makes a plain
-   sentence read as "designed" without adding a single decoration.
-   `background-clip: text` needs `color: transparent`, which drops the glyph
-   to the background — so the fallback path must keep a real colour. We keep
-   `color` on `.headline` above (inherited, untouched) and only override it in
-   this rule, so a browser without `background-clip: text` still paints solid
-   primary ink rather than nothing. */
-.headline {
-  background-image: linear-gradient(
-    180deg,
-    var(--nova-text-primary) 24%,
-    var(--nova-text-secondary) 100%
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+/* The hidden probe the fit math measures the sentence against: baseline size,
+   nowrap, never painted and never hit-tested. Its size is fixed on purpose —
+   the headline's fitted variable must not be able to move it, or the
+   observation would chase its own tail. */
+.probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
-/* Title text + badge as one wrap unit so the title never breaks mid-text with
-   the badge stranded beside a fragment. When the badge no longer fits beside
-   the title it wraps to its own centered line below; while both fit, the group
-   is content-sized and centering is a no-op, keeping the superscript snug. */
+/* The headline's lit gradient was retired on 2026-11-14. The operator's design
+   constraint bans gradients outright, and a vertical ink ramp on the one
+   sentence the empty column exists to say was the only "effect" on the page —
+   the exact opposite of the restrained, technical read this screen wants.
+   Solid primary ink + 600 weight carries the hierarchy instead. */
+
+/* Title text as one wrap unit so the title never breaks mid-text while it is
+   centered; the group is content-sized, which keeps centering a no-op. */
 .titleGroup {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: center;
-  /* Superscript sits 7 from the title. */
-  column-gap: 7px;
   row-gap: var(--nova-space-4);
   min-width: 0;
-}
-
-.previewBadge {
-  align-self: flex-start;
-  margin-top: var(--nova-space-2);
-  padding: 1px 7px 0;
-  border: 0.5px solid var(--nova-interactive-hover);
-  /* The reference's pill treatment: uncapped radius, so it must opt out of the
-     universal superellipse (styles/corner-shape.css) or the ends square off. */
-  border-radius: var(--nova-radius-full);
-  corner-shape: round;
-  background: var(--nova-color-accent-soft);
-  color: var(--nova-text-primary-bluish);
-  font-family: var(--nova-font-mono);
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 500;
-  white-space: nowrap;
-  /* The headline's gradient type sets `-webkit-text-fill-color: transparent`,
-     which is INHERITED. The badge is a descendant and would render as a solid
-     background with no glyph in it. Reset it to its own paint. (The fish is an
-     SVG, so the text-fill property never reached it.) */
-  -webkit-text-fill-color: currentColor;
 }
 
 /* Keep hover detection on a stationary box while the mark moves within it;

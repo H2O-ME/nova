@@ -1,0 +1,158 @@
+/* The hero's 最近工作 list: a caption over a run of two-line rows, on the
+   composer card's own measure.
+ *
+ * Each row is TITLE OVER METADATA (14/500 over 11/400, 40px tall): the title
+ * gets a full line to itself — so a long prompt truncates instead of starving
+ * its own metadata — and the workspace · age line sits under it like a
+ * subtitle. A single-line row was tried twice: at this measure it either
+ * pushed the metadata 500px away from a short title or squeezed both into a
+ * strip that read as a database row. Two lines at 40px is still four rows in
+ * 160px, and it is the shape desktop session lists actually use.
+ *
+ * No cards, no icons, no rule between rows; the caption's hairline is the only
+ * divider. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* The CARD's box. The hero measure is 688px (`ConversationRoot`
+     `--nova-hero-measure`), and the card spends 16px of it inside the
+     composer's clearance on each side plus its own 16px inset — so the list
+     subtracts both to land on the same left and right edges as the card. On a
+     narrower column the percentage term wins and it tracks the card exactly.
+   *
+   * The gap above comes from the hero stack's foot
+   * (`ConversationRoot` `.composerHero` padding-bottom). */
+  width: 100%;
+  max-width: min(
+    calc(
+      100% - var(--nova-composer-side-clearance) - var(--nova-composer-side-clearance) -
+        var(--nova-space-16)
+    ),
+    var(--nova-hero-measure)
+  );
+  /* The band this block rides is a plain block, not a flex/grid container, so
+     the horizontal centring that puts it on the card's axis is the auto
+     margin. */
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* The list's caption. One step up from the metadata ink and a notch heavier
+   (12/600), so "continue a session" has a name without competing with the
+   session titles underneath; the hairline is the list's top edge, drawn
+   instead of a card. */
+.heading {
+  padding: 0 var(--nova-space-16) var(--nova-space-8);
+  border-bottom: 1px solid var(--nova-border-subtle);
+  font-size: var(--nova-text-size-xs);
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: var(--nova-space-4) 0 0;
+  min-width: 0;
+  list-style: none;
+}
+
+/* The pre-frame hold (the list's `items === null` state): one muted line at
+   roughly a row's height, so the caption and its hairline are already in
+   place when the rows land and the rows replace the line instead of
+   inserting a whole block below it. */
+.pending {
+  padding: var(--nova-space-8) var(--nova-space-16);
+  font-size: var(--nova-text-size-xs);
+  line-height: 20px;
+  color: var(--nova-text-muted);
+}
+
+/* One row is one hit target: title over workspace · age, 40px tall. The row
+   owns the wash, so the pointer reads exactly what it will resume. `min-height`
+   rather than a fixed height: a reader with a larger content font must be able
+   to grow the row, and 40 is the floor the density budget names. */
+.row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--nova-space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--nova-space-16);
+  box-sizing: border-box;
+  border: none;
+  /* 8px, not the 12 the card uses: a dense list row rounds tighter than the
+     control it sits under, which is what keeps the two from reading as the
+     same object. */
+  border-radius: var(--nova-radius-sm);
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover,
+.row:focus-visible {
+  background: var(--nova-interactive-hover);
+}
+
+/* Pressed: one rung darker than hover, the same relationship the sidebar's
+   selected row has to its own hover. */
+.row:active {
+  background: var(--nova-interactive-hover-strong);
+}
+
+/* The title is the row's one strong line. Rest -> hover promotes it by one
+   neutral step; no accent ink anywhere in the list. */
+.title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--nova-text-size-md);
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
+}
+
+.row:hover .title,
+.row:focus-visible .title {
+  color: var(--nova-text-primary);
+}
+
+/* The metadata line under the title: workspace, separator, age. It takes the
+   row's full width so a long workspace name truncates here instead of pushing
+   the age out of the row. */
+.meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nova-space-6);
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--nova-text-size-2xs);
+  line-height: 16px;
+  color: var(--nova-text-muted);
+}
+
+.workspace {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  flex: none;
+  color: var(--nova-text-faint);
+}
+
+.time {
+  flex: none;
+  color: var(--nova-text-faint);
+  font-variant-numeric: tabular-nums;
+}

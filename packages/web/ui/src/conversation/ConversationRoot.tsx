@@ -52,6 +52,15 @@ export interface ConversationRootProps {
    * the card's axis.
    */
   heroWorkspaceRow?: ReactNode;
+  /**
+   * The hero's recent-session list, rendered BELOW the composer card.
+   *
+   * A sibling of the composer seat rather than a member of the stack inside it:
+   * the seat publishes its own height as `--nova-composer-height` (the band
+   * floating chat chrome clears), and rows under the card are hero content, not
+   * composer chrome. Hero phase only — a landing session replaces the column.
+   */
+  heroRecent?: ReactNode;
   /** The transcript occupant (`conversation.session`), rendered in `.viewArea`. */
   session?: ReactNode;
   /** The composer chain output (dock cards + input card), sticky at the foot. */
@@ -165,6 +174,7 @@ export function ConversationRoot({
   header,
   hero,
   heroWorkspaceRow,
+  heroRecent,
   session,
   composer,
 }: ConversationRootProps): JSX.Element {
@@ -275,6 +285,10 @@ export function ConversationRoot({
         <div className={css.scrollBody} data-conversation-body="">
           {session === undefined ? null : <div className={css.viewArea}>{session}</div>}
           {composerSeat}
+          {/* Below the card, outside the seat: see `heroRecent` on the props. */}
+          {heroPhase && heroRecent !== undefined && (
+            <div className={css.heroRecent}>{heroRecent}</div>
+          )}
         </div>
         {/* Width handles only while a transcript is on screen; the hero has no
             content column to size. */}

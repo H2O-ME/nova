@@ -1,33 +1,19 @@
 /**
- * The hero's version badge and the workspace row.
+ * The hero's workspace row.
  *
- * The badge: a server-render pass (no DOM) pinning both reads — the build's own
- * version when `ready` carried one, and the static badge a host without a
- * version keeps (an empty slot would read as a broken hero).
+ * The two defects it shipped with: the chip must be reachable (a disabled chip
+ * is a control that opens onto nothing), and the menu must always carry the
+ * add-workspace route — with only remembered directories in it, a first visit
+ * rendered an EMPTY menu, which is a blank white pill floating over the card
+ * and no way to pick a workspace at all.
  *
- * The row: the two defects it shipped with. The chip must be reachable (a
- * disabled chip is a control that opens onto nothing), and the menu must always
- * carry the add-workspace route — with only remembered directories in it, a
- * first visit rendered an EMPTY menu, which is a blank white pill floating over
- * the card and no way to pick a workspace at all.
+ * The hero itself is no longer asserted here: its version badge moved to the
+ * settings nav (`SettingsPanel`), and what remains above the composer is a mark
+ * and a headline.
  */
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ADD_WORKSPACE, HeroShell, WorkspaceRow, workspaceMenuItems } from '../src/conversation/EmptyHero.js';
-
-const hero = (version?: string): string =>
-  renderToStaticMarkup(<HeroShell version={version} />);
-
-describe('hero version badge', () => {
-  it('names the running version when ready carried one', () => {
-    expect(hero('0.4.0')).toContain('>v0.4.0</span>');
-  });
-
-  it('keeps the static badge when the host sent no version', () => {
-    expect(hero(undefined)).toContain('>预览版</span>');
-    expect(hero('')).toContain('>预览版</span>');
-  });
-});
+import { ADD_WORKSPACE, WorkspaceRow, workspaceMenuItems } from '../src/conversation/EmptyHero.js';
 
 /** The row as the shell mounts it, with only the props a test cares about. */
 const row = (props: Parameters<typeof WorkspaceRow>[0]): string =>

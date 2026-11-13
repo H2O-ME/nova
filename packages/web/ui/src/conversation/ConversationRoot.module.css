@@ -235,28 +235,60 @@
   z-index: 9;
 }
 
-/* Hero phase: the composer stack (hero chrome + workspace row + card) is
-   flex-centered in the column; composer phase docks it at the bottom. Flex,
-   NOT absolute+transform: a transform would make this box the containing
-   block for position:fixed descendants (pickers/modals), shrinking them. */
+/* Hero phase: the composer stack (hero chrome + workspace row + card + the
+   recent list) is centred horizontally and docked in the composer phase. Flex,
+   NOT absolute+transform: a transform would make this box the containing block
+   for position:fixed descendants (pickers/modals), shrinking them. */
 .composerHero {
   align-self: center;
   /* figma 75:8208 drew 12 between all three rows; the workspace row now sits
      8 above the card (its margin-top restores 12 under the hero chrome). */
   gap: var(--nova-space-8);
-  /* Foot inside the centered box floats the stack a bit above true center. */
-  padding-bottom: var(--nova-space-32);
+  /* Foot inside the block. The hero now carries a second block (the recent
+     list) below the card, so this gap is no longer "air under the composer" —
+     it is the seam between START (card) and CONTINUE (list). */
+  padding-bottom: var(--nova-space-24);
   /* Card cap + both clearances: the hero input card lands at exactly the same
      width as the docked composer at every viewport. */
-  width: min(calc(var(--nova-composer-card-max-width) + 2 * var(--nova-composer-side-clearance)), 100%);
+  width: min(calc(var(--nova-hero-measure) + 2 * var(--nova-composer-side-clearance)), 100%);
   z-index: 1;
 }
 
-/* Hero: the composer sits inside the session scroll body; center there so
-   the tree seat matches active (sticky footer) without a Root remount. */
+/* Hero: the block is TOP-ANCHORED in the column, not centred.
+ *
+ * Centring a three-piece empty state in a 700px-tall column left ~200px of air
+ * above it and ~300px below — measured on the 2026-11-14 pass — which reads as
+ * an unfinished page rather than as white space. The task block now starts at
+ * a fixed share of the viewport height (16vh, floored and capped), so the
+ * composition holds its optical anchor at 1280×720 and 1440×900 alike. */
 .root[data-phase='hero'] .scrollBody {
-  justify-content: center;
+  justify-content: flex-start;
   overflow-y: auto;
+  padding-top: clamp(var(--nova-space-32), 16vh, 180px);
+}
+
+/* THE EMPTY COLUMN'S MEASURE (2026-11-14 design baseline).
+ *
+ * The task card, the workspace chip and the recent-session list all sit in
+ * 688px; the transcript keeps its wider 920px reading column. 952 made the
+ * hero a stretched web form — two control clusters 600px apart inside one
+ * card — and the empty state is the one screen with nothing to hide that
+ * emptiness behind. 688 is a typing/reading measure, not a page width. */
+.root[data-phase='hero'] {
+  --nova-hero-measure: 688px;
+}
+
+/* The hero's recent-session shortlist, sitting under the card.
+ *
+ * A sibling of `.composerSeat` (not part of the stack inside it): the seat's
+ * height is published as `--nova-composer-height` for floating chat chrome, and
+ * rows below the card are not composer chrome. This band only holds the row;
+ * the block's width axis (the composer card's own measure) belongs to
+ * `RecentSessions`, which is the element that has to line up with the card. */
+.heroRecent {
+  flex: none;
+  padding-bottom: var(--nova-space-24);
+  box-sizing: border-box;
 }
 
 /* THE EMPTY-STATE SCENERY IS GONE (2026-11-05).

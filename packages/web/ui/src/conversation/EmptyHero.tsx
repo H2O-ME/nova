@@ -1,7 +1,7 @@
 /**
  * The blank-column hero chrome: the
- * mark + headline lockup (34px mark leading a 26/32 headline, gap 10) with the
- * superscript preview badge, centered above the composer card.
+ * mark + headline lockup (34px mark leading a 26/32 headline, gap 10), centered
+ * above the composer card.
  *
  * Three divergences from the source, each deliberate:
  *  - the headline is an invitation, not a brand line — the brand lives in the
@@ -17,7 +17,7 @@
  *    the shell the chip inherits the shell's own 24px gutter and 12px gap, which
  *    is what left it misaligned against the card.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Menu, type MenuItem } from '../shell/Menu.js';
 import { ChevronDownIcon, FolderOpenIcon, PlusIcon } from '../icons.js';
@@ -28,6 +28,44 @@ const MARK_BOX = 32;
 
 /** The menu row that opens the directory browser (never a real path). */
 export const ADD_WORKSPACE = '::add-workspace';
+
+/** Hour marks (local time) the greeting's tiers turn over at. */
+const GREETING_HOURS = [5, 9, 12, 14, 18, 23];
+
+/**
+ * The headline's time-greeted sentence, in six bands over a day. The empty
+ * column's one line changes with the clock the way the reference's does, and
+ * the boundaries are hour marks so a plain `setTimeout` can park the tier
+ * until the next one — a hero left open all day never goes stale.
+ * @param now - the moment to greet at.
+ * @returns the headline sentence.
+ */
+export function heroGreeting(now: Date): string {
+  const hour = now.getHours();
+  if (hour < 5 || hour >= 23) return '夜深了，想做点什么？';
+  if (hour < 9) return '早上好，想做点什么？';
+  if (hour < 12) return '上午好，想做点什么？';
+  if (hour < 14) return '中午好，想做点什么？';
+  if (hour < 18) return '下午好，想做点什么？';
+  return '晚上好，想做点什么？';
+}
+
+/**
+ * Milliseconds until the greeting's next tier boundary. Pure, so the timer in
+ * {@link HeroShell} can be a plain `setTimeout` rescheduled after each
+ * turn-over instead of a polling interval.
+ * @param now - the moment to measure from.
+ * @returns the delay to the next boundary, never shorter than a second.
+ */
+export function msToNextGreetingBoundary(now: Date): number {
+  const hour = now.getHours();
+  // Past the last mark the next turn-over is tomorrow's first one; `setHours`
+  // overflows past midnight on its own (29 -> tomorrow 05:00).
+  const target = hour >= 23 ? 29 : (GREETING_HOURS.find((mark) => mark > hour) ?? 29);
+  const at = new Date(now);
+  at.setHours(target, 0, 0, 0);
+  return Math.max(at.getTime() - now.getTime(), 1000);
+}
 
 /**
  * The workspace chip's menu rows.
@@ -105,22 +143,80 @@ function FolderGlyph(): JSX.Element {
 export interface HeroShellProps {
   /** The hero mark; the default nova when the shell supplies none. */
   mark?: ReactNode;
-  /**
-   * The running version (`ready.version`, the shell's own single source). The
-   * badge names the build — `v0.4.0`; a host that sent no version keeps the
-   * static 预览版 badge rather than an empty slot.
-   */
-  version?: string | undefined;
 }
+
+/** The headline's fit band: the reference's clamp, on our own 28px baseline. */
+const TITLE_SIZE_MAX = 28;
+const TITLE_SIZE_MIN = 20;
 
 /**
  * Render the hero chrome (headline only; no composer, and — unlike an earlier
  * revision — no workspace chip: the row is a sibling of this element, which is
  * what puts the chip on the composer hero's own axis).
+ *
+ * The headline is the clock-greeted sentence, fitted to ONE line: squeezed, the
+ * type shrinks between 28 and 20px (a hidden probe measured against the
+ * headline's live width, the size written straight to a CSS variable) before
+ * the mark falls to its own line — the wrap below the minimum stays the
+ * overflow-driven degradation it already was.
+ *
+ * The running version is NOT here. It rode the headline as a superscript badge,
+ * and the version is not what an empty column is asking the reader to think
+ * about; the settings nav's foot states it instead (`SettingsPanel`).
  * @param props - see {@link HeroShellProps}.
  * @returns the centered hero element tree.
  */
-export function HeroShell({ mark, version }: HeroShellProps): JSX.Element {
+export function HeroShell({ mark }: HeroShellProps): JSX.Element {
+  const [greeting, setGreeting] = useState(() => heroGreeting(new Date()));
+  // The tier re-resolves at the next boundary, not on a poll: one timer per
+  // mount, rescheduled after each turn-over.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = (): void => {
+      timer = setTimeout(() => {
+        setGreeting(heroGreeting(new Date()));
+        schedule();
+      }, msToNextGreetingBoundary(new Date()));
+    };
+    schedule();
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Headline fit. The visible headline and the probe are BOTH observed: the
+  // headline because its width moves with the column, the probe because its
+  // width moves with the sentence (a new greeting, a swapped webfont). The
+  // probe's own size is fixed, so writing the headline's size variable cannot
+  // loop the observation.
+  const headlineRef = useRef<HTMLDivElement | null>(null);
+  const markRef = useRef<HTMLSpanElement | null>(null);
+  const probeRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    const headline = headlineRef.current;
+    const probe = probeRef.current;
+    if (headline === null || probe === null) return;
+    const recompute = (): void => {
+      const natural = probe.getBoundingClientRect().width;
+      if (natural <= 0 || !Number.isFinite(natural)) return;
+      // The budget always assumes the mark rides the same line. Sizing against
+      // a mark-free line would let the type grow until the mark wraps and
+      // shrink again once it has wrapped — an oscillation the conservative
+      // budget cannot fall into. Below the minimum the existing wrap degrades.
+      const markBox = markRef.current?.getBoundingClientRect().width ?? 0;
+      const gap = Number.parseFloat(getComputedStyle(headline).columnGap) || 0;
+      const available = headline.clientWidth - markBox - gap;
+      const size = Math.max(
+        TITLE_SIZE_MIN,
+        Math.min(TITLE_SIZE_MAX, Math.floor((TITLE_SIZE_MAX * available) / natural)),
+      );
+      headline.style.setProperty('--nova-hero-title-size', `${size}px`);
+    };
+    recompute();
+    const observer = new ResizeObserver(recompute);
+    observer.observe(headline);
+    observer.observe(probe);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div className={css.root}>
       {/*
@@ -142,14 +238,20 @@ export function HeroShell({ mark, version }: HeroShellProps): JSX.Element {
        * inside that seat. Keeping a second copy in this 34px box would be a
        * duplicate that can never be seen.
        */}
+      {/* The fit probe: the sentence at its baseline size, unpainted and
+          unhit-testable. It carries the SAME text as the headline — that is
+          the whole measurement. */}
+      <span className={css.probe} aria-hidden="true" ref={probeRef}>
+        {greeting}
+      </span>
       <div className={css.stack}>
-        <div className={css.headline}>
+        <div className={css.headline} ref={headlineRef}>
           {/* figma 34:10412: mark 34 leading the headline, gap 10. */}
-          <span className={css.fishHitbox}>{mark ?? <HeroMark />}</span>
+          <span className={css.fishHitbox} ref={markRef}>
+            {mark ?? <HeroMark />}
+          </span>
           <span className={css.titleGroup}>
-            {/* Own element: keeps the headline text addressable apart from the badge. */}
-            <span>今天想做点什么？</span>
-            <span className={css.previewBadge}>{version !== undefined && version !== '' ? `v${version}` : '预览版'}</span>
+            <span>{greeting}</span>
           </span>
         </div>
       </div>
