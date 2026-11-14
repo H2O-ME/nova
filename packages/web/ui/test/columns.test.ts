@@ -33,8 +33,8 @@ describe('clampWidth', () => {
 describe('computeColumns', () => {
   it('a wide frame gives every column what it asked for', () => {
     expect(computeColumns(1600, SIDEBAR_DEFAULT, 600)).toEqual({
-      sidebar: 280,
-      center: 720,
+      sidebar: 264,
+      center: 736,
       rightbar: 600,
     });
   });
@@ -44,20 +44,20 @@ describe('computeColumns', () => {
   });
 
   it('the right column shrinks before the centre concedes', () => {
-    // 1000 - 280 - 400 = 320 available, clamped into [300, 700].
+    // 1000 - 264 - 400 = 336 available, clamped into [300, 700].
     expect(computeColumns(1000, SIDEBAR_DEFAULT, 600)).toEqual({
-      sidebar: 280,
+      sidebar: 264,
       center: 400,
-      rightbar: 320,
+      rightbar: 336,
     });
   });
 
   it('the right column loses its track before the centre drops below its minimum', () => {
-    // 900 - 280 - 400 = 220 < RIGHTBAR_MIN: the track goes to zero and the
+    // 900 - 264 - 400 = 236 < RIGHTBAR_MIN: the track goes to zero and the
     // centre keeps the whole remainder.
     const cols = computeColumns(900, SIDEBAR_DEFAULT, 600);
     expect(cols.rightbar).toBe(0);
-    expect(cols.center).toBe(620);
+    expect(cols.center).toBe(636);
   });
 
 it('only without the right track may the centre fall below its minimum', () => {

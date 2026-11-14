@@ -138,14 +138,16 @@ describe('palette invariants', () => {
  *    the model settings page into a table of boxes.
  */
 describe('shape language', () => {
-  it('the composer takes the reference panel recipe', () => {
+  it('the composer takes the reference card recipe (2026-11-14 ZCode alignment)', () => {
     const text = read('composer/InputBar.module.css');
     const card = /^\.card \{([^}]*)\}/m.exec(text)?.[1] ?? '';
-    expect(card, 'the composer takes the generous panel corner').toContain('var(--nova-radius-2xl)');
-    expect(card, 'the composer separates with the shadow stroke, not a CSS border').toContain(
-      'var(--nova-elevation-soft)'
+    expect(card, 'the composer takes the 16px corner').toContain('var(--nova-radius-lg)');
+    expect(card, 'the composer carries the soft two-layer shadow').toContain(
+      'var(--nova-elevation-composer)'
     );
-    expect(card, 'the reference card has no CSS border').toMatch(/border:\s*0;/);
+    expect(card, 'the composer border rides the input-border token').toContain(
+      'var(--nova-input-border)'
+    );
     expect(text, 'the send control must not paint the accent ramp').not.toContain(
       'var(--nova-color-accent-gradient)'
     );

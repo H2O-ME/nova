@@ -85,8 +85,11 @@ describe('motion system', () => {
     expect(read('design/motion.css')).toContain('@keyframes nova-fade-in');
   });
 
-  it('the hero fish keeps an ambient idle swim and the step tick draws in', () => {
-    expect(read('conversation/HeroShell.module.css')).toMatch(/@keyframes hero-fish-idle \{/);
+  it('the hero backdrop mark is static scenery and the step tick draws in', () => {
+    // The 34px headline mark (and its idle swim) retired with the 2026-11-14
+    // ZCode alignment: the brand line art is now HeroBackdrop, static faint
+    // scenery behind the greeting — a 400px outline has no swim to offer.
+    expect(read('conversation/HeroShell.module.css')).not.toMatch(/@keyframes/);
     expect(read('tool/StateDot.module.css')).toMatch(/animation:\s*nova-draw\b/);
   });
 });

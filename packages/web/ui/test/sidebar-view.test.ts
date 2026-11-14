@@ -95,7 +95,7 @@ describe('indicatorState', () => {
 
 describe('sessionTitle', () => {
   it('falls back to the new-session word for a log with no user prompt', () => {
-    expect(sessionTitle(item('a.jsonl', undefined, ''))).toBe('新会话');
+    expect(sessionTitle(item('a.jsonl', undefined, ''))).toBe('新建任务');
     expect(sessionTitle(item('a.jsonl', undefined, '修 sidebar'))).toBe('修 sidebar');
   });
 });

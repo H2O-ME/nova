@@ -89,6 +89,10 @@
   --color-accent-foreground: var(--nova-text-primary);
   --color-destructive: var(--nova-color-danger);
   --color-destructive-foreground: var(--nova-text-inverse);
+  --color-input-surface: var(--nova-surface-input);
+  --color-input-border: var(--nova-input-border);
+  --color-input-border-hover: var(--nova-input-border-hover);
+  --color-input-border-focused: var(--nova-input-border-focused);
   --color-border: var(--nova-border-subtle);
   --color-input: var(--nova-border-strong);
   --color-ring: var(--nova-color-accent);
@@ -117,6 +121,7 @@
   --shadow-float: var(--nova-elevation-float);
   --shadow-overlay: var(--nova-elevation-overlay);
   --shadow-panel: var(--nova-elevation-panel);
+  --shadow-composer: var(--nova-elevation-composer);
   --shadow-glow: var(--nova-glow-float);
   --shadow-glow-accent: var(--nova-glow-interactive);
 

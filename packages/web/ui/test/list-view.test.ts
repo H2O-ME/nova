@@ -46,19 +46,20 @@ describe('filterItems', () => {
 
 describe('sectionLabel', () => {
   it('names the grouping the list is drawn in', () => {
+    expect(sectionLabel('timeline')).toBe(LIST_COPY['section.timeline']);
     expect(sectionLabel('workspace')).toBe(LIST_COPY['section.workspaces']);
     expect(sectionLabel('flat')).toBe(LIST_COPY['section.sessions']);
   });
 });
 
 describe('the grouping preference', () => {
-  it('reads back what was written', () => {
+  it('reads back what was written, defaulting to the timeline view', () => {
     const store = new Map<string, string>();
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => { store.set(key, value); },
     });
-    expect(readGroupMode()).toBe('workspace');
+    expect(readGroupMode()).toBe('timeline');
     writeGroupMode('flat');
     expect(store.get(LIST_VIEW_PREF_KEY)).toBe('flat');
     expect(readGroupMode()).toBe('flat');
@@ -66,18 +67,18 @@ describe('the grouping preference', () => {
     expect(readGroupMode()).toBe('workspace');
   });
 
-  it('resolves a corrupt value and a refused write to the grouped view', () => {
+  it('resolves a corrupt value and a refused write to the timeline view', () => {
     vi.stubGlobal('localStorage', {
       getItem: () => 'nonsense',
       setItem: () => { throw new Error('denied'); },
     });
-    expect(readGroupMode()).toBe('workspace');
+    expect(readGroupMode()).toBe('timeline');
     expect(() => { writeGroupMode('flat'); }).not.toThrow();
   });
 
   it('survives a browser with no storage at all', () => {
     vi.stubGlobal('localStorage', undefined);
-    expect(readGroupMode()).toBe('workspace');
+    expect(readGroupMode()).toBe('timeline');
     expect(() => { writeGroupMode('flat'); }).not.toThrow();
   });
 });

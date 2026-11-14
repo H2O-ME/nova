@@ -18,8 +18,9 @@ import { useEscapeToClose } from '../shell/use-escape.js';
 import { LIST_COPY, type GroupMode } from './list-view.js';
 import { MenuCard, MenuGroup, MenuOption } from '../shell/MenuCard.js';
 
-/** The two modes in menu order: the reference's `groupBy` rows. */
+/** The modes in menu order: the timeline view first (the reference's default). */
 const MODE_ROWS: readonly { mode: GroupMode; label: string }[] = [
+  { mode: 'timeline', label: LIST_COPY['groupBy.timeline'] },
   { mode: 'workspace', label: LIST_COPY['groupBy.workspace'] },
   { mode: 'flat', label: LIST_COPY['groupBy.flat'] },
 ];

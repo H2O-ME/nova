@@ -1,17 +1,22 @@
+/* The footer row (the reference's shape): identity block left, trailing
+   controls right, bottom-pinned with its own breathing room. */
 .triggerRow {
   flex: none;
   display: flex;
   align-items: center;
-  gap: var(--nova-space-8);
+  gap: var(--nova-space-4);
   width: calc(100% + 4px);
-  margin: var(--nova-space-4) -2px;
+  margin: var(--nova-space-8) -2px var(--nova-space-4);
 }
 
 .triggerRow.railRow {
   width: 36px;
+  justify-content: center;
   margin: var(--nova-space-8) 0 var(--nova-space-10);
 }
 
+/* The identity block: fallback avatar letter + product name, the reference's
+   ghost-button row (min-width 0 so a long name truncates, not overflows). */
 .trigger {
   flex: 1;
   min-width: 0;
@@ -19,21 +24,20 @@
   align-items: center;
   gap: var(--nova-space-8);
   width: auto;
-  height: 42px;
+  height: 36px;
   margin: 0;
-  padding: 0 var(--nova-space-10) 0 var(--nova-space-8);
+  padding: 0 var(--nova-space-8) 0 0;
   box-sizing: border-box;
   border: none;
-  /* The reference states `--nova-radius-lg` here, not a literal: this row must
-     round with every other 12px control if the scale ever moves. */
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   cursor: pointer;
   overflow: hidden;
   color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
+  font-weight: 600;
+  line-height: 20px;
 }
 
 .trigger:hover {
@@ -45,9 +49,8 @@
   outline-offset: -2px;
 }
 
-/* Rail trigger: the same 36x36 box AND the same 12px rounding as every other
-   rail control (the reference's `.trigger.rail` overrides only the geometry).
-   A lone circle here read as a different control family from the 12px squares
+/* Rail: the same 36x36 box AND the same rounding as every other rail control.
+   A lone circle here read as a different control family from the squares
    stacked above it — the rail is one grid. */
 .trigger.rail {
   flex: none;
@@ -57,19 +60,61 @@
   justify-content: center;
   gap: 0;
   padding: 0;
+  border-radius: var(--nova-radius-lg);
 }
 
-/* The trigger's own glyph: 16px, 18px in the rail (the reference's occupant
-   passes the size; our icons are CSS-sized). */
-.triggerIcon {
+/* The avatar: a 24px fallback-letter disc in the column's own wash. No image
+   exists to fill it — the letter is the point (the reference's AvatarFallback). */
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: var(--nova-space-6);
+  border-radius: 9999px;
+  background: var(--nova-interactive-active);
+  color: var(--nova-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.trigger.rail .avatar {
+  margin-left: 0;
+}
+
+/* The trailing gear: a bare 28px icon control, secondary ink, hover fill. */
+.gear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--nova-radius-sm);
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--nova-text-secondary);
+}
+
+.gear:hover {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+}
+
+.gear:focus-visible {
+  outline: var(--nova-focus-ring-width) solid var(--nova-focus-ring-color, var(--nova-color-accent));
+  outline-offset: -2px;
+}
+
+.gearIcon {
   flex: none;
   width: 16px;
   height: 16px;
-}
-
-.railRow .triggerIcon {
-  width: 18px;
-  height: 18px;
 }
 
 .triggerLabel {

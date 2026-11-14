@@ -138,6 +138,8 @@ export interface InputBarProps {
    * keeps the hero optically centered before the first run lands.
    */
   dock?: ReactNode;
+  /** The card's first row (the reference's `contextHeader` seat, hero only). */
+  header?: ReactNode;
   variant?: 'composer' | 'hero';
 }
 
@@ -161,6 +163,7 @@ export function InputBar({
   onPickedFileConsumed,
   placeholder,
   dock,
+  header,
   variant = 'composer',
 }: InputBarProps): JSX.Element {
   const [draft, setDraft] = useState('');
@@ -527,6 +530,8 @@ export function InputBar({
         {/* No `<input type=file>`: a browser `File` carries no real path, so it
             cannot become an `@` reference. The `+` menu's 引用本地文件 opens the
             HOST's picker (`list_directory` with `files: true`) instead. */}
+        {/* The card's first row (the reference's `contextHeader` seat). */}
+        {header !== undefined && <div className={css.cardHeader}>{header}</div>}
         {/* Staged references, above the draft: the harness's attachment RAIL
             (`ui-attachment/AttachmentRail`), whose cards are 240 × 64 and whose
             overflow pans sideways under edge arrows — several files never grow

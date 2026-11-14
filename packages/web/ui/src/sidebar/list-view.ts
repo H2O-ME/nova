@@ -13,10 +13,11 @@
 import type { SessionListItem } from '../types.js';
 
 /** How the list files its rows: the reference's `groupBy` axis. */
-export type GroupMode = 'workspace' | 'flat';
+export type GroupMode = 'timeline' | 'workspace' | 'flat';
 
 /** Words the browsing controls render (the reference's `workspace` keys). */
 export const LIST_COPY = {
+  'section.timeline': '任务列表',
   'section.workspaces': '工作区',
   'section.sessions': '会话',
   'search.sessions.aria': '搜索会话',
@@ -26,6 +27,7 @@ export const LIST_COPY = {
   'search.noMatches': '无匹配会话',
   'viewOptions.label': '视图选项',
   'groupBy.label': '分组方式',
+  'groupBy.timeline': '按时间',
   'groupBy.workspace': '按工作区',
   'groupBy.flat': '单列表',
   'empty.none': '暂无会话',
@@ -36,7 +38,9 @@ export const LIST_VIEW_PREF_KEY = 'nova.sidebar.listView';
 
 /** What the section header reads in each mode (the reference's own pair). */
 export function sectionLabel(mode: GroupMode): string {
-  return mode === 'flat' ? LIST_COPY['section.sessions'] : LIST_COPY['section.workspaces'];
+  if (mode === 'flat') return LIST_COPY['section.sessions'];
+  if (mode === 'timeline') return LIST_COPY['section.timeline'];
+  return LIST_COPY['section.workspaces'];
 }
 
 /**
@@ -55,17 +59,18 @@ export function filterItems(items: readonly SessionListItem[], query: string): S
 }
 
 /**
- * The grouping preference: a corrupt or absent value resolves to the grouped
+ * The grouping preference: a corrupt or absent value resolves to the timeline
  * view rather than throwing (a browser with storage denied must still render).
  * @returns the stored mode.
  */
 export function readGroupMode(): GroupMode {
   const store = durableStorage();
-  if (store === null) return 'workspace';
+  if (store === null) return 'timeline';
   try {
-    return store.getItem(LIST_VIEW_PREF_KEY) === 'flat' ? 'flat' : 'workspace';
+    const stored = store.getItem(LIST_VIEW_PREF_KEY);
+    return stored === 'flat' || stored === 'workspace' ? stored : 'timeline';
   } catch {
-    return 'workspace';
+    return 'timeline';
   }
 }
 

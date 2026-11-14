@@ -14,6 +14,7 @@ import { flowRows, turnStatus } from '../../flow.js';
 import { conversationPhase, awaitingFirstTurn } from '../../conversation/phase.js';
 import { ConversationRoot } from '../../conversation/ConversationRoot.js';
 import { HeroShell, WorkspaceRow } from '../../conversation/EmptyHero.js';
+import { RecentSessions } from '../../conversation/RecentSessions.js';
 import { SessionHeader } from '../../conversation/SessionHeader.js';
 import { ChatView } from '../../chat/ChatView.js';
 import { TraceView } from '../../trace/TraceView.js';
@@ -145,17 +146,16 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
           }
         />
       )}
-      hero={<HeroShell version={state.meta?.version} />}
-      heroWorkspaceRow={
-        <WorkspaceRow
-          workspace={view.workspace}
-          workspacePath={state.meta?.rootDir}
-          recentWorkspaces={props.recentWorkspaces}
-          onPickWorkspace={props.onPickWorkspace}
-          // No `list_directory` here: the dialog's own opening effect owns
-          // the first ask, so sending one here put TWO identical frames on
-          // the socket for one 打开文件夹 click and let the two answers race.
-          onBrowse={props.onBrowse}
+      hero={<HeroShell />}
+      heroRecent={
+        <RecentSessions
+          items={state.sessions}
+          currentFile={state.meta?.sessionFile}
+          // A bare `resume`: the kernel reads the log's workspace marker and
+          // re-roots the tools itself (`controller.switchSession` →
+          // `followWorkspaceOf`), so the front end never re-states a workspace
+          // it only knows as a display name.
+          onOpen={(file) => { send({ type: 'resume', file }); }}
         />
       }
       session={
@@ -235,12 +235,30 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
             filesTruncated={state.files?.truncated ?? false}
             filesPending={state.files?.pending ?? false}
             sendRejected={state.sendRejected}
-            // The `+` menu's 引用本地文件 opens the HOST's NATIVE file
+            // The `+` menu's 引用本地文件 opens the HOST's native file
             // dialog first; a host without one falls back to the in-page
             // browser (the `picked` consumer in the shell).
             onReferenceFile={props.onReferenceFile}
             pickedFile={props.pickedFile}
             onPickedFileConsumed={props.onPickedFileConsumed}
+            // The hero's workspace chip rides the card's FIRST row (the
+            // reference's `contextHeader` seat) instead of a row between the
+            // hero chrome and the card.
+            header={
+              phase === 'hero' ? (
+                <WorkspaceRow
+                  workspace={view.workspace}
+                  workspacePath={state.meta?.rootDir}
+                  recentWorkspaces={props.recentWorkspaces}
+                  onPickWorkspace={props.onPickWorkspace}
+                  // No `list_directory` here: the dialog's own opening effect
+                  // owns the first ask, so sending one here put TWO identical
+                  // frames on the socket for one 打开文件夹 click and let the
+                  // two answers race.
+                  onBrowse={props.onBrowse}
+                />
+              ) : undefined
+            }
             variant={phase === 'hero' ? 'hero' : 'composer'}
             /* The dock row rides the composer's own dock slot (inside
                the bar's root): the stats pills and the context meter share

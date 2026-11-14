@@ -15,6 +15,7 @@
 import type { SessionGroup } from '../session-groups.js';
 import type { SessionListItem } from '../types.js';
 import { LIST_COPY, filterItems } from './list-view.js';
+import { groupByTimeline } from './timeline.js';
 
 /** Ordinary session rows one workspace shows before its local overflow control
  * (ui-workspace `COLLAPSED_SESSION_LIMIT`). */
@@ -24,15 +25,18 @@ export const COLLAPSED_SESSION_LIMIT = 5;
 export const SIDEBAR_COPY = {
   /** The reference's `brand.localBuild` fallback seat: our product name. */
   brand: 'Nova',
-  'session.new': '新会话',
-  'session.new.label': '新建会话',
+  'session.new': '新建任务',
+  'session.new.label': '新建任务',
+  /** The New Session row's trailing hint (rendered only once the shell
+   * actually binds the shortcut — a hint for a dead key is a lie). */
+  'session.new.shortcut': 'Ctrl+N',
   /**
    * The plugin center's sidebar entry. The reference (`ui-plugin-manager`)
    * contributes the sidebar's Plugins panel under this word and gives it the
    * main column; Nova shipped the same page as a settings section, which put it
    * two clicks deep behind 设置.
    */
-  'plugins.entry': '插件',
+  'plugins.entry': '插件市场',
   'toggle.open': '打开侧边栏',
   /**
    * The NARROW-FRAME auto-collapse. Its own words because the two rails look
@@ -46,6 +50,8 @@ export const SIDEBAR_COPY = {
   'list.loading': '加载中…',
   'list.reload': '刷新列表',
   'settings.label': '设置',
+  /** The identity block's own words (it opens the same dialog as the gear). */
+  'settings.identity': 'Nova · 设置',
   'sessions.collapse': '收起',
   'sessions.expand': '展开其余 {n} 个会话',
   /* A session row's trailing stamp (the reference's `time.*` buckets, used by
@@ -149,6 +155,8 @@ export function autoExpandKey(
  */
 export type SidebarRow =
   | { kind: 'message'; key: string; text: string; note: boolean }
+  /** A timeline section heading (the `按时间` view): plain text, no fold. */
+  | { kind: 'heading'; key: string; text: string }
   | { kind: 'group'; key: string; group: SessionGroup; expanded: boolean; containsCurrent: boolean; hiddenCount: number; sessionsExpanded: boolean; children: SidebarRow[] }
   | { kind: 'session'; key: string; item: SessionListItem };
 
@@ -164,9 +172,14 @@ export type SidebarRow =
 export function sidebarRows(input: {
   items: readonly SessionListItem[] | null;
   groups: readonly SessionGroup[];
-  mode: 'flat' | 'workspace';
+  mode: 'timeline' | 'flat' | 'workspace';
   query: string;
   searching: boolean;
+  /**
+   * The clock the TIMELINE view buckets against (epoch ms). Unused by the
+   * other two modes; injected by the browser so the grouping stays pure.
+   */
+  now?: number;
   expansion: Readonly<Record<string, boolean>>;
   /**
    * Per-group reveal limits, keyed like `expansion`. Absent means the collapsed
@@ -198,6 +211,17 @@ export function sidebarRows(input: {
   if (mode === 'flat') {
     if (items.length === 0) return [{ kind: 'message', key: 'empty', text: SIDEBAR_COPY['empty.none'], note: false }];
     return items.map((item): SidebarRow => ({ kind: 'session', key: item.file, item }));
+  }
+  if (mode === 'timeline') {
+    // The reference's `taskTimeline` view: heading rows between flat runs of
+    // session rows, no folds, no overflow control — the list IS the order.
+    if (items.length === 0) return [{ kind: 'message', key: 'empty', text: SIDEBAR_COPY['empty.none'], note: false }];
+    const rows: SidebarRow[] = [];
+    for (const section of groupByTimeline(items, input.now ?? Date.now())) {
+      rows.push({ kind: 'heading', key: `heading:${section.key}`, text: section.label });
+      for (const item of section.items) rows.push({ kind: 'session', key: item.file, item });
+    }
+    return rows;
   }
   if (groups.length === 0) return [{ kind: 'message', key: 'empty', text: SIDEBAR_COPY['empty.none'], note: false }];
   return groups.map((group): SidebarRow => {

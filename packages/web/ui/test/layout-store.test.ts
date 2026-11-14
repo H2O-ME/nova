@@ -26,7 +26,7 @@ describe('sidebar preference', () => {
     expect(closed.sidebar).toBe(0);
     expect(sidebarCollapsed(closed)).toBe(true);
     expect(sidebarPreference(closed)).toBe(0);
-    expect(toggleSidebar(closed).sidebar).toBe(280);
+    expect(toggleSidebar(closed).sidebar).toBe(264);
   });
 
   it('a drag clamps into the contract range', () => {

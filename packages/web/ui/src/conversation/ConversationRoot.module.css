@@ -241,9 +241,10 @@
    for position:fixed descendants (pickers/modals), shrinking them. */
 .composerHero {
   align-self: center;
-  /* figma 75:8208 drew 12 between all three rows; the workspace row now sits
-     8 above the card (its margin-top restores 12 under the hero chrome). */
-  gap: var(--nova-space-8);
+  /* The reference's greeting→composer seam (mb-10/sm:mb-8 → 32px at the
+     desktop breakpoint); the workspace chip moved inside the card, so the
+     stack is hero chrome + card, one seam. */
+  gap: var(--nova-space-32);
   /* Foot inside the block. The hero now carries a second block (the recent
      list) below the card, so this gap is no longer "air under the composer" —
      it is the seam between START (card) and CONTINUE (list). */
@@ -254,28 +255,22 @@
   z-index: 1;
 }
 
-/* Hero: the block is TOP-ANCHORED in the column, not centred.
- *
- * Centring a three-piece empty state in a 700px-tall column left ~200px of air
- * above it and ~300px below — measured on the 2026-11-14 pass — which reads as
- * an unfinished page rather than as white space. The task block now starts at
- * a fixed share of the viewport height (16vh, floored and capped), so the
- * composition holds its optical anchor at 1280×720 and 1440×900 alike. */
+/* Hero: the block is TOP-ANCHORED in the column, at the reference's own
+ * share of the viewport height (29dvh, floored at 52px — the reference's
+ * `before: basis-[29dvh] min-h-[52px]` spacer). */
 .root[data-phase='hero'] .scrollBody {
   justify-content: flex-start;
   overflow-y: auto;
-  padding-top: clamp(var(--nova-space-32), 16vh, 180px);
+  padding-top: max(52px, 29dvh);
 }
 
-/* THE EMPTY COLUMN'S MEASURE (2026-11-14 design baseline).
+/* THE EMPTY COLUMN'S MEASURE (2026-11-14, aligned to the reference).
  *
  * The task card, the workspace chip and the recent-session list all sit in
- * 688px; the transcript keeps its wider 920px reading column. 952 made the
- * hero a stretched web form — two control clusters 600px apart inside one
- * card — and the empty state is the one screen with nothing to hide that
- * emptiness behind. 688 is a typing/reading measure, not a page width. */
+ * the reference's max-w-2xl (672px); the transcript keeps its wider 920px
+ * reading column. */
 .root[data-phase='hero'] {
-  --nova-hero-measure: 688px;
+  --nova-hero-measure: 672px;
 }
 
 /* The hero's recent-session shortlist, sitting under the card.

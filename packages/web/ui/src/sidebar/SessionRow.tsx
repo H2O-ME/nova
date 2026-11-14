@@ -13,6 +13,7 @@
 import { useRef } from 'react';
 import { FolderClosedIcon, FolderOpenIcon, TrashIcon, TriangleRightIcon } from '../icons.js';
 import type { SessionListItem } from '../types.js';
+import { workspaceLabel } from '../session-groups.js';
 import { sessionTitle } from './view.js';
 import { cx } from '../composer/cx.js';
 import { relativeStamp } from './relative-time.js';
@@ -72,11 +73,14 @@ export function ProjectRow({
   );
 }
 
-/** One 32px session row: status slot, title, and the right-hand stamp. */
+/** One session row: single-line in the tree views, two-line in the timeline
+ * view (title over `workspace · stamp`, the reference's task rows). */
 export function SessionRow({
   item,
   selected,
   now,
+  nested,
+  timeline,
   onOpen,
   onDelete,
 }: {
@@ -88,6 +92,16 @@ export function SessionRow({
    * row cannot read the clock itself and stay a pure function of its props.
    */
   now: number;
+  /**
+   * The row is a CHILD of the workspace above it (the grouped tree). Top-level
+   * runs — search hits and the flat list mode — are not.
+   */
+  nested?: boolean;
+  /**
+   * The timeline view's two-line shape: title line over a meta line of the
+   * session's workspace (when the log recorded one) and its stamp.
+   */
+  timeline?: boolean;
   onOpen: () => void;
   /** Ask to delete this session log (the shell owns the confirmation). */
   onDelete: () => void;
@@ -95,9 +109,15 @@ export function SessionRow({
   const title = sessionTitle(item);
   const titleRef = useRef<HTMLSpanElement>(null);
   const marquee = useTitleMarquee(titleRef);
+  const workspace = item.workspace === undefined ? undefined : workspaceLabel(item.workspace);
   return (
     <div
-      className={cx(css.sessionRow, selected && css.selected)}
+      className={cx(
+        css.sessionRow,
+        selected && css.selected,
+        nested === true && css.nested,
+        timeline === true && css.timelineRow,
+      )}
       role="treeitem"
       aria-selected={selected}
       tabIndex={0}
@@ -116,11 +136,25 @@ export function SessionRow({
           renders it, and this app's `sessions` frame carries no live state for
           a dot to read (no running/pending field per session). */}
       <span className={css.slot} aria-hidden="true" />
-      {/* The row's clipping lane. Its `data-scrolled` / `data-clipped` hooks are
-          what the sheet's fade masks read while the marquee travels (the
-          reference's `placeTitle`). */}
-      <span ref={titleRef} className={css.title}>{title}</span>
-      <span className={css.time}>{relativeStamp(item.mtime, now)}</span>
+      {timeline === true ? (
+        // The two-line body: the title keeps the marquee lane's hooks, the meta
+        // line states where the session was rooted and how stale it is.
+        <span className={css.timelineBody}>
+          <span ref={titleRef} className={css.title}>{title}</span>
+          <span className={css.meta}>
+            {workspace !== undefined && <span className={css.metaWorkspace}>{workspace}</span>}
+            <span className={css.metaTime}>{relativeStamp(item.mtime, now)}</span>
+          </span>
+        </span>
+      ) : (
+        <>
+          {/* The row's clipping lane. Its `data-scrolled` / `data-clipped` hooks are
+              what the sheet's fade masks read while the marquee travels (the
+              reference's `placeTitle`). */}
+          <span ref={titleRef} className={css.title}>{title}</span>
+          <span className={css.time}>{relativeStamp(item.mtime, now)}</span>
+        </>
+      )}
       {/* Hover swaps the stamp for the row's actions, the reference's own rule
           (its `.rowActions` takes the `.time` cell). Always in the DOM so a
           keyboard can reach it — the sheet is what shows it on hover/focus. */}

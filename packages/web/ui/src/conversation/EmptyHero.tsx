@@ -18,13 +18,9 @@
  *    is what left it misaligned against the card.
  */
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import { Menu, type MenuItem } from '../shell/Menu.js';
 import { ChevronDownIcon, FolderOpenIcon, PlusIcon } from '../icons.js';
 import css from './HeroShell.module.css';
-
-/** Native viewBox of the hero mark (square: the orbit needs the height). */
-const MARK_BOX = 32;
 
 /** The menu row that opens the directory browser (never a real path). */
 export const ADD_WORKSPACE = '::add-workspace';
@@ -33,21 +29,23 @@ export const ADD_WORKSPACE = '::add-workspace';
 const GREETING_HOURS = [5, 9, 12, 14, 18, 23];
 
 /**
- * The headline's time-greeted sentence, in six bands over a day. The empty
- * column's one line changes with the clock the way the reference's does, and
- * the boundaries are hour marks so a plain `setTimeout` can park the tier
- * until the next one — a hero left open all day never goes stale.
+ * The headline's time-greeted sentence, in six bands over a day. The bands and
+ * boundaries are the operator's reference's own (`getChatEmptyGreetingMessageId`,
+ * `[5, 9, 12, 14, 18, 23]`), and so are the words — the greeting is the one
+ * sentence a reader compares side by side, so it reads the same. The boundaries
+ * are hour marks so a plain `setTimeout` can park the tier until the next one —
+ * a hero left open all day never goes stale.
  * @param now - the moment to greet at.
  * @returns the headline sentence.
  */
 export function heroGreeting(now: Date): string {
   const hour = now.getHours();
-  if (hour < 5 || hour >= 23) return '夜深了，想做点什么？';
-  if (hour < 9) return '早上好，想做点什么？';
-  if (hour < 12) return '上午好，想做点什么？';
-  if (hour < 14) return '中午好，想做点什么？';
-  if (hour < 18) return '下午好，想做点什么？';
-  return '晚上好，想做点什么？';
+  if (hour < 5 || hour >= 23) return '夜深啦，别忘了照顾好自己哦';
+  if (hour < 9) return '早上好呀，新的一天开始啦';
+  if (hour < 12) return '上午好呀，有什么想让我帮忙的吗';
+  if (hour < 14) return '中午好呀，要不要先休息一下';
+  if (hour < 18) return '下午好呀，接下来交给我吧';
+  return '晚上好呀，今天辛苦啦';
 }
 
 /**
@@ -102,35 +100,38 @@ export function workspaceMenuItems(
 }
 
 /**
- * The hero mark: a four-point star inside a tilted orbit ring — a nova.
- * Decorative — hidden from the accessibility tree; the headline beside it
- * carries the words.
- * @returns the mark svg element.
+ * The hero mark: a four-point star inside a tilted orbit ring — a nova, the
+ * same artwork the 34px headline mark carried, promoted to the empty state's
+ * background line art (the reference's own move: its brand glyph is a large
+ * faint outline centred behind the greeting, not a badge in the line).
+ *
+ * Decorative — hidden from the accessibility tree and from hit-testing; the
+ * headline above it carries the words.
+ * @returns the backdrop svg element.
  */
-function HeroMark(): JSX.Element {
+export function HeroBackdrop(): JSX.Element {
   return (
     <svg
-      className={css.fish}
-      width={34}
-      height={34}
-      viewBox={`0 0 ${MARK_BOX} ${MARK_BOX}`}
+      className={css.backdrop}
+      width={400}
+      height={320}
+      viewBox="0 0 400 320"
       fill="none"
       aria-hidden="true"
     >
-      <ellipse
-        cx="16"
-        cy="16"
-        rx="14.2"
-        ry="6.4"
-        transform="rotate(-32 16 16)"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        opacity="0.55"
-      />
-      <path
-        d="M16 3.4c1.5 6.2 2.6 8.6 5.1 10.6 2.1 1.7 5.1 2.3 9.5 2 -4.4 1.3-7.2 2.4-9.2 4.2 -2.1 1.9-3.4 4.4-4.6 10.4 -1.2-6-2.5-8.5-4.6-10.4 -2-1.8-4.8-2.9-9.2-4.2 4.4-.3 7.4-.9 9.5-2.6 2.5-2 3.5-4.4 5.1-10z"
-        fill="currentColor"
-      />
+      <g stroke="currentColor" fill="none" strokeWidth="1.4">
+        {/* The orbit ring and the star, both re-centred on (200, 160) and
+            scaled from the 32px mark's own geometry (32-box × 9 ≈ 288px star
+            span inside the 400px box). */}
+        <g transform="translate(200 160) scale(9)">
+          <ellipse rx="14.2" ry="6.4" transform="rotate(-32)" strokeWidth="0.17" />
+          <path
+            transform="translate(-16 -16)"
+            d="M16 3.4c1.5 6.2 2.6 8.6 5.1 10.6 2.1 1.7 5.1 2.3 9.5 2 -4.4 1.3-7.2 2.4-9.2 4.2 -2.1 1.9-3.4 4.4-4.6 10.4 -1.2-6-2.5-8.5-4.6-10.4 -2-1.8-4.8-2.9-9.2-4.2 4.4-.3 7.4-.9 9.5-2.6 2.5-2 3.5-4.4 5.1-10z"
+            strokeWidth="0.17"
+          />
+        </g>
+      </g>
     </svg>
   );
 }
@@ -140,33 +141,28 @@ function FolderGlyph(): JSX.Element {
   return <FolderOpenIcon className={css.folder} />;
 }
 
-export interface HeroShellProps {
-  /** The hero mark; the default nova when the shell supplies none. */
-  mark?: ReactNode;
-}
-
-/** The headline's fit band: the reference's clamp, on our own 28px baseline. */
-const TITLE_SIZE_MAX = 28;
+/** The headline's fit band: the reference's own clamp (30px baseline, 20px floor). */
+const TITLE_SIZE_MAX = 30;
 const TITLE_SIZE_MIN = 20;
 
 /**
- * Render the hero chrome (headline only; no composer, and — unlike an earlier
- * revision — no workspace chip: the row is a sibling of this element, which is
- * what puts the chip on the composer hero's own axis).
+ * Render the hero chrome (the greeting line only; the brand mark is
+ * `HeroBackdrop`, mounted by `ConversationRoot` on the full-height hero
+ * region — this element is a 34px band and cannot host scenery, the lesson
+ * two aurora attempts recorded).
  *
  * The headline is the clock-greeted sentence, fitted to ONE line: squeezed, the
- * type shrinks between 28 and 20px (a hidden probe measured against the
+ * type shrinks between 30 and 20px (a hidden probe measured against the
  * headline's live width, the size written straight to a CSS variable) before
- * the mark falls to its own line — the wrap below the minimum stays the
- * overflow-driven degradation it already was.
+ * it wraps — the wrap below the minimum stays the overflow-driven degradation
+ * it already was.
  *
  * The running version is NOT here. It rode the headline as a superscript badge,
  * and the version is not what an empty column is asking the reader to think
  * about; the settings nav's foot states it instead (`SettingsPanel`).
- * @param props - see {@link HeroShellProps}.
  * @returns the centered hero element tree.
  */
-export function HeroShell({ mark }: HeroShellProps): JSX.Element {
+export function HeroShell(): JSX.Element {
   const [greeting, setGreeting] = useState(() => heroGreeting(new Date()));
   // The tier re-resolves at the next boundary, not on a poll: one timer per
   // mount, rescheduled after each turn-over.
@@ -186,9 +182,9 @@ export function HeroShell({ mark }: HeroShellProps): JSX.Element {
   // headline because its width moves with the column, the probe because its
   // width moves with the sentence (a new greeting, a swapped webfont). The
   // probe's own size is fixed, so writing the headline's size variable cannot
-  // loop the observation.
+  // loop the observation. No mark rides the line any more — the fit budget is
+  // the column's own width.
   const headlineRef = useRef<HTMLDivElement | null>(null);
-  const markRef = useRef<HTMLSpanElement | null>(null);
   const probeRef = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
     const headline = headlineRef.current;
@@ -197,13 +193,7 @@ export function HeroShell({ mark }: HeroShellProps): JSX.Element {
     const recompute = (): void => {
       const natural = probe.getBoundingClientRect().width;
       if (natural <= 0 || !Number.isFinite(natural)) return;
-      // The budget always assumes the mark rides the same line. Sizing against
-      // a mark-free line would let the type grow until the mark wraps and
-      // shrink again once it has wrapped — an oscillation the conservative
-      // budget cannot fall into. Below the minimum the existing wrap degrades.
-      const markBox = markRef.current?.getBoundingClientRect().width ?? 0;
-      const gap = Number.parseFloat(getComputedStyle(headline).columnGap) || 0;
-      const available = headline.clientWidth - markBox - gap;
+      const available = headline.clientWidth;
       const size = Math.max(
         TITLE_SIZE_MIN,
         Math.min(TITLE_SIZE_MAX, Math.floor((TITLE_SIZE_MAX * available) / natural)),
@@ -233,10 +223,10 @@ export function HeroShell({ mark }: HeroShellProps): JSX.Element {
        * cannot provide that by construction: the workspace chip and the composer
        * card live outside it.
        *
-       * The wash + grid are therefore rendered by `ConversationRoot`, which owns
-       * the full-height hero column (`composerSeat`), as an `AuroraBackground`
-       * inside that seat. Keeping a second copy in this 34px box would be a
-       * duplicate that can never be seen.
+       * The backdrop mark is therefore rendered by `ConversationRoot`, which
+       * owns the full-height hero column, as a `HeroBackdrop` inside that seat.
+       * Keeping a copy in this 34px box would be a duplicate that can never be
+       * seen.
        */}
       {/* The fit probe: the sentence at its baseline size, unpainted and
           unhit-testable. It carries the SAME text as the headline — that is
@@ -246,10 +236,6 @@ export function HeroShell({ mark }: HeroShellProps): JSX.Element {
       </span>
       <div className={css.stack}>
         <div className={css.headline} ref={headlineRef}>
-          {/* figma 34:10412: mark 34 leading the headline, gap 10. */}
-          <span className={css.fishHitbox} ref={markRef}>
-            {mark ?? <HeroMark />}
-          </span>
           <span className={css.titleGroup}>
             <span>{greeting}</span>
           </span>

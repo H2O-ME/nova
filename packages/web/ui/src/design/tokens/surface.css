@@ -33,8 +33,8 @@
    * the result was 「卡通」. Neutral paper plus one accent is the design
    * system's own rule (§2 中性优先), and the reference's surfaces are neutral
    * too. The accent still supplies every bit of colour the product needs. */
-  --nova-surface-sunken: rgb(243, 243, 245);
-  --nova-surface-base: rgb(249, 249, 250);
+  --nova-surface-sunken: rgb(240, 240, 240);
+  --nova-surface-base: rgb(248, 248, 248);
   --nova-surface-raised: rgb(255, 255, 255);
   --nova-surface-panel: rgb(238, 238, 240);
   --nova-surface-overlay: rgb(228, 228, 231);
@@ -43,16 +43,26 @@
    * separation, so a strong hairline on top of it would read as a box drawn on
    * a box. Where a border still earns its place (inputs, capsules) a component
    * asks for `strong`; `subtle` is the ambient whisper. */
-  --nova-border-subtle: rgba(16, 24, 40, 0.05);
-  --nova-border-strong: rgba(16, 24, 40, 0.1);
+  --nova-border-subtle: rgba(13, 13, 13, 0.05);
+  --nova-border-strong: rgba(13, 13, 13, 0.1);
 
   /* Interactive fills: translucent so they composite over whichever plane they
    * sit on. Slightly stronger than before, because a hover that is too faint to
    * see on a deeper floor reads as a broken control rather than a quiet one. */
-  --nova-interactive-hover: rgba(24, 24, 27, 0.055);
-  --nova-interactive-hover-strong: rgba(24, 24, 27, 0.12);
-  --nova-interactive-active: rgba(24, 24, 27, 0.09);
+  --nova-interactive-hover: rgba(13, 13, 13, 0.05);
+  --nova-interactive-hover-strong: rgba(13, 13, 13, 0.12);
+  --nova-interactive-active: rgba(13, 13, 13, 0.09);
   --nova-interactive-hover-danger: rgba(236, 19, 19, 0.06);
+
+  /* The composer card's own shell (2026-11-14, aligned to the operator's
+   * reference): a white card on the #f8f8f8 page, a 0.5px neutral border that
+   * deepens on hover and focus, and one soft two-layer shadow. Dark keeps its
+   * own set below (no shadow there — the reference does the same). */
+  --nova-surface-input: rgb(255, 255, 255);
+  --nova-input-border: rgba(13, 13, 13, 0.1);
+  --nova-input-border-hover: rgba(13, 13, 13, 0.15);
+  --nova-input-border-focused: rgba(13, 13, 13, 0.15);
+  --nova-elevation-composer: 0 1px 3px rgb(0 0 0 / 4%), 0 6px 18px rgb(0 0 0 / 4%);
 
   /* Named floors for one-off roles that still deserve a word.
      The code floor is the reference's own (`neutral-bluish-50`,
@@ -104,6 +114,14 @@ body[data-nova-dark] {
   --nova-interactive-hover-strong: rgba(255, 255, 255, 0.2);
   --nova-interactive-active: rgba(255, 255, 255, 0.12);
   --nova-interactive-hover-danger: rgba(242, 90, 90, 0.15);
+
+  /* Composer shell, dark: same slots, no shadow (the reference's dark theme
+   * drops it too — a soft shadow is invisible on this ground). */
+  --nova-surface-input: rgb(38, 42, 49);
+  --nova-input-border: rgba(255, 255, 255, 0.12);
+  --nova-input-border-hover: rgba(255, 255, 255, 0.2);
+  --nova-input-border-focused: rgba(255, 255, 255, 0.2);
+  --nova-elevation-composer: 0 0 rgb(0 0 0 / 0%);
 
   --nova-surface-menu: rgba(42, 44, 50, 0.62);
   --nova-surface-code: rgb(17, 18, 22);

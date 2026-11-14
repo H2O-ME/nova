@@ -91,10 +91,11 @@ export function SessionBrowser({
    * The clock the rows date themselves against. Read once per render rather
    * than per row: two rows a frame apart would otherwise disagree about what
    * "now" is, and the reference reads it the same way (`WorkspaceBrowser`).
-   * It re-reads on every list change, which is also every moment a stamp can
-   * move from "5分钟" to "6分钟".
+   * Quantized to the minute so the timeline grouping's memo (which takes `now`
+   * as a dependency) cannot re-derive every render for a stamp that can only
+   * move once a minute anyway.
    */
-  const now = Date.now();
+  const now = Math.floor(Date.now() / 60_000) * 60_000;
 
   const pickMode = (next: GroupMode): void => {
     setMode(next);
@@ -115,20 +116,21 @@ export function SessionBrowser({
     expansion,
     sessionLimits,
     currentFile,
-  }), [items, groups, mode, query, searching, expansion, sessionLimits, currentFile]);
+    now,
+  }), [items, groups, mode, query, searching, expansion, sessionLimits, currentFile, now]);
   const rowKeys = useMemo(() => rowKeysOf(rowTree), [rowTree]);
 
   /**
    * Whether the rows are a flat run rather than a grouped tree.
    *
-   * The SAME two conditions `sidebarRows` branches on (search hits, or the
-   * single-list mode), named once here so the markup's row rhythm cannot
-   * disagree with the shape the tree actually returned.
+   * The SAME conditions `sidebarRows` branches on (search hits, the timeline
+   * view, or the single-list mode), named once here so the markup's row rhythm
+   * cannot disagree with the shape the tree actually returned.
    */
-  const flatRows = searching || mode === 'flat';
+  const flatRows = searching || mode !== 'workspace';
 
   /** One row's markup. Groups render their children, so this recurses. */
-  const renderRow = (row: SidebarRow): JSX.Element => {
+  const renderRow = (row: SidebarRow, nested = false): JSX.Element => {
     if (row.kind === 'message') {
       // `data-row-key` on a state row too: `rowKeysOf` hands the animation every
       // key in this tree, and `AnimatedRows` diffs DOM order of `data-row-key`.
@@ -154,6 +156,13 @@ export function SessionBrowser({
         </div>
       );
     }
+    if (row.kind === 'heading') {
+      return (
+        <div key={row.key} className={css.groupHeading} data-row-key={row.key}>
+          {row.text}
+        </div>
+      );
+    }
     if (row.kind === 'session') {
       return (
         <SessionRow
@@ -161,6 +170,8 @@ export function SessionBrowser({
           item={row.item}
           selected={row.item.file === currentFile}
           now={now}
+          nested={nested}
+          timeline={mode === 'timeline'}
           onOpen={() => { onOpen(row.item.file); }}
           onDelete={() => { setConfirming(row.item); }}
         />
@@ -207,7 +218,7 @@ export function SessionBrowser({
                   {child.text}
                 </button>
               )
-            : renderRow(child)))
+            : renderRow(child, true)))
         )}
       </div>
     );
@@ -253,7 +264,7 @@ export function SessionBrowser({
               // across the panel from whatever they replaced.
               resetKey={`${mode}|${searching ? query : ''}|${Object.entries(sessionLimits).map(([k, v]) => `${k}:${String(v)}`).join(',')}`}
             >
-              {rowTree.map(renderRow)}
+              {rowTree.map((row) => renderRow(row))}
             </AnimatedRows>
             <span className={css.fade} />
           </div>

@@ -48,11 +48,18 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 --nova-space-4    4px
 --nova-space-6    6px
 --nova-space-8    8px
+--nova-space-10   10px    ← 非 4 倍数，见下
 --nova-space-12   12px
+--nova-space-14   14px    ← 非 4 倍数，见下
 --nova-space-16   16px
 --nova-space-24   24px
 --nova-space-32   32px
 ```
+
+> **为什么阶梯上有两个非 4 倍数**：`space-10` / `space-14` 是**实测承认**，不是随手放宽。
+> 加入时全仓已有 63 处用 10px、39 处用 14px，而相邻台阶是 8 和 12——阶梯上够不到这两个值，
+> 作者只能在「改视觉」和「写字面量」之间选，结果 102 次都选了字面量，正是阶梯要消灭的那件事。
+> 一个**有名字的固定值**仍然是设计决策，写成字面量才不是。
 
 行高：
 
@@ -62,26 +69,68 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 --nova-row-lg    32px
 ```
 
-### 2.2 Radius（小圆角）
+#### 2.1.1 对话节奏阶梯（transcript rhythm）
+
+对话流**不用** `space-16` 当默认间距。轮内是一条思路的三个部分（思考行 → 回答 → 用量尾行），
+用 16px 会把它们撕成三个无关区块。阶梯按**语义层级**取值，不按视觉松紧：
+
+```text
+6px     轮内默认（思考行、连续行）           ← --nova-chat-flow-gap 的兜底值
+8px     过程块折叠后紧接回答
+12px    回答跟在过程摘要之后（不同类别，仍属同一轮）
+16px    轮次边界：user 行，且只有它
+```
+
+> **为什么默认是 6 而不是 16**：16px 会让「一个 turn」读起来像三个并列的记录。
+> 段落感必须由**轮次边界**承担，而不是由每一行平均分摊。
+> 这与 §2.6「去框容器」是同一条原则的另一面：分隔靠邻近性，不靠墨色。
+
+> **守卫**：`palette-guard.test.ts` 的 `the transcript rhythm stays inside the reference ladder`
+> 钉住兜底值必须是 6、且 user 行必须是 16。改成 16 兜底会被截获。
+
+#### 2.1.2 输入卡尺寸稳定（composer floor）
+
+hero（首页空态）与 dock（会话内）两个 seat 的文本底线**必须是同一个数**（当前 44px）。
+
+> **为什么**：两处曾分别是 68 和 36。发送第一条消息时卡片从 hero 重定位到 dock，
+> 一帧内缩掉 32px——这就是操作者报的「尺寸忽大忽小」。
+> hero 的落地态存在感应由 wrapper 的外边距提供，**不能**用更高的文本底线去买，
+> 否则重定位必然改变卡片盒子大小。
+> **守卫**：`the composer keeps ONE text floor across the hero and docked seats` 禁止出现
+> 第二个 `min-height` 或任何 `.hero .input` 覆盖。
+
+### 2.2 Radius（按角色分档，不按「小就是安静」）
 
 ```text
 --nova-radius-sm     4px
 --nova-radius-md     6px
 --nova-radius-lg     8px
+--nova-radius-xl     14px     ← 独立表面：输入卡、设置弹窗
 --nova-radius-full   9999px   ← 只给天然是圆形的形状（状态点、头像），不是做胶囊的途径
 ```
 
-**比移植来的 `--dsw-radius-*`（4/8/12/16/20/28）刻意小一档。** 28px 行上放 12–16px 圆角就读成卡片，而卡片套卡片正是本系统要终止的视觉层级。
+**~~比移植来的阶梯刻意小一档~~ → 2026-10-18 修正。** 原先这条写的是「28px 行上放 12–16px 圆角就读成卡片，所以三档就够」。**判断错在落点**：全线压小之后，每个密集表面（供应商行、编辑器分组、添加按钮）只能改用**边框**来分隔自己，而一页 8px 圆角的带框盒子不是「安静」，是一张表格般的框套框。
 
-### 2.3 Elevation（最多三级）
+现在的规则是**按角色分**，不是「小即是好」：
+
+- **列表里重复的行**用 `sm`/`md`，永不 `xl`；
+- **独立站立在页面上的一两个表面**（输入卡、设置弹窗）用 `xl`，它们同时换用无描边的 `--nova-elevation-float`。
+
+`xl` 配带描边的 `elevation-*` 是无效组合：0.5px 描边会沿着 14px 曲线拉出一道可见的接缝，把大圆角的意义抹掉。这条由 `ui/test/palette-guard.test.ts` 的 `standalone surfaces pair the large corner with the stroke-free float` 钉住。
+
+### 2.3 Elevation（三级 + 一个浮起档）
 
 ```text
 --nova-shadow-1 / 2 / 3
+--nova-elevation-stroke / panel / prominent / soft   ← 带 0.5px 发丝描边
+--nova-elevation-float                               ← 无描边，大范围柔光
 ```
 
-**停靠列（右侧 Inspector）不画阴影**——它是一页的列，不是浮起来的卡。这条 `ui/test/style-guard.test.ts` 已钉住，保留。需要第四级说明是层级设计有问题，不是高度不够。
+**停靠列（右侧 Inspector）不画阴影**——它是一页的列，不是浮起来的卡。这条 `ui/test/style-guard.test.ts` 已钉住，保留。需要第四级阴影说明是层级设计有问题，不是高度不够。
 
-另有 `elevation` 复合词族 `--nova-elevation-stroke / panel / prominent / soft`：0.5px 发丝描边（画在 box-shadow 里，不占布局）+ 一到两层极淡柔光，是浮层/面板/面型按钮的既有配方，从移植层原样继承（`--nova-elevation-stroke-color` 可被组件重绑，因此复合值逐元素声明而非 body 继承——机制注释见 `design/tokens/shadow.css`）。
+`--nova-elevation-stroke / panel / prominent / soft` 是 0.5px 发丝描边（画在 box-shadow 里，不占布局）+ 一到两层极淡柔光，浮层/面板/面型按钮的既有配方（`--nova-elevation-stroke-color` 可被组件重绑，因此复合值逐元素声明而非 body 继承——机制注释见 `design/tokens/shadow.css`）。
+
+**`--nova-elevation-float` 是给「读起来是浮起来、不是被描出来」的表面用的**（输入卡、设置弹窗）。两处与上面几档不同，都是刻意的：**不含发丝描边**（大圆角下描边就是接缝），**用真实的柔光衰减**（24→48px 模糊、低透明度）。暗色下透明度约翻倍并改用纯黑——同样的 alpha 在白纸上是「轻轻浮起」，在 `rgb(24,24,26)` 上是「根本没有阴影」。
 
 ### 2.4 Typography
 
@@ -109,6 +158,8 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 
 移植层记了一条必须继承的教训：`--dsw-alias-brand-primary` 在亮色下解析为**墨黑**，所有蓝色强调（发送键、选中页签、运行态、光标）都得改走 state-business 语义位。把强调色命名为 `--nova-color-accent` 并**只指向一次**，这个坑就从每个调用点上消失了——一个看起来像品牌色、实际是前景墨黑的 token，本身就是缺陷源。
 
+**选中态必须与 hover 态可区分**（2026-10-18 补）。侧栏会话行原先两者共用同一个 `--nova-interactive-hover` 洗色，于是「我正在读的会话」和「指针恰好停住的那一行」是同一批像素：指针停在哪里都像一个第二选中项，而真正的当前会话没有任何标记。现在选中态走 `--nova-color-accent-soft` 填充 + 前缘 2px 强调色竖条，**这是侧栏里唯一出现强调色的地方**——正因为唯一，它才读得出「你在这里」。hover 保持中性洗色，天生低一档。
+
 ### 2.6 Surface / Border / Text
 
 ```text
@@ -117,18 +168,41 @@ Nova WebUI 的视觉问题不是"不好看"，而是**没有单一决策来源**
 --nova-text-primary / secondary / muted / faint / disabled / inverse
 ```
 
-**已记名的事实**：亮色下 `bg-layer-1/2/3` 全是同一个近白色，所以 `sunken` / `base` / `raised` 在亮色里**是退化的**——亮色靠描边而不是填充分隔平面（这恰好符合 Quiet / Neutral 方向）；暗色下才真有阶梯。组件**不得靠填充差异承载语义**。调色板换代（2026-10-11）后 `--nova-surface-*` 直接持值，并新增第五档 `--nova-surface-panel`：内容面板自持的底（侧栏行、模块面板），亮暗两套都有真实差异、16 处既有消费背书——它是收敛既有语义，不是凑数。文本色同理从三档扩到五档（`faint` 为更淡的注释文本、`disabled` 为禁用态），各有 40+ / 12 次既有消费背书。
+**~~已记名的事实~~ 已作废（2026-10-18 视觉重做）**：原先这里记的是「亮色下 `sunken`/`base`/`raised` 全是同一个近白色，所以三级平面在亮色里是退化的，靠描边而非填充分隔平面」。**这个判断看过成品后被推翻**——侧栏与正文渲染成同一张白纸，唯一的平面提示是一条 12% 透明度的 0.5px 发丝线；那不是 Quiet，是没做完。更坏的后果是每个组件为了自我区分各自去发明局部背景，正是 token 层要阻止的漂移。
+
+现在的规则：
+
+1. **平面阶梯在两套调色板里都单调**：`sunken < base < raised`（暗色同理，且 `sunken` 是**最暗**的一档——它原先比 `base` 还亮，名字和像素相反，是暗色读起来发平的单点根因）。档间约 3–5 个亮度点：够看见边缘，又不足以让面板读成卡片。
+2. **平面是冷灰，不是暖灰**：中性色坐在 215 色相附近、饱和度只有几个点。**方向是蓝白，不是纸黄**——2026-10-18 有一版把中性色调暖（「纸」与「背光里的纸」），被操作者否决并要求改回。冷灰让白页读起来是白的而不是奶油色，同时平面之间仍有真实落差。阈值刻意压在人不会称之为「彩色」的下面——**强调色仍是全站唯一饱和的东西**。
+3. **对比度有下限**：`secondary` / `muted` 承载 12–13px 描述文本，对自身平面必须 ≥ 4.5:1（旧亮色 `muted` 只有 **3.58:1**，在白底上看着完全正常）；`faint` 是注释档，守 ≥ 3:1 的大字门槛，否则它会塌进 `muted` 丢掉这一台阶。
+
+这三条由 `ui/test/palette-guard.test.ts` 作为**关系型不变量**钉住（只断顺序、比值、互异性，不断具体色值——刻意重调调色板不该让它变红，只有顺序反转或跌破门槛才会）。
+
+调色板换代（2026-10-11）后 `--nova-surface-*` 直接持值，并新增第五档 `--nova-surface-panel`：内容面板自持的底（侧栏行、模块面板），亮暗两套都有真实差异、16 处既有消费背书——它是收敛既有语义，不是凑数。文本色同理从三档扩到五档（`faint` 为更淡的注释文本、`disabled` 为禁用态），各有 40+ / 12 次既有消费背书。
 
 ### 2.7 Interactive（交互填充）
 
 ```text
 --nova-interactive-hover           普通悬停洗色
---nova-interactive-hover-strong    强调悬停（带色温的洗色）
+--nova-interactive-hover-strong    强调悬停（更重的洗色）
 --nova-interactive-active          按下 / 选中
 --nova-interactive-hover-danger    危险操作的悬停洗色
 ```
 
 全部是半透明值，叠加在所在 surface 上合成。四档均有移植层既有消费背书（99 / 13 / 13 / 3 次），从 dsw 的 `interactive-bg-*` 收敛而来。
+
+### 2.8 ZCode 桌面端对齐（2026-11-14 拍板：完全一致优先）
+
+操作者拍板「首页与 ZCode 桌面端代码层完全一致」，与 §2 开头「避免无意义阴影 / 小圆角」的旧表述冲突处以**完全一致优先**。参照值来自 ZCode UI 学习克隆仓（只读）的 `styles.css`（zai-light）与其首页实现，全部经 `--nova-*` token 落地：
+
+1. **平面**：亮色 `base` = `rgb(248,248,248)`、`sunken`（侧栏）= `rgb(240,240,240)`、`raised`/输入卡 = 白；中性族色相从 16,24,40 移到 13,13,13。
+2. **边框**：`subtle` = 5% / `strong` = 10% 的黑；composer 卡专用 `--nova-input-border`（10%）/ `hover`·`focused`（15%）。
+3. **交互填充**：`hover` = 5% 黑（对齐 zai-light 的 `hover`/`selected`/`surface-hover` 同值档）。
+4. **Composer 卡配方**（`palette-guard` 钉住）：16px 圆角（`--nova-radius-lg`）+ 0.5px token 边框 + 白卡底 + `--nova-elevation-composer`（`0 1px 3px rgb(0 0 0/4%), 0 6px 18px rgb(0 0 0/4%)`；暗色为 0 阴影、随共享槽位联动）。**这一档是「避免无意义阴影」的记名例外**——阴影来自参照原样，不是自创装饰。
+5. **Hero 几何**：顶锚 `max(52px, 29dvh)`、内容列 672px（参照 max-w-2xl）、问候语 30px 基线 / 20px 下限（参照同带）、文案逐字取参照六档；品牌线框（`HeroBackdrop`）为背景静态装饰，不抄 Z 字形（品牌是 Nova）。
+6. **侧栏**：默认宽 264px；默认视图「按时间」（今天/昨天/N 天前/本周/上周/本月/更早，日历日语义）；条目两行化（标题 / 工作区·相对时间）。
+
+**有意偏离（记名，勿当 bug 修回）**：不做建议词条 chips（无服务端 scenes 链路，本期不立项）；不做「自动化」导航项与 composer 的 agent 下拉 / git 分支 / worktree / 麦克风（Nova 无对应功能，造出来是死 UI）；深色主题不逐值抄 ZCode dark（只随共享槽位联动，待拍板）。
 
 ## 3. Token 命名规范
 
@@ -193,6 +267,20 @@ transform
 | **Sidebar** | 一次性展开/收起 | 持续跟随 |
 | **Modal** | 进入/退出 | —— |
 | **Tool** | 状态变化的极短过渡 | 每次输出增长都 animate |
+| **消息落地** | `nova-fade-up`（挂 `.flowItem`，仅 mount 时一次） | 按 token 增长重播；对已挂载行重跑动画 |
+| **节奏变化** | `margin-top` 过渡（`--nova-dur-fast`），折叠/落定时的重排 | 无过渡的瞬跳（读作渲染故障） |
+
+#### 4.3.1 「有 60 处 animation 却感觉完全静止」的教训
+
+本仓曾有 60+ 处 animation 引用，但**每一处都属于折叠体**（展开 turn、揭示 reasoning）。
+消息真正落地时一个都没有——所以一条正在运行的对话读起来是静止的。
+
+> **动效覆盖率不能按引用数衡量，要按「读者能看见的状态变化种类」衡量。**
+> 折叠是读者**主动触发**的变化，落地是**系统推送**的变化，两类都要有，缺一类就有一半是静的。
+
+`palette-guard.test.ts` 的 `a mounted transcript row animates in` 钉住这条。
+该守卫首版**漏报**：它的断言匹配到了规则注释里提到的 keyframe 名，即使 `animation:` 声明已被删掉也能通过。
+现在先剥离注释再断言**声明本身**——注释不是实现。
 
 > **动画表达状态变化，而不是表达"这里用了 React"。**
 
@@ -249,21 +337,21 @@ SVG 绘制尺寸（stroke-width / stroke-dasharray / viewBox）
 > **Guard 的目标是减少无意义的设计决策，而不是减少字面量数量。**
 > 一个为凑数而生的 token 比硬编码更糟。
 
-### 5.3 基线棘轮
+### 5.3 全仓上限
 
-`scripts/ui-token-baseline.json` 按 **文件 × 规则** 记当前计数，**只许减少**：
+`scripts/ui-token-baseline.json` 只记 **每条规则的全仓总数上限**（5 个数字），不记逐文件账本：
 
 ```text
-spacing   767  →  …  → 0
-radius     82  →  …  → 0
-shadow     12  →  …  → 0
-duration  129  →  …  → 0
-ease      111  →  …  → 0
+spacing 185 · radius 43 · shadow 18 · duration 105 · ease 99
 ```
 
-机制与 `scripts/structure-budget.mjs` 同哲学：**任何放宽都必须是一次显式、diff 可见的动作**（`--update` 逐条打印 `(RAISED)`），而不是随手绕过。低于基线的条目每次运行都会打印为"可收紧"——那是棘轮该往下走的提示，不是失败。
+上限 = 当前债务 + 余量（spacing 20、radius 10、shadow 6、duration 12、ease 12）。日常改动落在余量里，门禁不吭声；只有整仓债务系统性上涨才红。
 
-**禁止**让基线变成一张几千行的白名单——那等于把守卫变成新的技术债。
+**为什么不是逐文件计数**：上一版按「文件 × 规则」记 75 条，后果是**新建任何 sheet 只要写 1 个 px 就红**——那衡量的不是设计系统有没有被遵守，而是账本有没有跟上。作者只能靠 `--update` 记账，而记账与债务本身无关。
+
+放宽仍是一次显式、diff 可见的动作（`--update` 逐条打印 `(RAISED)`）；余量快用完时会打印提示——那是提示，不是失败。
+
+**禁止**把上限改成几千行的白名单——那等于把守卫变成新的技术债。
 
 ## 6. 视觉层级禁令
 
@@ -295,6 +383,16 @@ Freeze（Batch 1）  →  Migrate（Batch 7A / 7B / 8）  →  Delete（Batch 10
 | **Batch 7A** | 结构迁移，**不改视觉** | ✅ 2026-10-11（radius/时长按冻结方向收敛，记名见纲领 G7a） |
 | **Batch 7B / 8** | 大规模迁移到 `--nova-*`，基线逐批下降 | ✅ 2026-10-11（消费层清零；基线下降留组件重构批） |
 | **Batch 10** | 删除 `--dsw-*` 与 `styles/design-platform.css`，把色值内联进 `design/tokens` | ✅ 2026-10-11（`styles/` 七文件全删） |
+| **Batch 11** | 构建管线换 Next.js（`output: 'export'`），Tailwind v4 以 `@theme inline` 挂到 `--nova-*` | ✅ 2026-10-20 |
+
+> **Batch 1 删掉的 Tailwind 与 Batch 11 重新引入的 Tailwind 不是同一件事。**
+> 前者是 `v4 + 插件 + 0 使用` 的死依赖：装了、挂了、没有任何一处读它，因此删除。
+> 后者有明确消费者——`src/ui/` 的 Aceternity 组件层——并且经 `@theme inline`
+> 把工具类映射回既有 token，不携带第二套色值。判据始终是「有没有真实消费者」，
+> 不是「Tailwind 本身好恶」。
+>
+> `@theme inline` 不可换成 `@theme`：非 inline 会把亮色值烤进生成的工具类，
+> 于是 `body[data-nova-dark]` 对 Aceternity 层完全失效，暗色主题下这一层永远亮着。
 
 > **设计语言可以晚迁移，但不能晚定义。** 否则 Agent 会在"半套设计系统"上继续写 UI，最后形成新的过渡泥潭。
 
@@ -323,11 +421,19 @@ packages/web/ui/src/kit/       标准可复用组件（消费上面的 token，�
 ├── Dialog.tsx/.module.css     弹窗骨架：overlay/mask/panel/title/body/footer + 入场动画单处声明
 ├── Button.tsx/.module.css     动作按钮：secondary / primary(墨填充) / dangerOutline 三档意图
 └── IconButton.tsx/.module.css 图标按钮：28/24px 方形、radius-sm、inset 焦点环、active/danger
+
+packages/web/ui/src/ui/        Aceternity 组件层（Batch 11；唯一允许写 Tailwind 工具类的地方）
+├── cn.ts                      clsx + tailwind-merge 的类名合并
+├── aurora-background.tsx      极光 + 网格场景层（定位由调用方决定，见文件内注释）
+├── glow-card.tsx              1px 渐变发丝环卡片（RADIUS 表驱动，内外弧必须同档）
+└── glow-button.tsx            accent / ghost / outline 三档按钮
 ```
 
-**为什么从 `main.tsx` 挂载而不是追加进 `index.css`**：`index.css` 是移植层的遗留挂载表，`design/index.css` 是它的继任者；一个文件两个写手正是上一轮丢编辑的成因。
+**两层的分工不可混用**：`src/kit/` 是**结构**（弹窗骨架、按钮意图档位），写 CSS Modules、零字面色；`src/ui/` 是**材质**（极光、发丝环、辉光），写 Tailwind 工具类但全部经 `@theme inline` 映射回 `--nova-*`。一个组件需要新的结构时用 kit，需要新的表面质感时用 ui，不要把两者混成一个。`src/ui/` 之外的 `.tsx` 继续只用 CSS Modules。
 
-**主题挂点**：暗色面板 = `body[data-nova-dark]`，由 `theme.ts` 在挂载后写、由 `index.html` 的 pre-paint 内联脚本在首帧前写（两者一致性由 `test/theme.test.ts` 钉住）。2026-10-11 起属性名与内容字号轴（`--nova-content-font-*`）均为 Nova 命名，不再是移植层的 `data-ds-dark-theme` / `--dsh-content-font-*`。
+**为什么从 `app/page.tsx` 挂载**:`main.tsx` 与 `index.html` 已在 Next.js 迁移中删除;`app/layout.tsx` 是挂载文档(`<head>` 元数据、boot 脚本、`#root`),`app/page.tsx` 是客户端入口。`src/index.css` 是移植层遗留挂载表,`design/index.css` 是它的继任者,`src/tailwind.css` 必须**最后**挂载——一个文件两个写手正是上一轮丢编辑的成因。
+
+**主题挂点**：暗色面板 = `body[data-nova-dark]`，由 `theme.ts` 在挂载后写、由 `app/layout.tsx` 的 pre-paint 内联脚本在首帧前写（两者一致性由 `test/theme.test.ts` 钉住，且该脚本由 `boot-theme.ts` 的 `bootThemeScript()` 单一生成，布局只调用不抄写）。2026-10-11 起属性名与内容字号轴（`--nova-content-font-*`）均为 Nova 命名，不再是移植层的 `data-ds-dark-theme` / `--dsh-content-font-*`。
 
 ## 9. Motion 调和（已收口，2026-10-11）
 

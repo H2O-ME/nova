@@ -195,60 +195,57 @@
   height: 18px;
 }
 
-/* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
-   corners); collapsed it renders as the rail's plain icon control. The 12px
-   bottom margin is the reference's own: it is the gap down to the browsing
-   region, and at 8px the bar reads as welded to the first group row. */
+/* New Session: the reference's nav row (h-8, 8px rounding, transparent at
+   rest, hover fill) rather than the earlier bordered bar; collapsed it renders
+   as the rail's plain icon control. The 12px bottom margin is the gap down to
+   the browsing region. */
 .newSession {
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: var(--nova-space-6);
-  height: 38px;
-  padding: var(--nova-space-8) var(--nova-space-12);
+  gap: var(--nova-space-8);
+  height: 32px;
+  padding: 0 var(--nova-space-10);
   margin: 0 var(--nova-space-2) var(--nova-space-12);
   box-sizing: border-box;
-  border: 0.5px solid var(--nova-border-strong);
-  /* The token, not its 12px value: the reference states `--nova-radius-lg` here,
-     and this button must round with every other 12px control if the scale ever
-     moves. (`gap: 6px` above stays on this element because the reference splits
-     it into a `.newSessionContent` wrapper — same 6px, one fewer element.) */
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-base);
+  border: none;
+  border-radius: var(--nova-radius-sm);
+  background: transparent;
   color: var(--nova-text-primary);
+  font-family: inherit;
   font-size: 14px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 20px;
   cursor: pointer;
   overflow: hidden;
+  transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .newSession:hover {
-  background: var(--nova-surface-panel);
+  background: var(--nova-interactive-hover);
 }
 
 .collapsed .newSession {
   align-self: flex-start;
+  justify-content: center;
   width: 36px;
   height: 36px;
   padding: 0;
   margin: 0 0 var(--nova-space-12);
   gap: 0;
-  border-color: transparent;
-  background: transparent;
+  border-radius: var(--nova-radius-lg);
 }
 
 .collapsed .newSession:hover {
   background: var(--nova-interactive-hover);
 }
 
-/* The bar's glyph: 14px expanded, 18px in the rail (the reference's two
+/* The bar's glyph: 16px expanded, 18px in the rail (the reference's two
    `size` props). */
 .newSessionIcon {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .collapsed .newSessionIcon {
@@ -266,6 +263,21 @@
   max-width: 0;
 }
 
+/* The row's trailing shortcut hint (the reference's `Ctrl+N` seat): rides the
+   far edge in the weakest ink, wide-only. */
+.newSessionHint {
+  margin-left: auto;
+  padding-left: var(--nova-space-8);
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 400;
+  color: var(--nova-text-faint);
+}
+
+.collapsed .newSessionHint {
+  display: none;
+}
+
 /* The plugin center's door: a NAV row, not the bordered New Session bar. The
    reference's sidebar panel entry (`ui-plugin-manager`) sits in the same list
    as the session views, so it carries the nav row's chrome — transparent at
@@ -277,25 +289,25 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
-  height: 36px;
+  height: 32px;
   padding: 0 var(--nova-space-10);
   margin: 0 var(--nova-space-2) var(--nova-space-8);
   box-sizing: border-box;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 14px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 20px;
   cursor: pointer;
   overflow: hidden;
   transition: background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .pluginsEntry:hover {
-  background: var(--nova-surface-panel);
+  background: var(--nova-interactive-hover);
 }
 
 .pluginsEntryActive,

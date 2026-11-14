@@ -22,6 +22,7 @@ import {
   writeWidthPreference,
 } from './content-width.js';
 import type { ConversationPhase } from './phase.js';
+import { HeroBackdrop } from './EmptyHero.js';
 import { wheelDeltaY } from '../composer/composer-measure.js';
 import css from './ConversationRoot.module.css';
 
@@ -42,16 +43,6 @@ export interface ConversationRootProps {
   header?: (state: HeaderSlotState) => ReactNode;
   /** Hero chrome (`conversation.hero`): the centered brand block above the card. */
   hero?: ReactNode;
-  /**
-   * The workspace row, rendered BETWEEN the hero chrome and the composer.
-   *
-   * A separate slot rather than part of `hero` because that is the reference's
-   * own assembly: its `HeroShell` renders only the headline and this row is a
-   * sibling of it inside the composer hero's 8px stack. Folding it into the hero
-   * is what made the chip inherit the hero's own gutter and gap and drift off
-   * the card's axis.
-   */
-  heroWorkspaceRow?: ReactNode;
   /**
    * The hero's recent-session list, rendered BELOW the composer card.
    *
@@ -173,7 +164,6 @@ export function ConversationRoot({
   phase,
   header,
   hero,
-  heroWorkspaceRow,
   heroRecent,
   session,
   composer,
@@ -260,12 +250,10 @@ export function ConversationRoot({
   const heroPhase = phase === 'hero';
   const composerStack = (
     <div className={heroPhase ? `${css.composerStack} ${css.composerHero}` : css.composerStack}>
-      {/* The reference's order: hero chrome, then the workspace row, then the
-          composer. The row is only meaningful with the hero (once a
-          transcript is on screen the header states the workspace), so it
-          rides the same phase gate. */}
+      {/* Hero chrome, then the composer. The workspace chip that used to ride
+          between them now lives INSIDE the card's first row (the reference's
+          `contextHeader` seat), so the stack is two pieces. */}
       {heroPhase && hero}
-      {heroPhase && heroWorkspaceRow}
       {composer}
     </div>
   );
@@ -283,6 +271,10 @@ export function ConversationRoot({
             (InputBar) and the width handles' wheel forwarding; the scrollport
             itself is the transcript's Viewport under it. */}
         <div className={css.scrollBody} data-conversation-body="">
+          {/* The empty state's background line art: full-height hero region
+              only (HeroShell's own box is a 34px band — the aurora lessons).
+              Hero phase only; a landing session replaces the column. */}
+          {heroPhase && <HeroBackdrop />}
           {session === undefined ? null : <div className={css.viewArea}>{session}</div>}
           {composerSeat}
           {/* Below the card, outside the seat: see `heroRecent` on the props. */}

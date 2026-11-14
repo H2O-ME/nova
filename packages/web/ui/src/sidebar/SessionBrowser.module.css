@@ -342,6 +342,24 @@
   margin-top: var(--nova-space-2);
 }
 
+/* A timeline section heading (the `按时间` view): the reference's date
+   headings — plain text rows, medium weight in the subtle ink, their own top
+   breathing room separating sections. The first heading sits flush with the
+   list's top. */
+.groupHeading {
+  margin-top: var(--nova-space-8);
+  padding: var(--nova-space-2) var(--nova-space-10) 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--nova-text-muted);
+  user-select: none;
+}
+
+.list > .groupHeading:first-child {
+  margin-top: 0;
+}
+
 /* A flat run has no group wrapper to space its rows, so it carries the same 2px
    rhythm itself: the rows are direct children of the scroller here (`.list`),
    where the grouped shape nests them inside `.groupSection`. Without this the
@@ -361,12 +379,17 @@
   margin-top: var(--nova-space-4);
 }
 
+/* The reveal control is a group CHILD, so it carries the session rows' own
+   indent (their nested 20px, on top of the text's 28px) — a control sitting
+   further left than the rows it reveals reads as a sibling of the workspace
+   header rather than as part of the group. */
 .sessionOverflowButton {
   width: 100%;
   height: 28px;
   border: none;
   border-radius: var(--nova-radius-lg);
-  padding: 0 var(--nova-space-12) 0 28px;
+  padding: 0 var(--nova-space-12) 0
+    calc(28px + var(--nova-space-16) + var(--nova-space-4));
   background: transparent;
   cursor: pointer;
   text-align: left;

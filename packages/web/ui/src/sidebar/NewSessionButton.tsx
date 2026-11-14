@@ -30,6 +30,11 @@ export function NewSessionButton({
       >
         <PlusIcon className={css.newSessionIcon} />
         {wide && <span className={cx(css.newSessionLabel, css.wide)}>{COPY['session.new']}</span>}
+        {wide && (
+          // The reference's trailing hint — rendered only because the shell
+          // actually binds the shortcut (a hint for a dead key is a lie).
+          <span className={css.newSessionHint}>{COPY['session.new.shortcut']}</span>
+        )}
       </button>
     </Tooltip>
   );

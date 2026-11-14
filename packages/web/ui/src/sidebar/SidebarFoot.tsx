@@ -1,14 +1,15 @@
 /**
- * The sidebar's foot: the settings seat and the connection readout. The
- * trigger row is bottom-pinned and carries the `ConnectionIndicator`.
+ * The sidebar's foot, the reference's shape: an identity block on the left
+ * (avatar fallback letter + the product name) and the trailing controls on the
+ * right — the connection readout and the settings gear.
  *
- * The trigger opens the settings dialog, whose sections the shell (App)
- * registers — placement is not here, for the same reason the menu card's
- * wasn't: this row owns the seat, the shell owns what opens.
+ * Nova has no account system, so the avatar is a fallback letter and the
+ * identity block's ONE real affordance is the settings dialog (which is also
+ * what the gear opens — the block is the wide target, the gear the precise
+ * one; a duplicated affordance is a hit-target choice, not a dead control).
  *
  * The recovery window is the reference's too: a socket that heals reads as
- * 连接成功 for 2s, and only while the column is wide (the reference passes
- * undefined to the rail).
+ * 连接成功 for 2s, and only while the column is wide.
  */
 import { useEffect, useRef, useState } from 'react';
 import { SettingsIcon } from '../icons.js';
@@ -34,7 +35,7 @@ export interface SidebarFootProps {
 /**
  * Render the column's foot row.
  * @param props - see SidebarFootProps.
- * @returns the trigger row.
+ * @returns the footer row.
  */
 export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpenSettings }: SidebarFootProps): JSX.Element {
   // Recovery confirmation: a reconnect that lands shows 连接成功 once, for
@@ -82,24 +83,25 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
     return () => { window.clearTimeout(timer); };
   }, [connection, holdConnecting]);
 
-  const label = COPY['settings.label'];
+  const settingsLabel = COPY['settings.label'];
+  const identityLabel = COPY['settings.identity'];
   return (
     <div className={cx(css.triggerRow, rail && css.railRow)}>
-      {/* The rail's settings seat is a bare glyph (the label is wide-only), so
-          it needs a real tooltip: `title` never shows for a keyboard user, and
-          the reference wraps this same trigger in its Tooltip primitive. */}
-      <Tooltip label={label} side="right" delayMs={500} disabled={!rail}>
+      {/* The identity block: fallback avatar letter + product name. Wide it is
+          the settings dialog's big target; in the rail it shrinks to the same
+          36x36 box as every other rail control. */}
+      <Tooltip label={identityLabel} side="right" delayMs={500} disabled={!rail}>
         <button
           type="button"
           className={cx(css.trigger, rail && css.rail)}
-          aria-label={label}
+          aria-label={identityLabel}
           aria-haspopup="dialog"
           aria-expanded={settingsOpen}
-          title={label}
+          title={identityLabel}
           onClick={onOpenSettings}
         >
-          <SettingsIcon className={css.triggerIcon} />
-          {!rail && <span className={cx(css.triggerLabel, css.wide)}>{label}</span>}
+          <span className={css.avatar} aria-hidden="true">N</span>
+          {!rail && <span className={cx(css.triggerLabel, css.wide)}>{COPY.brand}</span>}
         </button>
       </Tooltip>
       <ConnectionIndicator
@@ -112,6 +114,24 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
         reconnectActionLabel={COPY['connection.reconnect']}
         restartActionLabel={COPY['connection.restart']}
       />
+      {/* The gear: the settings dialog's precise seat. Wide-only — in the rail
+          the identity block IS the settings seat, and a second identical 36x36
+          box beside it would be the same control twice. */}
+      {!rail && (
+        <Tooltip label={settingsLabel} side="top" delayMs={500}>
+          <button
+            type="button"
+            className={css.gear}
+            aria-label={settingsLabel}
+            aria-haspopup="dialog"
+            aria-expanded={settingsOpen}
+            title={settingsLabel}
+            onClick={onOpenSettings}
+          >
+            <SettingsIcon className={css.gearIcon} />
+          </button>
+        </Tooltip>
+      )}
     </div>
   );
 }

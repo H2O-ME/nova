@@ -38,25 +38,23 @@
   position: relative; /* overlay anchor positioning context */
   display: flex;
   flex-direction: column;
-  /* figma Input 75:8208: 12px between the text area and the button row; the
-     card's top pad before .input tightened from the drawn 10 to 8. */
+  /* 12px between the rows (the reference's `p-3` + `gap-3` card). */
   gap: var(--nova-space-12);
   width: 100%;
   max-width: var(--nova-composer-card-max-width);
-  padding-top: var(--nova-space-8);
-  /* THE REFERENCE'S COMPOSER SURFACE (2026-11-05, measured against DSH).
-
-   The reference's card is a 28px corner with no border, and its soft
-   elevation's first layer is a 0.5px stroke. That pairing — a generous corner
-   + one hairline inside the shadow — is what reads as a panel rather than a
-   form field. The previous pass replaced it with a 12px corner + a CSS
-   border, which is exactly the 「很方」 report. Glow is still gone (that was
-   the actual cartoon cue), but the geometry is the reference's again. */
-  border: 0;
-  border-radius: var(--nova-radius-2xl);
-  background: var(--nova-surface-raised);
-  --nova-elevation-stroke-color: var(--nova-border-subtle);
-  box-shadow: var(--nova-elevation-stroke), var(--nova-elevation-soft);
+  padding: var(--nova-space-12);
+  /* COMPOSER SURFACE (2026-11-14, aligned to the operator's reference).
+   *
+   * The reference's card: 16px corner, a 0.5px neutral hairline that deepens
+   * on hover and focus, a white fill on the quiet page ground, and ONE soft
+   * two-layer shadow. The values ride the `--nova-input-*` tokens
+   * (`design/tokens/surface.css`), so dark mode keeps its own flat set without
+   * a second rule here. */
+  border: 0.5px solid var(--nova-input-border);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-input);
+  box-shadow: var(--nova-elevation-composer);
+  transition: border-color var(--nova-dur-fast) var(--nova-ease-inout);
   /* The draft text follows the Settings font-size preference (the textarea,
      mirror, and backdrop all inherit from here, so the three layers stay in
      step); the line height keeps the default 10px leading via the shared px
@@ -68,6 +66,30 @@
      pair. Declared on the card because the elevation belongs to the surface,
      and the custom properties inherit down to the box that actually scrolls
      (see ui-theme styles/scrollbar.css for the rebinding contract). */
+}
+
+/* Hover: the hairline deepens one step (the reference's border-hover). */
+.card:hover {
+  border-color: var(--nova-input-border-hover);
+}
+
+/* Focus: the deepened hairline says the card owns the caret — the reference's
+   `focus-within:!border-input-border-focused`. Border colour only — no ring,
+   no glow, no widening (a width change would reflow every control inside). */
+.card:focus-within {
+  border-color: var(--nova-input-border-focused);
+}
+
+/* The card's first row (the reference's `contextHeader`): a plain control row
+   inside the card's own padding — the hero's workspace chip lives here. The
+   6px inset puts the chip's glyph on the reference's p-1.5 axis. */
+.cardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  padding: 0 var(--nova-space-6);
 }
 
 /* The document-level drop overlay moved to its own sheet
@@ -310,10 +332,9 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--nova-space-12);
-  /* 2px moved from the bottom pad to the top: the whole control row sits 2px
-     lower in the card (it read too high against the textarea) while the
-     controls' own centering stays untouched. */
-  padding: var(--nova-space-2) var(--nova-space-8) var(--nova-space-6);
+  /* 2px at the top: the whole control row sits 2px lower in the card (it read
+     too high against the textarea); the card's own 12px pad owns the rest. */
+  padding: var(--nova-space-2) 0 0;
   min-width: 0;
   /* Size container so the chips inside can collapse to icon-only when the
      card runs out of row width (ModelSeat @container rule). Anonymous

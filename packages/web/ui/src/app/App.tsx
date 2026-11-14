@@ -214,6 +214,22 @@ export function App(): JSX.Element {
     else openRightbar(layout.layout.rightbarFullscreen);
   }, [rightbarOpen, openRightbar, closeRightbar, layout.layout.rightbarFullscreen]);
 
+  // The New Task row's advertised shortcut, made real: Ctrl/Cmd+N starts a
+  // session (leaving the plugin center first, like every session gesture).
+  // Without this binding the row's hint would be a lie, and a hint for a key
+  // that does nothing is worse than no hint.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if (event.key.toLowerCase() !== 'n') return;
+      event.preventDefault();
+      setPluginsOpen(false);
+      send({ type: 'new_session' });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => { window.removeEventListener('keydown', onKeyDown); };
+  }, [send]);
+
   const toggleFullscreen = useCallback(
     (): void => openRightbar(!layout.layout.rightbarFullscreen),
     [openRightbar, layout.layout.rightbarFullscreen],
