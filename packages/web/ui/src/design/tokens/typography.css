@@ -49,7 +49,9 @@
 
   /* --- Code --- */
   --nova-font-markdown-code: 12px/19px var(--nova-font-mono);
-  --nova-font-markdown-code-block: 11px/19px var(--nova-font-mono);
+  /* The reference's code viewer runs at 12px/20px by default
+     (codePreviewSettings.ts:23). */
+  --nova-font-markdown-code-block: 12px/20px var(--nova-font-mono);
   /* Tool row expanded-card small code, added by hand in the port. */
-  --nova-font-markdown-code-block-small: 11px/16px var(--nova-font-mono);
+  --nova-font-markdown-code-block-small: 12px/20px var(--nova-font-mono);
 }

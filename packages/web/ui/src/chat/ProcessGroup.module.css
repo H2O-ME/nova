@@ -25,7 +25,9 @@
      turn's steps and across them, folded or not. 8px made a group of six tool
      calls 24px taller than the reference's. */
   --nova-chat-flow-gap: var(--nova-space-4);
-  max-height: min(400px, 50vh);
+  /* The reference's work container is `max-h-[calc(16lh+30*spacing)]` — 16
+     rows plus the fold's own chrome, ≈504px at the default leading. */
+  max-height: calc(16 * 24px + 120px);
   overflow-y: auto;
   overscroll-behavior-y: auto;
   scrollbar-gutter: stable;

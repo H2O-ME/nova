@@ -11,10 +11,10 @@
 
 .block {
   --dsl-code-block-banner-background-color: var(--nova-surface-code-head);
-  --dsl-code-block-border-radius: var(--nova-radius-lg);
-  /* Local 11/18 instead of the shared --nova-font-xs-13: the banner scales
-     with the markdown 0.875 ladder without shrinking every other xs-13 use. */
-  --dsl-code-block-banner-font: 11px/18px var(--nova-font-family);
+  /* The reference's `rounded-xl` (12px) with a 1px hairline; the old 16px
+     corner read rounder than every other card in the transcript. */
+  --dsl-code-block-border-radius: var(--nova-radius-md);
+  --dsl-code-block-banner-font: 14px/20px var(--nova-font-family);
   --dsl-code-block-content-font: var(--nova-font-markdown-code-block);
   --dsl-code-block-background: var(--nova-surface-code);
 
@@ -22,6 +22,7 @@
   margin: var(--nova-space-16) 0;
   color: var(--nova-text-primary);
   background: var(--dsl-code-block-background);
+  border: 1px solid var(--nova-border-strong);
   border-radius: var(--dsl-code-block-border-radius);
 }
 
@@ -53,8 +54,8 @@
 .infostring {
   color: var(--nova-text-primary);
   font-family: var(--nova-font-mono);
-  font-size: 11px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

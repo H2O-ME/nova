@@ -168,17 +168,20 @@
   overflow: auto;
 }
 
+/* The reference's inline code (`message.tsx` L2183): 6px corner, 6/2 padding,
+   a 2px inline margin, and NO border — the tint alone separates it. */
 .markdown :not(pre) > code {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
+  margin: 0 2px;
   font: var(--nova-font-markdown-code);
   font-family: var(--nova-font-mono);
   font-size: 0.875em !important;
   background-color: var(--nova-surface-code);
-  border: 0.5px solid var(--nova-border-subtle);
-  border-radius: var(--nova-radius-lg);
-  padding: 0 5px;
+  border: none;
+  border-radius: var(--nova-radius-xs);
+  padding: 2px 6px;
 }
 
 .markdown :where(h1, h2, h3, h4, h5, h6) code {
@@ -308,9 +311,12 @@
    are omitted with the rest of that vocabulary. */
 .compact {
   max-width: 100%;
-  font-size: var(--nova-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--nova-content-font-delta-secondary, 0px));
-  color: var(--nova-text-muted);
+  /* The reasoning body runs at the reference's `text-ui-base` in its faintest
+     ink (`text-foreground-subtlest`), not a caption tier: the thought is prose
+     the reader may open, one step quieter than the answer. */
+  font-size: var(--nova-content-font-size, 14px);
+  line-height: calc(21px + var(--nova-content-font-delta, 0px));
+  color: var(--nova-text-faint);
 }
 
 .compact :is(h1, h2, h3, h4, h5, h6) {

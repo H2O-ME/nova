@@ -323,12 +323,12 @@
   background: var(--nova-interactive-hover);
 }
 
-/* The active destination rides the same 5% wash as selection (the reference's
-   `bg-selected`, 2026-11-15): a nav row that paints 12% reads as a card inside
-   a list of rows. */
+/* The active destination rides the selected wash (the reference's
+   `bg-selected`: 5% light / 10% dark), so it reads as the current row rather
+   than as a card inside a list of rows. */
 .pluginsEntryActive,
 .pluginsEntryActive:hover {
-  background: var(--nova-interactive-hover);
+  background: var(--nova-interactive-active);
 }
 
 .collapsed .pluginsEntry {

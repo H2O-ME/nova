@@ -88,6 +88,8 @@
   margin-left: 0;
   border-radius: 9999px;
   background: var(--nova-interactive-active);
+  /* The reference's avatar carries a 1px inset ring (`after:border`). */
+  box-shadow: inset 0 0 0 1px var(--nova-border-strong);
   color: var(--nova-text-primary);
   font-size: 14px;
   font-weight: 600;

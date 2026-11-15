@@ -21,7 +21,8 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-24);
+  /* The reference's `space-y-5` between the store's sections. */
+  gap: 20px;
 }
 
 /* The head row: name left, actions right. `flex-wrap` keeps a narrow column
@@ -52,8 +53,8 @@
   gap: var(--nova-space-8);
 }
 
-/* The reference's `Button variant="secondary" size="icon-lg"`: a 32px bordered
-   square holding one 14px glyph. */
+/* The reference's `Button variant="secondary" size="icon-lg"`: a 32px filled
+   square holding one 14px glyph — secondary carries NO border there. */
 .iconAction {
   display: inline-flex;
   align-items: center;
@@ -62,19 +63,18 @@
   height: 32px;
   padding: 0;
   box-sizing: border-box;
-  border: 1px solid var(--nova-border-strong);
+  border: none;
   border-radius: var(--nova-radius-sm);
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-sunken);
   color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-    border-color var(--nova-dur-fast) var(--nova-ease-inout),
     background-color var(--nova-dur-fast) var(--nova-ease-inout),
     color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .iconAction:hover {
-  border-color: var(--nova-input-border-hover);
+  background: var(--nova-interactive-active);
   color: var(--nova-text-primary);
 }
 
@@ -116,7 +116,8 @@
   box-sizing: border-box;
   width: 100%;
   height: 36px;
-  padding: 0 var(--nova-space-12) 0 var(--nova-space-32);
+  /* The reference's `pl-9` (36px): the icon's column plus its own left inset. */
+  padding: 0 var(--nova-space-12) 0 36px;
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
   background: var(--nova-surface-base);
@@ -130,7 +131,7 @@
 /* The reference's `(canClear || trailingAction) && "pr-9"`: the trailing inset
    only appears when the × is actually there (SettingsSearchInput.tsx:34-39). */
 .search[data-clear='true'] .searchInput {
-  padding-right: var(--nova-space-32);
+  padding-right: 36px;
 }
 
 /* The reference's clear control (`SettingsSearchInput.tsx:41-54`): a ghost icon
@@ -253,7 +254,7 @@
   margin-top: var(--nova-space-8);
   padding: var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: transparent;
   font-family: inherit;
   font-size: 14px;
@@ -297,7 +298,7 @@
   gap: var(--nova-space-12);
   margin: 0;
   padding: var(--nova-space-12) var(--nova-space-8);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
@@ -340,7 +341,7 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: var(--nova-surface-card);
   color: var(--nova-text-muted);
 }
@@ -465,7 +466,7 @@
   box-sizing: border-box;
   padding: var(--nova-space-12) var(--nova-space-16);
   border: 1px dashed var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-muted);

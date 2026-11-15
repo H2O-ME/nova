@@ -85,7 +85,9 @@
 
 .title {
   flex: none;
-  font-size: var(--nova-content-font-size-secondary, 13px);
+  /* `text-ui-base` on the reference's summary row: 14px, the same tier as the
+     answer body beside it. */
+  font-size: var(--nova-content-font-size, 14px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-secondary);
   font-weight: 400;
@@ -116,7 +118,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--nova-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size, 14px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-muted);
   transition: color 100ms ease;
@@ -136,7 +138,7 @@
   flex: none;
   margin-left: var(--nova-space-4);
   white-space: nowrap;
-  font-size: var(--nova-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size, 14px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-muted);
   transition: color 100ms ease;

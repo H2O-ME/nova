@@ -118,10 +118,16 @@ body[data-nova-dark] {
   --nova-surface-panel: rgb(32, 32, 32);
   --nova-surface-overlay: rgb(56, 56, 56);
 
-  --nova-border-subtle: rgba(255, 255, 255, 0.08);
+  /* The reference halves its border for this tier (`border-border/50`): 5% in
+   * BOTH themes. The dark sheet used 8%, which made every hairline a step
+   * heavier than its own light twin. */
+  --nova-border-subtle: rgba(255, 255, 255, 0.05);
   --nova-border-strong: rgba(255, 255, 255, 0.1);
 
-  --nova-interactive-hover: rgba(255, 255, 255, 0.05);
+  /* The reference's dark hover is 10% white — the SAME wash as its selected
+   * row (styles.css:741/747), so hovering and selecting read as one state.
+   * Nova's 5% sat a step under every dark hover in the product. */
+  --nova-interactive-hover: rgba(255, 255, 255, 0.1);
   --nova-interactive-hover-strong: rgba(255, 255, 255, 0.2);
   --nova-interactive-active: rgba(255, 255, 255, 0.1);
   --nova-interactive-hover-danger: rgba(242, 90, 90, 0.15);

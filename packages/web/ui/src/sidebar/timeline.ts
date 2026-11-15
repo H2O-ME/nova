@@ -34,7 +34,11 @@ export function timelineSection(at: number, now: number): string {
   if (weekDelta === 0) return 'thisWeek';
   if (weekDelta === 1) return 'lastWeek';
   const month = (t: number): number => new Date(t).getFullYear() * 12 + new Date(t).getMonth();
-  if (month(at) === month(now)) return 'thisMonth';
+  const monthDelta = month(now) - month(at);
+  if (monthDelta === 0) return 'thisMonth';
+  // The reference keeps a separate 上月 bucket before the catch-all
+  // (timelineDates.ts: thisMonth → lastMonth → older).
+  if (monthDelta === 1) return 'lastMonth';
   return 'older';
 }
 
@@ -47,6 +51,7 @@ export function timelineSectionLabel(section: string): string {
     case 'thisWeek': return '本周';
     case 'lastWeek': return '上周';
     case 'thisMonth': return '本月';
+    case 'lastMonth': return '上月';
     default: return '更早';
   }
 }

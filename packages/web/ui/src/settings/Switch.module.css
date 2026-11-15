@@ -28,6 +28,15 @@
   background: var(--nova-color-ink);
 }
 
+/* The reference expands the switch's hit area past its 32px track with a
+   pseudo-element (`after:-inset-x-3 after:-inset-y-2`), so a control this small
+   is still comfortable to click without painting a larger box. */
+.switch::after {
+  content: '';
+  position: absolute;
+  inset: -8px -12px;
+}
+
 /* A locked control must READ as locked. This is the reference's own value, and
  * it is load-bearing: the switch is 36×20 with no label of its own, so opacity
  * is the only thing that separates "refuses input" from "live". Removing it (a

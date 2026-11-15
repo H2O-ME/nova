@@ -87,7 +87,7 @@ body[data-nova-dark] .sessionRow.selected {
 .slot {
   flex: none;
   width: 16px;
-  height: 20px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
