@@ -21,7 +21,10 @@
    instead of appearing whole, which is what made expanding a turn feel like a
    page jump rather than a disclosure. */
 .body {
-  --nova-chat-flow-gap: var(--nova-space-8);
+  /* The reference's work container is `flex flex-col gap-1` (4px) — inside a
+     turn's steps and across them, folded or not. 8px made a group of six tool
+     calls 24px taller than the reference's. */
+  --nova-chat-flow-gap: var(--nova-space-4);
   max-height: min(400px, 50vh);
   overflow-y: auto;
   overscroll-behavior-y: auto;

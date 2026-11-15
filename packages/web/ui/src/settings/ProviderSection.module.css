@@ -1,97 +1,146 @@
-/* 供应商 sheet：设置页「模型」页的第 1 步。
+/* 供应商 sheet：设置页「模型」页的供应商清单 + 编辑卡。
  *
- * 几何与 token 照搬 the harness：卡片走
- * `--nova-surface-raised` / `-stroke` + `--nova-radius-lg`，行内动作是紧凑
- * 按钮（28px 高、12px 字），密钥状态用 8px 的实心点（configured / missing），编辑器
- * 嵌在卡片里换 `--nova-surface-panel` 填充，页头是 `<h2>` + 一行说明。 */
+ * 2026-11-15 对齐 ZCode（只读参照仓 `D:\web\zcode-desktop-ui-study`）：
+ *  - 页面说明在卡外，一行 14/24 次级色 —— `settings/ModelProviderSection.tsx:1131`
+ *    的 `description` 经 `model-provider-section/SectionLayout.tsx:54-56` 渲染成
+ *    `text-ui-base leading-6 text-foreground-subtle`。
+ *  - 清单是一张卡：`SectionLayout.tsx:67` 的
+ *    `overflow-clip rounded-xl border border-border bg-card`。本仓 `rounded-xl`
+ *    对应 `--nova-radius-md`（12px），卡面由 `Section.module.css` 提供。
+ *  - 组标题 16/600 + 一组一句 14/24 —— 与 `SettingsGroup.module.css` 同一节奏
+ *    （ZCode 的 `SettingsPage.tsx` 每个设置组都是这个头）。
+ *  - 行是设置行的节奏：`px-4 py-3` + 顶部 1px 分隔线（`SettingsPageParts.tsx:196-201`
+ *    的 `border-t border-border px-4 py-3 first:border-t-0`），标题 14/500。
+ *  - 动作按钮是 ZCode `components/ui/button.tsx:33-37` 的尺寸：default 28px /
+ *    `rounded-md`（6px）/ 14px；切到本仓就是 `--nova-row-md` + `--nova-radius-xs`。 */
 
-.heading {
-  margin: 0;
-  /* The section is a CARD now: its head carries the card's own inset. */
-  padding: var(--nova-space-16) var(--nova-space-16) 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
-  color: var(--nova-text-primary);
+/* 卡外的页面说明（SectionLayout 的 description）。 */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-16);
+  min-width: 0;
 }
 
 .intro {
   margin: 0;
-  padding: var(--nova-space-4) var(--nova-space-16) 0;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
+}
+
+/* 一个组：16/600 的组标题 + 一行说明 + 一张卡（同 SettingsGroup 的 12px 间距）。 */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-12);
+  min-width: 0;
+}
+
+.groupHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nova-space-12);
+  min-width: 0;
+}
+
+.groupText {
+  min-width: 0;
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--nova-text-primary);
+}
+
+.groupDesc {
+  margin: var(--nova-space-4) 0 0;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
+}
+
+/* 组头的资源动作：ZCode `SettingsResourceHeaderActions.tsx:113-124` 的
+ * 「新建」是 `variant="default" size="default" className="rounded-lg"` ——
+ * 28px 高、8px 圆角、主色底。 */
+.addButton {
+  box-sizing: border-box;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nova-space-6);
+  height: var(--nova-row-md);
+  padding: 0 var(--nova-space-8);
+  border: none;
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-color-ink);
+  font-family: inherit;
+  font-size: 14px;
   line-height: 20px;
-  color: var(--nova-text-muted);
+  font-weight: 500;
+  color: var(--nova-text-inverse);
+  cursor: pointer;
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.addButton:hover {
+  background: var(--nova-color-ink-hover);
+}
+
+.addIcon {
+  flex: none;
+  width: 14px;
+  height: 14px;
 }
 
 .status {
-  padding: var(--nova-space-16) 0;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--nova-text-muted);
+  padding: var(--nova-space-12) var(--nova-space-16);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
 }
 
-/* Fill only, no outline: with the ladder real a `panel` fill on a `base` sheet
-   is already a distinct plane, and a 0.5px frame around two lines of help text
-   was one more box on a page that had too many. */
+/* 被拒的保存：卡内的一条说明行，不是页级横幅。 */
 .notice {
-  margin: var(--nova-space-8) 0 0;
-  padding: var(--nova-space-8) var(--nova-space-12);
-  border: 0;
-  border-radius: var(--nova-radius-md);
-  background: var(--nova-surface-panel);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  margin: 0;
+  padding: var(--nova-space-8) var(--nova-space-16);
+  background: var(--nova-color-danger-soft);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-color-danger);
 }
 
 .rows {
   display: flex;
   flex-direction: column;
-  /* No gap: rows are separated by the hairline rule below, not by air. A gap
-     plus a rule would double-space the group, and a gap alone (without the
-     rule) is what the old cards needed to look distinct. */
-  gap: 0;
-  margin: var(--nova-space-12) 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* The separator the de-framed rows rely on. Applied to every row but the last,
-   so the group is bracketed by whitespace rather than by a trailing rule. */
-.rows > li:not(:last-child) {
-  border-bottom: 0.5px solid var(--nova-border-subtle);
-}
-
-/* CODEX-STYLE PROVIDER ROW (2026-10-18). This used to be a bordered card:
- * `0.5px solid` + `radius-lg`. A list of such cards, each with its own frame,
- * is what made the model settings page look like a table of boxes — every
- * provider competed for the same visual weight and the section had no
- * hierarchy at all.
- *
- * Rows now sit DIRECTLY on the sheet: no border, no radius, no own fill. What
- * separates them is a hairline RULE on the list item below (see `.list`) plus
- * the 12px of vertical padding — the same device the reference uses for its
- * settings lists. The current provider gets a soft fill, which is now the only
- * filled thing in the group, so "which one is in force" reads at a glance
- * instead of having to match two identical frames. */
+/* 一行供应商：与设置行同一节奏（`border-t px-4 py-3 first:border-t-0`）。
+ * 旧稿把每张卡做成独立面板，一列框套框；参照里只有一张卡，行之间是一条线。 */
 .card {
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-8);
-  padding: var(--nova-space-14) var(--nova-space-12);
-  border: 0;
-  border-radius: var(--nova-radius-md);
+  gap: var(--nova-space-4);
+  padding: var(--nova-space-12) var(--nova-space-16);
+  border-top: 1px solid var(--nova-border-strong);
   background: transparent;
 }
 
-/* The endpoint in force: a soft fill plus the word 「当前使用」. With the cards
-   de-framed this is the group's only filled surface, which is what makes it
-   read as "this is the one" without needing a second border to compare against.
-   The old comment reasoned about `--nova-border-strong` being unable to carry
-   the state (it compared to itself); that reasoning still holds, and the fill is
-   now doing the job alone. */
+.card:first-child {
+  border-top: none;
+}
+
+/* 在役的端点：一行填充，加上「当前使用」这个词，两个信号说同一件事。 */
 .cardActive {
-  background: var(--nova-interactive-hover);
+  background: var(--nova-surface-card);
 }
 
 .rowHead {
@@ -117,32 +166,22 @@
   text-overflow: ellipsis;
 }
 
-/* Reads as an annotation on the name, not as a second name: caption size, the
-   secondary label tone, and a capsule so it never competes with the row title. */
-.activeTag {
+/* 状态词：ZCode `SettingsPageParts.tsx:230-236` 的 `SettingsBadge` ——
+ * `rounded-md bg-surface px-2.5 py-1 text-ui-base font-medium text-foreground-subtle`。
+ * 6px 圆角是 `--nova-radius-xs`；填充用 `surface-panel`（ZCode 的 `bg-surface`）。 */
+.activeTag,
+.keyMissing {
   flex: none;
-  padding: 1px var(--nova-space-8);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-full);
-  corner-shape: round;
+  padding: var(--nova-space-2) var(--nova-space-10);
+  border-radius: var(--nova-radius-xs);
   background: var(--nova-surface-panel);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
   color: var(--nova-text-secondary);
 }
 
-/* The missing-key state as a word, in the same capsule shape as the active
-   tag: it is the state that blocks 设为当前, so it is the one worth printing.
-   A stored key prints nothing — the enabled button beside it is that readout. */
 .keyMissing {
-  flex: none;
-  padding: 1px var(--nova-space-8);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-full);
-  corner-shape: round;
-  background: var(--nova-surface-panel);
-  font-size: 11px;
-  line-height: 16px;
   color: var(--nova-color-danger);
 }
 
@@ -153,35 +192,34 @@
   margin-left: auto;
 }
 
-/* The compact row control (the reference's `.rowActions .secondaryButton`):
-   28px high, 12px type, radius-sm — anything taller makes the card's head the
-   tallest thing on the page. */
+/* 行内动作 = ZCode 的 ghost 按钮（`button.tsx:20` 的
+ * `text-foreground hover:bg-hover`，尺寸 default 28px / `rounded-md`）：
+ * 没有边框，靠悬停的填充表态。 */
 .rowButton {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--nova-space-4);
-  height: 28px;
+  height: var(--nova-row-md);
   padding: 0 var(--nova-space-8);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  border: none;
+  border-radius: var(--nova-radius-xs);
   background: transparent;
   font-family: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-primary);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
   cursor: pointer;
+  white-space: nowrap;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .rowButton:hover:not(:disabled) {
   background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .rowButton:disabled {
@@ -190,18 +228,12 @@
 }
 
 .rowButtonDanger {
-  border-color: transparent;
   color: var(--nova-color-danger);
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .rowButtonDanger:hover:not(:disabled) {
   background: var(--nova-interactive-hover-danger);
+  color: var(--nova-color-danger);
 }
 
 .rowButtonIcon {
@@ -210,8 +242,7 @@
   height: 14px;
 }
 
-/* The row's second line: where it points, and how many models it records. Both
-   are readings, so neither takes the page's primary label tone. */
+/* 行的第二行：地址与模型数，都是读数，14/24 次级色（同设置行的描述）。 */
 .rowMeta {
   display: flex;
   align-items: baseline;
@@ -226,9 +257,9 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: var(--nova-font-mono);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
 }
 
 .rowUrlEmpty {
@@ -238,21 +269,19 @@
 
 .rowCount {
   flex: none;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
 }
 
-/* The editor: an inset module inside the card. Its fill is deliberately
-   `--nova-surface-panel` (not a `bg-layer-*`, which is plain white in
-   light mode) so the boundary survives both grades — the card may itself be the
-   active fill above. */
+/* 编辑区：卡内的内嵌模块，填充 `surface-panel`（卡的填充是 raised，两层靠填充分开）。 */
 .editor {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-12);
+  margin-top: var(--nova-space-8);
   padding: var(--nova-space-16);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: var(--nova-surface-panel);
 }
 
@@ -269,24 +298,28 @@
   min-width: 0;
 }
 
+/* 字段标签：ZCode `model-provider-section/ProviderCardSections.tsx:214` 的
+ * `mb-1 block text-ui-base text-foreground-subtle` —— 14px 次级色。 */
 .fieldLabel {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--nova-text-secondary);
 }
 
+/* 输入框：ZCode `ProviderCardSections.tsx:215` 的
+ * `rounded-lg border border-input-border bg-input` —— 8px 圆角是 `--nova-radius-sm`。 */
 .input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  height: 32px;
+  height: var(--nova-row-lg);
   padding: 0 var(--nova-space-8);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-sunken);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-raised);
   font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   color: var(--nova-text-primary);
 }
 
@@ -296,13 +329,13 @@
 
 .input:focus-visible {
   outline: none;
-  border-color: var(--nova-color-accent);
+  border-color: var(--nova-input-border-focused);
 }
 
 .fieldHint {
   margin: 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--nova-text-muted);
 }
 
@@ -310,26 +343,26 @@
 .params {
   min-width: 0;
   margin: 0;
-  padding: var(--nova-space-8) 0 0;
+  padding: var(--nova-space-12) 0 0;
   border: none;
-  border-top: 0.5px solid var(--nova-border-strong);
+  border-top: 1px solid var(--nova-border-strong);
 }
 
 .paramsLegend {
   padding: 0;
   margin-bottom: var(--nova-space-6);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
-  color: var(--nova-text-secondary);
+  color: var(--nova-text-primary);
 }
 
 .models {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  padding-top: var(--nova-space-8);
-  border-top: 0.5px solid var(--nova-border-strong);
+  padding-top: var(--nova-space-12);
+  border-top: 1px solid var(--nova-border-strong);
 }
 
 .modelsHead {
@@ -340,36 +373,34 @@
 }
 
 .blockTitle {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
-  color: var(--nova-text-secondary);
+  color: var(--nova-text-primary);
 }
 
+/* 探针按钮：ghost 尺寸（同 `.rowButton`）。 */
 .linkButton {
   box-sizing: border-box;
   flex: none;
-  height: 28px;
+  height: var(--nova-row-md);
   padding: 0 var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-xs);
   background: transparent;
   font-family: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .linkButton:hover:not(:disabled) {
   background: var(--nova-interactive-hover);
-  color: var(--nova-text-secondary);
+  color: var(--nova-text-primary);
 }
 
 .linkButton:disabled {
@@ -386,17 +417,15 @@
   list-style: none;
 }
 
-/* One recorded model id: the id is a token the reader may need to copy, so it
-   keeps the code face; the remove control rides its right edge. */
+/* 一个已记录的模型 id：id 是要复制的 token，保留等宽字形。 */
 .modelChip {
   display: inline-flex;
   align-items: center;
   gap: var(--nova-space-4);
   max-width: 100%;
   padding: var(--nova-space-2) var(--nova-space-4) var(--nova-space-2) var(--nova-space-8);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-sunken);
+  border-radius: var(--nova-radius-xs);
+  background: var(--nova-surface-raised);
 }
 
 .modelChipId {
@@ -405,8 +434,8 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: var(--nova-font-mono);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--nova-text-primary);
 }
 
@@ -416,19 +445,16 @@
   height: 20px;
   padding: 0 var(--nova-space-6);
   border: none;
-  border-radius: var(--nova-radius-sm);
+  border-radius: var(--nova-radius-xs);
   background: transparent;
   font-family: inherit;
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--nova-text-muted);
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .chipRemove:hover {
@@ -442,157 +468,81 @@
   gap: var(--nova-space-8);
 }
 
+/* 次要按钮（outline）：ZCode `button.tsx:19` 的
+ * `border-border text-foreground hover:bg-input/50`，尺寸 default。 */
 .button {
   box-sizing: border-box;
   flex: none;
-  height: 32px;
-  padding: 0 var(--nova-space-12);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  height: var(--nova-row-md);
+  padding: 0 var(--nova-space-8);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-xs);
   background: transparent;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-primary);
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout),
+      border-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .button:hover:not(:disabled) {
   background: var(--nova-interactive-hover);
 }
 
-/* 探针失败的那一行。挑模型的地方是弹窗（`ProviderModelsDialog`），所以卡里只剩
-   「没问成」这一个事实要说。 */
+/* 探针失败的那一行：答案没来就没有可挑的东西，卡里只说「没问成」。 */
 .poolFail {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-4);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--nova-text-secondary);
 }
 
 .error {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-color-danger);
-}
-
-.footer {
-  display: flex;
-  align-items: center;
-  gap: var(--nova-space-8);
-  margin-top: var(--nova-space-12);
-}
-
-/* The one entry to the add flow. It used to be a full-width 44px boxed slab with
- * a DASHED border — a dashed outline that wide is the single loudest thing on
- * the model page, and it competed with the provider it sits under. A dashed
- * frame is for a drag-and-drop target or an empty-state placeholder; "add a
- * provider" is a secondary action, so it reads as one: a text-weight control
- * that gains a fill on hover, sized to its label.
- *
- * `align-self: flex-start` (not `stretch`) is what stops it spanning the group
- * — a full-width control at the bottom of a list looks like another row. */
-.addButton {
-  box-sizing: border-box;
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--nova-space-6);
-  height: 32px;
-  padding: 0 var(--nova-space-10);
-  border: 0;
-  border-radius: var(--nova-radius-md);
-  background: transparent;
-  font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
-  font-weight: 500;
-  color: var(--nova-text-secondary);
-  cursor: pointer;
-  transition:
-      color var(--nova-dur-base) var(--nova-ease-inout),
-      background-color var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.addButton:hover {
-  background: var(--nova-interactive-hover);
-  color: var(--nova-text-primary);
+  color: var(--nova-color-danger);
 }
 
 .problem {
-  margin: var(--nova-space-8) 0 0;
-  font-size: 12px;
-  line-height: 18px;
+  margin: 0 auto 0 0;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--nova-color-danger);
 }
 
-/* ── 重写后的新增类 ─────────────────────────────────────────────────── */
-
-/* Section heading under the page head: same optical scale as the page's h2,
-   one level down in the tree. The 12px above it is the reference's own block
-   rhythm (`ModelsSection.module.css` `.rows { margin: 12px 0 0 }`); the 16px
-   that was here bought nothing between the page's explanation and the first
-   thing it explains. */
-.sectionTitle {
-  margin: var(--nova-space-12) var(--nova-space-16) 0;
-  font-size: 14px;
-  line-height: 22px;
-  font-weight: 500;
-  color: var(--nova-text-primary);
-}
-
-.sectionIntro {
-  margin: 0 var(--nova-space-16);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
-}
-
-/* The card's own footer (the reference's `editorActions`): cancel left, commit
-   right. It ends the card on the control that writes it — no page-level save. */
+/* 卡脚（参考实现的 `EditorFooter`）：取消居左、提交居右。 */
 .cardFooter {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: var(--nova-space-8);
+  padding-top: var(--nova-space-4);
 }
 
-.cardFooter .problem {
-  margin: 0 auto 0 0;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-/* The two commit buttons: the reference's pill pair from `EditorFooter`. */
 .cancelButton,
 .saveButton {
   box-sizing: border-box;
-  height: 32px;
-  padding: 0 var(--nova-space-12);
-  border-radius: var(--nova-radius-lg);
+  height: var(--nova-row-md);
+  padding: 0 var(--nova-space-8);
+  border-radius: var(--nova-radius-xs);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout),
+      border-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .cancelButton {
-  border: 0.5px solid var(--nova-border-strong);
+  border: 1px solid var(--nova-border-strong);
   background: transparent;
   color: var(--nova-text-primary);
 }

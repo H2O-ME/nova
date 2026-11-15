@@ -21,14 +21,25 @@
     'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   /* Code stack deliberately omits a bare `monospace` tail (Windows CJK falls
    * back to SimSun otherwise). */
-  --nova-font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', Consolas,
-    'Liberation Mono', Menlo, Courier, 'PingFang SC', 'Microsoft YaHei';
+  --nova-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'PingFang SC', 'Noto Sans CJK SC', monospace;
 
   --nova-text-size-2xs: 11px;
   --nova-text-size-xs: 12px;
   --nova-text-size-sm: 13px;
   --nova-text-size-md: 14px;
   --nova-text-size-lg: 16px;
+  /* The reference's `text-ui-xl` (2026-11-15, ZCode alignment): its page names
+   * — the plugin store's title, a resource-group heading — are one step above
+   * `lg`, and Nova had no name for that step, so pages reached for 18px
+   * literals. */
+  --nova-text-size-xl: 18px;
+  /* The settings page's own two rungs (`text-ui-settings-title` /
+   * `-settings-title-lg`, base + 10 / base + 16): 24px, then 30px at a desktop
+   * window. */
+  --nova-text-size-title: 24px;
+  --nova-text-size-title-lg: 30px;
 
   --nova-text-weight-normal: 400;
   --nova-text-weight-medium: 500;

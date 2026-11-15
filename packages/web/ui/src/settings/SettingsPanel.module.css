@@ -18,18 +18,18 @@
   inset: 0;
   z-index: 1200;
   display: flex;
-  /* The reference floats its settings panel on the alt ground with a 6px
-     inset (`pr-1.5 pb-1.5`); the inset is what makes the page read as a panel
-     rather than as a repainted window. */
-  padding: var(--nova-space-6);
+  /* The reference's settings page is ONE panel: it starts at the window's
+     top-left corner and leaves 6px of alt ground on the top, right and bottom
+     only (`pr-1.5 pb-1.5` plus the top strip on Windows). The rail lives
+     INSIDE that panel on the same white plane, divided from the content by one
+     hairline — the alt-ground-on-the-left version read as a second, separate
+     screen next to the workspace. */
+  padding: var(--nova-space-6) var(--nova-space-6) var(--nova-space-6) 0;
   box-sizing: border-box;
   background: var(--nova-surface-sunken);
 }
 
-/* The page frame: fills the window instead of floating in it. The reference
- * draws a 1px frame around its settings panel inset from the alt ground; a
- * full-window surface with the nav's own seam is the same reading without the
- * extra bevel. */
+/* The page frame: one bounded panel for both columns. */
 .panel {
   position: relative;
   z-index: 1;
@@ -43,41 +43,54 @@
   background: var(--nova-surface-base);
 }
 
+/* Windows desktop panel radius (the reference's `rounded-md` = 6px). */
+.overlay[data-desktop] .panel {
+  border-radius: var(--nova-radius-xs);
+}
+
 .panel:focus {
   outline: none;
 }
 
 /* Nav rail (the reference's `lg:grid-cols-[268px_minmax(0,1fr)]`, 2026-11-15):
- * 268 wide on the page surface, divided by one hairline. The 188px dialog rail
- * belonged to the modal layout. */
+ * 268 wide on the panel's own surface, divided by one hairline. */
 .nav {
   flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-4);
   width: 268px;
-  padding: var(--nova-space-8) var(--nova-space-8) 0;
+  padding: 0 var(--nova-space-8);
   box-sizing: border-box;
-  /* One hairline, like the reference's content frame: the old rule painted the
-     column's edge as a fading gradient, which read as a glow rather than a
-     seam. */
   border-right: 1px solid var(--nova-border-strong);
+  background: transparent;
 }
 
-/* The reference's way out: a ghost row at the top of the rail (its
- * `← 返回工作区`), tinted with the 3% surface so it reads as a control rather
- * than as the first nav item. */
+/* The reference's 48px drag strip above the rail's controls. */
+.navTop {
+  flex: none;
+  height: 48px;
+}
+
+/* 对齐 ZCode `SettingsPage.tsx:1536`（返回工作区行）：
+ * `h-8 gap-2 rounded-xl bg-surface px-1.5 text-remote-foreground-muted
+ * hover:bg-surface-hover hover:text-foreground`。Nova 的 `rounded-xl` 是
+ * `--nova-radius-md`（12px，见 `design/tokens/radius.css` 的 ZCode 对照梯）；
+ * 旧稿用的 `radius-lg`（16px）是 ZCode 的 `rounded-2xl`，比参照大一档。 */
 .back {
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
-  height: 32px;
-  padding: 0 var(--nova-space-10);
+  height: var(--nova-row-lg);
+  /* ZCode 的返回行外面还有 `m-1`（4px）与容器 `pt-3`（12px）：图标落在距
+     栏边 8+4+6 = 18px，和导航项的文字一致；顶端距拖拽条 16px。 */
+  margin: var(--nova-space-16) var(--nova-space-4) 0;
+  padding: 0 var(--nova-space-6);
   box-sizing: border-box;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: var(--nova-surface-card);
-  color: var(--nova-text-primary);
+  color: var(--nova-text-muted);
   font-family: inherit;
   font-size: 14px;
   line-height: 20px;
@@ -88,6 +101,7 @@
 
 .back:hover {
   background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
 .back svg {
@@ -119,39 +133,178 @@
   outline: none;
 }
 
-/* Cell stack (figma 501:29961): gap 4.
-   Takes the column's remaining height so the foot's version line can pin to the
-   bottom (`margin-top: auto`); the rows stay top-aligned, so this changes no
-   position. `min-height: 0` is what lets the stack scroll instead of pushing
-   the foot out of the panel when many plugin pages are registered. */
+/* Cell stack: the reference's `space-y-4` between groups and `space-y-1`
+   inside one (`SettingsPage.tsx`'s nav). Takes the column's remaining height so
+   the foot's version line can pin to the bottom (`margin-top: auto`); the rows
+   stay top-aligned, so this changes no position. `min-height: 0` is what lets
+   the stack scroll instead of pushing the foot out of the panel when many
+   plugin pages are registered. */
 .navList {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-4);
+  gap: var(--nova-space-16);
   overflow-y: auto;
+  /* The reference's nav scroll area ends on `pb-3`. */
+  padding-bottom: var(--nova-space-12);
 }
 
-/* The nav column's foot: the build's version line.
+/* One group of rows under its subject line. */
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-4);
+}
+
+/* The group's quiet subject line: the reference's `px-2.5 pb-1 text-ui-sm
+   font-medium text-remote-foreground-muted` — a 12px muted label, not a second
+   nav row. It is what tells 基础设置 from Agent 能力 without a rule between
+   them. */
+.navGroupLabel {
+  padding: 0 var(--nova-space-10) var(--nova-space-4);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--nova-text-muted);
+}
+
+/* The rail's filter field, between the way out and the rows: 对齐 ZCode
+ * `settings/SettingsSearchInput.tsx:29-41` —— 输入框 `h-9`（36px）、
+ * `rounded-xl`（= `--nova-radius-md` 12px）、`pl-9`（36px），图标 `left-3`
+ * `size-4`（16px）。 */
+.navSearch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  /* 搜索框的容器在 ZCode 是 `px-3 pb-3`（12px/12px）：上下各 12px 把返回行
+     与第一组标题分开。 */
+  margin: var(--nova-space-12) var(--nova-space-4);
+}
+
+/* The narrow rail's search button: only the 68px rail variant renders it (the
+   wide rail shows the field itself). */
+.navSearchToggle {
+  display: none;
+}
+
+.navSearchIcon {
+  position: absolute;
+  left: var(--nova-space-12);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  color: var(--nova-text-muted);
+}
+
+.navSearchInput {
+  box-sizing: border-box;
+  width: 100%;
+  /* The reference's rail search is a 28px `size default` outline control
+     (`h-7 rounded-md`), not a 36px field: at 36 it was the heaviest control in
+     the rail. Its text and icon positions (pl-9, 16px glyph) stay. */
+  height: 28px;
+  /* pl-9 = 36px：32px 梯 + 4px 梯，不写字面量。 */
+  padding: 0 var(--nova-space-8) 0 calc(var(--nova-space-32) + var(--nova-space-4));
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-xs);
+  background: var(--nova-surface-card);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-primary);
+  transition: border-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.navSearchInput::placeholder {
+  color: var(--nova-text-muted);
+}
+
+.navSearchInput::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.navSearchInput:hover {
+  border-color: var(--nova-input-border-hover);
+}
+
+.navSearchInput:focus {
+  outline: none;
+  border-color: var(--nova-input-border-focused);
+}
+
+/* A query that matches nothing: one muted line, so an empty rail never reads
+   as a broken panel. */
+.navEmpty {
+  padding: var(--nova-space-8) var(--nova-space-10);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-muted);
+}
+
+/* The nav column's foot: the product identity row, the reference's
+ * `WorkspaceSidebarFooter` shape — a 32px avatar, the name at 14/600, the
+ * column's own 8px sides and a 16px floor. `margin-top: auto` pins it under the
+ * growing cell stack (`.navList` takes the remaining height), so it sits on the
+ * floor of the column rather than trailing the last row.
  *
- * Low contrast and no chrome by intent: a version is reference data, not a
- * destination, and at nav-cell weight it competed with the sections above it.
- * `margin-top: auto` pins it under the growing cell stack (`.navList` takes the
- * remaining height), so it sits on the floor of the column rather than trailing
- * the last row. The bottom pad matches the column's own 22px top inset. */
-.navVersion {
+ * Nova has no account system, so the avatar is the brand's fallback letter and
+ * the row's only extra datum is the build version, quiet on the trailing edge. */
+.navIdentity {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-8);
   margin-top: auto;
-  padding: 0 var(--nova-space-12) var(--nova-space-24);
+  /* The reference's footer runs `px-4 pt-2 pb-4` (16/8/16): the identity's
+     avatar lines up with the nav rows' 16px inset. */
+  padding: var(--nova-space-8) var(--nova-space-16) var(--nova-space-16);
+}
+
+.navAvatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--nova-radius-full);
+  background: var(--nova-surface-card);
+  /* The reference's avatar carries a 1px inset ring (avatar.tsx `after:inset-0
+     after:border`), which keeps a light fallback letter from melting into a
+     light floor. */
+  box-shadow: inset 0 0 0 1px var(--nova-border-strong);
+  color: var(--nova-text-primary);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+.navName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--nova-text-primary);
+}
+
+.navVersion {
+  margin-left: auto;
   font-size: var(--nova-text-size-xs);
   line-height: 20px;
   color: var(--nova-text-faint);
 }
 
-/* Nav cell — the reference's `SettingsSidebarButton` (2026-11-14, ZCode
- * alignment): `h-8 rounded-xl px-2.5 gap-2 transition-colors`, the SAME 5%
- * fill for the current row and the hovered one, ink in the primary tone in
- * both states, and no accent anywhere.
+/* Nav cell — the reference's `SettingsSidebarButton`
+ * (`SettingsPage.tsx:288-292`): `flex h-8 items-center gap-2 rounded-xl px-2.5
+ * transition-colors`, the SAME 5% fill for the current row and the hovered one,
+ * ink in the primary tone in both states, and no accent anywhere.
+ *
+ * 2026-11-15 复核：`rounded-xl` 在 ZCode 是 Tailwind v4 的 12px，对应本仓
+ * `--nova-radius-md`；旧稿写的 `radius-lg`（16px）实际是 ZCode 的 `rounded-2xl`，
+ * 同一句注释写着 12px、值却是 16px —— 注释与实现相反，这里改回真值。
  *
  * The retired version was a 40px cell carrying a 2px accent rail, an
  * accent-tinted icon and a 500-weight label. Measured against the reference's
@@ -163,7 +316,7 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
-  height: 32px;
+  height: var(--nova-row-lg);
   padding: 0 var(--nova-space-10);
   box-sizing: border-box;
   border: none;
@@ -203,7 +356,8 @@
   text-overflow: ellipsis;
 }
 
-/* Content column (figma Content 501:29980): header + options. */
+/* Content column (figma Content 501:29980): header + options, on the same
+ * panel surface as the rail. */
 .content {
   flex: 1;
   min-width: 0;
@@ -220,27 +374,180 @@
 
 /* Options area: the reference's `mx-auto w-full max-w-4xl px-8 pb-10` column.
  * Centred with padding, not `max-width`, so the scrollbar keeps riding the
- * column's own right edge instead of floating inside the page. */
+ * column's own right edge instead of floating inside the page.
+ *
+ * The 32px stack is the reference's `space-y-8`: groups — heading, sentence and
+ * card — sit further apart than the rows inside a card, which is what makes a
+ * page of groups read as groups rather than as one long form. */
 .options {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-16);
-  padding-right: max(var(--nova-space-24), calc((100% - 896px) / 2));
+  gap: var(--nova-space-32);
+  /* The reference's column is `max-w-4xl px-4 lg:px-8`: 896px INCLUDING the
+     32px gutters, so the cards are 832 wide. Centring on 896 put the cards 64px
+     wider than the reference's on every page. */
+  padding-right: max(
+    var(--nova-space-24),
+    calc((100% - 896px) / 2 + var(--nova-space-32))
+  );
   padding-bottom: var(--nova-space-32);
-  padding-left: max(var(--nova-space-24), calc((100% - 896px) / 2));
+  padding-left: max(
+    var(--nova-space-24),
+    calc((100% - 896px) / 2 + var(--nova-space-32))
+  );
   overflow-y: auto;
 }
 
-/* The section title: the reference's `text-ui-settings-title` (24px) at
- * semibold with tight tracking. It is the one 600-weight line on the page, and
- * that is what gives the content column a head. */
+/* The section title: 对齐 ZCode `SettingsPage.tsx:1766-1768` 的
+ * `text-ui-settings-title font-semibold tracking-tight lg:text-ui-settings-title-lg`。
+ * ZCode 的字号 token 是 `--ui-font-size ± n`（base 14）：24px / 30px，行高
+ * 4/3 = 32 与 1.2 = 36，与本表一致；`tracking-tight` 是 -0.025em，旧稿的
+ * -0.01em 不是参照值。 */
 .pageTitle {
   margin: 0;
   font-size: 24px;
   line-height: 32px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
   color: var(--nova-text-primary);
+}
+
+@media (min-width: 1024px) {
+  .pageTitle {
+    font-size: 30px;
+    line-height: 36px;
+  }
+
+  .options {
+    padding-bottom: var(--nova-space-40);
+  }
+}
+
+/* NARROW FRAME (2026-11-15, the reference's `grid-cols-[68px_…]
+ * lg:grid-cols-[268px_…]`): under 1024px the rail becomes a 68px icon column —
+ * labels, group captions and the filter field go, the way ZCode's
+ * `max-lg:sr-only` / `max-lg:size-10` variants do — so a small window gives the
+ * page its width instead of squeezing a 268px text rail next to it. */
+@media (max-width: 1023px) {
+  .nav {
+    position: relative;
+    width: 68px;
+    padding: 0 var(--nova-space-4);
+  }
+
+  /* The filter becomes the reference's 36px square search button
+     (`max-lg:size-9`); pressing it floats the field over the rail (the
+     reference opens its command palette here — Nova keeps the same field, one
+     press away). */
+  .navSearch {
+    width: 36px;
+    height: 36px;
+    margin: var(--nova-space-12) auto;
+  }
+
+  .navSearchToggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 1px solid var(--nova-border-strong);
+    border-radius: var(--nova-radius-md);
+    background: var(--nova-surface-card);
+    color: var(--nova-text-muted);
+    cursor: pointer;
+  }
+
+  .navSearchToggle svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .navSearchIcon,
+  .navSearchInput {
+    display: none;
+  }
+
+  .nav[data-search-open] .navSearch {
+    position: absolute;
+    top: 112px;
+    left: var(--nova-space-8);
+    z-index: 4;
+    width: 248px;
+    height: auto;
+    margin: 0;
+    padding: var(--nova-space-6);
+    border: 1px solid var(--nova-border-strong);
+    border-radius: var(--nova-radius-md);
+    background: var(--nova-surface-raised);
+    box-shadow: var(--nova-elevation-card);
+  }
+
+  .nav[data-search-open] .navSearchToggle {
+    display: none;
+  }
+
+  .nav[data-search-open] .navSearchIcon {
+    display: block;
+    left: var(--nova-space-16);
+  }
+
+  .nav[data-search-open] .navSearchInput {
+    display: block;
+  }
+
+  /* The open field leaves the flow, so the rail gives its slot back — the nav
+     icons must not jump up when the search opens. */
+  .nav[data-search-open] .navList {
+    margin-top: calc(36px + 2 * var(--nova-space-12));
+  }
+
+  .back {
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    margin-right: auto;
+    margin-left: auto;
+    padding: 0;
+  }
+
+  .backLabel,
+  .navLabel,
+  .navGroupLabel {
+    display: none;
+  }
+
+  .navList {
+    align-items: center;
+  }
+
+  .navGroup {
+    align-items: center;
+    width: 100%;
+  }
+
+  /* The reference separates groups with a rule once the captions are gone. */
+  .navGroup + .navGroup {
+    padding-top: var(--nova-space-8);
+    border-top: 1px solid var(--nova-border-subtle);
+  }
+
+  .navCell {
+    justify-content: center;
+    width: 40px;
+    padding: 0;
+  }
+
+  .navIdentity {
+    justify-content: center;
+    padding: var(--nova-space-8) 0 var(--nova-space-16);
+  }
+
+  .navName,
+  .navVersion {
+    display: none;
+  }
 }

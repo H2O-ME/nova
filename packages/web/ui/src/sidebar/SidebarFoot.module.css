@@ -1,22 +1,33 @@
-/* The footer row (the reference's shape): identity block left, trailing
-   controls right, bottom-pinned with its own breathing room. */
+/* The footer row (ZCode WorkspaceSidebarFooter.tsx:235-237/465): the reference's
+   footer is `px-4 pt-2 pb-4` with a `gap-2` row — 16px left, 8px above, 16px
+   below, 8px between the identity block and the trailing controls. Nova's
+   column already insets 8px, so the row adds the remaining 8px on its left
+   (`.trigger` padding) and 4px on the right (so the gear ends at the reference's
+   12px, its `pr-3` override at project-sidebar/index.tsx:353). */
 .triggerRow {
   flex: none;
   display: flex;
   align-items: center;
-  gap: var(--nova-space-4);
-  width: calc(100% + 4px);
-  margin: var(--nova-space-8) -2px var(--nova-space-4);
+  gap: var(--nova-space-8);
+  width: 100%;
+  padding-right: var(--nova-space-4);
+  margin: var(--nova-space-8) 0 var(--nova-space-16);
+  box-sizing: border-box;
 }
 
 .triggerRow.railRow {
   width: 36px;
   justify-content: center;
+  /* The rail centering is its own spec: the wide row's right inset would
+     offset the 32px avatar inside the 36px box. */
+  padding-right: 0;
   margin: var(--nova-space-8) 0 var(--nova-space-10);
 }
 
-/* The identity block: fallback avatar letter + product name, the reference's
-   ghost-button row (min-width 0 so a long name truncates, not overflows). */
+/* The identity block (ZCode WorkspaceSidebarFooter.tsx:242-253): ghost Button
+   size lg — h-8 (32px), `gap-2`, `rounded-tl-2xl rounded-bl-2xl border-0 pl-0`;
+   the footer's own px-4 supplies the visual left inset, so the row's padding
+   here completes the 16px. min-width 0 so a long name truncates, not overflows. */
 .trigger {
   flex: 1;
   min-width: 0;
@@ -24,12 +35,12 @@
   align-items: center;
   gap: var(--nova-space-8);
   width: auto;
-  height: 36px;
+  height: 32px;
   margin: 0;
-  padding: 0 var(--nova-space-8) 0 0;
+  padding: 0 var(--nova-space-10) 0 var(--nova-space-8);
   box-sizing: border-box;
   border: none;
-  border-radius: var(--nova-radius-sm);
+  border-radius: var(--nova-radius-lg) 0 0 var(--nova-radius-lg);
   background: transparent;
   cursor: pointer;
   overflow: hidden;
@@ -63,20 +74,22 @@
   border-radius: var(--nova-radius-lg);
 }
 
-/* The avatar: a 24px fallback-letter disc in the column's own wash. No image
-   exists to fill it — the letter is the point (the reference's AvatarFallback). */
+/* The avatar (ZCode's `Avatar size="default"`, WorkspaceSidebarFooter.tsx:163):
+   a 32px disc — exactly the identity row's height — with a 14px fallback
+   letter (`AvatarFallback` is text-ui-base). No image exists to fill it; the
+   letter is the point. */
 .avatar {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-left: var(--nova-space-6);
+  width: 32px;
+  height: 32px;
+  margin-left: 0;
   border-radius: 9999px;
   background: var(--nova-interactive-active);
   color: var(--nova-text-primary);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1;
 }
@@ -85,14 +98,16 @@
   margin-left: 0;
 }
 
-/* The trailing gear: a bare 28px icon control, secondary ink, hover fill. */
+/* The trailing gear: the reference's Button size icon-lg
+   (WorkspaceSidebarFooter.tsx:476-487) — a 32x32 box with 8px rounding and a
+   16px glyph. Wide-only; the rail's identity block is the settings seat. */
 .gear {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border: none;
   border-radius: var(--nova-radius-sm);
   padding: 0;

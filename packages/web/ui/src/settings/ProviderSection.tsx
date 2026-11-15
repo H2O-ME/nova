@@ -1,10 +1,13 @@
 /**
  * 供应商（BYOK）编辑区：设置页「模型」页——**哪个端点在役**。
  *
- * 版式对齐 the harness：每个
- * 供应商是一张卡，卡头左边是身份（名称 + 标记 + 密钥点），右边是行内动作（编辑 /
- * 设为当前 / 删除）；一次只展开一张卡；「添加模型提供商」是列表末尾的虚线整行按钮，
- * 展开成同一形态的添加卡。
+ * 版式对齐 ZCode 的设置页资源卡（2026-11-15 复核）：**一张卡**装全部供应商行
+ * （`model-provider-section/SectionLayout.tsx:67` 的
+ * `rounded-xl border border-border bg-card`），行是设置行节奏
+ * （`SettingsPageParts.tsx:196` 的 `border-t px-4 py-3 first:border-t-0`），
+ * 组头是 16/600 的标题 + 一行说明；「添加模型提供商」是组头右侧的主色按钮
+ * （`SettingsResourceHeaderActions.tsx:113`），不是列表末尾的虚线板。一次只展开
+ * 一行编辑器（这一条是 Nova 自己的取舍：参照的卡是左右分栏，它的编辑面在右栏）。
  *
  * **每张卡自己保存**（参考实现的 `EditorFooter` 模式：取消居左、提交居右）。写盘单位
  * 仍是整份 `providers[]` 清单（`save_providers` 协议如此），但保存动作出现在被编辑的
@@ -26,15 +29,15 @@
  *    只由帧驱动），而壳把两段拼成兄弟节点，所以由发起切换的这一段补问。
  */
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDownIcon, ChevronRightIcon } from '../icons.js';
+import { PlusIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { SettingsSection } from './Section.js';
 import { parseCapacityField } from './ModelConfigEditor.js';
 import { ProviderModelsPicker } from './ProviderModelsDialog.js';
 import { ProviderCardEditor } from './ProviderCardEditor.js';
+import { ProviderRow } from './ProviderRow.js';
 import type { ProviderDraft } from './provider-draft.js';
 import { useManageRefusal, type ManageErrorValue } from './use-manage-refusal.js';
-import { cx } from '../composer/cx.js';
 import type { ClientFrame } from '../types.js';
 import type { WireProviderRow } from '../types.js';
 import type { ProvidersSnapshot, ProviderProbe } from '../state.js';
@@ -456,123 +459,91 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
   };
 
   return (
-    <SettingsSection>
-      <h2 className={css.heading}>{SETTINGS_COPY['models.title']}</h2>
+    <div className={css.page}>
+      {/* 页面说明在卡外：对齐 ZCode `model-provider-section/SectionLayout.tsx:54-56`
+          （`text-ui-base leading-6 text-foreground-subtle`）。页名由设置壳的页标题
+          承担（`SettingsPanel.module.css` 的 `.pageTitle`），这一段不再重复「模型」。 */}
       <p className={css.intro}>{SETTINGS_COPY['models.intro']}</p>
-      <h3 className={css.sectionTitle}>{SETTINGS_COPY['models.providerTitle']}</h3>
-      <p className={css.sectionIntro}>{SETTINGS_COPY['models.providerIntro']}</p>
-      {/* A refused save is this section's own fact (its write started it), said
-          once at the top of the roster — the draft it protected is still on the
-          card, unchanged. */}
-      {refusal.message !== null && (
-        <div className={css.notice} role="alert">{refusal.message}</div>
-      )}
-      {loading && <div className={css.status}>{SETTINGS_COPY['models.providerLoading']}</div>}
-      {!loading && stored.length === 0 && !adding && (
-        <div className={css.notice}>{SETTINGS_COPY['models.providerEmpty']}</div>
-      )}
 
-      <ul className={css.rows}>
-        {stored.map((entry) => {
-          const row = draftOf(entry);
-          const isActive = entry.id === activeId;
-          const open = openId === entry.id;
-          const hasKey = storedKey.get(entry.id) === true;
-          // The switch's precondition is the FILE's content, not any draft:
-          // `set_provider` reads the stored list. Each refusal says which one it is
-          // — the two reasons are different jobs (write the row / paste a key), so
-          // they must not be swapped: a stored-but-keyless row that says "保存供应商
-          // 再切换" sends the reader to a save that changes nothing.
-          const canActivate = storedIds.has(entry.id) && hasKey && !isActive;
-          const blocked = !storedIds.has(entry.id)
-            ? SETTINGS_COPY['models.providerSaveFirst']
-            : SETTINGS_COPY['models.providerKeyMissing'];
-          return (
-            <li
-              key={entry.id}
-              className={cx(css.card, isActive && css.cardActive)}
-              data-provider={entry.id}
-              data-active={isActive ? 'true' : undefined}
-            >
-              <div className={css.rowHead}>
-                <span className={css.rowIdentity}>
-                  <span className={css.rowName}>{row.name.trim() !== '' ? row.name.trim() : hostLabel(row.baseURL)}</span>
-                  {/* 活动项：一个词，不靠顺序暗示。 */}
-                  {isActive && <span className={css.activeTag}>{SETTINGS_COPY['models.providerActive']}</span>}
-                  {/* 密钥状态只在**缺**的时候说，且用词说：缺密钥正是「设为当前」
-                      按不动的那个原因，所以这句话解释的是它旁边那颗灰按钮。配好
-                      了则一个字都不印——那颗按钮能按，本身就是读数。一个恒在的
-                      小圆点说的是一种只有 tooltip 才懂的语言。 */}
-                  {!hasKey && <span className={css.keyMissing}>{SETTINGS_COPY['models.providerKeyMissing']}</span>}
-                </span>
-                <span className={css.rowActions}>
-                  <button
-                    type="button"
-                    className={css.rowButton}
-                    data-provider-edit={entry.id}
-                    aria-expanded={open}
-                    onClick={() => { setOpenId(open ? null : entry.id); }}
-                  >
-                    {open ? <ChevronDownIcon className={css.rowButtonIcon} /> : <ChevronRightIcon className={css.rowButtonIcon} />}
-                    {open ? SETTINGS_COPY['models.providerCollapse'] : SETTINGS_COPY['models.providerEdit']}
-                  </button>
-                  {!isActive && (
-                    <button
-                      type="button"
-                      className={css.rowButton}
-                      data-provider-use={entry.id}
-                      disabled={!canActivate}
-                      title={canActivate ? SETTINGS_COPY['models.providerSwitchNote'] : blocked}
-                      onClick={() => { send({ type: 'set_provider', id: entry.id }); }}
-                    >
-                      {SETTINGS_COPY['models.providerUse']}
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className={cx(css.rowButton, css.rowButtonDanger)}
-                    data-provider-remove={entry.id}
-                    title={SETTINGS_COPY['models.providerRemoveNow']}
-                    onClick={() => { removeRow(entry.id); }}
-                  >
-                    {SETTINGS_COPY['models.providerRemove']}
-                  </button>
-                </span>
-              </div>
-              <div className={css.rowMeta}>
-                <span className={cx(css.rowUrl, row.baseURL.trim() === '' && css.rowUrlEmpty)}>
-                  {row.baseURL.trim() === '' ? SETTINGS_COPY['models.providerNoUrl'] : row.baseURL}
-                </span>
-                <span className={css.rowCount}>
-                  {row.models.length === 0
-                    ? SETTINGS_COPY['models.providerModelCountZero']
-                    : `${String(row.models.length)} ${SETTINGS_COPY['models.providerModelCount']}`}
-                </span>
-              </div>
-              {open && editorFor(row, false)}
-            </li>
-          );
-        })}
-
-        {adding && newDraft !== null && (
-          <li className={css.card} data-provider={newDraft.id} data-provider-new="true">
-            <div className={css.rowHead}>
-              <span className={css.rowIdentity}>
-                <span className={css.rowName}>{SETTINGS_COPY['models.providerAdd']}</span>
-              </span>
-            </div>
-            {editorFor(newDraft, true)}
-          </li>
-        )}
-      </ul>
-
-      {!adding && (
-        <div className={css.footer}>
-          <button type="button" className={css.addButton} data-provider-add-new onClick={startAdd}>
-            {SETTINGS_COPY['models.providerAdd']}
-          </button>
+      <section className={css.group}>
+        {/* 组头：16/600 组标题 + 一组一句 14/24，右侧是资源动作。ZCode 的
+            `SettingsPage.tsx:1766` 页标题下就是这种组头结构（常规页可见）。 */}
+        <div className={css.groupHead}>
+          <div className={css.groupText}>
+            <h3 className={css.groupTitle}>{SETTINGS_COPY['models.providerTitle']}</h3>
+            <p className={css.groupDesc}>{SETTINGS_COPY['models.providerIntro']}</p>
+          </div>
+          {/* 「添加」是组头的资源动作：ZCode `SettingsResourceHeaderActions.tsx:113-124`
+              把新建放在资源头右侧，而不是列表末尾。 */}
+          {!adding && (
+            <button type="button" className={css.addButton} data-provider-add-new onClick={startAdd}>
+              <PlusIcon className={css.addIcon} />
+              {SETTINGS_COPY['models.providerAdd']}
+            </button>
+          )}
         </div>
-      )}
+
+        <SettingsSection>
+          {/* A refused save is this section's own fact (its write started it), said
+              once at the top of the roster — the draft it protected is still on the
+              card, unchanged. */}
+          {refusal.message !== null && (
+            <div className={css.notice} role="alert">{refusal.message}</div>
+          )}
+          {loading && <div className={css.status}>{SETTINGS_COPY['models.providerLoading']}</div>}
+          {!loading && stored.length === 0 && !adding && (
+            <div className={css.status}>{SETTINGS_COPY['models.providerEmpty']}</div>
+          )}
+
+          <ul className={css.rows}>
+            {stored.map((entry) => {
+              const row = draftOf(entry);
+              const isActive = entry.id === activeId;
+              const open = openId === entry.id;
+              const hasKey = storedKey.get(entry.id) === true;
+              // The switch's precondition is the FILE's content, not any draft:
+              // `set_provider` reads the stored list. Each refusal says which one it is
+              // — the two reasons are different jobs (write the row / paste a key), so
+              // they must not be swapped: a stored-but-keyless row that says "保存供应商
+              // 再切换" sends the reader to a save that changes nothing.
+              const canActivate = storedIds.has(entry.id) && hasKey && !isActive;
+              const blocked = !storedIds.has(entry.id)
+                ? SETTINGS_COPY['models.providerSaveFirst']
+                : SETTINGS_COPY['models.providerKeyMissing'];
+              return (
+                <ProviderRow
+                  key={entry.id}
+                  id={entry.id}
+                  name={row.name.trim() !== '' ? row.name.trim() : hostLabel(row.baseURL)}
+                  baseURL={row.baseURL}
+                  modelCount={row.models.length}
+                  isActive={isActive}
+                  hasKey={hasKey}
+                  open={open}
+                  canActivate={canActivate}
+                  blockedReason={blocked}
+                  onToggle={() => { setOpenId(open ? null : entry.id); }}
+                  onUse={() => { send({ type: 'set_provider', id: entry.id }); }}
+                  onRemove={() => { removeRow(entry.id); }}
+                >
+                  {open && editorFor(row, false)}
+                </ProviderRow>
+              );
+            })}
+
+            {adding && newDraft !== null && (
+              <li className={css.card} data-provider={newDraft.id} data-provider-new="true">
+                <div className={css.rowHead}>
+                  <span className={css.rowIdentity}>
+                    <span className={css.rowName}>{SETTINGS_COPY['models.providerAdd']}</span>
+                  </span>
+                </div>
+                {editorFor(newDraft, true)}
+              </li>
+            )}
+          </ul>
+        </SettingsSection>
+      </section>
 
       {/* 探针成功 = 这个弹窗打开。清单的长度由端点决定，所以它必须活在一个固定
           高度的框里；把它铺进卡片，卡片就会长到几百像素，把设置页撑成一条长滚轴
@@ -589,6 +560,6 @@ export function ProviderSection({ providers, probe, manageError, onDirtyChange, 
           onClose={() => { setProbeTarget(null); }}
         />
       )}
-    </SettingsSection>
+    </div>
   );
 }

@@ -6,7 +6,8 @@
  * owns the arithmetic behind it so the clamp the stylesheet applies and the
  * width a drag produces can be asserted without a DOM:
  *
- *   - the adaptive clamp (680px floor, 64% of the column, 920px cap),
+ *   - the reference's two-step adaptive width (full width below an 864px
+ *     column, 896px cap from 864, 1152px cap from 1280),
  *   - the dragged preference, clamped by CONTENT_MIN and the column's edge
  *     budget so a stored width can never push its own handles off the column,
  *   - the symmetric gesture (both handles write the one centered width, so
@@ -31,16 +32,35 @@ export const CONTENT_EDGE_BUDGET = 176;
 /** Which strip beside the transcript a drag gesture belongs to. */
 export type WidthHandleSide = 'left' | 'right';
 
+/** The reference's column-query breakpoints (its `conversationLayout.ts`):
+ *  below 864px the content is full width; at 864 the column gives up 6rem and
+ *  caps at max-w-4xl (896); at 1280 it gives up 24rem and caps at max-w-6xl
+ *  (1152). Nova's column is the same pane, so it takes the same two steps —
+ *  the old single `64% / 920px` clamp never grew on a wide window. */
+const WIDE_BREAKPOINT = 1280;
+const MEDIUM_BREAKPOINT = 864;
+const MEDIUM_BUDGET = 96;
+const WIDE_BUDGET = 384;
+const MEDIUM_CAP = 896;
+const WIDE_CAP = 1152;
+const NARROW_BUDGET = 32;
+
 /**
  * Resolves the content width the CSS axis would show for a column width.
  * @param columnWidth - the conversation column's rendered width in px.
- * @param preference - the dragged preference, or null for the adaptive clamp.
- * @returns the resolved content width in px (mirrors the CSS clamp).
+ * @param preference - the dragged preference, or null for the adaptive width.
+ * @returns the resolved content width in px (mirrors the CSS fallback).
  */
 export function resolveContentWidth(columnWidth: number, preference: number | null): number {
   const max = Math.max(CONTENT_MIN, columnWidth - CONTENT_EDGE_BUDGET);
   if (preference !== null) return Math.min(Math.max(preference, CONTENT_MIN), max);
-  return Math.max(680, Math.min(columnWidth * 0.64, 920));
+  if (columnWidth >= WIDE_BREAKPOINT) {
+    return Math.max(0, Math.min(columnWidth - WIDE_BUDGET, WIDE_CAP));
+  }
+  if (columnWidth >= MEDIUM_BREAKPOINT) {
+    return Math.max(0, Math.min(columnWidth - MEDIUM_BUDGET, MEDIUM_CAP));
+  }
+  return Math.max(0, columnWidth - NARROW_BUDGET);
 }
 
 /**

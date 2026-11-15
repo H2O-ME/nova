@@ -336,7 +336,7 @@ function InlineRow({
         autoFocus
         type="text"
         className={css.inlineInput}
-        style={{ marginLeft: depth * 22 + 22 }}
+        style={{ marginLeft: depth * 12 + 14 }}
         value={value}
         spellCheck={false}
         placeholder={RIGHTBAR_COPY['files.name.placeholder']}
@@ -399,7 +399,7 @@ function TreeRow({
 }: TreeRowProps): JSX.Element {
   if (row.kind === 'note') {
     return (
-      <div className={css.note} style={{ paddingLeft: row.depth * 22 + 26 }} data-tone={row.tone}>
+      <div className={css.note} style={{ paddingLeft: row.depth * 12 + 18 }} data-tone={row.tone}>
         {row.text}
       </div>
     );
@@ -445,7 +445,7 @@ function TreeRow({
       className={css.row}
       role="button"
       tabIndex={0}
-      style={{ paddingLeft: row.depth * 22 + 6 }}
+      style={{ paddingLeft: row.depth * 12 + 8 }}
       title={entry.path}
       aria-expanded={isDir ? row.expanded : undefined}
       data-picked={picked ? '' : undefined}

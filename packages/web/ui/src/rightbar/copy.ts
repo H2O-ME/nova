@@ -28,6 +28,10 @@ export const RIGHTBAR_COPY = {
   'tab.files': '文件',
   'tab.tasks': '任务',
   'tab.terminal': '终端',
+  /* The doorway page's own head and per-row verb (the reference's
+     `sidePane.openTab` / `settings.plugins.store.ui.open`). */
+  'start.title': '新标签页',
+  'start.open': '打开',
   'start.changes.note': '本会话动过的文件与工作区 git 状态',
   'start.files.note': '浏览会话工作区的文件',
   'start.tasks.note': '后台命令与子代理',

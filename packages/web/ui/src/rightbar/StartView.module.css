@@ -1,89 +1,85 @@
 /*
- * 开始: the start page the panel shows while no tab is in front.
+ * 开始 / 新标签页: the doorway page the panel shows while no tab is in front.
  *
- * A muted compass over a centred column of entry
- * capsules, lifted 10% of the pane above true centre — a browser start page
- * shows its doors without a caption. The capsule geometry is the reference's:
- * 380px wide (shrinking inside the column's own 24px insets), a 26px glyph
- * box so every capsule's words start at the same left edge, 14px title over
- * an 11px description on the quieter ink.
+ * The reference's open-tab launcher (`AnimatedSidePanePanel.tsx:832-848`):
+ * top-aligned scroll, `px-7 py-6` (28/24) gutters, a `max-w-3xl` column with a
+ * 24px gap, an 18px semibold page head indented 8px, and rows of
+ * `gap-3 rounded-xl px-2 py-2.5` — a 48px icon block, a 14px semibold title
+ * over a 12px quiet line, and a trailing 「打开」 pill.
  */
 
 .view {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nova-space-14);
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
   flex: 1 1 auto;
+  box-sizing: border-box;
   min-height: 0;
   min-width: 0;
-  padding: 0 var(--nova-space-24);
+  padding: var(--nova-space-24) var(--nova-space-28);
+  overflow-y: auto;
 }
 
-/* The lift, as a share of the pane's height: the centred column rises 5% of
-   the pane, and a short pane gives it up before the capsules clip. */
-.view::after {
-  content: '';
-  flex: 0 1 10%;
-}
-
-/* The compass above the capsules, at 56px on watermark ink — not a control.
-   The ink is pinned to the pure-gray static ramp per theme because the label
-   aliases all ride the bluish ramp, whose cast shows at this size. Its margin
-   over the column's gap holds the first capsule 30px below it. */
-.hero {
+.column {
   display: flex;
-  margin-bottom: var(--nova-space-16);
-  color: var(--nova-text-disabled);
+  flex-direction: column;
+  gap: var(--nova-space-24);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 768px;
+  margin: 0 auto;
 }
 
-/* The glyph rides currentColor; its design box is 16, drawn at the
-   reference's 56px hero size. */
-.hero svg {
-  width: 56px;
-  height: 56px;
+.title {
+  margin: 0;
+  padding-left: var(--nova-space-8);
+  color: var(--nova-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-:global(body[data-nova-dark]) .hero {
-  color: var(--nova-text-disabled);
+/* One column, 4px between rows: the pane is narrower than the reference's
+   two-column breakpoint in every docked width, so the single column IS the
+   launcher's shape here. */
+.list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--nova-space-4);
+  min-width: 0;
 }
 
-/* A filled pill, 380px wide, its icon and text anchored at the left inset;
-   max-width keeps the column's own gutter inside a narrow pane. The 56px
-   minimum is the title-only height; long text ellipsizes inside. */
-.entry {
+/* A row is the whole hit area: 8px side inset, 10px vertical, 12px radius. */
+.row {
   display: flex;
-  gap: var(--nova-space-14);
+  gap: var(--nova-space-12);
   align-items: center;
   box-sizing: border-box;
-  width: 380px;
-  max-width: 100%;
-  min-height: 56px;
-  padding: var(--nova-space-14) 20px;
+  width: 100%;
+  min-width: 0;
+  padding: var(--nova-space-10) var(--nova-space-8);
   color: var(--nova-text-primary);
   font: inherit;
   text-align: left;
-  background: var(--nova-surface-sunken);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  background: none;
+  border: 0;
+  border-radius: var(--nova-radius-md);
   cursor: pointer;
-  transition:
-    background-color var(--nova-dur-base) var(--nova-ease-inout),
-    color var(--nova-dur-base) var(--nova-ease-inout);
+  transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
-.entry:hover {
+.row:hover {
   background: var(--nova-interactive-hover);
 }
 
-/* The terminal card is TWO controls on one pill (the reference's TerminalGuide):
-   the main face opens the tab, the chevron opens the shell menu. The main face
-   is a reset button that lets the pill's own hover/focus stand. */
-.entryMain {
+.row:focus-visible {
+  outline: 2px solid var(--nova-interactive-hover-strong);
+  outline-offset: -2px;
+}
+
+/* The terminal row is TWO controls on one row: the face opens the tab, the
+   chevron opens the shell menu. The face is a reset button that lets the
+   row's own hover/focus stand. */
+.rowMain {
   display: flex;
-  gap: var(--nova-space-14);
+  gap: var(--nova-space-12);
   flex: 1 1 auto;
   align-items: center;
   min-width: 0;
@@ -96,7 +92,7 @@
   cursor: pointer;
 }
 
-.entryTrigger {
+.rowTrigger {
   display: flex;
   flex: none;
   align-items: center;
@@ -107,68 +103,90 @@
   color: var(--nova-text-secondary);
   background: none;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   cursor: pointer;
   transition:
     background-color var(--nova-dur-base) var(--nova-ease-inout),
     color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
-.entryTrigger:hover {
+.rowTrigger:hover {
   color: var(--nova-text-primary);
   background: var(--nova-interactive-hover);
 }
 
-.entryTrigger:focus-visible {
+.rowTrigger:focus-visible {
   outline: 2px solid var(--nova-interactive-hover-strong);
   outline-offset: -1px;
 }
 
-.entry:focus-visible {
-  outline: 2px solid var(--nova-interactive-hover-strong);
-  outline-offset: 2px;
-}
-
-/* A fixed 26px box so an entry's glyph sits centred and every capsule's words
-   start at the same left edge. */
-.entryIcon {
+/* The 48px tile the glyph sits in (the reference's `size-12 rounded-xl
+   bg-surface`): on this pane's white floor the tile is the page tone, so the
+   block reads as a plate rather than a second card. */
+.rowIcon {
   display: flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 48px;
+  height: 48px;
   color: var(--nova-text-secondary);
+  background: var(--nova-surface-base);
+  border-radius: var(--nova-radius-md);
 }
 
-.entryIcon svg {
-  width: 20px;
-  height: 20px;
+.rowIcon svg {
+  width: 24px;
+  height: 24px;
 }
 
-/* The capsule's words in one column beside the glyph: the title, and the one
-   line under it on the quieter ink. Both ellipsize rather than widen the pill. */
-.entryText {
+/* The row's words in one column beside the tile: the title, and the one line
+   under it on the quieter ink. Both ellipsize rather than widen the row. */
+.rowText {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--nova-space-2);
   min-width: 0;
 }
 
-.entryTitle {
+.rowTitle {
   overflow: hidden;
+  color: var(--nova-text-primary);
   font-size: 14px;
+  font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-.entryDescription {
+.rowDescription {
   overflow: hidden;
   color: var(--nova-text-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* The trailing verb is a VISUAL pill, not a nested button: the whole row is
+   the control (the reference draws the same span inside its row button). */
+.rowOpen {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--nova-space-12);
+  color: var(--nova-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  background: var(--nova-surface-sunken);
+  border-radius: var(--nova-radius-full);
+}
+
+:global(body[data-nova-dark]) .rowOpen {
+  /* The dark ladder's sunken is BELOW this pane's floor, while the reference's
+     secondary fill sits above it: 10% white over the pane is the same step. */
+  background: var(--nova-interactive-active);
 }

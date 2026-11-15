@@ -32,8 +32,18 @@
   --nova-space-12: 12px;
   --nova-space-14: 14px;
   --nova-space-16: 16px;
+  /* The reference's 4px grid runs further than this ladder did (2026-11-15,
+   * ZCode alignment): its `gap-5`/`py-5` (20px), `gap-7` (28px), `size-10`-scale
+   * padding (40px) and `py-12` (48px) are all in use — the settings column's
+   * `pb-10` and the page head's 48px drag strip among them. Consumers that need
+   * those steps had to write literals before, which the token guard then
+   * flagged; these are the names they were missing. */
+  --nova-space-20: 20px;
   --nova-space-24: 24px;
+  --nova-space-28: 28px;
   --nova-space-32: 32px;
+  --nova-space-40: 40px;
+  --nova-space-48: 48px;
 
   /* Row heights for list rows, toolbar buttons and menu items. Three rungs, so
    * a surface picks one instead of measuring its own. */

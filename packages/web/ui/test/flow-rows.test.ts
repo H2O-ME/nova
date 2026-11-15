@@ -77,11 +77,11 @@ describe('flowRows turns', () => {
     // `turn-tail` node, so the column's 16px rhythm separates it from the
     // answer as a sibling.
     // The second turn carries no work rows, so it prints no header at all
-    // (2026-11-15): a settled turn with nothing to fold shows no 「用时 X」 band.
+    // (2026-11-15): a settled turn with nothing to fold shows no 「已工作 X」 band.
     expect(keys(rows)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'b6', 'tail:b5']);
     // The header carries the duration; the meta ids appear nowhere.
     const header = renderToStaticMarkup(rows.find((row) => row.key === 'turn:b1')!.node);
-    expect(header).toContain('用时 5秒');
+    expect(header).toContain('已工作 6 秒');
     expect(header).toContain('aria-expanded="false"');
   });
 
@@ -141,12 +141,11 @@ describe('flowRows turns', () => {
     // The reference's `TurnProcessNodeView` is `[label][chevron]` and its sheet
     // has no detail class; the per-run readings (clock, TTFT, TPS) live in the
     // session-stats dialog and the trajectory table. Printing them under the
-    // header duplicated the label's own 用时 and put a block of numbers where
+    // header duplicated the label's own duration and put a block of numbers where
     // the reference has nothing.
     const rows = flowRows(blocks(), options({ openTurns: new Set(['b1']) }));
     const open = renderToStaticMarkup(rows.find((row) => row.key === 'turn:b1')!.node);
-    // The label is the run's whole-second duration, the reference's rounding.
-    expect(open).toContain('用时 5秒');
+    // The label is the run's whole-second duration, the reference's rounding.    expect(open).toContain('已工作 6 秒');
     expect(open).not.toContain('首 token');
     expect(open).not.toContain('tok/s');
     // The removed readings still have their own home, so nothing was lost: the
@@ -256,16 +255,17 @@ describe('flowRows × presentation policy', () => {
     // the flow and gives the steps the history box.
     const policy = presentationPolicyFor('detailed');
     const live = flowRows(liveTurn, options({ runningStatus: { label: '生成中' }, policy }));
-    expect(keys(live)).toEqual(['u1', 'turn:u1', 'r1', 'k1']);
+    expect(keys(live)).toEqual(['u1', 'turn:u1', 'summary:r1']);
     expect(live.find((row) => row.key === 'k1')?.group).toBeUndefined();
     const settled = flowRows(turn, options({ policy }));
+    // Boxed steps are already one bounded disclosure, so they are not regrouped.
     expect(keys(settled)).toEqual(['u1', 'r1', 'k1', 't1', 'tail:u1']);
     expect(settled.find((row) => row.key === 'k1')?.group?.id).toBe('group:u1');
   });
 
   it('verbose unfolds everything: no turn header and no groups', () => {
     const rows = flowRows(turn, options({ policy: presentationPolicyFor('verbose') }));
-    expect(keys(rows)).toEqual(['u1', 'r1', 'k1', 't1', 'tail:u1']);
+    expect(keys(rows)).toEqual(['u1', 'summary:r1', 't1', 'tail:u1']);
     expect(rows.every((row) => row.group === undefined)).toBe(true);
     // Nothing left to disclose, so there is no header row at all.
     expect(rows.some((row) => row.key === 'turn:u1')).toBe(false);
@@ -287,27 +287,51 @@ describe('flowRows × presentation policy', () => {
     expect(headerOf(live('standard'))).toContain('正在读取文件 · src/a.ts');
   });
 
-  it('compact withholds the settled reasoning preview that standard shows', () => {
+  it('folds a run of adjacent work rows into one statistics line', () => {
+    // The reference's summary group (`groupConsecutiveAssistantSummaries`): a
+    // run of same-shaped calls is ONE line at rest. r1 (thinking) + k1 (a read)
+    // are adjacent members, so standard — which leaves the turn flat — draws
+    // one row where it used to draw two.
+    const rows = flowRows(turn, options({
+      openTurns: new Set(['u1']),
+      policy: presentationPolicyFor('standard'),
+    }));
+    const group = rows.find((row) => row.key === 'summary:r1');
+    expect(group).toBeDefined();
+    const html = renderToStaticMarkup(group!.node);
+    expect(html).toContain('已查阅 1 项');
+    // The members are NOT on screen while the group is closed.
+    expect(html).not.toContain('data-summary-group-members');
+    // A LONE member is not a group: folding one row costs a click and saves
+    // nothing.
+    const lone = flowRows(
+      [{ id: 'u1', kind: 'user', text: '问', ts: 1_000 }, { id: 'r1', kind: 'reasoning', text: '想', streaming: false }, { id: 't1', kind: 'text', text: '答', streaming: false, ts: 2_000 }],
+      options({ openTurns: new Set(['u1']) }),
+    );
+    expect(lone.some((row) => row.key === 'r1')).toBe(true);
+  });
+
+  it('never prints the thought text beside the reasoning row title', () => {
     const open = { openTurns: new Set(['u1']) };
     const standardRow = renderToStaticMarkup(
-      flowRows(turn, options({ ...open, policy: presentationPolicyFor('standard') })).find((row) => row.key === 'r1')!.node,
+      flowRows(turn, options({ ...open, policy: presentationPolicyFor('standard') })).find((row) => row.key === 'summary:r1')!.node,
     );
     const compactRow = renderToStaticMarkup(
       flowRows(turn, options({ ...open, policy: presentationPolicyFor('compact') })).find((row) => row.key === 'r1')!.node,
     );
-    // `data-preview` is the row's own flag for "a first line rides beside the
-    // title", so the assertion does not depend on the title's wording.
-    expect(standardRow).toContain('data-preview');
+    // The reference's summary row carries the label, duration and chevron and
+    // nothing else (2026-11-15): a collapsed reasoning row that printed its
+    // first line was a second, staler reading of the expanded body.
+    expect(standardRow).not.toContain('data-preview');
     expect(compactRow).not.toContain('data-preview');
-    // A streaming row is never gated: its COMPLETED-paragraph tail is the live
-    // cue, not a summary (a lone half-typed line shows none — by design).
+    // The live tail is equally not the row's line, in either mode.
     const streaming = flowRows(
       [{
         id: 'u2', kind: 'user', text: '问', ts: 1_000,
       }, { id: 'r2', kind: 'reasoning', text: '先看结构\n\n想到一半', streaming: true }],
       options({ runningStatus: { label: '生成中' }, policy: presentationPolicyFor('compact') }),
     );
-    expect(renderToStaticMarkup(streaming.find((row) => row.key === 'r2')!.node)).toContain('先看结构');
+    expect(renderToStaticMarkup(streaming.find((row) => row.key === 'r2')!.node)).not.toContain('先看结构');
   });
 });
 

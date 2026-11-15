@@ -27,9 +27,11 @@
   gap: var(--nova-space-16);
 }
 
-/* The chip: 32px, the 8px control corner, 12px side pads, 6px gap, 14px at
- * normal weight. Icon and label rest at 70% and step to full on hover — that
- * opacity pair, not a colour change, is what the reference does. */
+/* The chip: 32px, the 8px control corner, 12px side pads, 6px gap, 13px at
+ * normal weight (the reference's `text-ui-caption` on this row, one step under
+ * body — 14px made the strip read as four buttons rather than suggestions).
+ * Icon and label rest at 70% and step to full on hover — that opacity pair,
+ * not a colour change, is what the reference does. */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -44,7 +46,7 @@
   background: transparent;
   color: var(--nova-text-primary);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 18px;
   white-space: nowrap;
@@ -58,11 +60,11 @@
     border-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
-/* The reference's `hover:bg-input/50` on a paper ground: half-white reads as
- * the same one-step lift the composer's raised plane gives. */
+/* The reference's `hover:bg-input/50`: the raised plane at half strength, so
+ * the chip lifts one step off the paper instead of turning into a white card. */
 .chip:hover:not(:disabled) {
   border-color: var(--nova-input-border-hover);
-  background: var(--nova-surface-raised);
+  background: color-mix(in srgb, var(--nova-surface-raised) 50%, transparent);
 }
 
 .chip:disabled {

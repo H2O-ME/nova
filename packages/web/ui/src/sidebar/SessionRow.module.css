@@ -2,9 +2,13 @@
 .sessionRow {
   display: flex;
   align-items: center;
-  gap: var(--nova-space-6);
-  border-radius: var(--nova-radius-lg);
-  padding: 0 var(--nova-space-8);
+  /* ZCode 对齐（2026-11-15）：TaskListItem.tsx:630 的行盒是
+   * `gap-2 rounded-lg pl-2.5 pr-1`（pl 10 / pr 4 / 圆角 8 / 槽与文字间 8）。
+   * 标题因此落在列边 42px 处：容器 px-2(8) + pl-2.5(10) + 16px 槽 + gap-2(8)，
+   * 与本仓的 8 + 10 + 16 + 8 逐值相等。 */
+  gap: var(--nova-space-8);
+  border-radius: var(--nova-radius-sm);
+  padding: 0 var(--nova-space-4) 0 var(--nova-space-10);
   cursor: pointer;
   user-select: none;
   color: var(--nova-text-primary);
@@ -31,6 +35,14 @@
   background: var(--nova-interactive-hover);
 }
 
+/* Dark keeps the reference's second rung: its `.theme-zai-dark`
+ * `--color-selected` is 10% white while hover stays 5%, so the row being read
+ * cannot be confused with the row under the pointer. The light theme collapses
+ * both onto 5% (see above); only this theme needs the override. */
+body[data-nova-dark] .sessionRow.selected {
+  background: var(--nova-interactive-active);
+}
+
 /* Both rows are role=treeitem elements rather than buttons (the reference
    renders divs with click handlers); the ring keeps them reachable by
    keyboard, which the reference leaves to its tree owner. */
@@ -47,10 +59,11 @@
   box-sizing: border-box;
 }
 
-/* Session cell (figma): pad 8, a 16px status slot, then a 4px title gap. */
+/* Session cell (ZCode TaskListItem.tsx:630 default variant): 32px row, leading
+   16px slot, `gap-2` between the slot and the title (the row's own pl-2.5/pr-1
+   live in the shared rule above). */
 .sessionRow {
   height: 32px;
-  gap: 0;
   /* Mount fade: session rows appear by unfolding a group (or the list
      mounting). Stable row keys keep already-visible rows from replaying it. */
   animation: nova-fade-in 150ms var(--nova-ease-inout);
@@ -68,13 +81,9 @@
   margin-left: calc(var(--nova-space-16) + var(--nova-space-4));
 }
 
-/* The project row above uses the shared 6px gap; this cell used 4 because the
- * reference's session cell drew a 4px title gap. Measured against the project
- * row directly above it, that put every session title 2px left of the
- * workspace it belongs to — a visible step down the tree. One gap now. */
-.sessionRow .title {
-  margin: 0 var(--nova-space-6) 0 var(--nova-space-6);
-}
+/* The project row above uses the shared 8px gap; the session title needs no
+ * extra margin of its own (the reference's title sits one `gap-2` after the
+ * leading slot, not on a hand-measured cell margin). */
 .slot {
   flex: none;
   width: 16px;
@@ -163,21 +172,25 @@
   }
 }
 
+/* The reference's one-line row trailing stamp is task-row metadata:
+ * `text-ui-sm` (12px) `text-foreground-subtle` (TaskListItem.tsx:848-852),
+ * not a 10px caption — the stamp is the row's second fact, not a footnote. */
 .time {
   flex: none;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 16px;
   color: var(--nova-text-muted);
 }
 
-/* The timeline view's two-line task row (the reference's `timeline` variant):
-   items-start so the hover actions sit at the title line, auto height with the
-   reference's py-1.5 rhythm. */
+/* The timeline view's two-line task row (the reference's `timeline` variant,
+   TaskListItem.tsx:630): `py-1.5` (6px) with the same pl-2.5 / pr-1 the
+   one-line row carries; items-start so the hover actions sit at the title
+   line. */
 .sessionRow.timelineRow {
   height: auto;
   min-height: 32px;
   align-items: flex-start;
-  padding: 6px 4px 6px 0;
+  padding: var(--nova-space-6) var(--nova-space-4) var(--nova-space-6) var(--nova-space-10);
 }
 
 .timelineRow .title {

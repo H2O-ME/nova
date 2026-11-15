@@ -139,10 +139,12 @@ describe('compaction marker', () => {
       summary: 'the folded history',
     }));
     expect(openable).toContain('aria-expanded="false"');
-    expect(openable).not.toContain('disabled=""');
-    // Without a summary the marker is a settled notice, not a control.
+    expect(openable).toMatch(/<button/);
+    // Without a summary the marker is a settled NOTICE, not a control: the
+    // reference draws the boundary as a label between two rules, so there is no
+    // button and no aria-expanded at all.
     const closed = renderToStaticMarkup(createElement(CompactionItem, {}));
-    expect(closed).toContain('disabled=""');
+    expect(closed).not.toMatch(/<button/);
     // The ATTRIBUTE, not the substring: shadcn's Button carries
     // `aria-expanded:` utility classes on every instance.
     expect(closed).not.toContain('aria-expanded=');

@@ -45,9 +45,11 @@
   --nova-radius-md: 12px;
   /* Controls: buttons, inputs, the small icon buttons, capsules. */
   --nova-radius-lg: 16px;
-  /* Standalone surfaces: the composer card, dialogs, the settings sheet. */
-  --nova-radius-xl: 20px;
-  /* The largest single surface on a page: the hero composer, a full dialog. */
-  --nova-radius-2xl: 28px;
+  /* The largest single surface on a page (2026-11-15, ZCode alignment): the
+   * reference's biggest corner is `rounded-3xl` = 24px. The 20px and 28px rungs
+   * this ladder invented sat between Tailwind's steps, so a surface that wanted
+   * "the largest corner" landed on a value the reference never draws. */
+  --nova-radius-xl: 24px;
+  --nova-radius-2xl: 24px;
   --nova-radius-full: 9999px;
 }

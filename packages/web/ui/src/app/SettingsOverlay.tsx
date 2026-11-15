@@ -15,6 +15,7 @@ import { useTranscriptView } from '../chat/transcript-view.js';
 import { approvalControlLocked, modeControlsLocked } from '../chrome-view.js';
 import type { Action, UiState } from '../state.js';
 import type { ClientFrame } from '../types.js';
+import { AppearanceSection } from '../settings/AppearanceSection.js';
 import { GeneralSection } from '../settings/GeneralSection.js';
 import { ModelConfigEditor } from '../settings/ModelConfigEditor.js';
 import { ProviderSection } from '../settings/ProviderSection.js';
@@ -23,7 +24,7 @@ import { PluginPageSection } from '../settings/PluginPageSection.js';
 import { pagePlugins } from '../settings/plugin-state.js';
 import { SettingsPanel } from '../settings/SettingsPanel.js';
 import { SETTINGS_COPY } from '../settings/copy.js';
-import { BookIcon, PluginIcon, SettingsIcon } from '../icons.js';
+import { BookIcon, PluginIcon, SettingsIcon, SunIcon } from '../icons.js';
 import { DataOutline16 } from '../composer/Icons.js';
 
 export interface SettingsOverlayProps {
@@ -66,12 +67,11 @@ export function SettingsOverlay(props: SettingsOverlayProps): JSX.Element {
           {
             id: 'general',
             label: SETTINGS_COPY['general.nav'],
+            group: '基础设置',
             icon: <SettingsIcon />,
             content: (
               <GeneralSection
                 approvalMode={state.approvalMode}
-                preference={theme.preference}
-                fontSize={theme.fontSize}
                 transcriptView={transcript.mode}
                 // Only "no session at all" blocks the tier here: the tier is
                 // read fresh at the NEXT approval, so it stays adjustable
@@ -79,15 +79,31 @@ export function SettingsOverlay(props: SettingsOverlayProps): JSX.Element {
                 // exactly when the operator needed it).
                 disabled={approvalControlLocked(state)}
                 onPickApproval={(mode) => { send({ type: 'set_approval_mode', mode }); }}
+                onPickTranscriptView={transcript.setMode}
+              />
+            ),
+          },
+          {
+            // The reference keeps appearance on its own page (`appearance` in
+            // its settings config) — theme and interface size are the look of
+            // the surface, not an execution preference.
+            id: 'appearance',
+            label: SETTINGS_COPY['appearance.nav'],
+            group: '基础设置',
+            icon: <SunIcon />,
+            content: (
+              <AppearanceSection
+                preference={theme.preference}
+                fontSize={theme.fontSize}
                 onPickPreference={theme.setPreference}
                 onPickFontSize={theme.setFontSize}
-                onPickTranscriptView={transcript.setMode}
               />
             ),
           },
           {
             id: 'models',
             label: SETTINGS_COPY['models.nav'],
+            group: '基础设置',
             icon: <DataOutline16 />,
             // Both editors on this page report their drafts, so the shell's
             // leave guard covers the whole page — not only the plugin pages.
@@ -117,6 +133,7 @@ export function SettingsOverlay(props: SettingsOverlayProps): JSX.Element {
           {
             id: 'skills',
             label: SETTINGS_COPY['skills.nav'],
+            group: 'Agent 能力',
             icon: <BookIcon />,
             content: (
               <SkillsSection
@@ -139,6 +156,7 @@ export function SettingsOverlay(props: SettingsOverlayProps): JSX.Element {
           ...pagePlugins(rows).map((row) => ({
             id: row.name,
             label: row.title ?? row.name,
+            group: 'Agent 能力',
             icon: <PluginIcon />,
             // The panel's leave guard reads this: an unsaved draft on the
             // page asks before a switch discards it.

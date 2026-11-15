@@ -54,7 +54,12 @@
      a card-level gap. NO border here — the reference's hairline belongs to
      the white core. */
   gap: 0;
-  padding: var(--nova-space-6);
+  /* The gray shell shows ONLY behind the header row (2026-11-15, ZCode
+     alignment): the reference's white editor core is flush with the shell's
+     edges — same 16px corners, no inset — so the 6px band appears above the
+     core and nowhere else. The old 6px pad ringed the core on all four sides
+     and made the card read as a box inside a box. */
+  padding: 0;
   /* COMPOSER SURFACE (2026-11-14, aligned to the operator's reference).
    *
    * The reference's build is two fills and two shadows: the card surface is
@@ -68,10 +73,10 @@
   box-shadow: var(--nova-elevation-card);
   /* The draft text follows the Settings font-size preference (the textarea,
      mirror, and backdrop all inherit from here, so the three layers stay in
-     step); the line height keeps the default 10px leading via the shared px
-     delta. */
+     step). The leading is the reference's `text-ui-base leading-5`: one 20px
+     line, carried through the shared px delta. */
   font-size: var(--nova-content-font-size, 14px);
-  line-height: calc(24px + var(--nova-content-font-delta, 0px));
+  line-height: calc(20px + var(--nova-content-font-delta, 0px));
   /* Elevated surface in dark, same as the menus: the draft scrollport inside
      scrolls once the composer hits its height cap, so the thumb takes the l2
      pair. Declared on the card because the elevation belongs to the surface,
@@ -108,14 +113,15 @@
 }
 
 /* The card's first row (the reference's `contextHeader`): a plain control row
-   on the gray card surface. The card's 6px pad owns the inset (the
-   reference's header wrapper is `p-1.5` on an unpadded surface — same 6px). */
+   on the gray card surface. The row owns the shell's 6px inset now that the
+   card has no pad of its own — the reference's header wrapper is `p-1.5`. */
 .cardHeader {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0;
   min-width: 0;
+  padding: var(--nova-space-6);
 }
 
 /* The document-level drop overlay moved to its own sheet
@@ -207,16 +213,16 @@
    business-blue caret) is the harness's value. */
 .input {
   box-sizing: border-box;
-  /* ONE floor for every state (2026-10-18). Docked used to be 36 and the hero
-     68 — a 32px difference that is exactly the "尺寸忽大忽小" the operator
-     reported: sending the first message re-seats the card from hero to dock and
-     it shrank by nearly a full line in one frame. 44 = one 24px line + 8px top
-     pad + 12px of breath below the line, comfortable at rest and identical in
-     both seats, so the card cannot resize across the transition.
+  /* ONE floor for every state, the reference's `min-h-10` (40px = one 20px
+     line + the sheet's own 12px pad and the row's breath). Docked used to be 36
+     and the hero 68 — a 32px difference that is exactly the "尺寸忽大忽小" the
+     operator reported: sending the first message re-seats the card from hero to
+     dock and it shrank by nearly a full line in one frame. Identical in both
+     seats, so the card cannot resize across the transition.
      The horizontal inset is the `.sheet`'s own 12px pad (the reference's
      `p-3`): the draft reads flush inside the white core, the same 12px the
      reference gives it. */
-  min-height: 44px;
+  min-height: 40px;
   padding: 0;
   font-family: var(--nova-font-family);
   font-size: inherit;
@@ -409,8 +415,9 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: var(--nova-radius-full);
-  corner-shape: round;
+  /* The reference's `+` is an `icon-md` control with the 8px corner
+     (`rounded-lg`), not a full-circle: the circle belongs to the send key. */
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-primary);
   cursor: pointer;
@@ -418,8 +425,8 @@
 
 /* The harness calls the 16px glyph at size 14 inside this 28px circle. */
 .add svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .add:hover:not(:disabled) {

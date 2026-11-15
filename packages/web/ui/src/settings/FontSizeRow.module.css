@@ -1,100 +1,61 @@
-/* Font-size stepper sheet. The row chrome (title + description + separator)
- * is the shared
- * `SettingsRow`; only the stepper lives here. */
+/* The font-size field's sheet: the reference's `relative w-28` box with a
+ * right-aligned tabular value and an in-box unit suffix.
+ *
+ * The 28px height is the reference input's default rung (`Input` size default,
+ * `h-7 rounded-md`); the 6px corner is that same rung's, not the 12px pill the
+ * old stepper carried. The unit sits INSIDE the box, which is what keeps the
+ * control one object instead of a field plus a floating label. */
 
-/* Standard-size stepper with an arrow column revealed on hover/focus-within
- * and an external unit label. */
-.control {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--nova-space-8);
+.field {
+  position: relative;
+  width: 112px;
+  max-width: 100%;
 }
 
-.stepper {
-  position: relative; /* the arrow column anchors to the pill's right edge */
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 72px;
-  height: 36px;
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-panel);
-}
-
-.value {
-  min-width: 18px;
-  text-align: center;
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--nova-space-32) 0 var(--nova-space-8);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-xs);
+  background: var(--nova-surface-base);
+  font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   font-variant-numeric: tabular-nums;
+  text-align: right;
   color: var(--nova-text-primary);
+  /* The native spinner is the browser's own control shape; the reference hides
+     it (`appearance:textfield`) because the value is typed or pasted here. */
+  appearance: textfield;
+  transition:
+    border-color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.input::-webkit-inner-spin-button,
+.input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.input:hover {
+  border-color: var(--nova-input-border-hover);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--nova-input-border-focused);
 }
 
 .unit {
-  font-size: 14px;
-  line-height: 22px;
-  color: var(--nova-text-secondary);
-}
-
-/* Arrow column: anchored right so the value stays pill-centered whether or
-   not the arrows are showing; revealed on hover/focus-within. Hidden with
-   opacity, not visibility: the buttons stay in tab order and in the
-   accessibility tree, so keyboard focus itself triggers the reveal. */
-.arrows {
   position: absolute;
-  right: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--nova-space-2);
-  opacity: 0;
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
-}
-
-.stepper:hover .arrows,
-.stepper:focus-within .arrows {
-  opacity: 1;
-}
-
-/* Arrow buttons: small chips carrying a translucent wash of the layer-1
-   surface (white in light, the elevated layer in dark) over the module fill;
-   hover raises the full layer-1 chip. */
-.arrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 17px;
-  height: 12px;
-  padding: 0;
-  border: none;
-  border-radius: var(--nova-radius-sm);
-  background: color-mix(in srgb, var(--nova-surface-sunken) 75%, transparent);
-  color: var(--nova-text-primary);
-  cursor: pointer;
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
-}
-
-.arrow:hover:not(:disabled) {
-  background: var(--nova-surface-sunken);
-}
-
-.arrow:disabled {
-  color: var(--nova-text-faint);
-  cursor: default;
-}
-
-/* The arrows render at 9px in the reference; the attribute box is the floor,
-   the sheet is the exception (icons.tsx's contract). */
-.arrow svg {
-  width: 9px;
-  height: 9px;
+  top: 50%;
+  right: var(--nova-space-8);
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 16px;
+  line-height: 20px;
+  color: var(--nova-text-muted);
 }

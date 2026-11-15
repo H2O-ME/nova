@@ -36,13 +36,11 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { writeClipboard } from '../clipboard.js';
-import { SearchIcon } from '../icons.js';
+import { CloseIcon, RefreshIcon, SearchIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { ManageError } from './ManageError.js';
 import { failedCount, pluginGroups, rowTitle, type PluginRowGroup } from './row-model.js';
 import { PluginGroup } from './PluginRow.js';
-import { SettingsRow } from './SettingsRow.js';
-import { SettingsSection } from './Section.js';
 import { useFlipFeedback, titleLookup } from './use-flip-feedback.js';
 import type { ClientFrame } from '../types.js';
 import type { PluginsSnapshot, RosterSnapshot } from '../state.js';
@@ -174,13 +172,36 @@ export function PluginsSection({ roster, plugins, disabled, manageError, send }:
   };
 
   return (
-    <SettingsSection>
-      {/* The reference's page head: `<h2>` then the one-line intro. */}
-      <h2 className={css.heading}>{SETTINGS_COPY['plugins.title']}</h2>
-      <p className={css.intro}>{SETTINGS_COPY['plugins.intro']}</p>
+    <div className={css.page}>
+      {/* The reference's market head: the page's name and its one action on the
+          SAME row (`flex flex-wrap items-center justify-between gap-3`), with no
+          subtitle — the store page dropped it so the first screen starts at the
+          catalog. Refresh re-asks the roster, which is the only action this
+          product's page can actually perform. */}
+      <div className={css.head}>
+        <h2 className={css.heading}>{SETTINGS_COPY['plugins.title']}</h2>
+        <div className={css.headActions}>
+          <button
+            type="button"
+            className={css.iconAction}
+            aria-label={SETTINGS_COPY['plugins.refresh']}
+            title={SETTINGS_COPY['plugins.refresh']}
+            onClick={() => { send({ type: 'roster' }); }}
+          >
+            <RefreshIcon className={css.iconActionGlyph} />
+          </button>
+        </div>
+      </div>
       <ManageError message={feedback.error} />
       {notice !== null && <div className={css.status}>{notice}</div>}
-      {loaded && entries.length > 0 && <SearchBox query={query} onQuery={setQuery} />}
+      {/* The reference's second row: filters on the left, the search field on
+          the right (`ml-auto`), one line. The field is only drawn once there is
+          a roster to filter. */}
+      {loaded && entries.length > 0 && (
+        <div className={css.toolRow}>
+          <SearchBox query={query} onQuery={setQuery} />
+        </div>
+      )}
       {/* A count over the whole page, for the case where the failures are spread
           across groups and the reader has scrolled past one of them. */}
       {failed > 0 && <div className={css.failureBanner}>{`${failed} ${SETTINGS_COPY['plugins.failedCount']}`}</div>}
@@ -189,26 +210,35 @@ export function PluginsSection({ roster, plugins, disabled, manageError, send }:
           ? SETTINGS_COPY['plugins.switching']
           : feedback.applied ?? (disabled ? SETTINGS_COPY['plugins.lockNote'] : '')}
       </div>
-      {groups.map((group) => (
-        <PluginGroup
-          key={group.tier}
-          group={group}
-          title={GROUP_TITLES[group.tier]}
-          open={groupOpen(group)}
-          foldable={!searching}
-          expanded={expanded}
-          disabled={disabled}
-          lockedNote={lockedNote}
-          switching={feedback.switching}
-          onToggleGroup={() => { toggleGroup(group.tier); }}
-          onToggle={toggleRow}
-          onFlip={flip}
-        />
-      ))}
+      {/* The group stack: the reference wraps its sections in one container so
+          each can carry `py-4 first:pt-0 last:pb-0`
+          (PluginStoreListView.tsx:446-467). The wrapper owns that rhythm; the
+          page keeps its own 24px gap around it. Drawn only when there is a
+          group, so an empty page does not carry a blank gap child. */}
+      {groups.length > 0 && (
+        <div className={css.groups}>
+          {groups.map((group) => (
+            <PluginGroup
+              key={group.tier}
+              group={group}
+              title={GROUP_TITLES[group.tier]}
+              open={groupOpen(group)}
+              foldable={!searching}
+              expanded={expanded}
+              disabled={disabled}
+              lockedNote={lockedNote}
+              switching={feedback.switching}
+              onToggleGroup={() => { toggleGroup(group.tier); }}
+              onToggle={toggleRow}
+              onFlip={flip}
+            />
+          ))}
+        </div>
+      )}
       {roster !== null && (
         <ConfigPathRow path={roster.configPath} copied={copied} onCopy={copyPath} />
       )}
-    </SettingsSection>
+    </div>
   );
 }
 
@@ -226,12 +256,13 @@ function ConfigPathRow({ path, copied, onCopy }: {
   onCopy: () => void;
 }): JSX.Element {
   return (
-    <SettingsRow title={SETTINGS_COPY['config.title']} description={SETTINGS_COPY['config.description']}>
+    <div className={css.configRow}>
+      <span className={css.configLabel}>{SETTINGS_COPY['config.title']}</span>
       <span className={css.path} title={path}>{path}</span>
       <button type="button" className={css.copy} onClick={onCopy}>
         {copied ? SETTINGS_COPY['config.copied'] : SETTINGS_COPY['config.copy']}
       </button>
-    </SettingsRow>
+    </div>
   );
 }
 
@@ -244,9 +275,12 @@ function SearchBox({ query, onQuery }: {
   onQuery: (next: string) => void;
 }): JSX.Element {
   return (
-    /* The icon is decorative: the input carries the same name for a screen
-       reader, so the glyph is aria-hidden by the icon set itself. */
-    <label className={css.search}>
+    /* The reference's `SettingsSearchInput` (SettingsSearchInput.tsx:24-58): a
+       relative box, the glyph inset from the left, and the × pinned to the
+       trailing edge — drawn ONLY while the field holds text (`canClear`). A
+       `<div>` rather than the old `<label>` because the clear control is
+       interactive and a label must not wrap one. */
+    <div className={css.search} data-clear={query !== '' ? 'true' : undefined}>
       <SearchIcon className={css.searchIcon} />
       <input
         type="search"
@@ -268,6 +302,19 @@ function SearchBox({ query, onQuery }: {
           onQuery('');
         }}
       />
-    </label>
+      {query !== '' && (
+        /* The reference's ghost icon button: `rounded-full`, a 14px ×, parked
+           inside the field's trailing inset. */
+        <button
+          type="button"
+          className={css.searchClear}
+          aria-label={SETTINGS_COPY['plugins.searchClear']}
+          title={SETTINGS_COPY['plugins.searchClear']}
+          onClick={() => { onQuery(''); }}
+        >
+          <CloseIcon className={css.searchClearGlyph} />
+        </button>
+      )}
+    </div>
   );
 }

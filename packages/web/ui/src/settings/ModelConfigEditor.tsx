@@ -517,7 +517,7 @@ export function ModelConfigEditor({ config, writable, onDirtyChange, send }: Mod
         </ul>
       )}
 
-      <div className={css.addBlock}>
+      <div className={css.addModels}>
         <div className={css.addRow}>
           <input
             className={css.input}

@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 import { Menu } from '../shell/Menu.js';
 import { APPROVAL_MODES } from './mode-options.js';
 import { ChevronDownIcon } from '../icons.js';
+import { cx } from '../composer/cx.js';
 import type { ApprovalMode } from '../types.js';
 import css from './PermissionSelect.module.css';
 
@@ -79,6 +80,16 @@ interface ModeSelectProps<T extends string> {
   glyphOf?: (code: string) => ReactNode;
   /** The kernel holds no session (or an ask is pending): the trigger refuses. */
   disabled?: boolean;
+  /**
+   * The trigger's dress: `chip` is the composer's 32px ghost control (the
+   * reference's `ConfigSelect`), `field` is the settings pages' bordered
+   * select — `h-8 rounded-lg border` at the row's own width, which is what the
+   * reference draws in a settings row (`SelectTrigger size="lg"`). The
+   * behaviour behind them is the same menu; only the box differs.
+   */
+  variant?: 'chip' | 'field';
+  /** Extra class on the trigger (the settings rows pass their width). */
+  className?: string;
 }
 
 /** The chip trigger and its card, shared by both selectors. The card is the
@@ -97,6 +108,8 @@ export function ModeSelect<T extends string>({
   align = 'start',
   glyphOf,
   disabled = false,
+  variant = 'chip',
+  className,
 }: ModeSelectProps<T>): JSX.Element {
   const [open, setOpen] = useState(false);
   const current = options.find((option) => option.code === value);
@@ -126,7 +139,7 @@ export function ModeSelect<T extends string>({
       anchor={
         <button
           type="button"
-          className={css.trigger}
+          className={cx(variant === 'field' ? css.triggerField : css.trigger, className)}
           /* The tier rides the DOM so the sheet can tint the one mode that
              states a risk in words (the reference's `text-warning` on
              `full-access`). */
@@ -163,10 +176,14 @@ export interface PermissionSelectProps {
   /** Which trigger edge the card aligns to (the settings rows align end). */
   align?: 'start' | 'end';
   disabled?: boolean;
+  /** The trigger's dress: `chip` (composer) or `field` (settings row). */
+  variant?: 'chip' | 'field';
+  /** Extra class on the trigger (settings rows pass their width). */
+  className?: string;
 }
 
 /** Access-tier selector (read-only / auto-edit / full). */
-export function PermissionSelect({ value, onPick, side, align, disabled }: PermissionSelectProps): JSX.Element {
+export function PermissionSelect({ value, onPick, side, align, disabled, variant, className }: PermissionSelectProps): JSX.Element {
   return (
     <ModeSelect
       value={value}
@@ -177,6 +194,8 @@ export function PermissionSelect({ value, onPick, side, align, disabled }: Permi
       side={side}
       align={align}
       disabled={disabled}
+      {...(variant !== undefined ? { variant } : {})}
+      {...(className !== undefined ? { className } : {})}
     />
   );
 }

@@ -1,5 +1,6 @@
-/* Sidebar column (figma 133:7629): vertical stack, padding 12/6, sidebar
-   fill + 1px right border painted by the layout column. Collapse is a
+/* Sidebar column (ZCode alignment 2026-11-15): vertical stack, 8px inline
+   content inset (the reference's own `px-2` blocks), ground fill + 1px right
+   border painted by the layout column. Collapse is a
    slide + crossfade, not a morph: the content holds its frozen expanded
    layout (inline width set by the component) and fades in place (.fading)
    while the sliding column (AppFrame grid tracks) clips it; the rail layout
@@ -7,11 +8,17 @@
    mid-slide. */
 
 .root {
-  --nova-sidebar-inline-padding: 12px;
+  /* ZCode 对齐（2026-11-15）：参考侧栏的 aside 本身没有内边距，导航、列表头、
+   * 任务行各自带 `px-2`（ProjectSidebarNavigation.tsx:37、ProjectSidebarListHeader.tsx:32、
+   * ProjectTaskRows.tsx:135），所以内容两侧的净缩进就是 8px。这里把它收成一处，
+   * 子块只补自己的那一段（行 pl-2.5 / 标题栏 pl-2.5）。 */
+  --nova-sidebar-inline-padding: var(--nova-space-8);
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: var(--nova-space-6) var(--nova-sidebar-inline-padding);
+  /* 纵向不留内边距：参考的 48px 拖拽条（project-sidebar/index.tsx:245）从 0 起步，
+   * logoRow 贴住窗口顶边，拖拽热区才不会被 6px 留白切掉。 */
+  padding: 0 var(--nova-sidebar-inline-padding);
   box-sizing: border-box;
   background: var(--nova-surface-sunken);
   color: var(--nova-text-primary);
@@ -198,10 +205,11 @@
   height: 18px;
 }
 
-/* New Session: the reference's nav row (h-8, 8px rounding, transparent at
-   rest, hover fill) rather than the earlier bordered bar; collapsed it renders
-   as the rail's plain icon control. The 12px bottom margin is the gap down to
-   the browsing region. */
+/* New Session: the reference's nav row (NewTaskButtonGroup.tsx:33 — `h-8
+   rounded-lg gap-2 pl-2.5 pr-2.5`, text-ui-base 400) rather than the earlier
+   bordered bar; collapsed it renders as the rail's plain icon control. The 4px
+   bottom margin is the nav stack's `gap-1` (ProjectSidebarNavigation.tsx:37 —
+   the reference's rows are direct children of one `gap-1` column). */
 .newSession {
   flex: none;
   display: flex;
@@ -209,7 +217,7 @@
   gap: var(--nova-space-8);
   height: 32px;
   padding: 0 var(--nova-space-10);
-  margin: 0 var(--nova-space-2) var(--nova-space-12);
+  margin: 0 0 var(--nova-space-4);
   box-sizing: border-box;
   border: none;
   border-radius: var(--nova-radius-sm);
@@ -217,7 +225,7 @@
   color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 20px;
   cursor: pointer;
   overflow: hidden;
@@ -282,11 +290,13 @@
 }
 
 /* The plugin center's door: a NAV row, not the bordered New Session bar. The
-   reference's sidebar panel entry (`ui-plugin-manager`) sits in the same list
-   as the session views, so it carries the nav row's chrome — transparent at
-   rest, hover fill, the ACTIVE page filled — rather than the bar's border and
-   elevated fill. Collapsed it is the rail's 36x36 icon control, exactly like
-   the New Session bar beside it. */
+   reference's sidebar panel entry (`ProjectSidebarNavigation.tsx:57-69`) is a
+   ghost Button size lg — h-8, rounded-lg, px-2.5, gap-2, 14px/400 label — in
+   the same `gap-1` stack as the New Task row, so it carries the nav row's
+   chrome (transparent at rest, hover fill, the ACTIVE page filled). Collapsed
+   it is the rail's 36x36 icon control, exactly like the New Session bar beside
+   it. The 12px bottom margin is the nav block's own `py-3`
+   (ProjectSidebarNavigation.tsx:37) down to the task-list divider. */
 .pluginsEntry {
   flex: none;
   display: flex;
@@ -294,7 +304,7 @@
   gap: var(--nova-space-8);
   height: 32px;
   padding: 0 var(--nova-space-10);
-  margin: 0 var(--nova-space-2) var(--nova-space-8);
+  margin: 0 0 var(--nova-space-12);
   box-sizing: border-box;
   border: none;
   border-radius: var(--nova-radius-sm);
@@ -302,7 +312,7 @@
   color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 20px;
   cursor: pointer;
   overflow: hidden;

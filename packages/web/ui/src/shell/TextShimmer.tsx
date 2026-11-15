@@ -2,23 +2,21 @@
  * Text-only activity animation with a stable span across lifecycle changes.
  *
  * This is the harness's ONE running-text treatment: a gradient painted through
- * the glyphs (`background-clip: text`) whose highlight sweeps on a 1.5s cycle.
- * Rows do not fake it with an overlay: the text node itself is the animation,
- * so the words stay legible at every frame and the span survives the
- * running→settled transition without remounting (the attribute flips, the node
- * stays).
+ * the glyphs (`background-clip: text`) whose highlight sweeps a 4s linear cycle
+ * — the reference's `.animated-gradient-text` parameters, see the sheet. Rows
+ * do not fake it with an overlay: the text node itself is the animation, so the
+ * words stay legible at every frame and the span survives the running→settled
+ * transition without remounting (the attribute flips, the node stays).
  *
- * The spread is derived from the text length so a long line sweeps at the same
- * apparent speed as a short one; the harness recomputes it only when the length
- * changes, which is why this uses `useMemo` on `children.length` rather than
- * the text itself.
+ * The gradient is percentage-based (300% background), so a long line and a short
+ * one sweep at the same rate without measuring the text: the reference derives
+ * nothing from length either.
  */
-import { memo, useMemo } from 'react';
-import type { CSSProperties } from 'react';
+import { memo } from 'react';
 import css from './TextShimmer.module.css';
 
 export interface TextShimmerProps {
-  /** The text to paint; a string so the spread can be measured from it. */
+  /** The text to paint. */
   children: string;
   /** Whether the owning operation is still running. */
   active: boolean;
@@ -32,14 +30,9 @@ export interface TextShimmerProps {
  * @returns the retained text span.
  */
 export const TextShimmer = memo(function TextShimmer({ children, active, className }: TextShimmerProps): JSX.Element {
-  const style = useMemo(
-    () => ({ '--nova-text-shimmer-spread': `${children.length * 8}px` }) as CSSProperties,
-    [children.length],
-  );
   return (
     <span
       className={className === undefined ? css.root : `${css.root} ${className}`}
-      style={style}
       data-text-shimmer={active || undefined}
     >
       {children}

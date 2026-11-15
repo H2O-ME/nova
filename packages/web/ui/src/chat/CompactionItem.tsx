@@ -1,17 +1,24 @@
 /**
- * Compaction marker: one dim 24px row (context glyph at rest → chevron on hover/focus), a
- * `title · summary` line, and the cited summary in a disclosure when the
- * current window still includes it. The row is deliberately not conversation
- * content: it marks where the model's history was folded.
+ * Compaction marker: the reference's DIVIDER row, not a disclosure line with a
+ * chevron at rest (2026-11-15, ZCode alignment).
  *
- * The harness reads its counts off the snapshot node; this surface's block
- * model has no compaction kind yet (compaction events currently arrive as hint
- * lines), so the props take the same three facts explicitly and the wire-up
- * can feed them the moment a block carries them.
+ * The reference draws a boundary as one centred label between two hairlines —
+ * `flex w-full items-center gap-3 px-4 py-2 text-ui-base text-foreground-subtle`
+ * with `h-px min-w-8 flex-1 bg-border/50` on both sides
+ * (`v4/ConversationShareReadonlyTimeline.tsx:264-440`) — because the row is not
+ * a thing to open; it marks WHERE the model's history was folded. Nova drew a
+ * 24px chevron row, so a boundary read as another tool call.
+ *
+ * The summary stays one click away: the label is the trigger when the window
+ * still carries the summary text.
+ *
+ * While a compaction is in flight the label sweeps (the reference's
+ * `animated-gradient-text font-medium` on its running state) and the icon is
+ * omitted — the sweep is the progress signal.
  */
 import { memo, useState } from 'react';
-import { ChevronDownGlyph14, ChevronRightGlyph14, ContextGlyph14 } from './glyphs.js';
-import { Button } from '../components/ui/button.js';
+import { ContextGlyph14 } from './glyphs.js';
+import { TextShimmer } from '../shell/TextShimmer.js';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import css from './MessageItem.module.css';
 
@@ -24,6 +31,8 @@ export interface CompactionItemProps {
   shadowed?: { items: number; tokens: number } | null | undefined;
   /** Settlement text used when the structured counts are unavailable. */
   fallbackSummary?: string | null | undefined;
+  /** A compaction is running right now (the label sweeps, the icon hides). */
+  running?: boolean | undefined;
 }
 
 export const CompactionItem = memo(function CompactionItem({
@@ -31,6 +40,7 @@ export const CompactionItem = memo(function CompactionItem({
   summary = null,
   shadowed = null,
   fallbackSummary = null,
+  running = false,
 }: CompactionItemProps): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const expandable = summary !== null;
@@ -38,34 +48,38 @@ export const CompactionItem = memo(function CompactionItem({
   const summaryLine = shadowed !== null
     ? `已压缩 ${String(shadowed.items)} 条历史记录（约 ${String(shadowed.tokens)} tokens）`
     : fallbackSummary ?? (expandable ? '点击查看压缩摘要' : '压缩摘要不可用');
+  const label = title ?? (running ? '正在压缩上下文' : '上下文已压缩');
+
+  const text = (
+    <>
+      {!running && (
+        <span className={css.markerIcon} aria-hidden="true">
+          <ContextGlyph14 />
+        </span>
+      )}
+      <TextShimmer active={running} className={css.markerText}>{label}</TextShimmer>
+      <span className={css.markerSummary}>{summaryLine}</span>
+    </>
+  );
 
   return (
-    <div className={css.compactionRow}>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={css.compactionButton}
-        disabled={!expandable}
-        aria-expanded={expandable ? open : undefined}
-        onClick={() => { setExpanded((value) => !value); }}
-      >
-        <span className={css.compactionLeading} aria-hidden="true">
-          <span className={css.compactionContextIcon} data-compaction-icon="context">
-            <ContextGlyph14 />
-          </span>
-          <span
-            className={css.compactionDisclosureIcon}
-            data-compaction-disclosure={open ? 'expanded' : 'collapsed'}
-          >
-            {open ? <ChevronDownGlyph14 /> : <ChevronRightGlyph14 />}
-          </span>
-        </span>
-        <span className={css.compactionTitle}>{title ?? '上下文已压缩'}</span>
-        <span className={css.compactionSep} aria-hidden="true" />
-        <span className={css.compactionSummary}>{summaryLine}</span>
-      </Button>
+    <div className={css.marker} data-marker="compaction" data-running={running || undefined}>
+      <span className={css.markerRule} aria-hidden="true" />
+      {expandable ? (
+        <button
+          type="button"
+          className={css.markerLabel}
+          aria-expanded={open}
+          onClick={() => { setExpanded((value) => !value); }}
+        >
+          {text}
+        </button>
+      ) : (
+        <span className={css.markerLabel}>{text}</span>
+      )}
+      <span className={css.markerRule} aria-hidden="true" />
       {open && summary !== null && (
-        <div className={css.compactionBody}>
+        <div className={css.markerBody}>
           <MarkdownText text={summary} />
         </div>
       )}

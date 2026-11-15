@@ -1,47 +1,48 @@
 /* 模型参数 sheet：一行一个模型，展开后是逐字段的能力覆盖。
  *
- * 几何与 token 全部照搬 the harness：卡片圆角 `--nova-radius-lg`
- * 与 `--nova-border-strong` 描边、输入框 32px 高 / `--nova-radius-lg` /
- * `--nova-surface-sunken`、行内图标按钮 28px 见方、删除悬停用
- * `--nova-interactive-hover-danger`、占位符 `--nova-text-disabled`。
- * 页头由 `StepHeading` 提供，本表不再自带。 */
+ * 2026-11-15 对齐 ZCode（只读参照仓 `D:\web\zcode-desktop-ui-study`）：
+ *  - 卡是 `rounded-xl border border-border bg-card`（由 `Section.module.css`
+ *    提供；ZCode 的 `rounded-xl` = 12px = `--nova-radius-md`）；
+ *  - 行是设置行节奏：`border-t border-border px-4 py-3 first:border-t-0`
+ *    （`SettingsPageParts.tsx:196`），标题 14/500，说明 14/24 次级色；
+ *  - 输入框 `rounded-lg`（8px = `--nova-radius-sm`）、按钮 `h-7 rounded-md`
+ *    （28px = `--nova-row-md`、6px = `--nova-radius-xs`，见 `button.tsx:33-37`）；
+ *  - 旧的 `--nova-radius-lg`（16px）在 ZCode 是 `rounded-2xl`，这页处处大一档。 */
 
-/* The notice keeps its fill and drops its border: with the ladder now real, a
- * `panel` fill on a `base` sheet is enough to set the paragraph apart, and the
- * outline was drawing a box around two lines of explanatory text. */
+/* 卡内说明：ZCode 的说明文字是纯文字（`text-ui-base leading-6
+ * text-foreground-subtle`，见 `SectionLayout.tsx:54-56`），没有填充、没有框。 */
 .notice {
-  margin: var(--nova-space-8) var(--nova-space-16) 0;
-  padding: var(--nova-space-10) var(--nova-space-12);
+  margin: 0 0 var(--nova-space-8);
+  padding: 0;
   border: 0;
-  border-radius: var(--nova-radius-md);
-  background: var(--nova-surface-panel);
-  font-size: 12px;
-  line-height: 18px;
+  background: transparent;
+  font-size: 14px;
+  line-height: 24px;
   color: var(--nova-text-secondary);
 }
 
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-8);
-  margin: var(--nova-space-12) 0 0;
+  gap: 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* De-framed like the provider rows (2026-10-18, same pass): a list of bordered
- * cards made this the second table-of-boxes on the model page. The row keeps its
- * own padding and the list keeps a small gap, so a row is defined by the air
- * around it; the inputs INSIDE it keep their borders, which is where a border
- * actually carries meaning (an editable field, not a container). */
+/* 一行模型：分隔线在行顶、首行不画，与设置行同一配方。 */
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  padding: var(--nova-space-10);
+  padding: var(--nova-space-12) 0;
   border: 0;
-  border-radius: var(--nova-radius-md);
+  border-top: 1px solid var(--nova-border-strong);
   background: transparent;
+}
+
+.card:first-child {
+  border-top: none;
 }
 
 /* The row's own line: id | display name | disclosure | remove. A GRID rather
@@ -56,17 +57,18 @@
   gap: var(--nova-space-6);
 }
 
+/* 输入框：ZCode `ProviderCardSections.tsx:215` 的 `rounded-lg border bg-input`。 */
 .input {
   box-sizing: border-box;
   width: 100%;
-  height: 32px;
-  padding: 0 var(--nova-space-10);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-sunken);
+  height: var(--nova-row-lg);
+  padding: 0 var(--nova-space-8);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-raised);
   font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   color: var(--nova-text-primary);
 }
 
@@ -117,19 +119,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--nova-row-md);
+  height: var(--nova-row-md);
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-xs);
   background: transparent;
   color: var(--nova-text-muted);
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .iconButton:hover:not(:disabled) {
@@ -177,9 +176,9 @@
 
 .fieldLabel {
   flex: none;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
 }
 
 .effective {
@@ -187,9 +186,9 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--nova-text-muted);
 }
 
 /* The modality choices span both columns: a checkbox group is one field, not two. */
@@ -218,8 +217,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--nova-space-6);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--nova-text-primary);
   cursor: pointer;
 }
@@ -236,17 +235,32 @@
  * fields carry in their `placeholder` attribute. */
 .autoLine {
   margin: var(--nova-space-4) 0 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-disabled);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--nova-text-muted);
 }
 
+/* 会话标题模型那一行：卡内的第一行，自带卡的行内边距（`px-4 py-3`）。 */
 .addBlock {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  /* First child of the section card: it needs the card's own inset. */
-  margin: var(--nova-space-12) var(--nova-space-16) 0;
+  padding: var(--nova-space-12) var(--nova-space-16);
+  border-top: 1px solid var(--nova-border-strong);
+}
+
+.addBlock:first-child {
+  border-top: none;
+}
+
+/* 「加一个模型」那一块在卡身内部（`advancedBody` 已有 16px 内边距），
+   所以只补上分隔线，不再加一次左右内边距。 */
+.addModels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-8);
+  padding-top: var(--nova-space-12);
+  border-top: 1px solid var(--nova-border-strong);
 }
 
 .addRow {
@@ -262,32 +276,24 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 32px;
-  padding: 0 var(--nova-space-14);
+  height: var(--nova-row-md);
+  padding: 0 var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-xs);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout),
+      border-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .button {
-  border: 0.5px solid var(--nova-border-strong);
+  border: 1px solid var(--nova-border-strong);
   background: transparent;
   color: var(--nova-text-primary);
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
 }
 
 .button:hover:not(:disabled) {
@@ -316,8 +322,8 @@
 }
 
 .poolTitle {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--nova-text-muted);
 }
 
@@ -329,31 +335,29 @@
   overflow-y: auto;
 }
 
-/* Candidate id: a capsule, so it reads as a token to add rather than a field.
- * `corner-shape: round` because the universal superellipse would square the
- * capsule's ends off (see `styles/corner-shape.css`). */
+/* 候选 id：ZCode 的最小按钮尺寸（`button.tsx:35` 的 `size="xs"` —— h-5 /
+ * `rounded-sm` / px-2），本仓对应 `--nova-row-sm` + `--nova-radius-xs`。
+ * 旧稿是一枚药丸（`radius-full` + corner-shape），参照里没有药丸形按钮。 */
 .poolRow {
   box-sizing: border-box;
   max-width: 100%;
-  padding: 3px var(--nova-space-10);
+  height: var(--nova-row-sm);
+  padding: 0 var(--nova-space-8);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-full);
-  corner-shape: round;
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-xs);
   background: transparent;
   font-family: var(--nova-font-mono);
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--nova-text-secondary);
   cursor: pointer;
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout),
+      border-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .poolRow:hover:not(:disabled) {
@@ -370,8 +374,8 @@
  * itself rather than repeat it. */
 .problem {
   margin: var(--nova-space-8) 0 0;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--nova-color-danger);
 }
 
@@ -383,34 +387,30 @@
 }
 
 .readOnly {
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--nova-text-muted);
 }
 
-/* ── 高级折叠（重写后新增） ─────────────────────────────────────────── */
+/* ── 高级折叠 ───────────────────────────────────────────────────────── */
 
-/* The advanced disclosure: native <details>, so collapsed is the browser's job,
-   not a second piece of state. The summary is the settings heading rhythm. */
+/* 原生 <details>（收起是浏览器的事，不是第二份状态）。它是卡内的第二块：与
+ * 标题模型行之间只有一条分隔线，没有外边距——同设置行的分隔方式。 */
 .advanced {
-  margin: var(--nova-space-16) var(--nova-space-16) 0;
-  border-top: 0.5px solid var(--nova-border-strong);
+  margin: 0;
+  border-top: 1px solid var(--nova-border-strong);
 }
 
 .advancedSummary {
   display: flex;
   align-items: baseline;
   gap: var(--nova-space-8);
-  padding: var(--nova-space-12) 0;
+  padding: var(--nova-space-12) var(--nova-space-16);
   list-style: none;
   cursor: pointer;
-  border-radius: var(--nova-radius-lg);
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .advancedSummary::-webkit-details-marker {
@@ -427,17 +427,19 @@
   width: 14px;
   height: 14px;
   color: var(--nova-text-muted);
-  transition: transform var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+  transition: transform var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .advanced[open] .advancedChevron {
   transform: rotate(90deg);
 }
 
+/* 组标题 16/600：与 `SettingsGroup.module.css` 的 `.title` 同值（ZCode 每个
+ * 设置组都是这个头，见 `SettingsPage.tsx:1766`）。 */
 .advancedTitle {
-  font-size: 14px;
-  line-height: 22px;
-  font-weight: 500;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
   color: var(--nova-text-primary);
 }
 
@@ -446,11 +448,11 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
 }
 
 .advancedBody {
-  padding: var(--nova-space-4) 0 var(--nova-space-8);
+  padding: 0 var(--nova-space-16) var(--nova-space-8);
 }

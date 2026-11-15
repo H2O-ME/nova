@@ -2,15 +2,16 @@
  * The 工作步骤展示 settings row: the title and description on the left, a menu
  * selector on the
  * right whose four modes (简洁 / 标准 / 详细 / 完全展开) map onto the
- * presentation policy the transcript reads. The trigger recipe is the shared
- * {@link ModeSelect} card, aligned to the row's end like the other settings
- * controls.
+ * presentation policy the transcript reads. The trigger is the shared
+ * {@link ModeSelect} in its settings-row dress (`variant="field"`), aligned to
+ * the row's end like the other settings controls.
  */
 import { ModeSelect } from '../conversation/PermissionSelect.js';
 import type { ModeOption } from '../conversation/PermissionSelect.js';
 import type { TranscriptViewMode } from '../chat/transcript-view.js';
 import { SETTINGS_COPY } from './copy.js';
 import { SettingsRow } from './SettingsRow.js';
+import css from './TranscriptViewRow.module.css';
 
 /** The four modes' copy and what each does to the transcript. */
 const MODE_OPTIONS: readonly ModeOption<TranscriptViewMode>[] = [
@@ -42,6 +43,8 @@ export function TranscriptViewRow({ mode, onPick }: TranscriptViewRowProps): JSX
         onPick={onPick}
         side="above"
         align="end"
+        variant="field"
+        className={css.field}
       />
     </SettingsRow>
   );

@@ -26,10 +26,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  /* ZCode 对齐（2026-11-15）：ProjectSidebarListHeader.tsx:50-72 的两个头部
+   * 控件是 Button size icon-sm（24×24，圆角 6px）。本仓没有 6px 档，取最接近的
+   * radius-sm（8px）；svg 14px 与参考的 size-3.5 一致。 */
+  width: 24px;
+  height: 24px;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
@@ -49,28 +52,27 @@
   background: var(--nova-interactive-hover);
 }
 
-/* Section header: the section word, the inline search that takes the row when
-   it opens, then the trailing controls. The label yields its width to the
-   search (the one part of the row that is not a control), so the header is a
-   single 36px row at every state and the list below never moves. */
+/* Section header (ZCode ProjectSidebarListHeader.tsx:31-34): one row of
+   `gap-1 px-2 pb-2` — 4px between controls, 8px under the row, and the label
+   carries its own `px-2.5` (10px). The 24px controls make the content row 24px
+   tall; with the 8px bottom padding the block is 32px, the reference's own
+   header height (24 + pb-2). The label yields its width to the search (the one
+   part of the row that is not a control), so the list below never moves. The
+   negative right margin cancels the scrollbar inset so the controls end at the
+   column's 8px content edge like the reference's `px-2`. */
 .sectionHeader {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--nova-space-4);
-  height: 36px;
-  padding-left: var(--nova-space-4);
-  margin-bottom: var(--nova-space-4);
+  height: 32px;
+  padding: 0 0 var(--nova-space-8) var(--nova-space-10);
+  margin-right: calc(-1 * var(--nova-sidebar-inline-padding));
   box-sizing: border-box;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   overflow: hidden;
   color: var(--nova-text-muted);
-}
-
-.root:not(.rail) .sectionHeader {
-  margin-top: var(--nova-space-2);
-  margin-right: -4px;
 }
 
 .sectionLabel {
@@ -129,11 +131,20 @@
   transition-delay: var(--nova-dur-instant), var(--nova-dur-instant), var(--nova-dur-instant), var(--nova-dur-base);
 }
 
-/* The search's seat: a 28px control at rest, the whole row once opened (the
-   label's own transition gives up the room it takes). */
+/* The view trigger's glyph: the reference's `ListFilter` is `size-3.5` (14px)
+   inside its 24px icon-sm button (ProjectSidebarListHeader.tsx:71); the
+   trigger's icon is rendered without a class of its own, so it is sized here. */
+.headerActions .iconButton > svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The search's seat: a 24px control at rest, the whole row once opened (the
+   label's own transition gives up the room it takes). 24px is the reference's
+   `icon-sm` header control box (ProjectSidebarListHeader.tsx:50-58). */
 .searchSlot {
   flex: 1;
-  max-width: 28px;
+  max-width: 24px;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -156,12 +167,12 @@
   align-items: center;
   gap: 0;
   width: 100%;
-  height: 28px;
+  height: 24px;
   margin: 0;
   padding: 0;
   box-sizing: border-box;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   cursor: text;
   color: var(--nova-text-secondary);
@@ -173,14 +184,16 @@
     background-color var(--nova-dur-base) var(--nova-ease-inout);
 }
 
-/* Open: the field draws its own l4 hairline box and the caret's caption ink. */
+/* Open: the field draws its own l4 hairline box and the caret's caption ink.
+   It stays inside the 24px content row, so opening the search never shifts the
+   list under the header. */
 .searchExpanded {
   width: calc(100% + 4px);
-  height: 30px;
+  height: 24px;
   margin-inline: -2px;
   padding: 0 var(--nova-space-4) 0 0;
   border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-faint);
 }
@@ -190,10 +203,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
@@ -202,11 +215,6 @@
 
 .searchButton:hover {
   background: var(--nova-interactive-hover);
-}
-
-.searchExpanded .searchButton {
-  width: 28px;
-  height: 30px;
 }
 
 .searchExpanded .searchButton:hover {
@@ -259,7 +267,7 @@
   width: 24px;
   height: 24px;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   padding: 0;
   background: transparent;
   cursor: pointer;
@@ -354,22 +362,19 @@
   margin-top: var(--nova-space-2);
 }
 
-/* A timeline section heading (the `按时间` view): the reference's date
-   headings — plain text rows, medium weight in the subtle ink, their own top
-   breathing room separating sections. The first heading sits flush with the
-   list's top. */
+/* A timeline section heading (the `按时间` view): the reference's date bands —
+   `px-2.5 pt-2 pb-1 text-ui-base font-medium text-foreground-subtle`
+   (ProjectTaskRows.tsx:159-165). 14px/500 in the subtle ink, 8px above the band
+   and 4px below it, 10px in from the list edge (the headings sit at 18px from
+   the column edge, the reference's own measure). No margin of its own: the
+   band's spacing is entirely its padding, as in the reference. */
 .groupHeading {
-  margin-top: var(--nova-space-8);
-  padding: var(--nova-space-2) var(--nova-space-10) 0;
+  padding: var(--nova-space-8) var(--nova-space-10) var(--nova-space-4);
   font-size: 14px;
   font-weight: 500;
   line-height: 20px;
   color: var(--nova-text-muted);
   user-select: none;
-}
-
-.list > .groupHeading:first-child {
-  margin-top: 0;
 }
 
 /* A flat run has no group wrapper to space its rows, so it carries the same 2px

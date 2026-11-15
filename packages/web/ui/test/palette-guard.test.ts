@@ -168,12 +168,16 @@ describe('shape language', () => {
   });
 
   it('provider rows carry no frame; the group is divided by rules instead', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment): the reference's model page is
+    // ONE card with `border-t px-4 py-3 first:border-t-0` rows
+    // (`settings/SettingsPageParts.tsx:196`), so a row draws a top rule and no
+    // box of its own.
     const sheet = read('settings/ProviderSection.module.css');
     const card = /^\.card \{([^}]*)\}/m.exec(sheet)?.[1] ?? '';
-    expect(card, 'provider row must not draw a border').toContain('border: 0');
+    expect(card, 'provider row must not draw a box of its own').not.toMatch(/border:\s*1px/);
     expect(card, 'provider row must not carry its own fill').toContain('background: transparent');
-    // Separation moved to the list rule; without it the rows would run together.
-    expect(sheet, 'the row group needs a hairline divider').toContain('.rows > li:not(:last-child)');
+    // Separation lives on the row's own top edge; without it the rows run together.
+    expect(sheet, 'the row group needs a hairline divider').toContain('.card:first-child');
     // The add affordance is a secondary action, not a dashed drop target.
     const add = /^\.addButton \{([^}]*)\}/m.exec(sheet)?.[1] ?? '';
     expect(add, 'add button must not be a dashed slab').not.toContain('dashed');
@@ -190,11 +194,16 @@ describe('shape language', () => {
     expect(root, 'the turn row must not rule itself off').not.toMatch(/border-bottom:\s*[^;]*\bsolid\b/);
   });
 
-  it('the user bubble is one quiet plane, not a tinted wash', () => {
+  it('the user bubble is the reference outlined quiet plane', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment): the reference's bubble is
+    // `rounded-xl rounded-tr-xs border border-border bg-surface px-4 py-3`
+    // (`v4/ConversationUserInputBubble.tsx:28`). The outline is the reference's
+    // own, not the tinted wash this guard once forbade.
     const bubble = /^\.bubble \{([^}]*)\}/m.exec(read('chat/MessageItem.module.css'))?.[1] ?? '';
-    expect(bubble, 'bubble fill is the quiet sunken plane').toContain('var(--nova-surface-sunken)');
-    expect(bubble, 'the bubble carries no outline').toMatch(/border:\s*0;/);
-    expect(bubble, 'the bubble takes the large standalone corner').toContain('var(--nova-radius-xl)');
+    expect(bubble, 'bubble fill is the 3% surface').toContain('var(--nova-surface-card)');
+    expect(bubble, 'the bubble draws the reference hairline').toMatch(/border:\s*1px/);
+    expect(bubble, 'the bubble takes the reference corner').toContain('var(--nova-radius-lg)');
+    expect(bubble, 'the top-right corner keeps the reference notch').toContain('border-top-right-radius');
   });
 
   it('the composer keeps ONE text floor across the hero and docked seats', () => {
@@ -221,18 +230,16 @@ describe('shape language', () => {
     );
   });
 
-  it('a mounted transcript row animates in', () => {
-    // The sheet carried sixty-odd animation references and every one belonged to
-    // a disclosure, so nothing moved when a message actually arrived — which is
-    // why a live turn read as static text appearing in place.
+  it('a mounted transcript row does NOT animate in', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment): the reference's work items
+    // mount in place — its only live motion is the sweep on a running row's
+    // text — and a fade-up per arriving row made a streaming turn read as the
+    // page moving rather than as text growing.
     //
     // Comments are stripped first: the rule's own doc-comment NAMES the keyframe
-    // it uses, so a naive `toContain` would pass on a row whose declaration had
-    // been deleted. Only a live `animation:` declaration counts.
+    // it used to carry, so a naive `not.toContain` would fail on the prose.
     const raw = /^\.flowItem \{([^}]*)\}/m.exec(read('chat/ChatView.module.css'))?.[1] ?? '';
     const decl = raw.replace(/\/\*[\s\S]*?\*\//g, '');
-    expect(decl, 'the row wrapper must declare the shared entrance').toMatch(
-      /animation:\s*nova-fade-up/
-    );
+    expect(decl, 'the row wrapper must not replay an entrance').not.toMatch(/animation:/);
   });
 });

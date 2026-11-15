@@ -132,15 +132,10 @@ export interface InputBarProps {
   draftRequest?: DraftRequest | null;
   /** Owner placeholder (a hero or session-unavailable state wins over it). */
   placeholder?: string;
-  /**
-   * The composer dock: what sits under the card, inside this root. The
-   * harness renders its `conversation.composer.dock` slot in exactly that
-   * place — the stats pills and the context meter share one centered row
-   * there. Each reading renders nothing until it has numbers, so an early
-   * session's dock is empty and hides itself (`.dock:empty`), which is what
-   * keeps the hero optically centered before the first run lands.
-   */
+  /** What sits under the card (the harness's `composer.dock` slot); empty hides itself. */
   dock?: ReactNode;
+  /** The context ring, in the toolbar's trailing run (the reference's seat). */
+  meter?: ReactNode;
   /** The card's first row (the reference's `contextHeader` seat, hero only). */
   header?: ReactNode;
   variant?: 'composer' | 'hero';
@@ -167,6 +162,7 @@ export function InputBar({
   draftRequest,
   placeholder,
   dock,
+  meter,
   header,
   variant = 'composer',
 }: InputBarProps): JSX.Element {
@@ -570,6 +566,8 @@ export function InputBar({
           onMenu={setMenu}
           seat={seat}
           onPrimary={onPrimary}
+          // The ring rides the toolbar's trailing run, not the dock.
+          {...(meter !== undefined ? { meter } : {})}
           send={send}
         />
         </div>

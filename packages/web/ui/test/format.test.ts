@@ -128,17 +128,23 @@ describe('formatClock', () => {
 });
 
 describe('runDurationText', () => {
-  it('grows whole units, never a bare float', () => {
-    expect(runDurationText(4_000)).toBe('4秒');
-    expect(runDurationText(2 * 60_000 + 30_000)).toBe('2分30秒');
-    expect(runDurationText(3_600_000 + 2 * 60_000 + 5_000)).toBe('1小时02分05秒');
+  it('states at most two spaced units, never a bare float', () => {
+    expect(runDurationText(4_000)).toBe('4 秒');
+    expect(runDurationText(2 * 60_000 + 30_000)).toBe('2 分 30 秒');
+    // The third unit is the reference's `slice(0, 2)`: a long turn reads
+    // 「1 时 2 分」, not a five-part tally.
+    expect(runDurationText(3_600_000 + 2 * 60_000 + 5_000)).toBe('1 时 2 分');
+    // A sub-second run still states one second (the reference's `max(1, …)`).
+    expect(runDurationText(0)).toBe('1 秒');
   });
 });
 
 describe('liveDurationText', () => {
   it('ticks whole seconds without zero padding', () => {
-    expect(liveDurationText(59_400)).toBe('59秒');
-    expect(liveDurationText(61_000)).toBe('1分1秒');
+    expect(liveDurationText(59_400)).toBe('59 秒');
+    expect(liveDurationText(61_000)).toBe('1 分 1 秒');
+    // The minute is stated once an hour is (the reference's running format).
+    expect(liveDurationText(3_607_000)).toBe('1 时 0 分 7 秒');
   });
 });
 

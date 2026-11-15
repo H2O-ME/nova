@@ -13,7 +13,7 @@
  * siblings in a flex line — `.rowToggle` (the leading area, which expands) and
  * the switch — rather than one wrapper element around both.
  */
-import { ChevronDownIcon, ChevronRightIcon, PluginIcon } from '../icons.js';
+import { PluginIcon } from '../icons.js';
 import { Switch } from './Switch.js';
 import { SETTINGS_COPY } from './copy.js';
 import { pluginStateLabel } from './plugin-state.js';
@@ -45,13 +45,28 @@ export interface PluginGroupProps {
 }
 
 /**
+ * How many rows a folded group leaves on the page. Same number and same reason
+ * as the reference's `CATEGORY_VISIBLE_LIMIT`
+ * (PluginStoreListView.tsx:28): a fold that keeps only a teaser is still a lie
+ * about how much is there, so the hint row counts what remains.
+ */
+const GROUP_FOLD_LIMIT = 6;
+
+/**
  * Render one tier group: its header, a failure count when it has one, and its rows.
  *
- * The header folds. A group whose rows carry no switch is reference material
- * rather than a set of controls, and it was pushing the controls off the page:
- * 17 core rows put the first live switch 706px below the fold of a 720px window
- * — the reported 「都藏在页面最底部」. Such a group arrives folded, and its
- * header states how many rows are behind it, so nothing disappears silently.
+ * The header is PLAIN TEXT with no chevron — the reference's `StoreSection`
+ * draws the subject line as a static `h2` (PluginStoreListView.tsx:301-307)
+ * and puts the fold at the BOTTOM of the group instead: a folded group ends in
+ * "查看其余 N 项" (its `CollapsibleCardGroup`, lines 353-386), an open one ends
+ * in 收起 (lines 387-397). Clicking the title was a second, competing entry
+ * that the reference does not have.
+ *
+ * The fold still exists for the reason it was added: a group whose rows carry
+ * no switch is reference material rather than a set of controls, and 17 core
+ * rows put the first live switch 706px below the fold of a 720px window — the
+ * reported 「都藏在页面最底部」. Such a group arrives folded, leaving its first
+ * {@link GROUP_FOLD_LIMIT} rows and counting the rest.
  *
  * @param props - see PluginGroupProps.
  * @returns the group element (or null when it has no rows).
@@ -71,11 +86,19 @@ export function PluginGroup({
 }: PluginGroupProps): JSX.Element | null {
   if (group.rows.length === 0) return null;
   const failed = group.rows.filter((entry) => entry.state === 'failed').length;
-  // The count is the whole reason a folded group is not a lie: the reader sees
-  // how much is behind the header without opening it.
+  // A folded group keeps the reference's six teaser rows (its
+  // `items.slice(0, CATEGORY_VISIBLE_LIMIT)`); anything else is behind the
+  // hint row, which states the remaining count so nothing disappears silently.
+  const folded = foldable && !open;
+  const visible = folded ? group.rows.slice(0, GROUP_FOLD_LIMIT) : group.rows;
+  const hidden = group.rows.length - visible.length;
+  // 收起 is only offered where folding would actually hide rows, exactly like
+  // the reference's `expanded && items.length > CATEGORY_VISIBLE_LIMIT`.
+  const collapsible = foldable && group.rows.length > GROUP_FOLD_LIMIT;
+  // The subject line: title, row count, failed count. No icon and no control —
+  // the reference's `px-2 pb-2` heading band (PluginStoreListView.tsx:301-307).
   const head = (
     <>
-      {foldable && (open ? <ChevronDownIcon className={css.groupHeadIcon} /> : <ChevronRightIcon className={css.groupHeadIcon} />)}
       {title}
       <span className={css.groupCount}>{`· ${String(group.rows.length)}`}</span>
       {/* The count only appears when it is non-zero: a standing "0 个启动失败"
@@ -85,36 +108,50 @@ export function PluginGroup({
   );
   return (
     <section role="group" aria-label={title} className={css.group}>
-      {foldable ? (
+      <div className={css.groupTitle}>{head}</div>
+      {/* The reference's `h-px bg-surface` under a group's subject line: it is
+          what separates the heading band from the cards, and it stays whether
+          the group is folded or open. */}
+      <div aria-hidden="true" className={css.groupRule} />
+      <ul className={css.list}>
+        {visible.map((entry) => (
+          <PluginRow
+            key={entry.name}
+            entry={entry}
+            switchable={group.switchable}
+            advanced={group.tier === 'advanced'}
+            open={expanded.has(entry.name)}
+            disabled={disabled}
+            lockedNote={lockedNote}
+            switching={switching}
+            onToggle={onToggle}
+            onFlip={onFlip}
+          />
+        ))}
+      </ul>
+      {/* The reference's fold seat is the group's FOOT, not its header:
+          collapsed → "查看其余 N 项", expanded → 收起
+          (PluginStoreListView.tsx:353-397, `mt-2 flex w-full items-center gap-2
+          rounded-xl px-2 py-2 … hover:bg-hover`). */}
+      {folded && hidden > 0 && (
         <button
           type="button"
-          className={css.groupHead}
-          aria-expanded={open}
-          title={SETTINGS_COPY['plugins.groupToggle']}
+          className={css.groupToggle}
+          aria-expanded={false}
           onClick={onToggleGroup}
         >
-          {head}
+          {SETTINGS_COPY['plugins.viewMore'].replace('{count}', String(hidden))}
         </button>
-      ) : (
-        <div className={css.groupTitle}>{head}</div>
       )}
-      {open && (
-        <ul className={css.list}>
-          {group.rows.map((entry) => (
-            <PluginRow
-              key={entry.name}
-              entry={entry}
-              switchable={group.switchable}
-              advanced={group.tier === 'advanced'}
-              open={expanded.has(entry.name)}
-              disabled={disabled}
-              lockedNote={lockedNote}
-              switching={switching}
-              onToggle={onToggle}
-              onFlip={onFlip}
-            />
-          ))}
-        </ul>
+      {!folded && collapsible && (
+        <button
+          type="button"
+          className={css.groupToggle}
+          aria-expanded
+          onClick={onToggleGroup}
+        >
+          {SETTINGS_COPY['plugins.showLess']}
+        </button>
       )}
     </section>
   );
@@ -178,23 +215,27 @@ export function PluginRow({
           <PluginIcon className={css.rowIconGlyph} />
         </span>
         <span className={css.pluginText}>
-          <span className={css.pluginName}>{title}</span>
+          {/* The title line carries the row's badges, as the reference's card
+              does (its paid-plan / update marks ride beside the name). */}
+          <span className={css.pluginTitle}>
+            <span className={css.pluginName}>{title}</span>
+            {advanced && <span className={css.tag}>{SETTINGS_COPY['plugins.defaultOff']}</span>}
+          </span>
           {/* The one-line description sits ON the row, not behind the
               disclosure: it is what tells two plugin names apart, and the
-              reference reads it in the collapsed state. */}
-          {entry.description !== undefined && entry.description.length > 0 && (
-            <span className={css.pluginDesc}>{entry.description}</span>
-          )}
+              reference reads it in the collapsed state. The line is drawn even
+              when the host sent no description — its `mt-0.5 min-h-5` reserves
+              the line box (PluginStoreCard.tsx:378), so a card without one is
+              the same height as its neighbours. */}
+          <span className={css.pluginDesc}>{entry.description ?? ''}</span>
           <span className={css.pluginMeta}>
             <span className={css.pluginId}>{entry.name}</span>
             {/* A row the switch turned off has ONE fact to state: the roster
                 reports its state as `disabled`, so printing the state word and
-                「已关闭」 said the same thing twice. The off row keeps the
-                operator's word; every other phase (failed, loading, …) still
-                prints, because there it adds. */}
+                「已关闭」 said the same thing twice. The on/off word is gone from
+                this line entirely — the switch beside it is the state, and the
+                reference's card prints no such word either. */}
             {entry.state !== 'disabled' && ` · ${pluginStateLabel(entry.state)}`}
-            {` · ${on ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off']}`}
-            {advanced && <span className={css.tag}>{SETTINGS_COPY['plugins.defaultOff']}</span>}
           </span>
         </span>
       </button>

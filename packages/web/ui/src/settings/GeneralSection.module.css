@@ -1,0 +1,9 @@
+/* The 常规 page's select width: the reference gives a settings row's value
+ * select 260px (`w-[260px] min-w-0 justify-between`), and every row here that
+ * carries one shares that trailing edge. `max-width: 100%` lets a narrow
+ * column shrink it instead of overflowing. */
+
+.field {
+  width: 260px;
+  max-width: 100%;
+}

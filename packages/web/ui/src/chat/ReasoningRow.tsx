@@ -1,14 +1,17 @@
 /**
  * Assistant reasoning disclosure, independent of tool-call presentation: one
- * 24px step row whose words come from the harness's step-process vocabulary
- * (`locale.ts`
- * `message.stepProcess.thinking` / `.done.thinking`): a streaming block reads
- * 「正在分析请求」 plus the thought's live tail, a settled one reads
- * 「已完成分析」 — the work is named, and the raw text stays one click away in
- * the expanded body rather than standing in as the row's title.
+ * step row whose words name the work — 「正在思考」 while it streams, then
+ * 「思考 持续了 N 秒」 once it lands. The raw text stays one click away in the
+ * expanded body; the row itself never prints it.
  *
- * The running label is announced through the visually-hidden span the harness
- * uses; the settled row's title carries the completion on its own.
+ * That last rule is the reference's (2026-11-15): its summary row carries the
+ * label, the duration and the chevron and nothing else — a thought's first line
+ * was a second, staler reading of what the expanded body already says, and on a
+ * settled row it was the cleanest-looking line in the transcript while being the
+ * least useful.
+ *
+ * The running label is announced through a visually-hidden span (the duration
+ * ticks every second, so it cannot sit in a live region).
  */
 import { memo, useEffect, useRef, useState } from 'react';
 import { DisclosureRow } from './DisclosureRow.js';
@@ -22,50 +25,16 @@ const RUNNING_LABEL = '正在思考';
 /** The settled row's title (the reference's `chat.reasoning.thought`). */
 const DONE_LABEL = '思考';
 
-/** The settled row's preview: the thought's first line. */
-function firstLine(text: string): string {
-  const newline = text.indexOf('\n');
-  return newline === -1 ? text : text.slice(0, newline);
-}
-
-/**
- * The streaming row's preview: the first line of the last COMPLETED paragraph.
- * A half-typed line must not stand in as the row's summary, so the scan only
- * accepts a paragraph whose newline has already arrived.
- */
-function latestCompletedParagraphFirstLine(text: string): string {
-  let summary = '';
-  let paragraphStart = 0;
-  const separator = /\r?\n(?:[\t ]*\r?\n)+/g;
-  while (true) {
-    const nextParagraph = separator.exec(text);
-    const paragraphEnd = nextParagraph === null
-      ? text.length
-      : nextParagraph.index + nextParagraph[0].indexOf('\n');
-    const newline = text.indexOf('\n', paragraphStart);
-    if (newline !== -1 && newline <= paragraphEnd) {
-      const candidate = text.slice(paragraphStart, newline).trim();
-      if (candidate !== '') summary = candidate;
-    }
-    if (nextParagraph === null) return summary;
-    paragraphStart = nextParagraph.index + nextParagraph[0].length;
-  }
-}
-
 export interface ReasoningRowProps {
   /** Complete or streaming reasoning text. */
   text: string;
   /** Whether this block is the streaming tail. */
   running: boolean;
-  /** The work-details policy's `settledReasoningPreview`: the 简洁 mode
-   *  withholds the summary, so the row reads as the bare title. */
-  previewAllowed?: boolean | undefined;
 }
 
 export const ReasoningRow = memo(function ReasoningRow({
   text,
   running,
-  previewAllowed = true,
 }: ReasoningRowProps): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   // The reference shows how long the model thought (`chat.reasoning.duration*`):
@@ -91,13 +60,8 @@ export const ReasoningRow = memo(function ReasoningRow({
     if (!running && !interacted.current) setExpanded(false);
   }, [running]);
 
-  // The harness's summary source: while streaming it is the last completed
-  // paragraph's first line (a half-written line is not a summary), once
-  // settled the text's own first line. The policy's gate names SETTLED rows —
-  // a streaming row's live tail is the progress being watched, not a summary.
-  const summaryText = running ? latestCompletedParagraphFirstLine(text) : firstLine(text);
-  const summary = summaryText.replaceAll('**', '');
-  const preview = !expanded && summary !== '' && (running || previewAllowed);
+  // The row's one line: the live verb while it streams, then the verb with the
+  // measured duration. No preview — see the file header.
   const title = running
     ? RUNNING_LABEL
     : duration === null ? DONE_LABEL : `${DONE_LABEL} 持续了 ${duration} 秒`;
@@ -108,7 +72,6 @@ export const ReasoningRow = memo(function ReasoningRow({
       data-variant="think"
       data-state={running ? 'running' : 'ok'}
       data-expanded={expanded || undefined}
-      data-preview={preview || undefined}
     >
       {running && <span className={a11yCss.visuallyHidden}>{RUNNING_LABEL}</span>}
       <DisclosureRow
@@ -121,15 +84,12 @@ export const ReasoningRow = memo(function ReasoningRow({
         open={expanded}
         expandable
         expandOnRowClick
+        /* The live verb sweeps while the model is still thinking — the
+           reference's `animated-gradient-text` on「正在思考」, with its icon
+           deliberately static (a spinner on every running row would spend the
+           render budget on motion the sweep already carries). */
+        running={running}
         onToggle={() => { interacted.current = true; setExpanded((value) => !value); }}
-        collapsedContent={preview ? (
-          <>
-            <span className={css.separator} aria-hidden="true" />
-            <span className={css.summary} data-streaming={running || undefined}>
-              <span className={css.summaryText}>{summary}</span>
-            </span>
-          </>
-        ) : undefined}
       >
         <div className={css.thinkBody}>
           <MarkdownText text={text} streaming={running} variant="compact" />

@@ -26,6 +26,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import type { ReactNode } from 'react';
 import { ChevronDownGlyph14 } from './glyphs.js';
 import { ProcessGroup } from './ProcessGroup.js';
+import type { SummaryMemberKind } from './summary-group.js';
 import { Button } from '../components/ui/button.js';
 import { Marker } from '../components/ui/marker.js';
 import { MessageScroller, MessageScrollerContent, MessageScrollerProvider, MessageScrollerViewport } from '../components/ui/message-scroller.js';
@@ -59,6 +60,15 @@ export interface ChatFlowRow {
    * here is how the second disclosure grew back last time.
    */
   group?: { id: string; live: boolean } | undefined;
+  /**
+   * The row is a member of a summary group: what it counts as. Consecutive
+   * rows carrying this are folded into ONE statistics line (`SummaryGroup`) —
+   * the reference's `groupConsecutiveAssistantSummaries`. Absent on rows that
+   * are boundaries (text, subagents, jobs, unclassified tools).
+   */
+  summary?: SummaryMemberKind | undefined;
+  /** The row's work is still in flight; a summary group's verb reads it. */
+  live?: boolean | undefined;
 }
 
 /** The live turn's label (the running turn header's words). */

@@ -12,10 +12,9 @@
  * project roots, so a cached list could lie about what is installed.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { SearchIcon } from '../icons.js';
+import { SearchIcon, SparkleIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { ManageError } from './ManageError.js';
-import { SettingsSection } from './Section.js';
 import { Switch } from './Switch.js';
 import { useFlipFeedback } from './use-flip-feedback.js';
 import type { ClientFrame } from '../types.js';
@@ -64,10 +63,6 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
   );
   const project = matches.filter((item) => item.source === 'project');
   const user = matches.filter((item) => item.source !== 'project');
-  // The counts behind the discovery roots below. `items` (not `matches`): the
-  // roots answer "what is installed here", which a search box must not change.
-  const projectTotal = items.filter((item) => item.source === 'project').length;
-  const userTotal = items.length - projectTotal;
 
   const flip = (name: string, enabled: boolean): void => {
     // The row follows the host's answer, not this click: the hook only disables
@@ -87,44 +82,55 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
     feedback.settle((done) => done.name);
   }, [skills]);
 
-  const group = (title: string, rows: typeof items, root: string, total: number): JSX.Element | null => {
-    if (total === 0) return null;
+  const group = (title: string, rows: typeof items, root: string): JSX.Element | null => {
+    if (rows.length === 0) return null;
     return (
       <section role="group" aria-label={title} className={css.group}>
-        {/* The discovery root, with its count. This is the page's answer to "我该
-           把文件放哪": the group title alone ("项目级") told a reader nothing
-           they could act on. Shown when the LEVEL has entries even if the search
-           filtered them all out, so a filter never rewrites where things live. */}
-        <div className={css.groupTitle}>
-          <span>{title}</span>
-          <span className={css.rootPath} title={root}>{root}</span>
-          <span className={css.rootCount}>{SETTINGS_COPY['skills.rootCount'].replace('{count}', String(total))}</span>
+        {/* 资源组头：对齐 ZCode `settings/SettingsResourceGroup.tsx:17-22`
+            （`flex h-7 items-center gap-1.5 text-ui-base font-medium`，计数是
+            `text-ui-sm font-normal text-foreground-subtle`）。发现根目录走在
+            同一个头里（参照的 hint 槽），标题本身回答不了「我该放哪」。 */}
+        <div className={css.groupHead}>
+          <h3 className={css.groupTitle}>
+            {title}
+            <span className={css.groupCount}>
+              {SETTINGS_COPY['skills.rootCount'].replace('{count}', String(rows.length))}
+            </span>
+          </h3>
+          <span className={css.groupRoot} title={root}>{root}</span>
         </div>
-        {rows.map((item) => (
-          <div key={item.name} className={css.skill}>
-            <div className={css.skillText}>
-              <div className={css.skillName}>{item.name}</div>
-              {item.description.length > 0
-                ? <div className={css.skillDesc} title={item.description}>{item.description}</div>
-                : <div className={css.skillDescEmpty}>（无描述）</div>}
-            </div>
-            <Switch
-              checked={item.enabled}
-              disabled={disabled || feedback.switching === item.name}
-              busy={feedback.switching === item.name}
-              label={`${item.name}，当前：${item.enabled ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off']}`}
-              title={disabled ? SETTINGS_COPY['plugins.lockNote'] : (item.enabled ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off'])}
-              onChange={(next) => { flip(item.name, next); }}
-            />
-          </div>
-        ))}
+        {/* 资源列表：ZCode 的 `SettingsResourceList` —— 一张
+            `overflow-hidden rounded-xl bg-surface` 的卡，行间 1px 分隔。 */}
+        <ul className={css.list}>
+          {rows.map((item) => (
+            <li key={item.name} className={css.skill}>
+              {/* 参照的 36px 图标砖：skill 不是插件包，用星形而不是插件头像。 */}
+              <span className={css.skillIcon} aria-hidden="true"><SparkleIcon /></span>
+              <div className={css.skillText}>
+                <div className={css.skillName}>{item.name}</div>
+                {item.description.length > 0
+                  ? <div className={css.skillDesc} title={item.description}>{item.description}</div>
+                  : <div className={css.skillDescEmpty}>（无描述）</div>}
+              </div>
+              <Switch
+                checked={item.enabled}
+                disabled={disabled || feedback.switching === item.name}
+                busy={feedback.switching === item.name}
+                label={`${item.name}，当前：${item.enabled ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off']}`}
+                title={disabled ? SETTINGS_COPY['plugins.lockNote'] : (item.enabled ? SETTINGS_COPY['plugins.on'] : SETTINGS_COPY['plugins.off'])}
+                onChange={(next) => { flip(item.name, next); }}
+              />
+            </li>
+          ))}
+        </ul>
       </section>
     );
   };
 
   return (
-    <SettingsSection>
-      <h2 className={css.heading}>{SETTINGS_COPY['skills.title']}</h2>
+    <div className={css.page}>
+      {/* 页面说明：ZCode 的 `text-ui-base leading-6 text-foreground-subtle`
+          （`SectionLayout.tsx:54-56`）。页名由设置壳的页标题承担，这里不再重复。 */}
       <p className={css.intro}>{SETTINGS_COPY['skills.intro']}</p>
       <ManageError message={feedback.error} />
       {skills === null && <div className={css.status}>{SETTINGS_COPY['skills.loading']}</div>}
@@ -162,11 +168,11 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
           ? SETTINGS_COPY['plugins.switching']
           : feedback.applied ?? (disabled ? SETTINGS_COPY['plugins.lockNote'] : '')}
       </div>
-      {group(SETTINGS_COPY['skills.projectGroup'], project, SETTINGS_COPY['skills.projectRoot'], projectTotal)}
-      {group(SETTINGS_COPY['skills.userGroup'], user, SETTINGS_COPY['skills.userRoot'], userTotal)}
+      {group(SETTINGS_COPY['skills.projectGroup'], project, SETTINGS_COPY['skills.projectRoot'])}
+      {group(SETTINGS_COPY['skills.userGroup'], user, SETTINGS_COPY['skills.userRoot'])}
       {skills !== null && items.length > 0 && (
         <p className={css.hint}>{SETTINGS_COPY['skills.hint']}</p>
       )}
-    </SettingsSection>
+    </div>
   );
 }

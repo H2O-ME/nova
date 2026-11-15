@@ -1,8 +1,9 @@
 /**
- * The New Session bar under the logo row. Expanded it is a 38px bar carrying
- * its own label; in the rail it is
- * the plain 36x36 icon control, and there the label has to come from a tooltip
- * (the reference passes `disabled={wide}` to the same primitive).
+ * The New Session bar under the logo row. Expanded it is the reference's 32px
+ * nav row (`h-8`, NewTaskButtonGroup.tsx:36) carrying its own label; in the
+ * rail it is the plain 36x36 icon control, and there the label has to come
+ * from a tooltip (the reference passes `disabled={wide}` to the same
+ * primitive).
  */
 import { Tooltip } from '../shell/Tooltip.js';
 import { SIDEBAR_COPY as COPY } from './view.js';

@@ -1,22 +1,22 @@
 /**
- * 开始: the doorway page the panel shows while no tab is in front.
+ * 开始/新标签页: the doorway page the panel shows while no tab is in front.
  *
- * A muted compass over a centred column of entry
- * capsules, no heading — a browser start page shows its doors without a
- * caption. Picking one opens that page in the panel, so this is a doorway
- * rather than a page that stays open.
+ * The reference's open-tab launcher page (`AnimatedSidePanePanel.tsx:829-901`):
+ * a left-aligned page head over a list of horizontal rows, each row a 48px
+ * icon block, a semibold title over a quiet one-line description, and a
+ * trailing 「打开」 pill. Picking a row opens that page in the panel, so this is
+ * a doorway rather than a page that stays open.
  *
- * The terminal capsule is the reference's `TerminalGuide`: the card opens the
- * tab, and a chevron beside it opens the SHELL MENU — discovery fires when the
- * menu opens (an unopened menu costs no probe), the effective choice carries
- * the checkmark, and picking a row remembers it and re-aims the terminal. The
+ * The terminal row is the reference's `TerminalGuide`: the row opens the tab,
+ * and a chevron beside it opens the SHELL MENU — discovery fires when the menu
+ * opens (an unopened menu costs no probe), the effective choice carries the
+ * checkmark, and picking a row remembers it and re-aims the terminal. The
  * reference hangs a keyboard shortcut off every capsule; this surface has no
- * global shortcut system, so the pills end at the text (recorded deviation).
+ * global shortcut system, so the rows end at the pill (recorded deviation).
  */
 import { useEffect, useState } from 'react';
 import { ChevronDownIcon } from '../icons.js';
 import { Menu, type MenuItem } from '../shell/Menu.js';
-import { CompassGlyph } from './panel-icons.js';
 import { DiffTabIcon, FilesTabIcon, TasksTabIcon, TerminalTabIcon } from './panel-icons.js';
 import { RIGHTBAR_COPY } from './copy.js';
 import { readShellPreference, requestedShell } from './terminal-shell.js';
@@ -24,7 +24,7 @@ import type { RightbarTabId } from './tabs.js';
 import type { WireShell } from '../types.js';
 import css from './StartView.module.css';
 
-/** The glyph each entry capsule carries (the strip's own icon vocabulary). */
+/** The glyph each row carries inside its 48px block (the strip's vocabulary). */
 const ENTRY_ICONS: Record<RightbarTabId, JSX.Element> = {
   changes: <DiffTabIcon />,
   files: <FilesTabIcon />,
@@ -33,9 +33,9 @@ const ENTRY_ICONS: Record<RightbarTabId, JSX.Element> = {
 };
 
 export interface StartViewProps {
-  /** Open the picked page in the panel (the capsule's whole job). */
+  /** Open the picked page in the panel (the row's whole job). */
   onOpen: (tab: RightbarTabId) => void;
-  /** The host's discovered shells (the terminal card's menu rows); null until asked. */
+  /** The host's discovered shells (the terminal row's menu rows); null until asked. */
   shells: { items: readonly WireShell[]; current: string } | null;
   /** Ask the host what it can start — the menu's open gesture fires it. */
   onDiscoverShells: () => void;
@@ -46,30 +46,35 @@ export interface StartViewProps {
 export function StartView({ onOpen, shells, onDiscoverShells, onPickShell }: StartViewProps): JSX.Element {
   return (
     <div className={css.view} data-rightbar-start="">
-      <span className={css.hero} aria-hidden="true"><CompassGlyph /></span>
-      {(['changes', 'files', 'tasks'] as const).map((id) => (
-        <button
-          key={id}
-          type="button"
-          className={css.entry}
-          data-entry={id}
-          onClick={() => { onOpen(id); }}
-        >
-          <span className={css.entryIcon} aria-hidden="true">{ENTRY_ICONS[id]}</span>
-          <span className={css.entryText}>
-            <span className={css.entryTitle}>{RIGHTBAR_COPY[`tab.${id}`]}</span>
-            <span className={css.entryDescription}>{RIGHTBAR_COPY[`start.${id}.note`]}</span>
-          </span>
-        </button>
-      ))}
-      <TerminalEntry onOpen={onOpen} shells={shells} onDiscoverShells={onDiscoverShells} onPickShell={onPickShell} />
+      <div className={css.column}>
+        <h2 className={css.title}>{RIGHTBAR_COPY['start.title']}</h2>
+        <div className={css.list}>
+          {(['changes', 'files', 'tasks'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              className={css.row}
+              data-entry={id}
+              onClick={() => { onOpen(id); }}
+            >
+              <span className={css.rowIcon} aria-hidden="true">{ENTRY_ICONS[id]}</span>
+              <span className={css.rowText}>
+                <span className={css.rowTitle}>{RIGHTBAR_COPY[`tab.${id}`]}</span>
+                <span className={css.rowDescription}>{RIGHTBAR_COPY[`start.${id}.note`]}</span>
+              </span>
+              <span className={css.rowOpen} aria-hidden="true">{RIGHTBAR_COPY['start.open']}</span>
+            </button>
+          ))}
+          <TerminalEntry onOpen={onOpen} shells={shells} onDiscoverShells={onDiscoverShells} onPickShell={onPickShell} />
+        </div>
+      </div>
     </div>
   );
 }
 
 /**
- * The terminal capsule: card = open the tab, chevron = the shell menu (the
- * reference's TerminalGuide shape — two controls, one card).
+ * The terminal row: row = open the tab, chevron = the shell menu (the
+ * reference's TerminalGuide shape — two controls, one row).
  */
 function TerminalEntry({
   onOpen, shells, onDiscoverShells, onPickShell,
@@ -93,13 +98,14 @@ function TerminalEntry({
     ? [{ id: 'loading', label: RIGHTBAR_COPY['term.shellLoading'], disabled: true }]
     : shells.items.map((shell) => ({ id: shell.path, label: shell.name }));
   return (
-    <div className={css.entry} data-entry="terminal">
-      <button type="button" className={css.entryMain} onClick={() => { onOpen('terminal'); }}>
-        <span className={css.entryIcon} aria-hidden="true">{ENTRY_ICONS.terminal}</span>
-        <span className={css.entryText}>
-          <span className={css.entryTitle}>{RIGHTBAR_COPY['tab.terminal']}</span>
-          <span className={css.entryDescription}>{RIGHTBAR_COPY['start.terminal.note']}</span>
+    <div className={css.row} data-entry="terminal">
+      <button type="button" className={css.rowMain} onClick={() => { onOpen('terminal'); }}>
+        <span className={css.rowIcon} aria-hidden="true">{ENTRY_ICONS.terminal}</span>
+        <span className={css.rowText}>
+          <span className={css.rowTitle}>{RIGHTBAR_COPY['tab.terminal']}</span>
+          <span className={css.rowDescription}>{RIGHTBAR_COPY['start.terminal.note']}</span>
         </span>
+        <span className={css.rowOpen} aria-hidden="true">{RIGHTBAR_COPY['start.open']}</span>
       </button>
       <Menu
         open={menuOpen}
@@ -115,7 +121,7 @@ function TerminalEntry({
         anchor={(
           <button
             type="button"
-            className={css.entryTrigger}
+            className={css.rowTrigger}
             aria-label={RIGHTBAR_COPY['term.shell']}
             aria-haspopup="menu"
             aria-expanded={menuOpen}

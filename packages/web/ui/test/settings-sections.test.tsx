@@ -9,8 +9,11 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { GeneralSection } from '../src/settings/GeneralSection.js';
+import { AppearanceSection } from '../src/settings/AppearanceSection.js';
 import { ProviderModelsDialog, filterCandidates } from '../src/settings/ProviderModelsDialog.js';
-import { PluginRow } from '../src/settings/PluginRow.js';
+import { ProviderSection } from '../src/settings/ProviderSection.js';
+import { SkillsSection } from '../src/settings/SkillsSection.js';
+import { PluginGroup, PluginRow } from '../src/settings/PluginRow.js';
 import { PluginsSection } from '../src/settings/PluginsSection.js';
 import { SETTINGS_COPY } from '../src/settings/copy.js';
 
@@ -18,14 +21,20 @@ const general = (): string =>
   renderToStaticMarkup(
     <GeneralSection
       approvalMode="read-only"
-      preference="dark"
-      fontSize={14}
       disabled={false}
       transcriptView="standard"
       onPickApproval={() => undefined}
+      onPickTranscriptView={() => undefined}
+    />,
+  );
+
+const appearance = (): string =>
+  renderToStaticMarkup(
+    <AppearanceSection
+      preference="dark"
+      fontSize={14}
       onPickPreference={() => undefined}
       onPickFontSize={() => undefined}
-      onPickTranscriptView={() => undefined}
     />,
   );
 
@@ -42,15 +51,12 @@ describe('general section', () => {
     expect(html).not.toContain('执行模式');
   });
 
-  it('renders the appearance cubes and the font stepper after the mode rows', () => {
+  it('leaves appearance to its OWN page: no theme/font rows on 常规', () => {
+    // 2026-11-15: the reference keeps appearance on its own `appearance` page,
+    // so 常规 carries only the execution axes now.
     const html = general();
-    expect(html).toContain(SETTINGS_COPY['appearance.title']);
-    expect(html).toContain(SETTINGS_COPY['fontSize.title']);
-    expect(html).toContain('>14</span>');
-    // The reference's order: 权限 first, appearance, then the font axis.
-    const at = (needle: string): number => html.indexOf(needle);
-    expect(at(SETTINGS_COPY['permission.title'])).toBeLessThan(at(SETTINGS_COPY['appearance.title']));
-    expect(at(SETTINGS_COPY['appearance.title'])).toBeLessThan(at(SETTINGS_COPY['fontSize.title']));
+    expect(html).not.toContain(SETTINGS_COPY['appearance.title']);
+    expect(html).not.toContain(SETTINGS_COPY['fontSize.title']);
   });
 
   it('renders the work-details row with its four modes', () => {
@@ -65,6 +71,20 @@ describe('general section', () => {
     for (const key of ['transcript.compact', 'transcript.standard', 'transcript.detailed', 'transcript.verbose'] as const) {
       expect(SETTINGS_COPY[key]).not.toBe('');
     }
+  });
+});
+
+describe('appearance section', () => {
+  it('renders the theme select and the font field under the 界面设置 head', () => {
+    const html = appearance();
+    expect(html).toContain(SETTINGS_COPY['appearance.title']);
+    expect(html).toContain(SETTINGS_COPY['fontSize.title']);
+    // The font axis is the reference's number field now, not a stepper pill.
+    expect(html).toContain('type="number"');
+    expect(html).toContain('value="14"');
+    expect(html).toContain(SETTINGS_COPY['general.groupUi']);
+    const at = (needle: string): number => html.indexOf(needle);
+    expect(at(SETTINGS_COPY['appearance.title'])).toBeLessThan(at(SETTINGS_COPY['fontSize.title']));
   });
 });
 
@@ -215,7 +235,7 @@ describe('plugins section', () => {
     expect(html).not.toContain('tools');
   });
 
-  it('folds the switchless group, keeps the switchable one open, and counts both', () => {
+  it('folds the switchless group at its FOOT, keeps the switchable one open, and counts both', () => {
     // Defect B's user-visible half: a core name used to render a switch that
     // threw on every click. The page must not offer a control the kernel refuses.
     //
@@ -224,11 +244,24 @@ describe('plugins section', () => {
     // 720px window (「都藏在页面最底部」). So the switchless group arrives folded
     // — with its row count on the header, so nothing disappears silently — while
     // the group the reader can act on arrives open.
+    //
+    // ZCode evidence: the group's subject is PLAIN text and the fold lives at
+    // the group's foot (`PluginStoreListView.tsx:301-307`, `353-397`), so there
+    // is no chevron or button on the header; a folded group keeps its first six
+    // cards (`CATEGORY_VISIBLE_LIMIT`, line 28) and states the rest as
+    // 查看其余 N 项.
+    const coreRows = Array.from({ length: 8 }, (_, index) => ({
+      name: `core-${String(index)}`,
+      state: 'active' as const,
+      inject: [],
+      tier: 'core' as const,
+      title: `核心 ${String(index)}`,
+    }));
     const html = renderToStaticMarkup(
       <PluginsSection
         roster={{
           entries: [
-            { name: 'fs-read', state: 'active', inject: [], tier: 'core', title: '读取文件' },
+            ...coreRows,
             { name: 'subagent', state: 'disabled', inject: [], enabled: false, tier: 'advanced', title: '子代理', description: '为自包含的子任务启动隔离子代理。' },
           ],
           configPath: 'C:\\cfg.json',
@@ -240,30 +273,69 @@ describe('plugins section', () => {
     // …the tier groups are the page's structure…
     expect(html).toContain(SETTINGS_COPY['plugins.coreGroup']);
     expect(html).toContain(SETTINGS_COPY['plugins.advancedGroup']);
-    // …the switchless group's header is a CLOSED disclosure that counts its rows…
+    // …the switchless group's header is static text that counts its rows…
     const coreSection = html.indexOf(`aria-label="${SETTINGS_COPY['plugins.coreGroup']}"`);
-    const coreHead = html.slice(html.indexOf('<button', coreSection), html.indexOf('</button>', coreSection));
-    expect(coreHead).toContain('aria-expanded="false"');
-    expect(coreHead).toContain('· 1');
-    // …its row is behind the fold rather than on the page…
-    expect(html).not.toContain('读取文件');
-    // …and the group with a control is open, carrying exactly one switch.
+    const coreHead = html.slice(coreSection, html.indexOf('<ul', coreSection));
+    expect(coreHead).toContain('· 8');
+    expect(coreHead).not.toContain('<button');
+    // …its first six rows are on the page and the remaining two are stated by
+    // the foot hint instead of silently disappearing…
+    expect(html).toContain('核心 5');
+    expect(html).not.toContain('核心 6');
+    expect(html).toContain(SETTINGS_COPY['plugins.viewMore'].replace('{count}', '2'));
+    // …and the group with a control is open, carrying exactly one switch and
+    // no 收起 (a single row is not worth folding).
     expect(html).toContain('子代理');
     expect(html.match(/role="switch"/gu)?.length).toBe(1);
     expect(html).toContain(SETTINGS_COPY['plugins.defaultOff']);
+    expect(html).not.toContain(`>${SETTINGS_COPY['plugins.showLess']}</button>`);
     // The ROW is a disclosure too: `aria-expanded` is what its detail keys off.
     expect(html).toContain('aria-expanded="false"');
   });
 
-  it('renders the page head above the roster', () => {
+  it('ends an OPEN long group in 收起, as the reference does', () => {
+    // `CollapsibleCardGroup` only draws showLess when expanded AND the group has
+    // more than its teaser count (PluginStoreListView.tsx:387-397): an open
+    // group of three cards has nothing to fold back, so no control is drawn.
+    const rows = Array.from({ length: 7 }, (_, index) => ({
+      name: `core-${String(index)}`,
+      state: 'active' as const,
+      inject: [],
+      tier: 'core' as const,
+      title: `核心 ${String(index)}`,
+    }));
+    const open = renderToStaticMarkup(
+      <PluginGroup
+        group={{ tier: 'core', switchable: false, rows }}
+        title={SETTINGS_COPY['plugins.coreGroup']}
+        open
+        foldable
+        expanded={new Set()}
+        disabled={false}
+        lockedNote={null}
+        switching={null}
+        onToggleGroup={() => undefined}
+        onToggle={() => undefined}
+        onFlip={() => undefined}
+      />,
+    );
+    expect(open).toContain('核心 6');
+    expect(open).toContain(`>${SETTINGS_COPY['plugins.showLess']}</button>`);
+    expect(open).not.toContain(SETTINGS_COPY['plugins.viewMore'].split('{count}')[0]);
+  });
+
+  it('renders the market head above the roster', () => {
     const html = renderToStaticMarkup(
       <PluginsSection roster={{ entries: [], configPath: 'C:\\cfg.json' }} send={() => undefined} {...pluginsProps} />,
     );
     const at = (needle: string): number => html.indexOf(needle);
     expect(at(SETTINGS_COPY['plugins.title'])).toBeGreaterThan(-1);
-    expect(at(SETTINGS_COPY['plugins.intro'])).toBeGreaterThan(-1);
-    // Reference order: heading, then intro.
-    expect(at(SETTINGS_COPY['plugins.title'])).toBeLessThan(at(SETTINGS_COPY['plugins.intro']));
+    // The reference's market head carries the page name and its actions on ONE
+    // row, with no subtitle: the store page dropped the intro so the first
+    // screen starts at the catalog.
+    expect(at(SETTINGS_COPY['plugins.refresh'])).toBeGreaterThan(-1);
+    expect(html).not.toContain(SETTINGS_COPY['plugins.intro']);
+    expect(at(SETTINGS_COPY['plugins.title'])).toBeLessThan(at(SETTINGS_COPY['plugins.refresh']));
   });
 
   it('renders the loading reading before the first answer lands', () => {
@@ -323,5 +395,72 @@ describe('plugins section', () => {
       <PluginsSection roster={{ entries: [], configPath: 'C:\\cfg.json' }} plugins={null} disabled={false} manageError={null} send={() => undefined} />,
     );
     expect(empty).not.toContain('data-modal-escape-owner');
+  });
+});
+
+describe('模型页 · 供应商资源卡（ZCode 资源形态）', () => {
+  // 对齐 ZCode `model-provider-section/SectionLayout.tsx:54-67`：说明在卡外、
+  // 清单是一张卡、「添加」是组头的资源动作。旧稿把组标题塞进卡里、把添加做成
+  // 列表末尾的整行按钮 —— 这两条断言把新的结构钉住。
+  const providers = {
+    activeId: 'p1',
+    providers: [
+      { id: 'p1', name: '端点一', baseURL: 'https://a.example.test/v1', hasApiKey: true, models: [] },
+      { id: 'p2', name: '端点二', baseURL: 'https://b.example.test/v1', hasApiKey: true, models: [] },
+    ],
+  };
+
+  it('heads the provider list with an h3 group title and no duplicate page h2', () => {
+    const html = renderToStaticMarkup(
+      <ProviderSection providers={providers} probe={null} send={() => undefined} />,
+    );
+    // 页名由设置壳的 `.pageTitle` 承担；section 自己不再重复一个「模型」h2。
+    expect(html).not.toContain('<h2');
+    expect(html).toContain('<h3');
+    expect(html).toContain(SETTINGS_COPY['models.providerTitle']);
+    expect(html).toContain(SETTINGS_COPY['models.providerIntro']);
+  });
+
+  it('puts the add action in the group head, before the rows it appends to', () => {
+    const html = renderToStaticMarkup(
+      <ProviderSection providers={providers} probe={null} send={() => undefined} />,
+    );
+    const add = html.indexOf('data-provider-add-new');
+    expect(add).toBeGreaterThan(-1);
+    expect(add).toBeLessThan(html.indexOf('<ul'));
+    // 两行供应商是同一个列表里的两项，不是两张各自带框的卡。
+    expect(html.match(/data-provider="p\d"/gu)).toHaveLength(2);
+    expect(html.match(/<ul/gu)).toHaveLength(1);
+  });
+});
+
+describe('Skill 页 · 资源列表（ZCode 资源形态）', () => {
+  // 对齐 ZCode `settings/SkillsSection.tsx:602` + `SettingsResourceGroup.tsx:35-48`：
+  // 每个来源是「资源组头 + 一张卡内分隔行」，行尾是开关。
+  it('renders each source group as a header plus one list card, rows carrying switches', () => {
+    const html = renderToStaticMarkup(
+      <SkillsSection
+        skills={{
+          items: [
+            { name: 'alpha', description: '第一件事', source: 'project', enabled: true },
+            { name: 'beta', description: '', source: 'user', enabled: false },
+          ],
+          disable: [],
+        }}
+        disabled={false}
+        manageError={null}
+        send={() => undefined}
+      />,
+    );
+    // 两个来源 = 两个组；每个组一条 <ul> 卡，行是卡里的 <li>。
+    expect(html.match(/role="group"/gu)).toHaveLength(2);
+    expect(html.match(/<ul/gu)).toHaveLength(2);
+    expect(html.match(/<li /gu)).toHaveLength(2);
+    expect(html.match(/role="switch"/gu)).toHaveLength(2);
+    // 页名不重复成正文标题（设置壳的页标题是唯一的页名）。
+    expect(html).not.toContain('<h2');
+    // 发现根目录仍在组头里：组标题回答不了「文件该放哪」。
+    expect(html).toContain(SETTINGS_COPY['skills.projectRoot']);
+    expect(html).toContain(SETTINGS_COPY['skills.userRoot']);
   });
 });

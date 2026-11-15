@@ -2,19 +2,18 @@
    container query's sake; the primitive paints it. The trigger is the query's
    subject, so the sheet must own a wrapper-scoped rule. */
 
-/* The access chip is the reference's `ConfigSelect` trigger at ghost/lg — its
-   mode picker in the composer row: `h-8 rounded-lg pl-3 pr-2 gap-1.5
-   text-ui-base` in primary ink with `transition-colors`, plus the same fill
-   while the menu is open. Nova's chip was 28 tall on a 16px corner at
-   13px/secondary/500 — four numbers, each a step off the reference. */
+/* The access chip is the reference's composer mode control
+   (`V4ComposerModeControls`: `h-7 rounded-lg px-2 gap-1 text-ui-base`) — the
+   same 28px seat as the `+` control beside it, in primary ink with
+   `transition-colors`, plus the same fill while the menu is open. */
 .trigger {
   display: inline-flex;
   align-items: center;
-  gap: var(--nova-space-6);
+  gap: var(--nova-space-4);
   min-width: 0;
   max-width: 220px;
-  height: 32px;
-  padding: 0 var(--nova-space-8) 0 var(--nova-space-12);
+  height: 28px;
+  padding: 0 var(--nova-space-8);
   border: none;
   /* Rounded chip chrome, matching the sibling model trigger's corner. */
   border-radius: var(--nova-radius-sm);
@@ -107,4 +106,60 @@
    the mode menus (min-widths include the card's 4px pad). */
 .modeList {
   min-width: 218px;
+}
+
+/* The settings-row dress (2026-11-15, ZCode alignment): the reference's
+ * `SelectTrigger size="lg"` — `h-8 rounded-lg border border-input-border
+ * bg-input pl-3 pr-2` at the caller's width. The card behind it is the same
+ * menu, so a settings select and the composer chip cannot drift apart in
+ * behaviour; only the box differs. The label takes the free space (the
+ * reference's `justify-between`), which parks the chevron on the row's
+ * trailing edge. */
+.triggerField {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nova-space-6);
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--nova-space-8) 0 var(--nova-space-12);
+  box-sizing: border-box;
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-base);
+  color: var(--nova-text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  cursor: pointer;
+  transition:
+    border-color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.triggerField:hover:not(:disabled) {
+  border-color: var(--nova-input-border-hover);
+}
+
+.triggerField[aria-expanded='true']:not(:disabled) {
+  border-color: var(--nova-input-border-focused);
+}
+
+.triggerField:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--nova-focus-ring-color, var(--nova-color-accent));
+}
+
+.triggerField:disabled {
+  color: var(--nova-text-disabled);
+  cursor: default;
+}
+
+.triggerField .triggerLabel {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.triggerField .chevron {
+  color: var(--nova-text-muted);
 }

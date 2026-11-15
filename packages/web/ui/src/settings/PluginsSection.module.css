@@ -1,125 +1,227 @@
-/* 插件管理 section sheet: tier-grouped rows with switches, in the settings cell
- * rhythm. The page head (`.heading` / `.intro`) is the reference's pair, at
- * this section column's scale. The switch is the Skill 中心's own pill (see
- * `SkillsSection.module.css`): one control, two pages, no second style.
+/* The 插件市场 page sheet (2026-11-15, ZCode alignment): the reference's
+ * `PluginStorePage` / `PluginStoreListView` laid out as a full page, not as a
+ * card inset in a settings section.
  *
- * The row is a disclosure: `.rowToggle` is the button that owns the whole
- * leading area and the chevron-free affordance of expanding, so the switch sits
- * outside it as a sibling. Nesting a button inside a button is invalid HTML and
- * browsers disagree about which one a click reaches — hence two siblings in a
- * flex row rather than one wrapper. */
+ * The differences that matter, all of them the reference's own numbers:
+ *  - the page is a 20px stack (`space-y-5`): head row, tool row, groups;
+ *  - the head is ONE row — the page name at `text-ui-xl font-semibold` on the
+ *    left, the actions on the right — with NO subtitle;
+ *  - the tool row holds the search field on the right (`ml-auto`, `max-w-xs`)
+ *    at the reference's `h-9 rounded-xl` search size, with the × parked inside
+ *    it while the field holds text (`SettingsSearchInput.tsx:24-58`);
+ *  - a group is a 16/24 subject over a hairline and a two-column card grid
+ *    (`gap-x-6 gap-y-1`), with 16px of vertical air per group (`py-4`, cancelled
+ *    at the stack's ends by `first:pt-0 last:pb-0`); the subject is PLAIN text
+ *    and the fold sits at the group's foot — 查看其余 N 项 when folded, 收起 when
+ *    open (`PluginStoreListView.tsx:301-307`, `353-397`);
+ *  - a card is `flex items-center gap-3 rounded-xl px-2 py-3` with a 40px
+ *    artwork tile, one 14/20 title line, one 13/20 description line, and NO
+ *    border or fill until hover (`hover:bg-hover`). */
 
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-24);
+}
+
+/* The head row: name left, actions right. `flex-wrap` keeps a narrow column
+   from crushing either side; the reference wraps the same way. */
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-12);
+}
+
+/* `text-ui-xl` = 18px at the default UI size, semibold with tight tracking —
+   the reference's `plugin-store-title`. It is deliberately NOT the settings
+   page's 30px headline: this page is an app view, not a settings section. */
 .heading {
   margin: 0;
-  /* The section is a CARD now: its head carries the card's own inset. */
-  padding: var(--nova-space-16) var(--nova-space-16) 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--nova-text-primary);
 }
 
-.intro {
-  margin: 0;
-  padding: var(--nova-space-4) var(--nova-space-16) 0;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--nova-text-muted);
-}
-
-.search {
+.headActions {
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
-  padding: var(--nova-space-8) var(--nova-space-16);
-  border-bottom: 0.5px solid var(--nova-border-strong);
-  color: var(--nova-text-muted);
 }
 
-.searchIcon {
-  flex: none;
+/* The reference's `Button variant="secondary" size="icon-lg"`: a 32px bordered
+   square holding one 14px glyph. */
+.iconAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-base);
+  color: var(--nova-text-secondary);
+  cursor: pointer;
+  transition:
+    border-color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout),
+    color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.iconAction:hover {
+  border-color: var(--nova-input-border-hover);
+  color: var(--nova-text-primary);
+}
+
+.iconActionGlyph {
   width: 14px;
   height: 14px;
 }
 
+/* The second row: the search field parks against the trailing edge. */
+.toolRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-16);
+}
+
+/* The reference's `SettingsSearchInput`: `h-9 rounded-xl` (12px), glyph at
+   12px from the left edge, the field's text inset past it, `sm:max-w-xs`
+   (320px) cap. */
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+  margin-left: auto;
+}
+
+.searchIcon {
+  position: absolute;
+  left: var(--nova-space-12);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  color: var(--nova-text-muted);
+}
+
 .searchInput {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--nova-space-12) 0 var(--nova-space-32);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-base);
   font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   color: var(--nova-text-primary);
+  transition: border-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+/* The reference's `(canClear || trailingAction) && "pr-9"`: the trailing inset
+   only appears when the × is actually there (SettingsSearchInput.tsx:34-39). */
+.search[data-clear='true'] .searchInput {
+  padding-right: var(--nova-space-32);
+}
+
+/* The reference's clear control (`SettingsSearchInput.tsx:41-54`): a ghost icon
+   button parked `right-1` inside the field, round, 14px glyph. */
+.searchClear {
+  position: absolute;
+  right: var(--nova-space-4);
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--nova-row-sm);
+  height: var(--nova-row-sm);
+  padding: 0;
+  border: none;
+  border-radius: var(--nova-radius-full);
+  background: transparent;
+  color: var(--nova-text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--nova-dur-fast) var(--nova-ease-inout),
+    color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.searchClear:hover {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+}
+
+.searchClearGlyph {
+  width: 14px;
+  height: 14px;
+}
+
+.searchInput::placeholder {
+  color: var(--nova-text-muted);
+}
+
+.searchInput::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.searchInput:hover {
+  border-color: var(--nova-input-border-hover);
 }
 
 .searchInput:focus {
   outline: none;
+  border-color: var(--nova-input-border-focused);
 }
 
+/* The group stack: the reference wraps its sections in one container so the
+   `py-4 first:pt-0 last:pb-0` rhythm (PluginStoreListView.tsx:441/449/499) has
+   a first and a last to key off. */
+.groups {
+  display: flex;
+  flex-direction: column;
+}
+
+/* One group: subject line, hairline, grid. The vertical air is the reference's
+   `py-4` on each section, cancelled at the stack's two ends so the page gap
+   above and below is not doubled. */
 .group {
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-4);
-  padding: var(--nova-space-4) var(--nova-space-16) var(--nova-space-12);
+  padding: var(--nova-space-16) 0;
 }
 
-/* The group label aligns with the page head and the search box above it: the
-   list is the page's content, not a card inset from it. It used to carry a 12px
-   side inset, which left the whole list — label and every row — stepped in from
-   the heading, the reported 「ui 错位」. */
+.groups > .group:first-child {
+  padding-top: 0;
+}
+
+.groups > .group:last-child {
+  padding-bottom: 0;
+}
+
+/* The group subject: `px-2 pb-2 text-ui-lg font-medium`. It is PLAIN TEXT in
+   the reference (PluginStoreListView.tsx:302-304) — no chevron and no control;
+   the fold lives at the group's foot (`.groupToggle`). */
 .groupTitle {
   display: flex;
   align-items: center;
   gap: var(--nova-space-6);
-  padding: var(--nova-space-4) 0 var(--nova-space-8);
-  /* The reference's store section head is `text-ui-lg font-medium` over a
-     hairline; the 12px caption Nova used read as a list separator, not as a
-     section. */
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
-  color: var(--nova-text-primary);
-  border-bottom: 1px solid var(--nova-border-subtle);
-}
-
-/* A group with no switches is REFERENCE, and it was burying the switches: the
-   17 core rows put the first live switch 706px below the fold on a 720px
-   window, which is the reported 「都藏在页面最底部」. Its header is a
-   disclosure, closed on arrival, so the groups a reader can act on start on the
-   first screen. The count rides the header, so nothing is hidden silently. */
-.groupHead {
-  display: flex;
-  align-items: center;
-  gap: var(--nova-space-4);
   margin: 0;
-  padding: var(--nova-space-4) var(--nova-space-6) var(--nova-space-8) 0;
-  border: none;
-  border-bottom: 1px solid var(--nova-border-subtle);
-  border-radius: 0;
-  background: transparent;
-  cursor: pointer;
-  font-family: inherit;
+  padding: 0 var(--nova-space-8) var(--nova-space-8);
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
   color: var(--nova-text-primary);
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
-}
-
-.groupHead:hover {
-  color: var(--nova-text-secondary);
-}
-
-.groupHeadIcon {
-  flex: none;
-  width: 12px;
-  height: 12px;
+  text-align: left;
 }
 
 .groupCount {
@@ -132,70 +234,75 @@
   color: var(--nova-text-secondary);
 }
 
-/* The section's one feedback row: "applying…", the confirmation that a flip
-   landed, and why the switches are locked are the same sentence in the same
-   place — three separate elements let the confirmation and the lock note drift
-   apart, which is the defect this replaced. The line box is reserved so the
-   transient "applying…" appearing and going cannot shift the list under the
-   reader's cursor. `aria-live="polite"` in the markup announces whichever
-   sentence lands. */
-.feedbackSlot {
-  min-height: 18px;
-  margin: var(--nova-space-2) 0 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-secondary);
+/* The reference's `h-px bg-surface` rule under the subject. */
+.groupRule {
+  flex: none;
+  height: 1px;
+  background: var(--nova-surface-card);
 }
 
-/* A count over the whole page, for the case where the failures are spread
-   across groups and the reader has scrolled past one of them. */
-.failureBanner {
-  margin: var(--nova-space-8) var(--nova-space-16);
-  padding: var(--nova-space-8) var(--nova-space-12);
+/* The group's fold seat, at its FOOT — the reference's
+   `mt-2 flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-2 text-left
+   text-ui-base text-foreground-subtle hover:bg-hover hover:text-foreground`
+   (PluginStoreListView.tsx:353-396). Folded it reads 查看其余 N 项; open it
+   reads 收起. */
+.groupToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-8);
+  margin-top: var(--nova-space-8);
+  padding: var(--nova-space-8);
+  border: none;
   border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-panel);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-secondary);
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--nova-dur-fast) var(--nova-ease-inout),
+    color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
+.groupToggle:hover {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+}
+
+.groupToggle:focus-visible {
+  outline: 2px solid var(--nova-input-border-focused);
+  outline-offset: calc(-1 * var(--nova-space-2));
+}
+
+/* The card grid: `grid gap-x-6 gap-y-1 @min-[40rem]:grid-cols-2`. The
+   auto-fill rung reproduces the container query without needing one: two 320px
+   cards fit the page's own column and a third never does. */
 .list {
-  /* The reference's store grid: two columns once the column is wide enough
-     (`grid-cols-2` at 40rem of container), 24px apart horizontally and 4px
-     vertically. */
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: var(--nova-space-4) var(--nova-space-24);
-  margin: 0;
+  margin: var(--nova-space-8) 0 0;
   padding: 0;
   list-style: none;
 }
 
-/* The row is a WRAPPING flex line: `.rowToggle` and the switch share the first
-   line, and the expanded `.detail` starts a second one. Without `wrap` the three
-   children were laid out side by side, so unfolding a row put its description in
-   a column beside the name instead of under it. */
+/* One card: `flex items-center gap-3 rounded-xl px-2 py-3`, no border, no fill
+   until hover. `flex-wrap` lets the expanded detail take a second line. */
 .plugin {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--nova-space-8);
-  /* No negative margin: the row lives inside the group card now, where an
-     8px overhang would be clipped by the card's `overflow: hidden` and step
-     the row's text off the group label's axis. */
+  align-items: center;
+  gap: var(--nova-space-12);
   margin: 0;
   padding: var(--nova-space-12) var(--nova-space-8);
-  border-radius: var(--nova-radius-md);
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+  border-radius: var(--nova-radius-lg);
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .plugin:hover {
-  background: var(--nova-surface-panel);
+  background: var(--nova-interactive-hover);
 }
 
 /* The disclosure control: everything left of the switch, as one button. */
@@ -204,7 +311,7 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: var(--nova-space-8);
+  gap: var(--nova-space-12);
   padding: 0;
   border: none;
   background: transparent;
@@ -213,11 +320,19 @@
   font-family: inherit;
 }
 
-/* The leading mark, at the reference's 40px seat (`rowIcon`): a bordered tile
-   holding the plugin glyph. Nova's plugins declare no artwork of their own, so
-   every row draws the same glyph — the reference's own behaviour for a package
-   that ships no icon (`PackageArtwork`'s fallback), which is what keeps the
-   rows on one rhythm instead of inventing per-plugin art. */
+/* The reference card's `focus-visible:ring-2 focus-visible:ring-input-border-focused`
+   (PluginStoreCard.tsx:347). Nova's card is not itself a button — it has no
+   detail page to open — so the ring follows the disclosure control inside it.
+   Inset so it sits inside the row's rounded box rather than widening it. */
+.rowToggle:focus-visible {
+  outline: 2px solid var(--nova-input-border-focused);
+  outline-offset: calc(-1 * var(--nova-space-2));
+  border-radius: var(--nova-radius-md);
+}
+
+/* The 40px artwork tile: the reference's `PluginIcon` — a 12px-cornered
+   `bg-surface` box with a 16px neutral glyph when the package ships no art.
+   Nova's plugins declare none, so every card draws the same glyph. */
 .rowIcon {
   flex: none;
   display: inline-flex;
@@ -225,14 +340,14 @@
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-md);
-  color: var(--nova-text-secondary);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-card);
+  color: var(--nova-text-muted);
 }
 
 .rowIconGlyph {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .pluginText {
@@ -240,70 +355,89 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-2);
+  gap: 0;
 }
 
+/* The title line: `flex min-w-0 items-center gap-1.5` in the reference, so a
+   badge rides beside a truncated name rather than under it. */
+.pluginTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-6);
+  min-width: 0;
+}
+
+/* The title: `text-ui-base font-medium leading-5`, truncated. */
 .pluginName {
+  min-width: 0;
   font-size: 14px;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 20px;
   color: var(--nova-text-primary);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* The one-line description, ON the row rather than behind the disclosure: it is
-   what tells two plugin names apart, and the reference reads it collapsed. */
+/* The description: `mt-0.5 min-h-5 truncate text-ui-caption leading-5`. The
+   reserved line height is the reference's own: a card without a description
+   keeps the same height as its neighbours. */
 .pluginDesc {
+  margin-top: var(--nova-space-2);
+  min-height: 20px;
   font-size: 13px;
   font-weight: 400;
-  line-height: 18px;
+  line-height: 20px;
   color: var(--nova-text-muted);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+/* The identifier and phase line. Not in the reference's card (its catalog rows
+   are identified by the listing), kept here because a Nova roster row is
+   addressed by `name` in `/plugins` and in the config file. */
 .pluginMeta {
   display: flex;
   align-items: center;
   gap: var(--nova-space-6);
+  margin-top: var(--nova-space-2);
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
+  /* Muted, not disabled: this line is still READ (it is the identifier a reader
+     compares against `/plugins` and the config file), and the disabled rung
+     made it vanish at a glance. */
   color: var(--nova-text-muted);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
-/* The identifier: the name `/plugins` prints and the config file uses. Kept
-   beside the Chinese title rather than replacing it — a reader needs both. */
 .pluginId {
   font-family: var(--nova-font-mono);
 }
 
-/* The 默认关闭 mark on an 扩展能力 row. */
+/* The 默认关闭 mark on an 扩展能力 row: the reference's badge shell
+   `inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5
+   text-ui-sm leading-none whitespace-nowrap` (PluginStoreCard.tsx:70, 233). */
 .tag {
   flex: none;
-  padding: 0 var(--nova-space-6);
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-panel);
-  font-size: 11px;
-  line-height: 16px;
+  padding: var(--nova-space-2) var(--nova-space-6);
+  border-radius: var(--nova-radius-full);
+  background: var(--nova-surface-card);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
   color: var(--nova-text-muted);
 }
 
-/* The expanded area: prose, indented to the title's left edge so it reads as
-   belonging to the row above it rather than to the group. `flex-basis: 100%`
-   forces it onto its own line — the row wraps, and without this the block shares
-   the first line with the toggle and the switch. The 48px inset is the leading
-   tile's width (40px) plus the row's 8px gap: the text lines up under the row's
-   TITLE, not under the tile, in both the open and closed states. */
+/* The expanded area: the injected services and, for a core row, why it has no
+   switch. `flex-basis: 100%` forces it onto its own line; the 52px inset is the
+   tile's 40px plus the row's 12px gap, so the text lines up under the TITLE. */
 .detail {
   flex-basis: 100%;
-  padding: 0 0 0 48px;
+  padding: 0 0 0 52px;
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-2);
@@ -316,53 +450,96 @@
   color: var(--nova-text-muted);
 }
 
-/* A failed row: the mark and the state word already say so, so this only
-   carries the weight, never a second sentence of explanation. */
-.plugin[data-failed="true"] .pluginName {
+/* A failed row: the state word already says so, so this only carries weight. */
+.plugin[data-failed='true'] .pluginName {
   color: var(--nova-text-secondary);
 }
 
+/* The page's one reading when there is nothing to show: loading, an empty
+   roster, or a search with no hits. The reference's empty state is a dashed
+   box — `rounded-xl border border-dashed border-border px-4 py-3 text-ui-base
+   text-foreground-subtle` (PluginStoreListView.tsx:216, 425, 488) — not bare
+   prose, so the reader sees a contained answer instead of text floating in
+   the list's space. */
 .status {
-  padding: var(--nova-space-16) 0;
-  font-size: 13px;
+  box-sizing: border-box;
+  padding: var(--nova-space-12) var(--nova-space-16);
+  border: 1px dashed var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-muted);
 }
 
-/* The settings control column is 192px wide; a 260px cap simply overflowed it
-   (the copy button took the rest of the cell). */
+/* The page's one feedback row: "applying…", the confirmation that a flip
+   landed, and why the switches are locked are the same sentence in the same
+   place. The line box is reserved so the transient "applying…" appearing and
+   going cannot shift the list. */
+.feedbackSlot {
+  min-height: 18px;
+  margin-top: calc(-1 * var(--nova-space-12));
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--nova-text-secondary);
+}
+
+/* A count over the whole page, for failures spread across groups. */
+.failureBanner {
+  padding: var(--nova-space-8) var(--nova-space-12);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-card);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--nova-text-secondary);
+}
+
+/* The config file's seat at the page's foot: one muted line, no card. The
+   reference's store page has no such row; this one states where the switches
+   are persisted, which stays useful even when the list is filtered to nothing. */
+.configRow {
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-8) var(--nova-space-8) 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--nova-text-muted);
+}
+
+.configLabel {
+  flex: none;
+  font-weight: 500;
+}
+
 .path {
-  max-width: 100%;
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   direction: rtl; /* clip the middle, keep the file's end visible */
   text-align: left;
-  font-size: 12px;
-  line-height: 18px;
+  font-family: var(--nova-font-mono);
   font-variant-numeric: tabular-nums;
-  color: var(--nova-text-muted);
 }
 
 .copy {
   flex: none;
-  padding: 5px var(--nova-space-12);
-  border: none;
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-panel);
+  padding: var(--nova-space-2) var(--nova-space-8);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-sm);
+  background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--nova-text-primary);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--nova-text-secondary);
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+    border-color var(--nova-dur-fast) var(--nova-ease-inout),
+    color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .copy:hover {
-  background: var(--nova-interactive-hover);
+  border-color: var(--nova-input-border-hover);
+  color: var(--nova-text-primary);
 }

@@ -53,20 +53,28 @@
   height: 16px;
 }
 
-/* Blank hero/settling: the header keeps its row (the corner seat lives here)
-   but drops the 76px floor, the foot rule and the bottom inset — the chrome
-   above the hero is the way into the right panel, and nothing else. The
-   reference draws the same line in ConversationRoot.module.css: `.headerBlank`
-   zeroes the height, and its corner keeps `margin-left: auto` so the button
-   parks at the trailing edge of an otherwise empty row. */
+/* Blank hero/settling: the chrome blanks, the ROW stays. ZCode renders its
+   WorkspaceHeader on the draft screen too (`variant="draft"` — one 48px row
+   with the corner seat at the trailing edge), so a home screen without the
+   band read as "no top bar at all" next to it. Only the title cluster and
+   utilities go; the corner seat is the way into the right panel and must stay
+   reachable before a first message. The foot rule is NOT drawn: the reference's
+   draft variant is `border-transparent` (WorkspaceHeader.tsx:164). */
 .headerBlank {
-  min-height: 0;
+  min-height: 48px;
   padding-bottom: 0;
-  border-bottom: none;
+  border-bottom: 0;
 }
 
 .headerBlank .headerCorner {
   margin-left: auto;
+}
+
+/* The desktop shell's self-drawn caption buttons live in this row's trailing
+   corner (three 28px boxes plus gaps, 6px from the window edge), so the row
+   reserves their width instead of letting the corner seat sit under them. */
+.headerDesktop {
+  padding-right: 96px;
 }
 
 .titleRow {
@@ -128,7 +136,9 @@
 }
 
 .crumbCurrent {
-  font-weight: 500;
+  /* The reference's title is `font-semibold` (WorkspaceHeaderSections.tsx:497);
+     500 read a notch lighter next to it. */
+  font-weight: 600;
   color: var(--nova-text-primary);
   cursor: default;
 }
@@ -144,8 +154,10 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: var(--nova-space-8);
-  margin-left: 20px;
+  /* The reference's action run is `gap-0.5` (WorkspaceHeaderActionSection.tsx:36):
+     icon-md seats sit 2px apart, not 8. */
+  gap: 2px;
+  margin-left: var(--nova-space-8);
 }
 
 .headerUtilities:empty {

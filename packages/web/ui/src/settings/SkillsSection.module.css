@@ -1,128 +1,188 @@
-/* Skill 中心 sheet: skill rows in the settings cell rhythm. The page head
- * (`.heading` / `.intro`) is the reference's pair, at this section column's
- * scale (see `PluginsSection.module.css`). */
+/* Skill 中心 sheet。
+ *
+ * 2026-11-15 对齐 ZCode（只读参照仓 `D:\web\zcode-desktop-ui-study`）：
+ *  - 页面说明是一行 14/24 次级色（`ModelProviderSection.tsx:1131` 经
+ *    `model-provider-section/SectionLayout.tsx:54-56` 的同一配方）；
+ *  - 搜索框是 `settings/SettingsSearchInput.tsx:29-41` 的 `h-9 rounded-xl pl-9`；
+ *  - 每个来源组是一条 `SettingsResourceGroupHeader`（`SettingsResourceGroup.tsx:17-22`：
+ *    `h-7 gap-1.5 text-ui-base font-medium` + `text-ui-sm font-normal
+ *    text-foreground-subtle` 的计数）；
+ *  - 列表是一条 `overflow-hidden rounded-xl bg-surface` 的卡，行间 1px 分隔
+ *    （`SettingsResourceGroup.tsx:35-48`）；
+ *  - 行是 `SkillsSection.tsx:602-604` 的三列网格：
+ *    `grid-cols-[auto_minmax(0,1fr)_auto] gap-3 px-4 py-3 hover:bg-hover`，
+ *    左侧 36px 图标砖（`size-9 rounded-xl bg-background`），名字 14/500、
+ *    说明 `text-ui-sm text-foreground-subtle`，右侧是开关。
+ *
+ * 旧稿把行直接铺在分组上方、没有卡片，也用 12px 的 root 行文 —— 那是本仓
+ * 自己的列表形态，不是参照的。 */
 
-.heading {
-  margin: 0;
-  /* The section is a CARD now: its head carries the card's own inset. */
-  padding: var(--nova-space-16) var(--nova-space-16) 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
-  color: var(--nova-text-primary);
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-16);
+  min-width: 0;
 }
 
 .intro {
   margin: 0;
-  padding: var(--nova-space-4) var(--nova-space-16) 0;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
+}
+
+.hint {
+  margin: 0;
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
 }
 
-.hint {
-  margin: 0;
-  padding: var(--nova-space-12) var(--nova-space-16) 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
-}
-
-/* The reference inventory's search box (same rhythm as the plugins section):
- * a plain field row above the list. */
+/* 搜索框：同设置栏那颗（`h-9 rounded-xl`），字形 16px 停在左 12px，文字让到 36px。 */
 .search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--nova-space-8);
-  padding: var(--nova-space-12) var(--nova-space-16);
-  border-bottom: 0.5px solid var(--nova-border-strong);
-  color: var(--nova-text-muted);
 }
 
 .searchIcon {
-  flex: none;
-  width: 14px;
-  height: 14px;
+  position: absolute;
+  left: var(--nova-space-12);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  color: var(--nova-text-muted);
 }
 
 .searchInput {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--nova-space-8) 0 calc(var(--nova-space-32) + var(--nova-space-4));
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-input);
   font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   color: var(--nova-text-primary);
+  transition: border-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.searchInput::placeholder {
+  color: var(--nova-text-muted);
+}
+
+.searchInput::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.searchInput:hover {
+  border-color: var(--nova-input-border-hover);
 }
 
 .searchInput:focus {
   outline: none;
+  border-color: var(--nova-input-border-focused);
 }
 
-/* One source group: label + rows (the model section's `group` recipe). */
+/* 一个来源组：资源组头 + 一张列表卡。 */
 .group {
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-4);
-  padding: var(--nova-space-8) var(--nova-space-16) var(--nova-space-16);
+  gap: var(--nova-space-16);
+  min-width: 0;
 }
 
-/* The source group's header: the level name, the discovery ROOT, and the count.
-   The root is monospaced because it is a path the reader types or pastes; the
-   title alone would leave "我该放哪" unanswered. */
-/* The group label aligns with the page head and the search box above it: the
-   list is the page's content, not a card inset from it (see
-   `PluginsSection.module.css`, where the same 12px inset was the 「ui 错位」). */
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nova-space-4) var(--nova-space-12);
+  min-width: 0;
+}
+
+/* 组标题 14/500 + 计数 12/400 次级色：ZCode 资源组头的两个字面量。 */
 .groupTitle {
   display: flex;
-  align-items: baseline;
-  gap: var(--nova-space-8);
-  padding: var(--nova-space-8) 0 var(--nova-space-4);
+  align-items: center;
+  gap: var(--nova-space-6);
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--nova-text-primary);
+}
+
+.groupCount {
   font-size: 12px;
-  line-height: 18px;
+  line-height: 16px;
+  font-weight: 400;
   color: var(--nova-text-muted);
 }
 
-.rootPath {
+/* 发现根目录：参照的 head 里是右侧的 hint 槽；路径是等宽的，因为读者会照抄它。 */
+.groupRoot {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: var(--nova-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--nova-text-muted);
 }
 
-/* Pushed to the row's end: the count is a reading, not a second label. */
-.rootCount {
-  margin-left: auto;
-  flex: none;
-}
-
-/* Row geometry follows the reference's card recipe (see
-   `PluginsSection.module.css`): the hover surface reaches 8px past the content
-   while the row's text stays aligned with the page head and the group label. */
-.skill {
+/* 资源列表卡：`overflow-hidden rounded-xl bg-surface`。 */
+.list {
   display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-card);
+  list-style: none;
+}
+
+/* 一行 Skill：三列网格（图标 / 文字 / 开关），行间一条 1px 分隔。 */
+.skill {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--nova-space-12);
-  /* No negative margin inside the group card (see PluginsSection). */
-  margin: 0;
-  padding: 9px var(--nova-space-8);
-  border-radius: var(--nova-radius-sm);
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+  padding: var(--nova-space-12) var(--nova-space-16);
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.skill + .skill {
+  border-top: 1px solid var(--nova-border-strong);
 }
 
 .skill:hover {
-  background: var(--nova-surface-panel);
+  background: var(--nova-interactive-hover);
+}
+
+/* 36px 图标砖：`size-9 rounded-xl bg-background`（`rounded-xl` = 12px = radius-md）。 */
+.skillIcon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-raised);
+  color: var(--nova-text-muted);
+}
+
+.skillIcon svg {
+  width: 16px;
+  height: 16px;
 }
 
 .skillText {
-  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -131,8 +191,8 @@
 
 .skillName {
   font-size: 14px;
-  font-weight: 400;
-  line-height: 22px;
+  font-weight: 500;
+  line-height: 20px;
   color: var(--nova-text-primary);
   overflow: hidden;
   white-space: nowrap;
@@ -142,7 +202,7 @@
 .skillDesc {
   font-size: 12px;
   font-weight: 400;
-  line-height: 18px;
+  line-height: 16px;
   color: var(--nova-text-muted);
   overflow: hidden;
   white-space: nowrap;
@@ -152,27 +212,22 @@
 .skillDescEmpty {
   font-size: 12px;
   font-weight: 400;
-  line-height: 18px;
+  line-height: 16px;
   color: var(--nova-text-muted);
   opacity: 0.6;
 }
 
-/* The section's one feedback row, mirroring the plugin manager's: "applying…",
-   the confirmation that a flip landed, and why the switches are locked are the
-   same sentence in the same place. The line box is reserved so the transient
-   "applying…" appearing and going cannot shift the list under the reader's
-   cursor. */
+/* 一条反馈行（「正在应用…」/ 锁定原因）：给瞬时的文案留出行高，列表不会在
+   读者光标下跳动。 */
 .feedbackSlot {
-  min-height: 18px;
-  margin: var(--nova-space-8) 0;
-  font-size: 12px;
-  line-height: 18px;
+  min-height: 20px;
+  font-size: 13px;
+  line-height: 20px;
   color: var(--nova-text-secondary);
 }
 
 .status {
-  padding: var(--nova-space-16) var(--nova-space-16);
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--nova-text-muted);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
 }

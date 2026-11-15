@@ -110,12 +110,22 @@
   --color-sidebar-border: var(--nova-border-subtle);
   --color-sidebar-ring: var(--nova-color-accent);
 
-  /* ---- Corners: same ladder, same names ---- */
-  --radius-sm: var(--nova-radius-sm);
-  --radius-md: var(--nova-radius-md);
-  --radius-lg: var(--nova-radius-lg);
-  --radius-xl: var(--nova-radius-xl);
-  --radius-2xl: var(--nova-radius-2xl);
+  /* ---- Corners: Tailwind v4's OWN ladder (2026-11-15, ZCode alignment) ----
+   * The reference writes `rounded-sm/md/lg/xl/2xl/3xl` and gets Tailwind's
+   * defaults: 4 / 6 / 8 / 12 / 16 / 24. Nova used to forward its own semantic
+   * ladder here (6/8/12/16/20), so every shadcn primitive — Bubble, Card,
+   * Message, the primitives under the composer — wore a corner one to two steps
+   * softer than the same class in the reference. This bridge keeps the two
+   * vocabularies apart: the NOVA tokens name roles for Nova's own sheets, and
+   * these six names mean exactly what Tailwind means, because the class names
+   * were written against that meaning. */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 24px;
 
   /* ---- Elevation: the glow rungs become shadow utilities ---- */
   --shadow-float: var(--nova-elevation-float);

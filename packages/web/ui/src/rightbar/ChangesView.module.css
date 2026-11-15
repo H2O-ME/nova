@@ -129,7 +129,8 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-2);
-  min-height: 28px;
+  /* The reference's change row is `h-8` (GIT_PANE_CHANGE_ROW_ESTIMATE_PX=32). */
+  min-height: 32px;
   padding-right: var(--nova-space-2);
   border-radius: var(--nova-radius-sm);
   animation: nova-fade-in 150ms var(--nova-ease-inout);
@@ -159,12 +160,15 @@
   gap: var(--nova-space-6);
   flex: 1 1 auto;
   min-width: 0;
-  height: 28px;
+  height: 32px;
   padding-right: var(--nova-space-6);
   border: none;
   background: transparent;
   color: var(--nova-text-primary);
-  font: var(--nova-font-xxs-12);
+  /* `text-ui-base`: the reference's file rows read at body size, with the git
+     colour carried by the +/- counts, not by the name. */
+  font-size: 14px;
+  line-height: 20px;
   text-align: left;
   cursor: pointer;
 }
@@ -198,7 +202,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--nova-font-xxs-strong-12);
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
 }
 
 .fileName {

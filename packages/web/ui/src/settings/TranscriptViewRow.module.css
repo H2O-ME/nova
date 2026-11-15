@@ -1,0 +1,9 @@
+/* The work-details select's width: the same 260px the reference gives every
+ * value select in a settings row (`w-[260px]`), so this row's control and the
+ * theme select above it share one trailing edge. The trigger's own dress is
+ * `PermissionSelect.module.css` (`.triggerField`). */
+
+.field {
+  width: 260px;
+  max-width: 100%;
+}

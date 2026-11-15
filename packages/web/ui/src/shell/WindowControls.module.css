@@ -1,29 +1,28 @@
-/* The frameless caption's three buttons, pinned to the window's top-right
- * corner. Height 40 matches the reference's own overlay band (its title-bar
- * cluster sits in the top 48px); the buttons themselves are 46x30 hit areas
- * with no resting chrome — only the hover wash, the way Windows 11 draws them.
- * `z-index` outranks every surface, the settings view included (it covers the
- * whole window at 1200), because a caption control must never be covered. */
+/* The frameless caption's three buttons (2026-11-15, ZCode alignment): the
+ * reference draws them INSIDE the workspace panel's top-right corner —
+ * `absolute right-1.5 top-1.5`, each `icon-md` 28x28 with an 8px corner and a
+ * 2px gap — so the panel's rounding and border stay visible around them. The
+ * 46x30 Windows-native hit boxes this used to carry sat on the window corner
+ * itself and covered the panel's corner. `z-index` still outranks every
+ * surface, the settings page included. */
 .root {
   position: fixed;
-  top: 0;
-  right: 0;
+  top: var(--nova-space-6);
+  right: var(--nova-space-6);
   z-index: 1300;
   display: flex;
-  align-items: flex-start;
-  height: 40px;
-  padding: var(--nova-space-2) var(--nova-space-2) 0 0;
-  box-sizing: border-box;
+  align-items: center;
+  gap: var(--nova-space-2);
 }
 
 .button {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
-  border-radius: var(--nova-radius-xs);
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-secondary);
   cursor: default;

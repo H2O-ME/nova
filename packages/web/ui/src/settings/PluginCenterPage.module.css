@@ -12,14 +12,15 @@
   background: var(--nova-surface-base);
 }
 
-/* A wider axis than the transcript's: the reference's plugin page spans the
-   main column rather than the reading measure, so 920px is a cap, not a
-   target — a narrow column narrows the page instead of overflowing it. */
+/* The reference's settings frame content column (`max-w-4xl px-4 lg:px-8`):
+ * 896px is the cap, and a narrow column narrows the page instead of
+ * overflowing it. The 48px top inset is the frame's drag strip — the reference
+ * starts its first line below the window's own grab area, not at the glass. */
 .column {
   box-sizing: border-box;
-  width: min(100%, 920px);
+  width: min(100%, 896px);
   margin: 0 auto;
-  padding: var(--nova-space-32) var(--nova-space-32) 48px;
+  padding: var(--nova-space-32);
   display: flex;
   flex-direction: column;
 }

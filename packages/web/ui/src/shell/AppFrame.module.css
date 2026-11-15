@@ -46,21 +46,34 @@
 
 /* The workspace column IS the panel (the reference's
  * `rounded-[var(--workspace-panel-radius)] border border-border
- * bg-background`): one neutral step lighter than the ground, hairline frame,
- * 12px corners. Its rounding is what puts the window ground back into the four
- * corners and stops the sidebar from reading as a separate screen. */
+ * bg-background`): one neutral step lighter than the ground, hairline frame.
+ * Its rounding is what puts the window ground back into the four corners and
+ * stops the sidebar from reading as a separate screen.
+ *
+ * INSET (2026-11-15, ZCode alignment): the reference leaves window ground on
+ * THREE sides — `pr-1.5 pb-1.5` plus a 6px top drag strip on Windows — and
+ * only 4px between the rail and the panel (its resize handle's width). Nova
+ * had the left gap alone, so the panel ran flush into the top, right and
+ * bottom window edges and read as a repainted window rather than a floating
+ * page. The radius is the reference's platform value: 6px Windows desktop,
+ * 12px on the web build. */
 .centerCol {
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* 6px of window ground between the rail and the panel (the reference's own
-     seam): the rounding alone left the two touching, which read as one plane
-     again at a glance. */
-  margin-left: var(--nova-space-6);
+  margin:
+    var(--nova-space-6)
+    var(--nova-space-6)
+    var(--nova-space-6)
+    var(--nova-space-4);
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
   background: var(--nova-surface-base);
+}
+
+.frame[data-desktop] .centerCol {
+  border-radius: var(--nova-radius-xs);
 }
 
 /* Drag handles are frame children (columns clip overflow): an 8px hit strip

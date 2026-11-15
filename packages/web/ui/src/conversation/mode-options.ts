@@ -25,5 +25,7 @@ export interface ModeOption<T extends string> {
 export const APPROVAL_MODES: readonly ModeOption<ApprovalMode>[] = [
   { code: 'read-only', label: '只读', hint: '读操作自动放行，写/执行逐次确认' },
   { code: 'auto-edit', label: '自动编辑', hint: '工作区内写入自动放行，执行仍确认' },
-  { code: 'full', label: '全部放行', hint: '一切操作不再确认（信任姿态等同执行任意命令）' },
+  // The reference names this tier 「完全访问」 (`mode.label.glm.yolo`); the
+  // warning-tinted chip reads the same word, so the two surfaces agree.
+  { code: 'full', label: '完全访问', hint: '一切操作不再确认（信任姿态等同执行任意命令）' },
 ];

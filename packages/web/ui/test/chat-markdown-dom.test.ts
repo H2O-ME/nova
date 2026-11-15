@@ -162,53 +162,41 @@ describe('message rows', () => {
     expect(out).toContain('本轮已中断');
   });
 
-  it('renders a reasoning row in the step-process vocabulary: paragraph preview, settled label', () => {
-    // While streaming the preview is the FIRST LINE OF THE LAST COMPLETED
-    // PARAGRAPH — a paragraph still being typed is not a summary. Here the
-    // second paragraph has no newline of its own yet, so the first stands.
+  it('renders a reasoning row as its label only — never a preview of the thought', () => {
+    // The reference's summary row carries the label, duration and chevron and
+    // nothing else (2026-11-15): the thought's text is the expanded body's job,
+    // and a collapsed first line was a second, staler reading of it.
     const live = renderToStaticMarkup(createElement(ReasoningRow, {
       text: 'first thought\n\nsecond thought\nstill typing',
       running: true,
     }));
     expect(live).toContain('正在思考');
-    expect(live).toContain('second thought');
+    expect(live).not.toContain('second thought');
     expect(live).not.toContain('still typing');
-    expect(live).toContain('data-preview');
-    expect(live).toContain('data-streaming');
+    expect(live).not.toContain('data-preview');
     expect(live).not.toContain('data-expanded');
     // Settled: the reference names the work 「思考」 (the duration is appended at
-    // runtime, so a static pass sees the bare label), and the preview is the
-    // text's own first line; the whole body is one click away.
+    // runtime, so a static pass sees the bare label); the body is one click away.
     const settled = renderToStaticMarkup(createElement(ReasoningRow, {
       text: 'first thought\n\nsecond thought',
       running: false,
     }));
     expect(settled).toContain('思考');
-    expect(settled).toContain('first thought');
-    expect(settled).not.toContain('data-streaming');
-    // The row's title is only the settled label — the reasoning text never
-    // stands in as the title (that is the pending chevron's job).
+    expect(settled).not.toContain('first thought');
     expect(settled).not.toContain('data-state="running"');
   });
 
-  it('keeps the collapsed preview slot mounted and hides it through the row hook', () => {
-    // The harness passes `collapsedContent` UNCONDITIONALLY and lets the sheet
-    // hide the separator + summary from `.root:not([data-preview])`. A row
-    // without a summary therefore still renders the slot, and the visual
-    // hiding is exactly the `data-preview` hook.
+  it('keeps the thought body behind the disclosure, not on the row', () => {
     const bare = renderToStaticMarkup(createElement(ReasoningRow, { text: '', running: false }));
-    expect(bare).not.toContain('data-preview');
     expect(bare).toContain('data-state="ok"');
-    // With a summary the same slot is present and the hook is on.
+    expect(bare).not.toContain('data-preview');
+    // Markdown emphasis in the source is body content: the collapsed row shows
+    // no part of it, so neither the markers nor their rendering appear there.
     const summarised = renderToStaticMarkup(createElement(ReasoningRow, {
       text: 'a **bold** thought',
       running: false,
     }));
-    expect(summarised).toContain('data-preview');
-    // The preview strips emphasis markers but never renders them as elements:
-    // the row's summary is text, and the markdown body (a compact variant of
-    // the same source) is what expansion reveals.
-    expect(summarised).toContain('a bold thought');
+    expect(summarised).not.toContain('a bold thought');
     expect(summarised).not.toContain('**bold**');
   });
 

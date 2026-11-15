@@ -26,7 +26,6 @@ import { QueueDock } from '../../composer/QueueDock.js';
 import { GoalPanel } from '../../conversation/GoalPanel.js';
 import { TodoPanel } from '../../conversation/TodoPanel.js';
 import { InputBar } from '../../composer/InputBar.js';
-import { StatsPills } from '../../composer/StatsPills.js';
 import { ContextMeter } from '../../conversation/ContextMeter.js';
 import { composerDisabled } from '../../chrome-view.js';
 import { RightbarOpenButton } from '../../rightbar/RightbarPanel.js';
@@ -284,19 +283,15 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
               ) : undefined
             }
             variant={phase === 'hero' ? 'hero' : 'composer'}
-            /* The dock row rides the composer's own dock slot (inside
-               the bar's root): the stats pills and the context meter share
-               one centered line under the card. The meter renders
-               nothing before the first usage lands, and the pills
-               nothing before the first billed run. */
-            dock={
-              <>
-                <StatsPills totals={state.totals} />
-                <ContextMeter
-                  usedTokens={state.usedTokens}
-                  contextWindow={state.contextWindow}
-                />
-              </>
+            /* The context ring rides the card's trailing run, AHEAD of the model
+               seat — the reference's `ChatContextUsage` seat. Its render gate
+               hides it until a request reported both tokens and a window, so a
+               fresh session carries no 「0%」 line anywhere. */
+            meter={
+              <ContextMeter
+                usedTokens={state.usedTokens}
+                contextWindow={state.contextWindow}
+              />
             }
           />
         </DockStack>

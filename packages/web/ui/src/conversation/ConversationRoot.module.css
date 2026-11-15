@@ -35,23 +35,24 @@
      window range (560 starts binding only under ~875px of column), which puts
      the card at 69% here and keeps it from ever collapsing below a usable
      measure on a narrow column. */
-  /* WIDTH: adopt the reference's own formula (2026-11-05).
-
-   The previous rule was `clamp(560, 64% of the column, 920)`, which at a
-   1000px column resolved to **640px** — measured next to the reference's
-   920px-max column, that narrow measure is the main reason the transcript read
-   as a boxy form rather than as a reading surface. The reference's numbers,
-   taken from its `ConversationRoot.module.css`:
-
-     chat content  = min(100% - 32px, 920px)
-     composer card = min(100% - 16px, 952px)
-
-   `--nova-chat-user-width` still wins when the reader has dragged the column. */
+  /* WIDTH: the reference's two-step content column (2026-11-15, ZCode
+   * alignment). Its transcript/dock column is `w-full` below an 864px pane,
+   * `calc(100% - 6rem)` capped at max-w-4xl (896) from 864, and
+   * `calc(100% - 24rem)` capped at max-w-6xl (1152) from 1280 — the content
+   * GROWS with the window instead of sitting under one fixed 920 cap. The
+   * live value is resolved in `content-width.ts` and published by the
+   * component (which knows the column's own width); the CSS fallback below is
+   * the 864–1279 step, the shape the first paint should have on a desktop
+   * window. `--nova-chat-user-width` still wins when the reader has dragged. */
   --nova-chat-content-width: var(
     --nova-chat-user-width,
-    min(calc(100% - 32px), 920px)
+    min(calc(100% - 96px), 896px)
   );
-  --nova-composer-card-max-width: min(calc(100% - 16px), 952px);
+  /* The input card is the content measure plus its 16px clearance per side. */
+  --nova-composer-card-max-width: min(
+    calc(100% - 16px),
+    calc(var(--nova-chat-content-width) + 32px)
+  );
   --nova-composer-side-clearance: 16px;
   --nova-composer-dock-inset: 8px;
 }

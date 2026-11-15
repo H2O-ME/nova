@@ -177,27 +177,41 @@ export function formatClock(ts: number, now: number = Date.now()): string {
 }
 
 /**
- * A settled turn's duration as the turn header reads it: whole units that grow
- * (`4秒`, `2分30秒`, `1小时02分30秒`), never a bare float — the harness
- * `formatRunDuration` ladder (MIT), which reads calmer on a disclosure label
- * than the meter's `5.6s`.
+ * A settled turn's duration as the turn header reads it — the reference's
+ * `formatConversationWorkDuration` (conversationWorkDuration.ts:17-40): whole
+ * seconds from 1 up, days/hours/minutes/seconds with a space before each unit
+ * (Chinese and Russian are spaced locales), and AT MOST the first two non-zero
+ * units (`1 时 2 分`, never `1 时 2 分 5 秒`).
  */
 export function runDurationText(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(total / 3600);
-  const minutes = Math.floor(total / 60) % 60;
+  const total = Math.max(1, Math.round(ms / 1000));
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
   const seconds = total % 60;
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  if (hours > 0) return `${hours}小时${pad(minutes)}分${pad(seconds)}秒`;
-  return minutes > 0 ? `${minutes}分${pad(seconds)}秒` : `${seconds}秒`;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} 天`);
+  if (hours > 0) parts.push(`${hours} 时`);
+  if (minutes > 0) parts.push(`${minutes} 分`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds} 秒`);
+  return parts.slice(0, 2).join(' ');
 }
 
-/** Live elapsed as the running header ticks it: whole units, no zero pad. */
+/**
+ * Live elapsed as the running header ticks it (the reference's
+ * `formatRunningWorkDuration`, workDuration.ts:67-83): whole seconds, and the
+ * minute is always stated once an hour is — `1 时 0 分 7 秒`, never `1 时 7 秒`.
+ */
 export function liveDurationText(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
   const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} 时`);
+  if (hours > 0 || minutes > 0) parts.push(`${minutes} 分`);
+  parts.push(`${seconds} 秒`);
+  return parts.join(' ');
 }
 
 /** Exact token count with thousands separators (the usage panel's column). */

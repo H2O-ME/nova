@@ -5,11 +5,12 @@
  *
  * Two structural facts of the reference are kept: the label yields its width to
  * the search when it expands (it is the one part of the row that is not a
- * control), and the header is a single 36px row at every state, so the list
- * below it never moves. The reference's "add workspace" control is absent by
- * its own rule — a composition with no picking affordance hides the button
- * rather than leaving a dead one in the header (this product picks a workspace
- * by starting the kernel somewhere; there is no in-place picker).
+ * control), and the header is a single 32px block at every state (the
+ * reference's 24px control row plus its `pb-2`, ProjectSidebarListHeader.tsx:31),
+ * so the list below it never moves. The reference's "add workspace" control is
+ * absent by its own rule — a composition with no picking affordance hides the
+ * button rather than leaving a dead one in the header (this product picks a
+ * workspace by starting the kernel somewhere; there is no in-place picker).
  *
  * The reload control is ours (the reference is pushed its list by the host,
  * while this surface asks `list_sessions` and so needs a way to ask again); it

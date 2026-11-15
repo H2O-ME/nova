@@ -136,17 +136,17 @@
   gap: var(--nova-space-4);
   max-width: min(100%, 360px);
   min-height: 28px;
-  padding: 0 var(--nova-space-8);
+  padding: 0 var(--nova-space-8) 0 var(--nova-space-12);
   border: none;
-  /* A 28px-tall chip takes the DENSE rung: at the control rung (12px) the ends
-   * round into a lozenge and the chip stops reading as a row-level control. */
-  border-radius: var(--nova-radius-md, 8px);
+  /* The reference wraps this seat in a full-radius pill whose hover sits on
+     the whole capsule (ProjectComposerMenu's contextHeader). */
+  border-radius: var(--nova-radius-full, 9999px);
   background: transparent;
   color: var(--nova-text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
 }
 
@@ -171,13 +171,13 @@
 /* The picker's chevron reads as a quiet affordance, one step down from the
    chip's own 16px glyph box. */
 .workspaceChevronIcon {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .folder {
   flex: none;
-  color: var(--nova-text-primary);
+  color: var(--nova-text-muted);
 }
 
 .workspaceLabel {

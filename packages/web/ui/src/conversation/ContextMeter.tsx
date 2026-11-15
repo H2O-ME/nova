@@ -1,9 +1,10 @@
 /**
- * Composer context-occupancy meter: a 14px ring and its percentage reading
- * in the
- * composer's dock row — the same seat the source mounts it in (beside the
- * stats pills, under the card) — with a click-open panel carrying the
- * reading, the used/window figures and the occupancy bar.
+ * Composer context-occupancy meter: a 14px ring in the composer toolbar's
+ * TRAILING group, ahead of the model seat — the reference mounts its usage ring
+ * as the first item of that run (`V4ComposerToolbar` → `ChatContextUsage`),
+ * with no percentage text beside it (the reading lives in the hover/click
+ * panel). A click opens the panel carrying the reading, the used/window figures
+ * and the occupancy bar.
  *
  * Data honesty: the source panel splits the reading from provider pressure and
  * a heuristic `contextBreakdown` (system/tools/messages). This surface has no
@@ -19,13 +20,9 @@
  * living inside a readout was an invention of this port and is gone.
  *
  * The source's render gate is ported too: nothing renders until a request has
- * reported usage (the source waits for the `contextPressure` projection; ours
- * waits for a non-zero numerator), so a fresh session's dock carries no
- * 「0%」 noise. One deliberate difference remains: the trigger stays mounted
- * once usage exists even if the window is unknown (the panel says so in words
- * instead of inventing a denominator), and the panel's bar paints from
- * `severityForUsage` — the trigger's ring stays the sheet's neutral tertiary,
- * but a 70%/90% band change on the bar happens in theme.ts alone.
+ * reported BOTH a non-zero numerator and a positive window (the source waits
+ * for `getRenderableTaskUsage`), so a fresh session's toolbar carries no
+ * 「0%」 noise and an unknown window invents no denominator.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useDismissOutside } from '../shell/anchored-popover.js';
@@ -45,9 +42,6 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 const READING_SLOT = '\u0000';
 /** The sentence the marker sits in (the source's `context.aria` seat). */
 const OCCUPANCY = `上下文已用 ${READING_SLOT}`;
-
-/** Said instead of a reading while the model's window is unknown. */
-const UNKNOWN_WINDOW = '上下文窗口未知';
 
 /** The sentence as the user reads it, with the reading filled in. */
 function occupancySentence(reading: string): string {
@@ -100,17 +94,16 @@ export function ContextMeter({
   }, [open]);
 
   // The source's gate: no reported pressure, no meter — a fresh session's
-  // dock stays clean instead of reading a meaningless 0%. It sits after the
-  // hooks: a session's first usage would otherwise change the hook count
-  // between renders.
-  if (usedTokens <= 0) return null;
-  const available = contextWindow !== null && contextWindow > 0;
+  // dock stays clean instead of reading a meaningless 0%. A window the model
+  // never reported is the same case there (`getRenderableTaskUsage` needs a
+  // positive numerator AND denominator), so the ring stays out of the toolbar
+  // until both are known. It sits after the hooks: a session's first usage
+  // would otherwise change the hook count between renders.
+  if (usedTokens <= 0 || contextWindow === null || contextWindow <= 0) return null;
 
-  const percent = available
-    ? Math.round(Math.min(1, Math.max(0, usedTokens / contextWindow)) * 100)
-    : 0;
+  const percent = Math.round(Math.min(1, Math.max(0, usedTokens / contextWindow)) * 100);
   const reading = `${percent}%`;
-  const sentence = available ? occupancySentence(reading) : UNKNOWN_WINDOW;
+  const sentence = occupancySentence(reading);
   const [headBefore = '', headAfter = ''] = occupancySentence(READING_SLOT)
     .split(READING_SLOT)
     .map((part) => part.trim());
@@ -145,28 +138,20 @@ export function ContextMeter({
             transform="rotate(-90 7 7)"
           />
         </svg>
-        <span>{reading}</span>
       </button>
       {open && (
         <div className={css.panel} role="dialog" aria-label="上下文已用">
           <div className={css.header}>
-            {available ? (
-              <>
-                {/* Empty sides collapse through `.headline:empty` so the locale that
-                    needs no leading (or trailing) text spends no header gap. */}
-                <span className={css.headline}>{headBefore}</span>
-                <span className={css.percent}>{reading}</span>
-                <span className={css.headline}>{headAfter}</span>
-                <span className={css.figures}>
-                  {`${formatTokens(usedTokens)} / ${formatTokens(contextWindow)}`}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className={css.headline}>{UNKNOWN_WINDOW}</span>
-                <span className={css.figures}>{formatTokens(usedTokens)}</span>
-              </>
-            )}
+            <>
+              {/* Empty sides collapse through `.headline:empty` so the locale that
+                  needs no leading (or trailing) text spends no header gap. */}
+              <span className={css.headline}>{headBefore}</span>
+              <span className={css.percent}>{reading}</span>
+              <span className={css.headline}>{headAfter}</span>
+              <span className={css.figures}>
+                {`${formatTokens(usedTokens)} / ${formatTokens(contextWindow)}`}
+              </span>
+            </>
           </div>
           {segments.length > 0 && (
             <div className={css.bar}>

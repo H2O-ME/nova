@@ -49,24 +49,27 @@
 
 .chevron {
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   margin-left: var(--nova-space-4);
   color: var(--nova-text-faint);
   transition: transform var(--nova-dur-base) var(--nova-ease-inout);
 }
 
-/* The reference rotates its chevron open rather than swapping the asset; the
-   row's own leading slot is the only place the glyph changes. */
+/* The reference rotates its chevron open rather than swapping the asset: the
+   collapsed row shows a RIGHT chevron and open turns it 90° down
+   (ConversationTurnGroup.tsx:596-605, `ChevronRightIcon size-4 rotate-90`). */
 .root[data-open] .chevron {
-  transform: rotate(180deg);
+  transform: rotate(90deg);
 }
 
 .label {
   flex: none;
   min-width: 0;
   overflow: hidden;
-  font-size: var(--nova-content-font-size-secondary, 13px);
+  /* `text-ui-base` on the reference's status trigger: the turn's own line sits
+     at body size, not a caption tier. */
+  font-size: var(--nova-content-font-size, 14px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -89,7 +92,7 @@
   overflow: hidden;
   flex: 0 1 auto;
   color: var(--nova-text-faint);
-  font-size: var(--nova-content-font-size-secondary, 13px);
+  font-size: var(--nova-content-font-size, 14px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   text-overflow: ellipsis;
   white-space: nowrap;

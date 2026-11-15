@@ -29,53 +29,6 @@
   font-weight: 400;
 }
 
-.separator {
-  flex: none;
-  width: 2px;
-  height: 2px;
-  margin: 0 var(--nova-space-8);
-  border-radius: 1px;
-  background: var(--nova-text-faint);
-}
-
-/* Think text reads the secondary tier — one step under the body size
-   (setting −1 at ≤14, setting −2 above), shared with every flow-row title
-   and summary. */
-.summary {
-  min-width: 0;
-  overflow: hidden;
-  flex: 1 1 auto;
-  color: var(--nova-text-muted);
-  /* The reference reads every work row at `text-ui-base` (14px); the older
-     caption rung (13) made the stream one size smaller than the reference's. */
-  font-size: var(--nova-content-font-size, 14px);
-  line-height: calc(20px + var(--nova-content-font-delta, 0px));
-  white-space: nowrap;
-}
-
-.summaryText {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Streaming preview fades out at the right edge instead of ellipsising: the
-   reader is watching the thought arrive, and a `…` would read as an ending. */
-.summary[data-streaming] {
-  mask-image: linear-gradient(to right, black calc(100% - 48px), transparent);
-}
-
-.summary[data-streaming] .summaryText {
-  overflow: visible;
-  text-overflow: clip;
-}
-
-/* No preview, no separator and no summary: the row is just its title. */
-.root:not([data-preview]) .separator,
-.root:not([data-preview]) .summary {
-  display: none;
-}
-
 /* The thought body: the reference indents it under a thin vertical rule and
  * caps it at 240px (`ml-2 border-l pl-3.5` + `max-h-60 overflow-auto`), so a
  * long reasoning run scrolls inside its own block instead of pushing the rest

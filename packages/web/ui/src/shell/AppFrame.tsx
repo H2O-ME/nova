@@ -31,6 +31,7 @@ import {
 } from './columns.js';
 import type { LayoutState } from './layout-store.js';
 import { sidebarCollapsed, sidebarPreference } from './layout-store.js';
+import { isDesktopShell } from './desktop-shell.js';
 import css from './AppFrame.module.css';
 
 /** What the sidebar occupant needs to know about its own column. */
@@ -333,6 +334,7 @@ export function AppFrame({
       {...(layout.rightbarInstant ? { 'data-rightbar-instant': '' } : {})}
       {...(dragging ? { 'data-dragging': '' } : {})}
       {...(animating > 0 ? { 'data-animating': '' } : {})}
+      {...(isDesktopShell() ? { 'data-desktop': '' } : {})}
     >
       <div className={css.sidebarCol}>{sidebarNode}</div>
       <>

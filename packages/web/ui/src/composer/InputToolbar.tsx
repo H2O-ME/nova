@@ -23,6 +23,7 @@
  * cached prefix. A control that re-rosters the tool table would be refused
  * mid-run, which is exactly why no such control lives in this bar.
  */
+import type { ReactNode } from 'react';
 import { PermissionSelect } from '../conversation/PermissionSelect.js';
 import { PlusOutline16, SendArrowIcon, StopSquareIcon } from './Icons.js';
 import { ModelSeat } from './ModelSeat.js';
@@ -57,6 +58,9 @@ export interface InputToolbarProps {
   /** What the primary circle is showing (send vs. stop, and its label). */
   seat: PrimarySeat;
   onPrimary: () => void;
+  /** The context-occupancy ring, FIRST in the trailing run (the reference's
+   *  `ChatContextUsage` seat). Absent until a request reported usage. */
+  meter?: ReactNode;
   send: (frame: ClientFrame) => void;
 }
 
@@ -72,6 +76,7 @@ export function InputToolbar({
   onMenu,
   seat,
   onPrimary,
+  meter,
   send,
 }: InputToolbarProps): JSX.Element {
   // Button presses would steal focus from the draft; suppressing at mousedown
@@ -113,6 +118,7 @@ export function InputToolbar({
         </div>
       </div>
       <div className={css.trailing}>
+        {meter}
         <ModelSeat model={model} modelName={modelName} switching={modelSwitching} catalog={catalog} disabled={disabled} send={send} />
         <button
           type="button"

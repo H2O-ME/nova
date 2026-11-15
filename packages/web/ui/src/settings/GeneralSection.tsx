@@ -1,10 +1,12 @@
 /**
  * The 通用设置 section: the reference's general column (figma 501:29980's
- * Options area) carrying this product's real axes — the permission tier, the
- * appearance preference, and the content font size — in the reference's row
- * order (权限 first, appearance and font size after). Every control writes
- * through the host the same way its composer seat
+ * Options area) carrying this product's real execution axes — the permission
+ * tier and the work-details mode — under the reference's 行为与工具 subject
+ * line. Every control writes through the host the same way its composer seat
  * does, so a pick here and a pick there are one fact, not two.
+ *
+ * Appearance (theme + interface font size) moved to its own 外观 page
+ * (2026-11-15, the reference's `appearance` nav entry).
  *
  * The EXECUTION MODE (native / PTC / 两者) is deliberately NOT a row here. It
  * picks the toolset — part of the cached prompt prefix and the presence of the
@@ -18,29 +20,21 @@
  */
 import { PermissionSelect } from '../conversation/PermissionSelect.js';
 import { SETTINGS_COPY } from './copy.js';
-import { AppearanceRow } from './AppearanceRow.js';
-import { FontSizeRow } from './FontSizeRow.js';
 import { SettingsRow } from './SettingsRow.js';
-import { SettingsSection } from './Section.js';
+import { SettingsGroup } from './SettingsGroup.js';
 import { TranscriptViewRow } from './TranscriptViewRow.js';
 import type { ApprovalMode } from '../types.js';
-import type { ThemePreference } from '../theme.js';
 import type { TranscriptViewMode } from '../chat/transcript-view.js';
+import css from './GeneralSection.module.css';
 
 export interface GeneralSectionProps {
   /** The approval tier in force (the select's echo is the host's truth). */
   approvalMode: ApprovalMode;
-  /** The persisted appearance preference. */
-  preference: ThemePreference;
-  /** The persisted content font size, in px. */
-  fontSize: number;
   /** The persisted work-details mode (the transcript's detail level). */
   transcriptView: TranscriptViewMode;
   /** An ask is pending or the socket is down: the tier control refuses. */
   disabled: boolean;
   onPickApproval: (mode: ApprovalMode) => void;
-  onPickPreference: (preference: ThemePreference) => void;
-  onPickFontSize: (px: number) => void;
   onPickTranscriptView: (mode: TranscriptViewMode) => void;
 }
 
@@ -51,33 +45,30 @@ export interface GeneralSectionProps {
  */
 export function GeneralSection({
   approvalMode,
-  preference,
-  fontSize,
   transcriptView,
   disabled,
   onPickApproval,
-  onPickPreference,
-  onPickFontSize,
   onPickTranscriptView,
 }: GeneralSectionProps): JSX.Element {
   return (
-    <>
-      {/* TWO cards, not one (2026-11-15, aligned to the reference's 常规 page):
-          every card there is one semantic group — a run's permissions and what
-          it shows, then the reading surface's own look. One card holding all
-          four rows read as a single long form with rules in it. */}
-      <SettingsSection>
-        <SettingsRow title={SETTINGS_COPY['permission.title']} description={SETTINGS_COPY['permission.description']}>
-          {/* Upward + right-edge aligned (the reference's settings row recipe):
-              the card covers the text rows above, never the controls below. */}
-          <PermissionSelect value={approvalMode} onPick={onPickApproval} side="above" align="end" disabled={disabled} />
-        </SettingsRow>
-        <TranscriptViewRow mode={transcriptView} onPick={onPickTranscriptView} />
-      </SettingsSection>
-      <SettingsSection>
-        <AppearanceRow preference={preference} onPick={onPickPreference} />
-        <FontSizeRow fontSize={fontSize} onPick={onPickFontSize} />
-      </SettingsSection>
-    </>
+    <SettingsGroup
+      title={SETTINGS_COPY['general.groupRun']}
+      description={SETTINGS_COPY['general.groupRunDesc']}
+    >
+      <SettingsRow title={SETTINGS_COPY['permission.title']} description={SETTINGS_COPY['permission.description']}>
+        {/* Upward + right-edge aligned (the reference's settings row recipe):
+            the card covers the text rows above, never the controls below. */}
+        <PermissionSelect
+          value={approvalMode}
+          onPick={onPickApproval}
+          side="above"
+          align="end"
+          disabled={disabled}
+          variant="field"
+          className={css.field}
+        />
+      </SettingsRow>
+      <TranscriptViewRow mode={transcriptView} onPick={onPickTranscriptView} />
+    </SettingsGroup>
   );
 }

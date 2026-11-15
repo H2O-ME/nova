@@ -22,7 +22,9 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Menu } from '../shell/Menu.js';
+import { isDesktopShell } from '../shell/desktop-shell.js';
 import { FolderOpenIcon, MoreIcon } from '../icons.js';
+import { cx } from '../composer/cx.js';
 import css from './SessionHeader.module.css';
 
 /** One view the transcript can show (the source's view ledger). */
@@ -64,7 +66,21 @@ export function SessionHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header
-      className={hidden ? `${css.header} ${css.headerBlank}` : css.header}
+      className={cx(
+        css.header,
+        hidden && css.headerBlank,
+        // The desktop shell draws the caption buttons INSIDE this row's
+        // trailing corner (the reference reserves the same band in its
+        // WorkspaceHeader), so the row gives them their width back.
+        isDesktopShell() && css.headerDesktop,
+      )}
+      // The whole row is the window's drag handle. `deep` (not the bare
+      // attribute) is required: Tauri's drag script only starts a drag when the
+      // mousedown target IS the attributed element, and this row's children —
+      // title spans, the breadcrumb — would swallow every press otherwise.
+      // Buttons and links are exempted by that script, so they keep their own
+      // clicks.
+      data-tauri-drag-region="deep"
     >
       <div className={css.titleRow}>
         {/* The blank phase blanks the CHROME, not the row: the title cluster

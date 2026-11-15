@@ -14,12 +14,20 @@ export const PLUGINS_COPY = {
   'pluginPage.copy': '复制',
   'pluginPage.copied': '已复制',
   'plugins.nav': '插件管理',
-  'plugins.title': '插件管理',
+  'plugins.title': '插件市场',
+  'plugins.refresh': '刷新插件列表',
   'plugins.intro': '查看运行中的插件、按需开关；开关即时生效并写入配置文件。',
   'plugins.loading': '正在读取插件清单…',
   'plugins.search': '搜索插件',
   'plugins.empty': '暂无插件。',
   'plugins.emptySearch': '无匹配插件',
+  /* The reference's list browse controls (PluginStoreListView.tsx:353-396):
+     a folded group ends in "查看其余 N 项", an open one ends in 收起. */
+  'plugins.viewMore': '查看其余 {count} 项',
+  'plugins.showLess': '收起',
+  /* SettingsSearchInput.tsx:42-54: the × inside the field, shown only when it
+     holds text. */
+  'plugins.searchClear': '清除搜索',
   'plugins.coreGroup': '核心功能',
   'plugins.standardGroup': '基础能力',
   'plugins.advancedGroup': '扩展能力',
@@ -30,7 +38,6 @@ export const PLUGINS_COPY = {
   'plugins.switching': '切换中…',
   'plugins.switchFailed': '切换失败',
   'plugins.failedCount': '个启动失败',
-  'plugins.groupToggle': '展开或收起分组',
   'plugins.lockNote': '本轮运行中（或与宿主断开）时不能切换插件开关；本轮结束后即可切换。',
   'plugins.appliedOn': '已启用「{name}」，对之后的每一次请求生效。',
   'plugins.appliedOff': '已关闭「{name}」，之后的请求不再提供它。',

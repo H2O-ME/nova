@@ -18,7 +18,11 @@
   display: flex;
   flex-direction: column;
   font-size: var(--nova-content-font-size, 14px);
-  line-height: calc(24px + var(--nova-content-font-delta, 0px));
+  /* The reference's body leading is Tailwind's default 1.5 for its base text
+     size (21px at 14px). The 24px this replaces was the figma 16/28 pass scaled
+     down — a whole line-height looser than the reference, and the single
+     biggest reason Nova's answers read as airier than ZCode's. */
+  line-height: 1.5;
   color: var(--nova-text-primary);
 }
 
@@ -37,7 +41,7 @@
    * content-size axis here so the Settings font-size preference still moves the
    * reply. */
   font-size: var(--nova-content-font-size, 14px);
-  line-height: calc(24px + var(--nova-content-font-delta, 0px));
+  line-height: 1.5;
   color: var(--nova-text-primary);
 }
 

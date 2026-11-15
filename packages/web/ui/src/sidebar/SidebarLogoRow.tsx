@@ -45,10 +45,13 @@ export function SidebarLogoRow({
     : COPY['toggle.collapse'];
   return (
     /* The desktop shell's frameless window drags from here (Tauri reads
-       `data-tauri-drag-region` on mousedown and moves the window). The brand
-       and the toggle are child buttons, so they keep their own clicks. In a
-       browser the attribute is inert. */
-    <div className={css.logoRow} data-tauri-drag-region="">
+       `data-tauri-drag-region` on mousedown and moves the window). The value is
+       `deep`, not the bare attribute: the bare form only drags when the pressed
+       element IS the attributed one, and the brand button fills this row — so
+       the row's own padding was the only draggable strip, effectively zero. The
+       brand and toggle are buttons, which the drag script exempts, so their
+       clicks are unaffected. In a browser the attribute is inert. */
+    <div className={css.logoRow} data-tauri-drag-region="deep">
       {wide && (
         <button
           type="button"

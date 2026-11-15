@@ -43,11 +43,16 @@ afterEach(() => {
 });
 
 describe('resolveContentWidth', () => {
-  it('mirrors the CSS clamp: 680 floor, 64% of the column, 920 cap', () => {
-    expect(resolveContentWidth(500, null)).toBe(680);
-    expect(resolveContentWidth(1000, null)).toBe(680);
-    expect(resolveContentWidth(1400, null)).toBe(896);
-    expect(resolveContentWidth(2000, null)).toBe(920);
+  it('takes the reference two-step column: 896 from 864, 1152 from 1280', () => {
+    // Below the first breakpoint the content is full width minus the 32px
+    // side clearance; at 864 the column gives up 6rem (capped at max-w-4xl),
+    // at 1280 it gives up 24rem (capped at max-w-6xl) — the content GROWS with
+    // a wide window instead of sitting under one fixed cap.
+    expect(resolveContentWidth(500, null)).toBe(468);
+    expect(resolveContentWidth(900, null)).toBe(804);
+    expect(resolveContentWidth(1000, null)).toBe(896);
+    expect(resolveContentWidth(1400, null)).toBe(1016);
+    expect(resolveContentWidth(2000, null)).toBe(1152);
   });
 
   it('lets a dragged preference replace the adaptive term wholesale', () => {

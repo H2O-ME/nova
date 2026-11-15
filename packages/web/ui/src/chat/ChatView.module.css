@@ -105,24 +105,13 @@
 }
 
 /* Settled-flow identity boundary. It is neutral until it becomes the natural
-   measurement/mount unit for a virtualizer without changing the column gap. */
+   measurement/mount unit for a virtualizer without changing the column gap.
+   No per-row entrance (2026-11-15, ZCode alignment): the reference's work items
+   mount in place — its only live motion is the sweep on a running row's text —
+   and a fade-up per arriving row made a streaming turn read as the page moving
+   rather than as text growing. */
 .flowItem {
   min-width: 0;
-  /* ENTRANCE (2026-10-18). Rows used to mount with no motion at all: the sheet
-   * carried sixty-odd animation references, but every one of them belonged to a
-   * DISCLOSURE (opening a turn, revealing reasoning) — nothing animated when a
-   * message arrived. That is why a live turn read as static text appearing in
-   * place rather than as the transcript growing.
-   *
-   * `nova-fade-up` is the existing global entrance (opacity + 6px rise,
-   * compositor-only), so this adds no new motion vocabulary: a new row now
-   * settles into the flow the same way a revealed disclosure does.
-   *
-   * Scope is deliberately narrow. `.flowItem` is the per-row wrapper, so this
-   * runs once per message and never on re-render (React keeps the node; the
-   * animation is bound to mount). Streaming deltas update text INSIDE an
-   * already-mounted row and do not restart it. */
-  animation: nova-fade-up var(--nova-dur-base) var(--nova-ease-out);
 }
 
 /* Rhythm changes are animated the way the reference animates them (`transition:
@@ -141,6 +130,18 @@
     animation: none;
     transition: none;
   }
+}
+
+/* ZCode's work-item rhythm (2026-11-15): the reference's work container is
+   `flex flex-col gap-1` — FOUR pixels between consecutive work rows, not the
+   column's 16. A turn's steps are one act; at 16px every thought and command
+   read as its own message, which is exactly the 「对话流太散」 gap against the
+   reference. The override is direct rather than a `--nova-chat-flow-gap` on the
+   PRECEDING row because CSS has no previous-sibling selector, and a work row's
+   own margin is what the flow sets. */
+.column > .flowItem[data-chat-flow-kind='process'],
+.column > .flowItem[data-chat-flow-kind='tool'] {
+  margin-top: var(--nova-space-4);
 }
 
 /* A closed process reads as one summary immediately followed by its answer.

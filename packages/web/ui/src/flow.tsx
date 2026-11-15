@@ -21,6 +21,8 @@ import { AssistantMessage, AssistantTailRow, UserMessageRow } from './chat/Messa
 import { ChatHintRow, type ChatFlowRow, type ChatTurnStatus } from './chat/ChatView.js';
 import { ContextInjectionRow } from './chat/ContextInjectionRow.js';
 import { ReasoningRow } from './chat/ReasoningRow.js';
+import { SummaryGroup } from './chat/SummaryGroup.js';
+import { summaryCategoryOf, type SummaryMemberKind } from './chat/summary-group.js';
 import { TurnHeader } from './chat/TurnHeader.js';
 import { TurnUsagePill } from './chat/TurnUsagePill.js';
 import { liveTitleOf, processActivityOf, processTitle } from './chat/process-summary.js';
@@ -189,10 +191,13 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
           node: (
             <TurnHeader
               /* 「工作中」 is the reference's own live label — one word plus the
-                 elapsed seconds, whatever phase the run is in. */
+                 elapsed seconds, whatever phase the run is in. The settled
+                 word is `chat.history.workedFor` (「已工作 X」), and a turn with
+                 no recorded duration falls back to its `chat.history.worked`
+                 (「已处理」). */
               label={running ? '工作中'
-                : meta !== undefined ? `用时 ${runDurationText(meta.durationMs)}`
-                : '已完成工作'}
+                : meta !== undefined ? `已工作 ${runDurationText(meta.durationMs)}`
+                : '已处理'}
               running={running}
               startTs={block.ts}
               collapsible={foldable}
@@ -231,10 +236,16 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
       // stays where the log put it. A mode that does not group leaves every
       // row a direct child of the column.
       const inBox = isProcessBlock(inner) || (inner.kind === 'text' && !isAnswer);
+      // The member's summary category: a run of adjacent rows carrying one is
+      // folded into a single statistics line (`groupSummaryRows` below). Text,
+      // subagents, jobs and unclassified tools carry none — each is a boundary.
+      const summaryKind = summaryOf(inner);
       rows.push({
         key: inner.id,
         kind: flowKind(inner),
         ...(inBox ? { group: groupOf() } : {}),
+        ...(summaryKind !== undefined ? { summary: summaryKind } : {}),
+        ...(summaryKind !== undefined ? { live: isLive(inner, options) } : {}),
         node: rowNode(inner, options),
       });
       // The turn's closing chrome follows its answer IMMEDIATELY as its own
@@ -271,8 +282,70 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
   }
   // Context blocks never reach the transcript (see the opening-injection note):
   // a truncated baseline's orphan context is audit material, and the 上下文
-  // view is where it reads.
-  return rows;
+  // view is where it reads. The fold happens last, over the finished row list,
+  // because adjacency is a property of the ROWS and not of the block walk.
+  return groupSummaryRows(rows);
+}
+
+/** What one block counts as in a summary group, or undefined for a boundary. */
+function summaryOf(block: Block): SummaryMemberKind | undefined {
+  if (block.kind === 'reasoning') return 'think';
+  if (block.kind !== 'tool') return undefined;
+  return summaryCategoryOf(block.view.kind) ?? undefined;
+}
+
+/** Whether the block's work is still in flight (a summary group's live verb). */
+function isLive(block: Block, options: FlowOptions): boolean {
+  if (block.kind === 'reasoning') return block.streaming;
+  if (block.kind === 'tool') return !options.idle && block.result === undefined;
+  return false;
+}
+
+/**
+ * Fold every run of >=2 adjacent summary rows into ONE `SummaryGroup` row —
+ * the reference's `groupConsecutiveAssistantSummaries`
+ * (`v4/conversationAssistantWorkItems.ts`).
+ *
+ * Runs that are already boxed are left alone: inside a `ProcessGroup` the rows
+ * are one bounded disclosure, and folding a range of it again would be a fold
+ * of a fold (the same defect the retired double-disclosure had).
+ * @param rows - the finished flow rows, in log order.
+ * @returns the rows with each summary run replaced by one group row.
+ */
+function groupSummaryRows(rows: readonly ChatFlowRow[]): ChatFlowRow[] {
+  const out: ChatFlowRow[] = [];
+  let run: ChatFlowRow[] = [];
+  const flush = (): void => {
+    const first = run[0];
+    if (first !== undefined && run.length === 1) {
+      out.push(first);
+    } else if (first !== undefined) {
+      out.push({
+        key: `summary:${first.key}`,
+        kind: 'process',
+        node: (
+          <SummaryGroup
+            members={run.map((row) => ({
+              key: row.key,
+              kind: row.summary as SummaryMemberKind,
+              node: row.node,
+              ...(row.live !== undefined ? { running: row.live } : {}),
+            }))}
+          />
+        ),
+      });
+    }
+    run = [];
+  };
+  for (const row of rows) {
+    if (row.summary !== undefined && row.group === undefined) run.push(row);
+    else {
+      flush();
+      out.push(row);
+    }
+  }
+  flush();
+  return out;
 }
 
 function flowKind(block: Block): ChatFlowRow['kind'] {
@@ -314,13 +387,7 @@ function rowNode(
     case 'text':
       return <AssistantMessage text={block.text} streaming={block.streaming} />;
     case 'reasoning':
-      return (
-        <ReasoningRow
-          text={block.text}
-          running={block.streaming}
-          {...(options.policy.settledReasoningPreview ? {} : { previewAllowed: false })}
-        />
-      );
+      return <ReasoningRow text={block.text} running={block.streaming} />;
     case 'tool':
       return (
         <ToolRow

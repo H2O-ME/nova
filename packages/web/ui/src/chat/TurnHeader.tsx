@@ -23,7 +23,7 @@
 import { memo, useEffect, useState } from 'react';
 import { liveDurationText } from '../format.js';
 import { Button } from '../components/ui/button.js';
-import { ChevronDownGlyph14 } from './glyphs.js';
+import { ChevronRightGlyph14 } from './glyphs.js';
 import a11yCss from './accessibility.module.css';
 import css from './TurnHeader.module.css';
 
@@ -158,7 +158,7 @@ export const TurnHeader = memo(function TurnHeader({
             <span className={css.work}>{work}</span>
           </>
         )}
-        {collapsible && <ChevronDownGlyph14 className={css.chevron} />}
+        {collapsible && <ChevronRightGlyph14 className={css.chevron} />}
       </Button>
     </>
   );

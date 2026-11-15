@@ -64,12 +64,13 @@ describe('settings panel', () => {
     );
     // The projection falls back to the first row when no id was requested.
     expect(html.match(/aria-current="true"/g)).toHaveLength(1);
-    // cells[0] is the markup before the first button and cells[1] the rail's
-    // back row (2026-11-15), so the nav rows start at index 2.
+    // cells[0] is the markup before the first button, cells[1] the rail's
+    // back row and cells[2] its narrow-rail search toggle (2026-11-15), so the
+    // nav rows start at index 3.
     const cells = html.split('<button');
-    expect(cells[2]).toContain('aria-current="true"');
-    expect(cells[2]).toContain('>甲</span>');
-    expect(cells[3]).toContain('>乙</span>');
+    expect(cells[3]).toContain('aria-current="true"');
+    expect(cells[3]).toContain('>甲</span>');
+    expect(cells[4]).toContain('>乙</span>');
   });
 
   it('is a full-window view: no scrim, no corner close, a back row in the rail', () => {
@@ -91,18 +92,20 @@ describe('settings panel', () => {
 });
 
 describe('appearance row', () => {
-  it('renders three cubes with the pressed state on the preference', () => {
+  it('renders the theme select with the preference in its trigger', () => {
+    // The reference's 界面主题 row is a labeled select, not a cube chooser: the
+    // row's control is the same `SelectTrigger size="lg"` every other settings
+    // row uses, and the trigger names the mode in force.
     const html = renderToStaticMarkup(
       <AppearanceRow preference="system" onPick={() => undefined} />,
     );
     expect(html).toContain(SETTINGS_COPY['appearance.title']);
-    expect(html).toContain(SETTINGS_COPY['appearance.light']);
-    expect(html).toContain(SETTINGS_COPY['appearance.dark']);
+    expect(html).toContain(SETTINGS_COPY['appearance.description']);
+    expect(html).toContain(`aria-label="界面主题，当前：${SETTINGS_COPY['appearance.system']}"`);
+    // The three options exist on the trigger's card, not in the closed markup:
+    // the static lane renders the menu closed, so only the label in force shows.
     expect(html).toContain(SETTINGS_COPY['appearance.system']);
-    expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
-    // Selection follows the persisted preference, not cube order.
-    const cubes = html.split('<button');
-    expect(cubes[3]).toContain('aria-pressed="true"');
+    expect(html).not.toContain('aria-pressed');
   });
 });
 
@@ -113,29 +116,25 @@ describe('font size row', () => {
     );
     expect(html).toContain(SETTINGS_COPY['fontSize.title']);
     expect(html).toContain(SETTINGS_COPY['fontSize.description']);
-    expect(html).toContain('<span class');
-    expect(html).toContain('>14</span>');
+    // The reference's field: a number input carrying the value, with the unit
+    // inside the same box (no stepper, no arrow buttons).
+    expect(html).toContain('type="number"');
+    expect(html).toContain('value="14"');
     expect(html).toContain(`>${SETTINGS_COPY['fontSize.unit']}</span>`);
+    expect(html).not.toContain('aria-label="增大字号"');
   });
 
-  it('disables the arrows at the axis bounds and enables them inside', () => {
+  it('bounds the field by the theme axis', () => {
     const atMax = renderToStaticMarkup(
       <FontSizeRow fontSize={FONT_SIZE_MAX} onPick={() => undefined} />,
     );
-    expect(atMax).toContain('aria-label="增大字号" disabled');
-    expect(atMax).not.toContain('aria-label="减小字号" disabled');
+    expect(atMax).toContain(`max="${FONT_SIZE_MAX}"`);
+    expect(atMax).toContain(`value="${FONT_SIZE_MAX}"`);
 
     const atMin = renderToStaticMarkup(
       <FontSizeRow fontSize={FONT_SIZE_MIN} onPick={() => undefined} />,
     );
-    expect(atMin).toContain('aria-label="减小字号" disabled');
-    expect(atMin).not.toContain('aria-label="增大字号" disabled');
-
-    const mid = renderToStaticMarkup(
-      <FontSizeRow fontSize={14} onPick={() => undefined} />,
-    );
-    expect(mid).toContain('aria-label="增大字号"');
-    expect(mid).toContain('aria-label="减小字号"');
-    expect(mid).not.toContain('disabled=""');
+    expect(atMin).toContain(`min="${FONT_SIZE_MIN}"`);
+    expect(atMin).toContain(`value="${FONT_SIZE_MIN}"`);
   });
 });

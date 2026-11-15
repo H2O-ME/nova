@@ -1,5 +1,6 @@
-/* Context-occupancy pill in the composer's dock row (beside the stats pills)
-   plus its click-open breakdown panel (menu surface: r12, elevation-prominent). */
+/* Context-occupancy ring in the composer toolbar's trailing group, ahead of
+   the model seat, plus its click-open breakdown panel (menu surface: r12,
+   elevation-prominent). */
 
 .root {
   position: relative;
@@ -7,23 +8,20 @@
   flex: none;
 }
 
-/* The source's pill: ring and reading in one tertiary-label target, not a
-   bare icon button — the number IS the reading. */
+/* The reference's seat is an `icon-md` ghost button (28×28, rounded-lg) whose
+   16px slot carries the ring — the number is NOT printed beside it. */
 .trigger {
   display: inline-flex;
   align-items: center;
-  gap: var(--nova-space-6);
+  justify-content: center;
   flex: none;
-  padding: 1px var(--nova-space-8);
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-muted);
-  font-family: inherit;
-  font-size: var(--nova-content-font-size-secondary, 13px);
-  font-variant-numeric: tabular-nums;
-  line-height: calc(20px + var(--nova-content-font-delta-secondary, 0px));
-  white-space: nowrap;
   cursor: pointer;
   transition:
       color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),

@@ -47,11 +47,11 @@
   align-items: flex-end;
   gap: var(--nova-space-8);
   min-width: 0;
-  /* The figma 525px cap held as a share of the width axis (525/748 ≈ 0.702):
-     resolves to the original 525px on the default column and widens with a
-     dragged or adaptive column. The 748px fallback covers mounts outside the
-     conversation column, where the axis variable is absent. */
-  max-width: min(calc(var(--nova-chat-content-width, 748px) * 0.702), 82%);
+  /* The reference's `max-w-xl` (576px), with a share fallback for narrow
+     windows: the reference widens to xl at its own 624px conversation
+     breakpoint, and a percentage keeps a slim column sane below that. The
+     0.702 share this replaces tracked the figma axis, not the reference. */
+  max-width: min(576px, 82%);
 }
 
 /* The Bubble wrapper's stock cap is 80% of its parent — a second cap on top of
@@ -63,24 +63,23 @@
 }
 
 .bubble {
-  /* Figma's 525px cap held as a share of the width axis (525/748 ≈ 0.702) so
-     the bubble widens with a user-dragged or adaptive column; percentage
-     keeps narrow windows sane. */
   max-width: 100%;
-  /* QUIET SEND BUBBLE (2026-11-05). The translucent wash + hairline was an
-   * experiment against the reference's own bubble; on the paper ground it reads
-   * as a tinted sticker rather than as the reader's line. The reference uses one
-   * solid quiet plane with no outline, so this does too: `surface-sunken` is the
-   * same step the sidebar uses, and the 12px corner matches the composer. */
-  background: var(--nova-surface-sunken);
-  border: 0;
-  border-radius: var(--nova-radius-xl);
-  /* 42px single-line bubble at the default size: 22 line + 10 vertical
-     padding each side; the Settings font-size preference moves size and line
-     height together through the body-published axis. */
-  padding: var(--nova-space-10) var(--nova-space-16);
+  /* The reference's user bubble (2026-11-15, ZCode alignment):
+   * `rounded-xl rounded-tr-xs border border-border bg-surface px-4 py-3`.
+   * Three values changed from the quiet-plane version this replaces: the 3%
+   * surface wash + full hairline (an outlined sticker was rejected then, but it
+   * IS the reference's bubble), the 12px corner with the 2px top-right notch,
+   * and 12/16 padding instead of 10/16. */
+  background: var(--nova-surface-card);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-lg);
+  border-top-right-radius: var(--nova-space-2);
+  /* The Settings font-size preference moves size and line height together
+     through the body-published axis; 21px is the reference's 1.5 leading at the
+     default size (12px padding × 2 + 21 = 45px for one line). */
+  padding: var(--nova-space-12) var(--nova-space-16);
   font-size: var(--nova-content-font-size, 14px);
-  line-height: calc(22px + var(--nova-content-font-delta, 0px));
+  line-height: calc(21px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-primary);
   /* The projected user text is inline runs; the bubble owns wrapping so a
      decorated single-line message stays one line. */
@@ -88,159 +87,91 @@
   word-break: break-word;
 }
 
-/* Compaction marker: one dim 24px row with a context icon at rest and a
-   hover/focus disclosure for the summary body. Dimmed title (not
-   label-primary) — the row is a boundary notice, not conversation content. */
-.compactionRow {
-  /* The toggle's line, and the band a pinned toggle occupies. The button's
-     height and the offset that holds a summary's code banner below that band
-     are the same measurement, so both read it from here. */
-  --nova-compaction-header-height: calc(24px + var(--nova-content-font-delta, 0px));
-  padding: var(--nova-space-2) 0;
+/* Compaction marker, as the reference draws a boundary (2026-11-15, ZCode
+ * alignment): one label CENTRED between two hairlines — `flex w-full
+ * items-center gap-3 px-4 py-2` + `h-px min-w-8 flex-1 bg-border/50`
+ * (`v4/ConversationShareReadonlyTimeline.tsx:264-440`). The 24px chevron row
+ * this replaces made a fold read as another tool call; a divider is what the
+ * reference uses for "the history was folded HERE", and it needs no
+ * affordance at rest. */
+.marker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nova-space-12);
+  padding: var(--nova-space-8) 0;
+  min-width: 0;
 }
 
-.compactionButton {
-  display: flex;
+.markerRule {
+  flex: 1 1 0;
+  min-width: var(--nova-space-32);
+  height: 1px;
+  background: var(--nova-border-strong);
+}
+
+.markerLabel {
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  height: var(--nova-compaction-header-height);
+  gap: var(--nova-space-6);
   min-width: 0;
   padding: 0;
   border: none;
-  border-radius: var(--nova-radius-lg);
   background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
+  cursor: default;
+  transition: color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
-/* The summary body flows uncapped with the page, so a long checkpoint summary
-   carries this toggle off the top of the viewport. Pin it to the conversation
-   scroll container's top while the row is open (the body is a sibling rendered
-   only when expanded); the base background masks the prose scrolling under it.
-   The square corners apply for as long as the row is open, pinned or not: the
-   fill is what masks the prose, and rounded corners would leave that prose
-   visible in the corners. z-index outranks the markdown code block's own
-   sticky banner; that banner itself stops below this toggle (rule below), so a
-   summary's fenced code block never puts a control inside the toggle's band. */
-.compactionRow:has(.compactionBody) .compactionButton {
-  position: sticky;
-  top: 0;
-  z-index: 7;
-  border-radius: 0;
-  background: var(--nova-surface-base);
-}
-
-/* A fenced code block in the summary pins its banner at the scrollport top,
-   where this pinned toggle already sits, and the toggle's band covers the
-   banner's Copy control. Stop the banner below the toggle instead, on the same
-   measurement the toggle's own height uses. */
-.compactionBody :has(> [data-code-block-banner]) {
-  top: var(--nova-compaction-header-height);
-}
-
-/* Pinned, the toggle needs an opaque hover fill: the default translucent hover
-   token below would let the scrolling prose show through the moment the pointer
-   lands on the toggle to collapse it. */
-.compactionRow:has(.compactionBody) .compactionButton:hover {
-  background: var(--nova-interactive-hover-solid);
-}
-
-.compactionButton:not(:disabled) {
+button.markerLabel {
   cursor: pointer;
 }
 
-/* shadcn's Button fades disabled controls to 50%. A compaction with no summary
- * to disclose is still a readable boundary marker, not a disabled action. */
-.compactionButton:disabled {
-  opacity: 1;
+button.markerLabel:hover {
+  color: var(--nova-text-primary);
 }
 
-.compactionButton:not(:disabled):hover {
-  background: var(--nova-interactive-hover);
+button.markerLabel:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--nova-focus-ring-color, var(--nova-color-accent));
+  border-radius: var(--nova-radius-xs);
 }
 
-.compactionLeading {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: calc(16px + var(--nova-content-font-delta, 0px));
-  height: calc(16px + var(--nova-content-font-delta, 0px));
-  margin-right: var(--nova-space-6);
-  color: var(--nova-text-secondary);
-}
-
-/* Same glyph-scaling rule as DisclosureRow's leading: the CSS edge overrides
-   the svg attributes so the 14px glyphs follow the font-size delta. */
-.compactionLeading svg {
-  width: calc(14px + var(--nova-content-font-delta, 0px));
-  height: calc(14px + var(--nova-content-font-delta, 0px));
-}
-
-.compactionContextIcon,
-.compactionDisclosureIcon {
+.markerIcon {
   display: inline-flex;
-  grid-area: 1 / 1;
-  align-items: center;
-  justify-content: center;
-  transition: opacity var(--nova-dur-fast) ease;
-}
-
-.compactionDisclosureIcon {
-  opacity: 0;
-}
-
-.compactionButton:not(:disabled):hover .compactionContextIcon,
-.compactionButton:not(:disabled):focus-visible .compactionContextIcon {
-  opacity: 0;
-}
-
-.compactionButton:not(:disabled):hover .compactionDisclosureIcon,
-.compactionButton:not(:disabled):focus-visible .compactionDisclosureIcon {
-  opacity: 1;
-}
-
-.compactionTitle {
   flex: none;
-  font-size: var(--nova-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  color: var(--nova-text-primary-dimmed);
-}
-
-.compactionSep {
-  flex: none;
-  width: 2px;
-  height: 2px;
-  margin: 0 var(--nova-space-8);
-  border-radius: 1px;
-  background: var(--nova-text-faint);
-}
-
-.compactionSummary {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
   color: var(--nova-text-muted);
-  font-size: var(--nova-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--nova-content-font-delta, 0px));
-  text-overflow: ellipsis;
+}
+
+.markerIcon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.markerText {
+  flex: none;
   white-space: nowrap;
 }
 
-.compactionBody {
-  /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
-  padding: var(--nova-space-4) 0 var(--nova-space-4) calc(22px + var(--nova-content-font-delta, 0px));
+/* The counts ride the label at one step down, separated by the row's own gap
+   (the reference joins them with `·` inside the same label). */
+.markerSummary {
+  flex: none;
+  font-size: 12px;
+  line-height: 20px;
   color: var(--nova-text-muted);
-  font-size: var(--nova-content-font-size-secondary, 13px);
-  line-height: calc(24px + var(--nova-content-font-delta, 0px));
 }
 
+/* The summary body spans the row below the rules: `flex-basis: 100%` because
+   the marker wraps. */
+.markerBody {
+  flex-basis: 100%;
+  min-width: 0;
+  padding: var(--nova-space-4) 0 var(--nova-space-8);
+}
 
 /* One mention inside a sent bubble. Plain inline, NOT inline-flex: a flex
    container takes its baseline from its first item — the icon svg, which has

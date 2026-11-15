@@ -20,9 +20,11 @@ import { useState, useId, useRef, useEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
-import { ArrowLeftIcon } from '../icons.js';
+import { ArrowLeftIcon, SearchIcon } from '../icons.js';
 import { cx } from '../composer/cx.js';
 import { UnsavedConfirmDialog } from './UnsavedConfirmDialog.js';
+import { isDesktopShell } from '../shell/desktop-shell.js';
+import { SIDEBAR_COPY } from '../sidebar/view.js';
 import css from './SettingsPanel.module.css';
 
 /** One nav row and its content: a section this product actually registers. */
@@ -31,6 +33,13 @@ export interface SettingsSection {
   label: string;
   icon: JSX.Element;
   content: JSX.Element;
+  /**
+   * The nav group this section belongs to (`基础设置` / `Agent 能力`). The
+   * reference's rail groups its rows under quiet subject lines; a rail of ten
+   * flat rows states no order at all. An absent group renders ungrouped, so a
+   * caller that predates groups keeps working.
+   */
+  group?: string;
   /**
    * The section holds unsaved edits. Switching away (or closing the panel)
    * unmounts the content, so the panel asks first instead of discarding
@@ -81,6 +90,22 @@ export function SettingsDialog({
 }: SettingsDialogProps): JSX.Element {
   const active = sections.find((section) => section.id === activeId) ?? sections[0];
   const titleId = useId();
+  // The rail's filter. Case-folded substring over the row's own label — the
+  // only text the rail prints — and it never touches the page on the right.
+  const [query, setQuery] = useState('');
+  const needle = query.trim().toLocaleLowerCase();
+  const visible = needle === ''
+    ? sections
+    : sections.filter((section) => section.label.toLocaleLowerCase().includes(needle));
+  // Registration order is the rail's order: consecutive rows sharing a group
+  // name stack under ONE heading, so a caller can add a page to an existing
+  // group by naming it, and an ungrouped section keeps its flat row.
+  const groups: { name: string | undefined; rows: SettingsSection[] }[] = [];
+  for (const section of visible) {
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.name === section.group) last.rows.push(section);
+    else groups.push({ name: section.group, rows: [section] });
+  }
   // The scroll column is the panel's own and survives a switch: landing on a
   // short page from a long one kept the old offset, and the new page looked
   // like it had not switched. Every switch lands at the top.
@@ -88,8 +113,20 @@ export function SettingsDialog({
   useEffect(() => {
     optionsRef.current?.scrollTo({ top: 0 });
   }, [active?.id]);
+  // Narrow rail: the reference replaces the filter field with a 40px search
+  // button (`max-lg` variant of its `SettingsSearch`); pressing it here opens
+  // the same input as a small floating field over the rail.
+  const [railSearchOpen, setRailSearchOpen] = useState(false);
+  const railSearchRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (railSearchOpen) railSearchRef.current?.focus();
+  }, [railSearchOpen]);
   return (
-    <div className={css.overlay} role="presentation">
+    <div
+      className={css.overlay}
+      role="presentation"
+      {...(isDesktopShell() ? { 'data-desktop': '' } : {})}
+    >
       <div
         ref={panelRef}
         tabIndex={-1}
@@ -98,7 +135,15 @@ export function SettingsDialog({
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <nav className={css.nav} aria-label={title}>
+        <nav
+          className={css.nav}
+          aria-label={title}
+          {...(railSearchOpen ? { 'data-search-open': '' } : {})}
+        >
+          {/* The reference's settings rail starts below a 48px drag strip
+              (`h-12 [app-region:drag]`), not at the window's top edge — its
+              window controls live in that band. */}
+          <div className={css.navTop} data-tauri-drag-region="" />
           {/* The reference's settings page is a full-window view whose only
               way out is a ghost row at the top of its own nav rail (`← 返回
               工作区`), not a × in a dialog corner. */}
@@ -107,29 +152,88 @@ export function SettingsDialog({
             <span className={css.backLabel}>返回工作区</span>
           </button>
           <div className={css.navTitle} id={titleId} tabIndex={-1}>{title}</div>
-          <div className={css.navList}>
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                className={cx(css.navCell, section.id === active?.id && css.active)}
-                aria-current={section.id === active?.id ? 'true' : undefined}
-                // The modal layer's entry focus lands here (the reference's
-                // `data-modal-autofocus` on the active nav row).
-                data-modal-autofocus={section.id === active?.id ? '' : undefined}
-                onClick={() => { onSelect(section.id); }}
-              >
-                {section.icon}
-                <span className={css.navLabel}>{section.label}</span>
-              </button>
-            ))}
+          {/* The rail's own filter (the reference's `SettingsSearch`): it sits
+              between the way out and the grouped rows, at the input size every
+              searchable surface uses. It filters the ROWS, not the page — a
+              query only ever narrows what the rail offers, so landing on a
+              section is the same click as without it. */}
+          <div className={css.navSearch}>
+            <button
+              type="button"
+              className={css.navSearchToggle}
+              aria-label="搜索设置"
+              aria-expanded={railSearchOpen}
+              onClick={() => { setRailSearchOpen((open) => !open); }}
+            >
+              <SearchIcon />
+            </button>
+            <SearchIcon className={css.navSearchIcon} />
+            <input
+              ref={railSearchRef}
+              type="search"
+              className={css.navSearchInput}
+              value={query}
+              placeholder="搜索设置"
+              aria-label="搜索设置"
+              data-modal-escape-owner
+              onChange={(event) => { setQuery(event.currentTarget.value); }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape' || event.nativeEvent.isComposing) return;
+                event.stopPropagation();
+                if (query === '') {
+                  setRailSearchOpen(false);
+                  return;
+                }
+                setQuery('');
+              }}
+            />
           </div>
-          {/* The nav column's foot: the build's own version, low contrast and
-              unadorned (not a badge). Renders nothing when the host never sent
-              one, so an empty seat is never left claiming a version. */}
-          {version !== undefined && version !== '' && (
-            <div className={css.navVersion}>Nova v{version}</div>
-          )}
+          <div className={css.navList}>
+            {groups.map((group) => (
+              <div
+                key={group.name ?? ''}
+                className={css.navGroup}
+                role="group"
+                {...(group.name !== undefined ? { 'aria-label': group.name } : {})}
+              >
+                {group.name !== undefined && (
+                  <div className={css.navGroupLabel}>{group.name}</div>
+                )}
+                {group.rows.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={cx(css.navCell, section.id === active?.id && css.active)}
+                    aria-current={section.id === active?.id ? 'true' : undefined}
+                    // The modal layer's entry focus lands here (the reference's
+                    // `data-modal-autofocus` on the active nav row).
+                    data-modal-autofocus={section.id === active?.id ? '' : undefined}
+                    onClick={() => { onSelect(section.id); }}
+                  >
+                    {section.icon}
+                    <span className={css.navLabel}>{section.label}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+            {groups.length === 0 && (
+              <div className={css.navEmpty}>没有匹配的设置</div>
+            )}
+          </div>
+          {/* The rail's foot wears the product identity — the reference's own
+              footer shape (a 32px avatar and the name in 14/600 on the column's
+              floor). Nova has no account, so the avatar is the fallback letter;
+              the built version rides the same row as quiet reference data
+              instead of a line of its own. */}
+          <div className={css.navIdentity}>
+            <span className={css.navAvatar} aria-hidden="true">
+              {SIDEBAR_COPY.brand.slice(0, 1)}
+            </span>
+            <span className={css.navName}>{SIDEBAR_COPY.brand}</span>
+            {version !== undefined && version !== '' && (
+              <span className={css.navVersion}>v{version}</span>
+            )}
+          </div>
         </nav>
         <div className={css.content}>
           {/* The reference's in-panel top strip: 48px of drag area, no words.
