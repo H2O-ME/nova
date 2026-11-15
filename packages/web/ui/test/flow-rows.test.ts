@@ -14,6 +14,11 @@ import { presentationPolicyFor } from '../src/chat/transcript-view.js';
 import type { Block } from '../src/state.js';
 import type { RunStats } from '../src/types.js';
 
+/** The FOLD mechanism's lane (2026-11-15): the reference's default no longer
+ *  folds a settled turn, so the tests that pin folding run under the mode that
+ *  still does (`compact`) plus the reference's live detail. */
+const FOLD_POLICY = { ...presentationPolicyFor('compact'), liveProcessDetail: true } as const;
+
 const options = (over: Partial<Parameters<typeof flowRows>[1]> = {}): Parameters<typeof flowRows>[1] => ({
   idle: true,
   onStopJob: () => {},
@@ -21,7 +26,7 @@ const options = (over: Partial<Parameters<typeof flowRows>[1]> = {}): Parameters
   openTurns: new Set(),
   onToggleTurn: () => {},
   modelName: null,
-  policy: presentationPolicyFor('standard'),
+  policy: FOLD_POLICY,
   ...over,
 });
 
@@ -71,7 +76,9 @@ describe('flowRows turns', () => {
     // (`tail:<turn>`) right after its answer — the harness's separate
     // `turn-tail` node, so the column's 16px rhythm separates it from the
     // answer as a sibling.
-    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'turn:b5', 'b6', 'tail:b5']);
+    // The second turn carries no work rows, so it prints no header at all
+    // (2026-11-15): a settled turn with nothing to fold shows no 「用时 X」 band.
+    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'b6', 'tail:b5']);
     // The header carries the duration; the meta ids appear nowhere.
     const header = renderToStaticMarkup(rows.find((row) => row.key === 'turn:b1')!.node);
     expect(header).toContain('用时 5秒');
@@ -82,7 +89,7 @@ describe('flowRows turns', () => {
     const rows = flowRows(blocks(), options({ openTurns: new Set(['b1']) }));
     // The folded context rows are the group's earliest members: they entered
     // the log before the prompt did.
-    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'c1', 'b2', 'b3', 'tail:b1', 'b5', 'turn:b5', 'b6', 'tail:b5']);
+    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'c1', 'b2', 'b3', 'tail:b1', 'b5', 'b6', 'tail:b5']);
     expect(renderToStaticMarkup(rows.find((row) => row.key === 'turn:b1')!.node)).toContain('data-open');
     expect(renderToStaticMarkup(rows.find((row) => row.key === 'c1')!.node)).toContain('上下文注入');
   });
@@ -135,15 +142,15 @@ describe('flowRows turns', () => {
     // session-stats dialog and the trajectory table. Printing them under the
     // header duplicated the label's own 用时 and put a block of numbers where
     // the reference has nothing.
-    const rows = flowRows(blocks(), options({ openTurns: new Set(['b5']) }));
-    const open = renderToStaticMarkup(rows.find((row) => row.key === 'turn:b5')!.node);
+    const rows = flowRows(blocks(), options({ openTurns: new Set(['b1']) }));
+    const open = renderToStaticMarkup(rows.find((row) => row.key === 'turn:b1')!.node);
     // The label is the run's whole-second duration, the reference's rounding.
     expect(open).toContain('用时 5秒');
     expect(open).not.toContain('首 token');
     expect(open).not.toContain('tok/s');
     // The removed readings still have their own home, so nothing was lost: the
     // session-stats pill's dialog carries LLM/tool time, average TTFT and TPS.
-    expect(renderToStaticMarkup(rows.find((row) => row.key === 'tail:b5')!.node)).toContain('用量');
+    expect(renderToStaticMarkup(rows.find((row) => row.key === 'tail:b1')!.node)).toContain('用量');
   });
 
   it('folds mid-turn context rows too, and keeps hints outside the groups', () => {
@@ -241,53 +248,55 @@ describe('flowRows × presentation policy', () => {
     expect(headerOf(new Set(['u1']))).not.toContain('已读取文件');
   });
 
-  it('detailed keeps a RUNNING turn ungrouped (steps flat) but folds history', () => {
+  it('detailed leaves a settled turn flat and only BOXES its history steps', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment): no mode folds a settled turn
+    // behind a header any more except `compact`; `detailed` keeps every row in
+    // the flow and gives the steps the history box.
     const policy = presentationPolicyFor('detailed');
     const live = flowRows(liveTurn, options({ runningStatus: { label: '生成中' }, policy }));
     expect(keys(live)).toEqual(['u1', 'turn:u1', 'r1', 'k1']);
     expect(live.find((row) => row.key === 'k1')?.group).toBeUndefined();
-    // A settled turn under the same mode still folds behind its header.
-    expect(keys(flowRows(turn, options({ policy })))).toEqual(['u1', 'turn:u1', 't1', 'tail:u1']);
+    const settled = flowRows(turn, options({ policy }));
+    expect(keys(settled)).toEqual(['u1', 'r1', 'k1', 't1', 'tail:u1']);
+    expect(settled.find((row) => row.key === 'k1')?.group?.id).toBe('group:u1');
   });
 
-  it('verbose unfolds everything: settled turns stay open and no groups exist', () => {
+  it('verbose unfolds everything: no turn header and no groups', () => {
     const rows = flowRows(turn, options({ policy: presentationPolicyFor('verbose') }));
-    expect(keys(rows)).toEqual(['u1', 'turn:u1', 'r1', 'k1', 't1', 'tail:u1']);
+    expect(keys(rows)).toEqual(['u1', 'r1', 'k1', 't1', 'tail:u1']);
     expect(rows.every((row) => row.group === undefined)).toBe(true);
-    // The header is a plain label here: nothing left to disclose. Assert the
-    // ATTRIBUTE, not the substring — shadcn's Button carries
-    // `aria-expanded:` utility classes on every instance, and a bare
-    // `not.toContain('aria-expanded')` would now match those.
-    expect(renderToStaticMarkup(rows.find((row) => row.key === 'turn:u1')!.node)).not.toContain('aria-expanded=');
+    // Nothing left to disclose, so there is no header row at all.
+    expect(rows.some((row) => row.key === 'turn:u1')).toBe(false);
   });
 
-  it('compact and standard differ only in the LIVE summary\'s detail half', () => {
+  it('compact boxes a live turn\'s steps; standard leaves them flat', () => {
     const live = (policy: Parameters<typeof presentationPolicyFor>[0]): ReturnType<typeof flowRows> =>
       flowRows(liveTurn, options({ runningStatus: { label: '生成中' }, policy: presentationPolicyFor(policy) }));
     const headerOf = (rows: ReturnType<typeof flowRows>): string =>
       renderToStaticMarkup(rows.find((row) => row.key === 'turn:u1')!.node);
-    // Both fold the running turn's steps into the same box…
+    // Only the folding mode groups the live steps…
     expect(live('compact').find((row) => row.key === 'k1')?.group?.id).toBe('group:u1');
-    expect(live('standard').find((row) => row.key === 'k1')?.group?.id).toBe('group:u1');
+    expect(live('standard').find((row) => row.key === 'k1')?.group).toBeUndefined();
     // …and the summary lives on the TURN HEADER, not on the box (W2: one fold,
     // one owner). compact omits the current-action detail, standard carries it
     // (the reference's liveProcessDetail flag).
     expect(headerOf(live('compact'))).toContain('正在读取文件');
     expect(headerOf(live('compact'))).not.toContain('src/a.ts');
     expect(headerOf(live('standard'))).toContain('正在读取文件 · src/a.ts');
-    // The box is geometry only: no words, no disclosure state of its own.
-    const box = live('standard').find((row) => row.key === 'k1')?.group;
-    expect(box).toEqual({ id: 'group:u1', live: true });
   });
 
   it('compact withholds the settled reasoning preview that standard shows', () => {
     const open = { openTurns: new Set(['u1']) };
-    const standardRow = renderToStaticMarkup(flowRows(turn, options(open)).find((row) => row.key === 'r1')!.node);
+    const standardRow = renderToStaticMarkup(
+      flowRows(turn, options({ ...open, policy: presentationPolicyFor('standard') })).find((row) => row.key === 'r1')!.node,
+    );
     const compactRow = renderToStaticMarkup(
       flowRows(turn, options({ ...open, policy: presentationPolicyFor('compact') })).find((row) => row.key === 'r1')!.node,
     );
-    expect(standardRow).toContain('想');
-    expect(compactRow).not.toContain('想');
+    // `data-preview` is the row's own flag for "a first line rides beside the
+    // title", so the assertion does not depend on the title's wording.
+    expect(standardRow).toContain('data-preview');
+    expect(compactRow).not.toContain('data-preview');
     // A streaming row is never gated: its COMPLETED-paragraph tail is the live
     // cue, not a summary (a lone half-typed line shows none — by design).
     const streaming = flowRows(

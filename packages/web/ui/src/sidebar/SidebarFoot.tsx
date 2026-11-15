@@ -8,14 +8,16 @@
  * what the gear opens — the block is the wide target, the gear the precise
  * one; a duplicated affordance is a hit-target choice, not a dead control).
  *
- * The recovery window is the reference's too: a socket that heals reads as
- * 连接成功 for 2s, and only while the column is wide.
+ * The readout only speaks when something is WRONG (an outage, a live retry):
+ * the reference's foot carries no steady-state status word, and the recovery
+ * 连接成功 pill retired 2026-11-14 — a foot that announces health after every
+ * page load is narration, not feedback.
  */
 import { useEffect, useRef, useState } from 'react';
 import { SettingsIcon } from '../icons.js';
 import { Tooltip } from '../shell/Tooltip.js';
 import { ConnectionIndicator } from '../shell/ConnectionIndicator.js';
-import { CONNECTING_MIN_VISIBLE_MS, RECOVERY_CONFIRMATION_MS, indicatorState, type SocketState } from '../shell/connection.js';
+import { CONNECTING_MIN_VISIBLE_MS, indicatorState, type SocketState } from '../shell/connection.js';
 import { SIDEBAR_COPY as COPY } from './view.js';
 import { cx } from '../composer/cx.js';
 import css from './SidebarFoot.module.css';
@@ -38,15 +40,11 @@ export interface SidebarFootProps {
  * @returns the footer row.
  */
 export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpenSettings }: SidebarFootProps): JSX.Element {
-  // Recovery confirmation: a reconnect that lands shows 连接成功 once, for
-  // RECOVERY_CONFIRMATION_MS — the reference's own window and guard.
-  const [recovered, setRecovered] = useState(false);
   // The connecting pill's minimum-visible hold (the reference's
   // CONNECTING_MIN_VISIBLE_MS): a retry that succeeds in 40ms must not flash the
   // pill for a single frame, which reads as a glitch rather than as progress.
   const [holdConnecting, setHoldConnecting] = useState(false);
   const connectingShownAt = useRef<number | undefined>(undefined);
-  const previousConnection = useRef(connection);
 
   useEffect(() => {
     if (connection === 'connecting') {
@@ -65,23 +63,6 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
       setHoldConnecting(false);
     };
   }, [connection]);
-
-  useEffect(() => {
-    const previous = previousConnection.current;
-    previousConnection.current = connection;
-    if (connection !== 'open') {
-      setRecovered(false);
-      return;
-    }
-    if (previous !== 'closed' && previous !== 'connecting') return;
-    // The confirmation window starts when the pill becomes VISIBLE, which the
-    // minimum-visible hold can delay past the transition — otherwise the hold
-    // would eat into the 2s the reader gets to notice 连接成功.
-    if (holdConnecting) return;
-    setRecovered(true);
-    const timer = window.setTimeout(() => { setRecovered(false); }, RECOVERY_CONFIRMATION_MS);
-    return () => { window.clearTimeout(timer); };
-  }, [connection, holdConnecting]);
 
   const settingsLabel = COPY['settings.label'];
   const identityLabel = COPY['settings.identity'];
@@ -104,8 +85,11 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
           {!rail && <span className={cx(css.triggerLabel, css.wide)}>{COPY.brand}</span>}
         </button>
       </Tooltip>
+      {/* No steady state: `indicatorState` on (open, not-recovered) resolves to
+          undefined, so a healthy socket renders nothing here — the reference's
+          foot is silent when nothing is wrong. */}
       <ConnectionIndicator
-        state={rail ? undefined : indicatorState(connection, recovered, holdConnecting)}
+        state={rail ? undefined : indicatorState(connection, false, holdConnecting)}
         onReconnect={onReconnect}
         disconnectedLabel={COPY['connection.error']}
         reconnectLabel={COPY['connection.retry']}

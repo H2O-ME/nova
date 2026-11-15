@@ -170,19 +170,20 @@ describe('message rows', () => {
       text: 'first thought\n\nsecond thought\nstill typing',
       running: true,
     }));
-    expect(live).toContain('正在分析请求');
+    expect(live).toContain('正在思考');
     expect(live).toContain('second thought');
     expect(live).not.toContain('still typing');
     expect(live).toContain('data-preview');
     expect(live).toContain('data-streaming');
     expect(live).not.toContain('data-expanded');
-    // Settled: the work is named, and the preview is the text's own first line
-    // (the harness's `firstLine`); the whole body is one click away.
+    // Settled: the reference names the work 「思考」 (the duration is appended at
+    // runtime, so a static pass sees the bare label), and the preview is the
+    // text's own first line; the whole body is one click away.
     const settled = renderToStaticMarkup(createElement(ReasoningRow, {
       text: 'first thought\n\nsecond thought',
       running: false,
     }));
-    expect(settled).toContain('已完成分析');
+    expect(settled).toContain('思考');
     expect(settled).toContain('first thought');
     expect(settled).not.toContain('data-streaming');
     // The row's title is only the settled label — the reasoning text never

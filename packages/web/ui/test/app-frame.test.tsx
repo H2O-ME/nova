@@ -52,9 +52,11 @@ describe('AppFrame track easing', () => {
   it('eases the tracks only in the animating state', () => {
     // Unconditional easing is the defect: it makes every viewport-driven width
     // change animate, and the centre column visibly chases the window edge.
+    // Timing (2026-11-14): the reference sidebar shell's own `duration-200
+    // ease-out` width transition (--nova-dur-panel / --nova-ease-panel).
     expect(rule('.frame')).not.toContain('transition');
     expect(rule('.frame[data-animating]'))
-      .toContain('transition: grid-template-columns var(--nova-dur-slow) var(--nova-ease-inout)');
+      .toContain('transition: grid-template-columns var(--nova-dur-panel) var(--nova-ease-panel)');
     expect(rule('.frame[data-dragging]')).toContain('transition: none');
   });
 

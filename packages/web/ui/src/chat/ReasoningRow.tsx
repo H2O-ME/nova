@@ -10,17 +10,17 @@
  * The running label is announced through the visually-hidden span the harness
  * uses; the settled row's title carries the completion on its own.
  */
-import { memo, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { DisclosureRow } from './DisclosureRow.js';
 import { ThinkGlyph14 } from './glyphs.js';
 import { MarkdownText } from './markdown/MarkdownText.js';
 import a11yCss from './accessibility.module.css';
 import css from './ReasoningRow.module.css';
 
-/** The streaming row's title (`message.stepProcess.thinking`). */
-const RUNNING_LABEL = '正在分析请求';
-/** The settled row's title (`message.stepProcess.done.thinking`). */
-const DONE_LABEL = '已完成分析';
+/** The streaming row's title (the reference's `chat.reasoning.thinking`). */
+const RUNNING_LABEL = '正在思考';
+/** The settled row's title (the reference's `chat.reasoning.thought`). */
+const DONE_LABEL = '思考';
 
 /** The settled row's preview: the thought's first line. */
 function firstLine(text: string): string {
@@ -68,6 +68,28 @@ export const ReasoningRow = memo(function ReasoningRow({
   previewAllowed = true,
 }: ReasoningRowProps): JSX.Element {
   const [expanded, setExpanded] = useState(false);
+  // The reference shows how long the model thought (`chat.reasoning.duration*`):
+  // the settled row reads 「思考 12 秒」. The clock starts on the first streaming
+  // frame and stops when the block settles.
+  const startedAt = useRef<number | null>(null);
+  const [duration, setDuration] = useState<number | null>(null);
+  useEffect(() => {
+    if (running) {
+      startedAt.current ??= Date.now();
+      return;
+    }
+    const started = startedAt.current;
+    if (started === null) return;
+    startedAt.current = null;
+    setDuration(Math.max(1, Math.ceil((Date.now() - started) / 1000)));
+  }, [running]);
+  // Auto-collapse on settle: a row the reader opened while it streamed folds
+  // back once the thought lands, unless they folded it themselves (the
+  // reference's `autoCollapseKey` rule reads the same).
+  const interacted = useRef(false);
+  useEffect(() => {
+    if (!running && !interacted.current) setExpanded(false);
+  }, [running]);
 
   // The harness's summary source: while streaming it is the last completed
   // paragraph's first line (a half-written line is not a summary), once
@@ -76,6 +98,9 @@ export const ReasoningRow = memo(function ReasoningRow({
   const summaryText = running ? latestCompletedParagraphFirstLine(text) : firstLine(text);
   const summary = summaryText.replaceAll('**', '');
   const preview = !expanded && summary !== '' && (running || previewAllowed);
+  const title = running
+    ? RUNNING_LABEL
+    : duration === null ? DONE_LABEL : `${DONE_LABEL} 持续了 ${duration} 秒`;
 
   return (
     <div
@@ -92,11 +117,11 @@ export const ReasoningRow = memo(function ReasoningRow({
         titleClassName={css.title}
         chevronClassName={css.chevron}
         icon={<ThinkGlyph14 />}
-        title={running ? RUNNING_LABEL : DONE_LABEL}
+        title={title}
         open={expanded}
         expandable
         expandOnRowClick
-        onToggle={() => { setExpanded((value) => !value); }}
+        onToggle={() => { interacted.current = true; setExpanded((value) => !value); }}
         collapsedContent={preview ? (
           <>
             <span className={css.separator} aria-hidden="true" />

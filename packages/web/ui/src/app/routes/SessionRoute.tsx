@@ -5,7 +5,7 @@
  * `conversationPhase`, `flowRows`) are pure functions of the state it receives,
  * so the route invents no state of its own.
  */
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { Action } from '../../state.js';
 import type { UiState } from '../../state.js';
 import type { ClientFrame } from '../../types.js';
@@ -14,7 +14,7 @@ import { flowRows, turnStatus } from '../../flow.js';
 import { conversationPhase, awaitingFirstTurn } from '../../conversation/phase.js';
 import { ConversationRoot } from '../../conversation/ConversationRoot.js';
 import { HeroShell, WorkspaceRow } from '../../conversation/EmptyHero.js';
-import { RecentSessions } from '../../conversation/RecentSessions.js';
+import { DraftSuggestions } from '../../conversation/DraftSuggestions.js';
 import { SessionHeader } from '../../conversation/SessionHeader.js';
 import { ChatView } from '../../chat/ChatView.js';
 import { TraceView } from '../../trace/TraceView.js';
@@ -124,6 +124,34 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
     replaying: state.historyPending,
   });
 
+  // The hero's suggestion chips stage a prompt in the draft (never send — the
+  // reference's `replacePlainPrompt`). The request carries a `seq` so the same
+  // chip picked twice is two events; the composer consumes it by that number.
+  const [draftRequest, setDraftRequest] = useState<{ text: string; seq: number } | null>(null);
+  const stagePrompt = useCallback((text: string): void => {
+    setDraftRequest((previous) => ({ text, seq: (previous?.seq ?? 0) + 1 }));
+  }, []);
+
+  // The workspace chip's picker offers what the reader can switch TO: the
+  // workspaces this browser has opened (local memory), then every workspace the
+  // session index knows about (the host's own history — the reference's list
+  // comes from the same place). The second source matters: without it a first
+  // visit listed only 「打开文件夹…」, so a switch to a workspace the history
+  // already knew still forced the OS dialog.
+  const workspaceChoices = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const push = (dir: string | undefined): void => {
+      if (dir === undefined || dir === '') return;
+      if (seen.has(dir)) return;
+      seen.add(dir);
+      out.push(dir);
+    };
+    for (const dir of props.recentWorkspaces) push(dir);
+    for (const item of state.sessions ?? []) push(item.workspace);
+    return out;
+  }, [props.recentWorkspaces, state.sessions]);
+
   return (
     <ConversationRoot
       phase={phase}
@@ -147,15 +175,10 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
         />
       )}
       hero={<HeroShell />}
-      heroRecent={
-        <RecentSessions
-          items={state.sessions}
-          currentFile={state.meta?.sessionFile}
-          // A bare `resume`: the kernel reads the log's workspace marker and
-          // re-roots the tools itself (`controller.switchSession` →
-          // `followWorkspaceOf`), so the front end never re-states a workspace
-          // it only knows as a display name.
-          onOpen={(file) => { send({ type: 'resume', file }); }}
+      heroSuggestions={
+        <DraftSuggestions
+          onPick={stagePrompt}
+          disabled={composerDisabled(state)}
         />
       }
       session={
@@ -241,6 +264,7 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
             onReferenceFile={props.onReferenceFile}
             pickedFile={props.pickedFile}
             onPickedFileConsumed={props.onPickedFileConsumed}
+            draftRequest={draftRequest}
             // The hero's workspace chip rides the card's FIRST row (the
             // reference's `contextHeader` seat) instead of a row between the
             // hero chrome and the card.
@@ -249,7 +273,7 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
                 <WorkspaceRow
                   workspace={view.workspace}
                   workspacePath={state.meta?.rootDir}
-                  recentWorkspaces={props.recentWorkspaces}
+                  recentWorkspaces={workspaceChoices}
                   onPickWorkspace={props.onPickWorkspace}
                   // No `list_directory` here: the dialog's own opening effect
                   // owns the first ask, so sending one here put TWO identical

@@ -1,157 +1,170 @@
-/* Settings modal sheet — REWRITTEN (2026-10-20) onto the Aceternity language.
- *
- * What changed and why, because "it still looks the same" was the exact
- * complaint that produced this pass:
- *
- *  - The panel gained a 1px GRADIENT HAIRLINE RING (`::before`) instead of a
- *    flat `box-shadow` elevation. A shadow only darkens the outside edge; the
- *    ring draws a light-catching arc, which is what makes a floating surface
- *    read as glass rather than as a grey rectangle.
- *  - The surface sits over a BLURRED mask, so it reads as a lit object in front
- *    of a defocused page.
- *  - The nav rail gained a GLOWING INDICATOR BAR instead of only a hover fill —
- *    a 2px accent gradient on the active cell's left edge. The old "active =
- *    slightly darker rectangle" read as a pressed button; an indicator reads as
- *    "you are here".
- *  - A soft accent bloom sits at the top of the sheet (`::after`): the "light
- *    falling on the card" that the Aceternity cards all carry.
- *
- * Every value is a `--nova-*` token, so the dark palette flips it wholesale. */
+/* Settings sheet — the reference's dialog recipe (2026-11-14, ZCode
+ * alignment): `rounded-2xl border border-popover-border bg-popover shadow-md`,
+ * entered with `fade-in-0 zoom-in-95` at `duration-100` over a `bg-black/60`
+ * scrim. That retires the whole Aceternity pass this sheet used to carry — a
+ * gradient hairline ring, an accent bloom and a 24px saturating backdrop blur.
+ * Inspected in the running app, that combination tinted the panel lavender and
+ * made the white cards inside it read as blue, which is the opposite of the
+ * reference's neutral sheet. */
 
-/* Full-viewport layer (figma Mask 501:29946): the overlay and the shared mask
-   material are the kit dialog's; this sheet adds only the stacking order above
-   the app chrome. */
+/* Settings is a FULL-WINDOW VIEW, not a dialog (2026-11-15, aligned to the
+ * reference's `WorkspaceSettingsLayer`): it covers the whole frame with the
+ * page surface, its own nav rail on the left, and no scrim. The dialog it used
+ * to be — 800px, centred, over a 60% black mask with a zoom entrance — is the
+ * "完全偏离" the operator reported: the reference never dims the app, it
+ * replaces it. */
 .overlay {
-  composes: overlay from '../kit/Dialog.module.css';
+  position: fixed;
+  inset: 0;
   z-index: 1200;
+  display: flex;
+  /* The reference floats its settings panel on the alt ground with a 6px
+     inset (`pr-1.5 pb-1.5`); the inset is what makes the page read as a panel
+     rather than as a repainted window. */
+  padding: var(--nova-space-6);
+  box-sizing: border-box;
+  background: var(--nova-surface-sunken);
 }
 
-.mask {
-  composes: mask from '../kit/Dialog.module.css';
-  /* Blurred rather than merely dimmed: the Aceternity read depends on the
-     dialog being a lit object in FRONT of a defocused page. A pure wash lets
-     hard text edges show through the panel and looks like a bug. */
-  backdrop-filter: blur(10px) saturate(0.9);
-}
-
-/* The panel's own arrival. The 8px RISE is what makes it feel placed rather
-   than switched on. Reduced motion is clamped globally in design/motion.css. */
-@keyframes modal-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.99);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Sizes to its CONTENT between a floor and a ceiling. The floor keeps the nav
- * from jumping when switching to a short section; the ceiling is viewport-derived
- * and long sections scroll their own column. */
+/* The page frame: fills the window instead of floating in it. The reference
+ * draws a 1px frame around its settings panel inset from the alt ground; a
+ * full-window surface with the nav's own seam is the same reading without the
+ * extra bevel. */
 .panel {
   position: relative;
   z-index: 1;
   display: flex;
-  width: 800px;
-  height: auto;
-  min-height: 420px;
-  max-height: calc(100vh - 2 * max(24px, var(--nova-frame-top-clearance, 24px)));
-  max-width: calc(100vw - 48px);
-  border-radius: var(--nova-radius-2xl);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
-  background: var(--nova-surface-raised);
-  backdrop-filter: blur(24px) saturate(1.4);
-  box-shadow: var(--nova-elevation-float);
-  animation: modal-enter var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-/* The hairline ring. `content-box` on one mask layer and the full box on the
- * other, XOR-composited, leaves exactly 1px of gradient visible around the edge
- * — the same recipe as `src/ui/glow-card.tsx`. A plain `border` cannot carry a
- * gradient, which is the whole reason this exists. */
-.panel::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  background: var(--nova-gradient-hairline);
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  pointer-events: none;
-}
-
-/* The bloom. Painted below content (`z-index: -1` inside the panel's own
- * stacking context) and clipped by `overflow: hidden`. */
-.panel::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--nova-glow-wash);
-  opacity: 0.5;
-  pointer-events: none;
-  z-index: -1;
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-base);
 }
 
 .panel:focus {
   outline: none;
 }
 
-/* Nav rail (figma .Setting-nav 501:29958): 188 wide, gap 18. */
+/* Nav rail (the reference's `lg:grid-cols-[268px_minmax(0,1fr)]`, 2026-11-15):
+ * 268 wide on the page surface, divided by one hairline. The 188px dialog rail
+ * belonged to the modal layout. */
 .nav {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  width: 188px;
-  padding: 22px var(--nova-space-12) 0;
+  gap: var(--nova-space-4);
+  width: 268px;
+  padding: var(--nova-space-8) var(--nova-space-8) 0;
   box-sizing: border-box;
-  /* Separator as a gradient, not a border: a solid line reads as a table edge. */
-  background: linear-gradient(to right, transparent, var(--nova-border-subtle));
+  /* One hairline, like the reference's content frame: the old rule painted the
+     column's edge as a fading gradient, which read as a glow rather than a
+     seam. */
+  border-right: 1px solid var(--nova-border-strong);
 }
 
-/* Title row (figma 501:29959): 16/500 lh24, 12px side padding. */
-.navTitle {
-  padding: 0 var(--nova-space-12);
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
+/* The reference's way out: a ghost row at the top of the rail (its
+ * `← 返回工作区`), tinted with the 3% surface so it reads as a control rather
+ * than as the first nav item. */
+.back {
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-8);
+  height: 32px;
+  padding: 0 var(--nova-space-10);
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-card);
   color: var(--nova-text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.back:hover {
+  background: var(--nova-interactive-hover);
+}
+
+.back svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.backLabel {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The page's own name is stated by the breadcrumb and by the section title;
+ * the rail keeps it for assistive tech only (the reference's rail has no
+ * "Settings" word either). */
+.navTitle {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
 }
 
 .navTitle:focus {
   outline: none;
 }
 
-/* Cell stack (figma 501:29961): gap 4. */
+/* Cell stack (figma 501:29961): gap 4.
+   Takes the column's remaining height so the foot's version line can pin to the
+   bottom (`margin-top: auto`); the rows stay top-aligned, so this changes no
+   position. `min-height: 0` is what lets the stack scroll instead of pushing
+   the foot out of the panel when many plugin pages are registered. */
 .navList {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-4);
   overflow-y: auto;
 }
 
-/* Nav cell (figma .Setting-nav-cell 501:29962): 164x40, pad (12,9,16,9), gap 8.
+/* The nav column's foot: the build's version line.
  *
- * The selected cell carries a 2px ACCENT INDICATOR rather than relying on a
- * darker slab. Measured read: at 14% black the old fill was the heaviest object
- * in a dialog whose whole point is calm navigation. */
+ * Low contrast and no chrome by intent: a version is reference data, not a
+ * destination, and at nav-cell weight it competed with the sections above it.
+ * `margin-top: auto` pins it under the growing cell stack (`.navList` takes the
+ * remaining height), so it sits on the floor of the column rather than trailing
+ * the last row. The bottom pad matches the column's own 22px top inset. */
+.navVersion {
+  margin-top: auto;
+  padding: 0 var(--nova-space-12) var(--nova-space-24);
+  font-size: var(--nova-text-size-xs);
+  line-height: 20px;
+  color: var(--nova-text-faint);
+}
+
+/* Nav cell — the reference's `SettingsSidebarButton` (2026-11-14, ZCode
+ * alignment): `h-8 rounded-xl px-2.5 gap-2 transition-colors`, the SAME 5%
+ * fill for the current row and the hovered one, ink in the primary tone in
+ * both states, and no accent anywhere.
+ *
+ * The retired version was a 40px cell carrying a 2px accent rail, an
+ * accent-tinted icon and a 500-weight label. Measured against the reference's
+ * rail, that was the loudest column in a dialog whose whole job is calm
+ * navigation: three signals for one fact. The reference states it with one
+ * fill and one ink. */
 .navCell {
   position: relative;
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
-  height: 40px;
-  padding: 9px var(--nova-space-16) 9px var(--nova-space-12);
+  height: 32px;
+  padding: 0 var(--nova-space-10);
   box-sizing: border-box;
   border: none;
   border-radius: var(--nova-radius-md);
@@ -159,13 +172,13 @@
   cursor: pointer;
   font-family: inherit;
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   font-weight: 400;
   color: var(--nova-text-secondary);
   text-align: left;
   transition:
-    background var(--nova-dur-fast) var(--nova-ease-out),
-    color var(--nova-dur-fast) var(--nova-ease-out);
+    background-color var(--nova-dur-fast) var(--nova-ease-inout),
+    color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .navCell:hover {
@@ -176,28 +189,6 @@
 .navCell.active {
   background: var(--nova-interactive-hover);
   color: var(--nova-text-primary);
-  font-weight: 500;
-}
-
-/* The indicator. A pseudo-element so it paints over the cell's own fill and is
- * independent of the text metrics. */
-.navCell.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2px;
-  height: 18px;
-  border-radius: 1px;
-  background: var(--nova-color-accent-gradient);
-  box-shadow: var(--nova-glow-inner-highlight);
-}
-
-/* The active icon takes the accent — a single small saturated mark, which is
-   what carries "current" once the fill stops shouting. */
-.navCell.active svg {
-  color: var(--nova-color-accent);
 }
 
 .navCell svg {
@@ -221,59 +212,35 @@
   flex-direction: column;
 }
 
-/* Header (figma .Header 501:29981): h54, close right. */
+/* Header: the reference's 48px top strip — drag area only, no words. */
 .header {
   flex: none;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--nova-space-8);
-  height: 54px;
-  padding: 20px var(--nova-space-14) var(--nova-space-8) var(--nova-space-10);
-  box-sizing: border-box;
+  height: 48px;
 }
 
-/* The actions seat: `margin-left: auto` is what pins the close control right. */
-.actions {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--nova-space-8);
-  margin-left: auto;
-}
-
-/* Compact close control (28×28 box, 14px glyph), round: at 12px radius on a
- * 28px box it read as a square, and a square close button is the least
- * Aceternity-shaped thing in the dialog. */
-.close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  cursor: pointer;
-  color: var(--nova-text-primary);
-  transition: background var(--nova-dur-fast) var(--nova-ease-out);
-}
-
-.close:hover {
-  background: var(--nova-interactive-hover);
-}
-
-.close svg {
-  width: 14px;
-  height: 14px;
-}
-
-/* Options area (figma Options 501:29983): scrolls. */
+/* Options area: the reference's `mx-auto w-full max-w-4xl px-8 pb-10` column.
+ * Centred with padding, not `max-width`, so the scrollbar keeps riding the
+ * column's own right edge instead of floating inside the page. */
 .options {
   flex: 1;
   min-height: 0;
-  padding: 0 var(--nova-space-24) var(--nova-space-24);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-16);
+  padding-right: max(var(--nova-space-24), calc((100% - 896px) / 2));
+  padding-bottom: var(--nova-space-32);
+  padding-left: max(var(--nova-space-24), calc((100% - 896px) / 2));
   overflow-y: auto;
+}
+
+/* The section title: the reference's `text-ui-settings-title` (24px) at
+ * semibold with tight tracking. It is the one 600-weight line on the page, and
+ * that is what gives the content column a head. */
+.pageTitle {
+  margin: 0;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--nova-text-primary);
 }

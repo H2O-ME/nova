@@ -44,7 +44,10 @@ export function SettingsOverlay(props: SettingsOverlayProps): JSX.Element {
   return (
     <SettingsPanel
       title="设置"
-      closeLabel={SETTINGS_COPY['settings.close']}
+      // The build's own version, stated at the nav column's foot. `ready` is
+      // the one frame every client receives, so no second endpoint is needed;
+      // a host that never sent one renders no line.
+      version={state.meta?.version}
       onClose={props.onClose}
       sections={(() => {
         // Which pages this product HAS is derived from the LIVE plugin roster,

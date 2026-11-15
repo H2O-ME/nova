@@ -32,10 +32,29 @@ function Svg({ children, className, box = 16 }: P & { children: JSX.Element | JS
   );
 }
 
+/** The navigation sidebar's glyph: a panel whose divider sits on the LEFT. */
 export const PanelIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2.25" />
     <path d="M6.25 2.75v10.5" />
+  </Svg>
+);
+
+/**
+ * The auxiliary panel's glyph: a panel whose divider sits on the RIGHT, with
+ * two short content lines in that column.
+ *
+ * A separate drawing rather than `PanelIcon` mirrored, because the two controls
+ * live in the same frame — sidebar collapse (top-left) and the detail panel's
+ * open button (top-right) — and a reflection is invisible at 16px: the operator
+ * read them as one control printed twice. The right column's content lines are
+ * what name this an inspector instead of a second sidebar.
+ */
+export const PanelRightIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2.25" />
+    <path d="M9.75 2.75v10.5" />
+    <path d="M11.25 6h1.5M11.25 8.75h1.5" />
   </Svg>
 );
 
@@ -136,6 +155,13 @@ export const ChevronUpIcon = (p: P): JSX.Element => (
 export const ChevronLeftIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <path d="M10 4 6 8l4 4" />
+  </Svg>
+);
+
+/** The full left arrow (a shaft plus a head) — the settings page's 返回 row. */
+export const ArrowLeftIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M12.5 8h-9M7 3.5 2.5 8 7 12.5" />
   </Svg>
 );
 

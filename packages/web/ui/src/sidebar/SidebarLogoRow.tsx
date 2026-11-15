@@ -44,7 +44,11 @@ export function SidebarLogoRow({
     ? autoCollapsed ? COPY['toggle.openAuto'] : COPY['toggle.open']
     : COPY['toggle.collapse'];
   return (
-    <div className={css.logoRow}>
+    /* The desktop shell's frameless window drags from here (Tauri reads
+       `data-tauri-drag-region` on mousedown and moves the window). The brand
+       and the toggle are child buttons, so they keep their own clicks. In a
+       browser the attribute is inert. */
+    <div className={css.logoRow} data-tauri-drag-region="">
       {wide && (
         <button
           type="button"

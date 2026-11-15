@@ -30,5 +30,5 @@ export const SHELL_COPY = {
   /** The whole app (the entry's boundary). */
   'error.label.app': '界面',
   /** The right column, when only it failed. */
-  'error.label.rightbar': '侧边栏',
+  'error.label.rightbar': '右侧面板',
 } as const;

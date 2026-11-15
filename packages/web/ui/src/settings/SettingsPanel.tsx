@@ -20,10 +20,9 @@ import { useState, useId, useRef, useEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
-import { CloseIcon } from '../icons.js';
+import { ArrowLeftIcon } from '../icons.js';
 import { cx } from '../composer/cx.js';
 import { UnsavedConfirmDialog } from './UnsavedConfirmDialog.js';
-import a11yCss from '../chat/accessibility.module.css';
 import css from './SettingsPanel.module.css';
 
 /** One nav row and its content: a section this product actually registers. */
@@ -45,15 +44,22 @@ export interface SettingsSection {
 export type LeaveIntent = { kind: 'switch'; id: string } | { kind: 'close' };
 
 export interface SettingsDialogProps {
-  /** The dialog's name, rendered as the nav title (`设置`). */
+  /** The page's name (`设置`), used as the accessible title. */
   title: string;
-  /** The close button's accessible name (`关闭`). */
-  closeLabel: string;
   sections: readonly SettingsSection[];
   /** The nav row the dialog is on (undefined falls back to the first). */
   activeId?: string | undefined;
   onSelect: (id: string) => void;
   onClose: () => void;
+  /**
+   * The running version (`ready.version`), stated at the nav column's foot.
+   *
+   * It lives here rather than beside the hero headline: a build number is an
+   * answer to "which version am I on", which is a settings question, not
+   * something the empty column is asking the reader to think about. Optional —
+   * a host that sent none renders no line at all.
+   */
+  version?: string | undefined;
   /** The dialog element, for the wrapper's focus and Escape lifetime. */
   panelRef?: MutableRefObject<HTMLDivElement | null> | undefined;
 }
@@ -66,11 +72,11 @@ export interface SettingsDialogProps {
  */
 export function SettingsDialog({
   title,
-  closeLabel,
   sections,
   activeId,
   onSelect,
   onClose,
+  version,
   panelRef,
 }: SettingsDialogProps): JSX.Element {
   const active = sections.find((section) => section.id === activeId) ?? sections[0];
@@ -84,7 +90,6 @@ export function SettingsDialog({
   }, [active?.id]);
   return (
     <div className={css.overlay} role="presentation">
-      <div className={css.mask} aria-hidden="true" onClick={onClose} />
       <div
         ref={panelRef}
         tabIndex={-1}
@@ -94,6 +99,13 @@ export function SettingsDialog({
         aria-labelledby={titleId}
       >
         <nav className={css.nav} aria-label={title}>
+          {/* The reference's settings page is a full-window view whose only
+              way out is a ghost row at the top of its own nav rail (`← 返回
+              工作区`), not a × in a dialog corner. */}
+          <button type="button" className={css.back} onClick={onClose}>
+            <ArrowLeftIcon />
+            <span className={css.backLabel}>返回工作区</span>
+          </button>
           <div className={css.navTitle} id={titleId} tabIndex={-1}>{title}</div>
           <div className={css.navList}>
             {sections.map((section) => (
@@ -112,21 +124,25 @@ export function SettingsDialog({
               </button>
             ))}
           </div>
+          {/* The nav column's foot: the build's own version, low contrast and
+              unadorned (not a badge). Renders nothing when the host never sent
+              one, so an empty seat is never left claiming a version. */}
+          {version !== undefined && version !== '' && (
+            <div className={css.navVersion}>Nova v{version}</div>
+          )}
         </nav>
         <div className={css.content}>
-          <div className={css.header}>
-            {/* The actions seat rides the header even with no section actions:
-                it carries `margin-left: auto`, which is what pushes the close
-                control to the right edge under `justify-content: space-between`.
-                Without it the button is the header's only child and lands at
-                the START edge. */}
-            <div className={css.actions} />
-            <button type="button" className={css.close} onClick={onClose}>
-              <CloseIcon />
-              <span className={a11yCss.visuallyHidden}>{closeLabel}</span>
-            </button>
+          {/* The reference's in-panel top strip: 48px of drag area, no words.
+              The page is NAMED by the section title below, so a breadcrumb here
+              only repeated it. */}
+          <div className={css.header} data-tauri-drag-region="" />
+          <div className={css.options} ref={optionsRef}>
+            {/* The section's own name over its column, the reference's
+                `text-ui-settings-title` block: without it the rail was the
+                only place a section was ever named. */}
+            {active !== undefined && <h2 className={css.pageTitle}>{active.label}</h2>}
+            {active?.content}
           </div>
-          <div className={css.options} ref={optionsRef}>{active?.content}</div>
         </div>
       </div>
     </div>
@@ -134,11 +150,11 @@ export function SettingsDialog({
 }
 
 export interface SettingsPanelProps {
-  /** The dialog's name, rendered as the nav title (`设置`). */
+  /** The page's name (`设置`), used as the accessible title. */
   title: string;
-  /** The close button's accessible name (`关闭`). */
-  closeLabel: string;
   sections: readonly SettingsSection[];
+  /** The running version, stated at the nav column's foot (see SettingsDialogProps). */
+  version?: string | undefined;
   onClose: () => void;
 }
 
@@ -147,7 +163,7 @@ export interface SettingsPanelProps {
  * @param props - see SettingsPanelProps.
  * @returns the portaled overlay tree.
  */
-export function SettingsPanel({ title, closeLabel, sections, onClose }: SettingsPanelProps): JSX.Element {
+export function SettingsPanel({ title, sections, version, onClose }: SettingsPanelProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | undefined>(sections[0]?.id);
   // The leave guard. Switching a section away (and closing the panel) unmounts
   // the one on screen; when it holds unsaved edits the loss must be ASKED, not
@@ -177,11 +193,11 @@ export function SettingsPanel({ title, closeLabel, sections, onClose }: Settings
     <>
       <SettingsDialog
         title={title}
-        closeLabel={closeLabel}
         sections={sections}
         activeId={activeId}
         onSelect={handleSelect}
         onClose={handleClose}
+        version={version}
         panelRef={panelRef}
       />
       {pendingLeave !== null && (

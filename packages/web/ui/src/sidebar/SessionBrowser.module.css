@@ -8,10 +8,17 @@
   flex-direction: column;
   box-sizing: border-box;
   padding-right: var(--nova-session-list-edge-inset);
+  /* The reference divides the nav block from the task list with a 5% rule and
+   * 12px of air (`border-t border-border/50 pt-3`). Without it the nav rows and
+   * the list header ran together as one column of rows. */
+  border-top: 1px solid var(--nova-border-subtle);
+  padding-top: var(--nova-space-12);
 }
 
 .root.rail {
   padding-right: 0;
+  border-top: none;
+  padding-top: 0;
 }
 
 .iconButton {
@@ -72,6 +79,11 @@
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
+  /* The reference's section word is `text-ui-base font-medium
+     text-foreground-subtle` — 14/500. The inherited 400 sat one step lighter
+     than the date headings right below it, so the list's own title read
+     quieter than its bands. */
+  font-weight: 500;
   line-height: 20px;
   opacity: 1;
   visibility: visible;

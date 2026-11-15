@@ -81,8 +81,14 @@
      geometry centre so the greeting keeps its breathing room under the mark. */
   margin-top: -40px;
   transform: translate(-50%, -50%);
-  color: var(--nova-text-faint);
-  opacity: 0.7;
+  /* The reference's glyph rides `text-foreground-subtlest` (its strongest ink
+     at 40% alpha — a quarter of the way from the paper to black) times its own
+     opacity-70, an EFFECTIVE 28% ink. Measured side by side, the first draft
+     (muted at 0.7) composed two and a half times denser than that, which is
+     why the mark read as a badge rather than as watermark line art. Same
+     token, one number down: 0.40 x muted equals the reference's own weight. */
+  color: var(--nova-text-muted);
+  opacity: 0.4;
   pointer-events: none;
   user-select: none;
   /* Mask, not fill: the stroke fades out downward (alpha mask, so

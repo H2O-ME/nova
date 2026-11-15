@@ -55,13 +55,22 @@
   --nova-interactive-hover-danger: rgba(236, 19, 19, 0.06);
 
   /* The composer card's own shell (2026-11-14, aligned to the operator's
-   * reference): a white card on the #f8f8f8 page, a 0.5px neutral border that
-   * deepens on hover and focus, and one soft two-layer shadow. Dark keeps its
-   * own set below (no shadow there — the reference does the same). */
+   * reference): a 0.5px neutral border that deepens on hover and focus, one
+   * soft two-layer shadow, and TWO fills — the reference's card surface is
+   * `bg-surface` (neutral 3% over the page; the gray its contextHeader strip
+   * reads as), and only the editor core inside is `bg-input` white.
+   * `--nova-surface-card` is that gray shell, `--nova-surface-input` the
+   * white core. Dark keeps its own set below (no shadow there — the
+   * reference does the same). */
+  --nova-surface-card: rgba(13, 13, 13, 0.03);
   --nova-surface-input: rgb(255, 255, 255);
   --nova-input-border: rgba(13, 13, 13, 0.1);
   --nova-input-border-hover: rgba(13, 13, 13, 0.15);
   --nova-input-border-focused: rgba(13, 13, 13, 0.15);
+  /* The reference splits the elevation across the two fills: the gray card
+   * takes the big soft drop (`shadow-xl/5`), the white editor core the tight
+   * two-layer one (`--shadow-composer-soft`). Two tokens, one per owner. */
+  --nova-elevation-card: 0 20px 25px -5px rgb(0 0 0 / 5%), 0 8px 10px -6px rgb(0 0 0 / 5%);
   --nova-elevation-composer: 0 1px 3px rgb(0 0 0 / 4%), 0 6px 18px rgb(0 0 0 / 4%);
 
   /* Named floors for one-off roles that still deserve a word.
@@ -86,9 +95,11 @@
 
   /* Material recipes: the blocking mask over the page, the light wash used by
    * drag overlays, and the menu's backdrop blur. */
-  --nova-material-mask: rgba(15, 23, 38, 0.32);
+  /* 2026-11-14 (ZCode alignment): its dialog overlay is `bg-black/60` with a
+     2px backdrop blur. The old cool 32% wash was a tinted glass, not a scrim. */
+  --nova-material-mask: rgba(0, 0, 0, 0.6);
   --nova-material-mask-drop: rgba(255, 255, 255, 0.7);
-  --nova-material-mask-blur: none;
+  --nova-material-mask-blur: blur(2px);
   --nova-material-menu-backdrop: blur(40px) saturate(150%);
 }
 
@@ -116,11 +127,15 @@ body[data-nova-dark] {
   --nova-interactive-hover-danger: rgba(242, 90, 90, 0.15);
 
   /* Composer shell, dark: same slots, no shadow (the reference's dark theme
-   * drops it too — a soft shadow is invisible on this ground). */
+   * drops it too — a soft shadow is invisible on this ground). The card shell
+   * is a translucent lift over the dark page, the editor core the raised
+   * tone. */
+  --nova-surface-card: rgba(255, 255, 255, 0.03);
   --nova-surface-input: rgb(38, 42, 49);
   --nova-input-border: rgba(255, 255, 255, 0.12);
   --nova-input-border-hover: rgba(255, 255, 255, 0.2);
   --nova-input-border-focused: rgba(255, 255, 255, 0.2);
+  --nova-elevation-card: 0 0 rgb(0 0 0 / 0%);
   --nova-elevation-composer: 0 0 rgb(0 0 0 / 0%);
 
   --nova-surface-menu: rgba(42, 44, 50, 0.62);

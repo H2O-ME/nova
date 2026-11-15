@@ -9,7 +9,8 @@
  *    name elsewhere, and the hero speaks to the reader);
  *  - the mark is our own artwork — the harness's fish is its brand, and its
  *    SMIL path morph only makes sense for that geometry; ours is a four-point
- *    star inside an orbit (a nova), riding the same CSS sway;
+ *    star inside an orbit (a nova), painted as static line art behind the
+ *    greeting (`HeroBackdrop`, below);
  *  - the workspace chip is exported as its own `WorkspaceRow` rather than living
  *    inside `HeroShell`. The reference does the same (its `HeroShell` renders an
  *    empty `.body` and `heroWorkspaceRow` is a SIBLING of it, inside the
@@ -101,9 +102,10 @@ export function workspaceMenuItems(
 
 /**
  * The hero mark: a four-point star inside a tilted orbit ring — a nova, the
- * same artwork the 34px headline mark carried, promoted to the empty state's
+ * same artwork the 34px headline mark carried, demoted to the empty state's
  * background line art (the reference's own move: its brand glyph is a large
- * faint outline centred behind the greeting, not a badge in the line).
+ * faint outline centred behind the greeting, not a badge in the line). Mounted
+ * inside `HeroShell`'s band, anchored to its centre, overflowing it.
  *
  * Decorative — hidden from the accessibility tree and from hit-testing; the
  * headline above it carries the words.
@@ -119,18 +121,41 @@ export function HeroBackdrop(): JSX.Element {
       fill="none"
       aria-hidden="true"
     >
-      <g stroke="currentColor" fill="none" strokeWidth="1.4">
-        {/* The orbit ring and the star, both re-centred on (200, 160) and
-            scaled from the 32px mark's own geometry (32-box × 9 ≈ 288px star
-            span inside the 400px box). */}
-        <g transform="translate(200 160) scale(9)">
-          <ellipse rx="14.2" ry="6.4" transform="rotate(-32)" strokeWidth="0.17" />
-          <path
-            transform="translate(-16 -16)"
-            d="M16 3.4c1.5 6.2 2.6 8.6 5.1 10.6 2.1 1.7 5.1 2.3 9.5 2 -4.4 1.3-7.2 2.4-9.2 4.2 -2.1 1.9-3.4 4.4-4.6 10.4 -1.2-6-2.5-8.5-4.6-10.4 -2-1.8-4.8-2.9-9.2-4.2 4.4-.3 7.4-.9 9.5-2.6 2.5-2 3.5-4.4 5.1-10z"
-            strokeWidth="0.17"
-          />
-        </g>
+      <g
+        stroke="currentColor"
+        fill="none"
+        strokeWidth="1"
+        /* The reference's glyph FILLS its 400x320 box (its path runs the full
+           viewBox); this composition leaves ~40px of air on every side, so at
+           the same 400px container it measured ~340px wide against the
+           reference's ~440 — a smaller mark reading as a badge. Scaling the
+           composition 1.14 into the box restores the reference's footprint
+           without touching the drawing. `non-scaling-stroke` keeps the 1px
+           hairline (the reference declares no width and inherits 1px). */
+        transform="matrix(1.14 0 0 1.14 -28 -24)"
+      >
+        {/* A full-box composition (the reference's glyph fills its 400px box;
+            the first drawing's small star inside a wide flat orbit read as a
+            bird): one tilted orbit ring, one large four-point nova spanning
+            the middle, two companion sparkles riding the ring. The lower third
+            washes out under the sheet's downward mask — same as the
+            reference's own glyph. Every stroke is 1px, the reference's own
+            (its svg declares no width and inherits the 1px default); the
+            earlier 1.5px star was a second source of the "badge, not
+            watermark" read. */}
+        <ellipse cx="200" cy="164" rx="168" ry="112" transform="rotate(-16 200 164)" vectorEffect="non-scaling-stroke" />
+        <path
+          d="M200 42 C209 120 240 151 318 160 C240 169 209 200 200 278 C191 200 160 169 82 160 C160 151 191 120 200 42 Z"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d="M322 78 c1.7 6.8 2.8 9 5.6 11.2 c-2.8 2.2-3.9 4.4-5.6 11.2 c-1.7-6.8-2.8-9-5.6-11.2 c2.8-2.2 3.9-4.4 5.6-11.2 Z"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d="M86 226 c1.3 5.2 2.1 6.9 4.2 8.6 c-2.1 1.7-2.9 3.4-4.2 8.6 c-1.3-5.2-2.1-6.9-4.2-8.6 c2.1-1.7 2.9-3.4 4.2-8.6 Z"
+          vectorEffect="non-scaling-stroke"
+        />
       </g>
     </svg>
   );
@@ -146,11 +171,19 @@ const TITLE_SIZE_MAX = 30;
 const TITLE_SIZE_MIN = 20;
 
 /**
- * Render the hero chrome (the greeting line only; the brand mark is
- * `HeroBackdrop`, mounted by `ConversationRoot` on the full-height hero
- * region — this element is a 34px band and cannot host scenery, the lesson
- * two aurora attempts recorded).
+ * Render the hero chrome (the greeting line with the brand line art behind it).
  *
+ * The mark IS mounted here (2026-11-14, second correction): the reference's
+ * own structure anchors its glyph to the GREETING CONTAINER's centre —
+ * `absolute left-1/2 top-1/2 -mt-10` inside the same `max-w-2xl` flex column
+ * the greeting `<p>` lives in, the greeting itself `relative z-10` above it —
+ * and lets the absolute art overflow the band. The aurora lesson stands for
+ * INSET-0 scenery (a wash filling its box paints into 34px here and reads as
+ * nothing), but an overflow-anchored mark is exactly how the reference gets a
+ * 400px glyph out of a one-line band. First attempt mounted it on the
+ * full-height scrollBody instead: its centre fell behind the opaque composer
+ * card and only a stray arc survived the downward mask — the 「线框几乎看不见」
+ * screenshot.
  * The headline is the clock-greeted sentence, fitted to ONE line: squeezed, the
  * type shrinks between 30 and 20px (a hidden probe measured against the
  * headline's live width, the size written straight to a CSS variable) before
@@ -228,6 +261,10 @@ export function HeroShell(): JSX.Element {
        * Keeping a copy in this 34px box would be a duplicate that can never be
        * seen.
        */}
+      {/* The brand line art, anchored to THIS band's centre and overflowing it
+          (the reference's own move; see the doc comment above). The greeting
+          rides `.stack` at z-index 1, above the mark. */}
+      <HeroBackdrop />
       {/* The fit probe: the sentence at its baseline size, unpainted and
           unhit-testable. It carries the SAME text as the headline — that is
           the whole measurement. */}

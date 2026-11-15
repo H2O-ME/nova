@@ -35,6 +35,13 @@
      whichever descendant actually scrolls. */
 }
 
+/* The model menu's own width: the reference's composer model dropdown is a
+   fixed `w-72` (288px), not a content-sized card — a fixed column keeps the
+   rows' trailing checks on one axis while the catalog loads. */
+.card[data-model-menu] {
+  width: 288px;
+}
+
 .status,
 .empty {
   padding: var(--nova-space-8);
@@ -74,47 +81,53 @@
 }
 
 .group + .group {
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
+/* Group heading: the reference's menu label at 12/18 in the subtle ink
+   (`text-ui-sm text-foreground-subtle`), not an 11px caption — at caption size
+   the group read as a stray line above the rows instead of a section name. */
 .groupTitle {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: var(--nova-space-4) 7px var(--nova-space-2);
+  padding: var(--nova-space-6) var(--nova-space-8) var(--nova-space-2);
   /* The sticky heading covers rows scrolling under it, so it needs the
      overlay fill rather than the card's own transparent background: the
      reference's ModelSelect does the same (`--nova-surface-menu`, the
      near-opaque macOS variant of the menu fill). */
   background: var(--nova-surface-menu);
   color: var(--nova-text-muted);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 12px;
+  line-height: 18px;
   font-weight: 500;
 }
 
+/* The row: the reference's dropdown item, `min-h-8 gap-2 px-2 py-1` with the
+   item rung's 6px corner. It was 34 tall on a 16px corner with 5/7 pads — a
+   padded lozenge where the reference draws a dense 32px line. */
 .option {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--nova-space-6);
+  gap: var(--nova-space-8);
   width: auto;
   min-width: 100%;
-  min-height: 34px;
-  padding: 5px 7px;
+  min-height: 32px;
+  padding: var(--nova-space-4) var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-xs);
   outline: none;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
+  /* `transition-colors`, the reference's own: the pointer only ever changes
+     colour on a row, and a per-property 180ms list was also easing properties
+     no state touches. */
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .option:hover:not(:disabled),
@@ -139,9 +152,9 @@
 .optionLabel {
   overflow: hidden;
   color: inherit;
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -155,17 +168,16 @@
   white-space: nowrap;
 }
 
-/* Selection marker is the trailing check, not a fill. Both it and the icon
-   glyph are set to the row's 14px asset size (the shared set draws a 16px box
-   and the sheet steps it down, the same way the two triggers do). */
+/* Selection marker is the trailing check, not a fill. It rides the reference's
+   own `size-4` in the subtle ink (the row's label carries the contrast). */
 .check {
   display: grid;
   place-items: center;
-  flex: 0 0 14px;
-  color: var(--nova-text-primary);
+  flex: 0 0 16px;
+  color: var(--nova-text-muted);
 }
 
 .check svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }

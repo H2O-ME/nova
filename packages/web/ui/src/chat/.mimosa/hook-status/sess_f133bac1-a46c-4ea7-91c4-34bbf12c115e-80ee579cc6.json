@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-11-15T03:30:22.447Z",
+  "sessionId": "sess_f133bac1-a46c-4ea7-91c4-34bbf12c115e",
+  "event": "PostToolUse",
+  "toolName": "Edit",
+  "file": "D:\\web\\agent\\packages\\web\\ui\\test\\chat-markdown-dom.test.ts",
+  "outcome": "inconclusive",
+  "coverage": "partial",
+  "findingCount": 0,
+  "durationMs": 10,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

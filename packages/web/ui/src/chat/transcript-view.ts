@@ -46,14 +46,17 @@ const POLICIES: Readonly<Record<TranscriptViewMode, ChatPresentationPolicy>> = {
   },
   standard: {
     mode: 'standard',
-    foldCompletedTurns: true,
-    stepGrouping: 'collapsed',
+    /* The reference streams a settled turn's work rows in place — its
+       transcript has no fold between the prompt and the answer. The default
+       therefore keeps every row visible; `compact` is the mode that folds. */
+    foldCompletedTurns: false,
+    stepGrouping: 'none',
     liveProcessDetail: true,
     settledReasoningPreview: true,
   },
   detailed: {
     mode: 'detailed',
-    foldCompletedTurns: true,
+    foldCompletedTurns: false,
     stepGrouping: 'history',
     liveProcessDetail: true,
     settledReasoningPreview: true,

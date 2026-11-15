@@ -99,20 +99,20 @@ describe('palette invariants', () => {
     }
   });
 
-  it('the selected session row is distinguishable from a hovered one', () => {
-    // The row used to paint `--nova-interactive-hover` for BOTH states. The
-    // contract: selection carries its own identity. The 2026-10 answer was the
-    // accent; measured against the reference's sidebar the blue row + rail was
-    // the loudest colour in the chrome, so selection is now the STRONGER rung
-    // of the same neutral (hover 5.5% ink, selected 12%) — distinct by
-    // strength, not by hue.
+  it('the selected session row follows the reference wash', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment). The earlier contract made
+    // selection a STRONGER rung than hover (5.5% vs 12%) so the two states could
+    // never be confused. The reference does the opposite: `--color-selected` is
+    // the SAME 5% ink wash as `--color-surface-hover`, and side by side the 12%
+    // block read as a filled tile inside a flat list. The contract now pins THAT
+    // fact — one wash for both states, no accent, no rail.
     const sheet = read('sidebar/SessionRow.module.css');
     const selected = /\.sessionRow\.selected\s*\{([^}]*)\}/.exec(sheet)?.[1] ?? '';
     expect(selected, 'selected row must declare its own background').toContain('background:');
-    expect(selected, 'selected row must not reuse the hover wash').not.toContain(
+    expect(selected, 'selection rides the same 5% wash as hover').toContain(
       'var(--nova-interactive-hover)'
     );
-    expect(selected, 'selection is the strong neutral rung').toContain(
+    expect(selected, 'selection must not escalate to the strong rung').not.toContain(
       'var(--nova-interactive-hover-strong)'
     );
     // The accent rail is gone with the accent surface: the sidebar carries no
@@ -140,14 +140,28 @@ describe('palette invariants', () => {
 describe('shape language', () => {
   it('the composer takes the reference card recipe (2026-11-14 ZCode alignment)', () => {
     const text = read('composer/InputBar.module.css');
+    // Two fills, two shadows, one hairline — the reference's exact split: the
+    // gray card shell (surface-card) carries the big soft drop and NO border;
+    // the white editor core (surface-input) carries the 0.5px hairline that
+    // deepens on hover/focus plus the tight two-layer shadow. Both 16px.
     const card = /^\.card \{([^}]*)\}/m.exec(text)?.[1] ?? '';
     expect(card, 'the composer takes the 16px corner').toContain('var(--nova-radius-lg)');
-    expect(card, 'the composer carries the soft two-layer shadow').toContain(
-      'var(--nova-elevation-composer)'
+    expect(card, 'the gray shell carries the big soft drop').toContain(
+      'var(--nova-elevation-card)'
     );
-    expect(card, 'the composer border rides the input-border token').toContain(
+    expect(card, 'the card surface is the 3% gray').toContain('var(--nova-surface-card)');
+    expect(card, 'the hairline belongs to the core, not the shell').not.toContain(
       'var(--nova-input-border)'
     );
+    const sheet = /^\.sheet \{([^}]*)\}/m.exec(text)?.[1] ?? '';
+    expect(sheet, 'the white core takes the 16px corner').toContain('var(--nova-radius-lg)');
+    expect(sheet, 'the core border rides the input-border token').toContain(
+      'var(--nova-input-border)'
+    );
+    expect(sheet, 'the core carries the tight two-layer shadow').toContain(
+      'var(--nova-elevation-composer)'
+    );
+    expect(sheet, 'the core fill is the input surface').toContain('var(--nova-surface-input)');
     expect(text, 'the send control must not paint the accent ramp').not.toContain(
       'var(--nova-color-accent-gradient)'
     );

@@ -46,8 +46,10 @@
   overflow: hidden;
   flex: 1 1 auto;
   color: var(--nova-text-muted);
-  font-size: var(--nova-content-font-size-secondary, 13px);
-  line-height: calc(20px + var(--nova-content-font-delta-secondary, 0px));
+  /* The reference reads every work row at `text-ui-base` (14px); the older
+     caption rung (13) made the stream one size smaller than the reference's. */
+  font-size: var(--nova-content-font-size, 14px);
+  line-height: calc(20px + var(--nova-content-font-delta, 0px));
   white-space: nowrap;
 }
 
@@ -74,11 +76,17 @@
   display: none;
 }
 
-/* The compact document inside carries its own type scale and color; this rule
-   only indents it under the title and gives the flex row a shrinkable box. */
+/* The thought body: the reference indents it under a thin vertical rule and
+ * caps it at 240px (`ml-2 border-l pl-3.5` + `max-h-60 overflow-auto`), so a
+ * long reasoning run scrolls inside its own block instead of pushing the rest
+ * of the turn off screen. */
 .thinkBody {
-  /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
-  padding: var(--nova-space-4) 0 var(--nova-space-4) calc(22px + var(--nova-content-font-delta, 0px));
+  box-sizing: border-box;
+  max-height: 240px;
+  margin-left: var(--nova-space-8);
+  padding: var(--nova-space-12) 0 var(--nova-space-8) var(--nova-space-14);
+  border-left: 1px solid var(--nova-border-strong);
+  overflow-y: auto;
   min-width: 0;
   /* W2: the thought reveals like every other disclosure instead of appearing
      whole. Opacity + a short rise is the only motion this content-sized box can

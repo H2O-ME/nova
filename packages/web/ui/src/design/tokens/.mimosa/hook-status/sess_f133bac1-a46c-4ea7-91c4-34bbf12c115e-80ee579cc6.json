@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-11-14T17:11:12.358Z",
+  "sessionId": "sess_f133bac1-a46c-4ea7-91c4-34bbf12c115e",
+  "event": "PostToolUse",
+  "toolName": "Edit",
+  "file": "D:\\web\\agent\\packages\\web\\ui\\src\\conversation\\EmptyHero.tsx",
+  "outcome": "inconclusive",
+  "coverage": "partial",
+  "findingCount": 0,
+  "durationMs": 13,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

@@ -13,7 +13,7 @@
  * `--nova-conversation-viewport-height` (both off the scroll body, which is
  * also the scrollport the transcript finds via `[data-conversation-scroll]`).
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   handleWidth,
@@ -22,7 +22,6 @@ import {
   writeWidthPreference,
 } from './content-width.js';
 import type { ConversationPhase } from './phase.js';
-import { HeroBackdrop } from './EmptyHero.js';
 import { wheelDeltaY } from '../composer/composer-measure.js';
 import css from './ConversationRoot.module.css';
 
@@ -44,14 +43,12 @@ export interface ConversationRootProps {
   /** Hero chrome (`conversation.hero`): the centered brand block above the card. */
   hero?: ReactNode;
   /**
-   * The hero's recent-session list, rendered BELOW the composer card.
-   *
-   * A sibling of the composer seat rather than a member of the stack inside it:
-   * the seat publishes its own height as `--nova-composer-height` (the band
-   * floating chat chrome clears), and rows under the card are hero content, not
-   * composer chrome. Hero phase only — a landing session replaces the column.
+   * The hero's suggestion chips, rendered BELOW the composer card — the
+   * reference's `ConversationDraftSuggestedPrompts` seat (`mt-6` under the
+   * card). Sibling of the composer seat for the same reason the composer
+   * chrome is: a chip strip is hero content, not composer chrome.
    */
-  heroRecent?: ReactNode;
+  heroSuggestions?: ReactNode;
   /** The transcript occupant (`conversation.session`), rendered in `.viewArea`. */
   session?: ReactNode;
   /** The composer chain output (dock cards + input card), sticky at the foot. */
@@ -164,7 +161,7 @@ export function ConversationRoot({
   phase,
   header,
   hero,
-  heroRecent,
+  heroSuggestions,
   session,
   composer,
 }: ConversationRootProps): JSX.Element {
@@ -248,6 +245,24 @@ export function ConversationRoot({
   }, [publishWidths]);
 
   const heroPhase = phase === 'hero';
+
+  /* The dock entrance (2026-11-14, ZCode alignment): the reference animates its
+     bottom dock in whenever the dock changes mode, and leaves the FIRST mount
+     still (`AnimatePresence initial={false}`). Same rule here — only a
+     hero/settling → active transition earns `data-dock-entering`; opening an
+     existing conversation mounts straight into active and must not move. The
+     flag is cleared on a timer rather than `animationend` because the reduced-
+     motion clamp (1ms) may not deliver that event in every engine. */
+  const [dockEntering, setDockEntering] = useState(false);
+  const lastPhase = useRef<ConversationPhase>(phase);
+  useEffect(() => {
+    const from = lastPhase.current;
+    lastPhase.current = phase;
+    if (from === phase || phase !== 'active') return undefined;
+    setDockEntering(true);
+    const timer = setTimeout(() => { setDockEntering(false); }, 300);
+    return () => { clearTimeout(timer); };
+  }, [phase]);
   const composerStack = (
     <div className={heroPhase ? `${css.composerStack} ${css.composerHero}` : css.composerStack}>
       {/* Hero chrome, then the composer. The workspace chip that used to ride
@@ -264,22 +279,31 @@ export function ConversationRoot({
   );
 
   return (
-    <div ref={rootResizeRef} className={css.root} data-phase={phase}>
+    <div
+      ref={rootResizeRef}
+      className={css.root}
+      data-phase={phase}
+      data-dock-entering={dockEntering || undefined}
+    >
       {header?.({ hidden: phase !== 'active' })}
       <div className={css.body}>
         {/* `data-conversation-body` anchors the composer's wheel chaining
             (InputBar) and the width handles' wheel forwarding; the scrollport
             itself is the transcript's Viewport under it. */}
         <div className={css.scrollBody} data-conversation-body="">
-          {/* The empty state's background line art: full-height hero region
-              only (HeroShell's own box is a 34px band — the aurora lessons).
-              Hero phase only; a landing session replaces the column. */}
-          {heroPhase && <HeroBackdrop />}
+          {/* The empty state's background line art lives in the hero chrome
+              itself (HeroShell) — anchored to the greeting band's centre, the
+              reference's own structure. A landing session replaces the column. */}
           {session === undefined ? null : <div className={css.viewArea}>{session}</div>}
           {composerSeat}
-          {/* Below the card, outside the seat: see `heroRecent` on the props. */}
-          {heroPhase && heroRecent !== undefined && (
-            <div className={css.heroRecent}>{heroRecent}</div>
+          {/* Directly under the card, like the reference's chip strip. The
+              column ENDS here: the reference's draft empty state is the mark,
+              the greeting, the card and the chips, and the session history
+              already lives in the sidebar's task list — a second copy under
+              the card (the retired `heroRecent`) put two lists of the same
+              sessions on one screen and pushed the hero block off balance. */}
+          {heroPhase && heroSuggestions !== undefined && (
+            <div className={css.heroSuggestions}>{heroSuggestions}</div>
           )}
         </div>
         {/* Width handles only while a transcript is on screen; the hero has no

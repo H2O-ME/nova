@@ -20,10 +20,15 @@
    same pixels. The 2026-10 answer was the accent: a tinted wash plus a solid
    rail. Measured against the reference's sidebar, that blue row + rail was the
    strongest colour in the whole chrome — the one element that made the app read
-   as 「卡通」. Selection is now a stronger rung of the SAME neutral the pointer
-   uses: hover 5.5% ink, selected 12%. Distinct by strength, not by hue. */
+   as 「卡通」. It then became a 12% rung of the same neutral.
+ *
+ * ALIGNED BACK TO THE REFERENCE (2026-11-15): its `--color-selected` is the
+ * SAME 5% ink wash as `--color-surface-hover` — the current row is a whisper,
+ * not a filled card. The 12% block was the heaviest shape in the sidebar and
+ * read as a "selected tile" next to the reference's flat list. Hue stays
+ * neutral (the accent-rail version was the 卡通 one). */
 .sessionRow.selected {
-  background: var(--nova-interactive-hover-strong);
+  background: var(--nova-interactive-hover);
 }
 
 /* Both rows are role=treeitem elements rather than buttons (the reference
@@ -202,15 +207,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
-  line-height: 16px;
+  /* The reference's meta line is `text-ui-base text-foreground-subtle` — 14px,
+     not a caption: the workspace name and the stamp are the row's second line
+     and read at the same size as the title above them. */
+  font-size: 14px;
+  line-height: 20px;
   color: var(--nova-text-muted);
 }
 
 .metaTime {
   flex: none;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 14px;
+  line-height: 20px;
   color: var(--nova-text-muted);
 }
 

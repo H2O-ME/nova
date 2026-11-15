@@ -1,0 +1,106 @@
+/* Hero suggestion chips — the reference's `ConversationDraftSuggestedPrompts`
+ * (`layout="chips"`), values taken from its Button `variant=outline size=lg`
+ * plus that component's own class list. */
+
+/* The strip scrolls horizontally instead of wrapping: a narrow column must
+ * never stack four chips into a two-row block under the card. The scrollbar is
+ * hidden — the reference hides it too — because a 4px bar under a hero chip row
+ * reads as damage. */
+.root {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.root::-webkit-scrollbar {
+  display: none;
+}
+
+/* `w-max` + `mx-auto`: the group is as wide as its chips and centred while it
+ * fits, so the row stays optically centred under the 672 column. */
+.group {
+  display: flex;
+  width: max-content;
+  margin: 0 auto;
+  align-items: center;
+  gap: var(--nova-space-16);
+}
+
+/* The chip: 32px, the 8px control corner, 12px side pads, 6px gap, 14px at
+ * normal weight. Icon and label rest at 70% and step to full on hover — that
+ * opacity pair, not a colour change, is what the reference does. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--nova-space-6);
+  box-sizing: border-box;
+  height: 32px;
+  min-width: 0;
+  padding: 0 var(--nova-space-12);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-sm);
+  background: transparent;
+  color: var(--nova-text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+  /* The waterfall (see the shared keyframe): 260ms settles, each chip 65ms
+     behind the one before it, from 12px above with a top-down clip wipe. */
+  animation: nova-chip-waterfall var(--nova-dur-slow) var(--nova-ease-out)
+    var(--nova-chip-delay, 0ms) both;
+  transition:
+    background-color var(--nova-dur-fast) var(--nova-ease-inout),
+    border-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+/* The reference's `hover:bg-input/50` on a paper ground: half-white reads as
+ * the same one-step lift the composer's raised plane gives. */
+.chip:hover:not(:disabled) {
+  border-color: var(--nova-input-border-hover);
+  background: var(--nova-surface-raised);
+}
+
+.chip:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--nova-focus-ring-color, var(--nova-color-accent));
+  outline-offset: 1px;
+}
+
+.icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+  transition: opacity var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.label {
+  min-width: 0;
+  max-width: 256px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+  transition: opacity var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.chip:hover:not(:disabled) .icon,
+.chip:hover:not(:disabled) .label {
+  opacity: 1;
+}

@@ -74,9 +74,12 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--nova-space-8);
-  height: 60px;
+  /* The reference's title row is `h-12` (48px) with its own `top-1.5` offset;
+   * the 60 here left the nav 12px lower than the reference's and made the
+   * column's first screen read slack. */
+  height: 48px;
   padding: var(--nova-space-8) 0 var(--nova-space-8) var(--nova-space-4);
-  margin-bottom: var(--nova-space-4);
+  margin-bottom: var(--nova-space-12);
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -310,9 +313,12 @@
   background: var(--nova-interactive-hover);
 }
 
+/* The active destination rides the same 5% wash as selection (the reference's
+   `bg-selected`, 2026-11-15): a nav row that paints 12% reads as a card inside
+   a list of rows. */
 .pluginsEntryActive,
 .pluginsEntryActive:hover {
-  background: var(--nova-interactive-hover-strong);
+  background: var(--nova-interactive-hover);
 }
 
 .collapsed .pluginsEntry {

@@ -241,17 +241,23 @@
    for position:fixed descendants (pickers/modals), shrinking them. */
 .composerHero {
   align-self: center;
-  /* The reference's greeting→composer seam (mb-10/sm:mb-8 → 32px at the
-     desktop breakpoint); the workspace chip moved inside the card, so the
-     stack is hero chrome + card, one seam. */
-  gap: var(--nova-space-32);
-  /* Foot inside the block. The hero now carries a second block (the recent
-     list) below the card, so this gap is no longer "air under the composer" —
-     it is the seam between START (card) and CONTINUE (list). */
-  padding-bottom: var(--nova-space-24);
-  /* Card cap + both clearances: the hero input card lands at exactly the same
-     width as the docked composer at every viewport. */
-  width: min(calc(var(--nova-hero-measure) + 2 * var(--nova-composer-side-clearance)), 100%);
+  /* The reference's greeting→composer seam, measured from its own margins:
+     the empty state's `sm:mb-8` (32px) plus the dock's `mt-3` (12px) — flex
+     children don't collapse, so the visual seam is 44px. */
+  gap: calc(var(--nova-space-32) + var(--nova-space-12));
+  /* NO foot inset (2026-11-15): this used to carry 24px as "air under the
+     composer", sized for the retired recent-session list. The chip strip now
+     sits directly under the card on its own `mt-6`, and the two 24s stacked
+     into a 48px hole — measured 48 here against the reference's 24. The
+     strip's own margins bound the block on both sides, so the stack needs no
+     foot of its own. */
+  padding-bottom: 0;
+  /* THE hero measure itself, not measure + clearance (2026-11-14, second
+     pass): the reference's card is `w-full` inside its max-w-2xl container,
+     so the card IS 672px — the earlier +32 clearance made it 704 and visibly
+     wider than the reference side by side. Narrow viewports still get the
+     clearance back as an outer bound. */
+  width: min(var(--nova-hero-measure), calc(100% - 2 * var(--nova-composer-side-clearance)));
   z-index: 1;
 }
 
@@ -273,16 +279,16 @@
   --nova-hero-measure: 672px;
 }
 
-/* The hero's recent-session shortlist, sitting under the card.
- *
- * A sibling of `.composerSeat` (not part of the stack inside it): the seat's
- * height is published as `--nova-composer-height` for floating chat chrome, and
- * rows below the card are not composer chrome. This band only holds the row;
- * the block's width axis (the composer card's own measure) belongs to
- * `RecentSessions`, which is the element that has to line up with the card. */
-.heroRecent {
+/* The hero's suggestion chips (2026-11-15, ZCode alignment): the reference
+ * seats them `mt-6` (24px) under the composer card, on the same 672 measure as
+ * the card itself. The bottom margin keeps them off the recent list without
+ * making the two blocks read as one group. */
+.heroSuggestions {
   flex: none;
-  padding-bottom: var(--nova-space-24);
+  align-self: center;
+  width: min(var(--nova-hero-measure), calc(100% - 2 * var(--nova-composer-side-clearance)));
+  margin-top: var(--nova-space-24);
+  margin-bottom: var(--nova-space-24);
   box-sizing: border-box;
 }
 
@@ -300,4 +306,16 @@
    mounted but invisible so no wrong layout flashes before the phase lands. */
 .root[data-phase='settling'] .composerSeat {
   visibility: hidden;
+}
+
+/* The dock entrance (2026-11-14, ZCode alignment). The reference wraps its
+ * bottom dock in `ConversationBottomDockTransition` and moves it in whenever
+ * the dock's mode changes: 32px from below at 96% scale, 260ms, settle-out.
+ * Nova re-seats the SAME mounted composer from the hero block to the foot of
+ * the column, and without this the re-seat was a one-frame jump — the "new
+ * session has no animation" read. `data-dock-entering` is set by the component
+ * for the length of the motion (only on hero/settling → active, never on a
+ * session opened directly), so an existing conversation still appears still. */
+.root[data-dock-entering] .composerSeat {
+  animation: nova-dock-in var(--nova-dur-slow) var(--nova-ease-out);
 }

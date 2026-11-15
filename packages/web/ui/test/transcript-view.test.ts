@@ -33,14 +33,17 @@ afterEach(() => {
 
 describe('policies', () => {
   it('maps each mode to its exact policy row', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment): the reference streams a
+    // settled turn's work rows in place, so the DEFAULT no longer folds and
+    // `compact` is the one mode that does.
     expect(presentationPolicyFor('compact')).toEqual({
       mode: 'compact', foldCompletedTurns: true, stepGrouping: 'collapsed', liveProcessDetail: false, settledReasoningPreview: false,
     });
     expect(presentationPolicyFor('standard')).toEqual({
-      mode: 'standard', foldCompletedTurns: true, stepGrouping: 'collapsed', liveProcessDetail: true, settledReasoningPreview: true,
+      mode: 'standard', foldCompletedTurns: false, stepGrouping: 'none', liveProcessDetail: true, settledReasoningPreview: true,
     });
     expect(presentationPolicyFor('detailed')).toEqual({
-      mode: 'detailed', foldCompletedTurns: true, stepGrouping: 'history', liveProcessDetail: true, settledReasoningPreview: true,
+      mode: 'detailed', foldCompletedTurns: false, stepGrouping: 'history', liveProcessDetail: true, settledReasoningPreview: true,
     });
     expect(presentationPolicyFor('verbose')).toEqual({
       mode: 'verbose', foldCompletedTurns: false, stepGrouping: 'none', liveProcessDetail: false, settledReasoningPreview: true,

@@ -78,7 +78,10 @@ button.leading {
 
 .title {
   flex: none;
-  font-size: var(--nova-content-font-size-secondary, 13px);
+  /* The reference's summary rows are `text-ui-base` (14px), not a caption
+     step under it (2026-11-15): at 13 the whole work stream read one size
+     smaller than the reference's. */
+  font-size: var(--nova-content-font-size, 14px);
   line-height: calc(24px + var(--nova-content-font-delta, 0px));
   color: var(--nova-text-secondary);
 }

@@ -56,6 +56,7 @@ import { InputToolbar } from './InputToolbar.js';
 import { chainsWheelToConversation } from './composer-measure.js';
 import { DROP_BLOCKED, DROP_TITLE, placeholderFor, primarySeat, sendGate } from './composer-text.js';
 import { cx } from './cx.js';
+import { useDraftRequest, usePickedFile, type DraftRequest, type PickedFile } from './external-input.js';
 import css from './InputBar.module.css';
 import type { ModelCatalog } from '../state.js';
 import type { ApprovalMode, ClientFrame, CommandSummary, WireFileEntry } from '../types.js';
@@ -124,9 +125,11 @@ export interface InputBarProps {
    * A file the host's picker just named, on its way into the rail. `seq` (not
    * the path) is what makes a re-pick of the same file a new event.
    */
-  pickedFile?: { path: string; name: string; seq: number } | null;
+  pickedFile?: PickedFile | null;
   /** Tell the owner the pending pick has been taken (so it is not re-added). */
   onPickedFileConsumed?: () => void;
+  /** A prompt staged from outside the bar (the hero's chips). */
+  draftRequest?: DraftRequest | null;
   /** Owner placeholder (a hero or session-unavailable state wins over it). */
   placeholder?: string;
   /**
@@ -161,6 +164,7 @@ export function InputBar({
   onReferenceFile,
   pickedFile,
   onPickedFileConsumed,
+  draftRequest,
   placeholder,
   dock,
   header,
@@ -228,6 +232,8 @@ export function InputBar({
     if (disabled) return;
     boxRef.current?.focus({ preventScroll: true });
   }, [disabled]);
+  // An OUTSIDE prompt (the hero's chips) replaces the draft, never sends.
+  useDraftRequest(draftRequest, setDraft, setCaret, boxRef);
   // Wheel chaining on the draft scrollport, armed once: it is never unmounted,
   // so the listener reads live numbers. A hero mount has no host and keeps
   // native wheel scrolling.
@@ -406,14 +412,8 @@ export function InputBar({
   // claim gets none, because that draft is sent as an ordinary prompt.
   const hint = claimHint(draft, commands, hasGoal);
   const placeholderText = placeholderFor({ disabled, hero: variant === 'hero', override: placeholder });
-  // Take a file the host's picker named. Keyed on `seq`, not the path: picking
-  // the same file again after removing it must add it again, and a bare path
-  // would be indistinguishable from the first pick.
-  useEffect(() => {
-    if (pickedFile === undefined || pickedFile === null) return;
-    attachments.add(pickedFile.path, pickedFile.name);
-    onPickedFileConsumed?.();
-  }, [pickedFile, attachments, onPickedFileConsumed]);
+  // Take a file the host's picker named (rail + acknowledgement in the hook).
+  usePickedFile(pickedFile, attachments.add, onPickedFileConsumed);
   // Arrows walk the menu and Enter/Tab settle it (the combobox pattern the
   // harness's editor layer implements); everything else is the keymap's. The
   // arbitration itself is pure (`command-menu.ts`) so it can be asserted without
@@ -532,11 +532,9 @@ export function InputBar({
             HOST's picker (`list_directory` with `files: true`) instead. */}
         {/* The card's first row (the reference's `contextHeader` seat). */}
         {header !== undefined && <div className={css.cardHeader}>{header}</div>}
-        {/* Staged references, above the draft: the harness's attachment RAIL
-            (`ui-attachment/AttachmentRail`), whose cards are 240 × 64 and whose
-            overflow pans sideways under edge arrows — several files never grow
-            the card vertically. Empty while nothing is staged, so the card's
-            flex gap spends nothing on the row. */}
+        {/* The editor core: the reference's white `bg-input` shell inside the
+            gray card surface. Everything under the header rides it. */}
+        <div className={css.sheet}>
         <ComposerAttachments
           files={attachments.files}
           images={attachments.images}
@@ -574,6 +572,7 @@ export function InputBar({
           onPrimary={onPrimary}
           send={send}
         />
+        </div>
       </div>
       {/* A refused intake (a dropped folder) reads under the card, not inside
           it: it is about the gesture, not about a file that got staged. A

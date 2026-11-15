@@ -2,30 +2,45 @@
    container query's sake; the primitive paints it. The trigger is the query's
    subject, so the sheet must own a wrapper-scoped rule. */
 
+/* The access chip is the reference's `ConfigSelect` trigger at ghost/lg — its
+   mode picker in the composer row: `h-8 rounded-lg pl-3 pr-2 gap-1.5
+   text-ui-base` in primary ink with `transition-colors`, plus the same fill
+   while the menu is open. Nova's chip was 28 tall on a 16px corner at
+   13px/secondary/500 — four numbers, each a step off the reference. */
 .trigger {
   display: inline-flex;
   align-items: center;
-  gap: var(--nova-space-4);
+  gap: var(--nova-space-6);
   min-width: 0;
   max-width: 220px;
-  height: 28px;
-  padding: 0 var(--nova-space-4) 0 var(--nova-space-8);
+  height: 32px;
+  padding: 0 var(--nova-space-8) 0 var(--nova-space-12);
   border: none;
-  /* Rounded chip chrome, matching the sibling model trigger. */
-  border-radius: var(--nova-radius-lg);
+  /* Rounded chip chrome, matching the sibling model trigger's corner. */
+  border-radius: var(--nova-radius-sm);
   outline: none;
   background: transparent;
-  color: var(--nova-text-secondary);
-  font-size: 13px;
+  color: var(--nova-text-primary);
+  font-size: 14px;
   line-height: 20px;
-  /* Medium, unlike the model trigger's regular: the reference has exactly this
-     asymmetry between the two chips, so it is copied rather than unified. */
-  font-weight: 500;
+  font-weight: 400;
   cursor: pointer;
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
-.trigger:hover:not(:disabled) {
+.trigger:hover:not(:disabled),
+.trigger[aria-expanded='true']:not(:disabled) {
   background: var(--nova-interactive-hover);
+}
+
+/* The full-access tier states a risk in words, so it carries the warning ink
+ * the way the reference's trigger does (`text-warning` held through hover and
+ * expanded — the reference pins all three states so the chip never flashes
+ * back to the default ink). Only the ink changes; the fill stays shared. */
+.trigger[data-mode='full'],
+.trigger[data-mode='full']:hover:not(:disabled),
+.trigger[data-mode='full'][aria-expanded='true']:not(:disabled) {
+  color: var(--nova-color-warn-ink);
 }
 
 .trigger:focus-visible {
@@ -42,11 +57,11 @@
   flex: 0 0 auto;
 }
 
-/* The shared 16px glyphs render one step smaller on the exposed trigger;
-   the dropdown rows keep the full 16px. */
+/* The reference draws this chip's leading glyph at its full 16px (`size-4`);
+   only the chevron steps down. */
 .triggerIcon svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .triggerLabel {

@@ -10,7 +10,7 @@
  * `panel` fill on a `base` sheet is enough to set the paragraph apart, and the
  * outline was drawing a box around two lines of explanatory text. */
 .notice {
-  margin: var(--nova-space-8) 0 0;
+  margin: var(--nova-space-8) var(--nova-space-16) 0;
   padding: var(--nova-space-10) var(--nova-space-12);
   border: 0;
   border-radius: var(--nova-radius-md);
@@ -245,7 +245,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  margin-top: var(--nova-space-12);
+  /* First child of the section card: it needs the card's own inset. */
+  margin: var(--nova-space-12) var(--nova-space-16) 0;
 }
 
 .addRow {
@@ -392,7 +393,7 @@
 /* The advanced disclosure: native <details>, so collapsed is the browser's job,
    not a second piece of state. The summary is the settings heading rhythm. */
 .advanced {
-  margin-top: var(--nova-space-16);
+  margin: var(--nova-space-16) var(--nova-space-16) 0;
   border-top: 0.5px solid var(--nova-border-strong);
 }
 

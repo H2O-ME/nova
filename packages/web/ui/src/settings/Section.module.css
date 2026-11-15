@@ -1,12 +1,19 @@
-/* Section column sheet: the reference's GeneralSection root — a plain stack
- * whose last row loses its hairline. */
+/* Section column sheet: the reference's `SettingsGroupCard` (2026-11-14, ZCode
+ * alignment) — `rounded-xl border border-border bg-card shadow-none`, with the
+ * rows' own `px-4 py-3` insets and top borders doing the dividing. The rows
+ * used to sit bare on the panel with a hairline each, which is why this page
+ * read as a form on paper rather than as grouped settings.
+ *
+ * `overflow: hidden` lets the first and last rows keep the card's corner
+ * without each row declaring a radius; every menu opened from these rows is
+ * portaled to the body, so nothing real is clipped. */
 
 .section {
   display: flex;
   flex-direction: column;
   width: 100%;
-}
-
-.section > :last-child {
-  border-bottom: none;
+  overflow: hidden;
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-raised);
 }

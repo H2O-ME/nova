@@ -13,9 +13,12 @@
  */
 export const RIGHTBAR_COPY = {
   /** The panel's own accessible name (the tab strip carries no title row). */
-  'panel.label': '侧边栏',
-  'panel.open': '打开侧边栏',
-  'panel.close': '关闭侧边栏',
+  /* The RIGHT column. Named 右侧面板, not 侧边栏: the sidebar is the left
+     navigation column and has its own toggle — two controls sharing one word
+     was the reason the operator read them as the same button twice. */
+  'panel.label': '右侧面板',
+  'panel.open': '打开右侧面板',
+  'panel.close': '关闭右侧面板',
   'panel.fullscreen': '全屏',
   'panel.exitFullscreen': '退出全屏',
   'panel.newTab': '打开开始页',

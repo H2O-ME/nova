@@ -36,6 +36,12 @@
 
   --nova-color-success: rgb(34, 197, 94);
   --nova-color-warn: rgb(245, 158, 11);
+  /* WARNING AS TEXT (2026-11-15, the reference's `text-warning` = yellow-600):
+   * the fill above suits a border or a chart segment, but at 14px on the paper
+   * ground it falls under the contrast floor. The one place the product states
+   * a risk in words is the composer's access chip, so text takes this deeper
+   * step. */
+  --nova-color-warn-ink: rgb(202, 138, 4);
   --nova-color-danger: rgb(236, 19, 19);
   --nova-color-idle: rgb(212, 212, 212);
 
@@ -69,6 +75,7 @@ body[data-nova-dark] {
 
   --nova-color-success: rgb(34, 197, 94);
   --nova-color-warn: rgb(245, 158, 11);
+  --nova-color-warn-ink: rgb(250, 204, 21);
   --nova-color-danger: rgb(242, 90, 90);
   --nova-color-idle: rgb(84, 85, 87);
 

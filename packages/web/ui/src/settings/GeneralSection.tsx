@@ -61,15 +61,23 @@ export function GeneralSection({
   onPickTranscriptView,
 }: GeneralSectionProps): JSX.Element {
   return (
-    <SettingsSection>
-      <SettingsRow title={SETTINGS_COPY['permission.title']} description={SETTINGS_COPY['permission.description']}>
-        {/* Upward + right-edge aligned (the reference's settings row recipe):
-            the card covers the text rows above, never the controls below. */}
-        <PermissionSelect value={approvalMode} onPick={onPickApproval} side="above" align="end" disabled={disabled} />
-      </SettingsRow>
-      <TranscriptViewRow mode={transcriptView} onPick={onPickTranscriptView} />
-      <AppearanceRow preference={preference} onPick={onPickPreference} />
-      <FontSizeRow fontSize={fontSize} onPick={onPickFontSize} />
-    </SettingsSection>
+    <>
+      {/* TWO cards, not one (2026-11-15, aligned to the reference's 常规 page):
+          every card there is one semantic group — a run's permissions and what
+          it shows, then the reading surface's own look. One card holding all
+          four rows read as a single long form with rules in it. */}
+      <SettingsSection>
+        <SettingsRow title={SETTINGS_COPY['permission.title']} description={SETTINGS_COPY['permission.description']}>
+          {/* Upward + right-edge aligned (the reference's settings row recipe):
+              the card covers the text rows above, never the controls below. */}
+          <PermissionSelect value={approvalMode} onPick={onPickApproval} side="above" align="end" disabled={disabled} />
+        </SettingsRow>
+        <TranscriptViewRow mode={transcriptView} onPick={onPickTranscriptView} />
+      </SettingsSection>
+      <SettingsSection>
+        <AppearanceRow preference={preference} onPick={onPickPreference} />
+        <FontSizeRow fontSize={fontSize} onPick={onPickFontSize} />
+      </SettingsSection>
+    </>
   );
 }

@@ -2,10 +2,9 @@
  * verbatim except: the
  * card's material is the shared `shell/MenuSurface` layer (the theme-owned
  * `--nova-surface-menu` + `--nova-material-menu-backdrop`, which this sheet
- * never redeclares), the row rhythm is `shell/MenuCard.module.css`'s (min-h 38,
- * R12, 14/20 label weight 500) so every dropdown on this surface reads as one
- * material, and the list is portal-only — the in-place offset rules have no
- * consumer here. */
+ * never redeclares), the row rhythm is `shell/MenuCard.module.css`'s (min-h 32,
+ * R6, 14/20 label) so every dropdown on this surface reads as one material, and
+ * the list is portal-only — the in-place offset rules have no consumer here. */
 
 .root {
   position: relative;
@@ -56,26 +55,25 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--nova-space-6);
+  gap: var(--nova-space-8);
   width: auto;
   min-width: 100%;
-  min-height: 34px;
-  padding: var(--nova-space-6) var(--nova-space-8);
+  min-height: 32px;
+  padding: var(--nova-space-4) var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-xs);
   outline: none;
   background: transparent;
   color: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   text-align: left;
   cursor: pointer;
+  /* `transition-colors` (2026-11-14, ZCode alignment): the reference's menu row
+     eases colour and nothing else. */
   transition:
-      color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      border-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      opacity var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
-      box-shadow var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out);
+      color var(--nova-dur-fast) var(--nova-ease-inout),
+      background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .item:hover:not(:disabled) {
@@ -98,8 +96,8 @@
 .itemIcon {
   display: inline-flex;
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   align-items: center;
   justify-content: center;
   color: var(--nova-text-secondary);
@@ -114,18 +112,17 @@
   white-space: nowrap;
 }
 
-/* Selection marker is the trailing check, not a fill. Both it and the icon
-   glyph are set to the row's 14px asset size (the shared set draws a 16px box
-   and the sheet steps it down, the same way the two triggers do). */
+/* Selection marker is the trailing check, not a fill. Row assets ride the
+   reference's `size-4` (16px); only the trigger chips step their chevron down. */
 .check {
   display: grid;
   place-items: center;
-  flex: 0 0 14px;
-  color: var(--nova-text-primary);
+  flex: 0 0 16px;
+  color: var(--nova-text-muted);
 }
 
 .check svg,
 .itemIcon svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }

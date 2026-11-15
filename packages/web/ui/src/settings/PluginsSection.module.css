@@ -11,6 +11,8 @@
 
 .heading {
   margin: 0;
+  /* The section is a CARD now: its head carries the card's own inset. */
+  padding: var(--nova-space-16) var(--nova-space-16) 0;
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
@@ -19,7 +21,7 @@
 
 .intro {
   margin: 0;
-  padding-top: var(--nova-space-4);
+  padding: var(--nova-space-4) var(--nova-space-16) 0;
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
@@ -29,7 +31,7 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
-  padding: var(--nova-space-8) 0;
+  padding: var(--nova-space-8) var(--nova-space-16);
   border-bottom: 0.5px solid var(--nova-border-strong);
   color: var(--nova-text-muted);
 }
@@ -59,8 +61,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-4);
-  padding: var(--nova-space-4) 0 var(--nova-space-12);
-  border-bottom: 0.5px solid var(--nova-border-strong);
+  padding: var(--nova-space-4) var(--nova-space-16) var(--nova-space-12);
 }
 
 /* The group label aligns with the page head and the search box above it: the
@@ -71,10 +72,15 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-6);
-  padding: var(--nova-space-4) 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  padding: var(--nova-space-4) 0 var(--nova-space-8);
+  /* The reference's store section head is `text-ui-lg font-medium` over a
+     hairline; the 12px caption Nova used read as a list separator, not as a
+     section. */
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--nova-text-primary);
+  border-bottom: 1px solid var(--nova-border-subtle);
 }
 
 /* A group with no switches is REFERENCE, and it was burying the switches: the
@@ -87,15 +93,17 @@
   align-items: center;
   gap: var(--nova-space-4);
   margin: 0;
-  padding: var(--nova-space-2) var(--nova-space-6) var(--nova-space-2) 0;
+  padding: var(--nova-space-4) var(--nova-space-6) var(--nova-space-8) 0;
   border: none;
-  border-radius: var(--nova-radius-lg);
+  border-bottom: 1px solid var(--nova-border-subtle);
+  border-radius: 0;
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--nova-text-primary);
   transition:
       color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
       background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
@@ -105,7 +113,6 @@
 }
 
 .groupHead:hover {
-  background: var(--nova-surface-panel);
   color: var(--nova-text-secondary);
 }
 
@@ -143,7 +150,7 @@
 /* A count over the whole page, for the case where the failures are spread
    across groups and the reader has scrolled past one of them. */
 .failureBanner {
-  margin: var(--nova-space-8) 0;
+  margin: var(--nova-space-8) var(--nova-space-16);
   padding: var(--nova-space-8) var(--nova-space-12);
   border-radius: var(--nova-radius-lg);
   background: var(--nova-surface-panel);
@@ -153,9 +160,12 @@
 }
 
 .list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nova-space-4);
+  /* The reference's store grid: two columns once the column is wide enough
+     (`grid-cols-2` at 40rem of container), 24px apart horizontally and 4px
+     vertically. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: var(--nova-space-4) var(--nova-space-24);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -170,9 +180,12 @@
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--nova-space-8);
-  margin: 0 -8px;
-  padding: 9px var(--nova-space-8);
-  border-radius: var(--nova-radius-lg);
+  /* No negative margin: the row lives inside the group card now, where an
+     8px overhang would be clipped by the card's `overflow: hidden` and step
+     the row's text off the group label's axis. */
+  margin: 0;
+  padding: var(--nova-space-12) var(--nova-space-8);
+  border-radius: var(--nova-radius-md);
   transition:
       color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
       background-color var(--nova-dur-base, 0.2s) var(--nova-ease-inout, ease-in-out),
@@ -213,7 +226,7 @@
   width: 40px;
   height: 40px;
   border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   color: var(--nova-text-secondary);
 }
 
@@ -232,7 +245,7 @@
 
 .pluginName {
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   line-height: 22px;
   color: var(--nova-text-primary);
   overflow: hidden;
@@ -243,7 +256,7 @@
 /* The one-line description, ON the row rather than behind the disclosure: it is
    what tells two plugin names apart, and the reference reads it collapsed. */
 .pluginDesc {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 18px;
   color: var(--nova-text-muted);
@@ -316,8 +329,10 @@
   color: var(--nova-text-muted);
 }
 
+/* The settings control column is 192px wide; a 260px cap simply overflowed it
+   (the copy button took the rest of the cell). */
 .path {
-  max-width: 260px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

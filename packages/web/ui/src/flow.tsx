@@ -175,7 +175,13 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
       }
       if (!headerOut) {
         headerOut = true;
-        rows.push({
+        // A settled turn with nothing to fold shows NO header at all (2026-11-15,
+        // ZCode alignment): the reference streams the work rows straight under
+        // the prompt — no 「用时 X」 band stands between the question and the
+        // answer. The header survives only while it has a job: naming live
+        // progress, or opening a fold this policy actually performs.
+        const foldable = !running && hasProcess && options.policy.foldCompletedTurns;
+        if (running || foldable) rows.push({
           key: `turn:${turnKey}`,
           kind: 'process',
           node: (
@@ -185,7 +191,7 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
                 : '已完成工作'}
               running={running}
               startTs={block.ts}
-              collapsible={!running && hasProcess && options.policy.foldCompletedTurns}
+              collapsible={foldable}
               open={open}
               turnKey={turnKey}
               // The head's second half: what the turn DID. A collapsed turn

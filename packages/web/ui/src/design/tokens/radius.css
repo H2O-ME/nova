@@ -33,6 +33,12 @@
  * `full` is for shapes that are circles BY NATURE (status dots, avatars) and is
  * not a way to build a pill. */
 :root {
+  /* 2026-11-14 (ZCode alignment): the reference's ladder is Tailwind v4's
+     defaults — md 6 / lg 8 / xl 12 / 2xl 16 / 3xl 24. Its dropdown ROW is
+     `rounded-md` (6px), a rung this ladder did not carry, so menu entries were
+     wearing `sm` (8) and read one step soft. `xs` is that missing rung; only
+     dropdown rows and small badges take it. */
+  --nova-radius-xs: 6px;
   /* Inline marks: badges, tags, the smallest chips. */
   --nova-radius-sm: 8px;
   /* Dense repeated rows: list items, menu entries, tree nodes. */

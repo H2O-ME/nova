@@ -3,9 +3,12 @@
   min-width: 0;
 }
 
-/* Figma 313:14108 ToggleButton: 13/20 regular secondary label, 4px gap,
-   12px caption chevron; 28px chip height matches the sibling Plan /
-   Read-only selects in the same tool row. */
+/* The reference's composer model trigger (its `ModelConfigSelect`, a ghost
+   Button at `size=default` overridden to `pl-2 pr-1.5`): 28px tall, the 8px
+   control corner, 14/20 label in the PRIMARY ink, 4px gap, `transition-colors`
+   on the fill, and the SAME fill while the menu is open as under the pointer.
+   This sheet used to run 13px secondary ink on a 16px corner with a 4px right
+   pad and no fill on open — three separate steps away from the reference. */
 .trigger {
   display: flex;
   align-items: center;
@@ -16,26 +19,25 @@
   max-width: 220px;
   max-width: min(360px, 45cqw);
   height: 28px;
-  padding: 0 var(--nova-space-4) 0 var(--nova-space-8);
+  padding: 0 var(--nova-space-6) 0 var(--nova-space-8);
   border: none;
   /* Rounded chip chrome, matching the sibling permission trigger. */
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-sm);
   outline: none;
   background: transparent;
-  color: var(--nova-text-secondary);
-  font-size: 13px;
+  color: var(--nova-text-primary);
+  font-size: 14px;
   line-height: 20px;
-  /* Regular, not medium: the reference's Figma note reads "13/20 regular
-     secondary label". The sibling permission chips ARE medium (500), so this
-     one weight apart is the reference's own asymmetry, not an oversight. */
   font-weight: 400;
   cursor: pointer;
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 /* The interactive states are kept whole for the day the seat gets a catalog to
    open (`ModelSelect`'s trigger is a button with a menu); the seat below
    neutralizes them. */
-.trigger:hover:not(:disabled) {
+.trigger:hover:not(:disabled),
+.trigger[aria-expanded='true']:not(:disabled) {
   background: var(--nova-interactive-hover);
 }
 
@@ -66,7 +68,9 @@
 
 .chevron {
   flex: 0 0 auto;
-  color: var(--nova-text-faint);
+  /* The reference's chevron rides `text-foreground-subtle` (70% ink), one step
+     above the annotation rung. */
+  color: var(--nova-text-secondary);
   transition: transform var(--nova-dur-fast) ease;
 }
 

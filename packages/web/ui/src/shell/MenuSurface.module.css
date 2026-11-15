@@ -5,7 +5,10 @@
 }
 
 .surface {
-  border-radius: var(--nova-radius-lg);
+  /* The reference's menu shell is `rounded-lg` = 8px (its Tailwind ladder runs a
+     step below this product's names); at the control rung (16) the card read as
+     a soft lozenge rather than a dropdown. */
+  border-radius: var(--nova-radius-sm);
   /* Contain the material's `z-index: -1`: without its own stacking context the
      layer would paint behind the card's own background instead of over it. */
   isolation: isolate;
@@ -23,18 +26,21 @@
   pointer-events: none;
 }
 
-/* Popover entrance, the harness dockkit's `dockHintIn`: the one floating
- * material on this surface pops with a 140ms fade + settle instead of
- * snapping. The harness's own menu material enters instantly — the recorded
- * deviation ("菜单浮层入场") keeps every menu from reading as a hard cut. */
+/* Popover entrance, now the reference's own menu motion (2026-11-14): its
+ * dropdown content opens with `fade-in-0 zoom-in-95 slide-in-from-bottom-2` at
+ * `duration-100` — a 100ms pop from 95% scale, 8px low, on the plain ease-out.
+ * The earlier 140ms fade + 98% settle was the dsh dockkit's `dockHintIn`; the
+ * reference's is tighter and lower, which is what makes a menu read as flicked
+ * open rather than unfolded. Duration rides the shared `fast` rung (120ms) —
+ * the token layer is the only place a duration is written. */
 .surface {
-  animation: menu-surface-in 140ms var(--nova-ease-out);
+  animation: menu-surface-in var(--nova-dur-fast) var(--nova-ease-out);
 }
 
 @keyframes menu-surface-in {
   from {
     opacity: 0;
-    transform: scale(0.98);
+    transform: translateY(8px) scale(0.95);
   }
 
   to {

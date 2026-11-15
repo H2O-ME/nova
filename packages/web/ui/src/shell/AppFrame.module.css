@@ -1,20 +1,26 @@
+/* The window's own ground (2026-11-15, ZCode alignment). The reference paints
+ * `bg-background-win-alt` across the whole window and floats the workspace
+ * column on it as a rounded, bordered panel — that is why its sidebar and its
+ * page read as ONE surface with a panel inside, while Nova's two flat fills
+ * read as two screens standing side by side ("侧边栏和主页面分离"). */
 .frame {
   position: relative; /* anchors the drag handles, which straddle column borders */
   display: grid;
   grid-template-rows: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-sunken);
 }
 
-/* Only a discrete collapse/expand toggle eases the tracks (the TSX holds
-   data-animating across the toggle on the deepsuite sider curve —
-   --nova-ease-inout / --nova-dur-slow). Steady-state tracks move
-   only with the viewport, and those updates must land instantly: an eased
+/* Only a discrete collapse/expand toggle eases the tracks. Steady-state tracks
+   move only with the viewport, and those updates must land instantly: an eased
    track chases the live window edge and the centre column visibly
-   rubber-bands while the user resizes the window. */
+   rubber-bands while the user resizes the window.
+   Timing (2026-11-14, ZCode alignment): the reference's sidebar shell is a
+   `duration-200 ease-out` width+opacity transition, so the toggle rides 200ms
+   on a plain ease-out rather than the old 260ms in-out curve. */
 .frame[data-animating] {
-  transition: grid-template-columns var(--nova-dur-slow) var(--nova-ease-inout);
+  transition: grid-template-columns var(--nova-dur-panel) var(--nova-ease-panel);
 }
 
 /* Dragging writes widths at pointer cadence; easing them would detach the
@@ -29,18 +35,32 @@
   }
 }
 
+/* The sidebar rides the window ground itself (no fill of its own): the
+   reference's rail is the same plane the window is painted with, and only the
+   workspace column is lifted into a panel. */
 .sidebarCol {
   min-width: 0;
   overflow: hidden;
-  background: var(--nova-surface-sunken);
-  border-right: 0.5px solid var(--nova-border-strong);
+  background: transparent;
 }
 
+/* The workspace column IS the panel (the reference's
+ * `rounded-[var(--workspace-panel-radius)] border border-border
+ * bg-background`): one neutral step lighter than the ground, hairline frame,
+ * 12px corners. Its rounding is what puts the window ground back into the four
+ * corners and stops the sidebar from reading as a separate screen. */
 .centerCol {
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* 6px of window ground between the rail and the panel (the reference's own
+     seam): the rounding alone left the two touching, which read as one plane
+     again at a glance. */
+  margin-left: var(--nova-space-6);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-base);
 }
 
 /* Drag handles are frame children (columns clip overflow): an 8px hit strip

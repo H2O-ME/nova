@@ -16,7 +16,7 @@
  * `openRightbar`/`closeRight`. `fullscreen` and `takeover` are the frame's
  * two presentations and are drawn here (`data-rightbar`).
  */
-import { PanelIcon } from '../icons.js';
+import { PanelRightIcon } from '../icons.js';
 import type { ClientFrame, WireJobRow, WireShell } from '../types.js';
 import type { Action, GitState } from '../state.js';
 import { ChangesView, type ChangesLens } from './ChangesView.js';
@@ -180,9 +180,10 @@ export function RightbarPanel(props: RightbarPanelProps): JSX.Element {
  * The way back in when the panel is closed.
  *
  * The reference puts its expand button in the conversation header's corner seat
- * and mirrors the sidebar's own collapse glyph (`transform: scaleX(-1)`), so
- * open and close read as one control seen from two sides. This is that button,
- * exported for whichever seat the shell gives it.
+ * and mirrors the sidebar's own collapse glyph. This product does NOT mirror:
+ * the two controls sit in one frame and a reflection reads as the same control
+ * twice, so the glyph is its own drawing (`PanelRightIcon` — right divider plus
+ * content lines). Exported for whichever seat the shell gives it.
  */
 export function RightbarOpenButton({ onOpen }: { onOpen: () => void }): JSX.Element {
   return (
@@ -193,7 +194,7 @@ export function RightbarOpenButton({ onOpen }: { onOpen: () => void }): JSX.Elem
       title={RIGHTBAR_COPY['panel.open']}
       onClick={onOpen}
     >
-      <PanelIcon className={css.openGlyph} />
+      <PanelRightIcon className={css.openGlyph} />
     </button>
   );
 }

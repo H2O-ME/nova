@@ -24,9 +24,12 @@
  */
 .panel {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  /* Inset on every side (2026-11-15, ZCode alignment): the reference's side
+     pane is a rounded panel floating on the window ground, not a strip welded
+     to the window edge — the same 6px ground reveal the workspace column uses. */
+  top: var(--nova-space-6);
+  right: var(--nova-space-6);
+  bottom: var(--nova-space-6);
   /* The drawer is a floating pane: above the page, under the frame's resize
      handle (11) so the column edge stays grabbable. */
   z-index: 10;
@@ -35,8 +38,8 @@
   min-width: 0;
   box-sizing: border-box;
   background: var(--nova-surface-raised);
-  border-left: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg) 0 0 var(--nova-radius-lg);
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
   box-shadow: var(--nova-elevation-panel);
   animation: rightbar-in var(--nova-dur-slow) var(--nova-ease-inout);
 }
@@ -88,13 +91,12 @@
   display: flex;
 }
 
-/* The expand affordance's glyph, mirrored from the sidebar's collapse icon so
-   open and close read as one control seen from two sides. */
+/* The expand affordance's glyph. Its shape (right divider + content lines) is
+   what separates it from the sidebar's collapse control; no reflection. */
 .openGlyph {
   flex: none;
   width: 16px;
   height: 16px;
-  transform: scaleX(-1);
 }
 
 .openButton {

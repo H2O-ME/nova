@@ -15,7 +15,12 @@
         "title": "Nova Desktop",
         "width": 1280,
         "height": 840,
-        "center": true
+        "center": true,
+        "minWidth": 900,
+        "minHeight": 600,
+        "decorations": false,
+        "shadow": true,
+        "resizable": true
       }
     ],
     "security": {

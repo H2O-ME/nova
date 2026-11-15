@@ -7,6 +7,8 @@
 
 .heading {
   margin: 0;
+  /* The section is a CARD now: its head carries the card's own inset. */
+  padding: var(--nova-space-16) var(--nova-space-16) 0;
   font-size: 16px;
   line-height: 24px;
   font-weight: 500;
@@ -15,7 +17,7 @@
 
 .intro {
   margin: 0;
-  padding-top: var(--nova-space-4);
+  padding: var(--nova-space-4) var(--nova-space-16) 0;
   font-size: 13px;
   line-height: 20px;
   color: var(--nova-text-muted);
@@ -541,7 +543,7 @@
    that was here bought nothing between the page's explanation and the first
    thing it explains. */
 .sectionTitle {
-  margin: var(--nova-space-12) 0 0;
+  margin: var(--nova-space-12) var(--nova-space-16) 0;
   font-size: 14px;
   line-height: 22px;
   font-weight: 500;
@@ -549,7 +551,7 @@
 }
 
 .sectionIntro {
-  margin: 0;
+  margin: 0 var(--nova-space-16);
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-muted);

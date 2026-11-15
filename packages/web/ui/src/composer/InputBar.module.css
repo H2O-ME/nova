@@ -27,10 +27,18 @@
 }
 
 .hero {
-  /* No bottom pad in the centered hero, but the side clearance must survive:
-     the hero wrapper is full-width on narrow viewports, so this padding is
-     the only thing keeping the card off the edges there. */
-  padding: 0 var(--nova-composer-side-clearance);
+  /* The hero wrapper hands the side clearance to `.composerHero` (which sizes
+     the card directly, the reference's `w-full max-w-2xl`), so the wrapper
+     adds NO inset of its own — a 16px pad here plus the card's own max-width
+     formula double-cut the card to 624 and broke the 672 axis. */
+  padding: 0;
+}
+
+/* Full bleed inside the hero measure: the card IS the 672 column (the
+   reference's card is `w-full` in its max-w-2xl container). The docked seat
+   keeps its own max-width formula below. */
+.hero .card {
+  max-width: 100%;
 }
 
 .card {
@@ -38,23 +46,26 @@
   position: relative; /* overlay anchor positioning context */
   display: flex;
   flex-direction: column;
-  /* 12px between the rows (the reference's `p-3` + `gap-3` card). */
-  gap: var(--nova-space-12);
   width: 100%;
   max-width: var(--nova-composer-card-max-width);
-  padding: var(--nova-space-12);
+  /* The reference's card is a 6px gray frame: the surface shell carries the
+     contextHeader strip, and the white editor core (`.sheet`) sits inside it.
+     The rows own their inner rhythm (`.sheet`'s own gap and pads) instead of
+     a card-level gap. NO border here — the reference's hairline belongs to
+     the white core. */
+  gap: 0;
+  padding: var(--nova-space-6);
   /* COMPOSER SURFACE (2026-11-14, aligned to the operator's reference).
    *
-   * The reference's card: 16px corner, a 0.5px neutral hairline that deepens
-   * on hover and focus, a white fill on the quiet page ground, and ONE soft
-   * two-layer shadow. The values ride the `--nova-input-*` tokens
-   * (`design/tokens/surface.css`), so dark mode keeps its own flat set without
+   * The reference's build is two fills and two shadows: the card surface is
+   * neutral 3% gray with ONE big soft drop (its `shadow-xl/5`), and the white
+   * editor core inside carries the 0.5px hairline, the hover/focus deepen,
+   * and the tight two-layer shadow. All values ride the tokens in
+   * `design/tokens/surface.css`, so dark mode keeps its own flat set without
    * a second rule here. */
-  border: 0.5px solid var(--nova-input-border);
   border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-input);
-  box-shadow: var(--nova-elevation-composer);
-  transition: border-color var(--nova-dur-fast) var(--nova-ease-inout);
+  background: var(--nova-surface-card);
+  box-shadow: var(--nova-elevation-card);
   /* The draft text follows the Settings font-size preference (the textarea,
      mirror, and backdrop all inherit from here, so the three layers stay in
      step); the line height keeps the default 10px leading via the shared px
@@ -68,28 +79,43 @@
      (see ui-theme styles/scrollbar.css for the rebinding contract). */
 }
 
+/* The editor core (the reference's `bg-input` shell): the white sheet the
+   staged attachments, the draft and the toolbar sit on. THIS is the element
+   the reference draws on — its own 0.5px hairline deepening on hover and
+   focus-within, its tight soft shadow, its 12px pad and gap (`p-3 gap-3`). */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-12);
+  padding: var(--nova-space-12);
+  border: 0.5px solid var(--nova-input-border);
+  border-radius: var(--nova-radius-lg);
+  background: var(--nova-surface-input);
+  box-shadow: var(--nova-elevation-composer);
+  transition: border-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
 /* Hover: the hairline deepens one step (the reference's border-hover). */
-.card:hover {
+.sheet:hover {
   border-color: var(--nova-input-border-hover);
 }
 
-/* Focus: the deepened hairline says the card owns the caret — the reference's
-   `focus-within:!border-input-border-focused`. Border colour only — no ring,
+/* Focus: the deepened hairline says the core owns the caret (the reference's
+   `focus-within:!border-input-border-focused`). Border colour only — no ring,
    no glow, no widening (a width change would reflow every control inside). */
-.card:focus-within {
+.sheet:focus-within {
   border-color: var(--nova-input-border-focused);
 }
 
 /* The card's first row (the reference's `contextHeader`): a plain control row
-   inside the card's own padding — the hero's workspace chip lives here. The
-   6px inset puts the chip's glyph on the reference's p-1.5 axis. */
+   on the gray card surface. The card's 6px pad owns the inset (the
+   reference's header wrapper is `p-1.5` on an unpadded surface — same 6px). */
 .cardHeader {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0;
   min-width: 0;
-  padding: 0 var(--nova-space-6);
 }
 
 /* The document-level drop overlay moved to its own sheet
@@ -111,8 +137,9 @@
    gutter. */
 .rail {
   min-width: 0;
-  padding: var(--nova-space-2) var(--nova-space-10) 0;
-  margin-bottom: -6px;
+  /* The `.sheet`'s own 12px pad frames the rail; the old -6px pull-back
+     belonged to the card-level flex gap and is gone with it. */
+  margin-bottom: 0;
 }
 
 /* A refused intake (a dropped folder): one quiet line under the card. It reads
@@ -153,9 +180,6 @@
 .scroll {
   max-height: var(--nova-composer-text-max-height);
   overflow-y: auto;
-  /* Keeps the bar off the card's right border; .input's right pad gives the
-     4px back so the text column is unchanged. */
-  margin-right: var(--nova-space-4);
 }
 
 /* The card's 22px corner arc still overlaps the scrollport's top (8px top
@@ -188,17 +212,12 @@
      reported: sending the first message re-seats the card from hero to dock and
      it shrank by nearly a full line in one frame. 44 = one 24px line + 8px top
      pad + 12px of breath below the line, comfortable at rest and identical in
-     both seats, so the card cannot resize across the transition. The hero buys
-     its landing-state air from the wrapper's padding instead (see `.hero`
-     below), not from a taller text floor.
-     The right pad widened from 8 to 16 with the card's 14px corner: at 8px
-     the draft ran visibly closer to the rounded edge than to the top, which made
-     the corner read as accidental. The left pad is now 16 as well: the card is
-     content + 32 wide, so symmetric 16s put the draft on the transcript's own
-     text axis (measured 457 both). At the old 14 the composer's first glyph sat
-     2px left of every line above it. */
+     both seats, so the card cannot resize across the transition.
+     The horizontal inset is the `.sheet`'s own 12px pad (the reference's
+     `p-3`): the draft reads flush inside the white core, the same 12px the
+     reference gives it. */
   min-height: 44px;
-  padding: var(--nova-space-8) var(--nova-space-16) 0 var(--nova-space-16);
+  padding: 0;
   font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
@@ -228,12 +247,12 @@
 }
 
 /* figma 34:10434 drew the caption pair exactly (light/dark), which is what the
-   caption token resolves to here. Insets mirror .input's pads (the other right
-   4px sits on .scroll). One ellipsized line: a wrapped second line would clip
-   against the docked 36px floor. */
+   caption token resolves to here. Insets mirror .input's (now zero — the
+   `.sheet`'s 12px pad owns the inset). One ellipsized line: a wrapped second
+   line would clip against the docked floor. */
 .placeholder {
   position: absolute;
-  inset: 4px 8px auto 16px;
+  inset: 0 0 auto;
   color: var(--nova-text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -250,10 +269,10 @@
 
 /* The draft drawn behind the textarea: same font, same pads, same wrapping
    rules — the two must break lines identically, or the chips drift off their
-   glyphs. The top/left `inset` mirrors .input's padding. */
+   glyphs. The inset mirrors .input's (zero; the `.sheet` pads). */
 .mirror {
   position: absolute;
-  inset: 4px 8px auto 16px;
+  inset: 0 0 auto;
   font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
@@ -290,13 +309,13 @@
    last paragraph of its contenteditable; a textarea has no generated content,
    so the same line is drawn as an overlay: an invisible spacer carries the
    draft in the surface's own font and the hint follows it in flow, which puts
-   the line where the caret is without measuring anything. Insets mirror
-   .input's pads, exactly as .placeholder's do; the caption color is the
-   reference's pair for ghost text, and one clipped line matches a hint's
-   single-line-token premise. */
+   the line where the caret is without measuring anything. The inset mirrors
+   .input's (zero; the `.sheet` pads), exactly as `.placeholder`'s does; the
+   caption color is the reference's pair for ghost text, and one clipped line
+   matches a hint's single-line-token premise. */
 .hint {
   position: absolute;
-  inset: 4px 8px auto 14px;
+  inset: 0 0 auto;
   font-family: var(--nova-font-family);
   font-size: inherit;
   line-height: inherit;
@@ -324,17 +343,18 @@
   line-clamp: 2;
 }
 
-/* Toolbar: attach + Plan + Read-only on the left; model + send on the right
-   (figma Input_Bottom chrome). */
+/* Toolbar row: attach + access chip on the left, model + send on the right.
+   The reference's own line is `flex items-end gap-3` with a `gap-1` (4px)
+   leading cluster and a `gap-1.5` (6px) trailing one — its controls sit tight
+   together in two groups, not evenly spaced across the row. Nova put 12px
+   between every pair, which is what made the row read as a loose toolbar. */
 .row {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: var(--nova-space-12);
-  /* 2px at the top: the whole control row sits 2px lower in the card (it read
-     too high against the textarea); the card's own 12px pad owns the rest. */
-  padding: var(--nova-space-2) 0 0;
+  padding: 0;
   min-width: 0;
   /* Size container so the chips inside can collapse to icon-only when the
      card runs out of row width (ModelSeat @container rule). Anonymous
@@ -351,15 +371,13 @@
   min-width: 0;
 }
 
-/* figma 75:8208 drew 16 between + and the mode chips and 4 between Plan /
-   Read-only; both gaps settled on 12 so the pill chips read as separate
-   controls without drifting from the + control. */
 .tools {
-  gap: var(--nova-space-12);
+  align-items: flex-end;
+  gap: var(--nova-space-4);
 }
 
 .modes {
-  gap: var(--nova-space-12);
+  gap: var(--nova-space-4);
 }
 
 .trailing {
@@ -370,28 +388,18 @@
      model trigger (external:107). The auto margin re-anchors it right on the
      wrapped line; on a single line space-between already pins it right. */
   margin-left: auto;
-  gap: var(--nova-space-12);
+  gap: var(--nova-space-6);
 }
 
-/* Tighten the row before it wraps. The 12px gaps above are the roomy default;
-   once the card is narrower than 560px the three groups need the extra 4px back
-   to keep the chips on one line, so they close up rather than wrapping early.
-   Same anonymous container as the icon-only cuts below (see `.row`). */
-@container (max-width: 560px) {
-  .tools,
-  .modes,
-  .trailing {
-    gap: var(--nova-space-8);
-  }
-}
-
-/* Attach circle (figma + control): 28px, selector fill, primary glyph.
-   `padding: 0` + `box-sizing: border-box` is not decoration: without them the
-   UA's `button { padding: 1px 6px }` adds 12px of width and 2px of height to
-   the declared 28×28 box, so the circle renders 40×30 and its glyph sits
-   off-axis from the 34px primary circle beside it at the other end of the row.
-   The reference resets the box the same way (its own `padding: 0` on every
-   icon control). */
+/* Attach circle (the reference's `+` control): a ghost on the white sheet —
+   transparent at rest, the shared hover fill over it; the old solid panel
+   circle read as a button ON the card rather than a control OF the card.
+   28px, primary glyph. `padding: 0` + `box-sizing: border-box` is not
+   decoration: without them the UA's `button { padding: 1px 6px }` adds 12px
+   of width and 2px of height to the declared 28×28 box, so the circle renders
+   40×30 and its glyph sits off-axis from the 34px primary circle beside it at
+   the other end of the row. The reference resets the box the same way (its
+   own `padding: 0` on every icon control). */
 .add {
   display: grid;
   place-items: center;
@@ -403,7 +411,7 @@
   border: none;
   border-radius: var(--nova-radius-full);
   corner-shape: round;
-  background: var(--nova-surface-panel);
+  background: transparent;
   color: var(--nova-text-primary);
   cursor: pointer;
 }
@@ -415,7 +423,7 @@
 }
 
 .add:hover:not(:disabled) {
-  background: var(--nova-interactive-hover-solid);
+  background: var(--nova-interactive-hover);
 }
 
 .add:disabled {
@@ -423,33 +431,30 @@
   cursor: default;
 }
 
-/* Primary send (figma IconButton 34:10465): 34px circle filled with the info
-   pair (500 → 400), NOT button-primary (that one is ink); static white glyph;
-   empty text = 0.4 opacity. */
+/* Primary send (2026-11-14, aligned to the reference's submit button): a 28px
+   circle (the reference's `icon-md` = size-7, rounded-full) filled with the
+   INK token — the reference's `bg-brand` is black in the light theme — with a
+   white arrow; empty text = 0.5 opacity (the reference's
+   `disabled:opacity-50`), no separate gray state. */
 .primary {
   display: grid;
   place-items: center;
   flex: none;
   box-sizing: border-box;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: var(--nova-radius-full);
   corner-shape: round;
-  /* FLAT accent (2026-11-05). The ramp + inner highlight + outer bloom made a
-   * 34px circle the loudest object on the page; the reference's send is one
-   * solid accent disc with a white arrow. */
-  background: var(--nova-color-accent);
-  /* Static white, not the foreground token: the arrow stays white on the blue
-   * fill in both themes (design 34:10465) — `--nova-text-inverse`
-   * flips to near-black in dark and would put an ink glyph on the fill. Our
-   * token layer's theme-stable white is the static bluish-00 the alias takes
-   * its light value from. */
+  background: var(--nova-color-ink);
+  /* Static white, not the foreground token: the arrow stays white on the ink
+   * fill in both themes (dark's ink flips near-white and the arrow rides
+   * `--nova-surface-base`, so the pair inverts together). */
   color: var(--nova-surface-base);
   box-shadow: none;
   cursor: pointer;
-  transition: filter 100ms ease;
+  transition: background-color var(--nova-dur-fast) ease;
 }
 
 .primary svg {
@@ -457,12 +462,12 @@
   height: 16px;
 }
 
-/* A flat fill still lifts on hover; there is no bloom to add. */
+/* The reference's `hover:bg-brand/80`: the same ink one step lighter. */
 .primary:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--nova-color-ink-hover);
 }
 
 .primary:disabled {
-  opacity: 0.4;
+  opacity: 0.5;
   cursor: default;
 }

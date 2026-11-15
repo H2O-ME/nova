@@ -1,18 +1,22 @@
-/* Appearance row sheet. Row (figma 'Frame 2117131228': title + cube row,
- * column gap 8,
- * pad 16/0, hairline separator; the section column strips it when last). */
+/* Appearance row sheet: the shared settings row rhythm (12/16 pad, rule on the
+ * row's top edge, 14/500 label) with a cube row under it instead of a trailing
+ * control — the choices are too wide for the 192px control column. */
 
 .group {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  padding: var(--nova-space-16) 0;
-  border-bottom: 0.5px solid var(--nova-border-strong);
+  padding: var(--nova-space-12) var(--nova-space-16);
+  border-top: 1px solid var(--nova-border-strong);
+}
+
+.group:first-child {
+  border-top: none;
 }
 
 .title {
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   line-height: 22px;
   color: var(--nova-text-primary);
 }
@@ -43,11 +47,13 @@
   justify-content: center;
   gap: var(--nova-space-6);
   padding: var(--nova-space-12) var(--nova-space-16);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
+  /* Option cards inside the group card: the 12px surface rung and a full
+     hairline, so three choices read as cards, not as form controls. */
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
   background: transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-secondary);
   cursor: pointer;

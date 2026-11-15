@@ -87,25 +87,27 @@ describe('MenuSurface', () => {
 
 describe('menu row rhythm', () => {
   it('sets both dropdowns to the reference row metrics', () => {
-    // The reference's Menu `.item` and ModelSelect `.option` are one cell:
-    // 34px min-height, R12 corners, 13px label. Two sheets here dress menus —
-    // the shell primitive and the card family — and a drift between them
-    // reads as two kinds of control in the same dock.
+    // Re-baselined 2026-11-14 against ZCode (完全一致优先). Its dropdown row is
+    // the Tailwind dropdown item: `min-h-8` (32), `rounded-md` (6) and the body
+    // type size (14). The 34px / R12 / 13px triple this used to pin was the dsh
+    // harness's — one rung roomier on every axis. Two sheets dress menus (the
+    // shell primitive and the card family); a drift between them reads as two
+    // kinds of control in the same dock, so both answer to the same triple.
     for (const name of ['Menu.module.css', 'MenuCard.module.css']) {
       const css = sheet(name);
-      expect(css, name).toContain('min-height: 34px');
-      expect(css, name).toContain('border-radius: var(--nova-radius-lg)');
-      expect(css, name).toContain('font-size: 13px');
+      expect(css, name).toContain('min-height: 32px');
+      expect(css, name).toContain('border-radius: var(--nova-radius-xs)');
+      expect(css, name).toContain('font-size: 14px');
     }
   });
 
   it('draws the menu asset at the reference size', () => {
-    // The shared icon set emits a 16px box (style-guard requires the design box
-    // on the element). A menu row's asset is 14px, and the sheet — not the
-    // callsite — is where that step down belongs.
+    // The reference's row assets — leading glyph and trailing check — are both
+    // `size-4` = 16px, the same box the shared icon set draws. The rule still
+    // lives in the sheet, not at the callsite.
     for (const name of ['Menu.module.css', 'MenuCard.module.css']) {
       const css = sheet(name);
-      expect(css, name).toMatch(/\.check svg[\s\S]{0,80}width: 14px/);
+      expect(css, name).toMatch(/\.check svg[\s\S]{0,80}width: 16px/);
     }
   });
 });

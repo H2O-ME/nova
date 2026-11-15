@@ -20,7 +20,6 @@ function panel(): string {
   return renderToStaticMarkup(
     <SettingsDialog
       title="设置"
-      closeLabel={SETTINGS_COPY['settings.close']}
       onClose={() => undefined}
       onSelect={() => undefined}
       sections={[{
@@ -39,22 +38,22 @@ function panel(): string {
 }
 
 describe('settings panel', () => {
-  it('renders the dialog with its name, nav row and close label', () => {
+  it('renders the page frame with its name, nav row and back row', () => {
     const html = panel();
     expect(html).toContain('role="dialog"');
     expect(html).toContain('aria-modal="true"');
     expect(html).toContain('>设置</div>');
     expect(html).toContain(SETTINGS_COPY['general.nav']);
     expect(html).toContain('aria-current="true"');
-    // The close control's accessible name rides a visually-hidden span.
-    expect(html).toContain(`>${SETTINGS_COPY['settings.close']}</span>`);
+    // The way out is the reference's nav-top back row (2026-11-15), not a
+    // dialog-corner close control: settings is a full-window view.
+    expect(html).toContain('>返回工作区</span>');
   });
 
   it('marks the active section and no other', () => {
     const html = renderToStaticMarkup(
       <SettingsDialog
         title="设置"
-        closeLabel="关闭"
         onClose={() => undefined}
         onSelect={() => undefined}
         sections={[
@@ -65,35 +64,29 @@ describe('settings panel', () => {
     );
     // The projection falls back to the first row when no id was requested.
     expect(html.match(/aria-current="true"/g)).toHaveLength(1);
+    // cells[0] is the markup before the first button and cells[1] the rail's
+    // back row (2026-11-15), so the nav rows start at index 2.
     const cells = html.split('<button');
-    expect(cells[1]).toContain('aria-current="true"');
-    expect(cells[1]).toContain('>甲</span>');
-    expect(cells[2]).toContain('>乙</span>');
+    expect(cells[2]).toContain('aria-current="true"');
+    expect(cells[2]).toContain('>甲</span>');
+    expect(cells[3]).toContain('>乙</span>');
   });
 
-  it('rides the close control on the actions seat so it lands top-right', () => {
-    // The defect this pins: `.header` is `justify-content: space-between`, so a
-    // close button that is the header's ONLY child sits at the START edge (the
-    // left). What puts it top-right is the actions seat's `margin-left: auto`
-    // — so the seat must both exist in the markup and carry that rule. Neither
-    // half alone is sufficient, and a static pass is the only lane that can
-    // see the pairing (the position assertions live in the browser).
+  it('is a full-window view: no scrim, no corner close, a back row in the rail', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment). The panel used to be an 800px
+    // dialog over a 60% scrim with a × in its top-right; the reference is a
+    // whole-window view whose only way out is the rail's back row.
     const html = panel();
-    const start = html.indexOf('_header_');
-    expect(start).toBeGreaterThan(-1);
-    const header = html.slice(start, html.indexOf(SETTINGS_COPY['settings.close'], start));
-    // The seat precedes the control: a lone button in a `space-between` header
-    // is what puts it at the left edge.
-    expect(header).toContain('_actions_');
-    expect(header.indexOf('_actions_')).toBeLessThan(header.indexOf('_close_'));
-    expect(header.indexOf('<button')).toBeGreaterThan(header.indexOf('_actions_'));
-
+    expect(html).not.toContain('_mask_');
     const css = readFileSync(
       new URL('../src/settings/SettingsPanel.module.css', import.meta.url),
       'utf8',
     ).replace(/\s+/g, ' ');
-    expect(css).toContain('.actions {');
-    expect(css).toContain('margin-left: auto');
+    expect(css).toContain('.overlay {');
+    expect(css).toContain('position: fixed');
+    expect(css).toContain('width: 100%');
+    expect(css).toContain('.back {');
+    expect(css).not.toContain('.close {');
   });
 });
 

@@ -16,4 +16,10 @@
   --nova-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --nova-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --nova-ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* The shell-panel pair (2026-11-14, ZCode alignment): the reference's
+     sidebar shell is a `duration-200 ease-out` width transition — tailwind's
+     plain ease-out, distinct from the settle-out above. */
+  --nova-dur-panel: 200ms;
+  --nova-ease-panel: cubic-bezier(0, 0, 0.2, 1);
 }

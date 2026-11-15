@@ -127,6 +127,10 @@ export function ModeSelect<T extends string>({
         <button
           type="button"
           className={css.trigger}
+          /* The tier rides the DOM so the sheet can tint the one mode that
+             states a risk in words (the reference's `text-warning` on
+             `full-access`). */
+          data-mode={value}
           aria-label={`${name}，当前：${currentLabel}`}
           aria-haspopup="menu"
           aria-expanded={open}
