@@ -89,12 +89,11 @@ describe('flowRows turns', () => {
     const rows = flowRows(blocks(), options({ openTurns: new Set(['b1']) }));
     // The folded context rows are the group's earliest members: they entered
     // the log before the prompt did.
-    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'c1', 'b2', 'b3', 'tail:b1', 'b5', 'b6', 'tail:b5']);
+    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'b2', 'b3', 'tail:b1', 'b5', 'b6', 'tail:b5']);
     expect(renderToStaticMarkup(rows.find((row) => row.key === 'turn:b1')!.node)).toContain('data-open');
-    expect(renderToStaticMarkup(rows.find((row) => row.key === 'c1')!.node)).toContain('上下文注入');
   });
 
-  it('labels the running turn with the live phase and keeps it open', () => {
+  it('labels the running turn 工作中 and keeps it open', () => {
     const running = blocks({
       6: { id: 'b6', kind: 'text', text: '答二', streaming: true },
       7: { id: 'x', kind: 'hint', text: '占位', tone: 'info' },
@@ -102,7 +101,9 @@ describe('flowRows turns', () => {
     const rows = flowRows(running, options({ idle: false, runningStatus: { label: '生成中' } }));
     expect(keys(rows)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'turn:b5', 'b6']);
     const header = renderToStaticMarkup(rows.find((row) => row.key === 'turn:b5')!.node);
-    expect(header).toContain('生成中');
+    // The reference's live label is one word plus the clock (`工作中 15 秒`),
+    // not the phase vocabulary Nova used to print.
+    expect(header).toContain('工作中');
     expect(header).toContain('data-running');
     // The still-running turn keeps its (earlier, settled) tail on hover only.
     const tail = renderToStaticMarkup(rows.find((row) => row.key === 'tail:b1')!.node);
@@ -153,23 +154,24 @@ describe('flowRows turns', () => {
     expect(renderToStaticMarkup(rows.find((row) => row.key === 'tail:b1')!.node)).toContain('用量');
   });
 
-  it('folds mid-turn context rows too, and keeps hints outside the groups', () => {
+  it('never prints context injections, and keeps hints outside the groups', () => {
+    // Re-baselined 2026-11-15 (ZCode alignment): the reference's transcript
+    // shows the prompt and the answer; its context injections are internal, and
+    // Nova's 「上下文注入 · …」 rows were chrome the reference never draws.
     const withChrome: Block[] = [
       ...blocks(),
       { id: 'c2', kind: 'context', tag: 'environment', form: 'snapshot', text: 'env2' },
       { id: 'h1', kind: 'hint', text: '本轮已中断', tone: 'warn' },
     ];
     const rows = flowRows(withChrome, options());
-    // `c2` landed after the last turn's answer: it belongs to that turn's
-    // group (folded, closed), in log order, while the hint prints outside.
-    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'turn:b5', 'b6', 'tail:b5', 'h1']);
+    expect(keys(rows)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'b6', 'tail:b5', 'h1']);
     const reopened = flowRows(withChrome, options({ openTurns: new Set(['b5']) }));
-    expect(keys(reopened)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'turn:b5', 'b6', 'tail:b5', 'c2', 'h1']);
+    expect(keys(reopened)).toEqual(['b1', 'turn:b1', 'b3', 'tail:b1', 'b5', 'b6', 'tail:b5', 'h1']);
   });
 
-  it('prints context with no turn to ride instead of dropping it', () => {
+  it('drops an orphan context block (the 上下文 view is its home)', () => {
     const rows = flowRows([{ id: 'c1', kind: 'context', tag: 'environment', form: 'snapshot', text: 'env' }], options());
-    expect(keys(rows)).toEqual(['c1']);
+    expect(keys(rows)).toEqual([]);
   });
 
   it('folds mid-turn prose into the process group and groups it for the cap', () => {
@@ -186,11 +188,11 @@ describe('flowRows turns', () => {
       { id: 'm1', kind: 'meta', stats: stats() },
     ];
     const rows = flowRows(turn, options({ openTurns: new Set(['u1']) }));
-    expect(keys(rows)).toEqual(['u1', 'turn:u1', 'c1', 'r1', 't1', 'k1', 't2', 'tail:u1']);
-    // The step rows (context, reasoning, mid-turn prose, tool) carry the turn's
-    // group; the answer and its closing footer do not.
+    expect(keys(rows)).toEqual(['u1', 'turn:u1', 'r1', 't1', 'k1', 't2', 'tail:u1']);
+    // The step rows (reasoning, mid-turn prose, tool) carry the turn's group;
+    // the answer and its closing footer do not.
     const grouped = rows.filter((row) => row.group !== undefined).map((row) => row.key);
-    expect(grouped).toEqual(['c1', 'r1', 't1', 'k1']);
+    expect(grouped).toEqual(['r1', 't1', 'k1']);
     expect(rows.find((row) => row.key === 't1')?.group).toEqual({ id: 'group:u1', live: false });
     expect(rows.find((row) => row.key === 't2')?.group).toBeUndefined();
     expect(rows.find((row) => row.key === 'tail:u1')?.group).toBeUndefined();

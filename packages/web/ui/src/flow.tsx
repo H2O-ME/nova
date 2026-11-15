@@ -131,9 +131,11 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
     while (end < blocks.length && blocks[end]?.kind !== 'user') end += 1;
     const span = blocks.slice(index, end);
     const meta = spanMeta(span);
-    const opening = pendingContext;
     pendingContext = [];
-    const hasProcess = span.some(isProcessBlock) || opening.length > 0;
+    // Context blocks do not count as work here: they never reach the transcript
+    // (see the opening-injection note), so a turn whose only "steps" were
+    // injections must not grow a header with nothing behind it.
+    const hasProcess = span.some((inner) => isProcessBlock(inner) && inner.kind !== 'context');
     const isLastSpan = end >= blocks.length;
     const running = options.runningStatus !== null && isLastSpan;
     const turnKey = block.id;
@@ -186,7 +188,9 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
           kind: 'process',
           node: (
             <TurnHeader
-              label={running && options.runningStatus !== null ? options.runningStatus.label
+              /* 「工作中」 is the reference's own live label — one word plus the
+                 elapsed seconds, whatever phase the run is in. */
+              label={running ? '工作中'
                 : meta !== undefined ? `用时 ${runDurationText(meta.durationMs)}`
                 : '已完成工作'}
               running={running}
@@ -207,20 +211,13 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
             />
           ),
         });
-        // The opening context rows are the group's earliest members (they
-        // entered the log before the prompt did).
-        if (open) {
-          for (const ctx of opening) {
-            rows.push({
-              key: ctx.id,
-              kind: flowKind(ctx),
-              ...(stepBox ? { group: groupOf() } : {}),
-              node: rowNode(ctx, options),
-            });
-          }
-        }
+        // The opening context injections are NOT printed (2026-11-15, ZCode
+        // alignment): the reference's transcript shows the prompt and the
+        // answer, and its context injections are internal. Nova printed them as
+        // 「上下文注入 · 环境信息」 rows above every first answer — three lines
+        // of chrome the reference never draws. They stay in the 上下文 view.
       }
-      if (inner.kind === 'user' || inner.kind === 'meta') continue;
+      if (inner.kind === 'user' || inner.kind === 'meta' || inner.kind === 'context') continue;
       if (isProcessBlock(inner) && !open) continue;
       // The turn's ANSWER is its last settled text; every text before it is a
       // step of the same act (prose the model wrote on the way to the answer),
@@ -272,11 +269,9 @@ export function flowRows(blocks: readonly Block[], options: FlowOptions): ChatFl
     }
     index = end;
   }
-  // A context block with no turn to ride (a truncated baseline): print it
-  // rather than drop it — the trace view is the audit lane, not the only one.
-  for (const ctx of pendingContext) {
-    rows.push({ key: ctx.id, kind: flowKind(ctx), node: rowNode(ctx, options) });
-  }
+  // Context blocks never reach the transcript (see the opening-injection note):
+  // a truncated baseline's orphan context is audit material, and the 上下文
+  // view is where it reads.
   return rows;
 }
 

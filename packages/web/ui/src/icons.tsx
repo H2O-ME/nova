@@ -165,6 +165,16 @@ export const ArrowLeftIcon = (p: P): JSX.Element => (
   </Svg>
 );
 
+/** Horizontal ellipsis: the session header's overflow menu (the reference's
+ *  `⋯` beside the title). */
+export const MoreIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none" />
+  </Svg>
+);
+
 export const ChevronRightIcon = (p: P): JSX.Element => (
   <Svg {...p}>
     <path d="M6 4l4 4-4 4" />

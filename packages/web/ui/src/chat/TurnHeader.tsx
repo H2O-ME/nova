@@ -113,10 +113,10 @@ export const TurnHeader = memo(function TurnHeader({
     return () => { window.clearInterval(timer); };
   }, [running]);
 
-  // One string, the reference's shape: the live row carries its own elapsed
-  // time rather than a second box beside the label.
+  // One string, the reference's shape: 「工作中 15 秒」 — one word plus the
+  // elapsed clock, no 「用时」 verb between them.
   const text = running && startTs !== undefined
-    ? `${label}，用时${liveDurationText(now - startTs)}`
+    ? `${label} ${liveDurationText(now - startTs)}`
     : label;
 
   // The work summary's two jobs differ by run state: a RUNNING activity is a

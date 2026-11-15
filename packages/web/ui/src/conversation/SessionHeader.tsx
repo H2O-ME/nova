@@ -19,7 +19,10 @@
  * means never: the rule stays in place for the 76px contract, not for a control
  * nobody can use.
  */
+import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { Menu } from '../shell/Menu.js';
+import { FolderOpenIcon, MoreIcon } from '../icons.js';
 import css from './SessionHeader.module.css';
 
 /** One view the transcript can show (the source's view ledger). */
@@ -58,6 +61,7 @@ export function SessionHeader({
   activeTabId,
   onSelectTab,
 }: SessionHeaderProps): JSX.Element {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header
       className={hidden ? `${css.header} ${css.headerBlank}` : css.header}
@@ -73,6 +77,14 @@ export function SessionHeader({
         {!hidden && (
           <>
             <div className={css.titleCluster}>
+              {/* The reference's header: a folder glyph, the session title, then
+                  a `⋯` menu. The tab strip Nova carried is gone (2026-11-15) —
+                  the reference has none, and its 28px of chrome was the most
+                  visible "our page starts lower" difference. The views the strip
+                  used to switch live in the menu instead. */}
+              <span className={css.folder} aria-hidden="true">
+                <FolderOpenIcon />
+              </span>
               <nav className={css.crumbs} aria-label="会话层级">
                 <span className={css.crumbSeg}>
                   <span className={`${css.crumb} ${css.crumbCurrent}`} title={rootDir}>
@@ -80,6 +92,30 @@ export function SessionHeader({
                   </span>
                 </span>
               </nav>
+              {tabs !== undefined && tabs.length > 1 && (
+                <Menu
+                  open={menuOpen}
+                  label="会话视图"
+                  items={tabs.map((viewTab) => ({ id: viewTab.id, label: viewTab.label }))}
+                  selectedId={activeTabId ?? tabs[0]?.id}
+                  onSelect={(id) => { setMenuOpen(false); onSelectTab?.(id); }}
+                  onClose={() => { setMenuOpen(false); }}
+                  side="below"
+                  align="start"
+                  anchor={(
+                    <button
+                      type="button"
+                      className={css.more}
+                      aria-label="更多"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      onClick={() => { setMenuOpen((open) => !open); }}
+                    >
+                      <MoreIcon />
+                    </button>
+                  )}
+                />
+              )}
               {/* The source's per-session action seat, left empty on purpose. */}
               <div className={css.headerActions} />
             </div>
@@ -90,22 +126,6 @@ export function SessionHeader({
         )}
         <div className={css.headerCorner} data-conversation-header-corner="">{corner}</div>
       </div>
-      {!hidden && tabs !== undefined && tabs.length > 1 && (
-        <div className={css.tabs} role="tablist">
-          {tabs.map((viewTab) => (
-            <button
-              key={viewTab.id}
-              type="button"
-              role="tab"
-              aria-selected={viewTab.id === activeTabId}
-              className={viewTab.id === activeTabId ? `${css.tab} ${css.tabActive}` : css.tab}
-              onClick={() => onSelectTab?.(viewTab.id)}
-            >
-              {viewTab.label}
-            </button>
-          ))}
-        </div>
-      )}
     </header>
   );
 }

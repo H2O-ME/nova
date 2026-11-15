@@ -1,26 +1,56 @@
-/* 76px with its rule: the height of the Sidebar's tab strip and header row
-   (ui-dockkit `.tabStrip` 38px + the pane header's 38px), so the two rules
-   meet at the column edge. The rows add up to it — 10px top inset, the 30px
-   title row, the tab strip's 10px margin, a 16px tab line, and its 9px bottom
-   inset — so no row below may grow past its figure. */
+/* 48px with its rule (2026-11-15, ZCode alignment): the reference's session
+   header is one row — a folder glyph, the title, a `⋯` menu — with a hairline
+   at its foot. The 76px figure existed to line up with a sidebar tab strip that
+   no longer exists, and the 28px it spent above the transcript was the most
+   visible "our page starts lower" difference on the session screen. */
 .header {
   flex: none;
   box-sizing: border-box;
-  min-height: 76px;
-  padding: var(--nova-space-10) 28px 0 20px;
+  min-height: 48px;
+  padding: 0 28px 0 20px;
   border-bottom: 0.5px solid var(--nova-border-strong);
 }
 
-/* A session with one view renders no tab strip, so the header is the title row
-   plus its insets. The reference drops the 76px floor and spends 10px as bottom
-   padding instead (`.header:where(:not(:has(.tabs)))` in ConversationRoot.module
-   .css) — otherwise every single-view session reserves the 26px the strip would
-   have taken, as dead space above the transcript. The 76px figure exists to
-   align this rule with the sidebar's own rules, so it belongs to the tabbed
-   layout only. */
-.header:where(:not(:has(.tabs))) {
-  min-height: 0;
-  padding-bottom: var(--nova-space-10);
+/* (The single-view shrink rule that used to follow is gone with the tab strip:
+   the header is one 48px row at every state now.) */
+
+/* The reference's header leads with a folder glyph before the title. */
+.folder {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--nova-text-secondary);
+}
+
+.folder svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The title row's overflow menu (`⋯`): a 24px box, quiet at rest. */
+.more {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-left: var(--nova-space-4);
+  padding: 0;
+  border: none;
+  border-radius: var(--nova-radius-xs);
+  background: transparent;
+  color: var(--nova-text-secondary);
+  cursor: pointer;
+}
+
+.more:hover {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+}
+
+.more svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Blank hero/settling: the header keeps its row (the corner seat lives here)
@@ -136,52 +166,4 @@
 
 .headerCorner:empty {
   display: none;
-}
-
-/* figma Tab_Group 34:11441: 35px strip, gap 36, pad-left 8, tabs bottom-aligned.
-   Positioned above the header's own paint, so the active bar covers the rule. */
-.tabs {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  gap: 36px;
-  margin-top: var(--nova-space-10);
-  padding-left: var(--nova-space-8);
-}
-
-/* figma .Tab 34:11442: 13/16 text (figma wt510, rendered 500). The 2px bar
-   reaches 1px past the tab's box to end flush with the header's bottom edge,
-   sitting over the rule. */
-.tab {
-  position: relative;
-  padding: 0 0 9px;
-  border: none;
-  background: transparent;
-  font-size: 13px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--nova-text-muted);
-  cursor: pointer;
-}
-
-.tab::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  border-radius: 2px;
-  background: transparent;
-}
-
-/* Selected tab is blue, not ink: brand-primary resolves to neutral black in
-   this token sheet, so the selected state rides the business blue — the
-   nearest semantic token that stays blue in both themes. */
-.tabActive {
-  color: var(--nova-color-accent);
-}
-
-.tabActive::after {
-  background: var(--nova-color-accent);
 }
