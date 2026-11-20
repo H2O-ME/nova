@@ -2,7 +2,7 @@
  * The operator's model catalog on disk: reading it back, and writing it.
  *
  * Read and write live together because they are one concern (the `models[]`
- * section) and they share one rule the qqbot readers do not: this is the only
+ * section) and they share one rule the plugin-row readers do not: this is the only
  * config block a SURFACE WHOLESALE REPLACES, so what is read back must be
  * exactly what can be written out — any field read here but dropped by the
  * writer would be silently deleted from the operator's file on the next save.

@@ -18,7 +18,7 @@ import path from 'node:path';
 import { MAX_EDITOR_BYTES } from './protocol.js';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** What these frames need from the controller. */
 export interface EntryFrameHost {

@@ -12,20 +12,22 @@
  *
  * Only RASTER images take this route. `image/svg+xml` is deliberately excluded
  * even though the file-type tables call it an image: SVG is a document that can
- * carry script, and it is not one of the four formats the request path accepts.
+ * carry script, and it is not one of the four formats the upload accepts.
  * An SVG pasted from the clipboard keeps the text-reference answer.
  *
  * Everything here is a pure function of its input, so the decision table is
- * testable without a DOM; the single side effect (the POST) is isolated in
- * `uploadImage`.
+ * testable without a DOM; the two side effects (sending the upload frame and
+ * asking the bytes back) go through `client/requests.ts`, so this module stays
+ * free of any connection handle.
  */
 import type { ImageAttachmentRef } from '../../../src/protocol';
+import { requestFrame } from '../client/requests.js';
 
 /**
- * Raster media types the request path accepts, matching core's
- * `IMAGE_MEDIA_TYPES`. Kept as a literal list rather than imported from core:
- * the browser bundle must not pull in core's Node-side modules, and this is the
- * one place the client needs to know the vocabulary.
+ * Raster media types the upload accepts, matching core's `IMAGE_MEDIA_TYPES`.
+ * Kept as a literal list rather than imported from core: the browser bundle
+ * must not pull in core's Node-side modules, and this is the one place the
+ * client needs to know the vocabulary.
  */
 export const IMAGE_MEDIA_TYPES: readonly string[] = [
   'image/png',
@@ -33,23 +35,6 @@ export const IMAGE_MEDIA_TYPES: readonly string[] = [
   'image/webp',
   'image/gif',
 ];
-
-/** Where the bytes are POSTed (the host's only byte-carrying route). */
-export const IMAGE_UPLOAD_PATH = '/api/image';
-
-/**
- * Where an ALREADY-STORED image's bytes are read back from.
- *
- * The id is the content digest, so this URL names one immutable object: a
- * transcript row can point at it directly, the browser caches it forever, and no
- * session state is needed to resolve it. That is what lets a reload show the
- * attachment a pasted prompt actually had.
- * @param id - the host reference id (`sha256:<hex>`).
- * @returns the URL to fetch those bytes from.
- */
-export function imageRefUrl(id: string): string {
-  return `${IMAGE_UPLOAD_PATH}/${encodeURIComponent(id)}`;
-}
 
 /** Largest image the host will store, mirroring core's `MAX_IMAGE_BYTES`. */
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -110,9 +95,7 @@ export function tooLargeMessage(bytes: number): string | undefined {
  * Build an image data URL for the composer's own thumbnail.
  *
  * The browser already holds the bytes it is about to upload, so the preview
- * needs no round trip — and the host serves no read-back route, because a
- * second way to fetch stored bytes would widen the surface for nothing. The URL
- * is revoked by the caller when the row goes away.
+ * needs no round trip. The URL is revoked by the caller when the row goes away.
  * @param file - the local file.
  * @returns an object URL for an `<img>` preview.
  */
@@ -121,12 +104,27 @@ export function previewUrl(file: File): string {
 }
 
 /**
+ * Base64-encode bytes for the `image_upload` frame. Chunked because
+ * `String.fromCharCode` spread over a whole multi-megabyte image would blow
+ * the argument limit; 32 KiB per call stays far under it.
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+/**
  * Upload one image and return the host's durable reference.
  *
- * The bytes go in the BODY, not as base64 in a frame: the client-frame ceiling
- * is 512 KiB and a permitted image is up to 8 MiB, so a frame could not carry it
- * at all. The name rides in the query string because it is display metadata, not
- * content.
+ * The bytes ride the frame as base64: the pipe is line-JSON and there is no
+ * request body left to put them in. This is the ONE frame kind exempt from the
+ * 512 KiB client ceiling (bounded at 16 MiB), and the host re-sniffs the bytes
+ * regardless of the `mediaType` hint, so what decides is always the sniffed
+ * type.
  * @param file - the image file to store.
  * @returns the reference, or a human-readable failure reason.
  */
@@ -135,27 +133,30 @@ export async function uploadImage(file: File): Promise<
 > {
   const tooLarge = tooLargeMessage(file.size);
   if (tooLarge !== undefined) return { ok: false, error: tooLarge };
-  const query = file.name === '' ? '' : `?name=${encodeURIComponent(file.name)}`;
   try {
-    const response = await fetch(`${IMAGE_UPLOAD_PATH}${query}`, {
-      method: 'POST',
-      headers: { 'content-type': file.type === '' ? 'application/octet-stream' : file.type },
-      body: file,
-    });
-    const payload = (await response.json().catch(() => undefined)) as
-      | { ok?: boolean; image?: ImageAttachmentRef; error?: string }
-      | undefined;
-    if (!response.ok || payload?.ok !== true || payload.image === undefined) {
-      return { ok: false, error: uploadErrorText(payload?.error, response.status) };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const reply = await requestFrame(
+      {
+        type: 'image_upload',
+        data: bytesToBase64(bytes),
+        ...(file.name === '' ? {} : { name: file.name }),
+        // 类型为空就不携带：宿主只信自己嗅探出的类型，这个字段只是路由提示。
+        ...(file.type === '' ? {} : { mediaType: file.type }),
+      },
+      'image_uploaded',
+    );
+    if (reply === undefined) return { ok: false, error: '图片上传失败：无法连接到宿主' };
+    if (reply.ok !== true || reply.ref === undefined) {
+      return { ok: false, error: uploadErrorText(reply.error) };
     }
-    return { ok: true, ref: payload.image };
+    return { ok: true, ref: reply.ref };
   } catch {
     return { ok: false, error: '图片上传失败：无法连接到宿主' };
   }
 }
 
 /** Map the host's refusal code to something a user can act on. */
-function uploadErrorText(code: string | undefined, status: number): string {
+function uploadErrorText(code: string | undefined): string {
   switch (code) {
     case 'too-large':
       return `图片超过 ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB，无法附加`;
@@ -164,6 +165,40 @@ function uploadErrorText(code: string | undefined, status: number): string {
     case 'empty':
       return '图片内容为空，无法附加';
     default:
-      return `图片上传失败（HTTP ${status}）`;
+      return '图片上传失败';
   }
+}
+
+/**
+ * 已回读图片的永久缓存：id 是内容摘要（sha256），字节永不改变，所以一个
+ * id 只需要问一次宿主。缓存的是 Promise 本身——同一 id 的并发请求共享一次
+ * 往返，而不是各发一帧。
+ */
+const imageUrlCache = new Map<string, Promise<string | undefined>>();
+
+/**
+ * 取一张已存储图片的可渲染 URL（data URL）。
+ *
+ * 转录里只带引用（id），旧的 `<img src="/api/image/<id>">` 随浏览器入口一起
+ * 消失了：字节现在按帧取回。失败不缓存——断线或超时是可恢复的，下一次渲染
+ * 该行会重新请求；`ok: false`（死 id）也一样，反正重试的代价只是一帧。
+ * @param id - 宿主引用 id（`sha256:<hex>`）。
+ * @returns data URL；宿主答不出字节时为 `undefined`。
+ */
+export function fetchImageBytes(id: string): Promise<string | undefined> {
+  const cached = imageUrlCache.get(id);
+  if (cached !== undefined) return cached;
+  const task = requestFrame({ type: 'image_bytes', id }, 'image_data', {
+    match: (reply) => reply.id === id,
+  }).then((reply) => {
+    if (reply === undefined || reply.ok !== true || reply.data === undefined) {
+      imageUrlCache.delete(id);
+      return undefined;
+    }
+    // mediaType 是宿主从字节里嗅出的，不是帧里声明的，直接可作 data URL 的
+    // MIME；嗅探失败时的兜底类型与宿主的 `application/octet-stream` 一致。
+    return `data:${reply.mediaType ?? 'application/octet-stream'};base64,${reply.data}`;
+  });
+  imageUrlCache.set(id, task);
+  return task;
 }

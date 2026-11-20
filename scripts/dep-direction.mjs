@@ -15,9 +15,9 @@ const packagesDir = join(repoRoot, 'packages');
 
 /** 每个包允许直接 import 的下行包（空数组=零上游内核）。
  *
- * 六个包：内核 `core` 与 `plugins`（容器 + 工具 + 内核装配）、`ai`（provider
- * 客户端）、`web`（WebUI surface 后端，含前端子包 `web/ui`）、`qqbot`（渠道
- * 插件示范）、`cli`（surface 装配壳）。
+ * 五个包：内核 `core` 与 `plugins`（容器 + 工具 + 内核装配）、`ai`（provider
+ * 客户端）、`web`（WebUI surface 后端，含前端子包 `web/ui`）、`cli`（surface
+ * 装配壳）。
  * surface = 任何消费内核事件流的进程形态，官方 surface 与第三方同地位、只
  * 依赖 core/plugins 公共 API。
  */
@@ -27,7 +27,6 @@ const ALLOW = {
   // plugins 动态装载三个扩展包（spec 表）：名字必须过门禁，但源码不 import
   // 它们（`extensions.ts` 里是字符串 spec + 运行时 import()）。
   plugins: ['core', 'plugin-subagent', 'plugin-context', 'plugin-ptc'],
-  qqbot: ['core', 'plugins'],
   // 扩展插件包（advanced 档从主程序出包，按 spec 装载）：只依赖 core——
   // 注册原语与类型剥离探测都住在 core，因此它们不必 import plugins（否则
   // plugins 声明它们为依赖时会成环）。
@@ -39,11 +38,10 @@ const ALLOW = {
   // 它经 `contextInsights` 能力键取值（`web/src/index.ts` 注入，服务缺席即降级），
   // 与 live 路径同一条通道——「什么在窗口里」仍然只有一份定义，但实现留在扩展里。
   web: ['core', 'plugins'],
-  // cli 是产品壳：静态依赖只有内核三件 + WebUI 后端（web）。qqbot 是扩展，经
-  // `qqbot-api.ts` **一处动态 import** 装载（包缺席即降级）——它仍在名单里，因为
-  // 名单管「允许引用的包」，动态边也是边。其余 surface 一律配置行（`surfaces`）
-  // 加载，cli 源码不点名。
-  cli: ['plugins', 'ai', 'core', 'qqbot', 'web'],
+  // cli 是产品壳：静态依赖只有内核三件 + WebUI 后端（web）。渠道类 surface 一律
+  // 配置行（`surfaces`）加载，cli 源码不点名——渠道实现自己是一个包，装它不需要
+  // 改这里。
+  cli: ['plugins', 'ai', 'core', 'web'],
 };
 
 /**
@@ -54,7 +52,7 @@ const ALLOW = {
  * 一律违规。这一条同时承担两个边界的机械执行：
  *
  *  - **internal import gate**：跨包不得引用别人的内部实现；
- *  - **surface-to-runtime gate**：Web / CLI / QQ 不得 import Runtime 私有实现。
+ *  - **surface-to-runtime gate**：Web / CLI / 渠道面不得 import Runtime 私有实现。
  *
  * 现状：全仓零深路径导入，所以它是**零违规的纯棘轮**——它的作用不是抓现行，
  * 而是让第一条出现时门禁就把理由说出来，而不是等 review 发现。

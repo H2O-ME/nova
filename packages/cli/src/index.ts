@@ -3,7 +3,7 @@
  * `nova` — argv in, surface out.
  *
  * This file is deliberately thin: version/help, argv parsing, and surface
- * resolution. The four built-ins (web/repl/exec/qqbot) and every configured
+ * resolution. The three built-ins (web/repl/exec) and every configured
  * surface are the SAME `AgentSurface` type living in ONE registry, registered
  * in precedence order (subcommands → configured → defaults); the shell asks
  * `registry.resolve` once and hands the winner to the ONE assembly
@@ -23,20 +23,21 @@ import { cliVersion } from './version.js';
 const HELP = `nova — 自研本地编码智能体
 
 usage:
-  nova [--web|--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
+  nova [--repl] [--resume <session.jsonl>] [--approval read-only|auto-edit|full] [--theme dark|light|plain]
   nova exec "<task>" [--json] [--approval ...] [--resume <session.jsonl>]
 
 options:
   exec "<task>"   非交互单次执行；--json 以 JSONL 输出事件流（CI 友好）
-  qqbot           QQ 机器人模式（需在插件管理里打开 @nova-agent/qqbot 这一行，并在它的 config 里填凭据）
   plugin          add <包名> | remove <包名> | list——第三方插件装到 ~/.nova/plugins 并写入 plugins.entries（不经配置加载，配置坏了也能修）
-  --web           浏览器界面（本机 HTTP+WS 单进程，打印带 token 的 URL；NOVA_WEB_PORT 固定端口）——交互运行的默认形态
-  --repl          改用 readline 终端形态（非 TTY 自动回落）
+  --repl          改用 readline 终端形态（无 TTY 时自动回落）——桌面向的替代形态
   --resume        续接历史会话文件
   --approval      临时覆盖审批档位；exec 模式下无法交互确认，未放行的请求会被拒绝
   --theme         临时覆盖界面主题（config 的 ui.theme 是持久设置；NO_COLOR 恒定无色）
   --version/-v    显示版本
   --help/-h       显示本帮助
+
+界面由桌面壳（apps/tauri-bench）托管：裸敲 nova 时本进程通过 stdio 管道与窗口通信，
+不监听端口、不打印 URL。手动起这个进程只会等 stdin 的帧。
 
 运行于当前工作目录（即工作区，nova 不会在项目里创建或读取任何文件）；配置唯一
 来源是 ~/.nova/config.json（plugins.entries 可在配置层增删插件）；

@@ -67,7 +67,7 @@ export function facade(env: Environment, modelCatalog?: ModelCatalogPort): Kerne
     /**
      * The process's default tier for NEW sessions, read live off the env: a
      * surface writes it (`set_approval_mode`) and EVERY surface's next session
-     * starts there — browser, qqbot, exec alike. Living on the env rather than
+     * starts there — browser, a channel, exec alike. Living on the env rather than
      * in the web controller is the fix for a default the chat channel never saw.
      */
     get approvalDefault() {

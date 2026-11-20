@@ -517,7 +517,7 @@ export type PluginRouteHandler = (
  * The route-registry service a host (the WebUI server today) publishes for
  * plugins to extend. Plugins register prefixes from their `apply(ctx)`; the
  * host queries the registry on each request before falling back to its own
- * handlers. A kernel without a host (exec / qqbot today) does not provide it,
+ * handlers. A kernel without a host (exec today) does not provide it,
  * so plugins that ship UI capabilities degrade gracefully when run headless.
  */
 export interface RouteRegistry {

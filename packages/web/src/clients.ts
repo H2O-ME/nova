@@ -12,7 +12,7 @@
  * string, because the encoding decision belongs to whoever knows the frame's
  * type. This class only decides who receives it.
  */
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 export class ClientFanout {
   private readonly clients = new Set<WsConnection>();

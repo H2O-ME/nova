@@ -28,7 +28,7 @@ import { errMessage, gitCommit, gitDiff, gitLog, gitStage, gitStatus, gitUnstage
 import type { GitStatus } from '@nova-agent/core';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /**
  * How long one status reading may serve readers.

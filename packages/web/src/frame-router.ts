@@ -19,7 +19,7 @@ import { panelShell, shellCandidates } from '@nova-agent/plugins';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
 import { admitPromptImages } from './prompt-images.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 import { handleFsFrame } from './fs-frames.js';
 import { handleEntryFrame } from './entry-frames.js';
 import { handleGitFrame } from './git-frames.js';
@@ -33,6 +33,7 @@ import { handleManageFrame } from './manage-frames.js';
 import { handlePluginFrame } from './plugin-frames.js';
 import { toWireRosterEntry } from './roster-wire.js';
 import { handleProviderFrame } from './provider-frames.js';
+import { handleMediaFrame } from './media-frames.js';
 import { sessionRows } from './session-rows.js';
 // The collaborator contract is its own module (`frame-host.ts`); re-exported so
 // the controller and existing importers keep one path for both.
@@ -277,6 +278,16 @@ export async function handleFrame(
         // The 任务 tab's read: live jobs as state, never output (output is the
         // model's cursor — see `job-frames.ts`).
         handleJobFrame(client, { jobs: kernel.jobs, sessionId: agent.session.id });
+        break;
+      case 'image_upload':
+      case 'image_bytes':
+      case 'dashboard':
+      case 'context_window':
+      case 'plugin_asset':
+        // The five kinds that replaced HTTP routes: bytes in, bytes out, and the
+        // two readings a plain GET used to serve (see `media-frames.ts` for why
+        // each one had to wait for the frame channel).
+        await handleMediaFrame(client, frame, host.media);
         break;
       case 'set_plugin_enabled':
       case 'set_skill_enabled':

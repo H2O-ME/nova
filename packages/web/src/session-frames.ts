@@ -13,7 +13,7 @@ import path from 'node:path';
 import { deleteSessionLog, gitClone, resolveWorkspaceDir, sessionLogPath } from '@nova-agent/core';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** What the session-target frames need from the controller, which owns it all. */
 export interface SessionFrameHost {

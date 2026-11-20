@@ -194,7 +194,10 @@
   display: grid;
   grid-template-rows: 1fr;
   overflow: hidden;
-  animation: nova-collapse var(--nova-dur-base) var(--nova-ease-out);
+  /* The reference's collapsible runs 300ms ease-in-out in both directions
+     (collapsible.tsx + `zcode-collapsible-up/down`); 180ms ease-out read as a
+     snap next to it. */
+  animation: nova-collapse var(--nova-dur-slow) var(--nova-ease-inout);
 }
 
 .bodyWrap > * {

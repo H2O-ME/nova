@@ -24,7 +24,7 @@ import type { Kernel } from '@nova-agent/plugins';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame, WireProviderInput, WireProviderRow } from './protocol.js';
 import { MODEL_LIST_FAILED } from './model-seat.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** One stored provider row, as the settings page reads it. */
 export interface StoredProviderRow extends WireProviderRow {}

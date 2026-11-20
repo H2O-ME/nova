@@ -17,7 +17,6 @@ export interface ParsedArgs {
   themeOverride?: ThemeName;
   json: boolean;
   repl: boolean;
-  web: boolean;
   positional: string[];
 }
 
@@ -26,15 +25,15 @@ export interface ParsedArgs {
  * starting with `-` (`nova exec -- "-check the config"`) passes through.
  */
 export function parseArgs(args: string[]): ParsedArgs | undefined {
-  const parsed: ParsedArgs = { json: false, repl: false, web: false, positional: [] };
+  const parsed: ParsedArgs = { json: false, repl: false, positional: [] };
   let positionalOnly = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (positionalOnly) {
       // After `--` EVERYTHING is task text — including tokens that spell known
       // flags. The old parser kept reading them as options, so a task like
-      // `nova exec -- --web --json fix the flag handling` silently switched
-      // surfaces and output modes instead of being executed verbatim.
+      // `nova exec -- --approval full fix the flag handling` silently changed
+      // the approval tier instead of being executed verbatim.
       parsed.positional.push(arg);
       continue;
     }
@@ -60,10 +59,6 @@ export function parseArgs(args: string[]): ParsedArgs | undefined {
       parsed.json = true;
     } else if (arg === '--repl') {
       parsed.repl = true;
-    } else if (arg === '--web') {
-      // The explicit spelling of the default surface (the catch-all `web`
-      // entry claims it either way; the flag stays for scripts and for help).
-      parsed.web = true;
     } else if (arg.startsWith('-')) {
       return fail(`unknown option: ${arg}（--help 查看用法）`);
     } else {

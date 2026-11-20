@@ -12,6 +12,7 @@ import { reduce, initialState, type Action, type UiState } from '../state.js';
 import type { ClientFrame } from '../types.js';
 import { createConnection, type Connection, type ConnectionStatus } from './connection.js';
 import { frameAction } from './protocol.js';
+import { clearFrameSender, deliverServerFrame, dropPendingRequests, setFrameSender } from './requests.js';
 
 export interface AgentClientModel {
   /** The current reducer state (a stable reference until a dispatch changes it). */
@@ -48,6 +49,9 @@ export function createAgentClient(): AgentClientModel {
 
   const conn: Connection = createConnection({
     onFrame: (frame) => {
+      // 请求-响应枢纽先认领（见 requests.ts）：`image_uploaded` 等回帧的等待
+      // 者在这里拿走答案，剩下的帧才进 reducer 的路由表。
+      if (deliverServerFrame(frame)) return;
       const action = frameAction(frame as Parameters<typeof frameAction>[0]);
       if (action !== null) dispatch(action);
     },
@@ -57,10 +61,18 @@ export function createAgentClient(): AgentClientModel {
       // dark them all, not leave buttons that silently do nothing. A newly
       // OPEN socket dispatches nothing — `connected` is lit by the `ready`
       // reduction alone (see connection.ts).
-      if (status === 'closed') dispatch({ type: 'connection', connected: false });
+      if (status === 'closed') {
+        dispatch({ type: 'connection', connected: false });
+        // 在飞的帧请求跟着断线一起作废：等待者立刻降级，而不是干等超时。
+        dropPendingRequests();
+      }
       emit();
     },
   });
+  // 把发送路径交给 requests.ts：模块级的帧调用点（图片、dashboard 等）不持有
+  // model 实例，经由这里拿到当前连接的发送能力。
+  const forward = (frame: unknown): boolean => conn.send(frame);
+  setFrameSender(forward);
 
   return {
     getState: () => state,
@@ -81,6 +93,10 @@ export function createAgentClient(): AgentClientModel {
     },
     dispose: () => {
       conn.dispose();
+      // 只有当前注册者才能清掉发送路径：StrictMode 卸旧装新的顺序保证清理
+      // 不会误伤后继连接。
+      clearFrameSender(forward);
+      dropPendingRequests();
       listeners.clear();
     },
   };

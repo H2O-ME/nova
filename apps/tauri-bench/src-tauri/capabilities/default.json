@@ -1,11 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window. The WebUI is loaded from the runtime's local HTTP origin (127.0.0.1), so the window-control commands the frameless titlebar needs are granted to that origin explicitly — without this grant the remote page can draw the controls but cannot press them.",
+  "description": "Capability for the main window. The WebUI is loaded from local files (frontendDist), so the capability applies to the local context by default and no remote-origin grant is needed. The window-control commands the frameless titlebar needs stay granted here; core:default covers the nova-frame event listen side, and app-defined commands (nova_send) need no capability entry when invoked from a local origin.",
   "windows": ["main"],
-  "remote": {
-    "urls": ["http://127.0.0.1:*", "http://localhost:*"]
-  },
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",

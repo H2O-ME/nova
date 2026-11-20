@@ -15,6 +15,7 @@ import type { ModelSeat } from './model-seat.js';
 import type { SessionPages } from './session-pages.js';
 import type { TermRegistry } from './term-session.js';
 import type { ContextFollow } from './context-follow.js';
+import type { MediaHost } from './media-frames.js';
 
 export interface FrameHost {
   agent: AgentSession;
@@ -38,6 +39,16 @@ export interface FrameHost {
   gitCache: GitStatusCache;
   /** The Context panel's fold, kept in step with the log. */
   context: ContextFollow;
+  /**
+   * The five collaborators the media frames need: the corpus root they fold
+   * over, the context plugin's read seam, and the plugin asset registry.
+   *
+   * Grouped because they answer one question ("what replaced the HTTP routes"),
+   * and `MediaHost` is the same shape the handlers take — so the routing table
+   * forwards one object instead of rebuilding it field by field (which is how a
+   * newly added seam gets silently dropped).
+   */
+  media: MediaHost;
   /** Remember a switch past this process; absent with no durable home for it. */
   persistModel: ((model: string) => void | Promise<void>) | undefined;
   /** The operator's model list: its writer, and its on-demand reader. */

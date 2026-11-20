@@ -68,7 +68,7 @@ export interface Kernel {
    * The process's default tier for NEW sessions — what a surface's settings
    * row picked (the web tier select writes it through `set_approval_mode`).
    * Lives on the kernel rather than in any one surface because conversations
-   * are created by SEVERAL surfaces: a default the qqbot channel never sees
+   * are created by SEVERAL surfaces: a default a channel surface never sees
    * would apply to browser sessions only, which is the "设置了也不执行" bug.
    * `undefined` = fall back to the boot config's `approval`.
    */
@@ -125,8 +125,8 @@ export interface Kernel {
   newAgentSession(opts?: { resumeFile?: string; sessionDir?: string }): Promise<AgentSession>;
   /**
    * Make an ALREADY-CREATED session current again. A PLUGIN does not go through
-   * this member: a plugin that owns its own conversations (qqbot peer switch)
-   * injects the `sessions` service and calls `sessions.activate(agent)`
+   * this member: a plugin that owns its own conversations (a chat-channel peer
+   * switch) injects the `sessions` service and calls `sessions.activate(agent)`
    * directly. In-repo surface switches (`/resume`, web session switch) create
    * and make current in one step via `newAgentSession`, so this member has no
    * production caller in the repo today — it is a kernel-handle seam like

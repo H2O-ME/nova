@@ -25,7 +25,7 @@ import type { ShellCandidate } from '@nova-agent/plugins';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
 import type { TermRegistry, TermSession } from './term-session.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** The terminal frames this module answers. */
 export type TermFrame = Extract<ClientFrame, { type: 'term_open' | 'term_input' | 'term_resize' | 'term_kill' }>;

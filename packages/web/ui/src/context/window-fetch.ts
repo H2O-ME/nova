@@ -1,16 +1,14 @@
 /**
- * Fetch one request's window snapshot from the host's context-window route.
+ * One request's window snapshot, asked over a `context_window` frame.
  *
  * Pure (returns a Promise); the cards call it on demand (a click) rather than
  * on mount, because every open row is a fresh walk over the named session's
- * log and there is no reason to pay for one until a reader asks. The cookie
- * the auth gate set travels with the same-origin request, so this needs no
- * headers of its own.
+ * log and there is no reason to pay for one until a reader asks. The frame
+ * replaces the old `/api/context-window` GET; the host re-validates the path
+ * against the sessions root exactly as it did for the route.
  */
 import type { ContextWindowSnapshot } from '../types.js';
-
-/** The route the host owns. */
-const CONTEXT_WINDOW_PATH = '/api/context-window';
+import { requestFrame } from '../client/requests.js';
 
 /** Query the host for the window at `seq` in session `sessionFile`. */
 export async function fetchContextWindow(
@@ -18,14 +16,11 @@ export async function fetchContextWindow(
   seq: number,
 ): Promise<ContextWindowSnapshot | undefined> {
   try {
-    const qs = `?session=${encodeURIComponent(sessionFile)}&seq=${seq}`;
-    const response = await fetch(`${CONTEXT_WINDOW_PATH}${qs}`, { method: 'GET' });
-    if (!response.ok) return undefined;
-    const payload = (await response.json().catch(() => undefined)) as
-      | { ok?: boolean; snapshot?: ContextWindowSnapshot }
-      | undefined;
-    if (payload?.ok !== true || payload.snapshot === undefined) return undefined;
-    return payload.snapshot;
+    // 回帧没有关联字段：并发点开多行时按回帧类型排队（requests.ts），本地
+    // IPC 的串行代价可忽略，换来的归属无歧义。
+    const reply = await requestFrame({ type: 'context_window', session: sessionFile, seq }, 'context_window');
+    if (reply === undefined || reply.ok !== true || reply.snapshot === undefined) return undefined;
+    return reply.snapshot;
   } catch {
     return undefined;
   }

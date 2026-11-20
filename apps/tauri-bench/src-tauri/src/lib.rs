@@ -1,23 +1,26 @@
-//! Nova Desktop shell (W2.1): the window IS the existing WebUI, on the real home.
+//! Nova Desktop shell: the window IS the locally built UI, fed by the runtime
+//! over a line-delimited JSON frame protocol.
 //!
 //! Contract, in order:
 //! 1. Spawn the runtime against the user's REAL `~/.nova/` — config, sessions
 //!    and pairing persist across launches. The new-session workspace defaults
-//!    to the user's home dir; adopting another workspace is the WebUI's own
-//!    runtime ability (DirectoryBrowser re-roots the kernel without a
-//!    restart), so the shell never needs a directory picker and keeps no
-//!    workspace preference.
-//! 2. Parse the launch URL (token included) from the runtime's stdout line
-//!    `Nova WebUI：<url>` — the one discovery channel that needs no internal
-//!    file formats. Port memory stays: a busy remembered port falls back to an
-//!    ephemeral bind, so the shell instance coexists with a browser instance.
-//! 3. Navigate the webview there. The WS protocol and cookie pairing stay
-//!    untouched: the shell owns window + process lifecycle only.
-//! 4. On exit: ask the runtime to stop gracefully first (`GET /shutdown?t=` —
-//!    the launch token is the bearer credential), wait up to 3s for it to
-//!    exit on its own (jobs/PTYs disposed by the runtime itself), then fall
-//!    back to a hard kill. Session logs are an append-only event stream, so
-//!    even the fallback costs at most the turn in flight.
+//!    to the user's home dir; adopting another workspace is the UI's own
+//!    runtime ability (the kernel re-roots without a restart), so the shell
+//!    never needs a directory picker and keeps no workspace preference.
+//! 2. The kernel speaks one JSON frame per line over the child's stdio: every
+//!    stdout line is a host→client frame, forwarded verbatim as a
+//!    `nova-frame` event; `nova_send` writes a client→host frame (one line +
+//!    newline) into the child's stdin. The shell never parses frame contents
+//!    and has no HTTP relationship with the runtime — no launch token, no
+//!    server-managed webview.
+//! 3. The webview loads the built UI from local files (`frontendDist`), so it
+//!    runs on a local origin. The window starts invisible and is shown once
+//!    the first stdout frame proves the kernel is up, bounded by a short
+//!    timer so a dead runtime still gets a visible window.
+//! 4. On exit: drop the child's stdin handle — EOF is the shutdown signal
+//!    (the runtime disposes jobs/PTYs and exits on its own), wait up to 3s,
+//!    then fall back to a hard kill. Session logs are an append-only event
+//!    stream, so even the fallback costs at most the turn in flight.
 //!
 //! Runtime root, highest priority first:
 //! 1. Bundled: a `runtime/` dir next to the exe (tauri bundle resources) —
@@ -30,17 +33,23 @@
 //!    where the runtime dir is prepended when it ships its own node.exe.
 //! 3. The development constant below — the repo checkout.
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpStream};
-use std::process::{Child, Command, Stdio};
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{Manager, RunEvent, Url, WebviewWindow};
+use tauri::{Emitter, Manager, RunEvent, State, WebviewWindow};
 
 const DEV_NOVA_ROOT: &str = "D:\\web\\agent";
-const LAUNCH_MARK: &str = "Nova WebUI";
+
+/// One host→client frame, forwarded verbatim to the webview as a
+/// `nova-frame` event. The payload carries the raw line: the shell never
+/// parses frame contents, the UI owns the schema.
+#[derive(Clone, serde::Serialize)]
+struct NovaFrame {
+    line: String,
+}
 
 /// The runtime entry the dir must contain to count as a runtime root — the
 /// bundled deploy has the cli package at the root, the repo checkout nests it
@@ -118,8 +127,12 @@ fn prepare_node_on_path(root: &std::path::Path) {
     }
 }
 
-fn spawn_runtime() -> (Child, mpsc::Receiver<String>) {
-    // New sessions default to the user's home; the WebUI re-roots at any
+/// Spawn the runtime kernel. stdin and stdout are piped (they carry the
+/// frame protocol); stderr is inherited so runtime logs and diagnostics stay
+/// visible to the user. Returns the child plus its stdout: the caller keeps
+/// the child for stdin/exit control and pumps stdout lines in a thread.
+fn spawn_runtime() -> (Child, ChildStdout) {
+    // New sessions default to the user's home; the UI re-roots at any
     // workspace it adopts, so the shell never needs a directory picker.
     let cwd = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
     let root = runtime_root();
@@ -127,109 +140,159 @@ fn spawn_runtime() -> (Child, mpsc::Receiver<String>) {
     let entry = runtime_entry(&root);
     let mut child = Command::new("node")
         .arg(&entry)
-        .arg("--web")
         .current_dir(cwd)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
         .expect("spawn nova runtime");
-
     let stdout = child.stdout.take().expect("runtime stdout");
-    let (tx, rx) = mpsc::channel::<String>();
-    thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().flatten() {
-            // The marker's colon is full-width (the runtime logs in Chinese);
-            // find the marker and strip whatever separator follows it.
-            if let Some(idx) = line.find(LAUNCH_MARK) {
-                let url = line[idx + LAUNCH_MARK.len()..]
-                    .trim_start_matches(['：', ':', ' '])
-                    .trim()
-                    .to_string();
-                if !url.is_empty() {
-                    let _ = tx.send(url);
-                    break;
-                }
-            }
-        }
-    });
-    (child, rx)
+    (child, stdout)
 }
 
-/// Ask the runtime to stop itself: one HTTP request to the shutdown endpoint,
-/// carrying the launch token. Best effort — every failure falls through to
-/// the hard-kill path in `run()`.
-fn graceful_shutdown(launch_url: &str) {
-    let rest = launch_url.strip_prefix("http://").unwrap_or(launch_url);
-    let host = rest.split('/').next().unwrap_or("");
-    let Some(port) = host.rsplit_once(':').and_then(|(_, p)| p.parse::<u16>().ok()) else {
-        return;
+/// Forward one client→host frame to the runtime: a single JSON line plus a
+/// newline, flushed immediately (the UI's next state depends on it). Best
+/// effort: once the stdin handle is dropped (exit path) or the child died,
+/// the frame is discarded and the UI simply sees the runtime go silent.
+#[tauri::command]
+fn nova_send(frame: String, stdin: State<'_, Arc<Mutex<Option<ChildStdin>>>>) {
+    if let Ok(mut slot) = stdin.lock() {
+        if let Some(stdin) = slot.as_mut() {
+            let _ = writeln!(stdin, "{frame}");
+            let _ = stdin.flush();
+        }
+    }
+}
+
+/// Frames buffered until the webview's listener exists, and the flag saying
+/// whether it does yet.
+///
+/// THE BUG THIS EXISTS FOR: the runtime writes `ready` (the transcript
+/// baseline) the instant it attaches — long before a webview has loaded the
+/// local UI and registered its `nova-frame` listener. Emitting into that gap
+/// does not queue the event (Tauri drops it), so the window came up
+/// permanently un-baselined: no transcript, no model, and a prompt typed into
+/// it went nowhere until the operator reloaded. The bridge is therefore on the
+/// SHELL's side of the channel, where the gap actually exists.
+#[derive(Default)]
+struct FrameBuffer {
+    lines: Vec<String>,
+    listening: bool,
+}
+
+/// Ceiling on that bridge. Far beyond the gap (`ready` plus a couple of list
+/// answers) and still bounded, because a webview that never reports in must not
+/// let the shell grow without limit.
+const MAX_BUFFERED_FRAMES: usize = 8192;
+
+/// The UI's "my listener is registered" call: hand back everything buffered so
+/// far, and let the pump emit directly from here on.
+#[tauri::command]
+fn nova_ready(app: tauri::AppHandle, buffer: State<'_, Arc<Mutex<FrameBuffer>>>) {
+    let pending = {
+        let mut guard = match buffer.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        guard.listening = true;
+        std::mem::take(&mut guard.lines)
     };
-    let Some(token) = launch_url.split(['?', '&']).find_map(|p| p.strip_prefix("t=")) else {
-        return;
+    for line in pending {
+        let _ = app.emit("nova-frame", NovaFrame { line });
+    }
+}
+
+/// Emit one frame — directly when the UI is listening, into the buffer when it
+/// is not (see `FrameBuffer` for why that window exists).
+fn deliver(app: &tauri::AppHandle, buffer: &Arc<Mutex<FrameBuffer>>, line: String) {
+    let mut guard = match buffer.lock() {
+        Ok(guard) => guard,
+        // A poisoned lock means the buffer is unusable; emitting directly is
+        // still better than dropping the frame silently.
+        Err(_) => {
+            let _ = app.emit("nova-frame", NovaFrame { line });
+            return;
+        }
     };
-    let Ok(mut stream) = TcpStream::connect_timeout(
-        &SocketAddr::from(([127, 0, 0, 1], port)),
-        Duration::from_secs(2),
-    ) else {
+    if !guard.listening {
+        if guard.lines.len() < MAX_BUFFERED_FRAMES {
+            guard.lines.push(line);
+        }
         return;
-    };
-    let _ = write!(
-        stream,
-        "GET /shutdown?t={token} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
-    );
-    let _ = stream.flush();
-    // Drain a little so the request is fully sent before the socket drops.
-    let mut buf = [0u8; 64];
-    let _ = stream.read(&mut buf);
+    }
+    drop(guard);
+    let _ = app.emit("nova-frame", NovaFrame { line });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let (child, rx) = spawn_runtime();
+    let (mut child, stdout) = spawn_runtime();
+    // Take stdin NOW and keep it in shared state: `nova_send` writes frames
+    // into it and the exit hook drops it for EOF, so it must live outside
+    // `child.stdin` (which is behind the child lock both sides would fight
+    // over).
+    let stdin: Arc<Mutex<Option<ChildStdin>>> = Arc::new(Mutex::new(child.stdin.take()));
     let child = Arc::new(Mutex::new(child));
-    let launch_url: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    // The startup bridge: frames are buffered here until the webview reports in
+    // through `nova_ready` (see `FrameBuffer`).
+    let frames: Arc<Mutex<FrameBuffer>> = Arc::new(Mutex::new(FrameBuffer::default()));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup({
-            let launch_url = Arc::clone(&launch_url);
-            move |app| {
-                let window: WebviewWindow = app.get_webview_window("main").expect("main window");
-                thread::spawn(move || {
-                    let url = match rx.recv_timeout(Duration::from_secs(60)) {
-                        Ok(url) => url,
-                        Err(_) => {
-                            "data:text/html,<body style='font-family:sans-serif;background:#16171a;color:#e8e8ea'><h3>Nova runtime 未在 60 秒内就绪</h3></body>".to_string()
-                        }
-                    };
-                    match url.parse::<Url>() {
-                        Ok(parsed) => {
-                            if let Ok(mut slot) = launch_url.lock() {
-                                *slot = Some(url.clone());
-                            }
-                            let _ = window.navigate(parsed);
-                        }
-                        Err(err) => eprintln!("nova: launch URL 解析失败: {url} ({err})"),
+        .manage(Arc::clone(&stdin))
+        .manage(Arc::clone(&frames))
+        .setup(move |app| {
+            let window: WebviewWindow = app.get_webview_window("main").expect("main window");
+            let handle = app.handle().clone();
+            let frames = Arc::clone(&frames);
+            let (ready_tx, ready_rx) = mpsc::channel::<()>();
+            // Line pump: every stdout line is one host→client frame, forwarded
+            // verbatim — the shell stays schema-agnostic and never parses one.
+            thread::spawn(move || {
+                let mut first = true;
+                for line in BufReader::new(stdout).lines().flatten() {
+                    deliver(&handle, &frames, line);
+                    if first {
+                        first = false;
+                        // The kernel has spoken: tell the show timer below.
+                        let _ = ready_tx.send(());
                     }
-                });
-                Ok(())
-            }
+                }
+            });
+            thread::spawn(move || {
+                // SHOW ON FIRST FRAME. The window is created invisible
+                // (`visible: false` in tauri.conf.json) and the webview loads
+                // the local UI immediately — showing it before the kernel has
+                // spoken would flash a "not connected" shell. The first
+                // stdout frame is the earliest observable signal that the
+                // kernel is actually up, so show on it; a fixed 3s timer
+                // bounds the wait so a wedged or dead runtime still gets a
+                // visible window (an empty UI beats an invisible one).
+                let _ = ready_rx.recv_timeout(Duration::from_secs(3));
+                let _ = window.show();
+                let _ = window.set_focus();
+            });
+            Ok(())
         })
+        .invoke_handler(tauri::generate_handler![nova_send, nova_ready])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(move |_app, event| {
             if let RunEvent::Exit = event {
-                let launch = launch_url.lock().ok().and_then(|u| u.clone());
+                // Graceful first: dropping the stdin handle sends EOF, the
+                // runtime's signal to dispose jobs/PTYs and exit on its own.
+                // Wait up to 3s (same bound as before), then hard-kill;
+                // session logs are an append-only event stream, so even the
+                // fallback costs at most the turn in flight.
+                if let Ok(mut slot) = stdin.lock() {
+                    *slot = None;
+                }
                 if let Ok(mut c) = child.lock() {
-                    // Graceful first: the runtime disposes jobs/PTYs itself.
-                    if let Some(url) = launch {
-                        graceful_shutdown(&url);
-                        for _ in 0..30 {
-                            if matches!(c.try_wait(), Ok(Some(_))) {
-                                return;
-                            }
-                            thread::sleep(Duration::from_millis(100));
+                    for _ in 0..30 {
+                        if matches!(c.try_wait(), Ok(Some(_))) {
+                            return;
                         }
+                        thread::sleep(Duration::from_millis(100));
                     }
                     let _ = c.kill();
                     let _ = c.wait();

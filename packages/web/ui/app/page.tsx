@@ -25,10 +25,8 @@
  *    `next.config.ts`. Re-declaring either would duplicate it.
  */
 import dynamic from 'next/dynamic';
-import { useEffect } from 'react';
 import { ErrorBoundary } from '../src/shell/ErrorBoundary.js';
 import { SHELL_COPY } from '../src/shell/copy.js';
-import { watchForStaleBuild } from '../src/shell/stale-build-watch.js';
 import '../src/shell/input-modality.js';
 
 /**
@@ -36,26 +34,21 @@ import '../src/shell/input-modality.js';
  * is split into a client chunk, so the page shell paints before the (large)
  * application graph evaluates, exactly as the Vite bundle did.
  */
+/**
+ * The cast reconciles two copies of React's types, not two components.
+ *
+ * `apps/tauri-bench` ships React 19, and pnpm hoists its `@types/react` into
+ * `.pnpm/node_modules` — the place `next`'s own `.d.ts` resolves `react` from.
+ * So `next/dynamic` hands back a `ComponentType` typed against React 19's
+ * `Component` while this package still runs 18, and the value is the same
+ * component either way. Remove the cast when the tree has one React.
+ */
 const App = dynamic(() => import('../src/app/App.js').then((m) => m.App), {
   ssr: false,
   loading: () => null,
-});
-
-/** The client bundle's own URL, as the browser loaded it. */
-function runningScriptUrl(): string {
-  const scripts = Array.from(document.querySelectorAll<HTMLScriptElement>('script[src]'));
-  // The last script is the page's own entry chunk; Next's bootstrap scripts
-  // precede it. Falling back to the location keeps this from throwing when the
-  // probe runs before any script is reachable.
-  const last = scripts[scripts.length - 1];
-  return last?.src ?? document.location.href;
-}
+}) as unknown as () => JSX.Element;
 
 export default function Page(): JSX.Element {
-  useEffect(() => {
-    watchForStaleBuild(runningScriptUrl());
-  }, []);
-
   // The boundary stays here rather than inside `App`: without it React unmounts
   // the whole tree on the first render error and the reader gets a blank page
   // (measured: a `process.platform` read inside the files panel did exactly

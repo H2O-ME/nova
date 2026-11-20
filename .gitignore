@@ -1,6 +1,6 @@
 node_modules/
 dist/
-# 前端构建产物（packages/web/ui 的 vite 输出）：与 dist/ 同性质，`pnpm build` 时由 -r 顺带重生
+# 前端构建产物（packages/web/ui 的 Next 静态导出）：与 dist/ 同性质，`pnpm build` 时由 -r 顺带重生
 packages/web/public/
 .nova/
 .zcode/
@@ -11,6 +11,20 @@ skills-lock.json
 
 # agent 工具在本目录留下的工作目录，同 .zcode/ 一类
 .pi/
+# skills CLI 为各 agent 工具建的软链目录；skill 本体在 .agents/skills/ 提交
+.claude/
+# mimosa 安全扫描器在每个扫描根旁落的 hook-state（会话快照 + baseline blob）。
+# 它按"扫描发生的地点"撒，不是按仓库结构，所以只能全局忽略——
+# 两个子工程的 .gitignore 各写一份已经漏掉了 packages/ 下那几棵。
+.mimosa/
+# 该扫描器的恢复转储
+.acl-recovery/
+# tsc 增量构建缓存（`packages/web/ui/tsconfig.json` 开了 incremental）
+*.tsbuildinfo
 
 # 外部参照源码（vendored reference，只读不改，同 .reference/codex 的定位）：不是本仓库产物
 deepseek-harness-master/
+# Next.js 构建缓存与静态导出中间产物（产物本身落 packages/web/public，已在上方忽略）
+packages/web/ui/.next/
+packages/web/ui/out/
+.docs-archive/

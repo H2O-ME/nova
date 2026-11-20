@@ -15,7 +15,7 @@ import { toWireRosterEntry } from './roster-wire.js';
 import type { WireRosterEntry } from './roster-entry.js';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** The collaborators the management frames read, supplied by the controller. */
 export interface ManageHost {

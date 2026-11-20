@@ -78,7 +78,7 @@ export interface PersistConfigSeams {
  * persistence seams only the shell can supply.
  *
  * 装配权归壳：controller **不**再调用 `createAgentKernel`。这样「谁装内核」全仓
- * 只有一处（`cli/kernel-boot.ts` 的 `bootKernel`），web 面与 exec / repl / qqbot
+ * 只有一处（`cli/kernel-boot.ts` 的 `bootKernel`），web 面与 exec / repl
  * 共用同一段装配（含 modelCatalog / persistConfig / extraPlugins / surfaces 的
  * 转发），三个装配点收敛为一条入口——此前 web 自装一份，正是「新选项被静默丢掉」
  * 与「两处模型元数据实现」的温床。
@@ -140,24 +140,19 @@ export interface ControllerOptions extends ProviderSeams {
    * `native-picker.ts` answers; tests inject a fake so no OS dialog ever opens.
    */
   pickPath?: PickFn;
-}
-
-export interface LaunchWebOptions extends ControllerOptions {
-  /** Directory of built frontend assets (vite `dist`). Served at `/`. */
-  staticDir: string;
-  /** TCP port; 0 (default) picks a free ephemeral port. */
-  port?: number;
-  /** Bind host. MUST stay a loopback address — the surface is localhost-only. */
-  host?: '127.0.0.1' | 'localhost' | '::1';
-  /** Called with the full launch URL (token included) once listening. */
-  onReady?: (url: string) => void;
   /**
-   * The plugin asset route registry. The SAME instance is provided to the
-   * kernel container (via `routeRegistryProvider`) so plugins register their
-   * prefixes from `apply(ctx)`; the host's request handler then dispatches
-   * through it before falling back to its own handlers. Absent in tests and in
-   * any surface whose shell did not wire the seam — the server then serves as
-   * usual and plugin UI capabilities degrade.
+   * The corpus root the `dashboard` frame folds over. Absent means the host's own
+   * sessions root (`~/.nova/sessions`); tests point it at a temp directory so a
+   * corpus read never touches real logs.
+   */
+  sessionsRootDir?: string;
+  /**
+   * The plugin asset route registry. The SAME instance is provided to the kernel
+   * container (via `routeRegistryProvider`) so plugins register their prefixes
+   * from `apply(ctx)`; the `plugin_asset` frame then dispatches through it.
+   * Absent in tests and in any shell that did not wire the seam — plugin UI
+   * capabilities then degrade rather than fail.
    */
   routes?: RouteRegistry;
 }
+

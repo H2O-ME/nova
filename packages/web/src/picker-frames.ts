@@ -11,7 +11,7 @@
  */
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 import type { PickKind, PickerOutcome } from './native-picker.js';
 
 /** How the host opens a dialog (the real one by default; injected in tests). */

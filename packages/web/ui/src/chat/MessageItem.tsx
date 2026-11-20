@@ -13,10 +13,10 @@
  * harness keeps them apart too. The finished run's numbers ride the turn
  * header and the tail's usage pill (see `chat/TurnHeader.tsx`), not a row here.
  */
-import { Fragment, memo } from 'react';
+import { Fragment, memo, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { mentionSegments } from '../mention-tokens.js';
-import { imageRefUrl } from '../composer/image-draft.js';
+import { fetchImageBytes } from '../composer/image-draft.js';
 import { ReferenceFileIcon, ReferenceFolderIcon } from '../composer/Icons.js';
 import { Bubble, BubbleContent } from '../components/ui/bubble.js';
 import { Message, MessageContent } from '../components/ui/message.js';
@@ -46,6 +46,38 @@ export interface UserMessageRowProps {
   onBranch?: (() => void) | undefined;
 }
 
+/**
+ * One attached image row: the bytes are fetched by frame (see
+ * `fetchImageBytes`) and rendered as a data URL. A hook per row, not per list:
+ * the memo'd parent must stay hook-free, and each id resolves on its own
+ * schedule. Until the bytes land nothing is rendered — the row's own layout
+ * comes back the moment the (usually cached) answer does.
+ */
+function AttachmentImage({ id }: { id: string }): JSX.Element | null {
+  const [url, setUrl] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    void fetchImageBytes(id).then((resolved) => {
+      if (!cancelled && resolved !== undefined) setUrl(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+  if (url === undefined) return null;
+  return (
+    <img
+      className={css.attachmentImage}
+      src={url}
+      alt="已附加的图片"
+      // Decorative to the model-facing text but meaningful to the
+      // reader, so it is a normal image with an alt rather than
+      // aria-hidden: a pasted screenshot IS the prompt.
+      loading="lazy"
+    />
+  );
+}
+
 export const UserMessageRow = memo(function UserMessageRow({ text, time, pending, echo, images, onBranch }: UserMessageRowProps): JSX.Element {
   return (
     <Message
@@ -58,16 +90,7 @@ export const UserMessageRow = memo(function UserMessageRow({ text, time, pending
         {images !== undefined && images.length > 0 && (
           <div className={css.attachmentRow} data-message-attachments>
             {images.map((image) => (
-              <img
-                key={image.id}
-                className={css.attachmentImage}
-                src={imageRefUrl(image.id)}
-                alt="已附加的图片"
-                // Decorative to the model-facing text but meaningful to the
-                // reader, so it is a normal image with an alt rather than
-                // aria-hidden: a pasted screenshot IS the prompt.
-                loading="lazy"
-              />
+              <AttachmentImage key={image.id} id={image.id} />
             ))}
           </div>
         )}

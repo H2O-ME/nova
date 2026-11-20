@@ -142,6 +142,16 @@ const MAPPERS: Mapper = {
     return { type: 'shells', frame: payload };
   },
   error: (frame) => ({ type: 'error', message: frame.message }),
+  // The five frames that replaced HTTP routes are ANSWERS to request/response
+  // calls, not state: a dashboard reading was never folded into the transcript,
+  // the card read its own fetch result. The transport's pending-request table
+  // consumes them before this table sees them; `null` here only means "the
+  // reducer has nothing to fold", which is a decision, not an omission.
+  image_uploaded: () => null,
+  image_data: () => null,
+  dashboard: () => null,
+  context_window: () => null,
+  plugin_asset: () => null,
 };
 
 /**

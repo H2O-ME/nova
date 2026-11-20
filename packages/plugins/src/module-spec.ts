@@ -28,7 +28,7 @@
  * `import.meta.url` at kernel assembly), and it has to come from the caller: the
  * product's packages are siblings of the EXECUTABLE, not of this library (the QQ
  * channel package ships with `cli`), so a library-level anchor cannot see them —
- * a config row naming one could never load, while `nova qqbot` tells the
+ * a config row naming one could never load, while the channel surface tells the
  * operator to write exactly that row. This package's tree is consulted FIRST
  * (its answer is the bare spec, which Node resolves identically at import time);
  * the app's tree second, and ITS answer is the resolved file, because a bare

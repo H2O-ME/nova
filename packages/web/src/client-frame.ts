@@ -12,12 +12,16 @@ import {
   MAX_COMMAND_ARGS_CHARS,
   MAX_COMMAND_NAME_CHARS,
   MAX_HISTORY_BLOCKS,
+  MAX_IMAGE_FRAME_BYTES,
+  MAX_IMAGE_NAME_CHARS,
+  MAX_MODALITY_CHARS,
   MAX_MODEL_CHARS,
   MAX_PROMPT_CHARS,
   MAX_SHELL_PATH_CHARS,
   MAX_TERM_COLS,
   MAX_TERM_INPUT_CHARS,
   MAX_TERM_ROWS,
+  MAX_WORKSPACE_CHARS,
   type ClientFrame,
 } from './protocol.js';
 import { parseFsFrame, type FsFrameType } from './fs-frame-parse.js';
@@ -63,6 +67,30 @@ const FILE_RE = /^[^"]{1,512}\.jsonl$/;
 const COMMAND_RE = new RegExp(`^[a-z][a-z0-9_-]{0,${MAX_COMMAND_NAME_CHARS - 1}}$`);
 
 /**
+ * The store's only id shape (`core/image-store.ts`: `sha256:<64 lowercase hex>`).
+ *
+ * `prompt-image-parse.ts` holds the same pattern for the OTHER direction — an
+ * image cited by a prompt — and the two are deliberately separate literals: one
+ * guards "what may I put in a prompt" and one guards "what may I read back", and
+ * collapsing them would tie two independent refusals to one edit. `readImage`
+ * still verifies the digest, so a matching id that names nothing is a miss, not
+ * a hit.
+ */
+const IMAGE_ID_RE = /^sha256:[a-f0-9]{64}$/;
+
+/**
+ * Whether a line declares the image-upload kind — read off the RAW text.
+ *
+ * The test runs before `JSON.parse` because the size ceiling exists to avoid
+ * paying for a parse of the wrong type, so it cannot read a parsed object. It
+ * is a tolerant header match (whitespace, quoting) rather than a strict prefix:
+ * a test or a second shell may serialize differently, and guessing wrong here
+ * would refuse a legitimate upload. A lying header buys only the right to be
+ * parsed and size-checked; the real validation is the switch below.
+ */
+const IMAGE_UPLOAD_HEADER = /^\{\s*"type"\s*:\s*"image_upload"/u;
+
+/**
  * The terminal's grid off the wire: two bounded integers, or the reason not.
  * @param frame - the frame name, for the rejection's prefix.
  * @param cols - the raw value.
@@ -81,7 +109,11 @@ function parseGrid(frame: string, cols: unknown, rows: unknown): { cols: number;
 
 /** Parse + validate one inbound frame. Never throws on untrusted input. */
 export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
-  if (Buffer.byteLength(raw, 'utf8') > MAX_CLIENT_FRAME_BYTES) {
+  // The size ceiling is BY TYPE, decided on the raw text before parsing: an
+  // image upload is the one frame that legitimately carries megabytes, and
+  // `JSON.parse` on a 16 MiB line is exactly the cost this check exists to
+  // avoid paying for anything that is not one.
+  if (Buffer.byteLength(raw, 'utf8') > MAX_CLIENT_FRAME_BYTES && !IMAGE_UPLOAD_HEADER.test(raw)) {
     return reject(`frame exceeds ${MAX_CLIENT_FRAME_BYTES} bytes`);
   }
   let value: unknown;
@@ -255,6 +287,68 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'stop_job': {
       if (typeof obj['id'] !== 'string' || !ID_RE.test(obj['id'])) return reject('stop_job.id must be an ASCII token');
       return { type: 'stop_job', id: obj['id'] };
+    }
+    case 'image_upload': {
+      // Base64, because the pipe is line-JSON and there is no request body to
+      // put bytes in. Bounded by the ONE exemption (16 MiB), checked here as
+      // well as on the raw text: the raw check only decides what may be parsed,
+      // and this is the ceiling the handler will actually pay memory for.
+      const data = obj['data'];
+      if (typeof data !== 'string' || data.length === 0) return reject('image_upload.data must be a non-empty base64 string');
+      if (Buffer.byteLength(data, 'utf8') > MAX_IMAGE_FRAME_BYTES) {
+        return reject(`image_upload.data exceeds ${MAX_IMAGE_FRAME_BYTES} chars`);
+      }
+      const name = obj['name'];
+      if (name !== undefined && (typeof name !== 'string' || name.length > MAX_IMAGE_NAME_CHARS)) {
+        return reject(`image_upload.name must be a string of at most ${MAX_IMAGE_NAME_CHARS} chars`);
+      }
+      const mediaType = obj['mediaType'];
+      if (
+        mediaType !== undefined &&
+        (typeof mediaType !== 'string' || mediaType.length > MAX_MODALITY_CHARS || hasControlChars(mediaType))
+      ) {
+        return reject(`image_upload.mediaType must be a short type string`);
+      }
+      return {
+        type: 'image_upload',
+        data,
+        ...(typeof name === 'string' ? { name } : {}),
+        ...(typeof mediaType === 'string' ? { mediaType } : {}),
+      };
+    }
+    case 'image_bytes': {
+      if (typeof obj['id'] !== 'string' || !IMAGE_ID_RE.test(obj['id'])) {
+        return reject('image_bytes.id must be a sha256 digest');
+      }
+      return { type: 'image_bytes', id: obj['id'] };
+    }
+    case 'dashboard':
+      return { type: 'dashboard' };
+    case 'context_window': {
+      // `session` is a log path and is re-validated against the sessions root by
+      // the handler (`sessionLogPath`), exactly as `resume`/`delete_session` do;
+      // this checks only what the wire can see.
+      if (typeof obj['session'] !== 'string' || !FILE_RE.test(obj['session']) || hasControlChars(obj['session'])) {
+        return reject('context_window.session must be a .jsonl path without control chars');
+      }
+      const seq = obj['seq'];
+      if (typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 0) {
+        return reject('context_window.seq must be a non-negative integer');
+      }
+      return { type: 'context_window', session: obj['session'], seq };
+    }
+    case 'plugin_asset': {
+      // A request path the plugin's own registry matches. It is never joined to
+      // a filesystem path by the host, and the handler is the plugin's own — so
+      // the wire only checks shape: rooted, no traversal segments, bounded.
+      const path = obj['path'];
+      if (typeof path !== 'string' || !path.startsWith('/') || path.length > MAX_WORKSPACE_CHARS) {
+        return reject('plugin_asset.path must be a rooted request path');
+      }
+      if (hasControlChars(path) || path.includes('\\') || path.includes('..')) {
+        return reject('plugin_asset.path must not contain control chars, backslashes or dot segments');
+      }
+      return { type: 'plugin_asset', path };
     }
     case 'term_resize': {
       const grid = parseGrid('term_resize', obj['cols'], obj['rows']);

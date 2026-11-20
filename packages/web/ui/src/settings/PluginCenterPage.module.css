@@ -9,18 +9,26 @@
   height: 100%;
   min-width: 0;
   overflow-y: auto;
+  /* Reserve the scrollbar's width, as the reference's host does
+     (`[scrollbar-gutter:stable]`): a page that grows past the fold must not
+     shift its own column sideways. */
+  scrollbar-gutter: stable;
   background: var(--nova-surface-base);
 }
 
-/* The reference's settings frame content column (`max-w-4xl px-4 lg:px-8`):
- * 896px is the cap, and a narrow column narrows the page instead of
- * overflowing it. The 48px top inset is the frame's drag strip — the reference
- * starts its first line below the window's own grab area, not at the glass. */
+/* The reference's page column (`mx-auto w-full max-w-4xl px-4 py-4 md:px-6
+ * md:py-6`): a 896px cap whose gutters are 16px, opening to 24px at 768px. */
 .column {
   box-sizing: border-box;
   width: min(100%, 896px);
   margin: 0 auto;
-  padding: var(--nova-space-32);
+  padding: var(--nova-space-16);
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .column {
+    padding: var(--nova-space-24);
+  }
 }

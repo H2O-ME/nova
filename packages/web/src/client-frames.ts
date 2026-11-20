@@ -336,4 +336,45 @@ export type ClientFrame =
    * answer carries status and the sampled progress line, never output — output
    * reads consume the model's own cursor.
    */
-  | { type: 'list_jobs' };
+  | { type: 'list_jobs' }
+  /**
+   * Store one pasted image and answer with its durable reference.
+   *
+   * This replaces `POST /api/image` (`image-upload.ts`). The bytes ride base64
+   * in the frame because the pipe is line-JSON and there is no request body to
+   * put them in — and they are bounded by `MAX_IMAGE_FRAME_BYTES` (16 MiB), the
+   * one frame kind exempt from the 512 KiB client ceiling. `mediaType` is a
+   * routing hint only; the host re-sniffs the bytes and refuses a mislabeled
+   * body, so what decides is always the sniffed type.
+   */
+  | { type: 'image_upload'; data: string; name?: string; mediaType?: string }
+  /**
+   * Read one stored image's bytes back (replaces `GET /api/image/<id>`).
+   *
+   * The transcript carries only the reference, so without this a reload would
+   * silently drop every pasted image. `id` is a content digest, which is why the
+   * browser may cache the answer for the life of the page.
+   */
+  | { type: 'image_bytes'; id: string }
+  /**
+   * The corpus activity reading (replaces `GET /api/dashboard`). No payload:
+   * the reading is whatever the host's own fold produces, so a client cannot
+   * name a different corpus than the one it is talking to.
+   */
+  | { type: 'dashboard' }
+  /**
+   * One request's frozen context window (replaces `GET /api/context-window`).
+   * `seq` is the log position the reader asked about; `session` must sit under
+   * the sessions root — re-validated host-side, exactly as delete/resume do.
+   */
+  | { type: 'context_window'; session: string; seq: number }
+  /**
+   * Read one plugin asset's bytes (replaces `<script src="/plugins/...">`).
+   *
+   * A plugin that ships a browser bundle registers an HTTP prefix; with no HTTP
+   * server left, the same registry answers here instead, and the loader injects
+   * the returned bytes as a blob. `path` is the request path the plugin's own
+   * handler expects (`/plugins/<name>/<file>`), matched by the registry — so a
+   * plugin's routing logic is unchanged.
+   */
+  | { type: 'plugin_asset'; path: string };

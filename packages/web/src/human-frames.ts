@@ -15,7 +15,7 @@
  */
 import type { AgentSession } from '@nova-agent/core';
 import { serializeServerFrame as serialize, type ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** The three answering frames, already validated by `parseClientFrame`. */
 export type HumanAnswerFrame = Extract<

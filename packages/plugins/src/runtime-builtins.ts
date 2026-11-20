@@ -7,7 +7,7 @@
  * state"; the roster answers "which rows are in force" (from the plugins' own
  * manifests) and hands them to the loader.
  *
- * The optional PACKAGES (subagent / context / ptc / qqbot) are NOT here: they
+ * The optional PACKAGES (subagent / context / ptc) are NOT here: they
  * live in their own packages and load by specifier (`plugin-tree.ts`), so this
  * file is the in-process base tree and nothing in it needs a module that could
  * be absent.

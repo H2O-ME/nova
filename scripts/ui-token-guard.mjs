@@ -7,20 +7,23 @@
 // SVG 绘制尺寸、特殊图形几何。五条规则的属性清单刻意不含这些——所以
 // `border: 1px solid …`、`stroke-width: 1.5`、`width: 16px` 都不会被计。
 //
-// 基线棘轮：现状入账，只许减少。与 structure-budget 同哲学——放宽必须是一次
-// 显式、diff 可见的动作（--update），而不是随手绕过。
+// 为什么是「全仓每条规则一个总数」，不是「每个 sheet 每个规则一个计数」
+// ---------------------------------------------------------------------
+// 上一版给每个 sheet 的每条规则各钉一个数（75 条记录），于是**新建任何一个 sheet，
+// 只要写了 1 个 px，门禁立刻红**，哪怕全仓债务毫无变化。作者的应对只能是跑
+// `--update` 把新数字记进去——一次纯记账动作，与设计系统是否被遵守无关。
+// 那套登记册最终衡量的不是「债务有多少」，而是「账本有没有跟上」。
 //
-// 禁止把基线变成几千行白名单：那等于把守卫变成新的技术债。exception 只能来自
-// §5.2 的封闭集合，不能为了凑数新增 token（`--nova-space-editor-inline-special-1`
-// 比硬编码更糟）。
+// 现在只记**每条规则的全仓总数**，并留出余量：日常改动（新增一个 sheet 用掉几个
+// 字面量）落在余量里，门禁不吭声；只有整仓债务真的系统性上涨时才红。于是
+// 「新增文件要登记」这件事彻底消失，而「别让字面量蔓延」这个信号仍然在。
 //
 // 语义：
-//   check（默认）：任一文件任一规则超出基线即失败；低于基线的条目打印为可收紧。
-//   --update [子串...]：把基线同步为当前计数；上调逐条打印 (RAISED)。
+//   check（默认）：任一规则的全仓总数超过上限即失败；余量快用完时打印提示（不是失败）。
+//   --update：把上限同步为当前总数（上调逐条打印 RAISED，diff 里看得见）。
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { filterArgs } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const uiSrc = join(repoRoot, 'packages', 'web', 'ui', 'src');
@@ -36,6 +39,15 @@ const TOKEN_DIRS = new Set(['design']);
 
 /** 五条规则，顺序即报告顺序。 */
 const RULES = ['spacing', 'radius', 'shadow', 'duration', 'ease'];
+
+/**
+ * 余量：允许的总数增长。
+ *
+ * 固定 +N 而不是百分比——债务是**绝对条数**，百分比会让大规则（spacing 本来几十处）
+ * 的余量大到失去意义，而小规则（shadow 只有两处）又几乎没有余量。
+ * 每条规则的余量刻意取「日常几处改动照得住，系统性蔓延照不住」的量级。
+ */
+const HEADROOM = { spacing: 20, radius: 10, shadow: 6, duration: 12, ease: 12 };
 
 /** 只扫组件 sheet（`*.module.css`）。token 层与普通 `.css`（挂载表）都不是组件。 */
 function sheets() {
@@ -115,99 +127,75 @@ function countsOf(css) {
   return counts;
 }
 
-const current = {};
-for (const sheet of sheets()) {
-  const counts = countsOf(sheet.text);
-  const nonZero = Object.fromEntries(Object.entries(counts).filter(([, n]) => n > 0));
-  if (Object.keys(nonZero).length > 0) current[sheet.rel] = nonZero;
+const sheetList = sheets();
+const perSheet = sheetList.map((sheet) => ({ rel: sheet.rel, counts: countsOf(sheet.text) }));
+const totals = Object.fromEntries(RULES.map((rule) => [rule, 0]));
+for (const { counts } of perSheet) {
+  for (const rule of RULES) totals[rule] += counts[rule];
 }
 
-const totals = (table) => {
-  const out = Object.fromEntries(RULES.map((rule) => [rule, 0]));
-  for (const rules of Object.values(table)) {
-    for (const [rule, n] of Object.entries(rules)) out[rule] += n;
-  }
-  return out;
-};
-
+/** 上限表：`{ spacing: N, ... }`，缺项按「当前值」对待（首次生成时不会误红）。 */
 let baseline = {};
 try {
-  baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  const parsed = JSON.parse(readFileSync(baselinePath, 'utf8'));
+  // 旧格式（逐 sheet 的 `{ rel: { rule: n } }`）不再被读取：它记的是账本布局，
+  // 不是债务上限。逐文件豁免已经证明只会逼人记账，所以这里直接重建。
+  if (typeof parsed.spacing === 'number') baseline = parsed;
 } catch {
-  if (!process.argv.includes('--update')) {
-    console.error('✗ 缺 scripts/ui-token-baseline.json —— 先跑 --update 生成基线');
-    process.exit(1);
-  }
+  /* 缺文件：按当前值兜底，见下 */
 }
 
 if (process.argv.includes('--update')) {
-  const filters = filterArgs(process.argv.slice(2));
-  const next = { ...baseline };
+  const next = {};
   let raised = 0;
   let lowered = 0;
-  for (const [file, rules] of Object.entries(current)) {
-    if (filters.length > 0 && !filters.some((s) => file.includes(s))) continue;
-    const old = next[file];
-    next[file] = rules;
-    if (old === undefined) continue;
-    for (const rule of RULES) {
-      const before = old[rule] ?? 0;
-      const after = rules[rule] ?? 0;
-      if (after > before) {
-        raised++;
-        console.log(`  (RAISED) ${file} · ${rule}: ${before} → ${after}`);
-      } else if (after < before) {
-        lowered++;
-        console.log(`  (lowered) ${file} · ${rule}: ${before} → ${after}`);
-      }
+  for (const rule of RULES) {
+    next[rule] = totals[rule] + HEADROOM[rule];
+    const was = baseline[rule];
+    if (was === undefined) continue;
+    if (next[rule] > was) {
+      raised++;
+      console.log(`  (RAISED) ${rule}: 上限 ${was} → ${next[rule]}（当前 ${totals[rule]}）`);
+    } else if (next[rule] < was) {
+      lowered++;
     }
   }
-  for (const file of Object.keys(next)) if (current[file] === undefined) delete next[file];
-  const sorted = {};
-  for (const file of Object.keys(next).sort()) sorted[file] = next[file];
-  writeFileSync(baselinePath, JSON.stringify(sorted, null, 1) + '\n');
-  const t = totals(current);
+  writeFileSync(baselinePath, JSON.stringify(next, null, 1) + '\n');
   console.log(
-    `✓ 基线已同步：下调 ${lowered}、上调 ${raised}、覆盖 ${Object.keys(current).length} 个 sheet`
+    `✓ UI token 上限已同步：上调 ${raised}、下调 ${lowered}（当前债务 spacing ${totals.spacing} · radius ${totals.radius} · shadow ${totals.shadow} · duration ${totals.duration} · ease ${totals.ease}）`
   );
-  console.log(
-    `  当前债务：spacing ${t.spacing} · radius ${t.radius} · shadow ${t.shadow} · duration ${t.duration} · ease ${t.ease}`
-  );
-  if (raised > 0) console.log('⚠ 有计数被上调——确认这次增长是有意的，commit diff 会显眼地带上它。');
+  if (raised > 0) console.log('⚠ 有上限被上调——确认这次增长是有意的，commit diff 会带上它。');
   process.exit(0);
 }
 
 const failures = [];
-const tighten = [];
-for (const [file, rules] of Object.entries(current)) {
-  const base = baseline[file];
-  for (const rule of RULES) {
-    const now = rules[rule] ?? 0;
-    const was = base?.[rule] ?? 0;
-    if (now > was) {
-      failures.push(
-        `${file} · ${rule}: ${now} 处 > 基线 ${was} —— 新代码用 var(--nova-*)，确有理由才用 --update <子串> 显式放宽`
-      );
-    } else if (now < was) {
-      tighten.push(`  · ${file} · ${rule}: ${now}/${was}（可收紧）`);
-    }
+const tight = [];
+for (const rule of RULES) {
+  const now = totals[rule];
+  // 缺上限（首次运行 / 新规则）时以当前值为上限：不制造与本人改动无关的红灯。
+  const was = baseline[rule] ?? now;
+  if (now > was) {
+    failures.push(`${rule}: 全仓 ${now} 处 > 上限 ${was} —— 新代码用 var(--nova-*)，确有理由才 pnpm gates:update`);
+  } else if (was - now <= Math.max(1, Math.floor(HEADROOM[rule] / 4))) {
+    tight.push(`  · ${rule}: ${now}/${was}（余量 ${was - now} 处快用完）`);
   }
-}
-for (const file of Object.keys(baseline)) {
-  if (current[file] === undefined) tighten.push(`  · ${file}: 已无字面量（可从基线移除）`);
 }
 
 if (failures.length > 0) {
-  console.error('✗ UI token 债务上升：');
+  console.error('✗ UI token 债务上涨：');
   for (const f of failures) console.error('  ' + f);
+  // 指出涨在哪里，让作者一眼看到要去改哪个 sheet —— 这是提示，不是额外门槛。
+  console.error('\n各 sheet 当前字面量分布（仅列非零）：');
+  for (const { rel, counts } of perSheet) {
+    const nonZero = RULES.filter((rule) => counts[rule] > 0).map((rule) => `${rule} ${counts[rule]}`);
+    if (nonZero.length > 0) console.error(`  ${relative(uiSrc, join(uiSrc, rel)).replace(/\\/g, '/')}: ${nonZero.join(' · ')}`);
+  }
   process.exit(1);
 }
-const t = totals(current);
 console.log(
-  `✓ UI token：${Object.keys(current).length} 个 sheet 的字面量均未超过基线（spacing ${t.spacing} · radius ${t.radius} · shadow ${t.shadow} · duration ${t.duration} · ease ${t.ease}）`
+  `✓ UI token：${sheetList.length} 个 sheet 的债务在全仓上限内（spacing ${totals.spacing} · radius ${totals.radius} · shadow ${totals.shadow} · duration ${totals.duration} · ease ${totals.ease}）`
 );
-if (tighten.length > 0) {
-  console.log(`\n⚠ ${tighten.length} 条基线可以收紧（不是失败，是棘轮该往下走了）：`);
-  for (const line of tighten.slice(0, 20)) console.log(line);
-  if (tighten.length > 20) console.log(`  … 另有 ${tighten.length - 20} 条`);
+if (tight.length > 0) {
+  console.log(`\n⚠ ${tight.length} 条规则的余量快用完（不是失败）：`);
+  for (const line of tight) console.log(line);
 }

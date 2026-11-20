@@ -268,7 +268,7 @@ export async function loadConfigWithDiagnostics(homedir: string = os.homedir()):
  * Loads ~/.nova/config.json, discarding the diagnostics.
  *
  * Use this where a non-fatal plugin problem is irrelevant to the caller (a
- * `qqbot` diagnostic does not change what the REPL does). Callers that can SHOW
+ * a channel row's diagnostic does not change what the REPL does). Callers that can SHOW
  * a diagnostic — the browser surface, the settings panel — must use
  * `loadConfigWithDiagnostics` instead, or the reader never learns why a plugin
  * is unavailable.

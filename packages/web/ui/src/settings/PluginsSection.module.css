@@ -43,7 +43,7 @@
   font-size: 18px;
   line-height: 26px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
   color: var(--nova-text-primary);
 }
 
@@ -190,6 +190,9 @@
 .groups {
   display: flex;
   flex-direction: column;
+  /* The reference's list root separates the toolbar from the first group by
+     24px (`space-y-6`) while the page stack itself is 20px. */
+  margin-top: var(--nova-space-4);
 }
 
 /* One group: subject line, hairline, grid. The vertical air is the reference's
@@ -282,7 +285,11 @@
    cards fit the page's own column and a third never does. */
 .list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  /* The reference's grid flips to two columns on a 40rem CONTAINER
+     (`@min-[40rem]/plugin-store:grid-cols-2`), which lands a column in the
+     640–664px band that a 320px auto-fill misses. 296px keeps the same
+     two-column switch at 640 while staying one column below it. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 296px), 1fr));
   gap: var(--nova-space-4) var(--nova-space-24);
   margin: var(--nova-space-8) 0 0;
   padding: 0;

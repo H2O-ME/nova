@@ -1,15 +1,14 @@
 /**
  * Surface resolution: the ONE registry, built in precedence order.
  *
- * 内置四家（qqbot / exec / web / repl）与配置加载的动态 surface 是同一份
+ * 内置三家（exec / desktop / repl）与配置加载的动态 surface 是同一份
  * `AgentSurface` 契约、同一个注册表、同一段装配（`surface-host.ts`）。注册顺序
- * 即优先级——子命令 → 配置的 surface → 默认（web / repl）——壳只问一次
+ * 即优先级——子命令 → 配置的 surface → 默认（desktop / repl）——壳只问一次
  * `registry.resolve`，「谁服务这次调用」全仓一个答案；`registry.current()` 从此
  * 对每一类 surface 都有值（`userQuestions` 的单一来源，见 `runtime-env.ts`）。
  *
- * argv → options 在 `cli-args.ts`；装配在 `surface-host.ts`；四个内置各自的
- * claim 判据与启动前置在各自的 surface 文件里——qqbot 的产品形态在它自己的包
- * （`qqbot-surface.ts` 只留认领，外加两条宿主才知道的装配贡献）。
+ * argv → options 在 `cli-args.ts`；装配在 `surface-host.ts`；三个内置各自的
+ * 呈现形态在 `exec.ts` / `desktop-mode.ts` / `repl.ts`。
  */
 import process from 'node:process';
 import { errMessage, type SurfaceRegistry, type SurfaceRows } from '@nova-agent/core';
@@ -17,9 +16,8 @@ import { loadSurfacePlugins, surfaceRowEnabled } from '@nova-agent/plugins';
 import type { Config, ConfigDiagnostic } from './config.js';
 import { execSurface } from './exec.js';
 import { replSurface } from './repl.js';
-import { qqbotBuiltinSurface } from './qqbot-surface.js';
 import type { BuiltinSurface } from './surface-host.js';
-import { webSurface } from './web-mode.js';
+import { desktopSurface } from './desktop-mode.js';
 
 export type { BuiltinSurface, SurfaceBoot, SurfaceRequest } from './surface-host.js';
 // argv → options 的公开面留在 `cli-args.ts`，这里原样转出去（历史导入点）。
@@ -38,8 +36,8 @@ export interface Builtins {
 
 export function builtinSurfaces(m: { config: Config; diagnostics: readonly ConfigDiagnostic[] }): Builtins {
   return {
-    head: [qqbotBuiltinSurface(), execSurface(m.config)],
-    tail: [webSurface(m), replSurface(m.config)],
+    head: [execSurface(m.config)],
+    tail: [desktopSurface(m), replSurface(m.config)],
   };
 }
 

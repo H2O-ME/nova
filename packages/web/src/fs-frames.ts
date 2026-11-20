@@ -9,7 +9,7 @@
 import { createDirectory, errMessage, listDirectory, listWorkspaceFiles, type DirectoryLevel } from '@nova-agent/core';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** What these frames need from the controller. */
 export interface FsFrameHost {

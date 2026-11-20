@@ -10,7 +10,7 @@
  */
 import type { JobRegistry } from '@nova-agent/core';
 import { serializeServerFrame as serialize } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** What this frame needs from the controller. */
 export interface JobHost {

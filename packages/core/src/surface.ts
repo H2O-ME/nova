@@ -58,7 +58,6 @@ export interface AgentSurfaceFlags {
   readonly theme?: string;
   readonly json: boolean;
   readonly repl: boolean;
-  readonly web: boolean;
   readonly positional: readonly string[];
 }
 
@@ -138,8 +137,8 @@ export interface AgentSurfaceKernel {
    * Every plugin row as the roster reports it — failed and switched-off rows
    * included.
    *
-   * A surface must be able to be honest about the rows it depends on: `nova
-   * qqbot` has to tell the operator whether its row is missing, off, or
+   * A surface must be able to be honest about the rows it depends on: a channel
+   * surface has to tell the operator whether its row is missing, off, or
    * unloadable (three different next actions), and a terminal surface has to name
    * the row that did not come up instead of silently dropping it from its banner.
    * Both answers are the same read, and it names no plugin: the surface asks for

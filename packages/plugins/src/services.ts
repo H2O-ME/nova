@@ -289,7 +289,7 @@ export function surfaceRegistryProvider(registry: SurfaceRegistry): Plugin {
  * an HTTP server (the WebUI today), provided here so a plugin can register
  * routes from its own `apply(ctx)` like any other capability — `ctx.must(routes)`
  * returns the same instance the host's request handler reads. Headless surfaces
- * (exec / qqbot today) do not provide it; a plugin that ships UI capabilities
+ * (exec today) do not provide it; a plugin that ships UI capabilities
  * reads the registry lazily and degrades when it is absent.
  */
 export function routeRegistryProvider(registry: RouteRegistry): Plugin {

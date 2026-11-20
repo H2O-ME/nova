@@ -1,183 +1,137 @@
-// 单文件行数预算（AGENTS.md「避免单文件超长」的机械护栏）。
+// 单文件行数上限（AGENTS.md「避免单文件超长」的机械护栏）。
 //
-// 语义：scripts/structure-budget.json 给每个 src 文件钉一个行数上限（ceiling）。
-//   check（默认）：任一文件超上限即失败；新文件无上限条目也失败（须入账）。
-//   --update [子串...]：把上限同步为当前行数。传子串则只同步路径含该子串的文件，
-//     否则同步全部——但**任何上调都会逐条打印 (RAISED)**，让「放宽上限」成为
-//     一次显式、diff 可见的动作，而不是随手绕过。
+// 语义：**扁平阈值 + 少量豁免**，不维护逐文件登记册。
+//   check（默认）：任一文件超过 `ceiling` 且不在豁免表里即失败。
+//   --update：把豁免表同步为「当前仍超阈值的文件」，并顺带清理已删除/已缩回的条目。
 //
-// 定位：这是「粗护栏」——真正治巨型闭包的是 oxlint 的 max-lines-per-function/
-// complexity 警告（拆壳阶段的靶单）。行数上限只兜底「文件整体别再无节制地长」，
-// 所以刻意做得低摩擦：正常消重使某文件 ±1 行时，跑一次 --update <该文件> 即可。
+// 为什么不是「每个文件钉一个上限」
+// ---------------------------------
+// 上一版给 scripts/structure-budget.json 里每个 src 文件单独钉一个 ceiling，于是：
+//
+//  1. **新增文件必须先登记**才算过门禁——这与「别写巨型文件」毫无关系，纯粹是账本
+//     维护。作者为了一个 40 行的纯函数新文件就得跑一次同步脚本。
+//  2. ceiling = 当前行数 + 余量，意味着文件**一落地就处在 ~91%**，此后每次加代码
+//     都会红。这不是护栏，是每写一行就敲一次钟。
+//  3. 于是「过门禁」的正确做法变成了**按行数配平而拆文件**——拆出的模块只为凑数，
+//     不承担任何职责边界。过度拆分就是这么被机械地逼出来的。
+//  4. 账本还有第三种腐烂方式：文件被删（包迁出）后条目仍在，check 把「陈旧条目」
+//     也算失败。qqbot 迁出本仓后，283 条陈尸条目让 `pnpm gates` 长期为红——而它与
+//     任何人的改动都无关。
+//
+// 一个扁平阈值同时解决这四件事：低于阈值的文件**完全无需关心**，新增文件**无需登记**，
+// 删文件**不会留下负债**。豁免表只装「本来就在阈值之上」的存量文件，并且只许缩、不许涨
+// （涨了要显式 --update，diff 里看得见）。
+//
+// 阈值取 600 行：本仓 src 的行数 p99 是 635、中位数 111，600 只圈住 4 个真正的存量巨物，
+// 而 96% 的文件一辈子碰不到它。护栏仍拦得住「无节制长成 2000 行」，
+// 但不再参与「要不要拆文件」这个只有作者能判断的决定。
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collectSources, filterArgs, workspaceLeafDirs } from './gates-lib.mjs';
+import { collectSources, workspaceLeafDirs } from './gates-lib.mjs';
 
 const repoRoot = join(fileURLToPath(import.meta.url), '..', '..');
 const budgetPath = join(repoRoot, 'scripts', 'structure-budget.json');
 
-/**
- * 纯转出桶（barrel）？——只有注释、空行与 `export *` / `export { … } from` 的文件。
- *
- * 这类文件的行数就是**模块条数**，不是设计属性：每加一个模块必然 +1 行，而
- * 「拆它」在这里没有任何含义（一个桶拆成两个桶只会多一个桶）。把上限用在它身上
- * 是纯粹的假阳性——它逼人为了过门禁去动一个本来正确的文件。
- *
- * 判据刻意收得很紧：只要出现任何函数、类型、常量声明就不再算桶，因此它不能用来
- * 把真正的实现文件洗白。用一个具名文件（`export const x = …` 也排除）即是实现。
- * @param source - 文件全文。
- * @returns 是否是一个纯转出桶。
- */
-function isBarrel(source) {
-  const lines = source.split('\n');
-  let sawExport = false;
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (line === '' || line.startsWith('//') || line.startsWith('/*') || line.startsWith('*') || line.startsWith('*/')) continue;
-    // 只承认 `export * from '…'`、`export { … } from '…'` 与 `export type { … } from '…'`
-    // （可跨行，故按起始片段判）。`export type { … } from` 同样是再导出：它不含任何
-    // 声明，却曾因为多了一个 `type` 就让整个桶失去豁免，把模块条数当成设计属性来收税。
-    if (/^export\s+\*\s+from\s+['"]/.test(line)) { sawExport = true; continue; }
-    if (/^export\s*\{/.test(line)) { sawExport = true; continue; }
-    if (/^export\s+type\s*\{/.test(line)) { sawExport = true; continue; }
-    // `export {` 的续行与收尾：`} from '…';` 或单纯的 `};`
-    if (sawExport && /^(\w+\s*,?\s*)*\}?\s*(from\s+['"][^'"]*['"])?;?$/.test(line)) continue;
-    return false;
-  }
-  return sawExport;
-}
+/** 硬阈值：低于它完全自由，高于它必须入豁免表。 */
+const CEILING = 600;
 
 const packagesDir = join(repoRoot, 'packages');
 const current = {};
 for (const srcDir of workspaceLeafDirs(packagesDir, 'src')) {
   for (const f of collectSources(srcDir)) {
     const rel = relative(repoRoot, f).replace(/\\/g, '/');
-    const source = readFileSync(f, 'utf8');
-    // A pure re-export barrel is exempt: its length is a module COUNT, not a
-    // design property, so a ceiling here is a false positive with no meaningful
-    // fix. Everything else is measured as before.
-    if (isBarrel(source)) continue;
-    current[rel] = source.split('\n').length;
+    current[rel] = readFileSync(f, 'utf8').split('\n').length;
   }
 }
 
-let baseline = {};
+/** `{ ceiling, grandfathered: { <path>: <lines when grandfathered> } }` */
+let baseline = { ceiling: CEILING, grandfathered: {} };
 try {
-  baseline = JSON.parse(readFileSync(budgetPath, 'utf8'));
+  const parsed = JSON.parse(readFileSync(budgetPath, 'utf8'));
+  // 容忍旧格式的存在：旧的扁平 `{ path: lines }` 表一律视为豁免表，阈值用默认值。
+  // 这样这次机制替换本身不需要一次性的数据迁移步骤。
+  if (parsed.grandfathered === undefined) {
+    baseline = { ceiling: parsed.ceiling ?? CEILING, grandfathered: parsed };
+  } else {
+    baseline = { ceiling: parsed.ceiling ?? CEILING, grandfathered: parsed.grandfathered ?? {} };
+  }
 } catch {
   if (!process.argv.includes('--update')) {
-    console.error('✗ 缺 scripts/structure-budget.json —— 先跑 --update 生成基线');
+    console.error('✗ 缺 scripts/structure-budget.json —— 先跑 pnpm gates:update');
     process.exit(1);
   }
 }
 
+const ceiling = baseline.ceiling;
+const grandfathered = baseline.grandfathered;
+
 if (process.argv.includes('--update')) {
-  const filters = filterArgs(process.argv.slice(2));
-  const next = { ...baseline };
-  let lowered = 0;
-  let raised = 0;
+  const next = {};
   let added = 0;
-  let untouched = 0;
-  /**
-   * 上限 = 当前行数 + 余量，而不是当前行数。
-   *
-   * 这是这套门禁曾经失效的根因：`--update` 把上限钉死为**当下行数**，于是每个文件
-   * 一落地就处在 100%，任何一次「再多写一行」都立刻红。代价是三重的：
-   *
-   *  - 门禁只会说「你已经撞墙了」，永远说不出「你快撞墙了」——没有预警，只有事后
-   *    追认。作者在写代码时得不到任何反馈，只能在收尾时被一次性告知二十个文件全超；
-   *  - 于是每次都要停下来做**大批返工**（拆文件），而这本可以在写的时候就顺手做；
-   *  - 「逼近上限」这个提示彻底失去意义（所有文件都报 100%）。
-   *
-   * 留出余量之后，含义变成「自上次同步以来这个文件长大了 X%」——那才是真正值得
-   * 注意的信号，也是作者在写代码的当下能看见的信号。
-   */
-  const HEADROOM = 1.1;
-  const headroomOf = (lines) => Math.max(lines + 10, Math.ceil(lines * HEADROOM));
+  let raised = 0;
+  let lowered = 0;
   for (const [file, lines] of Object.entries(current)) {
-    const match = filters.length === 0 || filters.some((s) => file.includes(s));
-    if (!match) continue;
-    const old = next[file];
-    /**
-     * The ceiling TRACKS the file: always `headroomOf(lines)`, never a high-water
-     * mark.
-     *
-     * It used to be `Math.max(candidate, Math.min(old, headroomOf(old)))`, which
-     * reads like a guard against dropping below the old value but is provably a
-     * no-op: `headroomOf(old) >= old` always, so `Math.min(old, headroomOf(old))`
-     * is always `old`, leaving `max(candidate, old)` — **the ceiling could only
-     * stay or rise**, and the script's own `lowered` counter (and the "下调静默"
-     * note in AGENTS.md) described a branch that could never run.
-     *
-     * That mattered in practice: a file written to a bloated intermediate state
-     * during a refactor, followed by ANY unfiltered `gates:update`, baked the bloat
-     * into its ceiling permanently. A later author could then grow the file back
-     * into that headroom with the gate staying silent — the excess became
-     * invisible instead of being an instruction to split.
-     *
-     * Tracking the file keeps the number HONEST: headroom stays proportional, a
-     * shrink tightens the ceiling, and growth is always printed as RAISED so the
-     * diff shows it.
-     */
-    next[file] = headroomOf(lines);
-    if (old === undefined) added++;
-    else if (next[file] > old) {
+    if (lines <= ceiling) continue;
+    next[file] = lines;
+    const was = grandfathered[file];
+    if (was === undefined) {
+      added++;
+      console.log(`  (NEW) ${file}: ${lines} 行，已入豁免表`);
+    } else if (lines > was) {
       raised++;
-      console.log(`  (RAISED) ${file}: ${old} → ${next[file]}`);
-    } else if (next[file] < old) {
+      console.log(`  (RAISED) ${file}: ${was} → ${lines}`);
+    } else if (lines < was) {
       lowered++;
-      console.log(`  (lowered) ${file}: ${old} → ${next[file]}`);
     }
   }
-  const stale = Object.keys(next).filter((f) => current[f] === undefined);
-  for (const f of stale) delete next[f];
-  writeFileSync(budgetPath, JSON.stringify(next, null, 1) + '\n');
+  const dropped = Object.keys(grandfathered).filter((f) => next[f] === undefined);
   const sorted = {};
   for (const f of Object.keys(next).sort()) sorted[f] = next[f];
-  writeFileSync(budgetPath, JSON.stringify(sorted, null, 1) + '\n');
+  writeFileSync(budgetPath, JSON.stringify({ ceiling, grandfathered: sorted }, null, 1) + '\n');
   console.log(
-    `✓ 预算已同步：下调 ${lowered}、上调 ${raised}、新增 ${added}、移除陈旧 ${stale.length}、未触及 ${untouched}（共 ${Object.keys(current).length} 文件）`
+    `✓ 行数预算已同步：新增 ${added}、上调 ${raised}、下调 ${lowered}、移出豁免 ${dropped.length}（阈值 ${ceiling} 行）`
   );
-  if (raised > 0) console.log('⚠ 有上限被上调——确认这次增长是有意的，commit diff 会显眼地带上它。');
+  if (raised > 0) console.log('⚠ 有豁免文件变长——确认这次增长是有意的，commit diff 会带上它。');
   process.exit(0);
 }
 
 const failures = [];
-const stale = [];
-/**
- * 逼近上限 = 剩余 **绝对** 行数已经很少。
- *
- * 刻意不用百分比：上限由 `--update` 授予固定余量（≥10 行或 ≥10%），所以同步刚结束时
- * 「剩余/上限」恒在 91% 左右——用百分比判定会把每个文件都报成「逼近」，那不是信号，
- * 是噪音（本文件上一版正是如此，一口气打印了 97 行）。
- *
- * 绝对阈值则是精确的：同步刚结束不可能触发（余量至少 10 行），只有某个文件在两次同步
- * 之间真的长到快顶上时才会出现。那正是「下次再加代码就会红」的时刻。
- */
-const TIGHT_LINES = 10;
-const nearLimit = [];
 for (const [file, lines] of Object.entries(current)) {
-  const ceiling = baseline[file];
-  if (ceiling === undefined) failures.push(`${file}: ${lines} 行，无上限条目（新文件——跑 pnpm gates:update）`);
-  else if (lines > ceiling) {
-    failures.push(`${file}: ${lines} 行 > 上限 ${ceiling}（超 ${lines - ceiling} 行）——按职责拆分；确有理由才用 --update <子串> 显式放宽`);
-  } else if (ceiling - lines < TIGHT_LINES) {
-    nearLimit.push(`  · ${file}: ${lines}/${ceiling}（只剩 ${ceiling - lines} 行）`);
+  const was = grandfathered[file];
+  if (was === undefined) {
+    if (lines > ceiling) {
+      failures.push(`${file}: ${lines} 行 > 阈值 ${ceiling} —— 按职责拆分，或确有理由时 pnpm gates:update 入豁免表`);
+    }
+    continue;
+  }
+  // 已入豁免的文件只能缩不能涨：涨了说明它又长了，要显式承认。
+  if (lines > was) {
+    failures.push(`${file}: ${lines} 行 > 豁免上限 ${was}（又在变长）—— 拆分，或 pnpm gates:update 显式承认`);
   }
 }
-for (const file of Object.keys(baseline)) {
-  if (current[file] === undefined) stale.push(`${file}: 上限条目对应文件已不存在（跑 --update 清理）`);
+
+// 陈旧/可清理的豁免条目只是**提示**，不是失败：文件被删（包迁出）与文件缩回阈值内
+// 都是正常的仓库演化，不该把任何人拦在门禁外面。上一版正是把「陈旧条目」算作失败，
+// 让一批与本人改动无关的迁出遗留把 gates 长期钉成红色。
+const notes = [];
+for (const [file, was] of Object.entries(grandfathered)) {
+  const lines = current[file];
+  if (lines === undefined) notes.push(`  · ${file}: 文件已不存在（pnpm gates:update 可清理）`);
+  else if (lines <= ceiling) notes.push(`  · ${file}: 已缩回阈值内（${lines}/${was}，pnpm gates:update 可移出）`);
 }
-if (failures.length > 0 || stale.length > 0) {
-  for (const f of failures) console.error('✗ ' + f);
-  for (const s of stale) console.error('✗ ' + s);
+
+if (failures.length > 0) {
+  console.error('✗ 行数预算超限：');
+  for (const f of failures) console.error('  ' + f);
   process.exit(1);
 }
-console.log(`✓ 行数预算：${Object.keys(current).length} 个 src 文件全部在上限内`);
-// 这是**前瞻**信息，不是失败：它出现在每一次运行里（含 `pnpm check` 的快环），让
-// 「这个文件快装不下了」在写代码的当下就可见，而不是等一批文件一起爆掉才发现。
-if (nearLimit.length > 0) {
-  console.log(`\n⚠ ${nearLimit.length} 个文件快顶上上限了——下次再加代码就会红，建议现在就按职责拆：`);
-  for (const line of nearLimit) console.log(line);
+const exempt = Object.keys(grandfathered).length;
+console.log(
+  `✓ 行数预算：${Object.keys(current).length} 个 src 文件均 ≤ ${ceiling} 行` +
+    (exempt > 0 ? `（另有 ${exempt} 个存量文件在豁免表）` : '')
+);
+if (notes.length > 0) {
+  console.log(`\n⚠ 豁免表有 ${notes.length} 条可清理（不是失败）：`);
+  for (const line of notes) console.log(line);
 }

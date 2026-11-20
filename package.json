@@ -21,7 +21,7 @@
     "changeset": "changeset",
     "release": "changeset version && node scripts/sync-root-version.mjs && git add -A && git commit -m \"chore(release): bump versions via changesets\" && changeset tag",
     "release:status": "changeset status",
-    "smoke:web": "node scripts/smoke-web.mjs"
+    "smoke:desktop": "node scripts/smoke-desktop.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

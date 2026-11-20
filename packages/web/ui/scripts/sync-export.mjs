@@ -1,14 +1,12 @@
 /**
- * Copies the Next static export into the directory the web process serves.
+ * Copies the Next static export into the directory the desktop shell embeds.
  *
  * WHY THIS STEP EXISTS
  * --------------------
- * `next build` with `output: 'export'` writes to `ui/out/`, but the hosting
- * process (packages/web/src/server.ts, via cli/web-mode.ts `webStaticDir()`)
- * reads `packages/web/public`. Two options: repoint the server at `ui/out`, or
- * sync. Syncing keeps the server, its `/assets/` immutable-cache rule and its
- * traversal guard completely untouched — the transport layer must not change
- * while the build layer is being replaced.
+ * `next build` with `output: 'export'` writes to `ui/out/`, but the shell's
+ * `frontendDist` (`apps/tauri-bench/src-tauri/tauri.conf.json`) points at
+ * `packages/web/public` — one fixed directory the bundle step reads, so the
+ * build tool can be replaced without touching the shell.
  *
  * WHAT IS PRESERVED
  * -----------------

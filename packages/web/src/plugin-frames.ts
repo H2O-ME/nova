@@ -24,7 +24,7 @@
 import { errMessage } from '@nova-agent/core';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /**
  * The one collaborator this family needs: the kernel's plugin-rpc registry.

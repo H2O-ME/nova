@@ -4,7 +4,6 @@
 '@nova-agent/cli': minor
 '@nova-agent/web': minor
 '@nova-agent/plugin-ptc': minor
-'@nova-agent/qqbot': minor
 ---
 
 插件拿到与宿主**同一组**能力，宿主不再为每项能力准备一套精选 API。能力键的唯一定义处仍是 `core/src/plugin/capabilities.ts`，四个新成员各自只是一个 provider（`plugins/src/plugin-services.ts` 与 `host.ts`）：
@@ -17,4 +16,4 @@
 
 **插件自带的设置页**：插件在 manifest 里声明 `page: true`（`PluginManifest.page`，`core/src/plugin/types.ts`），浏览器侧的 roster 行带上 `page?: boolean`（`WireRosterEntry.page`），导航就多出它一节。点进去时界面发一条 `plugin_request`（`op: 'page'`），插件回一个 `PluginPageDescriptor`（`core/src/plugin/settings-page.ts` 的 `{ title, intro?, guide?, status?, fields?, actions? }`，字段是 `text` / `secret` / `select` / `switch` 四种原语，行为是具名动作）。宿主只提供一个渲染器 `web/ui/src/settings/PluginPageSection.tsx`，`pagePlugins(rows)`（`settings/plugin-state.ts`）从**活 roster** 筛出 `page === true && enabled !== false && state === 'active'` 的行——导航与「谁真的开着」同源。判据是**白名单而不是 `state !== 'failed'` 黑名单**：一节页要靠那个插件自己的 `pluginRpc` 命名空间回答 `page`，而命名空间**挂在 fiber 上**——`pending` / `loading` 还没跑 `apply`、`disposed` 已拆、未知相位同样没有命名空间，所以「没报故障」≠「有活 fiber」，只有 `active` 能答。`enabled` 与 `state` 答**两个问题**：`enabled` 是**操作者意图**的事实（`apply()` 抛错的行 `enabled` **仍是 `true`**），`state` 是**活性**事实。**写进哪个键由插件自己的 `Config` schema 说了算，界面不认识任何插件的字段名**，所以第三方插件能给出与内置插件同等质量的设置面板而不需要改宿主源码。
 
-`plugin-ptc` 借这条缝把执行模式收回自己：`PtcMode` / `PTC_SETTING_KEYS` / `ptcPage(...)` 现在都定义在 `packages/plugin-ptc/src/settings.ts`，`mode` 是它自己那一行 `config` 的一个字段，RPC 命名空间在 mode 检查**之前**注册（关掉 `run_code` 不等于连设置也不能改）。`qqbot` 同样把凭据、拨号、探针与连接读数全搬进包内 `src/plugin.ts` 的 fiber 与它自己的设置页描述符。
+`plugin-ptc` 借这条缝把执行模式收回自己：`PtcMode` / `PTC_SETTING_KEYS` / `ptcPage(...)` 现在都定义在 `packages/plugin-ptc/src/settings.ts`，`mode` 是它自己那一行 `config` 的一个字段，RPC 命名空间在 mode 检查**之前**注册（关掉 `run_code` 不等于连设置也不能改）。渠道插件同样把凭据、拨号、探针与连接读数全搬进包内自己的 fiber 与设置页描述符。

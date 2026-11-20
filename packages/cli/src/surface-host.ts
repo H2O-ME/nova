@@ -52,7 +52,7 @@ export interface SurfaceRequest {
 
 /**
  * What a BUILT-IN surface contributes to the one assembly, beyond the shared
- * options: extra kernel options (`exec`'s per-request compaction, `qqbot`'s
+ * options: extra kernel options (`exec`'s per-request compaction, a channel's
  * session bucket, web's model catalog + config writer) and post-assembly
  * adjustments (unattended policy).
  *
@@ -213,7 +213,6 @@ export function toFlags(parsed: ParsedArgs): AgentSurfaceFlags {
     ...(parsed.themeOverride !== undefined ? { theme: parsed.themeOverride } : {}),
     json: parsed.json,
     repl: parsed.repl,
-    web: parsed.web,
     positional: parsed.positional,
   };
 }

@@ -3,12 +3,12 @@
  * loads each one exactly once per page.
  *
  * The plugin's server half registers its asset prefix through the kernel
- * container (`ctx.must(routes).register({ prefix: '/plugins/<name>', … })`),
- * and the SAME prefix serves its browser bundle at `/plugins/<name>/<path>`.
+ * container (`ctx.must(routes).register({ prefix: '/plugins/<name>', … })`).
  * The boot graph (the `clientBundle` field on each `WireRosterEntry`) tells
- * the loader WHERE the bundle is and WHAT rev to bust on; the loader injects
- * a `<script>` tag and reads what the bundle registered on
- * `window.__NovaPlugins__` when it loaded.
+ * the loader WHERE the bundle lives; with the HTTP server gone the bytes are
+ * fetched over a `plugin_asset` frame, turned into a blob URL, and injected
+ * as a `<script>` — after which the loader reads what the bundle registered
+ * on `window.__NovaPlugins__`.
  *
  * The contract is intentionally minimal: a client bundle is a script that
  * runs once and registers its contributions (fence renderers, React
@@ -18,10 +18,10 @@
  * the registry underneath is the single source of truth, not any one
  * module's export.
  *
- * Failures are final per entry: a bundle that 404s (the plugin's asset route
- * is not registered) or that throws on load is reported once and never
- * retried, so a broken plugin cannot wedge the page by failing on every
- * navigation.
+ * Failures are final per entry: a bundle the host cannot produce (the plugin's
+ * asset route is not registered, or the frame comes back refused) or that
+ * throws on load is reported once and never retried, so a broken plugin
+ * cannot wedge the page by failing on every navigation.
  *
  * The DOM-touching part is one tiny function (`injectScript`); everything
  * else is pure and unit-tested without jsdom (the UI test lane is
@@ -29,6 +29,7 @@
  * + SSR-to-string, with the React tree doing the only DOM touches.
  */
 import type { PluginClientBundle } from '@nova-agent/core';
+import { requestFrame } from '../client/requests.js';
 
 /** What `Kernel.roster()` (the boot graph) tells the browser about a plugin. */
 export interface BootGraphEntry {
@@ -80,18 +81,43 @@ export function writeContributions(name: string, contributions: ClientPluginCont
 }
 
 /**
- * Build the URL for one plugin's client bundle (PURE — testable without DOM).
+ * Build the request path for one plugin's client bundle（PURE — testable
+ * without DOM）。
  *
- * The host's `RouteRegistry` serves `/plugins/<name>/...` from whatever
- * handler the plugin registered; the loader just needs to point at it.
- * `rev` busts the page's script cache (the SAME url is memoized for the page
- * — different rev = different url).
+ * 这就是插件自己的资产路由期待的路径（`/plugins/<name>/<file>`），由宿主的
+ * `RouteRegistry` 匹配到该插件的 handler——路由逻辑不变，只是字节的目的地
+ * 变了。`rev` 不再上路径：缓存破坏是浏览器 script 缓存时代的职责，blob 注入
+ * 没有缓存可言。
  */
-export function buildBundleUrl(name: string, spec: PluginClientBundle): string {
+export function buildBundlePath(name: string, spec: PluginClientBundle): string {
   const file = spec.path ?? 'client.js';
   const trimmed = file.replace(/^\/+/, '');
-  const base = `/plugins/${encodeURIComponent(name)}/${trimmed}`;
-  return spec.rev === undefined || spec.rev.length === 0 ? base : `${base}?rev=${encodeURIComponent(spec.rev)}`;
+  return `/plugins/${encodeURIComponent(name)}/${trimmed}`;
+}
+
+/**
+ * 取回一个插件资源的测试接缝与生产实现同形：路径进、文本出。生产实现走
+ * `plugin_asset` 帧（按回帧 path 精确匹配，所以多插件并行加载互不错配）；
+ * 测试注入替身绕开这条需要连接的路径。
+ */
+export type FetchAssetFn = (path: string) => Promise<{ text: string; contentType?: string } | undefined>;
+
+const defaultFetchAsset: FetchAssetFn = async (path) => {
+  const reply = await requestFrame({ type: 'plugin_asset', path }, 'plugin_asset', {
+    match: (candidate) => candidate.path === path,
+  });
+  if (reply === undefined || reply.ok !== true || reply.text === undefined) return undefined;
+  return {
+    text: reply.text,
+    ...(reply.contentType !== undefined ? { contentType: reply.contentType } : {}),
+  };
+};
+
+let fetchAsset: FetchAssetFn = defaultFetchAsset;
+
+/** 替换资源取回器（测试用）；传 `undefined` 恢复默认。 */
+export function setAssetFetcher(fn: FetchAssetFn | undefined): void {
+  fetchAsset = fn ?? defaultFetchAsset;
 }
 
 interface PendingLoad {
@@ -121,9 +147,9 @@ const defaultInject: InjectScriptFn = (url, onLoad, onError) => {
     return;
   }
   const script = document.createElement('script');
+  // blob: 与本页同源，不再需要跨域标记（那是从插件 HTTP 路由加载的时代留下的）。
   script.src = url;
   script.async = true;
-  script.crossOrigin = 'anonymous';
   script.onload = () => onLoad();
   script.onerror = () => onError();
   document.head.appendChild(script);
@@ -158,36 +184,59 @@ export function loadClientPlugin(name: string, spec: PluginClientBundle): Promis
   if (prior !== undefined) return Promise.resolve(prior);
   const inflight = pending.get(name);
   if (inflight !== undefined) return inflight.promise;
-  const url = buildBundleUrl(name, spec);
+  const path = buildBundlePath(name, spec);
   let resolver: (contributions: ClientPluginContributions) => void;
   let rejecter: (error: Error) => void;
   const task = new Promise<ClientPluginContributions>((resolve, reject) => {
     resolver = resolve;
     rejecter = reject;
-    injectScript(
-      url,
-      () => {
-        const contributions = readContributions(name);
-        if (contributions === undefined) {
-          const err = new Error(
-            `plugin '${name}' loaded but registered nothing on window.${PLUGIN_GLOBAL_KEY}['${name}']`,
-          );
-          settled.set(name, err);
-          pending.delete(name);
-          reject(err);
-          return;
-        }
-        settled.set(name, contributions);
-        pending.delete(name);
-        resolve(contributions);
-      },
-      () => {
-        const err = new Error(`plugin '${name}' bundle '${url}' failed to load (route missing or 404)`);
+    void fetchAsset(path).then((asset) => {
+      if (asset === undefined) {
+        const err = new Error(`plugin '${name}' bundle '${path}' failed to load (no route, or host refused)`);
         settled.set(name, err);
         pending.delete(name);
         reject(err);
-      },
-    );
+        return;
+      }
+      // blob URL 只在真浏览器里被 `<script>` 消费；测试注入器不会碰它，所以
+      // 非 DOM 环境（无 createObjectURL）给占位串即可，与 attachments.ts 的
+      // 预览 URL 防御同法。
+      const url = typeof URL.createObjectURL === 'function'
+        ? URL.createObjectURL(new Blob([asset.text], { type: asset.contentType ?? 'text/javascript' }))
+        : `nova-blob:${path}`;
+      injectScript(
+        url,
+        () => {
+          // script 执行完 blob 已被消费，尽早归还内存。
+          URL.revokeObjectURL?.(url);
+          const contributions = readContributions(name);
+          if (contributions === undefined) {
+            const err = new Error(
+              `plugin '${name}' loaded but registered nothing on window.${PLUGIN_GLOBAL_KEY}['${name}']`,
+            );
+            settled.set(name, err);
+            pending.delete(name);
+            reject(err);
+            return;
+          }
+          settled.set(name, contributions);
+          pending.delete(name);
+          resolve(contributions);
+        },
+        () => {
+          URL.revokeObjectURL?.(url);
+          const err = new Error(`plugin '${name}' bundle '${path}' failed to load (script rejected)`);
+          settled.set(name, err);
+          pending.delete(name);
+          reject(err);
+        },
+      );
+    }, () => {
+      const err = new Error(`plugin '${name}' bundle '${path}' failed to load (asset fetch failed)`);
+      settled.set(name, err);
+      pending.delete(name);
+      reject(err);
+    });
   });
   // Stored BEFORE the injector runs: an injector that resolves synchronously
   // (the test resolver helpers) finds the pending entry by name and can drive
@@ -224,12 +273,12 @@ export function loadClientPlugin(name: string, spec: PluginClientBundle): Promis
  * `enabled: true, state: 'failed'`) at a route it cannot serve.
  *
  * A wrong guess is FINAL, not merely wasteful: `loadClientPlugin` never retries
- * a 404, so asking too early kills the bundle for the whole page, while skipping
- * costs nothing — the next roster snapshot walks the graph again. A host that
- * reports no phases sends no `state` at all (the wire always carries it:
- * `WireRosterEntry.state` is required, and `App` hands that roster over), and
- * absent stays FAIL-OPEN like every other optional roster flag
- * (`roster-entry.ts`): a bare boot graph loads as it always did.
+ * a refused bundle, so asking too early kills the bundle for the whole page,
+ * while skipping costs nothing — the next roster snapshot walks the graph
+ * again. A host that reports no phases sends no `state` at all (the wire
+ * always carries it: `WireRosterEntry.state` is required, and `App` hands that
+ * roster over), and absent stays FAIL-OPEN like every other optional roster
+ * flag (`roster-entry.ts`): a bare boot graph loads as it always did.
  */
 export function entriesToLoad(entries: readonly BootGraphEntry[]): readonly BootGraphEntry[] {
   return entries.filter(
@@ -300,6 +349,7 @@ export function rejectPendingLoad(name: string, error: Error): void {
 export function resetClientLoader(): void {
   pending.clear();
   settled.clear();
+  setAssetFetcher(undefined);
   const global = globalThis as GlobalWithPlugins;
   delete global[PLUGIN_GLOBAL_KEY];
 }

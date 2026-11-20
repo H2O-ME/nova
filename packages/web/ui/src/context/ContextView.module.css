@@ -249,8 +249,11 @@
 
 .slicePct {
   flex: none;
-  min-width: 34px;
+  /* The reference's right-hand figures: a right-aligned mono column
+     (`min-w-10 text-right font-mono tabular-nums`). */
+  min-width: 40px;
   text-align: right;
+  font-family: var(--nova-font-mono);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -306,7 +309,8 @@
 .bar {
   display: flex;
   gap: var(--nova-space-2);
-  height: 16px;
+  /* The reference's occupancy bar is `h-2` (8px). */
+  height: 8px;
   overflow: hidden;
   border-radius: var(--nova-radius-lg);
   background: var(--nova-interactive-hover, var(--nova-surface-raised));

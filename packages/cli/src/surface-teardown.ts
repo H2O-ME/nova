@@ -6,7 +6,7 @@
  * for a kernel — and the assembly opens a session on its way (`runtime-session.ts`
  * writes the log, the workspace marker and the context fragment BEFORE any prompt
  * exists). So "I will not run" used to leave a blank `~/.nova/sessions/…` line
- * behind: `nova qqbot` with its row missing, switched off or unloadable still
+ * behind: a configured channel surface whose row is missing, off or unloadable still
  * produced one empty session per invocation. That is the concrete form of "a
  * plugin that is switched off still did something at boot".
  *

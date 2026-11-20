@@ -117,7 +117,7 @@ export interface CreateKernelOptions {
    * never rewrite it.
    */
   systemPromptSections?: ReadonlyArray<{ name: string; text: string }>;
-  /** Session-file bucket override (qqbot archives under sessionsRoot()/qqbot). */
+  /** Session-file bucket override (a channel archives under its own subdirectory). */
   sessionDir?: string;
   /**
    * The session-TITLE model's client, read once per conversation at its first

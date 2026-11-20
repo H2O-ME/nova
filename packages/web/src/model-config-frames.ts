@@ -11,7 +11,7 @@
 import type { ConfiguredModel, ModelCapabilities } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import { serializeServerFrame as serialize } from './protocol.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 
 /** What the model-list frames need from the controller. */
 export interface ModelConfigHost {

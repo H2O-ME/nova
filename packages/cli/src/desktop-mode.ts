@@ -1,20 +1,31 @@
 /**
- * `nova --web`（M11 批2）——浏览器 surface，与其余三家同契约同装配。
+ * `nova`（桌面形态）——独立窗口 surface，与其余几家同契约同装配。
  *
- * 本文件只回答两件事：claim（`!--repl && (--web || TTY)`）与**装配前置**
+ * 本文件只回答两件事：claim（默认交互，无子命令、非 repl、非 json）与**装配前置**
  * （boot：解析端点、建 provider 与模型目录、建资产路由注册表并交出其插件、备好
- * 设置页的写回器），然后把 `{ kernel: runtime.kernel, … }` 交给 `launchWeb`。
+ * 设置页的写回器），然后把 `{ kernel: runtime.kernel, … }` 交给 `launchDesktop`。
  * 「未配置端点也要能起」在这里表达：boot 给装配一个 `unconfiguredProvider()`
  * 占位，首绘因此是设置页而不是拒绝启动。
  *
- * QQ 通道**不在这里**：它随 `@nova-agent/qqbot` 那一行插件启停，开关就是那一行的
+ * ## claim 的宽度是有意的
+ *
+ * 这曾经是 `--web` 或 TTY 的 opt-in surface，browser 是默认图形入口。browser
+ * 入口砍掉之后，本 surface 就是**默认**：TTY 下裸敲 `nova` 必须落到这里，否则
+ * 没有任何 surface 认领调用、进程以 exit 1 结束。所以 claim 是「没有指名别的
+ * 子命令」而不是「指名了我」——`!repl && !json`；`--repl` 仍独占终端形态，
+ * `exec` 子命令仍在 head 组里先认领。
+ *
+ * ## 通道
+ *
+ * 帧走 stdio 管道（`desktop-host.ts`），界面文件由 Tauri 壳打进 exe。所以这里
+ * **没有端口、没有 URL、没有 token**；`stdout` 归帧通道独占，一切诊断走 stderr。
+ *
+ * 渠道面（如 QQ 通道）**不在这里**：它随自己那一行插件启停——装一个渠道包、写一行配置即可，开关就是那一行的
  * `enabled`（操作者的配置或那一行自己的设置页）。宿主曾经在这里启动时拨号，于是
- * 「行关着、通道照跑」；现在浏览器面不为任何具体插件留位置。
+ * 「行关着、通道照跑」；现在桌面面不为任何具体插件留位置。
  */
-import path from 'node:path';
-import { createRequire } from 'node:module';
 import { unconfiguredProvider } from '@nova-agent/core';
-import { launchWeb, WebRouteRegistry } from '@nova-agent/web';
+import { launchDesktop, WebRouteRegistry } from '@nova-agent/web';
 import { routeRegistryProvider } from '@nova-agent/plugins';
 import type { Kernel } from '@nova-agent/plugins';
 import { cliVersion } from './version.js';
@@ -30,11 +41,11 @@ import { readPluginEntryConfig, saveModelChoice, setPluginEntry, setSkillEnabled
 import { switchableProvider } from './live-provider.js';
 import type { BuiltinSurface } from './surface-host.js';
 
-export interface WebSurfaceDeps {
+export interface DesktopSurfaceDeps {
   config: Config;
 }
 
-export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
+export function desktopSurface(deps: DesktopSurfaceDeps): BuiltinSurface {
   const { config } = deps;
   // boot() 解析、start() 呈现——两者共享的都是「这一进程的事实」。
   const shared: {
@@ -43,8 +54,8 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
     providerModelName?: string;
     /**
      * `start()` 拿的是**真** `Kernel`（`AgentSurfaceRuntime.kernel` 是给第三方
-     * surface 的结构化窄面，web 是 cli 自带的，按真句柄用），而唯一产出它的地方是
-     * `afterBoot`——所以它经这个 holder 回填。
+     * surface 的结构化窄面，桌面面是 cli 自带的，按真句柄用），而唯一产出它的
+     * 地方是 `afterBoot`——所以它经这个 holder 回填。
      */
     live: { kernel?: Kernel };
     /**
@@ -54,28 +65,29 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
      * process never applied, and "already in force" must not read the file.
      */
     providerId?: string;
-    /** Plugin asset route registry (built here, fed into the kernel + the HTTP server). */
+    /** Plugin asset route registry (built here, fed into the kernel + the host). */
     routes: WebRouteRegistry;
   } = { model: '', live: {}, routes: new WebRouteRegistry() };
 
   return {
     surface: {
-      name: 'web',
+      name: 'desktop',
       interactive: true,
-      claim: (request) => !request.flags.repl && (request.flags.web || request.interactive),
+      // The DEFAULT interactive form now that the browser entry is gone — see the
+      // module header for why this is a catch-all rather than an opt-in flag.
+      claim: (request) => !request.flags.repl && !request.flags.json,
       start: async () => {
         const kernel = shared.live.kernel;
-        if (kernel === undefined) throw new Error('web：内核尚未装配');
-        const handle = await launchWeb({
+        if (kernel === undefined) throw new Error('desktop：内核尚未装配');
+        const handle = await launchDesktop({
           kernel,
           routes: shared.routes,
           version: cliVersion(),
           providerModelLabel: shared.model,
           ...(shared.providerModelName !== undefined ? { providerModelName: shared.providerModelName } : {}),
           ...(shared.contextWindow !== undefined ? { contextWindow: shared.contextWindow } : {}),
-          // The seat is in-memory by design (it tracks the live client), and the
-          // browser cannot hold it either: without a fixed NOVA_WEB_PORT each launch
-          // is a new origin, so localStorage would be empty exactly when needed.
+          // The seat tracks the LIVE client and only the shell knows the config
+          // file that owns the durable answer to "which model".
           persistModel: (model) => saveModelChoice(model),
           // The settings page's model list: one raw-document writer, and a reader that
           // re-reads the file each time. Both bypass the expanded `Config` for the same
@@ -97,77 +109,81 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
           storedApiKey: (id) => resolveStoredKey(id),
           configuredModel: () => configuredModel(config),
           initialProviderId: shared.providerId,
-          staticDir: webStaticDir(),
-          ...webPort(),
+          // The shell shows the window on the first frame, so nothing needs a
+          // signal to open it — this line is the operator's only trace of a boot
+          // that never printed a URL.
+          onReady: () => {
+            console.error(`Nova Desktop 就绪（pid ${process.pid}）`);
+          },
         });
-        console.log(`Nova WebUI：${handle.url}`);
-        console.log('（仅本机可访问；Ctrl+C 停服退出）');
         const shutdown = (): void => {
           void handle.close().finally(() => process.exit(0));
         };
         process.on('SIGINT', shutdown);
         process.on('SIGTERM', shutdown);
-        // 常驻：HTTP server 持有事件循环，这里只等它自然结束。
-        await new Promise<never>(() => undefined);
+        // 常驻：stdin 的读取循环持有事件循环，壳关窗即 EOF 结束这次 await。
+        // 这里必须 await 一个**会结算**的 promise——结束不了的 await 会被 Node
+        // 按「未结算的 top-level await」以 exit 13 收场，把一次正常关窗报成崩溃。
+        await handle.done;
       },
     },
-      boot: {
-        kernel: async () => {
-          // A first run has NO endpoint configured: the product must still start, show
-          // the empty shell, and let the settings page write the first provider. The
-          // assembly gets a SWITCHABLE provider whose initial target is the real
-          // client when one exists and the refusing placeholder otherwise — so the
-          // settings page's first save can install a client into the SAME instance
-          // the kernel's `llm` service already handed out, instead of leaving every
-          // session talking to a refusal until a restart.
-          const endpoint = resolveProvider(config);
-          const client = endpoint === undefined ? undefined : await createProvider(config);
-          if (client !== undefined) {
-            // The applied id comes from the same reader the page uses (legacy
-            // `provider` block → the `default` row, dangling ids fall back) —
-            // boot does not re-derive which row is active.
-            shared.providerId = (await readProviders().catch(() => undefined))?.activeId;
+    boot: {
+      kernel: async () => {
+        // A first run has NO endpoint configured: the product must still start, show
+        // the empty shell, and let the settings page write the first provider. The
+        // assembly gets a SWITCHABLE provider whose initial target is the real
+        // client when one exists and the refusing placeholder otherwise — so the
+        // settings page's first save can install a client into the SAME instance
+        // the kernel's `llm` service already handed out, instead of leaving every
+        // session talking to a refusal until a restart.
+        const endpoint = resolveProvider(config);
+        const client = endpoint === undefined ? undefined : await createProvider(config);
+        if (client !== undefined) {
+          // The applied id comes from the same reader the page uses (legacy
+          // `provider` block → the `default` row, dangling ids fall back) —
+          // boot does not re-derive which row is active.
+          shared.providerId = (await readProviders().catch(() => undefined))?.activeId;
+        }
+        const live = switchableProvider(client ?? unconfiguredProvider(), async () => {
+          // Rebuild from the FILE (the settings page persisted before this runs).
+          const fresh = await loadConfigWithDiagnostics();
+          const built = await createProvider(fresh.config);
+          if (built.model === '') {
+            // No model chosen yet: take the endpoint's own first id rather than
+            // send model-less requests. The picker remains the way to change it.
+            const available = await built.listModels?.(5_000).catch(() => [] as string[]);
+            const first = available?.[0];
+            if (first !== undefined) built.setModel(first);
           }
-          const live = switchableProvider(client ?? unconfiguredProvider(), async () => {
-            // Rebuild from the FILE (the settings page persisted before this runs).
-            const fresh = await loadConfigWithDiagnostics();
-            const built = await createProvider(fresh.config);
-            if (built.model === '') {
-              // No model chosen yet: take the endpoint's own first id rather than
-              // send model-less requests. The picker remains the way to change it.
-              const available = await built.listModels?.(5_000).catch(() => [] as string[]);
-              const first = available?.[0];
-              if (first !== undefined) built.setModel(first);
-            }
-            return built;
-          });
-          // The model in force is the CLIENT's, not the config's: `createProvider`
-          // reconciled it against the endpoint's own catalog (a config that differs only
-          // in case is a name the endpoint does not serve). Everything downstream — the
-          // label, the gauge's denominator, the kernel's `llm` service — must read the
-          // spelling that will actually be sent.
-          const model = client?.model ?? '';
-          shared.model = model;
-          // One metadata store for the whole process: the gauge's denominator and the
-          // model picker's labels both read it (cache, offline fallback, best-effort).
-          const meta = createModelMetaStore();
-          // One lookup at boot: the gauge's denominator (config override first, else
-          // the models.dev catalog — an unknown model renders without a percentage
-          // rather than guessing a window) and the picker's label for the model in
-          // force. Both are the surface's metadata half; best-effort either way.
-          const boot =
-            endpoint === undefined || model.length === 0
-              ? undefined
-              : await meta.lookup(model, endpoint.baseURL).catch(() => undefined);
-          shared.contextWindow = endpoint?.contextWindow ?? boot?.contextWindow;
-          shared.providerModelName = boot?.displayName;
+          return built;
+        });
+        // The model in force is the CLIENT's, not the config's: `createProvider`
+        // reconciled it against the endpoint's own catalog (a config that differs only
+        // in case is a name the endpoint does not serve). Everything downstream — the
+        // label, the gauge's denominator, the kernel's `llm` service — must read the
+        // spelling that will actually be sent.
+        const model = client?.model ?? '';
+        shared.model = model;
+        // One metadata store for the whole process: the gauge's denominator and the
+        // model picker's labels both read it (cache, offline fallback, best-effort).
+        const meta = createModelMetaStore();
+        // One lookup at boot: the gauge's denominator (config override first, else
+        // the models.dev catalog — an unknown model renders without a percentage
+        // rather than guessing a window) and the picker's label for the model in
+        // force. Both are the surface's metadata half; best-effort either way.
+        const boot =
+          endpoint === undefined || model.length === 0
+            ? undefined
+            : await meta.lookup(model, endpoint.baseURL).catch(() => undefined);
+        shared.contextWindow = endpoint?.contextWindow ?? boot?.contextWindow;
+        shared.providerModelName = boot?.displayName;
 
-          // 壳交给内核的额外插件行：只有资产路由注册表——`web` 包本身不认识任何渠道，
-          // 每行都带自己 config 用的 id。插件经 `ctx.must(routes)` 写入，HTTP 处理器经
-          // 同一个实例分派；没有 per-plugin 特例。
-          const extraPlugins = [{ id: 'routes', plugin: routeRegistryProvider(shared.routes) }];
-          return {
-            provider: live,
+        // 壳交给内核的额外插件行：只有资产路由注册表——这个包本身不认识任何渠道，
+        // 每行都带自己 config 用的 id。插件经 `ctx.must(routes)` 写入，`plugin_asset`
+        // 帧经同一个实例分派；没有 per-plugin 特例。
+        const extraPlugins = [{ id: 'routes', plugin: routeRegistryProvider(shared.routes) }];
+        return {
+          provider: live,
           // The list reader is LIVE (re-reads the raw file per menu open): the settings
           // page rewrites `models[]` while this process runs, so a captured array would
           // keep offering the pre-edit catalog until a restart. The ACTIVE provider's
@@ -207,17 +223,4 @@ export function webSurface(deps: WebSurfaceDeps): BuiltinSurface {
       },
     },
   };
-}
-
-/** 前端产物目录：@nova-agent/web 包根下的 public/（dist 的兄弟）。 */
-function webStaticDir(): string {
-  const require = createRequire(import.meta.url);
-  const entry = require.resolve('@nova-agent/web');
-  return path.join(path.dirname(entry), '..', 'public');
-}
-
-/** `NOVA_WEB_PORT` pins the port for the frontend dev-server proxy flow. */
-function webPort(): { port?: number } {
-  const fixed = Number.parseInt(process.env['NOVA_WEB_PORT'] ?? '', 10);
-  return Number.isInteger(fixed) && fixed > 0 ? { port: fixed } : {};
 }

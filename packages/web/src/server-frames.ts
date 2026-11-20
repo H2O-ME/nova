@@ -16,9 +16,11 @@ import type {
   ApprovalRequest,
   ConfiguredModel,
   ContextTimeline,
+  ContextWindowSnapshot,
   DirectoryLevel,
   GitLogEntry,
   GitStatusEntry,
+  ImageAttachmentRef,
   JobSnapshot,
   KernelEvent,
   ModelCapabilities,
@@ -34,7 +36,7 @@ import type { CommandSummary, ShellFamily } from '@nova-agent/plugins';
 import type { WireRosterEntry } from './roster-entry.js';
 import type { WireProviderRow } from './provider-wire.js';
 import type { TermStatus } from './term-session.js';
-import type { SessionTotals } from '@nova-agent/core';
+import type { SessionAggregate, SessionTotals } from '@nova-agent/core';
 
 export type ServerFrame =
   /**
@@ -269,6 +271,34 @@ export type ServerFrame =
    * it, so a row carries the sampled `progress` line and nothing consumable.
    */
   | { type: 'jobs'; items: readonly WireJobRow[] }
+  /**
+   * The answer to `image_upload`: the durable reference, or why it was refused.
+   *
+   * A refusal is a NORMAL answer (`ok: false` + `error`), not an `error` frame:
+   * "this file is not really a PNG" is a fact about the upload, and the composer
+   * row renders it in place — next to the image that failed.
+   */
+  | { type: 'image_uploaded'; ok: boolean; ref?: ImageAttachmentRef; error?: string }
+  /**
+   * The answer to `image_bytes`: base64 bytes plus the type sniffed from them.
+   *
+   * `ok: false` means the object is gone or its digest no longer matches — the
+   * reference in the transcript is then a dead id, which the row must say
+   * instead of drawing a broken image.
+   */
+  | { type: 'image_data'; ok: boolean; id: string; data?: string; mediaType?: string; error?: string }
+  /** The answer to `dashboard`. */
+  | { type: 'dashboard'; ok: boolean; aggregate?: SessionAggregate; error?: string }
+  /** The answer to `context_window`; `ok: false` carries the refusal reason. */
+  | { type: 'context_window'; ok: boolean; snapshot?: ContextWindowSnapshot; error?: string }
+  /**
+   * The answer to `plugin_asset`: one asset's decoded text, or why it is absent.
+   *
+   * `contentType` comes from the plugin's own handler headers rather than from
+   * the file extension — the plugin decided how it wants to be served, and the
+   * loader only needs to know whether to inject a script or a stylesheet.
+   */
+  | { type: 'plugin_asset'; ok: boolean; path: string; text?: string; contentType?: string; error?: string }
   | { type: 'error'; message: string };
 
 /**

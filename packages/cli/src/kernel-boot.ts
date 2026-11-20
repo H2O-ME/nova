@@ -4,7 +4,7 @@
  *
  * 生产代码里 `createAgentKernel` 只被这里调用一次；任何 surface（内置四家或
  * 配置加载的）都经 `cli/src/surface-host.ts` 的 `buildSurfaceRuntime` 走到此处。
- * 各内置的装配差异以 `SurfaceBoot` 贡献表达（`exec` / `qqbot` / web），转发只
+ * 各内置的装配差异以 `SurfaceBoot` 贡献表达（`exec` / web），转发只
  * 在 surface-host 一处——「逐字段手抄漏掉新选项」不再有地方可漏。
  */
 import {
@@ -26,9 +26,9 @@ export interface BootOptions {
   approvalOverride?: ApprovalMode;
   /** 续接历史会话文件（首个 session handle）。 */
   resumeFile?: string;
-  /** 会话归档桶（qqbot 用 `sessionsRoot()/qqbot` 与交互会话隔离）。 */
+  /** 会话归档桶（渠道面可用它与交互会话隔离）。 */
   sessionDir?: string;
-  /** 单次执行形态：整个任务一次 run，自动压缩按请求门控（exec/qqbot）。 */
+  /** 单次执行形态：整个任务一次 run，自动压缩按请求门控（exec）。 */
   perRequestCompact?: boolean;
   /** The surface's own plugin rows (each carrying the id its config uses). */
   extraPlugins?: readonly PluginEntryOptions[];
@@ -53,7 +53,7 @@ export interface BootOptions {
   workspace?: { onChange: (dir: string) => void | Promise<void> };
   /**
    * 这个 surface 有没有「人」可以回答 `ask_user_question`。默认 false =
-   * fail-closed：无人值守形态（exec / qqbot）给了回答器就会卡在提问里，而没有
+   * fail-closed：无人值守形态（exec）给了回答器就会卡在提问里，而没有
    * 任何界面能把它放出来。`buildSurfaceRuntime` 传 `deriveUserQuestions(surface)`；
    * 覆盖没有注册表的装配（内核测试 / 嵌入方）。
    */
@@ -98,7 +98,7 @@ export async function bootKernel(opts: BootOptions): Promise<Kernel> {
     ...(opts.extraPlugins !== undefined ? { extraPlugins: opts.extraPlugins } : {}),
     // The anchor for bare module specs: the app's OWN module URL, never the
     // resolver library's. A row may name a package this product ships, and those
-    // are siblings of this executable (`@nova-agent/qqbot` is a cli dependency,
+    // are siblings of this executable (a channel PACKAGE is a cli dependency,
     // not a plugins one) — see plugins/src/module-spec.ts.
     appModulesUrl: import.meta.url,
     ...(opts.surfaces !== undefined ? { surfaces: opts.surfaces } : {}),

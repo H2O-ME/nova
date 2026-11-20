@@ -371,7 +371,7 @@ export class QuestionBroker {
  * in the cli reads the surface it just loaded). A future owner of the rule is a
  * single function, not a boolean hand-written at each site: `answersQuestions`
  * declares the person explicitly; an interactive surface defaults to having one
- * (a person is at both ends); everything else (unattended exec / qqbot) stays
+ * (a person is at both ends); everything else (unattended exec) stays
  * `false` so a run never parks on a question no card can release.
  */
 export function deriveUserQuestions(caps: {

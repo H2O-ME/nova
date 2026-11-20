@@ -38,10 +38,10 @@ export type Block =
       /** The log's timestamp (the row's clock). */
       ts?: number;
       /**
-       * Images this prompt attached, by reference. The pixels are fetched from
-       * the id-addressed route when the row draws (`imageRefUrl`), never carried
-       * in the transcript: a reload must show the attachment the conversation
-       * actually had, and the bytes live in the store, not in the frame.
+       * Images this prompt attached, by reference. The pixels are fetched by
+       * frame when the row draws (`fetchImageBytes`), never carried in the
+       * transcript: a reload must show the attachment the conversation actually
+       * had, and the bytes live in the store, not in the frame.
        */
       images?: readonly { id: string; mediaType: string }[];
     }

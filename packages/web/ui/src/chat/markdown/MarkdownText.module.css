@@ -19,6 +19,22 @@
   color: var(--nova-text-primary);
 }
 
+/* Streaming reveal, opacity ONLY (the reference's own rule: `[data-zcode-reveal]`
+ * and `zcode-stream-text-in` transition nothing but opacity, because a
+ * transform would change the block's height mid-stream and make the transcript
+ * jump under the reader). `@starting-style` gives the first painted frame zero
+ * opacity, so a newly streamed block fades in without a mount animation. */
+.markdown[data-streaming] {
+  transition: opacity 300ms var(--nova-ease-out);
+  will-change: opacity;
+}
+
+@starting-style {
+  .markdown[data-streaming] {
+    opacity: 0;
+  }
+}
+
 .markdown strong {
   font-weight: 600;
 }

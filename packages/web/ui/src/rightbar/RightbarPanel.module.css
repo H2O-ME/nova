@@ -41,7 +41,10 @@
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
   box-shadow: var(--nova-elevation-panel);
-  animation: rightbar-in var(--nova-dur-slow) var(--nova-ease-inout);
+  /* The reference's side pane opens over 200ms on the panel easing curve
+     (`transition-[flex-grow] duration-200 ease-out`); 260ms ease-in-out read
+     sluggish beside the sidebar's own 200ms. */
+  animation: rightbar-in var(--nova-dur-panel) var(--nova-ease-panel);
 }
 
 @keyframes rightbar-in {

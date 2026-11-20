@@ -11,12 +11,6 @@ export default defineConfig({
       { find: '@nova-agent/core', replacement: fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)) },
       { find: '@nova-agent/ai', replacement: fileURLToPath(new URL('./packages/ai/src/index.ts', import.meta.url)) },
       { find: '@nova-agent/plugins', replacement: fileURLToPath(new URL('./packages/plugins/src/index.ts', import.meta.url)) },
-      // Same source plane as the three above: `pnpm check` does NOT build, and
-      // without this the cli suites resolve the qqbot plugin to the LAST BUILT
-      // dist — any public member added to qqbot/src turned every cli test that
-      // touches the channel red in the fast ring while staying green in the
-      // full one (which builds first). Tests read source, never stale output.
-      { find: '@nova-agent/qqbot', replacement: fileURLToPath(new URL('./packages/qqbot/src/index.ts', import.meta.url)) },
       // Extension packages, same source-plane rule: tests read their sources,
       // never a possibly stale dist.
       { find: '@nova-agent/plugin-subagent', replacement: fileURLToPath(new URL('./packages/plugin-subagent/src/index.ts', import.meta.url)) },

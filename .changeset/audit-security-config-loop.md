@@ -3,7 +3,6 @@
 '@nova-agent/cli': patch
 '@nova-agent/ai': patch
 '@nova-agent/core': patch
-'@nova-agent/qqbot': patch
 ---
 
 安全与配置闭环审计批（B/C/U 三簇，2026-10-05 批准实施）。安全 P1 与生命周期：
@@ -26,8 +25,8 @@
 - 流式合并缓冲设上限（500 帧）：隐藏标签页的 rAF 永不触发，原实现会在整个 run 期间无界增长。
 - reducer 不再直接读时钟（`reduceEvent` 可注入 `now`），测试与回放可钉住时间。
 
-QQ 通道与 SSE（另一车道同批）：
+SSE 解析器（`ai`）：
 
-- F05 配对码未读回导致无限 mint + 重挂；F06 设置页保存白名单漏 `maxTier`（保存必失败）；F04 `maxTier` 约束对端自有会话（relay 刻意不动）；F08 结论改走回复预留、proactive 吃旁白额度；F22 SSE 单行上限。
+- F22 SSE 单行上限：事件上限此前只累计 `data:` 载荷，一个从不发换行的流会让解析器的行缓冲无界增长。
 
 每条修复配 killing test 并做过变异验证；`pnpm verify` 全绿（207 文件 / 2224 测试）。

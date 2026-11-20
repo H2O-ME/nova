@@ -24,7 +24,9 @@ import {
   type AgentSession,
   type ConfiguredModel,
   type KernelEvent,
+  type RouteRegistry,
 } from '@nova-agent/core';
+import { contextInsights as contextInsightsKey } from '@nova-agent/core';
 import type { Kernel } from '@nova-agent/plugins';
 import { ModelSeat } from './model-seat.js';
 import { assembleReady } from './ready.js';
@@ -33,7 +35,7 @@ import { ContextFollow } from './context-follow.js';
 import type { ClientFrame, ServerFrame } from './protocol.js';
 import { ClientFanout } from './clients.js';
 import { SessionFollow } from './session-follow.js';
-import type { WsConnection } from './ws.js';
+import type { WsConnection } from './connection.js';
 import type { ControllerOptions } from './options.js';
 import type { ProviderHost } from './provider-frames.js';
 import type { PickFn } from './picker-frames.js';
@@ -140,6 +142,18 @@ export class WebController {
     private liveProviderId: string | undefined,
     /** The native-dialog override for `pick_file` / `pick_directory` (tests). */
     private readonly pickPath: PickFn | undefined,
+    /**
+     * The corpus root the dashboard frame folds over, and the plugin asset
+     * registry — the two seams the media frames name beyond the context thunk.
+     *
+     * Injected because both are facts about the SHELL: "which sessions exist" is
+     * the host's data root (tests point it at a temp tree so a corpus read never
+     * touches real logs), and the registry is the same instance the kernel
+     * container publishes through `routeRegistryProvider`. Absent in tests and in
+     * any shell that did not wire them — a plugin UI capability then degrades
+     * rather than fails, and the dashboard folds the real corpus.
+     */
+    private readonly media: { sessionsRootDir: string; routes?: RouteRegistry },
   ) {
     this.kernel = kernel;
     this.seat = seat;
@@ -165,6 +179,7 @@ export class WebController {
       opts.configuredModel ?? (() => undefined),
       opts.initialProviderId,
       opts.pickPath,
+      { sessionsRootDir: opts.sessionsRootDir ?? sessionsRoot(), ...(opts.routes !== undefined ? { routes: opts.routes } : {}) },
     );
     controller.adoptKernelSession();
     // The boot-time answer, so the first inbound frame does not look like a flip:
@@ -305,7 +320,7 @@ export class WebController {
       liveProviderId: () => this.liveProviderId,
       setLiveProviderId: (id) => { this.liveProviderId = id; },
       // The default tier lives on the KERNEL, not here: sessions are created by
-      // several surfaces (the qqbot channel opens its own conversations), and a
+      // several surfaces (a channel opens its own conversations), and a
       // default held in one controller would never reach the others.
       approvalDefault: () => this.kernel.approvalDefault,
       setApprovalDefault: (mode) => { this.kernel.setApprovalDefault(mode); },
@@ -317,7 +332,13 @@ export class WebController {
       abandonCurrentSession: () => this.abandonSession(),
       disposeLiveHandle: (file) => this.disposeLiveHandle(file),
       setWorkspace: (dir) => this.setWorkspace(dir),
-    });
+      // The five collaborators the media frames need, in one object: the same
+      // shape the handlers take, so a new seam cannot be silently dropped here.
+      media: {
+        sessionsRootDir: this.media.sessionsRootDir,
+        contextWindow: () => this.kernel.host.context.get(contextInsightsKey),
+        ...(this.media.routes !== undefined ? { routes: this.media.routes } : {}),
+      },    });
     // AFTER the frame: a workspace move replaces the session inside the kernel,
     // so follow it here rather than making every handler remember to.
     this.followSession();

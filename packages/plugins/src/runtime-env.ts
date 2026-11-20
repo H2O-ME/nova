@@ -170,7 +170,7 @@ export interface Environment {
   /**
    * The process's default tier for NEW sessions — what a surface's settings
    * row picked. Mutable on the env (not a per-surface field) because sessions
-   * are created by several surfaces; the qqbot channel's conversations must
+   * are created by several surfaces; a channel's conversations must
    * start at the same default the browser's would. `undefined` = the boot
    * config's `approval` is the default, unchanged.
    */

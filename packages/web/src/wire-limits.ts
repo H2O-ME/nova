@@ -15,6 +15,16 @@
 
 /** Max bytes of one inbound text frame (prompt bodies are user-typed, not tool dumps). */
 export const MAX_CLIENT_FRAME_BYTES = 512 * 1024;
+/**
+ * Max bytes of the ONE frame kind that carries image bytes: `image_upload`.
+ *
+ * Every other frame is bounded by {@link MAX_CLIENT_FRAME_BYTES}, which is
+ * deliberately far below an image (a permitted image is up to 8 MiB, ~10.7 MB
+ * once base64'd). The exemption is by TYPE, not a global raise: a prompt that
+ * could carry 16 MiB would undo the ceiling that keeps an oversized paste from
+ * becoming the request path's problem.
+ */
+export const MAX_IMAGE_FRAME_BYTES = 16 * 1024 * 1024;
 /** Max chars of a prompt — generous for pasted stack traces, far below frame size. */
 export const MAX_PROMPT_CHARS = 200_000;
 /** Max chars of a model id (an endpoint's own id; no id is anywhere near this). */
@@ -49,7 +59,7 @@ export const MAX_FILE_QUERY_CHARS = 512;
  */
 export const MAX_FILE_MATCHES = 200;
 /**
- * Max chars of a credential-shaped text field (qqbot appId/secret). Generous
+ * Max chars of a credential-shaped text field (a bot's appId/secret). Generous
  * for a pasted key, far below the frame budget — a pasted document must not
  * become a DoS vector.
  */
