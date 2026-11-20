@@ -165,7 +165,7 @@ describe('plugin-owned config references', () => {
   }
 
   const provider = { baseURL: 'https://x.test/v1', apiKey: 'sk-1', model: 'm' };
-  const rowId = '@nova-agent/qqbot';
+  const rowId = '@nova-agent/demo-channel';
 
   it('starts anyway when only a plugin-row reference is unset, and reports it', async () => {
     delete process.env['NOVA_TEST_UNSET_SECRET'];

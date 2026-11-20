@@ -2,8 +2,11 @@
 
 > **文档状态**：Normative（G0a 决策冻结）
 > **本文件回答**：Nova 的定位是什么、通用化的执行契约是什么、哪些批次要做、每批开工的前置条件是什么。
-> **权威关系**：本文件的**批次表取代** `NOVA-0.5.0-REFACTOR.md` §7 的批次表地位；后者降级为历史记录，其未完成批次已映射进本文件 §5。其余细则分工不变：依赖边界见 `NOVA-BOUNDARIES.md`、UI 结构见 `NOVA-UI-ARCHITECTURE.md`、视觉见 `NOVA-DESIGN-SYSTEM.md`、测试见 `NOVA-TESTING.md`。
-> **执行纪律**：`NOVA-0.5.0-REFACTOR.md` §4–§6（命令语义、git 纪律、测试表述纪律）与 §12（Scope Protocol）**继续有效**，本文件不重复。
+> **⚠️ 引用已精简（2026-11-20）**：本仓为保持开发精简，已删除 8 份历史文档。下文凡引用 `NOVA-0.5.0-REFACTOR.md`、`NOVA-UI-ARCHITECTURE.md`、`NOVA-DESIGN-SYSTEM.md`、`NOVA-TESTING.md`、`NOVA-WINDOWS.md`、`dsh-parity-inventory.md`、`architecture-audit-2026-10.md`、`plugin-architecture-refactor.md` 之处，**一律按历史记录读**——引用是史实，不改写；需要原文时从 `git show <commit>:docs/<name>.md` 或本地 `.docs-archive/` 取回。
+> **仍然有效的只剩两份细则文档**：依赖边界见 `docs/NOVA-BOUNDARIES.md`；测试纪律见本文件 §8 与 `AGENTS.md` §0.4/§5（`NOVA-TESTING.md` 的规则已并入，不再单列）。
+> **权威关系**：本文件的批次表取代旧 0.5.0 总纲 §7，其未完成批次已映射进本文件 §5。
+> **执行纪律（原 0.5.0 §4–§6、§12 中仍然有效的部分，已内联于此）**：命令语义以 `AGENTS.md` §2 为准；git 纪律 = 每批独立、路径限定提交，绝不 `git add -A`；测试表述纪律 = 不得把"测试全绿"表述为"证明行为未变"；开工前必须完成 Scope Protocol（依赖核对 + 文件所有权核对，现算，不引用过期清单）。
+> **渠道面出仓（2026-10-14）**：`packages/qqbot` 已迁出为独立产品 `D:\web\noa`。本文件证据表中把 `qqbot` 当作**本仓包**列出的行（§3 依赖审计、G1 消费者普查、`principal` 说明等）自此只作**历史记录**读；通道位本身（`surfaces` / `plugins.entries` 行、`userQuestions` 推导）不变。
 
 ---
 
@@ -32,7 +35,7 @@ Nova = 通用型本地 agent 工作台
 | `bash` / `fs` / `search` 工具 | 读写文件与执行命令是通用任务的地基，不是编程专属 |
 | 会话 / 审批 / 权限 / 插件 / Skills 内核 | 已经是 provider-agnostic 的通用容器（18 服务键 + 4 事件键） |
 | 多模态附件（images / image-store / image-projection） | 通用能力，见 §3.2 |
-| 多 surface（Web / TUI / REPL / exec / QQ） | 同一内核事件流的不同消费者，地位平等 |
+| 多 surface（Web / REPL / exec，及配置行加载的第三方 surface） | 同一内核事件流的不同消费者，地位平等 |
 
 ### 1.2 降级（编程特化，从默认假设变为可选能力）
 
@@ -130,30 +133,75 @@ Session → runAgent → ToolCall → Approval → Persistence
 - **替代选项**：保留 `git.ts` + `git-clone.ts` 于 core，接受"core 为可选 UI 面板背负编程能力"，并在 §3.3 表里把这条代价写明。
 - **无论选哪个，本次不动实现**（遵守"审计结论出来前不做任何搬迁"）。
 
-### 3.4 rightbar 删除代价（G6 的输入，量化）
+#### 2026-11-20 复核：审计前提变了，结论需要重算
 
-| 项 | 数量 | 明细 |
+| 事实 | 实测证据 |
+| --- | --- |
+| 消费者普查**仍然成立** | `git*` 在 `ai` / `plugins` / `cli` / `plugin-*` 六个包 **零引用**；唯一消费者仍是 `web/src/git-frames.ts:27` 与 `session-frames.ts:13` |
+| **但 `git.ts` 的唯一理由不再是右栏** | 变更页后端 `web/src/git-frames.ts` 是**协议层**，§3.4 明令「一律不动」；而右栏现在是按需抽屉、不是删除目标（§3.4）。**"G6 删右栏 → git.ts 失去理由"这条推理链已断** |
+| `gitClone` 的理由与右栏无关 | `session-frames.ts:98`「从 URL 建会话」，是会话创建工作区，属通用需求 |
+| **core 里没有任何 git 测试** | `packages/core/test/` 下零 git 文件；git 行为的测试在 `web/test/rightbar-frames.test.ts`（17 it），而该测试按 §3.4 判定为**改名保留** |
+
+**重算后的结论（两条路，倾向后者）**：
+
+1. ~~搬进 `web`~~ —— 前提「右栏会删」已不成立，理由随之消失。搬迁只换来「core 更纯」，却让 `web` 成为 git 的唯一持有者，而 `cli` 通过 `web` 间接获得该能力（`cli` 白名单含 `web`），语义反而更绕。
+2. **保留在 core，并把代价写明**：core 持有 git 能力，供 `web` 的变更页与"从 URL 建会话"使用；它是**无状态、无模型暴露、零测试**的纯进程封装（`git.ts` 281 行 + `git-clone.ts` 52 行）。代价是 core 含一处编程特化，收益是避免了 §3.3 警告的「复制一份 spawn 实现」。
+
+> **本项的处置建议**：从「等拍板搬迁」改为「**关闭搬迁议题**」，在 §3.3 表里把"core 为可选 UI 背负 git"记为**已有意接受**的代价。若将来 `git` 要成为模型可用工具（当前不是），那是新增能力，届时再谈归属。**本次仍未动任何实现。**
+
+### 3.4 rightbar 现状与删除代价（G6 的输入，2026-11-20 重算）
+
+**形态已经变了：右栏现在就是按需抽屉，不是常驻栏。**
+
+| 事实 | 证据 |
+| --- | --- |
+| 默认关闭 | `app/App.tsx:69` `useState(false)` |
+| 关闭时不渲染 | `app/AppShell.tsx:109` `if (!props.rightbarOpen) return null` |
+| 唯一打开入口 | `app/routes/SessionRoute.tsx:169-173` 会话头角落的 `RightbarOpenButton`（仅图标，无快捷键） |
+| 打开后两种几何 | `shell/AppFrame.tsx:248-249` 收轨 / 浮层抽屉 |
+
+这已是 G5 方案 A 的「按需工作区抽屉」。**「删常驻右栏」这个靶子不存在了**——G6 若还按字面执行，删的是抽屉，不是常驻栏。
+
+| 项 | 数量 | 明细（实测） |
 | --- | --- | --- |
-| UI 源文件 | **40** | `packages/web/ui/src/rightbar/` 全部 |
-| UI 引用者 | **7** | `state.ts`、`state-events.ts`、`App.tsx`、`AppFrame.tsx`、`columns.ts`、`layout-store.ts`、`shell/copy.ts` |
-| UI 测试 | **14** | `rightbar-{changes,files,layout,panel,tabs,tree}`、`tasks-model`、`terminal-model`、`terminal-shell`、`change-tree`、`git-diff-rows`、`diff-{highlight,lines,view}` |
-| web 测试 | **2** | `rightbar-frames.test.ts`、`term-session.test.ts` |
+| UI 源文件 | **41**（7,317 行） | `packages/web/ui/src/rightbar/` 全部 |
+| UI 引用者 | **11** | `state.ts`、`App.tsx`、`AppShell.tsx`、`SessionRoute.tsx`、`client/protocol.ts`、`client/messages.ts`、`shell/AppFrame.tsx`、`shell/layout-store.ts`、`shell/columns.ts`、`shell/use-layout.ts`、`shell/copy.ts`（**`state-events.ts` 已降至 0 处，从旧清单剔除**） |
+| UI 测试 | **15**（随实现删） | `rightbar-{changes,files,layout,panel,tabs,tree}`、`tasks-model`、`terminal-model`、`terminal-shell`、`change-tree`、`git-diff-rows`、`diff-{highlight,view}`、`strip-state` |
+| ⚠️ 必须保留 | **1** | `diff-lines.test.ts` 测的 `ui/src/diff-lines.ts` **有 `tool/views/DiffCard.tsx` 消费者**，不在删除范围 |
+| web 测试 | **2**（**改名保留，不删**） | `rightbar-frames.test.ts`（实测 17 it，名字带 rightbar 但测的是 `web/src` 的 fs/git/term/job 协议处理器）、`term-session.test.ts`（12 it，PTY 语义） |
 | 承载能力 | 4 | 变更（git frames）/ 文件（fs frames）/ 任务（job frames）/ 终端（term frames + PTY） |
 
+**替代入口的真实覆盖度（这是 G6 开工判据第 1 条，目前不满足）**
+
+| 能力 | 已有内联替代 | 判定 |
+| --- | --- | --- |
+| diff | `tool/views/DiffCard.tsx` | ✅ 有 |
+| 任务行 | `flow.tsx:32` → `flow/StatusRows` | ✅ 有 |
+| 文件树 | composer `@` 引用（`InputBar.tsx:401`）只覆盖"列出文件"，无树浏览 | ⚠️ 部分 |
+| **git 变更页** | 无 | ❌ **右栏唯一入口** |
+| **交互式 PTY** | 无——**全仓发 `term_open` 的只有 rightbar 两个文件** | ❌ **右栏唯一入口** |
+
 > **删除只能是 UI 层目标。** 协议帧、`frame-router.ts`、`term-session.ts`、`job-session-ownership`、`gitClone` 后端能力**一律不动**。
+>
+> **协议层确认独立**：`packages/web/src/` 全目录 grep `rightbar` = **0 处**；反向只有 `ui/src/types.ts:43` 对 `'../../src/protocol'` 的 type-only import（编译期擦除）。
+>
+> **删除的结构性障碍**：`state.ts` 的 `tree`/`editor`/`term`/`jobs` 四个 slice 的折叠函数（`files-model` / `editor-model` / `terminal-model` / `tasks-model`）**都在 `rightbar/` 目录内**。删目录就必须连 `UiState` 四个字段一起删，或先把 model 层迁出——这是 G6 最大的隐藏成本。
 
-### 3.5 视觉现状（G7a 的输入）
 
-| 项 | 数值 |
-| --- | --- |
-| UI 源文件 / 行数 | 240 / 34,902 |
-| `*.module.css` | 89 |
-| 引用 `--dsw-*` 的 CSS 文件 | **95** |
-| 引用 `--nova-*` 的 CSS 文件 | **12** |
-| 头部含 "deepseek-harness" 的 UI 源文件 | **149 / 240** |
-| token 基线（spacing / radius / shadow / duration / ease） | 767 / 82 / 12 / 129 / 111 |
+### 3.5 视觉现状（G7a 已完成，此表改为**收口实测**）
 
-> 迁移远未完成：95 个文件仍在 `--dsw-*` 上，只有 12 个用 `--nova-*`。**G7a 的删除判据必须以此为准，不得按批次编号机械删除。**
+| 项 | G7a 前（2026-10-09） | 现状实测（2026-11-20） |
+| --- | --- | --- |
+| UI 源文件 / 行数 | 240 / 34,902 | **387 / 56,427**（ts+tsx+css） |
+| `*.module.css` | 89 | **95** |
+| 引用 `--dsw-*` 的 CSS 文件 | **95** | **0** |
+| 引用 `--nova-*` 的 CSS 文件 | 12 | **127** |
+| 头部含 "deepseek-harness" 的 UI 源文件 | **149 / 240** | **0** |
+| token 基线（spacing / radius / shadow / duration / ease） | 767 / 82 / 12 / 129 / 111 | **146 / 43 / 18 / 105 / 99** |
+
+> **此表不再是开工判据。** G7a 已于 2026-10-11 收口：`--dsw-*` / `--ds-*` / `--dsh-*` 在 `packages/web/ui/src` 下**零残留**，`style-guard` 已翻转为「禁止出现」；dsh 点名头零残留。上表右列的数值是**当前债务水位**（由 `scripts/ui-token-guard.mjs` 与 `wc` 实测），用于判断后续批次是缩小还是扩大了债务，不要拿左列当目标。
+>
+> 债务仍在的部分与 G7a 无关：token 基线的进一步下降要等组件重构批（字面量真正消除时）执行；`rightbar/` 41 文件 7,317 行仍在，归属 G6。
 
 ## 4. 批准范围声明
 
@@ -175,7 +223,7 @@ G2  Session 所有权 repository/writer/projection/repair + 删除序列    ← 
 G3  能力归位     ownership 审计已完成（§3.3 审计补充）；是否搬迁待拍板 ← 0.5.0 Batch 4 剩余；不预设重写
 G4  Client Model ui/src/client/ React-free + App.tsx 拆分            ← 已完成（0722d20 四刀收口，props drilling 留待 G5 后）
 G5  UI 原型验证  方案 A：Conversation 主舞台 + 按需抽屉 + 内联结果卡   ← 不改协议/Runtime；可与 G1–G4 并行
-G6  形态重构     删常驻 rightbar                                    ← 有条件通过
+G6  形态收口     右栏已是按需抽屉：决定保留(补入口)还是删除(先造替代)  ← 有条件通过，目标已重定
 G7a 视觉自研     --dsw-* → --nova-*；删 design-platform.css         ← 有条件通过
 G7b 测试与清理   按域重组                                           ← 有条件通过
 G8  封板         版本 + changeset + verify + smoke
@@ -372,21 +420,29 @@ G1a（Run 实体）与 G1b（scope 归位）已落地。**G1c 与 G1d 的原定�
 - **不可改变**：协议帧、`frame-router`、Runtime、执行语义。
 - **验收**：5 个问题各有答案（原型可演示）；结论写进本文件 §6 G6。
 
-### G6 — 形态重构（**有条件通过**）
+### G6 — 形态重构（**有条件通过**；2026-11-20 重定目标）
+
+> **目标已修正。** 原描述「删常驻 rightbar」所指向的靶子**不存在**：右栏自 `App.tsx:69` 起默认关闭、由 `SessionRoute.tsx:170` 的角落按钮按需打开，形态已经是 G5 方案 A 的抽屉（见 §3.4 现状表）。
+>
+> **因此 G6 的余量不是「改形态」，而是「决定这个抽屉要不要留」**，二选一：
+>
+> - **路线 A（保留抽屉）**：G6 降级为「补齐替代入口 + 收口文档」，不删代码。需先确认 PTY 与 git 变更页在抽屉形态下可用（G5 问题 4 已可答「是」——`TerminalView` 支持多轮输入）。
+> - **路线 B（删掉抽屉）**：**开工判据第 1 条目前不满足**——git 变更页与交互式 PTY 都**只有右栏这一个入口**，全仓发 `term_open` 的只有 rightbar 两个文件。删 UI 等于砍掉终端的全部前端消费者。走这条路必须先在对话流里造出 PTY 与变更的替代入口，那是 G5 的工作量，不是 G6 的。
 
 - **开工判据（未满足不开工）**：
-  1. 每项能力已证明有替代入口（§3.4 四页 → G5 结论）；
-  2. 14 个 UI 测试 + 2 个 web 测试**逐个**给出迁移或删除理由（见 §4「批准方向 ≠ 批准顺序」）；
-  3. 协议帧、`frame-router`、`term-session`、`job-session-ownership`、`gitClone` 后端**确认不动**。
-- **删除**：`rightbar/` 40 文件；`App.tsx` 的 rightbar state（`rightbarOpen` / `strip` / `openFileTab` 等）；`AppFrame.tsx` 第三栏几何；`columns.ts` 的 rightbar 轨道求解。
-- **不可改变**：协议语义、后端能力、已通过 G5 验证的能力入口。
+  1. 每项能力已证明有替代入口（§3.4「替代入口的真实覆盖度」——**当前 2/4 缺失**）；
+  2. **15 个 UI 测试**随实现删除 + **1 个 `diff-lines.test.ts` 必须保留**（消费者在 `tool/views/DiffCard.tsx`）+ 2 个 web 测试**改名保留而非删除**（测的是不删的协议层）——逐个给出理由；
+  3. 协议帧、`frame-router`、`term-session`、`job-session-ownership`、`gitClone` 后端**确认不动**；
+  4. **新**：`state.ts` 的 `tree`/`editor`/`term`/`jobs` 四个 slice 与它们在 `rightbar/` 内的折叠函数（`files-model`/`editor-model`/`terminal-model`/`tasks-model`）的处置方案先定——model 层若不迁出，删目录就必须连 `UiState` 四字段一起删。
+- **删除（仅路线 B）**：`rightbar/` **41** 文件；`App.tsx` 的 rightbar state（`rightbarOpen` / `strip` / `openFileTab`）；`AppFrame.tsx` 第三栏几何；`columns.ts` 的 rightbar 轨道求解；`state.ts` 上述四 slice 及其 15 个 Action 变体。
+- **不可改变**：协议语义、后端能力、已通过 G5 验证的能力入口、`ui/src/diff-lines.ts`。
 - **验收**：`pnpm check` 绿；G5 的 5 个问题在新形态下仍成立。
 
 ### G7a — 视觉自研（**已完成，2026-10-11**）
 
-- **开工判据**：**必须确认新 token 与组件已迁移完成**才删 `--dsw-*`——**不得单纯按批次编号删除**。
-- **改**：95 个引用 `--dsw-*` 的 CSS 文件逐个迁移到 `--nova-*`；token 基线单调下降。
-- **删除**：`styles/design-platform.css`；149 个文件的 "ported from deepseek-harness" 注释头；逐值抄来的几何常量。
+- **开工判据**（已满足后开工）：确认新 token 与组件已迁移完成才删 `--dsw-*`——**不得单纯按批次编号删除**。
+- **改**：逐个迁移引用 `--dsw-*` 的 CSS 文件到 `--nova-*`（当时实测 95 个）；token 基线随组件重构批下降，不在本批强求。
+- **删除**：`styles/design-platform.css`；"ported from deepseek-harness" 注释头（当时实测 149 个 UI 源文件）；逐值抄来的几何常量。
 - **不可改变**：`NOVA-DESIGN-SYSTEM.md` §2 已冻结的视觉方向；停靠列不画阴影（`style-guard` 已钉住）。
 - **验收**：`ui-token-guard` 基线下降；`style-guard` / `motion-guard` 绿；视觉差异以实机量测为证据。
 - **收口（2026-10-11，四批落地 `388ebd1`/`9bdae34`/`d3d55d2`/本批）**：

@@ -4,6 +4,13 @@
  * force-fallback, and the winner RECORDED (`current()`) so the userQuestions
  * provider has a single source for built-ins and configured surfaces alike.
  *
+ * The default interactive surface is `desktop` since the browser entry was cut,
+ * and its claim is deliberately WIDE (`!repl && !json`) rather than opt-in: the
+ * Tauri shell spawns this process over pipes, where stdio is never a TTY, so a
+ * TTY-gated default would leave a bare `nova` unclaimed — exit 1 instead of a
+ * window. That is also why the "no TTY falls back to the REPL" rule is gone;
+ * `--repl` is the explicit way to ask for the terminal form.
+ *
  * Pure — no surface is started; the fake `custom` stands where a
  * `~/.nova/config.json` `surfaces` row would sit. The last case goes through the
  * real `loadDynamicSurfaces` with a real row module on disk, because THAT is the
@@ -23,16 +30,16 @@ import { builtinSurfaces, loadDynamicSurfaces } from '../src/surfaces.js';
 const config = { provider: { baseURL: 'https://x/v1', apiKey: 'k', model: 'm' } } as unknown as Config;
 
 /**
- * A configured surface, as `loadDynamicSurfaces` would register it: claim reads
- * the host-owned flags off the request (`flags.web` etc.). A real surface's
- * `start` assembles nothing — the host does (see `surface-host.ts`); here it is
- * a no-op since this test only resolves.
+ * A configured surface, as `loadDynamicSurfaces` would register it: it claims a
+ * positional word (what a real channel surface does with its own subcommand).
+ * A real surface's `start` assembles nothing — the host does (see
+ * `surface-host.ts`); here it is a no-op since this test only resolves.
  */
 function customSurface(): AgentSurface {
   return {
     name: 'custom',
     interactive: true,
-    claim: (request) => request.flags.web && !request.flags.repl && request.interactive,
+    claim: (request) => request.flags.positional[0] === 'surf-x',
     start: async () => {},
   };
 }
@@ -63,7 +70,6 @@ function claim(argv: string, interactive: boolean, extra?: AgentSurface): string
 
 describe('surface claims', () => {
   it('routes subcommands above the interactive defaults', () => {
-    expect(claim('qqbot', true)).toBe('qqbot');
     expect(claim('exec 修复测试', true)).toBe('exec');
     // A subcommand wins even without a TTY (exec is the CI surface), and even
     // when a configured surface is present — subcommands outrank everything.
@@ -71,51 +77,55 @@ describe('surface claims', () => {
     expect(claim('exec 修复测试', true, customSurface())).toBe('exec');
   });
 
-  it('opens the browser UI by default, and only --repl leaves it', () => {
-    expect(claim('', true)).toBe('web');
-    expect(claim('--web', true)).toBe('web');
+  it('opens the desktop window by default, and only --repl leaves it', () => {
+    expect(claim('', true)).toBe('desktop');
     expect(claim('--repl', true)).toBe('repl');
-    expect(claim('--repl --web', true)).toBe('repl');
   });
 
-  it('a configured surface claims its argv ahead of the browser default', () => {
-    // With the surface configured, its own claim decides (`--web` here);
-    // without it, the same argv falls through to the built-in web entry.
-    expect(claim('--web', true)).toBe('web');
-    expect(claim('--web', true, customSurface())).toBe('custom');
-    // The force-fallback is stronger than any opt-in: the configured surface's
-    // own claim yields to `--repl`.
-    expect(claim('--web --repl', true, customSurface())).toBe('repl');
-    expect(claim('--repl --web', true, customSurface())).toBe('repl');
+  it('claims a piped invocation too, because that is how the shell spawns it', () => {
+    // THE regression this guards: the Tauri shell runs `node dist/index.mjs`
+    // with `stdin`/`stdout` as pipes, so stdio is never a TTY. A default gated
+    // on `interactive` would leave that invocation unclaimed and the process
+    // would exit 1 instead of opening a window.
+    expect(claim('', false)).toBe('desktop');
+    expect(claim('--repl', false)).toBe('repl');
+  });
+
+  it('a configured surface claims its own argv ahead of the desktop default', () => {
+    // With the surface configured, its own claim decides; without it, the same
+    // argv falls through to the built-in desktop entry.
+    expect(claim('surf-x', true)).toBe('desktop');
+    expect(claim('surf-x', true, customSurface())).toBe('custom');
+    // Registration order IS precedence: a configured surface sits between the
+    // subcommands and the defaults, so it outranks `repl` too. That is the
+    // contract — a surface that wants `--repl` to win must decline in its own
+    // claim, which is what every real one does.
+    expect(claim('surf-x --repl', true, customSurface())).toBe('custom');
     // A configured surface keeps `--resume` / `--theme`, like every interactive
     // surface: the flags are parsed once, for all of them.
-    expect(claim('--web --resume /tmp/s.jsonl', true, customSurface())).toBe('custom');
-    expect(claim('--web --theme dark', true, customSurface())).toBe('custom');
+    expect(claim('surf-x --resume /tmp/s.jsonl', true, customSurface())).toBe('custom');
+    expect(claim('surf-x --theme dark', true, customSurface())).toBe('custom');
   });
 
-  it('never claims a TTY-gated configured surface without a TTY', () => {
-    // The configured surface's own claim carries the `interactive` guard, so a
-    // piped invocation degrades to the built-ins instead of the plugin.
-    expect(claim('--web', false, customSurface())).toBe('web');
-  });
-
-  it('falls back to the REPL without a TTY, but honors an explicit --web', () => {
-    expect(claim('', false)).toBe('repl');
-    // The smoke harness drives the browser surface down a pipe: `--web` must
-    // not be demoted to the REPL just because stdio is not a terminal.
-    expect(claim('--web', false)).toBe('web');
+  it('leaves --json unclaimed outside exec', () => {
+    // The desktop surface declines `--json` (exec owns it) and `repl` only claims
+    // `--repl` or a non-TTY invocation, so nothing claims this one. The shell
+    // reports "没有 surface 认领这个调用" rather than starting a window that
+    // would print frames nobody asked for.
+    expect(claim('--json', true)).toBeUndefined();
+    expect(claim('--json', false)).toBe('repl');
   });
 
   it('consults configured surfaces between subcommands and the defaults', () => {
-    // A configured surface outranks the browser default but a subcommand wins
+    // A configured surface outranks the desktop default but a subcommand wins
     // regardless — precedence is subcommand → configured → default, so adding
     // a surface is additive, not a re-routing of the built-ins.
-    expect(claim('', true, customSurface())).toBe('web');
-    expect(claim('qqbot', true, customSurface())).toBe('qqbot');
+    expect(claim('surf-x', true, customSurface())).toBe('custom');
+    expect(claim('exec 修复测试', true, customSurface())).toBe('exec');
   });
 
   it('claims every invocation exactly once', () => {
-    for (const argv of ['', '--web', '--repl', '--web --repl', 'exec t', 'qqbot']) {
+    for (const argv of ['', '--repl', 'surf-x', 'surf-x --repl', 'exec t']) {
       for (const interactive of [true, false]) {
         expect(claim(argv, interactive, customSurface())).toBeTypeOf('string');
       }
@@ -126,7 +136,7 @@ describe('surface claims', () => {
 describe('the registry records the winner for every kind of surface', () => {
   it('records a BUILT-IN winner, so userQuestions derives from its declaration', () => {
     const { registry, winner } = resolveWith('', true);
-    expect(winner?.name).toBe('web');
+    expect(winner?.name).toBe('desktop');
     // The recording is the ONE source `runtime-env`'s userQuestions provider
     // reads ("does the surface in force have a human?").
     expect(registry.current()).toBe(winner);
@@ -134,7 +144,7 @@ describe('the registry records the winner for every kind of surface', () => {
 
   it('records a configured winner the same way', () => {
     const custom = customSurface();
-    const { registry, winner } = resolveWith('--web', true, custom);
+    const { registry, winner } = resolveWith('surf-x', true, custom);
     expect(winner).toBe(custom);
     expect(registry.current()).toBe(custom);
   });
@@ -170,7 +180,7 @@ describe('a closed surface row stops claiming, but keeps its place on the panel'
       `export default {
   name: 'surf-x',
   interactive: true,
-  claim: (request) => request.flags.web === true && request.interactive === true,
+  claim: (request) => request.flags.positional[0] === 'surf-x',
   start: async () => {},
 };
 `,
@@ -184,20 +194,20 @@ describe('a closed surface row stops claiming, but keeps its place on the panel'
     // the very switch that turns it back on.
     expect(off.rows.loaded.map((surface) => surface.name)).toEqual(['surf-x']);
     // R1: it is not in the registry, so it cannot claim (and `start()` cannot
-    // run): `--web` falls through to the built-in default instead.
+    // run): the closed surface's argv falls through to the built-in default.
     expect(off.registry.all().map((entry) => entry.name)).not.toContain('surf-x');
-    expect(off.registry.resolve(request('--web', true))?.name).toBe('web');
+    expect(off.registry.resolve(request('surf-x', true))?.name).toBe('desktop');
 
     const open = { ...config, surfaces: [file], plugins: { entries: [{ id: 'surf-x' }] } } as unknown as Config;
     const on = await wireConfigured(open, dir);
     const surface = on.rows.loaded[0];
     expect(surface).toBeDefined();
-    expect(on.registry.resolve(request('--web', true))?.name).toBe('surf-x');
+    expect(on.registry.resolve(request('surf-x', true))?.name).toBe('surf-x');
     // R4: the row's own fiber registers the SAME instance again when it
     // activates; one surface must stay one list entry, and `resolve` must keep
     // picking a surface (not a hole).
     on.registry.register(surface as AgentSurface);
     expect(on.registry.all().filter((entry) => entry.name === 'surf-x')).toHaveLength(1);
-    expect(on.registry.resolve(request('--web', true))?.name).toBe('surf-x');
+    expect(on.registry.resolve(request('surf-x', true))?.name).toBe('surf-x');
   });
 });

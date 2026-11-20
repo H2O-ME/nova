@@ -153,8 +153,8 @@ describe('buildTree · discovery', () => {
  * The projection used to read `.length` off `description` and take the declared
  * `string` on faith. One plugin without the field therefore threw out of
  * `roster()`, and because every reader goes through that one call, the whole
- * roster died with it: the terminal's failed-row report (`exec` / `repl`), the
- * browser's plugin panel, and `nova qqbot`'s four-cause refusal. The two fields
+ * roster died with it: the terminal's failed-row report (`exec` / `repl`) and the
+ * browser's plugin panel. The two fields
  * come out differently on purpose — a title is a slot every row fills, a
  * description is a supplement.
  */

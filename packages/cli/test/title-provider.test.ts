@@ -64,9 +64,9 @@ describe('session titles · the model is read per session open', () => {
         // …then the operator picks one in the settings page, which is a config
         // write during the same process.
         await writeConfig(endpoint, 't');
-        // A conversation opened from here on — the QQ channel's shape, its own
+        // A conversation opened from here on — a channel surface's shape, its own
         // session bucket — must be titled.
-        const agent = await kernel.newAgentSession({ sessionDir: path.join(sessionsRoot(), 'qqbot') });
+        const agent = await kernel.newAgentSession({ sessionDir: path.join(sessionsRoot(), 'channel') });
         const titled: string[] = [];
         agent.subscribe((event) => {
           if (event.type === 'session_titled') titled.push(event.title);

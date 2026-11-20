@@ -10,7 +10,7 @@
  */
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import {
-  buildBundleUrl,
+  buildBundlePath,
   entriesToLoad,
   getLoadedPlugin,
   loadBootGraph,
@@ -20,6 +20,7 @@ import {
   rejectPendingLoad,
   resetClientLoader,
   resolvePendingLoad,
+  setAssetFetcher,
   setScriptInjector,
   writeContributions,
   PLUGIN_GLOBAL_KEY,
@@ -32,6 +33,10 @@ beforeEach(() => {
   // No-op injector: leaves the pending entry in place so the test-only
   // resolvers (resolvePendingLoad / rejectPendingLoad) drive settlement.
   setScriptInjector(() => undefined);
+  // 恒定可用的资源替身：bundle 字节不再来自 HTTP 路由而是 `plugin_asset`
+  // 帧，这里绕开需要连接的那条路——没有它，取回失败会以 Error 覆盖
+  // `settled`，把测试驱动器注入的结论冲掉。
+  setAssetFetcher(async () => ({ text: '', contentType: 'text/javascript' }));
 });
 
 afterEach(() => {
@@ -40,25 +45,24 @@ afterEach(() => {
 });
 
 describe('client plugin loader — pure logic', () => {
-  it('buildBundleUrl: defaults to client.js and omits rev when empty', () => {
-    expect(buildBundleUrl('plain', {})).toBe('/plugins/plain/client.js');
-    expect(buildBundleUrl('plain', { path: 'client.js' })).toBe('/plugins/plain/client.js');
-    expect(buildBundleUrl('plain', { rev: '' })).toBe('/plugins/plain/client.js');
+  it('buildBundlePath: defaults to client.js and is the bare asset route', () => {
+    expect(buildBundlePath('plain', {})).toBe('/plugins/plain/client.js');
+    expect(buildBundlePath('plain', { path: 'client.js' })).toBe('/plugins/plain/client.js');
   });
 
-  it('buildBundleUrl: appends rev as query when present', () => {
-    expect(buildBundleUrl('a', { rev: 'r1' })).toBe('/plugins/a/client.js?rev=r1');
-    expect(buildBundleUrl('a', { path: 'sub/x.js', rev: 'r1' })).toBe('/plugins/a/sub/x.js?rev=r1');
+  it('buildBundlePath: drops rev — the frame pipe has no script cache to bust', () => {
+    expect(buildBundlePath('a', { rev: 'r1' })).toBe('/plugins/a/client.js');
+    expect(buildBundlePath('a', { path: 'sub/x.js', rev: 'r1' })).toBe('/plugins/a/sub/x.js');
   });
 
-  it('buildBundleUrl: encodes the plugin name (special chars)', () => {
-    expect(buildBundleUrl('@org/genui', { rev: 'abc' })).toBe(
-      '/plugins/%40org%2Fgenui/client.js?rev=abc',
+  it('buildBundlePath: encodes the plugin name (special chars)', () => {
+    expect(buildBundlePath('@org/genui', { rev: 'abc' })).toBe(
+      '/plugins/%40org%2Fgenui/client.js',
     );
   });
 
-  it('buildBundleUrl: strips leading slashes from the bundle path', () => {
-    expect(buildBundleUrl('a', { path: '/leading/slash.js' })).toBe('/plugins/a/leading/slash.js');
+  it('buildBundlePath: strips leading slashes from the bundle path', () => {
+    expect(buildBundlePath('a', { path: '/leading/slash.js' })).toBe('/plugins/a/leading/slash.js');
   });
 
   it('entriesToLoad: keeps enabled plugins with a bundle, skips the rest', () => {

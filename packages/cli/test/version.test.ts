@@ -70,7 +70,5 @@ describe('SemVer 2.0.0 version compliance', () => {
     const rootPkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as { version: string };
     versions.add(rootPkg.version);
     expect([...versions]).toHaveLength(1);
-    // `qqbot` is deliberately outside the group (third-party plugin demo).
-    expect(group).not.toContain('@nova-agent/qqbot');
   });
 });

@@ -90,15 +90,15 @@ describe('setPluginEntry', () => {
   it('creates the row, then merges config key by key', async () => {
     const home = await withConfig(JSON.stringify({ provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' } }));
     await setPluginEntry(
-      '@nova-agent/qqbot',
+      '@nova-agent/demo-channel',
       { enabled: true, config: { appId: '1024', clientSecret: 'sekret' } },
       home,
     );
     // A later "appId only" save (a form submits only the fields it owns) must
     // not blank the credential the operator kept.
-    await setPluginEntry('@nova-agent/qqbot', { config: { appId: '2048' } }, home);
+    await setPluginEntry('@nova-agent/demo-channel', { config: { appId: '2048' } }, home);
     expect(await rows(home)).toEqual([
-      { id: '@nova-agent/qqbot', enabled: true, config: { appId: '2048', clientSecret: 'sekret' } },
+      { id: '@nova-agent/demo-channel', enabled: true, config: { appId: '2048', clientSecret: 'sekret' } },
     ]);
   });
 
@@ -140,7 +140,7 @@ describe('setPluginEntry', () => {
           provider: { baseURL: 'https://x.test/v1', apiKey: '{env:NOVA_CFG_TEST_QQ}', model: 'm' },
         }),
       );
-      await setPluginEntry('@nova-agent/qqbot', { config: { clientSecret: '{env:QQ_SECRET}' } }, home);
+      await setPluginEntry('@nova-agent/demo-channel', { config: { clientSecret: '{env:QQ_SECRET}' } }, home);
       const text = await readFile(userConfigPath(home), 'utf8');
       // Verbatim: the field means "read this variable", so the panel must not be
       // able to have its input expanded on the way to disk. And a write to one
