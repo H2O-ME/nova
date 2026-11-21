@@ -11,8 +11,8 @@
 
 /** `placeholder.default`: message, / commands, @ files. */
 export const PLACEHOLDER_DEFAULT = '发消息或创建任务, / 调用指令, @ 文件或对话';
-/** `placeholder.hero`: the centered empty state's wider invitation. */
-export const PLACEHOLDER_HERO = '描述你想要构建的内容, / 调用指令, @ 文件或对话';
+/** `placeholder.hero`: the centered empty state's wider invitation (办公优先的改写). */
+export const PLACEHOLDER_HERO = '描述你想完成的事情, / 调用指令, @ 文件或对话';
 /** `placeholder.unavailable`: no session can take input. */
 export const PLACEHOLDER_UNAVAILABLE = '会话不可用';
 /** `input.commands`: the + control's accessible name. */

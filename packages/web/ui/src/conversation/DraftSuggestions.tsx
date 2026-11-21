@@ -20,7 +20,7 @@
  * composer draft (the reference's `replacePlainPrompt` path — it never sends).
  */
 import type { CSSProperties } from 'react';
-import { AlertIcon, ChecklistIcon, FileIcon, MoonIcon } from '../icons.js';
+import { BookIcon, ChecklistIcon, FileIcon, MoonIcon } from '../icons.js';
 import css from './DraftSuggestions.module.css';
 
 /** One suggestion: what the chip says and the prompt it stages. */
@@ -32,7 +32,7 @@ interface DraftSuggestion {
   icon: JSX.Element;
 }
 
-/** The four chips, in the reference's own order (周报总结 / 报错修复 / PPT 制作 / 闲时任务). */
+/** The four chips (office-first: 资料整理 replaces the reference's 报错修复 slot). */
 const DRAFT_SUGGESTIONS: readonly DraftSuggestion[] = [
   {
     id: 'weekly',
@@ -41,10 +41,10 @@ const DRAFT_SUGGESTIONS: readonly DraftSuggestion[] = [
     icon: <ChecklistIcon />,
   },
   {
-    id: 'bugfix',
-    label: '报错修复',
-    prompt: '我遇到了一个报错，帮我定位原因并修复：',
-    icon: <AlertIcon />,
+    id: 'organize',
+    label: '资料整理',
+    prompt: '帮我整理这些资料，提取要点并生成一份清单：',
+    icon: <BookIcon />,
   },
   {
     id: 'slides',
