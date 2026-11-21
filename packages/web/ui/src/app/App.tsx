@@ -65,9 +65,9 @@ export function App(): JSX.Element {
     }
     return report;
   }, [markSectionDirty]);
-  /** The right panel: the workspace directory and a file preview. Open on first
-   *  paint — the shell is three panels side by side. */
-  const [rightbarOpen, setRightbarOpen] = useState(true);
+  /** The right panel: the workspace directory and a file preview. Closed on
+   *  launch — it opens on demand from the header's corner button. */
+  const [rightbarOpen, setRightbarOpen] = useState(false);
   // The right panel's OPEN tabs and the one in front. 文件 is always first and
   // never closes; file tabs come and go. The rules are the pure functions in
   // `rightbar/strip-state.ts`; this is only the binding.
