@@ -95,10 +95,20 @@ function node(
       if (url === undefined) return null;
       return <img className={css.image} src={url} alt={asText(value('description'))} loading="lazy" />;
     }
+    case 'Video': {
+      const url = safeUrl(asText(value('url')));
+      if (url === undefined) return null;
+      return <video className={css.media} src={url} controls playsInline preload="metadata" />;
+    }
+    case 'AudioPlayer': {
+      const url = safeUrl(asText(value('url')));
+      if (url === undefined) return null;
+      return <audio className={css.media} src={url} controls preload="metadata" />;
+    }
     case 'Icon':
       return <span className={css.icon} aria-label={asText(value('name'))} title={asText(value('name'))} />;
     case 'Button': {
-      const action = actionOf(component, data);
+      const action = actionOf(component, data, scope);
       const label = node(childIds(component)[0] ?? '', surface, data, write, submit, scope, depth + 1);
       return (
         <button
@@ -241,7 +251,8 @@ function ChoicePickerView({ component, data, scope, write }: {
       const next = on ? [...selected, optionValue] : selected.filter((item) => item !== optionValue);
       write(path, next);
     } else {
-      write(path, on ? [optionValue] : []);
+      // The catalog's single-selection value is one string, not an array.
+      write(path, on ? optionValue : '');
     }
   };
   return (

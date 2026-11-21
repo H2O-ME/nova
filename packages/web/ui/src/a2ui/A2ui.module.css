@@ -136,6 +136,12 @@
   object-fit: contain;
 }
 
+.media {
+  display: block;
+  width: 100%;
+  max-width: 480px;
+}
+
 .icon {
   display: inline-block;
   flex: none;

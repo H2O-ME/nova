@@ -132,14 +132,14 @@ export interface A2uiAction {
 }
 
 /** Resolve a component's `action.event` against the model, or undefined. */
-export function actionOf(component: A2uiComponent, data: unknown): A2uiAction | undefined {
+export function actionOf(component: A2uiComponent, data: unknown, scope: unknown = data): A2uiAction | undefined {
   const action = component['action'];
   if (!isRecord(action)) return undefined;
   const event = action['event'];
   if (!isRecord(event) || typeof event['name'] !== 'string' || event['name'].length === 0) return undefined;
   const context = isRecord(event['context']) ? event['context'] : {};
   const resolved: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(context)) resolved[key] = resolveValue(value, data);
+  for (const [key, value] of Object.entries(context)) resolved[key] = resolveValue(value, data, scope);
   return { name: event['name'], context: resolved };
 }
 
