@@ -1,7 +1,6 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
-import { Slot } from "radix-ui"
 
 function BubbleGroup({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -66,17 +65,13 @@ function Bubble({
   )
 }
 
+/* `asChild` / Radix `Slot` removed (2026-11-21): no caller used it. */
 function BubbleContent({
-  asChild = false,
   className,
   ...props
-}: React.ComponentProps<"div"> & {
-  asChild?: boolean
-}) {
-  const Comp = asChild ? Slot.Root : "div"
-
+}: React.ComponentProps<"div">) {
   return (
-    <Comp
+    <div
       data-slot="bubble-content"
       className={cn(
         "w-fit max-w-full min-w-0 overflow-hidden rounded-xl border border-transparent px-3 py-2 text-sm leading-relaxed wrap-break-word group-data-[align=end]/bubble:self-end [button]:text-left [button,a]:transition-colors [button,a]:outline-none [button,a]:focus-visible:border-ring [button,a]:focus-visible:ring-3 [button,a]:focus-visible:ring-ring/50",

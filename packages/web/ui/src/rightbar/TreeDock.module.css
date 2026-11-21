@@ -21,37 +21,66 @@
   display: flex;
   align-items: center;
   gap: var(--nova-space-4);
-  height: 32px;
-  padding: 0 var(--nova-space-4) 0 var(--nova-space-8);
-  border-bottom: 1px solid var(--nova-border-subtle);
+  /* The reference's file toolbar (`WorkspaceFileTree.tsx:635-665`): `px-2 pb-2`
+     over a 28px input, no rule under it — the strip above is the divider. */
+  padding: var(--nova-space-4) var(--nova-space-8) var(--nova-space-8);
+}
+
+.searchWrap {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The reference puts a 14px magnifier inside the field (`left-2`, size-3.5). */
+.searchGlyph {
+  position: absolute;
+  left: var(--nova-space-8);
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  color: var(--nova-text-muted);
+  pointer-events: none;
 }
 
 .search {
   flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
-  height: 24px;
-  padding: 0 var(--nova-space-8);
+  height: 28px;
+  /* The glyph's lane on the left, the reference's `pl-7`. */
+  padding: 0 var(--nova-space-8) 0 28px;
   border: 1px solid var(--nova-border-subtle);
   border-radius: var(--nova-radius-sm);
-  background: var(--nova-surface-sunken);
+  /* The reference's field is transparent at rest and takes the focused fill
+     only while the pointer/keyboard is in it. */
+  background: transparent;
   color: var(--nova-text-primary);
-  font: var(--nova-font-xxs-12);
+  /* `text-ui-base`: the file page reads at the panel's body size, not a caption. */
+  font: var(--nova-font-s-14);
 }
 
 .search::placeholder {
   color: var(--nova-text-muted);
 }
 
+.search:hover {
+  border-color: var(--nova-border-strong);
+}
+
 .search:focus {
   outline: none;
   border-color: var(--nova-border-strong);
+  background: var(--nova-surface-sunken);
 }
 
 .rows {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--nova-space-4) var(--nova-space-6) var(--nova-space-12);
+  padding: var(--nova-space-4) var(--nova-space-8) var(--nova-space-12);
   scrollbar-width: thin;
 }
 
@@ -72,7 +101,7 @@
   border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-primary);
-  font: var(--nova-font-xxs-strong-12);
+  font: var(--nova-font-s-14);
   text-align: left;
   cursor: pointer;
   transition: background-color var(--nova-dur-base) var(--nova-ease-inout);
@@ -107,7 +136,7 @@
   border-radius: var(--nova-radius-sm);
   background: transparent;
   color: var(--nova-text-primary);
-  font: var(--nova-font-xxs-12);
+  font: var(--nova-font-s-14);
   text-align: left;
   cursor: pointer;
   animation: nova-fade-in 150ms var(--nova-ease-inout);

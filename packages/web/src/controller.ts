@@ -41,7 +41,6 @@ import type { ProviderHost } from './provider-frames.js';
 import type { PickFn } from './picker-frames.js';
 import { handleFrame } from './frame-router.js';
 import { GitStatusCache } from './git-frames.js';
-import { TermRegistry } from './term-session.js';
 import { wireFrame } from './wire-frame.js';
 
 export class WebController {
@@ -67,18 +66,9 @@ export class WebController {
   /** The two frozen windows a client pages back through (see `session-pages.ts`). */
   private readonly pages = new SessionPages();
   /**
-   * The 终端 tab's live PTYs, one per session (see `term-session.ts`).
+   * The file tree's status reading (see `git-frames.ts`).
    *
-   * Held here rather than per socket: the terminal belongs to the SESSION, so
-   * two attached tabs watch the same one, and a switch must take the previous
-   * session's process down (`retainOnly`).
-   */
-  private readonly terms = new TermRegistry();
-  /**
-   * The 变更 tab's status reading (see `git-frames.ts`).
-   *
-   * One per process so the tab, the file tree's decorations and a diff's
-   * untracked check share a single scan — and so a mutation can evict it.
+   * One per process so every attached panel shares a single scan.
    */
   private readonly gitCache = new GitStatusCache();
   /** The Context panel's fold (see `context-follow.ts`); null-timeline when the plugin is off. */
@@ -220,7 +210,6 @@ export class WebController {
   async dispose(): Promise<void> {
     this.follow.stop();
     this.clients.close();
-    this.terms.disposeAll();
     const handles = [...this.handles.values()];
     this.handles.clear();
     for (const handle of handles) {
@@ -292,7 +281,6 @@ export class WebController {
       seat: this.seat,
       sessions: this.sessions,
       pages: this.pages,
-      terms: this.terms,
       gitCache: this.gitCache,
       context: this.context,
       persistModel: this.persistModel,
@@ -342,10 +330,6 @@ export class WebController {
     // AFTER the frame: a workspace move replaces the session inside the kernel,
     // so follow it here rather than making every handler remember to.
     this.followSession();
-    // …and a terminal belongs to the session that opened it, so the one just
-    // left behind is taken down here — after EVERY frame, for the same reason
-    // the context check below is: "which frame changed the session" rots.
-    this.terms.retainOnly(this.agent.session.id);
     // …and after a plugin flip the provider may have appeared or gone, which is
     // the Context panel's whole on/off. Checked after EVERY frame (a map lookup)
     // because "which frame flipped it" is exactly the knowledge that rots.

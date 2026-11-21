@@ -4,10 +4,10 @@
  *
  *  1. **Components consume tokens, never literal colors.** `.ts`/`.tsx` and
  *     every component module (`src/**\/*.module.css`) must reach color only
- *     through `var(--dsw-*)` / `var(--nova-*)`. The token layer under
- *     `src/styles/` is the one place raw values live (it is the ported harness
- *     palette, licensed and attributed); `src/index.css` is a mount sheet and
- *     is held to the component rule.
+ *     through `var(--nova-*)`. The token layer under
+ *     `src/design/tokens/` is the one place raw values live (the current
+ *     palette; `--dsw-*` / `--ds-*` / `--dsh-*` are forbidden since 7A);
+ *     `src/index.css` is a mount sheet and is held to the component rule.
  *  2. **A styled class is a rendered class.** Each `X.module.css` must have
  *     every class it defines written literally in a source file of the same
  *     directory. A dead rule costs nothing to keep and everything to explain
@@ -237,43 +237,27 @@ describe('token ownership', () => {
    * a raised surface" while declaring `box-shadow`; the prose and the
    * declaration were opposites, so the declaration is what this pins.
    *
-   * W1 reversed the premise: the panel is now a DRAWER, not a docked column,
-   * so it must carry the elevation a floating pane needs (a pane over content
-   * that looks flat reads as part of the transcript). The guard pins the new
-   * contract instead of deleting the old one — the strip, which is chrome ON
-   * the panel rather than a pane of its own, still declares no elevation.
+   * 2026-11-21: the panel is the shell's THIRD COLUMN beside the conversation,
+   * not a floating drawer, so it takes the same flat treatment the centre panel
+   * takes. A shadow here would make it read as a layer above its neighbours.
+   * The strip, which is chrome ON the panel rather than a pane of its own, still
+   * declares no elevation.
    */
-  it('the drawer panel declares the elevation a floating pane needs; its strip does not', () => {
+  it('the third-column panel stays flat; its strip declares no elevation either', () => {
     const rel = 'rightbar/RightbarPanel.module.css';
     const text = stripComments(readFileSync(join(SRC, rel), 'utf8'));
     // The `.panel` block specifically: the fullscreen/takeover variants and
     // the sheet's other rules may legitimately differ.
     const block = /\.panel\s*\{([^}]*)\}/.exec(text)?.[1] ?? '';
     // Guard against a vacuous match: the block must be the panel shell.
-    expect(block, `${rel}: .panel block not found`).toContain('position: absolute');
-    // The drawer floats over the transcript, so its elevation is required:
-    // removing it turns this red.
-    expect(block, `${rel}: the drawer must declare elevation`).toContain('box-shadow');
+    expect(block, `${rel}: .panel block not found`).toContain('position: relative');
+    // Three panels share one ground, so elevation would break the plane.
+    expect(block, `${rel}: the third column must stay flat`).not.toContain('box-shadow');
     // The strip is chrome on the drawer, never a second pane.
     const strip = stripComments(readFileSync(join(SRC, 'rightbar/RightbarStrip.module.css'), 'utf8'));
     expect(strip, 'rightbar/RightbarStrip.module.css: the strip must stay flat').not.toContain('box-shadow');
   });
 
-  /**
-   * The terminal emulator loads xterm's OWN stylesheet.
-   *
-   * The helper layer's rules live there and nowhere else — above all
-   * `.xterm-char-measure-element { visibility: hidden }`, which hides the
-   * width-cache probe. That probe's text is the last measured glyph repeated
-   * 32 times; with the sheet missing it paints as a visible line of junk
-   * above the first row (the reported 乱码: a line of `>` before cmd's
-   * banner), and the helper textarea renders as a box. A component sheet
-   * cannot stand in: the class belongs to xterm's own injected markup.
-   */
-  it('the terminal emulator imports xterm\'s own stylesheet', () => {
-    const hook = readFileSync(join(SRC, 'rightbar/use-terminal.ts'), 'utf8');
-    expect(hook).toContain("'@xterm/xterm/css/xterm.css'");
-  });
 });
 
 /** Each `<svg …>` opening tag in a source file, up to its closing bracket. */

@@ -42,7 +42,7 @@ export const TITLE_REGEN_PROMPTS = 5;
  * the instruction never forbade. A title names the TOPIC, not the current step.
  */
 const TITLE_INSTRUCTION = [
-  '根据给出的用户消息，为这次编程助手会话起一个简洁的标题。',
+  '根据给出的用户消息，为这次本地助手会话起一个简洁的标题。',
   '标题是概括会话主题的短语（不要用「正在…」这类进行时描述或完整句子），用消息本身的语言，不超过 12 个字。',
   '只输出标题纯文本：不要 Markdown（**、*、`、#）、引号、书名号、编号、前缀或任何解释。',
   '如果给出了当前标题且它仍然贴切，原样输出它；话题已经偏移才换新标题。',

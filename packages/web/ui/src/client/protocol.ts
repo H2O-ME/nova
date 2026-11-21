@@ -115,32 +115,7 @@ const MAPPERS: Mapper = {
     repo: frame.repo,
     branch: frame.branch,
     entries: frame.entries,
-    ...(frame.message !== undefined ? { message: frame.message } : {}),
   }),
-  git_diff: (frame) => ({
-    type: 'git_diff',
-    path: frame.path,
-    staged: frame.staged,
-    text: frame.text,
-    truncated: frame.truncated,
-    untracked: frame.untracked,
-  }),
-  git_log: (frame) => ({ type: 'git_log', entries: frame.entries }),
-  jobs: (frame) => ({ type: 'jobs', items: frame.items }),
-  // The term frame travels as its payload (minus the discriminant): the
-  // slice's fold reads `data`/`reset`/`status`/`exitCode`/`error` whole, and
-  // re-listing the fields here is how a new one gets silently dropped.
-  term: (frame) => {
-    const { type: _frameType, ...payload } = frame;
-    return { type: 'term', frame: payload };
-  },
-  // The host's shell inventory travels whole: the menu draws the rows as given
-  // and `current` is the one a choiceless terminal starts on — re-listing the
-  // fields here is how a new one gets silently dropped.
-  shells: (frame) => {
-    const { type: _frameType, ...payload } = frame;
-    return { type: 'shells', frame: payload };
-  },
   error: (frame) => ({ type: 'error', message: frame.message }),
   // The five frames that replaced HTTP routes are ANSWERS to request/response
   // calls, not state: a dashboard reading was never folded into the transcript,

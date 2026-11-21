@@ -1,12 +1,12 @@
 /**
- * The concrete HTTP route registry the WebUI host publishes for plugins.
+ * The plugin asset route registry the desktop host publishes for plugins.
  *
  * Lives in `web` (not `plugins`) because the registry is meaningful only when
- * paired with the HTTP server that owns the request loop — a headless surface
- * has no request loop and therefore publishes nothing. Plugins register through
- * the kernel container (`ctx.must(routes)` returns this same instance via the
- * `routeRegistryProvider` plugin); the WebUI request handler reads `dispatch`
- * before its own fallbacks.
+ * paired with the host that serves plugin client bundles — a surface with no
+ * plugin loader publishes nothing. Plugins register through the kernel
+ * container (`ctx.must(routes)` returns this same instance via the
+ * `routeRegistryProvider` plugin); the `plugin_asset` frame handler reads
+ * `dispatch` to answer a bundle request.
  *
  * The registry is **append-only, identity-removable and last-wins**: a plugin
  * that loads later in the roster overrides an earlier plugin's same prefix,

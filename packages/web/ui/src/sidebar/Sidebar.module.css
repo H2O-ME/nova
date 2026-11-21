@@ -20,7 +20,7 @@
    * logoRow 贴住窗口顶边，拖拽热区才不会被 6px 留白切掉。 */
   padding: 0 var(--nova-sidebar-inline-padding);
   box-sizing: border-box;
-  background: var(--nova-surface-sunken);
+  background: var(--nova-surface-base);
   color: var(--nova-text-primary);
   font-size: 14px;
   /* The sidebar is elevated above the conversation surface, so a revealed
@@ -119,34 +119,22 @@
   cursor: pointer;
 }
 
-/* The name seat owns its own baseline, spacing, and height so a mark could
-   vary in width beside it (the reference's brandIdentity pair). */
-.brandIdentity {
+/* The brand mark (2026-11-21, the reader's call): the reference's titlebar
+   carries a 32px rounded square with the product initial, not a wordmark — the
+   word read as a page heading over a navigation column. The mark doubles as the
+   New Session shortcut, so it keeps the button's whole hit area (`brand`). */
+.brandMark {
   display: inline-flex;
   align-items: center;
-  gap: var(--nova-space-8);
-  height: 24px;
-  min-width: 0;
-}
-
-.brandName {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--nova-space-6);
-  min-width: 0;
-  height: 24px;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 24px;
-  letter-spacing: 0.04em;
-}
-
-/* The no-metadata branch of the reference's brand name slot: our build
-   carries no version badge, so the name takes this seat's 17px. */
-.fallbackBrandName {
-  font-size: 17px;
-  letter-spacing: 0px;
-  white-space: nowrap;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-text-primary);
+  color: var(--nova-surface-base);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .iconButton {

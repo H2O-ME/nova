@@ -17,10 +17,6 @@ import {
   MAX_MODALITY_CHARS,
   MAX_MODEL_CHARS,
   MAX_PROMPT_CHARS,
-  MAX_SHELL_PATH_CHARS,
-  MAX_TERM_COLS,
-  MAX_TERM_INPUT_CHARS,
-  MAX_TERM_ROWS,
   MAX_WORKSPACE_CHARS,
   type ClientFrame,
 } from './protocol.js';
@@ -90,23 +86,6 @@ const IMAGE_ID_RE = /^sha256:[a-f0-9]{64}$/;
  */
 const IMAGE_UPLOAD_HEADER = /^\{\s*"type"\s*:\s*"image_upload"/u;
 
-/**
- * The terminal's grid off the wire: two bounded integers, or the reason not.
- * @param frame - the frame name, for the rejection's prefix.
- * @param cols - the raw value.
- * @param rows - the raw value.
- * @returns the validated grid, or the rejection message.
- */
-function parseGrid(frame: string, cols: unknown, rows: unknown): { cols: number; rows: number } | string {
-  if (typeof cols !== 'number' || !Number.isInteger(cols) || cols < 2 || cols > MAX_TERM_COLS) {
-    return `${frame}.cols must be an integer in 2..${MAX_TERM_COLS}`;
-  }
-  if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1 || rows > MAX_TERM_ROWS) {
-    return `${frame}.rows must be an integer in 1..${MAX_TERM_ROWS}`;
-  }
-  return { cols, rows };
-}
-
 /** Parse + validate one inbound frame. Never throws on untrusted input. */
 export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
   // The size ceiling is BY TYPE, decided on the raw text before parsing: an
@@ -154,7 +133,6 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'list_skills':
     case 'pick_file':
     case 'pick_directory':
-    case 'list_jobs':
       return { type: obj['type'] } as ClientFrame;
     case 'set_plugin_enabled':
     case 'set_skill_enabled': {
@@ -226,9 +204,6 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
       // No payload: the reading is whatever the session currently holds, so
       // there is nothing for a client to state (or to forge).
       return { type: 'context' };
-    case 'discover_shells':
-      // Same shape as `context`: the answer is what the HOST has installed.
-      return { type: 'discover_shells' };
     case 'resolve_approval': {
       if (typeof obj['id'] !== 'string' || !ID_RE.test(obj['id'])) return reject('resolve_approval.id must be an ASCII token');
       // The answer's shape is core's business, not the wire's: `parseAskResult`
@@ -276,12 +251,6 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
     case 'new_entry':
     case 'open_entry':
     case 'git_status':
-    case 'git_diff':
-    case 'git_stage':
-    case 'git_unstage':
-    case 'git_commit':
-    case 'git_log':
-    case 'git_clone':
       // The path-shaped frames share their own rules (see `fs-frame-parse.ts`).
       return parseFsFrame(obj['type'] as FsFrameType, obj);
     case 'stop_job': {
@@ -350,38 +319,6 @@ export function parseClientFrame(raw: string): ClientFrame | FrameRejection {
       }
       return { type: 'plugin_asset', path };
     }
-    case 'term_resize': {
-      const grid = parseGrid('term_resize', obj['cols'], obj['rows']);
-      if (typeof grid === 'string') return reject(grid);
-      return { type: 'term_resize', cols: grid.cols, rows: grid.rows };
-    }
-    case 'term_open': {
-      // The grid is a size; `shell` is a PATH the host matches against the
-      // shells it actually discovered — an unknown one is refused there rather
-      // than spawned, so the wire only checks it is a plausible string.
-      const grid = parseGrid('term_open', obj['cols'], obj['rows']);
-      if (typeof grid === 'string') return reject(grid);
-      const shell = obj['shell'];
-      if (shell === undefined) return { type: 'term_open', cols: grid.cols, rows: grid.rows };
-      if (typeof shell !== 'string' || shell.length === 0 || shell.length > MAX_SHELL_PATH_CHARS) {
-        return reject(`term_open.shell must be a non-empty path of at most ${MAX_SHELL_PATH_CHARS} chars`);
-      }
-      if (hasControlChars(shell)) return reject('term_open.shell must not contain control chars');
-      return { type: 'term_open', cols: grid.cols, rows: grid.rows, shell };
-    }
-    case 'term_input': {
-      // Raw keystrokes/paste for the pty. Control characters are the CONTENT
-      // (Enter is CR, arrows are escape sequences), so the only bound is size —
-      // there is nothing here that could be "junk".
-      const data = obj['data'];
-      if (typeof data !== 'string' || data.length === 0) return reject('term_input.data must be a non-empty string');
-      if (data.length > MAX_TERM_INPUT_CHARS) {
-        return reject(`term_input.data exceeds ${MAX_TERM_INPUT_CHARS} chars`);
-      }
-      return { type: 'term_input', data };
-    }
-    case 'term_kill':
-      return { type: 'term_kill' };
     case 'set_approval_mode': {
       const mode = obj['mode'];
       if (mode !== 'read-only' && mode !== 'auto-edit' && mode !== 'full') return reject('set_approval_mode.mode invalid');

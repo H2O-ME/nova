@@ -5,7 +5,6 @@
   "packages/plugin-context/src/fold.ts": 607,
   "packages/plugins/src/builtin/bash.ts": 636,
   "packages/plugins/src/builtin/fs.ts": 609,
-  "packages/web/ui/src/rightbar/ChangesView.tsx": 682,
-  "packages/web/ui/src/state.ts": 1264
+  "packages/web/ui/src/rightbar/ChangesView.tsx": 682
  }
 }

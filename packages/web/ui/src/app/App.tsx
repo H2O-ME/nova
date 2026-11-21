@@ -8,10 +8,9 @@
  * the same one entrance; an Escape closes one layer per press, topmost first).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RightbarTabId, StripTabId } from '../rightbar/tabs.js';
+import type { StripTabId } from '../rightbar/tabs.js';
 import { isFileTabId, filePathOf } from '../rightbar/tabs.js';
-import { addGuide, closeTab, focusTab, initialStrip, openFileTab as revealFileTab, pickGuideEntry, type StripState } from '../rightbar/strip-state.js';
-import { writeShellPreference } from '../rightbar/terminal-shell.js';
+import { closeTab, focusTab, initialStrip, openFileTab as revealFileTab, type StripState } from '../rightbar/strip-state.js';
 import { readRecentWorkspaces, rememberWorkspace } from '../shell/workspaces.js';
 import { useEscapeToClose } from '../shell/use-escape.js';
 import { useLayout } from '../shell/use-layout.js';
@@ -23,6 +22,7 @@ import { DirectoryBrowser } from '../conversation/DirectoryBrowser.js';
 import { basename } from '../composer/file-type.js';
 import { SETTINGS_COPY } from '../settings/copy.js';
 import { useAgent } from '../client.js';
+import { A2uiActionProvider } from '../a2ui/action-context.js';
 import { AppShell } from './AppShell.js';
 import { SettingsOverlay } from './SettingsOverlay.js';
 import { PluginCenterRoute } from './routes/PluginCenterRoute.js';
@@ -65,20 +65,15 @@ export function App(): JSX.Element {
     }
     return report;
   }, [markSectionDirty]);
-  /** The right panel's four-page body (变更/文件/任务/终端). */
-  const [rightbarOpen, setRightbarOpen] = useState(false);
-  // The right panel's OPEN tabs and the one in front (null = the start page).
-  // The strip's open set and the tab in front live as ONE state — every
-  // transition needs both (closing the front tab asks the remaining set for the
-  // next one). The rules are the pure functions in `rightbar/strip-state.ts`;
-  // this is only the binding.
+  /** The right panel: the workspace directory and a file preview. Open on first
+   *  paint — the shell is three panels side by side. */
+  const [rightbarOpen, setRightbarOpen] = useState(true);
+  // The right panel's OPEN tabs and the one in front. 文件 is always first and
+  // never closes; file tabs come and go. The rules are the pure functions in
+  // `rightbar/strip-state.ts`; this is only the binding.
   const [strip, setStrip] = useState<StripState>(initialStrip);
   const pickStripTab = useCallback((tab: StripTabId): void => {
     setStrip((state) => focusTab(state, tab));
-  }, []);
-  const addGuideTab = useCallback((): void => { setStrip((state) => addGuide(state)); }, []);
-  const openPageFromGuide = useCallback((page: RightbarTabId): void => {
-    setStrip((state) => pickGuideEntry(state, page));
   }, []);
   const closeStripTab = useCallback((tab: StripTabId): void => {
     setStrip((state) => closeTab(state, tab));
@@ -87,26 +82,12 @@ export function App(): JSX.Element {
     // re-render as its own pane if a later tab ever read `editor.docs`).
     if (isFileTabId(tab)) dispatch({ type: 'editor_close', path: filePathOf(tab) });
   }, [dispatch]);
-  // A file opened from ANYWHERE (tree row, 变更 verb, later pages) takes the
-  // same one entrance: the read goes out (the `sent` reduction places the
-  // doc), the strip reveals-or-opens its tab. One gesture, one owner.
+  // A file opened from the tree takes one entrance: the read goes out (the
+  // `sent` reduction places the doc), the strip reveals-or-opens its tab.
   const openFileTab = useCallback((path: string): void => {
     send({ type: 'read_entry', path });
     setStrip((state) => revealFileTab(state, path));
   }, [send]);
-  // The start page's shell menu: remember the row, bring the terminal tab
-  // forward, and let the terminal page re-aim its next open at the pick (the
-  // epoch re-render is what reaches the page even when the strip state is
-  // unchanged). A RUNNING terminal is killed here — an explicit respawn, the
-  // same two halves the restart button performs.
-  const [shellPick, setShellPick] = useState(0);
-  const discoverShells = useCallback((): void => { send({ type: 'discover_shells' }); }, [send]);
-  const pickTerminalShell = useCallback((path: string): void => {
-    writeShellPreference(path);
-    setStrip((state) => pickGuideEntry(state, 'terminal'));
-    if (state.term.status === 'running') send({ type: 'term_kill' });
-    setShellPick((epoch) => epoch + 1);
-  }, [send, state.term.status]);
   const layout = useLayout();
   const { openRightbar, closeRightbar } = layout;
 
@@ -258,6 +239,7 @@ export function App(): JSX.Element {
   );
 
   return (
+    <A2uiActionProvider send={send}>
     <>
       <DocumentTitle title={pluginsOpen ? SETTINGS_COPY['plugins.title'] : view.title} />
       <AppShell
@@ -277,14 +259,8 @@ export function App(): JSX.Element {
         rightbarOpen={rightbarOpen}
         strip={strip}
         onPickStripTab={pickStripTab}
-        onOpenPageFromGuide={openPageFromGuide}
-        onAddGuideTab={addGuideTab}
         onCloseStripTab={closeStripTab}
         onOpenFileTab={openFileTab}
-        shellPick={shellPick}
-        onDiscoverShells={discoverShells}
-        onPickTerminalShell={pickTerminalShell}
-        onOpenWorkspace={() => { pickNative('directory'); }}
         onReferenceFile={(path) => { pickFile(path, basename(path)); }}
         onToggleFullscreen={toggleFullscreen}
         onCloseRightbar={closeRightbarPanel}
@@ -334,5 +310,6 @@ export function App(): JSX.Element {
         />
       )}
     </>
+    </A2uiActionProvider>
   );
 }

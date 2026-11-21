@@ -15,11 +15,7 @@
  */
 import { hasControlChars, MAX_DIRECTORY_NAME_CHARS } from '@nova-agent/core';
 import {
-  MAX_COMMIT_MESSAGE_CHARS,
   MAX_FILE_QUERY_CHARS,
-  MAX_GIT_CLONE_URL_CHARS,
-  MAX_GIT_LOG,
-  MAX_GIT_PATHS,
   MAX_WORKSPACE_CHARS,
   type ClientFrame,
 } from './protocol.js';
@@ -36,13 +32,7 @@ export type FsFrameType =
   | 'remove_entry'
   | 'new_entry'
   | 'open_entry'
-  | 'git_status'
-  | 'git_diff'
-  | 'git_stage'
-  | 'git_unstage'
-  | 'git_commit'
-  | 'git_log'
-  | 'git_clone';
+  | 'git_status';
 
 /** One workspace path field: non-empty, capped, free of control junk. */
 function pathField(value: unknown, label: string): string | FrameRejection {
@@ -137,51 +127,5 @@ export function parseFsFrame(type: FsFrameType, obj: Record<string, unknown>): C
     }
     case 'git_status':
       return { type: 'git_status' };
-    case 'git_diff': {
-      const pathValue = pathField(obj['path'], 'git_diff.path');
-      if (isRejection(pathValue)) return pathValue;
-      const staged = obj['staged'];
-      if (staged !== undefined && typeof staged !== 'boolean') return reject('git_diff.staged must be a boolean when present');
-      return { type: 'git_diff', path: pathValue, staged: staged === true };
-    }
-    case 'git_stage':
-    case 'git_unstage': {
-      const paths = obj['paths'];
-      if (!Array.isArray(paths) || paths.length === 0 || paths.length > MAX_GIT_PATHS) {
-        return reject(`${type}.paths must be a non-empty array of at most ${MAX_GIT_PATHS} paths`);
-      }
-      const parsed: string[] = [];
-      for (const item of paths) {
-        const one = pathField(item, `${type}.paths[]`);
-        if (isRejection(one)) return one;
-        parsed.push(one);
-      }
-      return { type, paths: parsed } as ClientFrame;
-    }
-    case 'git_commit': {
-      const message = obj['message'];
-      if (typeof message !== 'string' || message.trim().length === 0) return reject('git_commit.message must be a non-empty string');
-      if (message.length > MAX_COMMIT_MESSAGE_CHARS) return reject(`git_commit.message exceeds ${MAX_COMMIT_MESSAGE_CHARS} chars`);
-      // A commit message is a document (subject + body): newlines are content.
-      if (hasControlChars(message, { multiline: true })) return reject('git_commit.message contains control characters');
-      return { type: 'git_commit', message };
-    }
-    case 'git_log': {
-      const limit = obj['limit'];
-      if (limit !== undefined && (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > MAX_GIT_LOG)) {
-        return reject(`git_log.limit must be an integer between 1 and ${MAX_GIT_LOG}`);
-      }
-      return limit === undefined ? { type: 'git_log' } : { type: 'git_log', limit };
-    }
-    case 'git_clone': {
-      // The URL is DATA end to end: the host runs git with argv (no shell) and
-      // a `--` separator, so even a `-`-leading string cannot become an option.
-      // The wire check only guarantees a string core's rules can read.
-      const url = obj['url'];
-      if (typeof url !== 'string' || url.trim().length === 0) return reject('git_clone.url must be a non-empty string');
-      if (url.length > MAX_GIT_CLONE_URL_CHARS) return reject(`git_clone.url exceeds ${MAX_GIT_CLONE_URL_CHARS} chars`);
-      if (hasControlChars(url)) return reject('git_clone.url contains control characters');
-      return { type: 'git_clone', url: url.trim() };
-    }
   }
 }

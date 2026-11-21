@@ -54,25 +54,23 @@ describe('sidebar preference', () => {
 });
 
 describe('right panel preference', () => {
-  it('an open panel floats as a drawer — it never reserves a track', () => {
-    // W1: the panel used to reserve a grid track (`rightbarTrack: true`), which
-    // squeezed the conversation into a third column beside it. It now floats
-    // over the centre, so the only states are shown/hidden — never "three
-    // columns". Re-introducing `rightbarTrack: true` turns this red.
-    expect(openRightbar(wide(), false).rightbarTrack).toBe(false);
-    // Fullscreen covers the frame; it also keeps the track flag false so a
-    // restored drawer does not start reserving space.
+  it('an open panel reserves the third track (the shell is three columns)', () => {
+    // 2026-11-21: the reader rejected the drawer — the reference draws three
+    // panels side by side on one ground. The normal presentation therefore
+    // reserves its grid track (the centre makes room); fullscreen covers the
+    // frame and keeps the flag false, and a closed panel always frees it.
+    expect(openRightbar(wide(), false).rightbarTrack).toBe(true);
     expect(openRightbar(wide(), true).rightbarTrack).toBe(false);
-    expect(openRightbar(openRightbar(wide(), true), false).rightbarTrack).toBe(false);
+    expect(openRightbar(openRightbar(wide(), true), false).rightbarTrack).toBe(true);
     expect(closeRightbar(openRightbar(wide(), false)).rightbarTrack).toBe(false);
   });
 
-  it('seeds at 45% of the frame on first opening and keeps its px afterwards', () => {
+  it('seeds at 30% of the frame on first opening and keeps its px afterwards', () => {
     const opened = openRightbar(wide(), false);
     expect(opened.rightbarShown).toBe(true);
-    expect(opened.rightbar).toBe(720);
+    expect(opened.rightbar).toBe(480);
     // A frame resize re-solves the tracks but never rewrites the preference.
-    expect(setViewportWidth(opened, 1200).rightbar).toBe(720);
+    expect(setViewportWidth(opened, 1200).rightbar).toBe(480);
     expect(closeRightbar(setViewportWidth(opened, 1200)).rightbarShown).toBe(false);
   });
 

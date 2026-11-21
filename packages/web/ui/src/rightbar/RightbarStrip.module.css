@@ -18,6 +18,14 @@
   padding: var(--nova-space-10) var(--nova-space-6) 0 var(--nova-space-10);
 }
 
+/* The desktop window draws its caption buttons over the panel's top-right
+   corner (`WindowControls`: 3×28px + 2×2px gaps, inset 6px). The strip must
+   stop before them or the panel's own controls sit underneath the window
+   buttons — the collision the reader saw. 94px = 6 (inset) + 88 (buttons). */
+:global([data-desktop]) .strip {
+  padding-right: 94px;
+}
+
 /* The chip run. Shrinks to nothing before any control after it moves; chips
    keep their 80px floor, so what no longer fits scrolls here with no
    scrollbar drawn. `data-strip-scroll` names the hidden sides (`start`, `end`,
@@ -198,44 +206,7 @@
   background: transparent;
 }
 
-/* The `+` that opens more pages: chip height and corner, so it reads as one
-   more tab in the row the reference's `.addTab`). */
-.plus {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--nova-text-secondary);
-  line-height: 1;
-  background: transparent;
-  border: none;
-  border-radius: var(--nova-radius-lg);
-  cursor: pointer;
-  transition:
-    background-color var(--nova-dur-base) var(--nova-ease-inout),
-    color var(--nova-dur-base) var(--nova-ease-inout);
-}
-
-.plus:hover {
-  color: var(--nova-text-primary);
-  background: var(--nova-interactive-hover);
-}
-
-.plus:focus-visible {
-  outline: 2px solid var(--nova-interactive-hover-strong);
-  outline-offset: -1px;
-}
-
-.plus svg {
-  width: 15px;
-  height: 15px;
-}
-
-/* The strip's END: the panel's own controls, spaced from the `+` as they are
-   from each other the reference's `.stripChrome`). */
+/* The strip's END: the panel's own controls. */
 .stripEnd {
   display: flex;
   flex: none;

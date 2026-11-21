@@ -1,25 +1,23 @@
 /* THE BRIDGE: Tailwind's vocabulary, expressed in Nova's tokens.
  *
- * Three styling systems now coexist and they must not fork:
+ * Two styling systems coexist and they must not fork:
  *
- *   - `src/**\/*.module.css`  — CSS Modules over `--nova-*` (89 sheets).
- *   - `src/ui/**`             — Tailwind utilities (the Aceternity layer).
- *   - `src/components/ui/**`  — shadcn/ui primitives (Tailwind + Radix).
+ *   - `src/**\/*.module.css`  — CSS Modules over `--nova-*` (the majority of the app).
+ *   - `src/components/ui/**`  — shadcn/ui primitives (Tailwind + Radix-free).
  *
  * The meeting point is this file. Every Tailwind theme entry below points at a
- * `--nova-*` custom property, so a utility like `bg-surface-raised`, a shadcn
- * `bg-background`, and a module rule writing
- * `background: var(--nova-surface-raised)` resolve to the SAME colour.
- * Retuning `tokens/surface.css` therefore moves all three at once; if this file
- * ever hard-codes a hex, the systems begin to drift and the design layer stops
- * being the single source of truth.
+ * `--nova-*` custom property, so a utility like `bg-surface-raised` and a module
+ * rule writing `background: var(--nova-surface-raised)` resolve to the SAME
+ * colour. Retuning `tokens/surface.css` therefore moves both at once; if this
+ * file ever hard-codes a hex, the systems begin to drift and the design layer
+ * stops being the single source of truth.
  *
  * `@theme inline` is deliberate: `inline` emits the utilities with the `var()`
  * expression itself rather than resolving it to a static value at build time,
  * which is what lets dark mode continue to work through the `--nova-*` cascade
  * (`body[data-nova-dark]`). With a plain `@theme`, Tailwind would bake the
- * light values into the utilities and both component layers would ignore the
- * theme attribute entirely.
+ * light values into the utilities and the module layer would ignore the theme
+ * attribute entirely.
  *
  * The `dark:` variant is remapped for the same reason: shadcn's sources assume
  * a `.dark` class on an ancestor, while Nova's boot script sets
@@ -27,7 +25,6 @@
  * unmodified instead of forking every `dark:` class.
  */
 @import 'tailwindcss';
-@import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:where([data-nova-dark], [data-nova-dark] *));

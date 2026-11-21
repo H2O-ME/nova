@@ -629,24 +629,6 @@ describe('reduce / hints', () => {
   });
 });
 
-describe('reduce / git clone in flight', () => {
-  it('raises the flag on the request and settles it on either reply', () => {
-    // The clone's SUCCESS reply is the re-stated `ready` (it changed what is
-    // open); its failure reply is the ordinary error frame. Both settle.
-    const sent = reduce(initialState, { type: 'sent', frame: { type: 'git_clone', url: 'https://example.com/x.git' } });
-    expect(sent.clonePending).toBe(true);
-
-    const failed = reduce(sent, { type: 'error', message: '仓库 URL 含有控制字符' });
-    expect(failed.clonePending).toBe(false);
-
-    const adopted = reduce(reduce(initialState, { type: 'sent', frame: { type: 'git_clone', url: 'u' } }), {
-      type: 'ready',
-      info: readyInfo(),
-    });
-    expect(adopted.clonePending).toBe(false);
-  });
-});
-
 describe('reduce / turn bookkeeping', () => {
   it('counts turns and ignores events with no transcript effect', () => {
     const state = fold([
@@ -691,7 +673,7 @@ describe('reduce / run stats', () => {
   });
 });
 
-describe('reduce / tool detail and jobs', () => {
+describe('reduce / tool detail', () => {
   it('keeps the result text so the detail panel can show it', () => {
     const state = fold([
       { event: { type: 'tool_call_start', turn: 1, call: CALL }, view: TERMINAL_CALL },
@@ -713,26 +695,6 @@ describe('reduce / tool detail and jobs', () => {
     expect(settled.blocks[0]).toMatchObject({ kind: 'job', job: { id: 'bash-1', status: 'completed' } });
   });
 
-  it('keeps an open tasks list in step with the live updates', () => {
-    // The 任务 page reads `state.jobs`, which `list_jobs` answers once. Without
-    // the fold, a page opened before the job started would never show it and an
-    // opened page would never see a row settle — the reader would have to press
-    // refresh to watch work finish.
-    const job = (status: 'running' | 'completed', progress?: string): KernelEvent => ({
-      type: 'job_update',
-      job: { id: 'bash-1', kind: 'bash', label: 'pnpm build', status, sessionId: 'sess_test', ...(progress !== undefined ? { progress } : {}) },
-    });
-    const opened = reduce(fold([{ event: job('running', 'starting') }]), {
-      type: 'jobs',
-      items: [{ id: 'bash-1', kind: 'bash', label: 'pnpm build', status: 'running', progress: 'starting' }],
-    });
-    const settled = fold([{ event: job('completed', 'done') }], opened);
-    expect(settled.jobs).toEqual([{ id: 'bash-1', kind: 'bash', label: 'pnpm build', status: 'completed', sessionId: 'sess_test', progress: 'done' }]);
-    // A page nobody opened stays unopened: the transcript row still appears,
-    // but `jobs: null` must not turn into rows behind the reader's back.
-    const closed = fold([{ event: job('running') }]);
-    expect(closed.jobs).toBeNull();
-  });
 });
 
 describe('reduce / history pagination', () => {

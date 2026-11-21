@@ -15,9 +15,8 @@ import type { Action, UiState } from '../state.js';
 import type { ClientFrame } from '../types.js';
 import { Sidebar } from '../sidebar/Sidebar.js';
 import { RightbarPanel } from '../rightbar/RightbarPanel.js';
-import { changesModel } from '../rightbar/changes-model.js';
 import type { StripState } from '../rightbar/strip-state.js';
-import type { RightbarTabId, StripTabId } from '../rightbar/tabs.js';
+import type { StripTabId } from '../rightbar/tabs.js';
 import { ErrorBoundary } from '../shell/ErrorBoundary.js';
 import { SHELL_COPY } from '../shell/copy.js';
 import { AppFrame } from '../shell/AppFrame.js';
@@ -46,14 +45,8 @@ export interface AppShellProps {
   rightbarOpen: boolean;
   strip: StripState;
   onPickStripTab: (tab: StripTabId) => void;
-  onOpenPageFromGuide: (page: RightbarTabId) => void;
-  onAddGuideTab: () => void;
   onCloseStripTab: (tab: StripTabId) => void;
   onOpenFileTab: (path: string) => void;
-  shellPick: number;
-  onDiscoverShells: () => void;
-  onPickTerminalShell: (path: string) => void;
-  onOpenWorkspace: () => void;
   onReferenceFile: (path: string) => void;
   onToggleFullscreen: () => void;
   onCloseRightbar: () => void;
@@ -61,9 +54,6 @@ export interface AppShellProps {
 }
 export function AppShell(props: AppShellProps): JSX.Element {
   const { state, send, dispatch, connection, reconnect, layout, center } = props;
-  // The right panel's 变更 tab folds the conversation's own tool calls into a
-  // change list — a pure derivation of the blocks, recomputed only when they do.
-  const changes = changesModel(state.blocks);
   const sessionFile = state.meta?.sessionFile ?? '';
   const rootDir = state.meta?.rootDir ?? '';
 
@@ -117,29 +107,12 @@ export function AppShell(props: AppShellProps): JSX.Element {
               tabs={props.strip.tabs}
               tab={props.strip.front}
               onPickTab={pickStripTab}
-              onOpenPage={props.onOpenPageFromGuide}
-              shells={state.shells}
-              shellPick={props.shellPick}
-              onDiscoverShells={props.onDiscoverShells}
-              onPickShell={props.onPickTerminalShell}
-              onAddGuide={props.onAddGuideTab}
               onCloseTab={props.onCloseStripTab}
-              changes={changes}
               tree={state.tree}
-              term={state.term}
-              currentFile={sessionFile}
               rootDir={rootDir}
               connected={connection === 'open'}
               editor={state.editor}
               git={state.git}
-              jobs={state.jobs}
-              clonePending={state.clonePending}
-              // The git setup card's 打开文件夹 is the hero's own gesture: the
-              // native dialog first, the in-page browser on fallback.
-              onOpenWorkspace={props.onOpenWorkspace}
-              // The 变更 row's verb opens the file as ITS OWN TAB (the strip's
-              // reveal-if-opened) — the read goes out through the same one
-              // entrance every other opener uses.
               onOpenFileTab={props.onOpenFileTab}
               dispatch={dispatch}
               send={send}

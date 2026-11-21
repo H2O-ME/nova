@@ -30,8 +30,10 @@ export const SIDEBAR_AUTO_COLLAPSE = 1024;
 export const RIGHTBAR_MIN = 300;
 /** Maximum normal right panel width as a fraction of the frame. */
 export const RIGHTBAR_MAX_RATIO = 0.7;
-/** First-open right panel preference as a fraction of the frame. */
-export const RIGHTBAR_DEFAULT_RATIO = 0.45;
+/** First-open right panel preference as a fraction of the frame. The reference
+ *  opens its side pane at roughly 28% of a 1536px window (436px); 0.30 lands on
+ *  the same three-column rhythm without leaving the transcript thin. */
+export const RIGHTBAR_DEFAULT_RATIO = 0.3;
 
 /**
  * Clamp a panel width into its contract range.

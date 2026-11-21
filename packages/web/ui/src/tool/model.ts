@@ -27,7 +27,7 @@ import {
   type ReadWindow,
   type SearchGroup,
 } from './cards.js';
-import type { FileDiff, ToolCallView, ToolResultView } from '../types.js';
+import type { A2uiMessage, FileDiff, ToolCallView, ToolResultView } from '../types.js';
 
 /** The row's own tool variant (harness `ToolRowVariant`), derived from the card. */
 export type RowVariant = 'search' | 'read' | 'bash' | 'write' | 'edit' | 'others';
@@ -88,6 +88,7 @@ export function rowVariant(view: ToolCallView, body: CardBody): RowVariant {
     case 'matches':
       return 'search';
     case 'plan':
+    case 'a2ui':
       return 'others';
     case 'args':
     case 'none':
@@ -167,6 +168,8 @@ function rowTitle(view: ToolCallView, body: CardBody): string {
     // A plan update has its own row title in the harness (`todo.rowTitle`).
     case 'plan':
       return '更新任务清单';
+    case 'a2ui':
+      return '交互界面';
     case 'diff':
       return VARIANT_TITLES[rowVariant(view, body)];
     case 'read':
@@ -221,6 +224,8 @@ export type BodyShell =
       texts: ReadonlyMap<string, string>;
     }
   | { card: 'plan'; items: readonly { text: string; status: string }[]; done: number; total: number; active: number }
+  /** An A2UI surface: the row opens onto the interface itself, never a text digest. */
+  | { card: 'a2ui'; messages: readonly A2uiMessage[] }
   | { card: 'io'; input: string | null; output: string | null }
   | { card: 'none' };
 
@@ -287,6 +292,8 @@ export function bodyShell(input: ShellInput): BodyShell {
       const counts = planSummary(body.items);
       return { card: 'plan', items: body.items, done: counts.done, total: counts.total, active: counts.active };
     }
+    case 'a2ui':
+      return { card: 'a2ui', messages: body.messages };
     case 'output':
       return view.card === 'terminal' ? terminal() : ioBody(args, body.text);
     case 'args':

@@ -381,6 +381,7 @@ describe('builtinPlugins', () => {
       'bash',
       'jobs',
       'todo_write',
+      'render_ui',
       // Unconditional, unlike the opt-in tools below: a surface with no human to
       // ask still registers it, so the model learns that from the refusal rather
       // than from an absent tool (see `builtin/ask-user.ts`).

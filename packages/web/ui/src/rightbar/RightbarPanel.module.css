@@ -12,35 +12,26 @@
  */
 
 /*
- * Anchored to the frame's right edge, which never moves: opening and closing is
- * one slide from that edge. The panel is a DRAWER (W1): it floats over the
- * transcript at its preference width instead of reserving a grid track, so the
- * conversation never shrinks beside it and closing needs no relayout.
- *
- * Because it floats, it takes the elevation the docked column was denied: a
- * pane that covers content must read as one layer above it. The hairline alone
- * was enough when the panel was a column of the page; it is not enough now that
- * it sits on top of the answer the reader was reading.
+ * The shell's third column (2026-11-21): the panel stands on the window ground
+ * beside the conversation, inset on the top, right and bottom exactly like the
+ * centre's workspace panel — three panels, one ground. It no longer floats over
+ * the transcript, so it takes no elevation: the hairline and its own radius are
+ * the whole edge, the same vocabulary the centre uses.
  */
 .panel {
-  position: absolute;
-  /* Inset on every side (2026-11-15, ZCode alignment): the reference's side
-     pane is a rounded panel floating on the window ground, not a strip welded
-     to the window edge — the same 6px ground reveal the workspace column uses. */
-  top: var(--nova-space-6);
-  right: var(--nova-space-6);
-  bottom: var(--nova-space-6);
-  /* The drawer is a floating pane: above the page, under the frame's resize
-     handle (11) so the column edge stays grabbable. */
-  z-index: 10;
+  position: relative;
   display: flex;
   flex-direction: column;
+  /* The column's height minus the two 6px ground reveals (top + bottom). */
+  height: calc(100% - var(--nova-space-12));
   min-width: 0;
   box-sizing: border-box;
+  /* The left edge needs no gutter: the centre's own 6px right margin is the gap
+     between the two panels. */
+  margin: var(--nova-space-6) var(--nova-space-6) var(--nova-space-6) 0;
   background: var(--nova-surface-raised);
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
-  box-shadow: var(--nova-elevation-panel);
   /* The reference's side pane opens over 200ms on the panel easing curve
      (`transition-[flex-grow] duration-200 ease-out`); 260ms ease-in-out read
      sluggish beside the sidebar's own 200ms. */
@@ -57,16 +48,19 @@
 .panel[data-rightbar='fullscreen'] {
   position: fixed;
   inset: 0;
+  margin: 0;
   /* Fullscreen variant covers the frame but stays under the dialogs (each owns its 1200). */
   z-index: 60;
   border: none;
 }
 
-/* No track to share and the frame is narrow: the panel takes the frame rather
-   than leaving a sliver of transcript that cannot be read. */
+/* The solver removed the right track (a narrow frame): the panel takes the
+   window rather than leaving a sliver of transcript that cannot be read. */
 .panel[data-rightbar='takeover'] {
-  width: 100%;
-  border-left: none;
+  position: fixed;
+  inset: var(--nova-space-6);
+  margin: 0;
+  z-index: 60;
 }
 
 /* The body hosts every page at once; only the one in front is laid out, so a

@@ -2,12 +2,12 @@
 
 # NovaAgent
 
-自研、插件化、轻量化的跨平台本地智能体框架——一个在**当前工作目录**运行的 agent 运行时：通过任意 OpenAI 兼容端点对接模型，内核收拢为**插件容器 + 事件流句柄**（`Context` / `AgentSession` / `KernelEvent`），工具、斜杠命令、生命周期钩子、Skills 与**能力服务**全部经插件注册，界面只是同一内核事件流的消费者（桌面窗口 / readline / headless 地位相同；渠道型 surface 如 QQ 由独立包按配置行接入，不随本仓发行）。所有数据（配置 / 会话 / 缓存 / 技能）集中在 `~/.nova/` 下，**运行目录零写入**。
+通用、轻量、本地的个人 agent（WorkBuddy 式定位）：办公、写作、资料整理、数据与日常自动化优先，编程只是可选任务之一。它在**当前工作目录**运行，通过任意 OpenAI 兼容端点对接模型；内核收拢为**插件容器 + 事件流句柄**（`Context` / `AgentSession` / `KernelEvent`），工具、斜杠命令、生命周期钩子、Skills 与**能力服务**全部经插件注册，界面只是同一内核事件流的消费者（桌面窗口 / readline / headless 地位相同；渠道型 surface 如 QQ 由独立包按配置行接入，不随本仓发行）。模型可以用 **A2UI** 在对话里生成卡片、表单与按钮；桌面右栏只保留文件目录与文件预览。所有数据（配置 / 会话 / 缓存 / 技能）集中在 `~/.nova/` 下，**运行目录零写入**。
 
 ![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6)
 ![ESM-only](https://img.shields.io/badge/ESM--only-green)
-![Tests 1238 passing](https://img.shields.io/badge/tests-1244%20passing-2ea44f)
+![Tests 1192 passing](https://img.shields.io/badge/tests-1192%20passing-2ea44f)
 ![Version 0.4.0](https://img.shields.io/badge/version-0.4.0-e8a13c)
 
 > 完整设计、约定与里程碑见 [AGENTS.md](./AGENTS.md)（人机共读的**唯一权威文档**）；版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)，公共 API 定义见其 §8。

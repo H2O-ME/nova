@@ -20,7 +20,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { MenuItem } from '../shell/Menu.js';
 import { Menu } from '../shell/Menu.js';
-import { ChevronDownIcon, ChevronRightIcon, FileIcon, FolderClosedIcon, FolderOpenIcon, RefreshIcon } from '../icons.js';
+import { ChevronDownIcon, ChevronRightIcon, FileIcon, FolderClosedIcon, FolderOpenIcon, RefreshIcon, SearchIcon } from '../icons.js';
 import { MoreGlyph } from './panel-icons.js';
 import type { ClientFrame } from '../types.js';
 import type { GitState } from '../state.js';
@@ -187,18 +187,21 @@ export function TreeDock({
   return (
     <div className={css.dock} data-tree-dock="">
       <div className={css.searchRow}>
-        <input
-          type="text"
-          className={css.search}
-          value={query}
-          placeholder={RIGHTBAR_COPY['files.search.placeholder']}
-          aria-label={RIGHTBAR_COPY['files.search.label']}
-          spellCheck={false}
-          onChange={(event) => { setQuery(event.target.value); }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape' && query !== '') { event.stopPropagation(); setQuery(''); }
-          }}
-        />
+        <span className={css.searchWrap}>
+          <SearchIcon className={css.searchGlyph} />
+          <input
+            type="text"
+            className={css.search}
+            value={query}
+            placeholder={RIGHTBAR_COPY['files.search.placeholder']}
+            aria-label={RIGHTBAR_COPY['files.search.label']}
+            spellCheck={false}
+            onChange={(event) => { setQuery(event.target.value); }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && query !== '') { event.stopPropagation(); setQuery(''); }
+            }}
+          />
+        </span>
         <IconButton
           label={RIGHTBAR_COPY['files.reload']}
           size="sm"

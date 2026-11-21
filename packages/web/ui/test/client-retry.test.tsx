@@ -1,9 +1,80 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { nextRetry } from '../src/client.js';
+import { createConnection, type Transport } from '../src/client/connection.js';
 import { ConnectionIndicator } from '../src/shell/ConnectionIndicator.js';
 import { Sidebar } from '../src/sidebar/Sidebar.js';
 import { indicatorState, indicatorTransition } from '../src/shell/connection.js';
+
+/**
+ * Manual retry, end to end over a fake transport.
+ *
+ * The regression this pins: `reconnect()` only armed a flag and called
+ * `transport.close()`, and the transport's close was silent — so a manual retry
+ * either waited out the remaining backoff or killed a still-dialing pipe and
+ * never re-dialed. The fake's `close()` is silent on purpose: it is the old
+ * transport's contract, and the connection must re-dial on its own.
+ */
+describe('createConnection manual retry', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function harness(): {
+    connection: ReturnType<typeof createConnection>;
+    die: () => void;
+    statuses: string[];
+    dials: () => number;
+  } {
+    const statuses: string[] = [];
+    let dials = 0;
+    let die = (): void => undefined;
+    const dial = (): Transport => {
+      dials += 1;
+      let closeCb: (() => void) | undefined;
+      die = () => closeCb?.();
+      return {
+        send: () => true,
+        // Mimics the old transport: closes the dial without notifying.
+        close: () => undefined,
+        onFrame: () => undefined,
+        onReady: () => undefined,
+        onClose: (cb) => {
+          closeCb = cb;
+        },
+      };
+    };
+    const connection = createConnection(
+      { onFrame: () => undefined, onStatus: (status) => statuses.push(status) },
+      dial,
+    );
+    return { connection, die: () => die(), statuses, dials: () => dials };
+  }
+
+  it('dials at once and cancels the scheduled backoff', () => {
+    vi.useFakeTimers();
+    const h = harness();
+    expect(h.dials()).toBe(1);
+    // The peer dies: a 500ms retry is scheduled.
+    h.die();
+    expect(h.dials()).toBe(1);
+    h.connection.reconnect();
+    // Immediate, not "after the remaining backoff".
+    expect(h.dials()).toBe(2);
+    // The close path's timer must not fire a second dial on top of this one.
+    vi.advanceTimersByTime(10_000);
+    expect(h.dials()).toBe(2);
+    h.connection.dispose();
+  });
+
+  it('re-dials a transport that is still connecting', () => {
+    vi.useFakeTimers();
+    const h = harness();
+    h.connection.reconnect();
+    expect(h.dials()).toBe(2);
+    h.connection.dispose();
+  });
+});
 
 /**
  * The socket's retry schedule. The effect that uses it needs a DOM, so the rule

@@ -92,7 +92,7 @@
 .notice {
   margin: 0;
   padding: var(--nova-space-16);
-  font: var(--nova-font-xxs-12);
+  font: var(--nova-font-s-14);
   color: var(--nova-text-muted);
   text-align: center;
   white-space: pre-wrap;

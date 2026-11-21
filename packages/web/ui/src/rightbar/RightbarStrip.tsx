@@ -1,39 +1,20 @@
 /**
- * The tab strip: the panel's top edge, and the only way to open or empty a page.
+ * The tab strip: the panel's top edge.
  *
- * Split from `RightbarPanel` because the two answer different questions — this
- * file is how the strip is drawn and clicked, that one is how the panel mounts
- * its pages. Rebuilt against the reference plugin's shell: one tab per OPEN
- * page (icon + title + close), capped and ellipsized,
- * and the panel's own controls at the strip's end — so the strip carries the
- * column's chrome instead of a title row above it.
- *
- * **The start page is a tab, not the absence of one** (the reference's
- * `GUIDE_KIND`): the `+` control opens it (`addTab → openTab(GUIDE_KIND)`), a
- * pane holds at most one (the control disappears while it is open —
- * `canAddTab`), and it cannot be closed while it is the only tab there
- * (`canCloseTab`). Picking an entry from it replaces it, which is the next
- * file's answer.
+ * Two kinds of tab, and only two: the fixed 文件 page and the documents opened
+ * from its tree. The strip carries the column's chrome — fullscreen and close
+ * sit at its end — so no title row is drawn above it.
  */
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { CloseIcon, FileIcon, PlusIcon } from '../icons.js';
+import { CloseIcon, FileIcon } from '../icons.js';
 import { IconButton } from '../kit/IconButton.js';
 import { ExitFullscreenIcon, FullscreenIcon } from '../tool/icons.js';
-import { CompassGlyph, DiffTabIcon, FilesTabIcon, TasksTabIcon, TerminalTabIcon } from './panel-icons.js';
+import { FilesTabIcon } from './panel-icons.js';
 import { RIGHTBAR_COPY } from './copy.js';
-import { GUIDE_TAB, isFileTabId, filePathOf, type RightbarTabId, type StripTabId } from './tabs.js';
+import { isFileTabId, filePathOf, type StripTabId } from './tabs.js';
 import css from './RightbarStrip.module.css';
 
-/** The glyph each PAGE tab carries (the guide's is the start page's compass). */
-const TAB_ICONS: Record<RightbarTabId | typeof GUIDE_TAB, JSX.Element> = {
-  [GUIDE_TAB]: <CompassGlyph />,
-  changes: <DiffTabIcon />,
-  files: <FilesTabIcon />,
-  tasks: <TasksTabIcon />,
-  terminal: <TerminalTabIcon />,
-};
-
-/** Last path segment (a file tab's label — the reference names tabs by file). */
+/** Last path segment (a file tab's label — tabs are named by file). */
 function baseName(path: string): string {
   const at = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
   return at === -1 ? path : path.slice(at + 1);
@@ -41,20 +22,17 @@ function baseName(path: string): string {
 
 /** The strip label of one tab. */
 function tabLabel(id: StripTabId): string {
-  if (isFileTabId(id)) return baseName(filePathOf(id));
-  return id === GUIDE_TAB ? RIGHTBAR_COPY['tab.guide'] : RIGHTBAR_COPY[`tab.${id as RightbarTabId}`];
+  return isFileTabId(id) ? baseName(filePathOf(id)) : RIGHTBAR_COPY['tab.files'];
 }
 
 export interface RightbarStripProps {
-  /** The tabs the reader has OPEN, in strip order (the guide is one of them). */
+  /** The tabs the reader has OPEN, in strip order (文件 is always first). */
   tabs: readonly StripTabId[];
   /** The tab in front. */
   tab: StripTabId;
   onPickTab: (tab: StripTabId) => void;
-  /** Close one tab (an emptied strip is the reference's contradiction, so App seeds the guide back). */
+  /** Close one file tab. The 文件 page cannot be closed. */
   onCloseTab: (tab: StripTabId) => void;
-  /** Open the start page as a new tab — the `+` control's whole job. */
-  onAddGuide: () => void;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
   onClose: () => void;
@@ -73,9 +51,8 @@ function scrollSides(el: HTMLElement): ScrollSides {
 
 export function RightbarStrip(props: RightbarStripProps): JSX.Element {
   const modeLabel = props.fullscreen ? RIGHTBAR_COPY['panel.exitFullscreen'] : RIGHTBAR_COPY['panel.fullscreen'];
-  const guideOpen = props.tabs.includes(GUIDE_TAB);
-  // The overflow mask rides the real scroll position, like the reference's
-  // own strip-scroll flag: a chip run that fits shows no fade at all.
+  // The overflow mask rides the real scroll position: a chip run that fits
+  // shows no fade at all.
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const [sides, setSides] = useState<ScrollSides>('');
   useEffect(() => {
@@ -91,10 +68,7 @@ export function RightbarStrip(props: RightbarStripProps): JSX.Element {
       <div className={css.tabs} role="tablist" aria-label={RIGHTBAR_COPY['panel.label']} data-strip-scroll={sides || undefined} ref={tabsRef}>
         {props.tabs.map((id, index) => {
           const label = tabLabel(id);
-          // The guide alone in the strip is not a closable tab: the reference
-          // hides its close route (`canCloseTab`), because a strip with no tabs
-          // has nothing to draw.
-          const closable = id !== GUIDE_TAB || props.tabs.length > 1;
+          const closable = isFileTabId(id);
           return (
             <Fragment key={id}>
               {index > 0 && (
@@ -112,7 +86,7 @@ export function RightbarStrip(props: RightbarStripProps): JSX.Element {
                 onClick={() => { props.onPickTab(id); }}
               >
                 <span className={css.tabTitle}>
-                  <span className={css.tabIcon} aria-hidden="true">{isFileTabId(id) ? <FileIcon /> : TAB_ICONS[id as RightbarTabId | typeof GUIDE_TAB]}</span>
+                  <span className={css.tabIcon} aria-hidden="true">{isFileTabId(id) ? <FileIcon /> : <FilesTabIcon />}</span>
                   <span className={css.tabLabel}>{label}</span>
                 </span>
                 {closable && (
@@ -133,20 +107,7 @@ export function RightbarStrip(props: RightbarStripProps): JSX.Element {
           );
         })}
       </div>
-      {!guideOpen && (
-        <button
-          type="button"
-          className={css.plus}
-          aria-label={RIGHTBAR_COPY['panel.newTab']}
-          title={RIGHTBAR_COPY['panel.newTab']}
-          data-add-guide=""
-          onClick={props.onAddGuide}
-        >
-          <PlusIcon />
-        </button>
-      )}
-      {/* The strip's END: the panel's own controls, so the tab strip IS the
-          panel's top edge and no title row is drawn above it. */}
+      {/* The strip's END: the panel's own controls. */}
       <div className={css.stripEnd}>
         <IconButton label={modeLabel} onClick={props.onToggleFullscreen}>
           {props.fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}

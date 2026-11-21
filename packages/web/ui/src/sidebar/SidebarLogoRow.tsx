@@ -59,10 +59,8 @@ export function SidebarLogoRow({
           aria-label={COPY['session.new.label']}
           onClick={onStartSession}
         >
-          <span className={css.brandIdentity} aria-hidden="true">
-            <span className={css.brandName}>
-              <span className={css.fallbackBrandName}>{COPY.brand}</span>
-            </span>
+          <span className={css.brandMark} aria-hidden="true">
+            {COPY.brand.slice(0, 1)}
           </span>
         </button>
       )}

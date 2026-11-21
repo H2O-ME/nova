@@ -3,6 +3,7 @@
  * the transcript row (`maxLines` at the card family's cap) and the detail panel
  * (`maxLines: Infinity`, the whole body).
  */
+import { A2uiView } from '../../a2ui/A2ui.js';
 import type { BodyShell, RowSlots } from '../model.js';
 import { DiffCard } from './DiffCard.js';
 import { GenericCard } from './GenericCard.js';
@@ -35,6 +36,8 @@ export function CardBody({ shell, slots, cwd, home, failed, maxLines }: CardBody
       return <SearchCard shell={shell} maxLines={maxLines} />;
     case 'plan':
       return <PlanCard items={shell.items} maxLines={maxLines} />;
+    case 'a2ui':
+      return <A2uiView messages={shell.messages} />;
     case 'io':
       return <GenericCard input={shell.input} output={shell.output} failed={failed} />;
     case 'none':

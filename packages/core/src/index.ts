@@ -43,6 +43,7 @@ export * from './type-stripping.js';
 export * from './tools/get-time.js';
 export * from './tools/subagent.js';
 export * from './presentation.js';
+export * from './a2ui.js';
 export * from './model-id.js';
 export * from './model-catalog-rules.js';
 export * from './images.js';

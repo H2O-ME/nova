@@ -6,8 +6,9 @@
  * TWO DECISIONS CARRY THIS FILE.
  *
  * 1. **The app is client-only (`ssr: false`).**
- *    Nova's UI is a consumer of a live `/ws` frame stream: on the server there
- *    is no socket, no kernel, and therefore nothing meaningful to render — the
+ *    Nova's UI is a consumer of a live frame stream (the desktop shell's stdio
+ *    bridge): on the server there is no bridge, no kernel, and therefore
+ *    nothing meaningful to render — the
  *    old Vite entry proved this by mounting into an empty `<div id="root">`.
  *    Prerendering it bought nothing and cost real failures: `output: 'export'`
  *    renders the page in Node, where any module-scope `window`/`document` access

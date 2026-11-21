@@ -122,6 +122,17 @@ export interface PlanResultView {
   card: 'plan';
   items: readonly { text: string; status: string }[];
 }
+/**
+ * An agent-composed A2UI surface (buttons, forms, cards) rather than prose.
+ *
+ * The renderer owns the widgets; `ok: false` is reserved for a validation
+ * refusal whose messages fall back to the generic text card beside it.
+ */
+export interface A2uiResultView {
+  card: 'a2ui';
+  ok: boolean;
+  messages: readonly import('./a2ui.js').A2uiMessage[];
+}
 
 /** What one tool call *produced* (collapsed tool rows, replay, transcripts). */
 export type ToolResultView =
@@ -130,7 +141,8 @@ export type ToolResultView =
   | DiffResultView
   | SearchResultView
   | ReadResultView
-  | PlanResultView;
+  | PlanResultView
+  | A2uiResultView;
 
 /** Kinds whose payload is a filesystem location — the tail of a path is the story. */
 export const PATH_ARG_KINDS: readonly ToolCallKind[] = ['read', 'edit', 'write'];
@@ -163,6 +175,7 @@ export const BUILTIN_TOOL_KINDS: Record<string, ToolCallKind> = {
   ask_user_question: 'question',
   subagent: 'subagents',
   get_time: 'other',
+  render_ui: 'other',
 };
 
 /** Kind of a tool the registry did not declare; `Object.hasOwn` because a name from model output would otherwise resolve to an inherited member. */

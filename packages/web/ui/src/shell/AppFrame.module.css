@@ -9,7 +9,11 @@
   grid-template-rows: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--nova-surface-sunken);
+  /* The ground the three columns stand on (2026-11-21): one neutral step below
+     the panels, matching the reference's window ground. `base` rather than
+     `sunken` — the old 240 read as a second panel colour beside the centre's
+     248, so the shell had three surfaces where the reference has two. */
+  background: var(--nova-surface-base);
 }
 
 /* Only a discrete collapse/expand toggle eases the tracks. Steady-state tracks
@@ -69,7 +73,10 @@
     var(--nova-space-4);
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
-  background: var(--nova-surface-base);
+  /* Both panels are the same white plane over the ground (2026-11-21); the
+     right pane used to sit one step brighter than the centre, which read as a
+     layer above it instead of a neighbour. */
+  background: var(--nova-surface-raised);
 }
 
 .frame[data-desktop] .centerCol {
@@ -119,15 +126,15 @@
 }
 
 /*
- * The right column is a zero-width ANCHOR for the drawer (W1): the occupant
- * positions a fixed-width panel against the frame's right edge, which never
- * moves, so the panel hangs over the centre without reserving a track. The
- * column itself must therefore never clip and never claim width.
+ * The right column is the shell's third track (2026-11-21): the solver reserves
+ * its width, the centre makes room, and the panel draws its own inset inside
+ * this box. Overflow is clipped so the panel's entry animation cannot paint
+ * over the centre while it slides in.
  */
 .rightbarCol {
   position: relative;
   min-width: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .overlayLayer {

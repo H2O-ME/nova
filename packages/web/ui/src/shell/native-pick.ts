@@ -10,7 +10,7 @@
  * caller falls back to the in-page browser. Neither field is the cancel
  * reading, and cancel lands nowhere on purpose.
  */
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { ClientFrame } from '../../../src/protocol';
 import { basename } from '../composer/file-type.js';
 import type { PickReply } from '../state.js';
@@ -38,8 +38,15 @@ export function useNativePick(options: {
     },
     [send, pickPending],
   );
+  // Consume each reply ONCE. `pick` is a state slot that the reducer replaces
+  // (it is not cleared after the answer lands), so an effect re-run — StrictMode
+  // remount, a changed callback identity — would replay the last pick: adopt the
+  // old folder again or rail the same file twice. Identity is per frame, so a
+  // fresh reply always gets through; the same reply never does.
+  const handled = useRef<PickReply | null>(null);
   useEffect(() => {
-    if (pick === null) return;
+    if (pick === null || handled.current === pick) return;
+    handled.current = pick;
     if (pick.path !== undefined) {
       if (pick.kind === 'file') onFile(pick.path, basename(pick.path));
       else onDirectory(pick.path);

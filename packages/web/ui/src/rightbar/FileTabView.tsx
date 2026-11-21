@@ -21,7 +21,7 @@ import { highlightLines } from '../chat/markdown/highlight.js';
 import type { ClientFrame } from '../types.js';
 import { RIGHTBAR_COPY } from './copy.js';
 import type { EditorDoc } from './editor-model.js';
-import { langOfPath } from './diff-highlight.js';
+import { langOfPath } from './file-lang.js';
 import { RefreshGlyph } from './panel-icons.js';
 import { IconButton } from '../kit/IconButton.js';
 import { Chip, Notice } from './kit.js';

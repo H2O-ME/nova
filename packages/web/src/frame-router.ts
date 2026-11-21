@@ -15,7 +15,6 @@ import {
   sessionLogPath,
   userConfigPath,
 } from '@nova-agent/core';
-import { panelShell, shellCandidates } from '@nova-agent/plugins';
 import { serializeServerFrame as serialize } from './protocol.js';
 import type { ClientFrame } from './protocol.js';
 import { admitPromptImages } from './prompt-images.js';
@@ -23,8 +22,6 @@ import type { WsConnection } from './connection.js';
 import { handleFsFrame } from './fs-frames.js';
 import { handleEntryFrame } from './entry-frames.js';
 import { handleGitFrame } from './git-frames.js';
-import { handleJobFrame } from './job-frames.js';
-import { handleTermFrame, matchShell } from './term-frames.js';
 import { handlePickerFrame } from './picker-frames.js';
 import { pickNativePath } from './native-picker.js';
 import { handleSessionFrame } from './session-frames.js';
@@ -117,14 +114,8 @@ export async function handleFrame(
         await handleEntryFrame(client, frame, { rootDir: kernel.rootDir() });
         break;
       case 'git_status':
-      case 'git_diff':
-      case 'git_stage':
-      case 'git_unstage':
-      case 'git_commit':
-      case 'git_log':
-        // The 变更 tab's git lens (`git-frames.ts`): argv-only git in the
-        // workspace, every mutation answered with a fresh status, reads served
-        // from the process's one status cache.
+        // The file tree's decorations (`git-frames.ts`): argv-only git in the
+        // workspace, served from the process's one status cache.
         await handleGitFrame(client, frame, { rootDir: kernel.rootDir(), cache: host.gitCache });
         break;
       case 'pick_file':
@@ -135,12 +126,9 @@ export async function handleFrame(
         break;
       case 'set_workspace':
       case 'delete_session':
-      case 'git_clone':
-        // The frames that redefine what is OPEN (`git_clone` ends in a new
-        // workspace, so it restates the surface like `set_workspace` does).
-        // They need the host's extra collaborators (which session is current,
-        // how to abandon it), so they are their own module rather than a branch
-        // of the read-only one.
+        // The frames that redefine what is OPEN. They need the host's extra
+        // collaborators (which session is current, how to abandon it), so they
+        // are their own module rather than a branch of the read-only one.
         await handleSessionFrame(client, frame, {
           currentSessionFile: () => agent.session.file,
           currentRootDir: () => kernel.rootDir(),
@@ -238,46 +226,6 @@ export async function handleFrame(
         // Unknown/settled ids are a no-op: the control is optimistic, and the
         // authoritative answer always arrives as a `job_update`.
         await agent.stopJob(frame.id);
-        break;
-      case 'discover_shells': {
-        // The menu IS the host's inventory: installed candidates only, the
-        // environment's default first, so a row never fails to spawn and the
-        // checkmark names what a choiceless `term_open` would start.
-        client.send(serialize({
-          type: 'shells',
-          items: shellCandidates(),
-          current: panelShell().path,
-        }));
-        break;
-      }
-      case 'term_input':
-      case 'term_resize':
-      case 'term_kill':
-      case 'term_open': {
-        // The 终端 tab: one real PTY per session, spawned on first open and
-        // taken down with the session (see `term-frames.ts`). A requested shell
-        // must be one the host discovered — a path typed into a frame is not a
-        // program to spawn.
-        const wanted = frame.type === 'term_open' ? frame.shell : undefined;
-        const shell = matchShell(shellCandidates(), wanted, panelShell());
-        if (shell === undefined) {
-          client.send(serialize({ type: 'error', message: `无法启动该 shell：它不在宿主的已安装清单里（${wanted ?? ''}）` }));
-          break;
-        }
-        await handleTermFrame(client, frame, {
-          terms: host.terms,
-          sessionId: agent.session.id,
-          rootDir: kernel.rootDir(),
-          // The operator's own default, NOT the model's shell (see term-frames).
-          shell,
-          broadcast: host.broadcast,
-        });
-        break;
-      }
-      case 'list_jobs':
-        // The 任务 tab's read: live jobs as state, never output (output is the
-        // model's cursor — see `job-frames.ts`).
-        handleJobFrame(client, { jobs: kernel.jobs, sessionId: agent.session.id });
         break;
       case 'image_upload':
       case 'image_bytes':

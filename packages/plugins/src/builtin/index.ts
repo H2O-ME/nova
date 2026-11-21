@@ -6,9 +6,11 @@ import { goalPlugin, type GoalPluginOptions } from './goal.js';
 import { jobsPlugin } from './jobs.js';
 import { searchPlugin } from './search.js';
 import { todoPlugin } from './todo.js';
+import { uiPlugin } from './ui.js';
 import { workspacePlugin, type WorkspacePluginOptions } from './workspace.js';
 
 export { askUserPlugin, parseQuestions, type AskUserPluginOptions } from './ask-user.js';
+export { uiPlugin } from './ui.js';
 
 export interface BuiltinOptions {
   /**
@@ -77,6 +79,7 @@ export function builtinPlugins(options: BuiltinOptions): Plugin[] {
     bashPlugin(),
     jobsPlugin(),
     todoPlugin(),
+    uiPlugin(),
   ];
   // Present only when the assembly supplied a live-goal reader and a log writer
   // (see `BuiltinOptions.goal`): without them the tools could report a goal no

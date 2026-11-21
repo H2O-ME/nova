@@ -21,12 +21,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
-  CENTER_MIN,
-  clampWidth,
   computeColumns,
   RIGHTBAR_DEFAULT_RATIO,
-  RIGHTBAR_MAX_RATIO,
-  RIGHTBAR_MIN,
   SIDEBAR_AUTO_COLLAPSE,
 } from './columns.js';
 import type { LayoutState } from './layout-store.js';
@@ -82,15 +78,10 @@ function CenterColumn({ children }: { children?: ReactNode }): JSX.Element {
 }
 
 /**
- * Right column grid item. With the drawer decision (W1) the column is a
- * zero-width anchor: the occupant's panel is positioned against the frame's
- * right edge, which never moves, so it hangs over the centre without reserving
- * a track. A fullscreen panel keeps its own fixed presentation instead.
- *
- * No dismiss scrim: the point of floating instead of squeezing is that the
- * transcript stays readable and scrollable beside the panel. Escape and the
- * panel's own close control are the ways out; a scrim would block the very
- * conversation the drawer was made not to steal.
+ * Right column grid item: the third column of the shell (2026-11-21). It owns
+ * the track the solver reserved, so the centre makes room and all three panels
+ * stand on the same ground — the reference's three-panel shell. The panel draws
+ * its own inset, border and radius inside this box.
  */
 function RightbarColumn({ children }: { children?: ReactNode }): JSX.Element {
   return (
@@ -233,25 +224,13 @@ export function AppFrame({
   // below the breakpoint has already answered the question).
   const autoCollapsed = narrow && collapsed;
   const rightbarPreference = layout.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO;
-  // A drawer needs no track, so the solve that produced `normal` is the wrong
-  // question for it: that solve protects CENTER_MIN by REMOVING the right
-  // track, which is exactly what used to make the panel collapse to zero width
-  // on a narrow frame (it answered "can a third column fit here?", not "can a
-  // pane float over this frame?"). The drawer floats, so its width is its own
-  // preference, clamped to the frame — and it takes the whole frame only when
-  // the preference would leave an unreadably thin conversation beneath it.
-  const drawerWidth = clampWidth(rightbarPreference, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO);
-  // `canShow` = the drawer has a width to float at. A frame narrower than the
-  // floor still yields the floor (`clampWidth`), so a pane is always drawable;
-  // what changes is that it covers the frame instead of sitting beside a
-  // conversation too thin to read.
-  const drawerFloats = layout.rightbarShown && drawerWidth > 0 && viewport - drawerWidth >= CENTER_MIN;
-  const normal = { rightbar: drawerFloats ? drawerWidth : 0 };
+  // All three widths are solved together: the right panel now owns a real
+  // track, so a narrow frame removes it exactly like any other concession
+  // (the centre keeps its floor; the panel falls back to `takeover` in the
+  // occupant, which is why `canShow` is derived from the solved width).
   const cols = computeColumns(viewport, preference, layout.rightbarTrack ? rightbarPreference : 0);
   const colsRef = useRef(cols);
   colsRef.current = cols;
-  const rightbarWidth = useRef(normal.rightbar);
-  rightbarWidth.current = normal.rightbar;
 
   // Track easing is scoped to a discrete open/close toggle, never to a
   // steady-state viewport update: an eased track would chase the live window
@@ -304,7 +283,7 @@ export function AppFrame({
     [onSidebarWidth],
   );
   const onRightbarStart = useCallback((): void => {
-    rightbarBase.current = rightbarWidth.current;
+    rightbarBase.current = colsRef.current.rightbar;
     onDragChange(true);
   }, [onDragChange]);
   const onRightbarDrag = useCallback(
@@ -318,8 +297,8 @@ export function AppFrame({
   );
   const rightbarNode = useMemo(
     () =>
-      rightbar?.({ width: normal.rightbar, viewportWidth: viewport, canShow: normal.rightbar > 0 }),
-    [rightbar, normal.rightbar, viewport],
+      rightbar?.({ width: cols.rightbar, viewportWidth: viewport, canShow: cols.rightbar > 0 }),
+    [rightbar, cols.rightbar, viewport],
   );
 
   return (
@@ -346,14 +325,12 @@ export function AppFrame({
       {!collapsed && (
         <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />
       )}
-      {/* A drawer floats over the centre, so there is no column border to drag:
-          its width is set by preference, not by a shared track. Reserving the
-          handle only when the panel actually owns a track keeps a grabbable
-          strip from sitting on the transcript for no reason. */}
+      {/* The panel owns the third track; its drag handle sits on that track's
+          left border, the same edge the sidebar's handle sits on. */}
       {layout.rightbarShown && !layout.rightbarFullscreen && cols.rightbar > 0 && (
         <DragHandle
           side="rightbar"
-          left={viewport - normal.rightbar}
+          left={viewport - cols.rightbar}
           onStart={onRightbarStart}
           onDrag={onRightbarDrag}
           onEnd={onDragEnd}

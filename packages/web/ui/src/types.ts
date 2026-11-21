@@ -6,6 +6,7 @@
  * server code.
  */
 import type {
+  A2uiMessage,
   ApprovalMode,
   ApprovalRequest,
   AskResult,
@@ -40,7 +41,7 @@ import type {
   TurnPhase,
   WorkspaceBucket,
 } from '@nova-agent/core';
-import type { ClientFrame, ConfiguredModel, GitLogEntry, GitStatusEntry, ModelCapabilities, ReadyInfo, ServerFrame, SessionListItem, WireBlock, WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderModel, WireProviderRow, WireRosterEntry, WireShell, WireSkillEntry, WireTraceRow } from '../../src/protocol';
+import type { ClientFrame, ConfiguredModel, GitStatusEntry, ModelCapabilities, ReadyInfo, ServerFrame, SessionListItem, WireBlock, WireDirectoryLevel, WireFileEntry, WireJobRow, WireProviderModel, WireProviderRow, WireRosterEntry, WireSkillEntry, WireTraceRow } from '../../src/protocol';
 
 /**
  * One row of the kernel's command catalog, derived from the frame that carries
@@ -49,6 +50,7 @@ import type { ClientFrame, ConfiguredModel, GitLogEntry, GitStatusEntry, ModelCa
 export type CommandSummary = ReadyInfo['commands'][number];
 
 export type {
+  A2uiMessage,
   ApprovalMode,
   ApprovalRequest,
   AskResult,
@@ -69,7 +71,6 @@ export type {
   ConfiguredModel,
   FileDiff,
   FileOpRecord,
-  GitLogEntry,
   GitStatusEntry,
   JobSnapshot,
   KernelEvent,
@@ -97,7 +98,6 @@ export type {
   WireProviderModel,
   WireProviderRow,
   WireRosterEntry,
-  WireShell,
   WireSkillEntry,
   WireTraceRow,
 };

@@ -16,6 +16,23 @@
  */
 import { StreamCoalescer } from '../stream-coalesce.js';
 
+/**
+ * Report one transport failure where a developer can actually see it.
+ *
+ * Every path in this module used to swallow its reason (`.catch(() => undefined)`),
+ * and the consequence was a window stuck on 「会话不可用」 with no evidence
+ * anywhere: the runtime logged nothing, the shell logged nothing, and the UI
+ * showed a placeholder. This channel has exactly one failure mode — the IPC
+ * bridge is missing or the shell refused a command — so the reason is always
+ * worth one line.
+ * @param what - the step that failed.
+ * @param err - what the bridge answered.
+ */
+function report(what: string, err?: unknown): void {
+  const detail = err === undefined ? '' : `: ${err instanceof Error ? err.message : String(err)}`;
+  console.error(`[nova-transport] ${what}${detail}`);
+}
+
 /** First reconnect delay: fast enough to feel automatic on a blip. */
 export const RETRY_MIN_MS = 500;
 
@@ -122,8 +139,9 @@ export function tauriTransport(): Transport {
     }
   };
 
-  const fail = (): void => {
+  const fail = (reason: string, err?: unknown): void => {
     if (closed) return;
+    report(reason, err);
     closed = true;
     ready = false;
     stopPolling();
@@ -157,10 +175,10 @@ export function tauriTransport(): Transport {
         // frames in a startup bridge instead of emitting them into the void.
         // Without this call the bridge never drains and the window stays
         // un-baselined (no transcript, no model) until the operator reloads.
-        void internals.invoke('nova_ready', {}).catch(() => undefined);
+        void internals.invoke('nova_ready', {}).catch((err: unknown) => report('nova_ready refused', err));
         readyCb?.();
       })
-      .catch(() => fail());
+      .catch((err: unknown) => fail('event|listen refused', err));
   };
 
   // Poll for the bridge the way `WindowControls` does: briefly, and adopt it
@@ -175,7 +193,7 @@ export function tauriTransport(): Transport {
     }
     tries += 1;
     if (tries >= 24) {
-      fail();
+      fail(`no IPC bridge after ${tries} polls (24×250ms) — not running inside the shell?`);
       return;
     }
     pollTimer = setTimeout(poll, 250);
@@ -187,20 +205,26 @@ export function tauriTransport(): Transport {
       if (closed || !ready) return false;
       const internals = bridge();
       if (internals === null) {
-        fail();
+        fail('bridge vanished mid-session');
         return false;
       }
       // Fire-and-forget: the wire has no per-frame acknowledgement. A refusal
       // means the pipe itself is gone, and that is a close, not a send result.
-      void internals.invoke(NOVA_SEND_COMMAND, { frame: text }).catch(() => fail());
+      void internals.invoke(NOVA_SEND_COMMAND, { frame: text }).catch((err: unknown) => fail('nova_send refused', err));
       return true;
     },
     close: () => {
+      // Same close path as `fail`: one shutdown, one notification. Without the
+      // callback a manual reconnect would kill this dial and never learn it
+      // (`onClose` is what re-arms the schedule), leaving the UI disconnected
+      // until a reload.
+      if (closed) return;
       closed = true;
       ready = false;
       stopPolling();
       const internals = bridge();
       if (internals !== null && handlerId !== undefined) unlisten(internals, handlerId);
+      closeCb?.();
     },
     onFrame: (cb) => {
       frameCb = cb;
@@ -254,12 +278,16 @@ export function createConnection(events: ConnectionEvents, dial: () => Transport
   let retryMs = RETRY_MIN_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let transport: Transport | undefined;
-  // Set by `reconnect()` to collapse the pending backoff the next time the
-  // pipe closes, so a manual retry is immediate rather than "as soon as the
-  // timer happens to fire".
-  let retryNow = false;
+  /**
+   * One dial's identity. A transport's callbacks are ignored once a newer dial
+   * exists: a manual reconnect closes the old transport synchronously and then
+   * dials, and a late event from the closed one must not schedule a second dial
+   * on top of the new one.
+   */
+  let generation = 0;
 
   const open = (): void => {
+    const gen = ++generation;
     events.onStatus('connecting');
     const current = dial();
     transport = current;
@@ -267,9 +295,11 @@ export function createConnection(events: ConnectionEvents, dial: () => Transport
     // the buffer releases at most once per painted frame, and any other frame
     // flushes it first so the reducer still sees the kernel's exact order.
     const coalescer = new StreamCoalescer((frames) => {
+      if (gen !== generation) return;
       for (const flushed of frames) events.onFrame(flushed);
     });
     current.onFrame((text) => {
+      if (gen !== generation) return;
       let frame: unknown;
       try {
         frame = JSON.parse(text) as unknown;
@@ -282,6 +312,7 @@ export function createConnection(events: ConnectionEvents, dial: () => Transport
       }
     });
     current.onReady(() => {
+      if (gen !== generation) return;
       retryMs = RETRY_MIN_MS;
       events.onStatus('open');
       // NO state change beyond the status here. The pipe being open is not the
@@ -290,16 +321,14 @@ export function createConnection(events: ConnectionEvents, dial: () => Transport
       // by the `ready` reduction alone — the one fact every control gates on.
     });
     current.onClose(() => {
+      if (gen !== generation) return;
       // The tail the buffer still holds belongs to the transcript that just
       // ended: land it before the disconnect state reads "the run is over".
       coalescer.flushNow();
       events.onStatus('closed');
       if (closedByUs) return;
       if (timer !== undefined) clearTimeout(timer);
-      // A manual retry collapses the wait and re-seeds the backoff, so a
-      // reader who keeps pressing 重试 is not left on an ever-growing delay.
-      const step = nextRetry(retryMs, retryNow);
-      retryNow = false;
+      const step = nextRetry(retryMs, false);
       timer = setTimeout(open, step.delayMs);
       retryMs = step.nextMs;
     });
@@ -314,10 +343,24 @@ export function createConnection(events: ConnectionEvents, dial: () => Transport
       return current.send(JSON.stringify(frame));
     },
     reconnect: () => {
-      retryNow = true;
-      // An attempt still dialing cannot be re-dialled usefully yet; `close()`
-      // on it still runs the close path, which is what re-arms the schedule.
+      if (closedByUs) return;
+      // Drop the pending backoff, close the current dial (which flushes the
+      // buffered tail through the same close path), then dial at once. A retry
+      // that only set a flag used to wait out the remaining backoff — or, when
+      // the dial was still polling for the bridge, kill it and never re-dial.
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      retryMs = RETRY_MIN_MS;
       transport?.close();
+      // `close()` may have scheduled a retry through `onClose`; this dial
+      // supersedes it (the generation guard also ignores its callbacks).
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      open();
     },
     dispose: () => {
       closedByUs = true;

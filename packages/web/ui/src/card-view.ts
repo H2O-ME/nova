@@ -12,7 +12,7 @@
  * the switches below cover that closed union, so a seventh card fails typecheck
  * here instead of rendering a blank row.
  */
-import type { FileDiff, ToolCallView, ToolResultView } from './types.js';
+import type { A2uiMessage, FileDiff, ToolCallView, ToolResultView } from './types.js';
 
 export type CardBody =
   | { kind: 'none' }
@@ -23,6 +23,8 @@ export type CardBody =
   | { kind: 'matches'; matches: readonly { path: string; line?: number }[]; truncated: boolean }
   | { kind: 'read'; path: string; lineCount: number; truncated: boolean }
   | { kind: 'plan'; items: readonly { text: string; status: string }[] }
+  /** An agent-composed A2UI surface: the card body IS the interface. */
+  | { kind: 'a2ui'; messages: readonly A2uiMessage[] }
   | { kind: 'text'; text: string };
 
 export interface CardModel {
@@ -74,6 +76,8 @@ function resultOk(view: ToolResultView): boolean {
     case 'read':
     case 'plan':
       return true;
+    case 'a2ui':
+      return view.ok;
   }
 }
 
@@ -132,6 +136,8 @@ function bodyOf(view: ToolResultView): ResultPart {
       };
     case 'plan':
       return { body: { kind: 'plan', items: view.items } };
+    case 'a2ui':
+      return { body: { kind: 'a2ui', messages: view.messages } };
   }
 }
 

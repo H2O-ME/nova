@@ -3,20 +3,16 @@ import type { NextConfig } from 'next';
 /**
  * Next.js config — STATIC EXPORT, and that word is load-bearing.
  *
- * Nova's web surface is ONE node:http process (packages/web/src/server.ts) that
- * already does four jobs on one port:
+ * Nova's UI ships as a static tree: the desktop shell loads it via Tauri's
+ * `frontendDist` and frames travel over the shell's stdio bridge
+ * (`packages/web/src/desktop-host.ts` + `pipe.ts`), never over HTTP. There is
+ * no server process to attach Next.js to — `output: 'export'` emits the same
+ * plain HTML + assets the previous Vite build produced, and the build pipeline
+ * is the only thing Next owns here.
  *
- *   1. `/ws` upgrade → the kernel's frame protocol
- *   2. the launch-token / cookie auth gate
- *   3. plugin-registered routes run BEFORE static serving
- *   4. static serving of the built frontend
- *
- * If Next.js ran as its own server it would take over the HTTP handler and
- * jobs 1–3 would disappear: the app would load and then never connect, because
- * there is no `/ws` on Next's port. So Next is a BUILD TOOL here, not a
- * runtime. `output: 'export'` emits a plain tree of HTML + assets that the
- * existing process serves exactly as it served Vite's `dist` before. The build
- * pipeline is replaced; the transport is untouched.
+ * If Next ran as its own server it would be a second, frameless app: the
+ * window would load and then never connect. So Next is a BUILD TOOL, not a
+ * runtime.
  *
  * `images.unoptimized` is REQUIRED by static export — the Image Optimization
  * API is a server feature and there is no server in this mode.

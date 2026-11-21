@@ -7,7 +7,6 @@
  */
 import type { KernelEvent, SubagentProgress, ToolCallView, ToolResultView } from '../types.js';
 import type { Block, Draft, SubRow, UiState } from '../state.js';
-import { upsertJobRow } from '../rightbar/tasks-model.js';
 
 /** Events that only touch the transcript (block list). */
 export type TranscriptEvent = Extract<
@@ -77,14 +76,10 @@ export function reduceTranscript(
       return { ...state, blocks: mapTool(state.blocks, event.callId, (b) => (b.result === undefined ? { ...b, tail } : b)) };
     }
     case 'job_update': {
-      // One fact, two readings: the transcript block (the line a reloaded
-      // session draws) and the 任务 page's list, when it is open. The host
-      // scopes `job_update` to the current session (`job-listener.ts`), so a
-      // live row can never be another conversation's job — and a list the
-      // reader has not asked for yet (`jobs === null`) stays null instead of
-      // materializing rows for a page nobody opened.
-      const next = upsertRow(state, `job:${event.job.id}`, (id) => ({ id, kind: 'job', job: event.job }));
-      return state.jobs === null ? next : { ...next, jobs: upsertJobRow(state.jobs, event.job) };
+      // The transcript block is the reading: the host scopes `job_update` to
+      // the current session, so a live row can never be another
+      // conversation's job.
+      return upsertRow(state, `job:${event.job.id}`, (id) => ({ id, kind: 'job', job: event.job }));
     }
     case 'subagent_update':
       return reduceSubagent(state, event.progress);

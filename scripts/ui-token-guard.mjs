@@ -1,4 +1,4 @@
-// UI token 纪律门禁（docs/NOVA-DESIGN-SYSTEM.md §5）。
+// UI token 纪律门禁（packages/web/ui/DESIGN.md §5「守卫规则」）。
 //
 // 量的是**债务**，不是"这个 CSS 写得漂不漂亮"：组件 sheet 里不得出现
 // spacing / radius / shadow / duration / ease 的字面量。
@@ -20,6 +20,8 @@
 //
 // 语义：
 //   check（默认）：任一规则的全仓总数超过上限即失败；余量快用完时打印提示（不是失败）。
+//   --explain：逐条列出当前债务（文件:行 + 违规声明）并给出该属性族可用的 token，
+//              用来替代“红灯 → 猜该用哪个 token”的循环。不判失败。
 //   --update：把上限同步为当前总数（上调逐条打印 RAISED，diff 里看得见）。
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -111,21 +113,64 @@ const isSpacing = (p) =>
 const isMotion = (p) =>
   p === 'transition' || p === 'transition-duration' || p === 'animation' || p === 'animation-duration';
 
+/** 一个声明命中的规则（一个 `transition: 120ms ease-out` 可同时计 duration 与 ease）。 */
+function rulesOf(prop, value) {
+  const bare = bareOf(value);
+  const hits = [];
+  if (isSpacing(prop) && hasPx(bare)) hits.push('spacing');
+  if (prop === 'border-radius' && hasPx(bare)) hits.push('radius');
+  if (prop === 'box-shadow' && !/^none$/.test(bare) && !/^var\(\)$/.test(bare)) hits.push('shadow');
+  if (isMotion(prop)) {
+    if (DURATION_RE.test(bare)) hits.push('duration');
+    if (EASE_RE.test(bare)) hits.push('ease');
+  }
+  return hits;
+}
+
 /** 一个 sheet 的五条规则计数（零值也返回，便于逐规则比对）。 */
 function countsOf(css) {
   const counts = Object.fromEntries(RULES.map((rule) => [rule, 0]));
   for (const { prop, value } of declarations(css)) {
-    const bare = bareOf(value);
-    if (isSpacing(prop) && hasPx(bare)) counts.spacing++;
-    if (prop === 'border-radius' && hasPx(bare)) counts.radius++;
-    if (prop === 'box-shadow' && !/^none$/.test(bare) && !/^var\(\)$/.test(bare)) counts.shadow++;
-    if (isMotion(prop)) {
-      if (DURATION_RE.test(bare)) counts.duration++;
-      if (EASE_RE.test(bare)) counts.ease++;
-    }
+    for (const rule of rulesOf(prop, value)) counts[rule]++;
   }
   return counts;
 }
+
+/**
+ * 带行号的声明清单（--explain 用）。注释替换为等长空白但保留换行，
+ * 这样行号与源文件一致。
+ */
+function declarationsWithLines(css) {
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '));
+  const out = [];
+  for (const match of stripped.matchAll(/([a-z-]+)\s*:\s*([^;{}]+);/g)) {
+    const line = 1 + (stripped.slice(0, match.index ?? 0).match(/\n/g)?.length ?? 0);
+    out.push({ prop: match[1] ?? '', value: (match[2] ?? '').trim(), line });
+  }
+  return out;
+}
+
+/** token 按声明顺序（升序阶梯）而不是字典序，`space-8` 排在 `space-16` 前面。 */
+function tokenNames() {
+  const names = new Set();
+  const dir = join(uiSrc, 'design', 'tokens');
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('.css')).sort()) {
+    const text = readFileSync(join(dir, file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ');
+    for (const match of text.matchAll(/(--[a-z0-9-]+)\s*:/gi)) {
+      if (match[1] !== undefined) names.add(match[1]);
+    }
+  }
+  return [...names];
+}
+
+/** 五条规则各自可用的 token 前缀。 */
+const TOKEN_FAMILIES = {
+  spacing: ['--nova-space-', '--nova-row-'],
+  radius: ['--nova-radius-'],
+  shadow: ['--nova-shadow-', '--nova-elevation-'],
+  duration: ['--nova-dur-'],
+  ease: ['--nova-ease-'],
+};
 
 const sheetList = sheets();
 const perSheet = sheetList.map((sheet) => ({ rel: sheet.rel, counts: countsOf(sheet.text) }));
@@ -143,6 +188,28 @@ try {
   if (typeof parsed.spacing === 'number') baseline = parsed;
 } catch {
   /* 缺文件：按当前值兜底，见下 */
+}
+
+if (process.argv.includes('--explain')) {
+  const names = tokenNames();
+  let total = 0;
+  for (const sheet of sheetList) {
+    const hits = [];
+    for (const decl of declarationsWithLines(sheet.text)) {
+      for (const rule of rulesOf(decl.prop, decl.value)) hits.push({ ...decl, rule });
+    }
+    if (hits.length === 0) continue;
+    total += hits.length;
+    console.log(`\n${sheet.rel} — ${hits.length} 处`);
+    for (const hit of hits) {
+      const prefixes = TOKEN_FAMILIES[hit.rule] ?? [];
+      const candidates = names.filter((name) => prefixes.some((prefix) => name.startsWith(prefix)));
+      console.log(`  ${hit.line}: ${hit.prop}: ${hit.value}   [${hit.rule}]`);
+      console.log(`      → ${candidates.length > 0 ? candidates.map((name) => `var(${name})`).join(' / ') : '（该族没有 token）'}`);
+    }
+  }
+  console.log(`\n共 ${total} 处字面量（当前债务；上限见 scripts/ui-token-baseline.json）。`);
+  process.exit(0);
 }
 
 if (process.argv.includes('--update')) {

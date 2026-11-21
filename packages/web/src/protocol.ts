@@ -53,18 +53,10 @@ export {
   MAX_TITLE_MODEL_CHARS,
   MAX_PROMPT_CHARS,
   MAX_PROMPT_IMAGES,
-  MAX_TERM_COLS,
-  MAX_TERM_INPUT_CHARS,
-  MAX_TERM_ROWS,
   MAX_TEXT_FIELD_CHARS,
   MAX_WORKSPACE_CHARS,
   TRACE_TAIL,
   MAX_EDITOR_BYTES,
-  MAX_COMMIT_MESSAGE_CHARS,
-  MAX_GIT_PATHS,
-  MAX_GIT_LOG,
-  MAX_GIT_CLONE_URL_CHARS,
-  MAX_SHELL_PATH_CHARS,
 } from './wire-limits.js';
 /**
  * The BYOK bounds live with their own family (`provider-limits.ts`): a limit on

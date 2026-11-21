@@ -23,13 +23,15 @@
 5. **行数只守「巨型文件」，不参与「要不要拆」**：
    - 单文件阈值 **600 行**（`scripts/structure-budget.mjs`）。低于它完全自由，**新建文件无需登记**任何账本。
    - 是否拆分只由**职责边界**决定：一个文件同时承担两件可命名的事就拆，只为把行数压到某个数字而拆是明确禁止的。
-   - 已超阈值的 6 个存量文件记在豁免表里，**只许缩不许涨**；涨了要 `pnpm gates:update` 显式承认（diff 里看得见）。
+   - 已超阈值的 5 个存量文件记在豁免表里，**只许缩不许涨**；涨了要 `pnpm gates:update` 显式承认（diff 里看得见）。
 
 ---
 
 ## 1. 项目概览
 
 自研、插件化、轻量化的跨平台本地 agent 运行时：在**当前工作目录**运行，通过任意 OpenAI 兼容端点对接模型，以「一切皆插件」的内核统一扩展工具、斜杠命令、钩子、Skills 与能力服务；界面只是同一内核事件流的消费者。所有数据集中在 `~/.nova/`，**工作区目录零写入**。
+
+**产品定位（2026-11-22）**：通用、轻量、本地的个人 agent，参照 WorkBuddy 的定位——办公、写作、资料整理、数据与日常自动化优先，编程只是可选任务之一。桌面右栏因此只保留**文件目录 + 文件预览**（变更 / 任务 / 终端 / 起始页已删除，宿主侧 PTY 与 git 变更帧一并移除）；模型在对话里用 **A2UI v1.0**（`render_ui` 工具）生成卡片、表单与按钮，用户的操作作为下一条消息回到 agent。
 
 - **运行时**：Node.js ≥ 20；PTC 代码模式要求 ≥ 22.19（`stripTypeScriptTypes`）。
 - **工具链**：TypeScript（strict，`noUncheckedIndexedAccess`）、ESM-only；构建 `tsdown`、测试 `vitest`、lint `oxlint`、包管理 pnpm。无 prettier。
@@ -43,6 +45,7 @@
 | --- | --- |
 | `docs/NOVA-GENERALIST.md` | **通用化纲领**：定位、执行契约、批次表（G 系列）、每批开工条件与删除判据。**历史留档类文档已于 2026-11-20 精简删除**（0.5.0 总纲 / 设计系统 / UI 架构 / Windows 纲领 / 测试纪律 / dsh 对账 / 两份审计留档），内容可从 git 历史或 `.docs-archive/` 取回 |
 | `docs/NOVA-BOUNDARIES.md` | 改动跨包依赖、插件边界、测试边界时 |
+| `packages/web/ui/DESIGN.md` | **改任何 UI / 样式 / 组件前必读**：样式层决策树、token 词汇表（脚本生成）、守卫规则、常见 recipe、验证矩阵 |
 
 > **重构期测试纪律例外**：§0.4「拒绝过度测试」持续有效；重构批次的验收以 `docs/NOVA-GENERALIST.md` §6 各批「验收」段为准，两者冲突时以后者为准。
 
@@ -55,8 +58,9 @@
 | `pnpm check` | **开发快环（首选）**：lint + gates + `--changed` 增量测试 | 快 |
 | `pnpm vitest run <path>` | **单文件精准验证**：开发时只跑对应测试文件 | 极快 |
 | `pnpm typecheck` | 逐包类型检查（改了 core/plugins 后要先 build 才能查上层） | 中 |
-| `pnpm gates` | 结构棘轮：依赖方向白名单 + 单文件 600 行阈值 + 测试边界 + UI token 全仓上限 | 快 |
+| `pnpm gates` | 结构棘轮：依赖方向白名单 + 单文件 600 行阈值 + 测试边界 + UI token 全仓上限 + DESIGN.md token 表新鲜度 | 快 |
 | `pnpm gates:update` | 同步行数豁免表 / UI token 上限（仅是「承认存量」，不是日常动作） | 快 |
+| `pnpm tokens:doc` | 重新生成 `packages/web/ui/DESIGN.md` 的 token 表（改 token 后必跑） | 快 |
 | `pnpm dev` | tsx 直跑 cli 源码（免构建调试） | - |
 | `pnpm build` | 全量构建（修改底层包且需要 dist 验证时） | 较慢 |
 | `pnpm verify` | **全环封板验收**：build + typecheck + test + gates（仅在任务交付时使用） | 慢 |
@@ -93,6 +97,20 @@
 4. **权限与审批**：
    - 审批档位与记忆按会话隔离（每会话独立）；唯有 `approvalPolicy`（`ask` / `never`）为进程级状态。
 
+### ZCode 参照纪律（防屎山，2026-11-21 起）
+
+改动以下五类之前，先学 ZCode 的同类方案，再写 3–5 行「对照了哪个模块 / 采用什么 / 放弃什么 / 为什么」小结（进提交说明或代码注释），最后按本仓惯例落地：
+
+- 新增包 / 改包间依赖 → `architecture-policy.yaml`（模块注册表）
+- 新增或修改协议、帧、跨进程数据 → `packages/*/contract.ts` 模式
+- 新增工具或任何外部副作用入口 → CLI adapter 规范
+- 改 UI 架构、状态管理、样式 → 本仓 `packages/web/ui/DESIGN.md`；ZCode 对照物 `packages/ui/AGENTS.md`
+- 并发、队列、输入接纳、所有权路由 → `CommandInbox` / owner-lease 语义
+
+参照源码：优先 `.reference/zcode/`（只读、不随本仓发行）；本机已有只读副本 `D:\web\zcode-desktop-ui-study`（含 `DESIGN.md` / `packages/ui/AGENTS.md` / `architecture-policy.yaml`）。找不到对应物时写明「原创取舍」。**禁止修改参照源码；禁止拷贝代码入库**（确需移植：重写为本仓风格 + Apache 2.0 来源标注 + 向用户说明）。
+
+**不学**：体量与文档规模、平台绑定、Electron 级依赖、为对齐而过度分层。
+
 ---
 
 ## 4. 关键文件索引（定位修改直接切入）
@@ -102,10 +120,12 @@
 - **内置工具集**：`packages/plugins/src/builtin/`（`fs.ts`, `bash.ts`, `search.ts` 等）
 - **桌面传输与帧协议**：`packages/web/src/desktop-host.ts`（装配 + stdio 管道）、`packages/web/src/pipe.ts`（行分帧 + 尺寸豁免）、`packages/web/src/controller.ts`（内核 ↔ 帧）
 - **帧协议形状**：`packages/web/src/protocol.ts`（导出面）、`client-frames.ts` / `server-frames.ts`（两个方向）、`client-frame.ts`（不可信入站校验）、`wire-limits.ts`（全部上限）
-- **桌面壳**：`apps/tauri-bench/src-tauri/src/lib.rs`（spawn / 行泵 / `nova_send` / `nova_ready` / stdin EOF 退出）
-- **DesktopUI 状态与 Reducer**：`packages/web/ui/src/state.ts`、`packages/web/ui/src/state-events.ts`、`packages/web/ui/src/client/connection.ts`（Transport 接缝）
-- **DesktopUI shadcn 原语层**：`packages/web/ui/src/components/ui/`（Radix base；新交互与弹窗优先组合这些原语，`cn` 统一来自 `cn` 包）
-- **DesktopUI 存量组件层**：`packages/web/ui/src/kit/`（Dialog/Button/IconButton——尚未迁移的调用点继续组合 kit，禁止再写本地配方）
+- **桌面壳**：`apps/tauri-bench/src-tauri/src/lib.rs`（spawn / 行泵 / `nova_send` / `nova_ready` / stdin EOF 退出）。这是**唯一**的桌面壳：Rust 只做窗口与进程管道，界面代码一律 TypeScript（与 ZCode 的 Electron/TS 前端同一语言）。原 WinUI 3 C# 壳已删，勿再引入第二套原生壳
+- **DesktopUI 状态与 Reducer**：`packages/web/ui/src/state.ts`（公共入口，re-export）+ `packages/web/ui/src/state/`（`types` / `initial` / `actions` / `reduce` / `ready` 五片，按职责拆）、`packages/web/ui/src/state-events.ts`；`packages/web/ui/src/client/`（8 文件：connection / model / protocol / messages / runs / approvals / requests / sessions）
+- **DesktopUI 原语与控件层**：`packages/web/ui/src/components/ui/`（shadcn 风格 **chat 专用**原语：Bubble/Message/Attachment/Marker/Button/MessageScroller；**不是通用原语层，没有 dialog/input/select**）、`packages/web/ui/src/kit/`（跨页控件 Dialog/Button/IconButton——新弹窗必须组合 `kit/Dialog` + `shell/modal-layer`）；原 `src/ui/`（Aceternity 装饰层）已删除，勿再引入
+- **A2UI**：协议形状与校验唯一定义在 `packages/core/src/a2ui.ts`；工具 `render_ui` 在 `packages/plugins/src/builtin/ui.ts`；渲染器在 `packages/web/ui/src/a2ui/`（`surface.ts` 折叠/绑定、`A2ui.tsx` 组件、`action-context.tsx` 动作回传）。组件白名单就是 BASIC catalog，不要为某个业务另造一套。**有意不用官方 `@a2ui/react`/`web_core` SDK**（8.5 MB + lit/zod/preact signals，且样式会脱离 Nova token）：渲染器按 [client-integration 指南](https://a2ui.org/guides/client-integration/) 的语义自写——两端都归本仓所有，catalog 固定为 BASIC，跳过能力协商；动作载荷保留协议的 `surfaceId`/`sourceComponentId`/`timestamp`/`context` 与 `sendDataModel` 回传，经 prompt 帧作为下一条用户消息入队
+- **DesktopUI 右栏**：`packages/web/ui/src/rightbar/`（22 文件，只有**文件目录 + 文件预览**：`TreeDock` / `FilesView` / `FileTabView` + `files-model` / `editor-model` / `strip-state` / `git-marks`）
+- **DesktopUI 规格**：`packages/web/ui/DESIGN.md`（唯一 UI 规格入口；token 表由 `scripts/ui-token-doc.mjs` 生成）
 - **DesktopUI token 桥**：`packages/web/ui/src/tailwind.css`（shadcn 语义色全部指向 `--nova-*`，`dark:` 变体绑定 `body[data-nova-dark]`；这里一旦写死颜色，两层组件就会分叉）
 - **CLI 装配与 Surface 分发**：`packages/cli/src/kernel-boot.ts`、`packages/cli/src/surfaces.ts`
 
@@ -117,7 +137,7 @@
 2. **测试策略控制**：
    - 针对具体修改，编写最简的输入输出断言。
    - UI 测试车道严禁引入重量级 DOM 或浏览器环境，保持纯函数/静态标记检验。
-3. **测试规模基线（2026-11-21 桌面化后）**：仓库现有 **99 个测试文件 / 1,244 个用例**（11-20 精简前为 210 文件 / 6,176 断言；精简后 106/1,287，桌面化又删掉 8 个针对已删除 HTTP/WS 传输层的文件）。**这是上限，不是起点**——新测试必须先证明它保护的是现有测试覆盖不到的不变量。
+3. **测试规模基线（2026-11-22 通用化后）**：仓库现有 **97 个测试文件 / 1,192 个用例**（11-20 精简前为 210 文件 / 6,176 断言；精简后 106/1,287，桌面化删掉 8 个针对已删除 HTTP/WS 传输层的文件，通用化再删掉右栏变更/任务/终端页的模型测试）。**这是上限，不是起点**——新测试必须先证明它保护的是现有测试覆盖不到的不变量。这是文档纪律，不是机器门禁（`test-boundary.mjs` 只管测试放哪，不数数量）。
    - **保留的是契约与安全边界**：审批解析、不可信输入嗅探、session 隔离、run 生命周期、权限矩阵、协议帧校验、三道 UI 守卫（style/motion/palette）、`client-pure`（断言 client 不 import React）。
    - **已删除的是纯渲染/纯文案/纯 UI 几何**：markdown 解析细节、composer 文本处理、settings 各 section 的快照式断言、rightbar 折叠模型等。需要时从 git 历史取回。
    - **不要因为「测试看着少了」就补回去**。删掉的每一类都在提交信息里记了名。
@@ -125,6 +145,6 @@
    - 只有单文件超过 **600 行**才会红。低于阈值的文件不进入任何账本，也不需要任何同步动作。
    - 确需突破时（如新工具集天然就大）运行 `pnpm gates:update` 把文件放进豁免表；豁免只能缩，不能再涨。
    - **不要为了压行数而拆文件**：拆分的唯一正当理由是职责边界，不是行数。
-5. **文档精简（2026-11-20）**：文档只保留 **4 份**——本文件、`README.md`、`docs/NOVA-GENERALIST.md`、`docs/NOVA-BOUNDARIES.md`。八份历史文档已删（0.5.0 总纲 / 设计系统 / UI 架构 / Windows 纲领 / 测试纪律 / dsh 对账 / 两份审计留档）。
+5. **文档精简（2026-11-20，2026-11-21 增补 UI 规格）**：文档只保留 **5 份**——本文件、`README.md`、`docs/NOVA-GENERALIST.md`、`docs/NOVA-BOUNDARIES.md`、`packages/web/ui/DESIGN.md`（包级 UI 规格）。八份历史文档已删（0.5.0 总纲 / 设计系统 / UI 架构 / Windows 纲领 / 测试纪律 / dsh 对账 / 两份审计留档）。
    - 恢复方式：`git show <commit>:docs/<name>.md`，或本地 `.docs-archive/`（已 gitignore，含删除前的工作区版本）。
-   - **新文档的准入判据**：它必须回答一个**当前机制**问题且无法并入这 4 份之一。历史、计划、审计过程一律不进仓库——那是提交信息与 git 历史的职责。
+   - **新文档的准入判据**：它必须回答一个**当前机制**问题且无法并入这 5 份之一；优先放包级（如 `packages/web/ui/DESIGN.md`）而不是顶层。历史、计划、审计过程一律不进仓库——那是提交信息与 git 历史的职责。

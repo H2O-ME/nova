@@ -71,7 +71,6 @@ describe('motion system', () => {
       'sidebar/SessionBrowser.module.css',
       'sidebar/SessionRow.module.css',
       'rightbar/TreeDock.module.css',
-      'rightbar/ChangesView.module.css',
     ];
     for (const sheet of privateCopies) {
       const text = read(sheet);

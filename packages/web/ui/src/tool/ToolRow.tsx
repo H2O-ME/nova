@@ -74,9 +74,13 @@ export const ToolRow = memo(function ToolRow({
   );
   const variant = useMemo(() => rowVariant(view, model.body), [view, model.body]);
   const [expanded, setExpanded] = useState(false);
+  // An A2UI surface IS the card's reason to exist: it must be visible without a
+  // disclosure click, and it is not collapsible (collapsing a form loses the
+  // reader's place). Every other body keeps the ordinary disclosure rule.
+  const isSurface = shell.card === 'a2ui';
   // A body exists only when there is something to read in it.
-  const expandable = shell.card !== 'none' && !(shell.card === 'io' && shell.input === null && shell.output === null);
-  const open = expanded && expandable;
+  const expandable = !isSurface && shell.card !== 'none' && !(shell.card === 'io' && shell.input === null && shell.output === null);
+  const open = isSurface || (expanded && expandable);
   const status = rowStatusLabel(model.state);
   const toggle = (): void => setExpanded((value) => !value);
   // The running tail is the call's live output. It used to be suppressed while

@@ -1,4 +1,4 @@
-// 测试边界门禁（docs/NOVA-TESTING.md §3.3、docs/NOVA-BOUNDARIES.md §3.4）。
+// 测试边界门禁（AGENTS.md §5 测试纪律、docs/NOVA-BOUNDARIES.md §3.4）。
 //
 // 测试同样受架构边界管理。默认优先：
 //
