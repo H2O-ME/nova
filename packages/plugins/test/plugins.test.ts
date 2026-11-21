@@ -429,6 +429,26 @@ describe('builtinPlugins', () => {
       externalWrite.execute({ path: path.join(outsideDir, 'x.txt'), content: 'no' }, { rootDir: root }),
     ).rejects.toThrow(/escapes workspace root/);
   });
+
+  it('accepts render_ui messages encoded as a JSON string', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'nova-a2ui-'));
+    const host = new PluginHost(root);
+    await host.sync(rowsOf(builtinPlugins({ rootDir: () => root })));
+    const render = host.tools.find((t) => t.name === 'render_ui')!;
+    // Some providers stringify nested arrays; that encoding must still validate.
+    const messages = JSON.stringify([
+      { version: '1.0', createSurface: { surfaceId: 'main' } },
+      {
+        version: '1.0',
+        updateComponents: { surfaceId: 'main', components: [{ id: 'root', component: 'Text', text: 'hi' }] },
+      },
+    ]);
+    expect(await render.execute({ messages }, { rootDir: root })).toContain('已渲染界面');
+    // A bad component inside the same encoding still fails closed.
+    const bad = '[{"version":"1.0","createSurface":{"surfaceId":"main"}},'
+      + '{"version":"1.0","updateComponents":{"surfaceId":"main","components":[{"id":"root","component":"FancyTable"}]}}]';
+    expect(await render.execute({ messages: bad }, { rootDir: root })).toContain('Error');
+  });
 });
 
 describe('bash plugin', () => {

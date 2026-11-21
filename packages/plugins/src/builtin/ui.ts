@@ -13,28 +13,47 @@
  * the time someone clicks, and a form answer is a new user turn in A2UI's own
  * model.
  */
-import { parseA2uiMessages, tools as toolsKey, type Plugin } from '@nova-agent/core';
+import { parseA2uiMessages, tools as toolsKey, type A2uiMessage, type Plugin } from '@nova-agent/core';
 import { registerTool } from '../toolbox.js';
+
+/**
+ * The model sometimes encodes the message list as a JSON string (the arguments
+ * are then `{"messages":"[{...}]"}`). Both encodings reach the same fail-closed
+ * parser; this adapter is the only tolerance added for it.
+ */
+function messagesOf(value: unknown): readonly A2uiMessage[] | undefined {
+  if (typeof value !== 'string') return parseA2uiMessages(value);
+  try {
+    return parseA2uiMessages(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
 
 const DESCRIPTION = `Render an interactive A2UI surface (cards, forms, choices) in the user's chat.
 
 Use it when a visual surface is clearer than prose: collecting input with a form, offering options, a summary card, or a confirmation with buttons. Do NOT use it for ordinary text answers or to repeat what your reply already says.
 
-Pass \`messages\` following A2UI v1.0:
-1. {"version":"1.0","createSurface":{"surfaceId":"main"}}
-2. {"version":"1.0","updateComponents":{"surfaceId":"main","components":[...]}}
-3. optional {"version":"1.0","updateDataModel":{"surfaceId":"main","value":{...}}}
+Pass \`messages\` as a JSON ARRAY (not a JSON-encoded string) following A2UI v1.0. A complete working call:
 
-Components are a FLAT list; exactly one has id "root". Allowed component values:
-Text(text, variant), Row(children), Column(children), Card(child), List(children),
-Button(child, variant, action), TextField(label, value), CheckBox(label, value),
-ChoicePicker(label, options[{label,value}], value), Slider(label,min,max,value),
-DateTimeInput(value, enableDate, enableTime, label), Divider(axis), Image(url),
-Icon(name), Tabs(tabs), Modal(trigger, content).
+[
+  {"version":"1.0","createSurface":{"surfaceId":"main","sendDataModel":true}},
+  {"version":"1.0","updateComponents":{"surfaceId":"main","components":[
+    {"id":"root","component":"Column","children":["title","name","submit"]},
+    {"id":"title","component":"Text","text":"差旅报销","variant":"h2"},
+    {"id":"name","component":"TextField","label":"姓名","value":{"path":"/name"}},
+    {"id":"submit","component":"Button","child":"submit_label","action":{"event":{"name":"submit","context":{"name":{"path":"/name"}}}}},
+    {"id":"submit_label","component":"Text","text":"提交"}
+  ]}},
+  {"version":"1.0","updateDataModel":{"surfaceId":"main","value":{"name":""}}}
+]
 
-Bind a prop to the data model with {"path":"/field"} (or {"@path":"/field"} in v1.0).
-Give a Button an action such as {"event":{"name":"submit","context":{"email":{"path":"/email"}}}}.
-When the user clicks, the action name and the resolved field values come back to you as a new user message.`;
+Rules the renderer enforces:
+- Every component is FLAT: \`id\` + \`component\` (the catalog name, NOT \`type\`). \`child\`/\`children\` hold component ID STRINGS, never inline objects.
+- Exactly one component has id "root".
+- Allowed \`component\` values: Text(text, variant: h1|h2|h3|caption), Row(children), Column(children), Card(child), List(children), Button(child, variant, action), TextField(label, value, variant: shortText|longText|number|obscured), CheckBox(label, value), ChoicePicker(label, options[{label,value}], value, variant: multipleSelection), Slider(label,min,max,value), DateTimeInput(label, value, enableDate, enableTime), Divider(axis), Image(url), Icon(name), Tabs(tabs), Modal(trigger, content), Video(url), AudioPlayer(url).
+- Bind a prop to the data model with {"path":"/field"} (or {"@path":"/field"} in v1.0).
+- When the user clicks a Button, its action name and resolved context come back as a new user message.`;
 
 const PARAMETERS = {
   type: 'object',
@@ -64,7 +83,7 @@ export function uiPlugin(): Plugin {
           description: DESCRIPTION,
           parameters: PARAMETERS,
           execute(args) {
-            const messages = parseA2uiMessages(args['messages']);
+            const messages = messagesOf(args['messages']);
             if (messages === undefined) {
               return 'Error: messages 不是合法的 A2UI v1.0 消息列表（组件名、引用或长度不合格）。请修正后重试。';
             }
@@ -76,7 +95,7 @@ export function uiPlugin(): Plugin {
             return { card: 'generic', kind: 'other', title: '交互界面' };
           },
           presentResult(args) {
-            const messages = parseA2uiMessages(args['messages']);
+            const messages = messagesOf(args['messages']);
             return messages === undefined ? undefined : { card: 'a2ui', ok: true, messages };
           },
         },
