@@ -12,8 +12,8 @@ export interface Columns {
   rightbar: number;
 }
 
-/** Center width protected while the normal right column is open. */
-export const CENTER_MIN = 400;
+/** Right column drag clamp floor. */
+export const RIGHTBAR_MIN = 300;
 /** Sidebar drag clamp floor. */
 export const SIDEBAR_MIN = 264;
 /**
@@ -29,12 +29,56 @@ export const SIDEBAR_MAX_RATIO = 0.5;
 export const SIDEBAR_DEFAULT = 264;
 /** Closed-sidebar rail: a 24px icon column between 16px horizontal paddings. */
 export const SIDEBAR_COLLAPSED = 56;
-/** Viewport width below which the sidebar auto-collapses to the rail; a manual
- *  toggle below it re-expands over the squeezed center (layout-store's
- *  `narrowExpanded`). */
-export const SIDEBAR_AUTO_COLLAPSE = 1024;
-/** Right column drag clamp floor. */
-export const RIGHTBAR_MIN = 300;
+/**
+ * The CONVERSATION COLUMN width under which the sidebar auto-collapses.
+ *
+ * Measured from the reference, and it is the reference's own criterion: its
+ * `CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX` watches the conversation
+ * pane's measured width, NOT the window (`WorkspaceShellLayout.tsx:159,
+ * 912-919`). Nova used the window width (1024), which conceded far too early —
+ * at a 1000px window the transcript still had room, so the column was squeezed
+ * into a rail that then had nothing to gain. A panel can only hurt the
+ * transcript by the width it actually takes, so the transcript states the
+ * budget.
+ */
+export const SIDEBAR_COLLAPSE_BELOW_CONVERSATION = 420;
+/**
+ * The re-expand threshold, deliberately above the collapse one by MORE than
+ * the width the rail hands back.
+ *
+ * The measured width is the thing the collapse changes: closing the rail gives
+ * the column `SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED` = 208px. A single
+ * threshold therefore oscillates — "344 is narrow, collapse" immediately
+ * measures 552 as "wide, expand", forever. The gap must exceed that 208, or
+ * the collapse it just made reads as the reason to undo itself.
+ */
+export const SIDEBAR_EXPAND_ABOVE_CONVERSATION = SIDEBAR_COLLAPSE_BELOW_CONVERSATION + SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED + 60;
+/**
+ * The width a crossing must see, given which way it is crossing.
+ * @param current - whether the rail is currently collapsed.
+ * @param width - the measured conversation column width.
+ * @returns the collapse state the measurement implies.
+ */
+export function collapseFor(current: boolean, width: number): boolean {
+  return current ? width < SIDEBAR_EXPAND_ABOVE_CONVERSATION : width < SIDEBAR_COLLAPSE_BELOW_CONVERSATION;
+}
+/**
+ * The CONVERSATION COLUMN width under which the right panel closes itself
+ * (the reference's `CONVERSATION_AUTO_COLLAPSE_SIDE_PANE_WIDTH_PX`, 480).
+ * Same reasoning as the sidebar's, and it is why the panel is squeezed rather
+ * than turned into a full-screen takeover: a panel that covers the transcript
+ * costs the reader what they were reading, while a narrow one still leaves a
+ * legible column beside it.
+ */
+export const RIGHTBAR_COLLAPSE_BELOW_CONVERSATION = 480;
+/**
+ * The conversation column's floor while BOTH side panels are open. Below this
+ * the panels start conceding (the right one closes first). 360 is the
+ * reference's own conversation `minSize` (`WorkspaceShellLayout.tsx:2782`), so
+ * a transcript never shrinks past a readable measure no matter what the panels
+ * ask for.
+ */
+export const CONVERSATION_MIN = 360;
 /** Maximum normal right panel width as a fraction of the frame. */
 export const RIGHTBAR_MAX_RATIO = 0.7;
 /** First-open right panel preference as a fraction of the frame. The reference
@@ -78,7 +122,14 @@ export function sidebarMaxWidth(viewport: number): number {
  */
 export function computeColumns(viewport: number, sidebar: number, rightbar: number): Columns {
   const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, sidebarMaxWidth(viewport));
-  const available = viewport - s - CENTER_MIN;
+  // The transcript's floor is `CONVERSATION_MIN`, and the panel concedes to it
+  // rather than the other way round: a panel narrower than its own minimum is
+  // not a panel, so a frame that cannot seat both simply has no panel (the
+  // collapse policy in `App.tsx` then closes it). The reference solves this
+  // with one horizontal `ResizablePanelGroup` (conversation `minSize 360`, side
+  // pane `minSize 240`); a flat grid can express the same concession as this
+  // arithmetic.
+  const available = viewport - s - CONVERSATION_MIN;
   const r =
     rightbar === 0 || available < RIGHTBAR_MIN
       ? 0

@@ -67,8 +67,11 @@
   border: none;
 }
 
-/* The solver removed the right track (a narrow frame): the panel takes the
-   window rather than leaving a sliver of transcript that cannot be read. */
+/* The solver removed the right track: the panel is a full-screen takeover for
+   the one frame between the measurement and the auto-close that follows it.
+   The CLOSE is the policy (`App.tsx` runs the reference's 480px rule off the
+   conversation column), so this state is never a resting place — it exists so
+   the panel is never drawn as a 0px sliver while it is still on its way out. */
 .panel[data-rightbar='takeover'] {
   position: fixed;
   inset: var(--nova-space-6);

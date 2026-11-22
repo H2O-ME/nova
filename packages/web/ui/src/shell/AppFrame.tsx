@@ -56,6 +56,14 @@ export interface AppFrameProps {
   layout: LayoutState;
   /** Publish the frame's own measured width (rAF-throttled ResizeObserver). */
   onViewportWidth: (width: number) => void;
+  /**
+   * Publish the CONVERSATION column's measured width. The auto-collapse
+   * policy watches this, not the frame: a panel can only hurt the transcript
+   * by the width it actually takes (the reference's own criterion,
+   * `WorkspaceShellLayout.tsx:912-919`), so a wide window whose columns are
+   * all dragged wide must collapse exactly like a narrow one.
+   */
+  onConversationWidth: (width: number) => void;
   onSidebarWidth: (px: number) => void;
   onRightbarWidth: (px: number) => void;
   /** Whether a sidebar drag is in flight (the tracks pause their transition). */
@@ -177,6 +185,7 @@ function DragHandle(props: {
 export function AppFrame({
   layout,
   onViewportWidth,
+  onConversationWidth,
   onSidebarWidth,
   onRightbarWidth,
   dragging,
@@ -190,6 +199,10 @@ export function AppFrame({
   const viewport = layout.viewportWidth;
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
+  // The CONVERSATION column is observed from the same pass: it is the width the
+  // auto-collapse policy is about, and it shrinks for reasons the frame's own
+  // width never sees (a dragged sidebar, a newly opened panel).
+  const conversationRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = frameRef.current;
     if (el === null) return;
@@ -198,6 +211,11 @@ export function AppFrame({
     const measure = (): void => {
       const width = el.getBoundingClientRect().width;
       if (width > 0) onViewportWidth(width);
+      const column = conversationRef.current;
+      if (column !== null) {
+        const columnWidth = column.getBoundingClientRect().width;
+        if (columnWidth > 0) onConversationWidth(columnWidth);
+      }
     };
     measure();
     const observer = new ResizeObserver(() => {
@@ -213,7 +231,7 @@ export function AppFrame({
       observer.disconnect();
       if (raf !== null) cancelAnimationFrame(raf);
     };
-  }, [onViewportWidth]);
+  }, [onViewportWidth, onConversationWidth]);
 
   const collapsed = sidebarCollapsed(layout);
   const preference = sidebarPreference(layout);
@@ -301,9 +319,7 @@ export function AppFrame({
   );
 
   return (
-    <div
-      ref={frameRef}
-      className={css.frame}
+      <div ref={frameRef} className={css.frame}
       style={{
         gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px`,
         // Published for the absolutely-positioned top drag strip: the strip
@@ -322,7 +338,15 @@ export function AppFrame({
     >
       <div className={css.sidebarCol}>{sidebarNode}</div>
       <>
-        <CenterColumn>{center}</CenterColumn>
+        <CenterColumn>
+          {/* The measured box the auto-collapse policy watches. It wraps the
+              occupant rather than reading it: the occupant is a slot array, so
+              there is no single element to observe, and the column's own grid
+              track is not an element. */}
+          <div ref={conversationRef} className={css.conversationMeasure} data-conversation-measure="">
+            {center}
+          </div>
+        </CenterColumn>
         <RightbarColumn>{rightbarNode}</RightbarColumn>
       </>
       {/* The Windows ground's top strip is the frameless window's drag bar

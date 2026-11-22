@@ -15,7 +15,6 @@ import {
   RIGHTBAR_DEFAULT_RATIO,
   RIGHTBAR_MAX_RATIO,
   RIGHTBAR_MIN,
-  SIDEBAR_AUTO_COLLAPSE,
   SIDEBAR_DEFAULT,
   SIDEBAR_MIN,
   sidebarMaxWidth,
@@ -26,6 +25,13 @@ export interface LayoutState {
   sidebar: number;
   /** Last positive frame measurement; window width bootstraps the first render. */
   viewportWidth: number;
+  /**
+   * Last positive CONVERSATION column measurement (0 until the frame publishes
+   * its first one). This — not `viewportWidth` — is what the auto-collapse
+   * policy reads: a panel can only hurt the transcript by the width it takes,
+   * so a wide window with dragged-wide columns must collapse like a narrow one.
+   */
+  conversationWidth: number;
   /**
    * The debounced fact "this frame is narrower than the auto-collapse
    * breakpoint". Window resizes land in `viewportWidth` immediately (the
@@ -78,7 +84,18 @@ export function initialLayout(
         ? clampWidth(restored.sidebar, SIDEBAR_MIN, sidebarMaxWidth(viewportWidth))
         : SIDEBAR_DEFAULT,
     viewportWidth,
-    autoNarrow: viewportWidth < SIDEBAR_AUTO_COLLAPSE,
+    // Unknown until the frame publishes its first measurement. The boot
+    // collapse is therefore decided by that first report, not guessed here —
+    // a guess would have to re-derive the column's width from the viewport,
+    // which is the second implementation this state exists to avoid.
+    conversationWidth: 0,
+    // Nothing is known about the frame yet, so nothing is collapsed. The
+    // window starts hidden (`visible: false` in the Tauri config), which
+    // reports `innerWidth` 0 for the first frames; guessing "narrow" from that
+    // collapsed the rail on every launch and — because the first measurement
+    // is the only other writer — never undid it. A genuinely narrow load is
+    // answered one measurement later, which is the same frame the reader sees.
+    autoNarrow: false,
     narrowExpanded: false,
     rightbar:
       restored.rightbar !== null && restored.rightbar !== undefined && restored.rightbar > 0
@@ -125,6 +142,17 @@ export function toggleSidebar(state: LayoutState): LayoutState {
 export function setViewportWidth(state: LayoutState, width: number): LayoutState {
   if (state.viewportWidth === width) return state;
   return { ...state, rightbarInstant: false, viewportWidth: width };
+}
+
+/**
+ * Commit the measured conversation-column width. Written from the frame's
+ * measurement pass; the COLLAPSE it may cause is still `setAutoCollapse`'s
+ * debounced decision (`use-layout`), so dragging the window does not flip the
+ * rail per frame.
+ */
+export function setConversationWidth(state: LayoutState, width: number): LayoutState {
+  if (state.conversationWidth === width) return state;
+  return { ...state, conversationWidth: width };
 }
 
 export function setRightbar(state: LayoutState, px: number): LayoutState {

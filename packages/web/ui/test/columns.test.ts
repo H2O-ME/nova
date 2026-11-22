@@ -6,14 +6,17 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  CENTER_MIN,
+  CONVERSATION_MIN,
+  RIGHTBAR_COLLAPSE_BELOW_CONVERSATION,
   RIGHTBAR_MIN,
-  SIDEBAR_AUTO_COLLAPSE,
+  SIDEBAR_COLLAPSE_BELOW_CONVERSATION,
   SIDEBAR_COLLAPSED,
   SIDEBAR_DEFAULT,
+  SIDEBAR_EXPAND_ABOVE_CONVERSATION,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
   clampWidth,
+  collapseFor,
   computeColumns,
 } from '../src/shell/columns.js';
 
@@ -44,25 +47,26 @@ describe('computeColumns', () => {
   });
 
   it('the right column shrinks before the centre concedes', () => {
-    // 1000 - 264 - 400 = 336 available, clamped into [300, 700].
+    // 1000 - 264 - 360 = 376 available; the request (600) exceeds it, so the
+    // panel takes the whole remainder and the centre sits exactly on its floor.
     expect(computeColumns(1000, SIDEBAR_DEFAULT, 600)).toEqual({
       sidebar: 264,
-      center: 400,
-      rightbar: 336,
+      center: CONVERSATION_MIN,
+      rightbar: 376,
     });
   });
 
   it('the right column loses its track before the centre drops below its minimum', () => {
-    // 900 - 264 - 400 = 236 < RIGHTBAR_MIN: the track goes to zero and the
+    // 900 - 264 - 360 = 276 < RIGHTBAR_MIN: the track goes to zero and the
     // centre keeps the whole remainder.
     const cols = computeColumns(900, SIDEBAR_DEFAULT, 600);
     expect(cols.rightbar).toBe(0);
     expect(cols.center).toBe(636);
   });
 
-it('only without the right track may the centre fall below its minimum', () => {
+  it('only without the right track may the centre fall below its minimum', () => {
     const cols = computeColumns(500, SIDEBAR_DEFAULT, 0);
-    expect(cols.center).toBeLessThan(CENTER_MIN);
+    expect(cols.center).toBeLessThan(CONVERSATION_MIN);
     expect(cols.center).toBe(500 - SIDEBAR_DEFAULT);
   });
 
@@ -78,9 +82,27 @@ it('only without the right track may the centre fall below its minimum', () => {
     expect(computeColumns(600, 2000, 0).sidebar).toBe(420);
   });
 
-  it('the rail is narrower than the sidebar floor, which sits under the breakpoint', () => {
+  it('the rail is narrower than the sidebar floor, and every floor sits under its collapse threshold', () => {
     expect(SIDEBAR_COLLAPSED).toBeLessThan(SIDEBAR_MIN);
-    expect(SIDEBAR_MIN).toBeLessThan(SIDEBAR_AUTO_COLLAPSE);
-    expect(RIGHTBAR_MIN).toBeGreaterThan(CENTER_MIN / 2);
+    // Both collapse thresholds are CONVERSATION widths, so they compare with
+    // the conversation floor, not with the sidebar's preference range: the
+    // panel closes first (480) and the rail follows (420).
+    expect(RIGHTBAR_COLLAPSE_BELOW_CONVERSATION).toBeGreaterThan(SIDEBAR_COLLAPSE_BELOW_CONVERSATION);
+    expect(RIGHTBAR_MIN).toBeGreaterThan(CONVERSATION_MIN / 2);
+  });
+
+  it('the collapse pair is asymmetric, so a collapse never un-collapses itself', () => {
+    // The measured width IS what the collapse changes: the rail hands the
+    // column its 208px back. With one threshold the pair oscillates forever.
+    expect(SIDEBAR_EXPAND_ABOVE_CONVERSATION).toBeGreaterThan(SIDEBAR_COLLAPSE_BELOW_CONVERSATION);
+    // Mid-band: the state the rail is already in is the one that stands.
+    const mid = SIDEBAR_COLLAPSE_BELOW_CONVERSATION + 10;
+    expect(collapseFor(false, mid)).toBe(false);
+    expect(collapseFor(true, mid)).toBe(true);
+    // The exact case that oscillated: expanded at 344 collapses, and the 552
+    // it then measures is still short of the re-expand threshold.
+    const narrow = SIDEBAR_COLLAPSE_BELOW_CONVERSATION - 76;
+    expect(collapseFor(false, narrow)).toBe(true);
+    expect(collapseFor(true, narrow + SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED)).toBe(true);
   });
 });

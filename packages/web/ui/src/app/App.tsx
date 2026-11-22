@@ -15,6 +15,7 @@ import { docAt } from '../rightbar/editor-model.js';
 import { readRecentWorkspaces, rememberWorkspace } from '../shell/workspaces.js';
 import { useEscapeToClose } from '../shell/use-escape.js';
 import { useLayout } from '../shell/use-layout.js';
+import { RIGHTBAR_COLLAPSE_BELOW_CONVERSATION } from '../shell/columns.js';
 import { useNativePick } from '../shell/native-pick.js';
 import { DocumentTitle } from '../shell/DocumentTitle.js';
 import { loadBootGraph } from '../plugins/client-loader.js';
@@ -214,6 +215,28 @@ export function App(): JSX.Element {
     if (!rightbarOpen) closeRightbar();
     else openRightbar(layout.layout.rightbarFullscreen);
   }, [rightbarOpen, openRightbar, closeRightbar, layout.layout.rightbarFullscreen]);
+
+  /**
+   * The right panel's own auto-collapse (the reference's
+   * `CONVERSATION_AUTO_COLLAPSE_SIDE_PANE_WIDTH_PX` = 480,
+   * `WorkspaceShellLayout.tsx:153, 940-953`): once the conversation column is
+   * narrower than the panel it is standing beside, the panel closes itself
+   * rather than shrinking the transcript to a strip. It is a CLOSE, not a
+   * takeover — a panel that covers the column costs the reader what they were
+   * reading.
+   *
+   * The reference runs this only off a window resize and deliberately skips
+   * its own ResizeObserver, so a panel the reader opened is never closed by
+   * policy a moment later. Nova keeps that rule in `use-layout`: the measured
+   * width lands once the frame settles, never per drag frame. The panel is
+   * fullscreen-exempt, like the reference's full view.
+   */
+  useEffect(() => {
+    if (!rightbarOpen || layout.layout.rightbarFullscreen) return;
+    if (layout.layout.conversationWidth <= 0) return;
+    if (layout.layout.conversationWidth >= RIGHTBAR_COLLAPSE_BELOW_CONVERSATION) return;
+    setRightbarOpen(false);
+  }, [rightbarOpen, layout.layout.conversationWidth, layout.layout.rightbarFullscreen]);
 
   // The New Task row's advertised shortcut, made real: Ctrl/Cmd+N starts a
   // session (leaving the plugin center first, like every session gesture).

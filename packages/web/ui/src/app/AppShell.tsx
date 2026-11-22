@@ -68,6 +68,7 @@ export function AppShell(props: AppShellProps): JSX.Element {
       dragging={layout.dragging}
       onDragChange={layout.setDragging}
       onViewportWidth={layout.setViewportWidth}
+      onConversationWidth={layout.setConversationWidth}
       onSidebarWidth={layout.setSidebar}
       onRightbarWidth={layout.setRightbar}
       sidebar={({ collapsed, width, auto }) => (

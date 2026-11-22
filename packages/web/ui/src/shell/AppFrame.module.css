@@ -179,6 +179,19 @@
   pointer-events: none;
 }
 
+/* The conversation column's measured box (the auto-collapse policy's subject).
+   It is a plain pass-through: `display: contents` would break the measurement
+   (`getBoundingClientRect` on a contents box is empty), so it is a flex
+   column that fills its grid cell and hands the height straight down — the
+   occupant's own `flex: 1` chain must not gain a box it has to fight. */
+.conversationMeasure {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .overlayLayer > * {
   pointer-events: auto;
 }

@@ -17,13 +17,14 @@
  *   drag finish for the same reason.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { SIDEBAR_AUTO_COLLAPSE } from './columns.js';
+import { collapseFor } from './columns.js';
 import type { LayoutState } from './layout-store.js';
 import {
   closeRightbar as closeRightbarState,
   initialLayout,
   openRightbar as openRightbarState,
   setAutoCollapse as setAutoCollapseState,
+  setConversationWidth as setConversationWidthState,
   setRightbar as setRightbarState,
   setSidebar as setSidebarState,
   setViewportWidth as setViewportWidthState,
@@ -46,6 +47,8 @@ export interface LayoutBinding {
   dragging: boolean;
   setDragging: (dragging: boolean) => void;
   setViewportWidth: (width: number) => void;
+  /** Report the CONVERSATION column's measured width (drives the collapse). */
+  setConversationWidth: (width: number) => void;
   setSidebar: (px: number) => void;
   setRightbar: (px: number) => void;
   openRightbar: (fullscreen: boolean) => void;
@@ -76,17 +79,42 @@ export function useLayout(): LayoutBinding {
 
   const setViewportWidth = useCallback((width: number): void => {
     setLayout((state) => setViewportWidthState(state, width));
+  }, []);
+
+  /**
+   * The collapse policy's one input: the conversation column's measured width.
+   *
+   * Measured from the reference (`WorkspaceShellLayout.tsx:912-919`), which
+   * watches the conversation pane rather than the window — so this fires for
+   * a dragged sidebar and a newly opened panel too, not only for a window
+   * resize. The reference deliberately resizes on WINDOW resize only and skips
+   * its own ResizeObserver, so a panel the reader opened is never closed again
+   * by policy; Nova keeps that: `setConversationWidth` is called from the
+   * frame's measurement pass, which runs when the frame resizes OR when a
+   * drag settles, never per drag frame.
+   *
+   * The FIRST measurement applies immediately (a load into a narrow frame must
+   * not flash the expanded column); later crossings wait for resize idle.
+   */
+  const setConversationWidth = useCallback((width: number): void => {
+    // A zero-width report is NOT a narrow column: it is a measurement taken
+    // before layout. Committing it would collapse the rail on every load.
+    if (!(width > 0)) return;
+    // Store the fact FIRST: the debounced branch below reads it back, and the
+    // earlier version of this function wrote only the collapse, so a settle
+    // always saw 0 and read it as "narrower than the threshold".
+    setLayout((state) => setConversationWidthState(state, width));
     if (firstMeasure.current) {
       firstMeasure.current = false;
-      setLayout((state) => setAutoCollapseState(state, width < SIDEBAR_AUTO_COLLAPSE));
+      setLayout((state) => setAutoCollapseState(state, collapseFor(state.autoNarrow, width)));
       return;
     }
     if (idleTimer.current !== null) window.clearTimeout(idleTimer.current);
     idleTimer.current = window.setTimeout(() => {
       idleTimer.current = null;
-      // Read the CURRENT state: crossings that un-crossed inside the idle
-      // window commit as no-ops.
-      setLayout((state) => setAutoCollapseState(state, state.viewportWidth < SIDEBAR_AUTO_COLLAPSE));
+      // Read the CURRENT fact: a crossing that un-crossed inside the idle
+      // window commits as a no-op.
+      setLayout((state) => setAutoCollapseState(state, collapseFor(state.autoNarrow, state.conversationWidth)));
     }, RESIZE_IDLE_MS);
   }, []);
 
@@ -126,6 +154,7 @@ export function useLayout(): LayoutBinding {
       dragging,
       setDragging,
       setViewportWidth,
+      setConversationWidth,
       setSidebar,
       setRightbar,
       openRightbar,
@@ -134,6 +163,6 @@ export function useLayout(): LayoutBinding {
       collapsed: sidebarCollapsed(layout),
       narrow: layout.autoNarrow,
     }),
-    [layout, dragging, setViewportWidth, setSidebar, setRightbar, openRightbar, closeRightbar, toggleSidebar],
+    [layout, dragging, setViewportWidth, setConversationWidth, setSidebar, setRightbar, openRightbar, closeRightbar, toggleSidebar],
   );
 }
