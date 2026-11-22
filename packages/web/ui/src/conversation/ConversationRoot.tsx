@@ -199,12 +199,16 @@ export function ConversationRoot({
   const publishWidths = useCallback((root: HTMLDivElement): void => {
     const column = root.offsetWidth;
     root.style.setProperty('--nova-conversation-column-width', `${column}px`);
+    // Publish the RESOLVED content width for every column, not only for a
+    // dragged one. The sheet's own value is the 864–1279 step, so leaving it
+    // in force on a wider or narrower column put the transcript and the
+    // composer card on two different axes until something else re-resolved
+    // them. `content-width.ts` owns the three steps; this is the only writer.
     const preference = readWidthPreference();
-    if (preference === null) {
-      root.style.removeProperty('--nova-chat-user-width');
-    } else {
-      root.style.setProperty('--nova-chat-user-width', `${resolveContentWidth(column, preference)}px`);
-    }
+    root.style.setProperty(
+      '--nova-chat-content-width',
+      `${resolveContentWidth(column, preference)}px`,
+    );
   }, []);
   const rootResizeRef = useCallback((root: HTMLDivElement | null): void => {
     rootObserver.current?.disconnect();
@@ -232,7 +236,7 @@ export function ConversationRoot({
   const onHandleDrag = useCallback((width: number): void => {
     const root = rootEl.current;
     if (root === null) return;
-    root.style.setProperty('--nova-chat-user-width', `${resolveContentWidth(root.offsetWidth, width)}px`);
+    root.style.setProperty('--nova-chat-content-width', `${resolveContentWidth(root.offsetWidth, width)}px`);
   }, []);
   const onHandleCommit = useCallback((width: number): void => {
     const root = rootEl.current;

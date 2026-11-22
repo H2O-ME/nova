@@ -16,38 +16,24 @@
      content + 32px at every width. Declared on the root because the
      transcript and the composer seat are sibling subtrees.
 
-     W adapts to the column, not the viewport (a collapsed sidebar widens the
-     column without resizing the window): the component publishes the column's
-     live width as --nova-conversation-column-width (px, via ResizeObserver —
-     container-type would re-anchor the subtree's portal-free position:fixed
-     descendants) and the clamp keeps a floor, takes 64% of wider columns, and
-     caps at 920px for line-length readability. A dragged user preference
-     (--nova-chat-user-width, published by the width handles) replaces the
-     adaptive term wholesale.
-
-     THE FLOOR WAS 680 AND IT ATE THE RATIO (2026-10-19). `clamp` returns the
-     floor whenever the preferred term is smaller — and 64% of the column IS
-     smaller until the column passes 1063px. At a 1139px window the column is
-     859px, 64% is 550px, so the clamp returned 680 and the composer card
-     resolved to 712px: **83% of the column**, a 6.7:1 bar. That is the whole of
-     the "横条 / 太宽太扁" look, and no component library changes a percentage.
-     The floor drops to 560 so the ratio term can actually win in the normal
-     window range (560 starts binding only under ~875px of column), which puts
-     the card at 69% here and keeps it from ever collapsing below a usable
-     measure on a narrow column. */
-  /* WIDTH: the reference's two-step content column (2026-11-15, ZCode
-   * alignment). Its transcript/dock column is `w-full` below an 864px pane,
-   * `calc(100% - 6rem)` capped at max-w-4xl (896) from 864, and
-   * `calc(100% - 24rem)` capped at max-w-6xl (1152) from 1280 — the content
-   * GROWS with the window instead of sitting under one fixed 920 cap. The
-   * live value is resolved in `content-width.ts` and published by the
-   * component (which knows the column's own width); the CSS fallback below is
-   * the 864–1279 step, the shape the first paint should have on a desktop
-   * window. `--nova-chat-user-width` still wins when the reader has dragged. */
-  --nova-chat-content-width: var(
-    --nova-chat-user-width,
-    min(calc(100% - 96px), 896px)
-  );
+     W adapts to the COLUMN, not the viewport: the component measures the
+     column with a ResizeObserver and publishes the resolved width on this
+     element (a container-type would re-anchor position:fixed descendants).
+     The three steps and the drag clamp are `content-width.ts`'s alone — this
+     sheet states only the first-paint fallback, because a stylesheet cannot
+     see its own box's width. */
+  /* WIDTH: the reference's three-step content column, resolved ONCE.
+   *
+   * `--nova-chat-content-width` is published by the component for every column
+   * width (`content-width.ts` owns the three steps: full width below 864,
+   * `100% - 96px` capped at 896 from 864, `100% - 384px` capped at 1152 from
+   * 1280). The value below is only the first-paint fallback for a column wide
+   * enough that JS has not reported yet — the earlier version repeated ONLY the
+   * middle step here, so any column outside 864–1279 painted the transcript
+   * and the composer card on two different axes until the observer fired.
+   * There is one rule; the sheet just cannot see the column's own width before
+   * the first measurement. */
+  --nova-chat-content-width: min(calc(100% - 96px), 896px);
   /* The input card is the content measure plus its 16px clearance per side. */
   --nova-composer-card-max-width: min(
     calc(100% - 16px),
