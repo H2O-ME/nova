@@ -339,7 +339,7 @@ describe('createAgentKernel', () => {
     kernel.agent.subscribe((e) => events.push(e));
     // The tool's own callback is what the assembly wires; calling it through the
     // published session is the same path a real delegation takes.
-    kernel.agent.observeSubagent({ type: 'start', label: 'scout' });
+    kernel.agent.observeSubagent({ type: 'start', id: 'sub-x', label: 'scout' });
     const published = events.find((e) => e.type === 'subagent_update');
     expect(published).toBeDefined();
     expect(published?.type === 'subagent_update' ? published.progress.label : '').toBe('scout');

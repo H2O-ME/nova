@@ -91,7 +91,7 @@ export const ReasoningRow = memo(function ReasoningRow({
         running={running}
         onToggle={() => { interacted.current = true; setExpanded((value) => !value); }}
       >
-        <div className={css.thinkBody}>
+        <div className={css.thinkBody} data-reasoning-body="">
           <MarkdownText text={text} streaming={running} variant="compact" />
         </div>
       </DisclosureRow>

@@ -13,7 +13,7 @@
  * paints no overlay band anywhere, so no sheet here should either.
  */
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
-import { ChevronDownGlyph14, ChevronUpGlyph14 } from './glyphs.js';
+import { ChevronRightGlyph14 } from './glyphs.js';
 import { Button } from '../components/ui/button.js';
 import { TextShimmer } from '../shell/TextShimmer.js';
 import css from './DisclosureRow.module.css';
@@ -70,15 +70,14 @@ export function DisclosureRow({
     event.preventDefault();
     onToggle();
   };
-  const collapsedLeading = previewChevron
-    ? (
-      <>
-        <span className={css.iconIdle}>{icon}</span>
-        <ChevronDownGlyph14 className={join(chevronClassName, css.chevronHover)} />
-      </>
-    )
-    : icon;
-  const leading = open ? <ChevronUpGlyph14 className={chevronClassName} /> : collapsedLeading;
+  // The reference keeps the row's own glyph and ADDS a chevron at the row's end
+  // (`ToolSummaryRow.tsx:235-243`: `ChevronRightIcon` at `opacity-0`, revealed
+  // on row hover, `rotate-90` when open). Swapping the leading glyph for a
+  // chevron — what this row used to do — made the one mark that says WHAT the
+  // row is disappear exactly while the reader was pointing at it (and again
+  // while it was open, when the reader most needs to know what opened). The
+  // leading slot is now permanent; the open/closed state lives in the trailing
+  // chevron's rotation.
 
   return (
     <div className={join(css.root, className)} data-open={open || undefined}>
@@ -98,15 +97,23 @@ export function DisclosureRow({
               variant="ghost"
               size="icon-xs"
               className={join(css.leading, leadingClassName)}
+              data-flow-leading=""
               aria-expanded={open}
               onClick={toggleFromLeading}
             >
-              {leading}
+              {icon}
             </Button>
           )
-          : <span className={join(css.leading, leadingClassName)}>{leading}</span>}
+          : <span className={join(css.leading, leadingClassName)} data-flow-leading="">{icon}</span>}
         <TextShimmer active={running} className={join(css.title, titleClassName)}>{title}</TextShimmer>
         {(keepContentWhenOpen || !open) && collapsedContent}
+        {previewChevron && (
+          <ChevronRightGlyph14
+            className={join(chevronClassName, css.chevronTrailing)}
+            data-open={open || undefined}
+            aria-hidden
+          />
+        )}
       </div>
       {open && children}
     </div>

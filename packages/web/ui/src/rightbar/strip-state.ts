@@ -10,8 +10,9 @@
  */
 import { FILE_TAB_PREFIX, fileTabId, type StripTabId } from './tabs.js';
 
-/** The panel's one page. */
-const FILES_TAB: StripTabId = 'files';
+/** The panel's one page (the shell's expand fallback: `App` opens the panel
+ *  onto it whenever the front document is gone). */
+export const FILES_TAB: StripTabId = 'files';
 
 /** Which tabs the strip draws, and which one is in front. */
 export interface StripState {

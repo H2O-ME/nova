@@ -1,0 +1,55 @@
+/*
+ * A2UI 主题桥：官方 BASIC catalog 的 `--a2ui-*` 全部指向 Nova token。
+ *
+ * 官方注入的默认主题是 `:where()` 零特异性（web_core styles/default.js），
+ * 所以容器上这份映射在级联里直接胜出；组件的 lit shadow 样式读这些穿透
+ * 边界的变量。深浅色由 `.a2ui-dark` / `.a2ui-light`（A2uiView.tsx 随
+ * useTheme 挂上）驱动 `color-scheme`，Nova 的语义色自身随 body[data-nova-dark]
+ * 翻转。自写规则零字面颜色、零字面间距/圆角——官方注入的样式表不算自写源码。
+ */
+.root {
+  /* 色板：聊天卡面的同族 Surface，主操作用 Nova 的墨色 accent。 */
+  --a2ui-color-background: var(--nova-surface-base);
+  --a2ui-color-on-background: var(--nova-text-primary);
+  --a2ui-color-surface: var(--nova-surface-raised);
+  --a2ui-color-on-surface: var(--nova-text-primary);
+  --a2ui-color-primary: var(--nova-color-accent);
+  --a2ui-color-on-primary: var(--nova-text-inverse);
+  --a2ui-color-secondary: var(--nova-surface-bubble);
+  --a2ui-color-on-secondary: var(--nova-text-primary);
+  --a2ui-color-border: var(--nova-border-strong);
+  --a2ui-color-input: var(--nova-surface-input);
+  --a2ui-color-on-input: var(--nova-text-primary);
+
+  /* 几何与排版：一个圆角旋钮、一条从 --nova-space-8 起算的间距链，
+   * 字号挂到内容字号轴（随设置缩放）。派生档位（--a2ui-font-size-*、
+   * --a2ui-color-primary-light/-dark/-hover）沿用官方 calc/color-mix 链。 */
+  --a2ui-border-radius: var(--nova-radius-md);
+  --a2ui-grid-base: var(--nova-space-8);
+  --a2ui-spacing-xs: var(--nova-space-2);
+  --a2ui-spacing-s: var(--nova-space-4);
+  --a2ui-spacing-m: var(--nova-space-8);
+  --a2ui-spacing-l: var(--nova-space-16);
+  --a2ui-spacing-xl: var(--nova-space-32);
+  --a2ui-font-family-title: var(--nova-font-family);
+  --a2ui-font-family-monospace: var(--nova-font-mono);
+  --a2ui-font-size: var(--nova-content-font-size);
+
+  /* 卡体自身：一列 surface，占满行宽。 */
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-10);
+  min-width: 0;
+  padding: var(--nova-space-4) 0;
+}
+
+/* 校验拒绝：这条消息本身就是给读者的答复（工具行已展开却没有它，卡体就成了
+   空白），所以用正文墨色而不是错误红——参数写错的是模型，不是工具崩了。 */
+.rejected {
+  margin: 0;
+  padding: var(--nova-space-4) 0;
+  font-size: var(--nova-content-font-size-secondary, 13px);
+  line-height: calc(18px + var(--nova-content-font-delta-secondary, 0px));
+  color: var(--nova-text-muted);
+  overflow-wrap: anywhere;
+}

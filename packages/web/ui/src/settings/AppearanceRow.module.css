@@ -1,11 +1,10 @@
-/* The theme select's width: the reference sizes this row's control at 260px
- * (`w-[260px] min-w-0 justify-between`). It is allowed to exceed the row's
- * 192px control column — that column is sized for switches and pills — and
- * `max-width: 100%` lets it shrink instead of overflowing a narrow column.
- * The trigger's own dress lives in `PermissionSelect.module.css`
- * (`.triggerField`), the one field-select recipe. */
+/* The theme pills' row: the reference's segment container
+ * (`flex items-center gap-1.5`, `SettingsPage.tsx:210-221`) — 6px between
+ * pills, all riding the `wide` control seat (280px from `sm` up) the row now
+ * reserves. */
 
-.field {
-  width: 260px;
-  max-width: 100%;
+.modes {
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-6);
 }

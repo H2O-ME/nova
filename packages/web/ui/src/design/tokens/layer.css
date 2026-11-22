@@ -1,0 +1,44 @@
+/* Nova stacking order — one vocabulary for "what paints over what".
+ *
+ * WHY A TOKEN FAMILY (2026-11-22): every floating surface used to spell its own
+ * z-index, and the resulting ladder was not a ladder: the settings sheet sat at
+ * 1200, a portaled menu at 1300, the window caption at 1300 (a TIE with the
+ * menu), a tooltip at 1100 (BELOW the dialog it usually labels), and the
+ * composer's drop overlay at 1000 (below settings, so a file drag over the
+ * settings page painted under it). Those values were individually reasonable
+ * and collectively meaningless, which is what "UI 层级效果" reports.
+ *
+ * The rungs come from the reference's Tailwind classes rather than from taste
+ * (`zcode-desktop-ui-study/packages/ui/src`): window chrome 20-30, drag
+ * handles 10, dialogs 50, operable popovers 60 (its `popover.tsx` comment: an
+ * operable layer must outrank the tooltip it would otherwise be covered by),
+ * tooltips 50, toasts 9999.
+ *
+ * Nova keeps its own numbers, ordered the same way. The gap between 100-rungs
+ * is what leaves room for a local bump inside one page (a sticky banner under
+ * its own dropdown) without re-ranking the family.
+ */
+:root {
+  /* In-flow layering: content over its own decorative wash. */
+  --nova-layer-base: 0;
+  /* Sticky in-document chrome (code-block banners, panel headers). */
+  --nova-layer-sticky: 10;
+  /* The shell's own overlay lane: window chrome, resize handles. */
+  --nova-layer-chrome: 20;
+  /* Blocks the centre column while a wide sidebar is expanded. */
+  --nova-layer-scrim: 40;
+  /* A modal sheet (settings, plugins) and its inner panel. */
+  --nova-layer-modal: 1200;
+  /* Operable floating layers opened FROM a modal: menus, selects, popovers.
+     Above the modal so an anchor inside it still gets its list on top. */
+  --nova-layer-popover: 1300;
+  /* Hints that must never cover the control they describe being operated. */
+  --nova-layer-tooltip: 1100;
+  /* Drag-and-drop: the drop target must be visible over everything it covers
+     except the caption buttons. */
+  --nova-layer-drop: 1400;
+  /* The caption buttons: always reachable, even over a full-bleed page. */
+  --nova-layer-caption: 1500;
+  /* Toasts outrank everything, including the caption (the reference's 9999). */
+  --nova-layer-toast: 2000;
+}

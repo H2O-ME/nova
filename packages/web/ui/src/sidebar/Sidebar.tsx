@@ -72,6 +72,14 @@ export interface SidebarProps {
   onDeleteSession: (file: string) => void;
   /** Re-ask the host for the session list (the shell's single-flight policy). */
   onReloadSessions: () => void;
+  /**
+   * The shell's own rule riding a session gesture: a NEW SESSION collapses the
+   * right panel (the reference's new task collapses its side pane — a fresh
+   * conversation wants the whole centre). The sidebar doesn't know the panel
+   * exists; the shell hands its close down. Optional so tests can render the
+   * column without the shell.
+   */
+  onNewSession?: () => void;
   onToggleCollapsed: () => void;
   /**
    * The column is collapsed because the FRAME is narrower than
@@ -109,6 +117,7 @@ export function Sidebar({
   onLeavePlugins,
   onDeleteSession,
   onReloadSessions,
+  onNewSession,
   onToggleCollapsed,
   autoCollapsed,
   width,
@@ -163,6 +172,9 @@ export function Sidebar({
   const startSession = (): void => {
     onLeavePlugins();
     send({ type: 'new_session' });
+    // The shell's rule, not the column's: a new session collapses the right
+    // panel (a fresh conversation wants the whole centre).
+    onNewSession?.();
   };
   const openSession = (file: string): void => {
     // Leaving the plugin page comes FIRST: the session already attached would
@@ -197,7 +209,12 @@ export function Sidebar({
         onToggleCollapsed={onToggleCollapsed}
         onStartSession={startSession}
       />
-      <NewSessionButton wide={wide} onStartSession={startSession} />
+      {/* New Session keeps its labelled bar in the wide layout only: in the
+          settled rail its job moves up into the brand seat (SidebarLogoRow),
+          which is the reference's own top-left cluster — logo first, new task
+          beside it, never covering the way back. The rail keeps one control
+          per row, so the pair stacks: brand (new session), then the toggle. */}
+      {wide && <NewSessionButton wide={wide} onStartSession={startSession} />}
       <PluginsEntryButton wide={wide} active={pluginsOpen} onOpen={onOpenPlugins} />
 
       {/* The browsing region fills the column between the controls and the

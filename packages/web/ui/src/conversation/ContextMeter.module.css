@@ -62,7 +62,7 @@
   position: absolute;
   bottom: calc(100% + 8px);
   right: 0;
-  z-index: 1100;
+  z-index: var(--nova-layer-popover);
   box-sizing: border-box;
   /* Clamped like the reference so a narrow window never clips the panel. */
   width: min(264px, calc(100vw - 24px));

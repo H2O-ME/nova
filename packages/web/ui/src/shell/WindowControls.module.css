@@ -9,7 +9,7 @@
   position: fixed;
   top: var(--nova-space-6);
   right: var(--nova-space-6);
-  z-index: 1300;
+  z-index: var(--nova-layer-caption);
   display: flex;
   align-items: center;
   gap: var(--nova-space-2);

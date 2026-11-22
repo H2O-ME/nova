@@ -1,11 +1,15 @@
 /**
  * The column's top row: the brand seat and the collapse toggle.
  *
- * Expanded, the brand doubles as a New Session shortcut; the rail has no brand
- * seat (this bundle carries no brand mark glyph, and the reference's rail mark
- * is its fish logo), so the toggle stands alone there.
+ * The brand doubles as the New Session shortcut in BOTH states (2026-11-22,
+ * ZCode alignment): the reference's top-left cluster pairs its logo with the
+ * new-task entry (`DesktopTopOverlay` renders the logo, then the new-task
+ * button beside it), so the rail keeps a new-task entry at the brand's seat
+ * instead of losing it with the wide bar. The 56px rail seats one control per
+ * row, so the pair stacks — brand (new session) on top, the collapse toggle
+ * right below, never obscured.
  *
- * The rail toggle carries a real tooltip rather than only a `title`: in the
+ * Every rail control carries a real tooltip rather than only a `title`: in the
  * 56px rail the glyph is the whole control (no label anywhere on screen), so
  * the name has to be readable without a pointer — a `title` never appears for a
  * keyboard user. Expanded, the row already reads as a labelled control family
@@ -37,7 +41,7 @@ export function SidebarLogoRow({
    */
   autoCollapsed?: boolean;
   onToggleCollapsed: () => void;
-  /** The brand's click: the reference wires it to New Session. */
+  /** The brand's click: the reference wires its logo seat to New Session. */
   onStartSession: () => void;
 }): JSX.Element {
   const toggleLabel = collapsed
@@ -52,7 +56,7 @@ export function SidebarLogoRow({
        brand and toggle are buttons, which the drag script exempts, so their
        clicks are unaffected. In a browser the attribute is inert. */
     <div className={css.logoRow} data-tauri-drag-region="deep">
-      {wide && (
+      <Tooltip label={COPY['session.new.label']} side="right" delayMs={500} disabled={wide}>
         <button
           type="button"
           className={cx(css.brand, css.wide)}
@@ -63,7 +67,7 @@ export function SidebarLogoRow({
             {COPY.brand.slice(0, 1)}
           </span>
         </button>
-      )}
+      </Tooltip>
       <Tooltip label={toggleLabel} side="right" delayMs={500} disabled={wide}>
         <button
           type="button"

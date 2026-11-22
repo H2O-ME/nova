@@ -35,3 +35,62 @@ export const FONT_KEY = 'nova.fontSize';
 export const DARK_ATTRIBUTE = 'data-nova-dark';
 /** Body variable carrying the user's content font size in px. */
 export const CONTENT_FONT_SIZE_VARIABLE = '--nova-content-font-size';
+
+/**
+ * Clamp a font size into the contract range, defaulting when unusable. This is
+ * the ONLY place the range is applied: `readFontSize`, the theme store's
+ * `setFontSize`, and the pre-paint boot script (`shell/boot-theme.ts`) all go
+ * through it, so the first frame and the mounted app can never disagree about
+ * the axis — a boot script that accepted `40` while the runtime clamped to 17
+ * would jump on mount.
+ *
+ * Lives HERE (not in `theme.ts`) because the theme store imports it and
+ * `theme.ts` imports the store: keeping the pure function in the React-free
+ * module leaves the dependency graph acyclic.
+ */
+export function clampFontSize(value: number): number {
+  return Number.isFinite(value)
+    ? Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(value)))
+    : DEFAULT_FONT_SIZE;
+}
+
+/** The durable theme preference, or the default when absent/unusable. */
+export function readStoredPreference(): ThemePreference {
+  try {
+    const raw = localStorage.getItem(THEME_KEY);
+    return (THEME_PREFERENCES as readonly string[]).includes(raw ?? '')
+      ? (raw as ThemePreference)
+      : DEFAULT_PREFERENCE;
+  } catch {
+    return DEFAULT_PREFERENCE;
+  }
+}
+
+/** The durable content font size, clamped, or the default when absent. */
+export function readStoredFontSize(): number {
+  try {
+    const raw = localStorage.getItem(FONT_KEY);
+    if (raw === null) return DEFAULT_FONT_SIZE;
+    return clampFontSize(Number(raw));
+  } catch {
+    return DEFAULT_FONT_SIZE;
+  }
+}
+
+/** Persist the theme preference, ignoring storage failures (private mode). */
+export function persistPreference(value: ThemePreference): void {
+  try {
+    localStorage.setItem(THEME_KEY, value);
+  } catch {
+    /* the choice simply does not survive the reload */
+  }
+}
+
+/** Persist the content font size, ignoring storage failures. */
+export function persistFontSize(value: number): void {
+  try {
+    localStorage.setItem(FONT_KEY, String(value));
+  } catch {
+    /* the choice simply does not survive the reload */
+  }
+}

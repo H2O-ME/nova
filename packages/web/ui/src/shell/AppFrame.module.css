@@ -39,6 +39,37 @@
   }
 }
 
+/*
+ * The frameless window's top drag bar (2026-11-22, ZCode alignment): the
+ * reference puts a `w-full [app-region:drag] h-1.5` strip at the top of its
+ * content container, over the 6px of ground its panels leave above themselves
+ * (`pr-1.5 pb-1.5` plus the strip). Nova's ground reveal is the same 6px top
+ * margin; without an element there it is unclickable dead space and the only
+ * drag seat is the sidebar's logo row.
+ *
+ * ABSOLUTE, like the drag handles — NOT a grid item. It was one for one build
+ * and that broke the whole frame: `.frame` declares `grid-template-rows: 100%`
+ * (ONE row), so a strip carrying `grid-row: 1` alongside three column items
+ * pushed the columns into an implicit second row of height 0, and the centre
+ * and right columns rendered as a blank page. Anchoring it to the frame keeps
+ * it out of the track solver entirely, which is also the honest model: this is
+ * an overlay on the ground band, not something the layout reserves.
+ *
+ * `left` starts at the sidebar's right edge (the sidebar's own logo row is the
+ * drag seat there) via the width the frame publishes inline. 6px tall over the
+ * 6px ground band, so it never paints over panel chrome. Rendered
+ * desktop-only by AppFrame (in a browser it would eat clicks for nothing).
+ */
+.topDragStrip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--nova-frame-sidebar-width, 0px);
+  height: var(--nova-space-6);
+  /* Above the panels (they start 6px down), below every floating surface. */
+  z-index: var(--nova-layer-chrome);
+}
+
 /* The sidebar rides the window ground itself (no fill of its own): the
    reference's rail is the same plane the window is painted with, and only the
    workspace column is lifted into a panel. */
@@ -96,15 +127,19 @@
   width: 8px;
   margin-left: -4px;
   cursor: col-resize;
-  z-index: 11;
+  /* A shell control, not a floating surface: it belongs with the window chrome
+     rung, one step over the panel it grabbles. */
+  z-index: var(--nova-layer-chrome);
   touch-action: none;
 }
 
-/* Rides the same curve as the tracks so the pill stays on the moving border
-   during collapse/expand; instant at steady state (viewport-driven moves) and
-   while dragging. */
+/* Rides the SAME curve as the tracks (2026-11-22, ZCode alignment): the
+   reference's handle and panel animate on one duration/ease pair, so the
+   handle's edge stays glued to the moving column border during a collapse/
+   expand — the old slow/inout pair lagged the track's panel curve. Instant at
+   steady state (viewport-driven moves) and while dragging. */
 .frame[data-animating] .handle {
-  transition: left var(--nova-dur-slow) var(--nova-ease-inout);
+  transition: left var(--nova-dur-panel) var(--nova-ease-panel);
 }
 
 .frame[data-dragging] .handle {
@@ -140,7 +175,7 @@
 .overlayLayer {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: var(--nova-layer-chrome);
   pointer-events: none;
 }
 

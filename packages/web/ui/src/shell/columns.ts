@@ -16,8 +16,15 @@ export interface Columns {
 export const CENTER_MIN = 400;
 /** Sidebar drag clamp floor. */
 export const SIDEBAR_MIN = 264;
-/** Sidebar drag clamp ceiling. */
+/**
+ * FLOOR of the sidebar drag ceiling. The real ceiling follows the frame
+ * (`sidebarMaxWidth`): half the viewport, but never tighter than this — the
+ * reference clamps to `max(min-width, container * 0.5)` so a wide window can
+ * widen the rail while a narrow one keeps the old fixed bound.
+ */
 export const SIDEBAR_MAX = 420;
+/** Sidebar ceiling as a fraction of the frame (the reference's 0.5 ratio). */
+export const SIDEBAR_MAX_RATIO = 0.5;
 /** Sidebar width before any user drag (the reference's 264). */
 export const SIDEBAR_DEFAULT = 264;
 /** Closed-sidebar rail: a 24px icon column between 16px horizontal paddings. */
@@ -47,6 +54,21 @@ export function clampWidth(px: number, min: number, max: number): number {
 }
 
 /**
+ * The sidebar's drag ceiling for one frame: half the viewport, floored at the
+ * fixed `SIDEBAR_MAX`. The reference's clamp (`WorkspaceShellLayout.tsx`
+ * `clampWorkspaceSidebarWidth`) applies the same shape: every caller that
+ * clamps a sidebar width — drag moves, keyboard resize, boot restore — passes
+ * the viewport it measured so the bound tracks the live window.
+ * @param viewport - available frame width in px.
+ * @returns the widest the sidebar may get on this frame.
+ */
+export function sidebarMaxWidth(viewport: number): number {
+  return viewport > 0
+    ? Math.max(SIDEBAR_MAX, Math.round(viewport * SIDEBAR_MAX_RATIO))
+    : SIDEBAR_MAX;
+}
+
+/**
  * Solve the three column widths for one viewport frame.
  * @param viewport - available frame width in px.
  * @param sidebar - sidebar width preference in px (0 = closed).
@@ -55,7 +77,7 @@ export function clampWidth(px: number, min: number, max: number): number {
  *   without that track may the center fall below its minimum, down to zero.
  */
 export function computeColumns(viewport: number, sidebar: number, rightbar: number): Columns {
-  const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX);
+  const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, sidebarMaxWidth(viewport));
   const available = viewport - s - CENTER_MIN;
   const r =
     rightbar === 0 || available < RIGHTBAR_MIN

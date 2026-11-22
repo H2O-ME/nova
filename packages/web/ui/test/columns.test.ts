@@ -71,6 +71,13 @@ it('only without the right track may the centre fall below its minimum', () => {
     expect(computeColumns(4000, SIDEBAR_DEFAULT, 3900).rightbar).toBe(2800);
   });
 
+  it('the sidebar ceiling follows the frame above its fixed floor (2026-11-22)', () => {
+    // 1600 * 0.5 = 800 — a wide window may widen the rail past the old 420.
+    expect(computeColumns(1600, 2000, 0).sidebar).toBe(800);
+    // 600 * 0.5 = 300 < 420: the fixed floor holds the ceiling at 420.
+    expect(computeColumns(600, 2000, 0).sidebar).toBe(420);
+  });
+
   it('the rail is narrower than the sidebar floor, which sits under the breakpoint', () => {
     expect(SIDEBAR_COLLAPSED).toBeLessThan(SIDEBAR_MIN);
     expect(SIDEBAR_MIN).toBeLessThan(SIDEBAR_AUTO_COLLAPSE);

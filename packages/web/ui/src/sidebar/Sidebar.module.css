@@ -60,10 +60,11 @@
 /* At the 150ms rail settle, the upper controls enter from the former
    rail right edge over the remaining 150ms of the AppFrame track transition.
    The bottom-pinned foot seat shares their opacity timeline but stays
-   horizontally fixed. Only a live collapse gets .railIn; a cold collapsed
-   render stays static. */
+   horizontally fixed. The brand sits here too: in the rail it IS the
+   new-session entry (2026-11-22, the wide bar unmounts at settle). Only a live
+   collapse gets .railIn; a cold collapsed render stays static. */
+.railIn .brand,
 .railIn .iconButton,
-.railIn .newSession,
 .railIn .regionArea {
   animation: nova-fade-in 150ms var(--nova-ease-inout) backwards;
 }
@@ -91,14 +92,22 @@
   overflow: hidden;
 }
 
+/* Rail logo row (2026-11-22, ZCode alignment): the reference's top-left
+   cluster pairs its logo with the new-task entry (DesktopTopOverlay renders
+   logo, then new task beside it). The 56px rail seats one control per row, so
+   the pair stacks as a column: brand (new session) first, the collapse toggle
+   right below it — a new-task entry that never obscures the way back. */
 .collapsed .logoRow {
-  height: 36px;
+  flex-direction: column;
+  align-items: flex-start;
+  height: auto;
+  gap: var(--nova-space-4);
   padding: 0;
   margin-bottom: var(--nova-space-12);
   justify-content: flex-start;
-  /* The settled rail's 36px toggle is wider than this 35px row, so the base
-     row's clip would cut the control's right edge: the rail stops clipping once
-     the slide has settled (the reference's own note). */
+  /* The settled rail's 36px controls are wider than this 35px row, so the base
+     row's clip would cut their right edge: the rail stops clipping once the
+     slide has settled (the reference's own note). */
   overflow: visible;
 }
 
@@ -135,6 +144,24 @@
   font-size: 16px;
   font-weight: 700;
   line-height: 1;
+}
+
+/* Rail brand (2026-11-22): the new-task entry keeps the top-left brand seat
+   when the column collapses (the reference's collapsed overlay keeps logo and
+   new task together). Same 36x36 control box as the toggle beside it; the
+   mark itself steps down so the pair reads as one control family. */
+.collapsed .brand {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  justify-content: center;
+  border-radius: var(--nova-radius-lg);
+}
+
+.collapsed .brandMark {
+  width: 24px;
+  height: 24px;
+  font-size: var(--nova-text-size-sm);
 }
 
 .iconButton {
@@ -195,9 +222,11 @@
 
 /* New Session: the reference's nav row (NewTaskButtonGroup.tsx:33 — `h-8
    rounded-lg gap-2 pl-2.5 pr-2.5`, text-ui-base 400) rather than the earlier
-   bordered bar; collapsed it renders as the rail's plain icon control. The 4px
-   bottom margin is the nav stack's `gap-1` (ProjectSidebarNavigation.tsx:37 —
-   the reference's rows are direct children of one `gap-1` column). */
+   bordered bar. Wide-only since 2026-11-22: in the settled rail its job moves
+   up into the brand seat (`.collapsed .brand`), which is the reference's own
+   top-left logo + new-task pairing. The 4px bottom margin is the nav stack's
+   `gap-1` (ProjectSidebarNavigation.tsx:37 — the reference's rows are direct
+   children of one `gap-1` column). */
 .newSession {
   flex: none;
   display: flex;
@@ -224,21 +253,6 @@
   background: var(--nova-interactive-hover);
 }
 
-.collapsed .newSession {
-  align-self: flex-start;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  margin: 0 0 var(--nova-space-12);
-  gap: 0;
-  border-radius: var(--nova-radius-lg);
-}
-
-.collapsed .newSession:hover {
-  background: var(--nova-interactive-hover);
-}
-
 /* The bar's glyph: 16px expanded, 18px in the rail (the reference's two
    `size` props). */
 .newSessionIcon {
@@ -247,19 +261,10 @@
   height: 16px;
 }
 
-.collapsed .newSessionIcon {
-  width: 18px;
-  height: 18px;
-}
-
 .newSessionLabel {
   max-width: 200px;
   overflow: hidden;
   white-space: nowrap;
-}
-
-.collapsed .newSessionLabel {
-  max-width: 0;
 }
 
 /* The row's trailing shortcut hint (the reference's `Ctrl+N` seat): rides the
@@ -271,10 +276,6 @@
   line-height: 14px;
   font-weight: 400;
   color: var(--nova-text-faint);
-}
-
-.collapsed .newSessionHint {
-  display: none;
 }
 
 /* The plugin center's door: a NAV row, not the bordered New Session bar. The
@@ -401,8 +402,8 @@
 @media (prefers-reduced-motion: reduce) {
   .wide,
   .fading > *,
+  .railIn .brand,
   .railIn .iconButton,
-  .railIn .newSession,
   .railIn .regionArea,
   .railIn .footArea {
     transition: none;

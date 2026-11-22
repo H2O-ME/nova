@@ -86,7 +86,7 @@
   position: fixed;
   /* Portaled panels layer above modal overlays; the reference's 1100 sits
      above this repo's 1000 drop overlay and beside the 1100 menu/tooltip tier. */
-  z-index: 1100;
+  z-index: var(--nova-layer-popover);
   box-sizing: border-box;
   width: max-content;
   min-width: min(300px, calc(100vw - 24px));

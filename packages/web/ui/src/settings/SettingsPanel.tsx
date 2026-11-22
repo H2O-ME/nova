@@ -20,7 +20,7 @@ import { useState, useId, useRef, useEffect } from 'react';
 import type { MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from '../shell/modal-layer.js';
-import { ArrowLeftIcon, SearchIcon } from '../icons.js';
+import { ArrowLeftIcon, ChevronRightIcon, SearchIcon } from '../icons.js';
 import { cx } from '../composer/cx.js';
 import { UnsavedConfirmDialog } from './UnsavedConfirmDialog.js';
 import { isDesktopShell } from '../shell/desktop-shell.js';
@@ -236,10 +236,17 @@ export function SettingsDialog({
           </div>
         </nav>
         <div className={css.content}>
-          {/* The reference's in-panel top strip: 48px of drag area, no words.
-              The page is NAMED by the section title below, so a breadcrumb here
-              only repeated it. */}
-          <div className={css.header} data-tauri-drag-region="" />
+          {/* The reference's breadcrumb strip (`SettingsPage.tsx:1726-1747`):
+              a 48px row whose drag region hosts the page's path. Its
+              `SettingsHeaderBreadcrumb` stays empty under two levels; Nova's
+              page is always exactly two deep — the dialog the rail backs out
+              of, then the section on screen — so the path is the same two
+              words on every page and the strip never reads as dead bar. */}
+          <div className={css.header} data-tauri-drag-region="">
+            <span className={css.crumbRoot}>{title}</span>
+            <ChevronRightIcon className={css.crumbChevron} />
+            {active !== undefined && <span className={css.crumbHere}>{active.label}</span>}
+          </div>
           <div className={css.options} ref={optionsRef}>
             {/* The section's own name over its column, the reference's
                 `text-ui-settings-title` block: without it the rail was the

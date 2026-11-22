@@ -16,12 +16,22 @@ import type { AgentHooks, ChatProvider, ToolCall, ToolDefinition, UsageStats } f
  * subagent's own toolset. The nested loop runs through the SAME hooks, so every
  * nested tool call passes the same approval gate and pipeline as the parent's.
  */
-/** One nested-loop lifecycle moment, forwarded best-effort to `onProgress`. */
+/**
+ * One nested-loop lifecycle moment, forwarded best-effort to `onProgress`.
+ *
+ * `id` identifies THE DELEGATION; `label` only names it. A surface must key its
+ * live row by `id`: the label falls back to `subtask` whenever the model omits
+ * one, so two concurrent unlabeled delegations share a label — a surface keying
+ * by label merged them into ONE row whose call counter flip-flopped between the
+ * two runs and whose status never settled (the merged row was rewritten by
+ * whichever run fired last, and the settled run's `done` was undone by the
+ * other's next `tool_call`).
+ */
 export type SubagentProgress =
-  | { type: 'start'; label: string }
-  | { type: 'tool_call'; label: string; call: ToolCall }
-  | { type: 'usage'; label: string; stats: UsageStats }
-  | { type: 'done'; label: string; usage: SubagentUsage; status: 'completed' | 'aborted' | 'ended' };
+  | { type: 'start'; id: string; label: string }
+  | { type: 'tool_call'; id: string; label: string; call: ToolCall }
+  | { type: 'usage'; id: string; label: string; stats: UsageStats }
+  | { type: 'done'; id: string; label: string; usage: SubagentUsage; status: 'completed' | 'aborted' | 'ended' };
 
 /** Child-side consumption: OWN loop only, never merged into the parent. */
 export interface SubagentUsage {
@@ -96,6 +106,9 @@ async function runOnce(
   signal: AbortSignal | undefined,
   session: NestedRunSession,
 ): Promise<{ report: string; usage: SubagentUsage; completed: boolean }> {
+  // The delegation's identity for the whole run: every progress frame carries
+  // it so a surface can key ONE row per delegation even when labels repeat.
+  const id = newId('sub');
   // Same tools minus the subagent itself and the session-state tools —
   // evaluated live so a host rebuild between registration and dispatch is
   // honored.
@@ -118,7 +131,7 @@ async function runOnce(
       // Visibility must never break the run.
     }
   };
-  fire({ type: 'start', label });
+  fire({ type: 'start', id, label });
 
   /**
    * ONLY the FINAL assistant message is the report. Capturing "the last
@@ -133,7 +146,17 @@ async function runOnce(
   let lastStats: UsageStats | undefined;
   let finalStats: UsageStats | undefined;
   let stopReason: 'complete' | 'max_turns' | 'aborted' | undefined;
-  for await (const event of runAgent({
+  // `start` has already been announced: EVERY exit must announce a terminal
+  // frame, or the surface's row stays "running" forever. The loop rethrows a
+  // provider error (an un-aborted request that never answered), which used to
+  // skip the `done` below entirely.
+  let settled = false;
+  const settle = (status: 'completed' | 'aborted' | 'ended', usage: SubagentUsage): void => {
+    settled = true;
+    fire({ type: 'done', id, label, usage, status });
+  };
+  try {
+    for await (const event of runAgent({
     provider: opts.provider,
     messages,
     rootDir: opts.rootDir(),
@@ -153,21 +176,35 @@ async function runOnce(
     ...(session.jobs !== undefined ? { jobs: session.jobs } : {}),
     ...(session.emit !== undefined ? { emit: session.emit } : {}),
     ...(session.cacheDir !== undefined ? { cacheDir: session.cacheDir } : {}),
-  })) {
-    if (event.type === 'message' && event.message.role === 'assistant') {
-      lastAssistant = event.message.content.trim();
-    } else if (event.type === 'tool_call_start') {
-      toolCalls += 1;
-      fire({ type: 'tool_call', label, call: event.call });
-    } else if (event.type === 'usage') {
-      lastStats = event.stats;
-      fire({ type: 'usage', label, stats: event.stats });
-    } else if (event.type === 'done') {
-      stopReason = event.stopReason;
-      // runAgent emits per-request `usage` but no terminal rollup: capture
-      // the last snapshot here (doneStats stays undefined on a zero-request
-      // run, e.g. immediate abort — the `??` zero-fill below covers that).
-      finalStats = lastStats;
+    })) {
+      if (event.type === 'message' && event.message.role === 'assistant') {
+        lastAssistant = event.message.content.trim();
+      } else if (event.type === 'tool_call_start') {
+        toolCalls += 1;
+        fire({ type: 'tool_call', id, label, call: event.call });
+      } else if (event.type === 'usage') {
+        lastStats = event.stats;
+        fire({ type: 'usage', id, label, stats: event.stats });
+      } else if (event.type === 'done') {
+        stopReason = event.stopReason;
+        // runAgent emits per-request `usage` but no terminal rollup: capture
+        // the last snapshot here (doneStats stays undefined on a zero-request
+        // run, e.g. immediate abort — the `??` zero-fill below covers that).
+        finalStats = lastStats;
+      }
+    }
+  } finally {
+    // The error path (a provider failure that was not an abort) skips every
+    // line below, so the row would never settle. Announcing the empty usage
+    // here is the honest terminal frame: the run is over, its totals unknown.
+    if (!settled) {
+      fire({
+        type: 'done',
+        id,
+        label,
+        usage: { elapsedMs: Date.now() - startedAt, turns: finalStats?.turns ?? 0, toolCalls, promptTokens: 0, completionTokens: 0 },
+        status: 'ended',
+      });
     }
   }
   const report = lastAssistant.length > 0 ? lastAssistant : undefined;
@@ -179,7 +216,7 @@ async function runOnce(
     completionTokens: finalStats?.completionTokens ?? 0,
   };
   const completed = report !== undefined && stopReason !== 'aborted';
-  fire({ type: 'done', label, usage, status: stopReason === 'aborted' ? 'aborted' : completed ? 'completed' : 'ended' });
+  settle(stopReason === 'aborted' ? 'aborted' : completed ? 'completed' : 'ended', usage);
   if (report !== undefined) return { report, usage, completed };
   const reason =
     stopReason === 'max_turns'

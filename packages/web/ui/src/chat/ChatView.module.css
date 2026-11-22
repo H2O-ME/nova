@@ -93,12 +93,18 @@
    its subtree. Direct Chat Node Seats and auxiliary rows share one flow;
    hidden and empty Seats do not contribute spacing.
 
-   THE RHYTHM IS 8 + 24 (2026-11-05). The earlier ladder was 6 / 8 / 12 / 16,
-   one exception per row kind; measured on a live transcript that read as
-   「间距忽大忽小」 — the reader cannot learn a scale whose every class has its
-   own value. There are now exactly two: 8px inside a turn (reasoning, tool,
-   answer, tail share it) and 24px at a turn boundary (the reader's own message).
-   Proximity still does the divider's old job; it just does it with one rule. */
+   THE RHYTHM IS 4 / 8 / 76 (2026-11-22). Inside a turn: 4px between work rows
+   (the reference's `gap-1`) and 8px where a closed process meets its answer.
+   At a turn boundary: 76px, the reader's own message — the reference's turn
+   section is `pt-14` (56) over the previous turn's `pb-5` (20), and a flat
+   column has to collapse those two paddings into the one margin it owns.
+
+   The old ladder claimed "8 inside a turn, 24 at a turn boundary" and
+   implemented NEITHER: the boundary was the bare 16px fallback, so a reader's
+   message sat closer to the answer above it than the answer's own steps did to
+   each other. A comment describing a rhythm the sheet does not draw is how
+   this drifted; the numbers now come from the reference's own classes
+   (`ConversationTurnGroup.tsx:1484-1493`). */
 .column > :not([hidden]):not(.flowItem:empty)
   ~ :not([hidden]):not(.flowItem:empty) {
   margin-top: var(--nova-chat-flow-gap, 16px);
@@ -136,23 +142,23 @@
    `flex flex-col gap-1` — FOUR pixels between consecutive work rows, not the
    column's 16. A turn's steps are one act; at 16px every thought and command
    read as its own message, which is exactly the 「对话流太散」 gap against the
-   reference. The override is direct rather than a `--nova-chat-flow-gap` on the
-   PRECEDING row because CSS has no previous-sibling selector, and a work row's
-   own margin is what the flow sets. */
+   reference.
+
+   THIS RULE WAS DEAD FOR MONTHS (fixed 2026-11-22). It wrote `margin-top`
+   directly, and the generic sibling rule above carries four `:not()` guards —
+   specificity (0,7,0) against this selector's (0,3,0) — so the generic rule
+   always won and every work row drew the 16px fallback. The 4px "rhythm" the
+   comments described was never painted. Setting the VARIABLE instead of the
+   property is what makes the override independent of specificity: the generic
+   rule reads `--nova-chat-flow-gap` whichever rule set it. */
 .column > .flowItem[data-chat-flow-kind='process'],
 .column > .flowItem[data-chat-flow-kind='tool'] {
-  margin-top: var(--nova-space-4);
+  --nova-chat-flow-gap: var(--nova-space-4);
 }
 
 /* A closed process reads as one summary immediately followed by its answer.
    Expanded process rows return to the ordinary rhythm. */
 .flowItem[data-turn-process-answer] {
-  --nova-chat-flow-gap: 8px;
-}
-
-/* The reference's ONE exception: a closed process reads as a summary directly
-   followed by its answer, so that pair sits at half the rhythm (8px). */
-.flowItem[data-chat-group-part='response'] {
   --nova-chat-flow-gap: 8px;
 }
 
@@ -166,6 +172,14 @@
    is the same 8px the closed-process case above already uses. */
 .flowItem[data-chat-flow-kind='tail'] {
   --nova-chat-flow-gap: 8px;
+}
+
+/* The reader's own message opens a turn, so it carries the turn-boundary
+   rhythm: the reference's `pt-14` (56px) on the turn section over its
+   predecessor's `pb-5` (20px). In a flat column the two paddings are one
+   margin on the row that starts the next turn. */
+.column > .flowItem[data-chat-flow-kind='user'] {
+  --nova-chat-flow-gap: 76px;
 }
 
 /* A keyed renderer may intentionally decline its row after dispatch (the

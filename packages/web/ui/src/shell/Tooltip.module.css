@@ -3,7 +3,7 @@
   align-items: center;
   gap: var(--nova-space-8);
   position: fixed;
-  z-index: 100;
+  z-index: var(--nova-layer-tooltip);
   /* Fixed-position shrink-to-fit measures only the space from `left` to the
      viewport edge, so anchors near the right edge would wrap early;
      max-content sizes by the label alone, capped at half the viewport. */
@@ -23,7 +23,7 @@
 }
 
 .bubble[data-portal] {
-  z-index: 1100;
+  z-index: var(--nova-layer-tooltip);
 }
 
 .label {

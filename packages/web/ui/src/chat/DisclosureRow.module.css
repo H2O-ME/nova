@@ -54,26 +54,43 @@ button.leading {
   cursor: pointer;
 }
 
-.iconIdle {
-  display: inline-flex;
-  opacity: 1;
-  transition: opacity 100ms ease;
+/* The leading glyph lights up under the pointer (`group-hover/tool-summary` in
+ * the reference) instead of being replaced by anything: the glyph is the row's
+ * identity, and a row that swaps it for a chevron on hover loses the only mark
+ * saying what it is. */
+.row:hover .leading {
+  color: var(--nova-text-primary);
 }
 
-.chevronHover {
-  position: absolute;
-  inset: 0;
-  margin: auto;
+/* The trailing chevron: reserved space at the row's end, hidden at rest,
+ * `rotate-90` when open — the reference's `data-summary-chevron`
+ * (`ToolSummaryRow.tsx:235-243`). It is NOT the toggle target for
+ * `expandOnRowClick` rows (the whole row is), so it never eats a click. */
+.chevronTrailing {
+  flex: none;
+  margin-left: auto;
   opacity: 0;
-  transition: opacity 100ms ease;
+  transform: rotate(0deg);
+  transition:
+      opacity 100ms ease,
+      transform var(--nova-dur-fast) var(--nova-ease-inout);
+  color: var(--nova-text-faint);
 }
 
-.row:hover .iconIdle {
-  opacity: 0;
-}
-
-.row:hover .chevronHover {
+.row:hover .chevronTrailing,
+.row:focus-visible .chevronTrailing {
   opacity: 1;
+}
+
+.chevronTrailing[data-open] {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevronTrailing {
+    transition: none;
+  }
 }
 
 .title {

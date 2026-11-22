@@ -23,6 +23,20 @@
   border-top: none;
 }
 
+/* The wide control seat: the reference's `controlLayout="wide"` — 280px from
+ * its `sm` breakpoint up (`sm:grid-cols-[minmax(0,1fr)_280px]`), one column
+ * below. The default 192px seat is sized for switches and selects; a pill row
+ * of three labels needs the wider one. */
+.rowWide {
+  grid-template-columns: minmax(0, 1fr) 280px;
+}
+
+@media (max-width: 639px) {
+  .rowWide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .rowText {
   min-width: 0;
   display: flex;

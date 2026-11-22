@@ -16,9 +16,20 @@
     "skipLibCheck": true,
     "noEmit": true,
     "baseUrl": ".",
+    /* react/react-dom 的类型钉在本包的 @types@18 上：pnpm 会把另一个工作区包
+     * （apps/tauri-bench 的 @types/react@^19）隐藏提升到 node_modules/.pnpm/
+     * node_modules/@types，它比本包的 node_modules 更靠近 .pnpm 里的第三方
+     * d.ts（如 @a2ui/react），导致 React 19 类型混入 React 18 编译。仅影响
+     * 类型解析，webpack 的运行时解析不走 tsconfig。 */
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "react": [
+        "./node_modules/@types/react"
+      ],
+      "react-dom": [
+        "./node_modules/@types/react-dom"
       ]
     },
     "allowJs": true,

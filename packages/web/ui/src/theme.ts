@@ -5,11 +5,17 @@
  * `html { color-scheme }` for native UA chrome, `body[data-nova-dark]` for
  * the token palette, and the content font-size axis.
  *
+ * The live STATE lives in `theme-store.ts` (a module-level store) because the
+ * OS-palette listener must exist from first mount, not only while a settings
+ * dialog is open; this file keeps the storage reads, the resolution rule, the
+ * DOM projection and the React binding.
+ *
  * The severity ladder lives here too: "which token encodes which band" is
  * theme vocabulary, not any one card's business.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import {
+  clampFontSize,
   CONTENT_FONT_SIZE_VARIABLE,
   DEFAULT_FONT_SIZE,
   DEFAULT_PREFERENCE,
@@ -17,10 +23,20 @@ import {
   FONT_KEY,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
+  readStoredFontSize,
+  readStoredPreference,
   THEME_KEY,
   THEME_PREFERENCES,
   type ThemePreference,
 } from './theme-constants.js';
+import {
+  setThemeFontSize,
+  setThemePreference,
+  subscribeTheme,
+  themeServerSnapshot,
+  themeSnapshot,
+  toggleTheme,
+} from './theme-store.js';
 
 // Re-exported so every existing consumer keeps importing from `theme.ts`. The
 // definitions live in `theme-constants.ts` because `boot-theme.ts` needs them
@@ -36,52 +52,16 @@ export {
   FONT_SIZE_MIN,
   THEME_KEY,
   THEME_PREFERENCES,
+  clampFontSize,
+  readStoredFontSize as readFontSize,
+  readStoredPreference as readPreference,
   type ThemePreference,
 };
 
-function read<T extends string | number>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return (typeof fallback === 'number' ? Number(raw) : raw) as T;
-  } catch {
-    /* private mode: fall through to the default */
-    return fallback;
-  }
-}
-
-function write(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* private mode: the choice simply does not survive the reload */
-  }
-}
-
 /**
- * Clamp a font size into the contract range, defaulting when unusable. This is
- * the ONLY place the range is applied: `readFontSize`, `setFontSize`, and the
- * pre-paint boot script (`shell/boot-theme.ts`) all go through it, so the first
- * frame and the mounted app can never disagree about the axis — a boot script
- * that accepted `40` while the runtime clamped to 17 would jump on mount.
+ * Whether a preference currently renders dark (a resolved question, not the
+ * id: only `system` asks the browser, and it asks here).
  */
-export function clampFontSize(value: number): number {
-  return Number.isFinite(value)
-    ? Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(value)))
-    : DEFAULT_FONT_SIZE;
-}
-
-export function readPreference(): ThemePreference {
-  const raw = read<string>(THEME_KEY, DEFAULT_PREFERENCE);
-  return (THEME_PREFERENCES as readonly string[]).includes(raw) ? (raw as ThemePreference) : DEFAULT_PREFERENCE;
-}
-
-export function readFontSize(): number {
-  return clampFontSize(read<number>(FONT_KEY, DEFAULT_FONT_SIZE));
-}
-
-/** Whether a preference currently renders dark (a resolved question, not the
- *  id: only `system` asks the browser, and it asks here). */
 export function resolveDark(preference: ThemePreference): boolean {
   if (preference === 'dark') return true;
   if (preference === 'light') return false;
@@ -92,7 +72,17 @@ export function resolveDark(preference: ThemePreference): boolean {
  *  palette attribute, the font-size axis, and the surrounding browser UI's
  *  theme-color, which follows the rendered background. */
 export function applyTheme(preference: ThemePreference, fontSize: number): void {
-  const dark = resolveDark(preference);
+  applyResolvedTheme(resolveDark(preference), fontSize);
+}
+
+/** Project an ALREADY-resolved palette onto the document.
+ *
+ *  Two callers need this split: the preference-driven path above resolves
+ *  `system` itself, while the theme store has already resolved it (and must be
+ *  the one deciding, so the attribute and the React state can never disagree —
+ *  a `system` flip that updated the store but re-resolved here would paint one
+ *  palette while the UI's `dark` flag said another). */
+export function applyResolvedTheme(dark: boolean, fontSize: number): void {
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
   document.body.toggleAttribute(DARK_ATTRIBUTE, dark);
   document.body.style.setProperty(CONTENT_FONT_SIZE_VARIABLE, `${fontSize}px`);
@@ -110,8 +100,18 @@ export function isDark(): boolean {
   return document.body.hasAttribute(DARK_ATTRIBUTE);
 }
 
-/** Theme preference + font size as view state, with `system` following the
- *  browser live (matchMedia, not a resize poll). */
+/** Theme preference + font size as view state.
+ *
+ *  Reads the module-level store (`theme-store.ts`) so that EVERY consumer sees
+ *  the same palette. The `prefers-color-scheme` listener belongs to the store
+ *  as well, not to this hook — a hook effect would install one OS listener per
+ *  mounted consumer, and every A2UI card calls this too. See
+ *  `subscribeTheme` for the single-listener contract.
+ *
+ *  The DOM projection runs as an effect of the snapshot: whichever component
+ *  mounts first installs it, and the boot script already painted the same
+ *  fields pre-mount, so the first frame never flips.
+ */
 export function useTheme(): {
   preference: ThemePreference;
   fontSize: number;
@@ -120,41 +120,20 @@ export function useTheme(): {
   setFontSize: (next: number) => void;
   toggle: () => void;
 } {
-  const [preference, setPref] = useState<ThemePreference>(readPreference);
-  const [fontSize, setSize] = useState<number>(readFontSize);
-  const [dark, setDark] = useState<boolean>(isDark);
+  const snapshot = useSyncExternalStore(subscribeTheme, themeSnapshot, themeServerSnapshot);
+  const { preference, fontSize, dark } = snapshot;
 
   useEffect(() => {
-    applyTheme(preference, fontSize);
-    setDark(resolveDark(preference));
-    if (preference !== 'system') return;
-    const mq = matchMedia('(prefers-color-scheme: dark)');
-    const onChange = (): void => {
-      applyTheme('system', fontSize);
-      setDark(resolveDark('system'));
-    };
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, [preference, fontSize]);
+    applyResolvedTheme(dark, fontSize);
+  }, [dark, fontSize]);
 
   return {
     preference,
     fontSize,
     dark,
-    setPreference: (next) => {
-      write(THEME_KEY, next);
-      setPref(next);
-    },
-    setFontSize: (next) => {
-      const clamped = clampFontSize(next);
-      write(FONT_KEY, String(clamped));
-      setSize(clamped);
-    },
-    toggle: () => {
-      const next: ThemePreference = resolveDark(preference) ? 'light' : 'dark';
-      write(THEME_KEY, next);
-      setPref(next);
-    },
+    setPreference: setThemePreference,
+    setFontSize: setThemeFontSize,
+    toggle: toggleTheme,
   };
 }
 

@@ -5,7 +5,7 @@
      the menu edge to edge with border and padding kept inside. */
   left: 0;
   right: 0;
-  z-index: 100;
+  z-index: var(--nova-layer-popover);
   box-sizing: border-box;
   /* Fits the built-in rows without scrolling and still clamps at runtime to
    * the space above the composer (inline max-height set in ComposerMenu.tsx). */

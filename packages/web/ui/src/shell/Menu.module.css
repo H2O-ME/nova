@@ -20,7 +20,7 @@
   top: 0;
   /* Portaled lists must layer above modal overlays (the settings sheet's
      1200) — an anchor inside a dialog still expects its menu on top. */
-  z-index: 1300;
+  z-index: var(--nova-layer-popover);
   display: flex;
   flex-direction: column;
   padding: var(--nova-space-4);

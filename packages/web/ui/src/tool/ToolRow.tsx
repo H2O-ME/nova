@@ -18,7 +18,7 @@
  */
 import { memo, useMemo, useState, type KeyboardEvent } from 'react';
 import { toolCardModel, type CardModel } from '../card-view.js';
-import { ChevronDownIcon, ChevronUpIcon } from '../icons.js';
+import { ChevronRightIcon } from '../icons.js';
 import { BashIcon, BrowseIcon, ChecklistIcon, EditIcon, SearchToolIcon, ToolIcon } from './icons.js';
 import { bodyShell, rowDot, rowSlots, rowStatusLabel, rowVariant, type RowSlots, type RowVariant } from './model.js';
 import { StateDot } from './StateDot.js';
@@ -131,17 +131,12 @@ function RowHead({
   onToggle: () => void;
 }): JSX.Element {
   const dot = rowDot(state);
+  // The leading glyph states WHAT the row is (or its state dot), and it stays
+  // put: the reference keeps the type icon and adds a trailing chevron that
+  // fades in on hover (`ToolSummaryRow.tsx:235-243`). Swapping the glyph for a
+  // chevron — what this row used to do — hid the row's identity under the
+  // pointer, and while open it left the reader with no mark at all.
   const glyph = dot === null ? cardGlyph(variant, plan) : <StateDot state={dot} />;
-  const leading = open
-    ? <ChevronUpIcon className={css.chevron} />
-    : expandable
-      ? (
-        <>
-          <span className={css.iconIdle}>{glyph}</span>
-          <ChevronDownIcon className={`${css.chevron} ${css.chevronHover}`} />
-        </>
-      )
-      : glyph;
   const toggleFromKeyboard = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (!expandable || (event.key !== 'Enter' && event.key !== ' ')) return;
     event.preventDefault();
@@ -161,7 +156,7 @@ function RowHead({
       onClick={expandable ? onToggle : undefined}
       onKeyDown={expandable ? toggleFromKeyboard : undefined}
     >
-      <span className={css.leading}>{leading}</span>
+      <span className={css.leading}>{glyph}</span>
       <TextShimmer active={running} className={css.title}>{slots.title}</TextShimmer>
       {slots.summary !== '' && (
         <>
@@ -175,6 +170,12 @@ function RowHead({
             <TextShimmer active={running} className={suffixClass(slots)}>{slots.suffix}</TextShimmer>
           )}
         </>
+      )}
+      {/* The disclosure affordance the reference draws: a trailing right chevron
+       * that fades in on hover and turns 90° while open. The leading glyph is
+       * the row's identity and never moves. */}
+      {expandable && (
+        <ChevronRightIcon className={css.chevronTrailing} data-open={open || undefined} aria-hidden />
       )}
     </div>
   );

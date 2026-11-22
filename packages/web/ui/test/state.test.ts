@@ -798,11 +798,11 @@ describe('reduce / feed fidelity', () => {
   it('gives a nested subagent one row that grows in place, then reports its own totals', () => {
     const usage = { elapsedMs: 21_400, turns: 3, toolCalls: 2, promptTokens: 12_000, completionTokens: 800 };
     const state = fold([
-      { event: { type: 'subagent_update', progress: { type: 'start', label: '探索 auth' } } },
-      { event: { type: 'subagent_update', progress: { type: 'tool_call', label: '探索 auth', call: CALL } } },
-      { event: { type: 'subagent_update', progress: { type: 'tool_call', label: '探索 auth', call: { ...CALL, id: 'c2' } } } },
-      { event: { type: 'subagent_update', progress: { type: 'usage', label: '探索 auth', stats: EMPTY_STATS } } },
-      { event: { type: 'subagent_update', progress: { type: 'done', label: '探索 auth', usage, status: 'completed' } } },
+      { event: { type: 'subagent_update', progress: { type: 'start', id: 'sub-1', label: '探索 auth' } } },
+      { event: { type: 'subagent_update', progress: { type: 'tool_call', id: 'sub-1', label: '探索 auth', call: CALL } } },
+      { event: { type: 'subagent_update', progress: { type: 'tool_call', id: 'sub-1', label: '探索 auth', call: { ...CALL, id: 'c2' } } } },
+      { event: { type: 'subagent_update', progress: { type: 'usage', id: 'sub-1', label: '探索 auth', stats: EMPTY_STATS } } },
+      { event: { type: 'subagent_update', progress: { type: 'done', id: 'sub-1', label: '探索 auth', usage, status: 'completed' } } },
     ]);
     expect(state.blocks).toHaveLength(1);
     expect(state.blocks[0]).toMatchObject({ kind: 'sub', sub: { label: '探索 auth', status: 'completed', calls: 2, usage } });
@@ -810,13 +810,29 @@ describe('reduce / feed fidelity', () => {
 
   it('keeps two concurrent delegations apart', () => {
     const state = fold([
-      { event: { type: 'subagent_update', progress: { type: 'start', label: 'A' } } },
-      { event: { type: 'subagent_update', progress: { type: 'start', label: 'B' } } },
-      { event: { type: 'subagent_update', progress: { type: 'tool_call', label: 'A', call: CALL } } },
+      { event: { type: 'subagent_update', progress: { type: 'start', id: 'sa', label: 'A' } } },
+      { event: { type: 'subagent_update', progress: { type: 'start', id: 'sb', label: 'B' } } },
+      { event: { type: 'subagent_update', progress: { type: 'tool_call', id: 'sa', label: 'A', call: CALL } } },
     ]);
     expect(state.blocks).toHaveLength(2);
-    expect(state.blocks[0]).toMatchObject({ id: 'sub:A', sub: { calls: 1 } });
-    expect(state.blocks[1]).toMatchObject({ id: 'sub:B', sub: { calls: 0, status: 'running' } });
+    expect(state.blocks[0]).toMatchObject({ id: 'sub:sa', sub: { calls: 1 } });
+    expect(state.blocks[1]).toMatchObject({ id: 'sub:sb', sub: { calls: 0, status: 'running' } });
+  });
+
+  it('keeps same-label delegations apart and lets each settle on its own', () => {
+    // The model omits `label` by default, so BOTH runs carry `subtask`: keying
+    // rows by the label merged them, and the settled one was rewritten back to
+    // `running` by the other's next tool call.
+    const usage = { elapsedMs: 1_000, turns: 1, toolCalls: 1, promptTokens: 10, completionTokens: 2 };
+    const state = fold([
+      { event: { type: 'subagent_update', progress: { type: 'start', id: 's1', label: 'subtask' } } },
+      { event: { type: 'subagent_update', progress: { type: 'start', id: 's2', label: 'subtask' } } },
+      { event: { type: 'subagent_update', progress: { type: 'done', id: 's1', label: 'subtask', usage, status: 'completed' } } },
+      { event: { type: 'subagent_update', progress: { type: 'tool_call', id: 's2', label: 'subtask', call: CALL } } },
+    ]);
+    expect(state.blocks).toHaveLength(2);
+    expect(state.blocks[0]).toMatchObject({ sub: { status: 'completed', usage } });
+    expect(state.blocks[1]).toMatchObject({ sub: { status: 'running', calls: 1 } });
   });
 });
 

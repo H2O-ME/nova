@@ -17,8 +17,8 @@ import {
   RIGHTBAR_MIN,
   SIDEBAR_AUTO_COLLAPSE,
   SIDEBAR_DEFAULT,
-  SIDEBAR_MAX,
   SIDEBAR_MIN,
+  sidebarMaxWidth,
 } from './columns.js';
 
 export interface LayoutState {
@@ -26,6 +26,16 @@ export interface LayoutState {
   sidebar: number;
   /** Last positive frame measurement; window width bootstraps the first render. */
   viewportWidth: number;
+  /**
+   * The debounced fact "this frame is narrower than the auto-collapse
+   * breakpoint". Window resizes land in `viewportWidth` immediately (the
+   * tracks must follow the live edge), but the COLLAPSE they cause waits for
+   * the resize to go idle — the reference runs its auto-collapse off a resize
+   * idle timer, not per frame, so dragging the window edge does not flip the
+   * rail on every pixel. The binding (`use-layout`) owns the timer and calls
+   * `setAutoCollapse` when it settles.
+   */
+  autoNarrow: boolean;
   /** Narrow-frame override: a manual toggle below the breakpoint expands the
    *  rail over the squeezed center without touching the width preference. */
   narrowExpanded: boolean;
@@ -45,14 +55,35 @@ export interface LayoutState {
   rightbarInstant: boolean;
 }
 
+/** Widths restored from the last session (`shell/layout-persist.ts`), already
+ *  validated as finite positives by the reader; clamped here against the boot
+ *  viewport. */
+export interface RestoredWidths {
+  sidebar?: number | null;
+  rightbar?: number | null;
+}
+
 /** Boot state. `viewportWidth` seeds from the window so the first paint is not
- *  a zero-width frame (the frame's own measurement lands in a layout effect). */
-export function initialLayout(viewportWidth = window.innerWidth): LayoutState {
+ *  a zero-width frame (the frame's own measurement lands in a layout effect);
+ *  the default reads the window through a guard so a static/SSR render never
+ *  crashes. Restored widths ride in already read, and are clamped against the
+ *  boot viewport the way the reference clamps its stored width on read. */
+export function initialLayout(
+  viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth,
+  restored: RestoredWidths = {},
+): LayoutState {
   return {
-    sidebar: SIDEBAR_DEFAULT,
+    sidebar:
+      restored.sidebar !== null && restored.sidebar !== undefined && restored.sidebar > 0
+        ? clampWidth(restored.sidebar, SIDEBAR_MIN, sidebarMaxWidth(viewportWidth))
+        : SIDEBAR_DEFAULT,
     viewportWidth,
+    autoNarrow: viewportWidth < SIDEBAR_AUTO_COLLAPSE,
     narrowExpanded: false,
-    rightbar: null,
+    rightbar:
+      restored.rightbar !== null && restored.rightbar !== undefined && restored.rightbar > 0
+        ? clampWidth(restored.rightbar, RIGHTBAR_MIN, Math.max(RIGHTBAR_MIN, viewportWidth * RIGHTBAR_MAX_RATIO))
+        : null,
     rightbarShown: false,
     rightbarTrack: false,
     rightbarFullscreen: false,
@@ -64,26 +95,36 @@ export function setSidebar(state: LayoutState, px: number): LayoutState {
   return {
     ...state,
     rightbarInstant: false,
-    sidebar: clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX),
+    sidebar: clampWidth(px, SIDEBAR_MIN, sidebarMaxWidth(state.viewportWidth)),
   };
+}
+
+/**
+ * Commit the debounced auto-collapse fact. The only writer of `autoNarrow` —
+ * the resize-idle timer in `use-layout` (and the boot state) — so a crossing
+ * that un-crosses inside the idle window never flips the rail at all.
+ * Crossing in either direction drops the manual override: the narrow default
+ * is auto-collapsed, the wide state is the preference.
+ */
+export function setAutoCollapse(state: LayoutState, narrow: boolean): LayoutState {
+  if (state.autoNarrow === narrow) return state;
+  return { ...state, rightbarInstant: false, autoNarrow: narrow, narrowExpanded: false };
 }
 
 /** Narrow toggles flip only the override: the width preference survives
  *  untouched, so re-widening restores the pre-squeeze layout. */
 export function toggleSidebar(state: LayoutState): LayoutState {
-  if (state.viewportWidth < SIDEBAR_AUTO_COLLAPSE) {
+  if (state.autoNarrow) {
     return { ...state, rightbarInstant: false, narrowExpanded: !state.narrowExpanded };
   }
   return { ...state, rightbarInstant: false, sidebar: state.sidebar === 0 ? SIDEBAR_DEFAULT : 0 };
 }
 
-/** Crossing the breakpoint in either direction drops the override: the narrow
- *  default is auto-collapsed, the wide state is the preference. */
+/** Geometry follows the live measurement immediately; the collapse it may
+ *  cause is `setAutoCollapse`'s debounced decision, not this update's. */
 export function setViewportWidth(state: LayoutState, width: number): LayoutState {
   if (state.viewportWidth === width) return state;
-  const crossed =
-    state.viewportWidth < SIDEBAR_AUTO_COLLAPSE !== width < SIDEBAR_AUTO_COLLAPSE;
-  return { ...state, rightbarInstant: false, narrowExpanded: crossed ? false : state.narrowExpanded, viewportWidth: width };
+  return { ...state, rightbarInstant: false, viewportWidth: width };
 }
 
 export function setRightbar(state: LayoutState, px: number): LayoutState {
@@ -134,13 +175,12 @@ export function closeRightbar(state: LayoutState): LayoutState {
 
 /** The sidebar's rendered width preference after responsive collapse. */
 export function sidebarPreference(state: LayoutState): number {
-  const narrow = state.viewportWidth < SIDEBAR_AUTO_COLLAPSE;
-  const collapsed = narrow ? !state.narrowExpanded : state.sidebar === 0;
+  const collapsed = state.autoNarrow ? !state.narrowExpanded : state.sidebar === 0;
   if (collapsed) return 0;
   return state.sidebar === 0 ? SIDEBAR_DEFAULT : state.sidebar;
 }
 
 /** Whether the sidebar renders as the collapsed rail. */
 export function sidebarCollapsed(state: LayoutState): boolean {
-  return state.viewportWidth < SIDEBAR_AUTO_COLLAPSE ? !state.narrowExpanded : state.sidebar === 0;
+  return state.autoNarrow ? !state.narrowExpanded : state.sidebar === 0;
 }

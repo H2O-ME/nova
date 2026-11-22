@@ -100,14 +100,22 @@ export function reduceTranscript(
 }
 
 /**
- * Nested-subagent life as ONE row per label, rewritten in place (the same
- * "one place, later updates replace the first" rule the job rows follow).
+ * Nested-subagent life as ONE row per DELEGATION (`progress.id`), rewritten in
+ * place (the same "one place, later updates replace the first" rule the job
+ * rows follow).
+ *
+ * The key is the id, never the label: `label` defaults to `subtask` whenever
+ * the model omits one, so two concurrent unlabeled delegations carried the
+ * SAME label — keying by it merged them into one row whose call count
+ * flip-flopped between the two runs and whose settled state was rewritten back
+ * to `running` by the other run's next tool call.
+ *
  * `usage` frames are deliberately not drawn: the row shows the nested loop's
  * SHAPE while it runs (how many calls it has made, what it is calling) and its
  * totals once `done` lands, so no per-request accumulation is invented here.
  */
 function reduceSubagent(state: UiState, progress: SubagentProgress): UiState {
-  const id = `sub:${progress.label}`;
+  const id = `sub:${progress.id}`;
   const at = state.blocks.findIndex((b) => b.id === id);
   const prior = at < 0 ? undefined : state.blocks[at];
   const prev = prior?.kind === 'sub' ? prior.sub : undefined;

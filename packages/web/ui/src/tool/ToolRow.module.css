@@ -1,7 +1,7 @@
 /* Row chrome (`.root`, the sweep, `.sep`, `.summary`, `.summarySuffix`,
    `.diffStat`, `.errorSummary`, `.stoppedSummary`, the `.row:hover` lift,
    `.bodyWrap`, `.visuallyHidden`) is ToolRow.module.css;
-   `.row`, `.leading`, `.iconIdle`, `.chevronHover` and `.title` are the shared
+   `.row`, `.leading` and `.title` are the shared
    24px disclosure chrome from ui-primitives DisclosureRow.module.css (same
    license), inlined here because this frontend has no primitive package.
    Values, comments and class names kept verbatim. */
@@ -35,7 +35,6 @@
 }
 
 .leading {
-  position: relative; /* .chevronHover overlay anchor */
   flex: none;
   width: calc(16px + var(--nova-content-font-delta, 0px));
   height: calc(16px + var(--nova-content-font-delta, 0px));
@@ -55,32 +54,35 @@
   height: calc(14px + var(--nova-content-font-delta, 0px));
 }
 
-/* The idle icon crossfades (100ms) into a down chevron while the row is
-   hovered, before it is opened. */
-.iconIdle {
-  display: inline-flex;
-  opacity: 1;
-  transition: opacity 100ms ease;
-}
-
-.chevronHover {
-  position: absolute;
-  inset: 0;
-  margin: auto;
+/* The disclosure affordance: a trailing chevron, hidden at rest, revealed on
+ * hover/focus and turned 90° while open — the reference's `data-summary-chevron`
+ * (`ToolSummaryRow.tsx:235-243`). The leading glyph is the row's identity and
+ * stays where it is. */
+.chevronTrailing {
+  flex: none;
+  margin-left: var(--nova-space-8);
+  color: var(--nova-text-faint);
   opacity: 0;
-  transition: opacity 100ms ease;
+  transform: rotate(0deg);
+  transition:
+      opacity 100ms ease,
+      transform var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
-.row:hover .iconIdle {
-  opacity: 0;
-}
-
-.row:hover .chevronHover {
+.row:hover .chevronTrailing,
+.row:focus-visible .chevronTrailing {
   opacity: 1;
 }
 
-.chevron {
-  color: var(--nova-text-secondary);
+.chevronTrailing[data-open] {
+  opacity: 1;
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevronTrailing {
+    transition: none;
+  }
 }
 
 .title {

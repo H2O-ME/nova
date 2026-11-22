@@ -1,15 +1,57 @@
-/* The summary group's expanded body: the members at the same 4px rhythm they
-   have in the flat flow (the reference's work container is `gap-1`), with one
-   small inset so the members read as belonging to the summary line above them
-   rather than as new top-level rows. */
+/* The summary group's expanded body: the members at the reference's own rhythm
+   and indent, under the group's own guide line.
+ *
+ * The reference (`ToolCallBlocks/ToolSummaryRow.tsx:378`) draws the rail with a
+ * `before:` pseudo-element pinned to the container's box, insets 8px, pads 16px
+ * and sets `gap-2` (8px) — not the 4px the flat flow uses, because an expanded
+ * group is a nested level, not more of the same list. It also SUPPRESSES the
+ * two rails its members bring with them (`[&_[data-summary-leading-icon]]:hidden`,
+ * `[&_[data-reasoning-scroll-mask]]:border-l-0`): the nesting already states the
+ * hierarchy, and drawing a second line inside the first one reads as a mistake
+ * rather than as depth.
+ *
+ * The pseudo-element is what keeps the rail off the layout: it draws at the
+ * container's left edge while `padding-left` alone supplies the inset, so the
+ * members' text aligns with the group's own title above. */
 
 .members {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-4);
-  margin-top: var(--nova-space-4);
-  padding-left: var(--nova-space-6);
+  gap: var(--nova-space-8);
+  margin-top: var(--nova-space-8);
+  margin-left: var(--nova-space-8);
+  padding-left: var(--nova-space-16);
   min-width: 0;
+}
+
+.members::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-left: 1px solid var(--nova-border-strong);
+}
+
+/* Nested rails and repeated identities are the members' own business in the flat
+ * flow and redundant here: one guide serves the whole group, and a thinking
+ * row's glyph repeats the group's own brain. The reference suppresses its
+ * reasoning rail AND its members' leading icons by the same rule set
+ * (`ToolSummaryRow.tsx:378`), because the nesting already states the hierarchy.
+ *
+ * Deliberate departure: only the THINKING glyph is dropped here. Every other
+ * member's glyph says what that call did (read / search / run / edit), which the
+ * group header does not — the header counts them (`已查阅 3 项`) but does not
+ * name which rows they are, so hiding those would cost information. */
+.members [data-variant='think'] [data-flow-leading] {
+  display: none;
+}
+
+.members [data-reasoning-body] {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
 }
 
 .member {

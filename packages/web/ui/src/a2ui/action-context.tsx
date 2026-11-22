@@ -10,15 +10,21 @@
  */
 import { createContext, useCallback, useContext, type ReactNode } from 'react';
 import type { ClientFrame } from '../types.js';
-import type { A2uiAction } from './surface.js';
 
-/** One resolved action plus the surface it came from. */
-export interface A2uiSubmission extends A2uiAction {
+/**
+ * One resolved action plus the surface it came from. The action fields are the
+ * PROTOCOL's `ActionPayload` (name / surfaceId / sourceComponentId / timestamp
+ * / context, context already resolved by the official processor); the data
+ * model joins only when the surface set `sendDataModel: true`.
+ */
+export interface A2uiSubmission {
+  readonly name: string;
+  readonly context: Readonly<Record<string, unknown>>;
   readonly surfaceId: string;
   readonly sourceComponentId: string;
   /** ISO 8601, the protocol's own field (the client stamps it at click time). */
   readonly timestamp: string;
-  /** The whole model, present only when the surface set `sendDataModel: true`. */
+  /** The renderer's data-model envelope (`getRendererDataModel()`). */
   readonly dataModel?: unknown;
 }
 

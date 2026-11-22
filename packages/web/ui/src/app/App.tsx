@@ -10,7 +10,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { StripTabId } from '../rightbar/tabs.js';
 import { isFileTabId, filePathOf } from '../rightbar/tabs.js';
-import { closeTab, focusTab, initialStrip, openFileTab as revealFileTab, type StripState } from '../rightbar/strip-state.js';
+import { closeTab, focusTab, FILES_TAB, initialStrip, openFileTab as revealFileTab, type StripState } from '../rightbar/strip-state.js';
+import { docAt } from '../rightbar/editor-model.js';
 import { readRecentWorkspaces, rememberWorkspace } from '../shell/workspaces.js';
 import { useEscapeToClose } from '../shell/use-escape.js';
 import { useLayout } from '../shell/use-layout.js';
@@ -72,6 +73,7 @@ export function App(): JSX.Element {
   // never closes; file tabs come and go. The rules are the pure functions in
   // `rightbar/strip-state.ts`; this is only the binding.
   const [strip, setStrip] = useState<StripState>(initialStrip);
+  const editor = state.editor;
   const pickStripTab = useCallback((tab: StripTabId): void => {
     setStrip((state) => focusTab(state, tab));
   }, []);
@@ -82,12 +84,30 @@ export function App(): JSX.Element {
     // re-render as its own pane if a later tab ever read `editor.docs`).
     if (isFileTabId(tab)) dispatch({ type: 'editor_close', path: filePathOf(tab) });
   }, [dispatch]);
+  // One entrance for every "open the right panel" gesture (the header's corner
+  // button, a file opened from the tree). The reference opens its side pane
+  // from concrete user actions only, and Nova agrees: the panel is closed on
+  // launch, a file named anywhere opens it. The FILES fallback is the expand
+  // guarantee: the front tab's document may be gone (a removed file closed its
+  // doc, a tab closed under us), and a panel whose body renders blank is
+  // worse than one that opens on the directory.
+  const openRightbarPanel = useCallback((): void => {
+    setRightbarOpen(true);
+    setStrip((state) =>
+      isFileTabId(state.front) && docAt(editor, filePathOf(state.front)) === null
+        ? focusTab(state, FILES_TAB)
+        : state,
+    );
+  }, [editor]);
   // A file opened from the tree takes one entrance: the read goes out (the
-  // `sent` reduction places the doc), the strip reveals-or-opens its tab.
+  // `sent` reduction places the doc), the strip reveals-or-opens its tab, and
+  // the panel opens to receive it (the reference's side pane opens on the
+  // action that names its content — not on a hunt for a corner button).
   const openFileTab = useCallback((path: string): void => {
     send({ type: 'read_entry', path });
     setStrip((state) => revealFileTab(state, path));
-  }, [send]);
+    openRightbarPanel();
+  }, [send, openRightbarPanel]);
   const layout = useLayout();
   const { openRightbar, closeRightbar } = layout;
 
@@ -198,13 +218,17 @@ export function App(): JSX.Element {
   // The New Task row's advertised shortcut, made real: Ctrl/Cmd+N starts a
   // session (leaving the plugin center first, like every session gesture).
   // Without this binding the row's hint would be a lie, and a hint for a key
-  // that does nothing is worse than no hint.
+  // that does nothing is worse than no hint. A new session also COLLAPSES the
+  // right panel (the reference's new task collapses its side pane): a fresh
+  // conversation wants the whole centre, and the files it previewed belong to
+  // the session it replaced.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
       if (event.key.toLowerCase() !== 'n') return;
       event.preventDefault();
       setPluginsOpen(false);
+      setRightbarOpen(false);
       send({ type: 'new_session' });
     };
     window.addEventListener('keydown', onKeyDown);
@@ -234,7 +258,7 @@ export function App(): JSX.Element {
       onPickedFileConsumed={() => { setPickedFile(null); }}
       onReferenceFile={() => { pickNative('file'); }}
       rightbarOpen={rightbarOpen}
-      onOpenRightbar={() => { setRightbarOpen(true); }}
+      onOpenRightbar={openRightbarPanel}
     />
   );
 
@@ -264,7 +288,7 @@ export function App(): JSX.Element {
         onReferenceFile={(path) => { pickFile(path, basename(path)); }}
         onToggleFullscreen={toggleFullscreen}
         onCloseRightbar={closeRightbarPanel}
-        onOpenRightbar={() => { setRightbarOpen(true); }}
+        onOpenRightbar={openRightbarPanel}
       />
       {settingsOpen && (
         <SettingsOverlay

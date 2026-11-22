@@ -9,6 +9,7 @@ import {
   closeRightbar,
   initialLayout,
   openRightbar,
+  setAutoCollapse,
   setRightbar,
   setSidebar,
   setViewportWidth,
@@ -29,13 +30,20 @@ describe('sidebar preference', () => {
     expect(toggleSidebar(closed).sidebar).toBe(264);
   });
 
-  it('a drag clamps into the contract range', () => {
+  it('a drag clamps into the contract range: half the frame, floored at 420', () => {
     expect(setSidebar(wide(), 100).sidebar).toBe(264);
-    expect(setSidebar(wide(), 9999).sidebar).toBe(420);
+    // 1600 * 0.5 = 800 — the ceiling follows the frame above the fixed floor.
+    expect(setSidebar(wide(), 9999).sidebar).toBe(800);
+    // 600 * 0.5 = 300 < 420: the fixed floor keeps the ceiling at 420.
+    expect(setSidebar(setViewportWidth(wide(), 600), 9999).sidebar).toBe(420);
   });
 
-  it('a narrow frame auto-collapses and the manual toggle only overrides it', () => {
-    const narrow = setViewportWidth(setSidebar(wide(), 400), 900);
+  it('a resize alone never flips the rail; the idle commit does (resize debounce)', () => {
+    // Geometry follows the live measurement immediately; the collapse waits
+    // for `setAutoCollapse` (the binding's resize-idle timer).
+    const resized = setViewportWidth(setSidebar(wide(), 400), 900);
+    expect(sidebarCollapsed(resized)).toBe(false);
+    const narrow = setAutoCollapse(resized, true);
     expect(sidebarCollapsed(narrow)).toBe(true);
     const expanded = toggleSidebar(narrow);
     expect(sidebarCollapsed(expanded)).toBe(false);
@@ -44,12 +52,20 @@ describe('sidebar preference', () => {
     expect(sidebarPreference(expanded)).toBe(400);
   });
 
-  it('crossing the breakpoint in either direction drops the override', () => {
-    const expanded = toggleSidebar(setViewportWidth(wide(), 900));
+  it('the idle commit crossing in either direction drops the override', () => {
+    const expanded = toggleSidebar(setAutoCollapse(setViewportWidth(wide(), 900), true));
     expect(sidebarCollapsed(expanded)).toBe(false);
-    const widened = setViewportWidth(expanded, 1400);
+    const widened = setAutoCollapse(setViewportWidth(expanded, 1400), false);
     expect(widened.narrowExpanded).toBe(false);
-    expect(sidebarCollapsed(setViewportWidth(widened, 900))).toBe(true);
+    expect(sidebarCollapsed(setAutoCollapse(setViewportWidth(widened, 900), true))).toBe(true);
+  });
+
+  it('boot clamps a restored width against the boot viewport', () => {
+    expect(initialLayout(1600, { sidebar: 9999 }).sidebar).toBe(800);
+    expect(initialLayout(600, { sidebar: 9999 }).sidebar).toBe(420);
+    expect(initialLayout(1600, { sidebar: 0 }).sidebar).toBe(264);
+    expect(initialLayout(1600, { rightbar: 9999 }).rightbar).toBe(1120);
+    expect(initialLayout(1600, { rightbar: 0 }).rightbar).toBe(null);
   });
 });
 
@@ -87,8 +103,9 @@ describe('right panel preference', () => {
 
   it('opening the drawer leaves the sidebar expanded', () => {
     // The drawer needs no concession from its neighbours: opening it must not
-    // yank the session list out from under the pointer.
-    const narrowExpanded = toggleSidebar(setViewportWidth(wide(), 900));
+    // yank the session list out from under the pointer. (The resize reaches
+    // the rail through the debounced commit, as the store now models it.)
+    const narrowExpanded = toggleSidebar(setAutoCollapse(setViewportWidth(wide(), 900), true));
     expect(narrowExpanded.narrowExpanded).toBe(true);
     expect(openRightbar(narrowExpanded, false).narrowExpanded).toBe(true);
   });

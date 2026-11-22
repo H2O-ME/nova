@@ -12,11 +12,22 @@
  * page surface, its own nav rail on the left, and no scrim. The dialog it used
  * to be — 800px, centred, over a 60% black mask with a zoom entrance — is the
  * "完全偏离" the operator reported: the reference never dims the app, it
- * replaces it. */
+ * replaces it.
+ *
+ * BASE PLATE (2026-11-22, the reference's `DesktopWindowFrame`): the
+ * reference's settings page renders INSIDE the same window frame the workspace
+ * uses — window ground around it, 6px of ground left on the top/right/bottom,
+ * and a rounded bordered panel. It never paints its own second ground. Nova
+ * keeps the overlay mount (a route swap would touch `shell/` and rebuild the
+ * modal-layer lifetime for nothing) but copies that plate value for value from
+ * `shell/AppFrame.module.css`: the ground is the frame's `--nova-surface-base`
+ * (the old `sunken` was one step deeper than the shell's, so the page read as
+ * a separate window) and the panel is the centre column's
+ * `--nova-surface-raised`. */
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: var(--nova-layer-modal);
   display: flex;
   /* The reference's settings page is ONE panel: it starts at the window's
      top-left corner and leaves 6px of alt ground on the top, right and bottom
@@ -26,10 +37,11 @@
      screen next to the workspace. */
   padding: var(--nova-space-6) var(--nova-space-6) var(--nova-space-6) 0;
   box-sizing: border-box;
-  background: var(--nova-surface-sunken);
+  background: var(--nova-surface-base);
 }
 
-/* The page frame: one bounded panel for both columns. */
+/* The page frame: one bounded panel for both columns, the centre column's
+   own dress (`.centerCol`'s border + radius + raised plane). */
 .panel {
   position: relative;
   z-index: 1;
@@ -40,7 +52,7 @@
   overflow: hidden;
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-raised);
 }
 
 /* Windows desktop panel radius (the reference's `rounded-md` = 6px). */
@@ -256,9 +268,11 @@
   align-items: center;
   gap: var(--nova-space-8);
   margin-top: auto;
-  /* The reference's footer runs `px-4 pt-2 pb-4` (16/8/16): the identity's
-     avatar lines up with the nav rows' 16px inset. */
-  padding: var(--nova-space-8) var(--nova-space-16) var(--nova-space-16);
+  /* The reference's footer content sits at `px-4` (16px) from the rail's edge
+     (`WorkspaceSidebarFooter`); Nova's rail already carries 8px, so the row's
+     own sides add the remaining 8 — the avatar lands where ZCode's does, not
+     8px deeper in. */
+  padding: var(--nova-space-8) var(--nova-space-8) var(--nova-space-16);
 }
 
 .navAvatar {
@@ -366,15 +380,59 @@
   flex-direction: column;
 }
 
-/* Header: the reference's 48px top strip — drag area only, no words. */
+/* Header row: the reference's breadcrumb strip (`flex h-12 shrink-0` wrapping
+ * `SettingsHeaderBreadcrumb`, `SettingsPage.tsx:1726-1747`) — 48px tall, the
+ * row itself is the drag seat, and the path reads from the rail's own inset
+ * (`px-2.5`). The reference renders no words under two levels; Nova's page is
+ * always exactly two deep (the dialog, then the section), so the row always
+ * carries `设置 / <section>`. The words are pointer-transparent so the strip
+ * keeps dragging under the cursor (the reference's breadcrumb nav is
+ * `pointer-events-none` for the same reason). */
 .header {
   flex: none;
+  display: flex;
+  align-items: center;
   height: 48px;
+  padding: 0 var(--nova-space-10);
+  box-sizing: border-box;
+}
+
+.header > * {
+  pointer-events: none;
+}
+
+.crumbRoot {
+  padding: 0 var(--nova-space-8);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
+  white-space: nowrap;
+}
+
+.crumbChevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--nova-text-faint);
+}
+
+.crumbHere {
+  padding: 0 var(--nova-space-8);
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-primary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Options area: the reference's `mx-auto w-full max-w-4xl px-8 pb-10` column.
  * Centred with padding, not `max-width`, so the scrollbar keeps riding the
- * column's own right edge instead of floating inside the page.
+ * column's own right edge instead of floating inside the page. `scrollbar-
+ * gutter: stable` is the reference's `[scrollbar-gutter:stable]` on its
+ * `main` (`SettingsPage.tsx:1753`): pages that don't scroll yet keep the
+ * scrollbar's lane, so landing on a short page from a long one never shifts
+ * the column.
  *
  * The 32px stack is the reference's `space-y-8`: groups — heading, sentence and
  * card — sit further apart than the rows inside a card, which is what makes a
@@ -398,6 +456,7 @@
     calc((100% - 896px) / 2 + var(--nova-space-32))
   );
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 /* The section title: 对齐 ZCode `SettingsPage.tsx:1766-1768` 的

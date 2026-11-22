@@ -3,7 +3,7 @@
  * the transcript row (`maxLines` at the card family's cap) and the detail panel
  * (`maxLines: Infinity`, the whole body).
  */
-import { A2uiView } from '../../a2ui/A2ui.js';
+import { A2uiView } from '../../a2ui/A2uiView.js';
 import type { BodyShell, RowSlots } from '../model.js';
 import { DiffCard } from './DiffCard.js';
 import { GenericCard } from './GenericCard.js';

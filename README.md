@@ -7,7 +7,7 @@
 ![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6)
 ![ESM-only](https://img.shields.io/badge/ESM--only-green)
-![Tests 1192 passing](https://img.shields.io/badge/tests-1192%20passing-2ea44f)
+![Tests 1201 passing](https://img.shields.io/badge/tests-1201%20passing-2ea44f)
 ![Version 0.4.0](https://img.shields.io/badge/version-0.4.0-e8a13c)
 
 > 完整设计、约定与里程碑见 [AGENTS.md](./AGENTS.md)（人机共读的**唯一权威文档**）；版本号遵循 [Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)，公共 API 定义见其 §8。

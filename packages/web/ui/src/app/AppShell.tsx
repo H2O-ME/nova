@@ -87,6 +87,10 @@ export function AppShell(props: AppShellProps): JSX.Element {
           onLeavePlugins={props.onLeavePlugins}
           onDeleteSession={(file) => { send({ type: 'delete_session', file }); }}
           onReloadSessions={props.onReloadSessions}
+          // A session gesture made in the sidebar collapses the right panel —
+          // the shell's own rule (the reference's new task collapses its side
+          // pane), not the sidebar's, so it arrives as the shell's close.
+          onNewSession={props.onCloseRightbar}
           onToggleCollapsed={layout.toggleSidebar}
         />
       )}

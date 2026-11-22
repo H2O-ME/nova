@@ -176,6 +176,53 @@ describe('token ownership', () => {
   });
 
   /**
+   * Floating surfaces name a rung of `tokens/layer.css`, never a number.
+   *
+   * The ladder used to be spelled per sheet: settings 1200, menus 1300, the
+   * caption buttons 1300 too (a tie with the menu), tooltips 1100 (below the
+   * dialog they label), the composer drop overlay 1000 (below settings). Each
+   * value looked fine alone; together they were not an order.
+   *
+   * The rule draws the line at 100: a small number is an IN-PAGE rung (a sticky
+   * banner, a control over its own seat — those must stay tunable beside the
+   * element they stack against), while anything that reaches for the window's
+   * overlay space has to say which layer it belongs to.
+   */
+  it('window-level z-index comes from the layer ladder, not from a per-sheet number', () => {
+    const offenders = listSources(/\.css$/, true)
+      // The ladder's own sheet is where the numbers live.
+      .filter((file) => file.rel !== 'design/tokens/layer.css')
+      .flatMap((file) => [...file.text.matchAll(/z-index:\s*(-?\d+)/g)]
+        .map((m) => ({ rel: file.rel, value: Number(m[1]) })))
+      .filter(({ value }) => value >= 100)
+      .map(({ rel, value }) => `${rel}: z-index: ${value}`);
+    expect(offenders).toEqual([]);
+  });
+
+  /**
+   * Nothing outside the frame's three columns joins its grid.
+   *
+   * `.frame` declares `grid-template-rows: 100%` — ONE row — and the three
+   * columns are its grid children. A fourth grid ITEM (the top drag strip,
+   * while it was one) pushed the columns into an implicit second row of height
+   * 0 and the whole centre and right columns rendered blank. The screenshot of
+   * that build is the reason this check exists: a strip that wants to sit on
+   * the ground band must be absolutely positioned, like the drag handles.
+   *
+   * The assertion is textual because the failure is structural: any rule in the
+   * frame's own sheet that sets `grid-row`/`grid-column`/`grid-area` is either
+   * a deliberate re-place of one of the three columns (none today) or this bug.
+   */
+  it('the frame grid carries only its three columns', () => {
+    const frame = listSources(/\.module\.css$/, true)
+      .find((file) => file.rel === 'shell/AppFrame.module.css');
+    expect(frame, 'the frame sheet must exist').toBeDefined();
+    const placements = [...(frame?.text ?? '').matchAll(/^\s*(grid-row|grid-column|grid-area):/gm)]
+      .map((m) => m[0].trim());
+    expect(placements, 'no rule may re-place a frame grid item').toEqual([]);
+  });
+
+  /**
    * Every inline `<svg>` declares its design box (`width={16}` / `width="14"`).
    * An SVG carrying only a `viewBox` has **no intrinsic size**: in a flex row it
    * contributes nothing to its parent's intrinsic width, so the parent sizes

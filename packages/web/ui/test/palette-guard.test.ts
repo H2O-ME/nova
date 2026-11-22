@@ -219,15 +219,54 @@ describe('shape language', () => {
   });
 
   it('the transcript rhythm matches the reference', () => {
-    // The reference's own values: 16px default, 8px only for the answer that
-    // follows a closed process. Any per-row private gap is the 「间距忽大忽小」
-    // the operator reported.
+    // The reference's own values, and the only two that are load-bearing:
+    //   4px between work rows (its `gap-1`),
+    //   76px at a turn boundary (its `pt-14` over the previous `pb-5`).
+    // Both are asserted as VARIABLE assignments rather than margin declarations:
+    // the generic sibling rule's four `:not()` guards give it specificity
+    // (0,7,0), so a direct `margin-top` override on a work row loses and the
+    // 4px tier silently fell back to 16px for months. Writing the variable is
+    // what keeps the tiers independent of selector weight.
     const sheet = read('chat/ChatView.module.css');
     const fallback = /margin-top:\s*var\(--nova-chat-flow-gap,\s*(\d+)px\)/.exec(sheet)?.[1];
     expect(fallback, 'the default flow gap is the 16px rhythm').toBe('16');
-    expect(sheet, 'the closed-process answer is the 8px exception').toMatch(
-      /data-chat-group-part='response'\][\s\S]{0,80}--nova-chat-flow-gap:\s*8px/
+    expect(sheet, 'work rows carry the 4px tier').toMatch(
+      /data-chat-flow-kind='tool'\]\s*\{\s*--nova-chat-flow-gap:\s*var\(--nova-space-4\)/
     );
+    expect(sheet, 'the turn boundary is pt-14 + pb-5').toMatch(
+      /data-chat-flow-kind='user'\][\s\S]{0,80}--nova-chat-flow-gap:\s*76px/
+    );
+    // The specificity trap itself: no rule may set a work row's margin directly.
+    expect(sheet, 'no work-row rule may write margin-top').not.toMatch(
+      /data-chat-flow-kind='(process|tool)'\][^{]*\{[^}]*margin-top/
+    );
+  });
+
+  it('a disclosure row keeps its glyph and adds a trailing chevron', () => {
+    // The reference does not swap the row's type glyph for a chevron
+    // (`ToolSummaryRow.tsx:235-243`): the glyph states WHAT the row is and
+    // stays put, while a right chevron fades in at the row's end and turns 90°
+    // when open. Nova used to crossfade the leading glyph into a chevron on
+    // hover AND while open, so the only mark saying what the row was vanished
+    // exactly when the reader was pointing at it — and the leading slot held
+    // different content depending on pointer position.
+    for (const [sheet, source] of [
+      ['chat/DisclosureRow', 'chat/DisclosureRow.tsx'],
+      ['tool/ToolRow', 'tool/ToolRow.tsx'],
+    ] as const) {
+      const css = read(`${sheet}.module.css`);
+      const tsx = read(source);
+      // The trailing affordance must exist under its own class.
+      expect(css, `${sheet}: the trailing chevron rule is missing`).toContain('.chevronTrailing');
+      // No sheet may reintroduce a hover overlay that REPLACES the glyph.
+      expect(css, `${sheet}: the leading glyph must not crossfade away`).not.toMatch(
+        /\.row:hover\s+\.(iconIdle|chevronHover)/
+      );
+      // The component must still bind a glyph (not a chevron) to the leading slot.
+      expect(tsx, `${source}: the leading slot lost its glyph`).toMatch(
+        /\{icon\}<\/span>|\{glyph\}<\/span>/
+      );
+    }
   });
 
   it('a mounted transcript row does NOT animate in', () => {

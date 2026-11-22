@@ -1,19 +1,20 @@
 /**
- * 界面主题 row: the reference's `settings.themeMode` — a labeled row whose
- * control is a 260px select, not the three-cube chooser this used to draw.
- *
- * The cubes were a figma-era deviation: three ~190×80 slabs for a setting with
- * three plain states, inside a card whose other rows carry 32px controls. The
- * reference states the choice as one select (`SelectTrigger size="lg"` showing
- * the active mode's glyph), and that is the control shape every row on the
- * 常规 page reads as now.
+ * 界面主题 row: three peer modes stated as segment pills — the reference's
+ * `SegmentPill` shape (`settings/PluginStoreListView.tsx:262-289`), the form
+ * it gives a short row of flat choices (its own usage tabs ride it at
+ * `SettingsPage.tsx:210`). The theme row used to be a 260px field select; the
+ * task here moves the three modes onto the pills and widens the row's control
+ * seat for them (`SettingsRow`'s `wide`, the reference's
+ * `sm:grid-cols-[minmax(0,1fr)_280px]`). The reference itself keeps a select
+ * on this row (`settingsCodePreview.tsx:129-145`); the pills are the same
+ * family's answer for exactly three always-visible options, taken per this
+ * page's alignment brief.
  *
  * Selection follows the persisted preference, never the resolved active theme:
- * a reader on 系统 while the OS is dark must still see 系统 in the trigger.
+ * a reader on 系统 while the OS is dark must still see 系统 pressed.
  */
-import { FollowSystemIcon, MoonIcon, SunIcon } from '../icons.js';
-import { ModeSelect } from '../conversation/PermissionSelect.js';
 import { SETTINGS_COPY } from './copy.js';
+import { SegmentPill } from './SegmentPill.js';
 import { SettingsRow } from './SettingsRow.js';
 import type { ThemePreference } from '../theme.js';
 import css from './AppearanceRow.module.css';
@@ -24,16 +25,14 @@ const OPTIONS: readonly {
   code: ThemePreference;
   label: string;
   hint: string;
-  Icon: typeof SunIcon;
 }[] = [
   {
     code: 'system',
     label: SETTINGS_COPY['appearance.system'],
     hint: '跟随系统外观',
-    Icon: FollowSystemIcon,
   },
-  { code: 'dark', label: SETTINGS_COPY['appearance.dark'], hint: '深色界面', Icon: MoonIcon },
-  { code: 'light', label: SETTINGS_COPY['appearance.light'], hint: '浅色界面', Icon: SunIcon },
+  { code: 'dark', label: SETTINGS_COPY['appearance.dark'], hint: '深色界面' },
+  { code: 'light', label: SETTINGS_COPY['appearance.light'], hint: '浅色界面' },
 ];
 
 export interface AppearanceRowProps {
@@ -53,20 +52,19 @@ export function AppearanceRow({ preference, onPick }: AppearanceRowProps): JSX.E
     <SettingsRow
       title={SETTINGS_COPY['appearance.title']}
       description={SETTINGS_COPY['appearance.description']}
+      wide
     >
-      <ModeSelect
-        value={preference}
-        options={OPTIONS}
-        name={SETTINGS_COPY['appearance.title']}
-        onPick={onPick}
-        align="end"
-        glyphOf={(code) => {
-          const option = OPTIONS.find((candidate) => candidate.code === code);
-          return option === undefined ? undefined : <option.Icon />;
-        }}
-        variant="field"
-        className={css.field}
-      />
+      <div className={css.modes} role="group" aria-label={SETTINGS_COPY['appearance.title']}>
+        {OPTIONS.map((option) => (
+          <SegmentPill
+            key={option.code}
+            label={option.label}
+            title={option.hint}
+            active={preference === option.code}
+            onPick={() => { onPick(option.code); }}
+          />
+        ))}
+      </div>
     </SettingsRow>
   );
 }

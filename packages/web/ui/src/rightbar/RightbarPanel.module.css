@@ -32,16 +32,29 @@
   background: var(--nova-surface-raised);
   border: 1px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
-  /* The reference's side pane opens over 200ms on the panel easing curve
-     (`transition-[flex-grow] duration-200 ease-out`); 260ms ease-in-out read
-     sluggish beside the sidebar's own 200ms. */
+  /* Opacity fade-in only (2026-11-22, ZCode alignment — `AnimatedSidePanePanel`
+     runs `transition-opacity duration-200 ease-out` and lets the layout carry
+     the size change). The panel is the shell's THIRD COLUMN: its entrance
+     geometry IS the track growth (`AppFrame`'s grid-template-columns transition,
+     the same 200ms panel curve), and the old translateX(100%) ran a SECOND
+     animation against it — the panel slid over the transcript while the track
+     grew under it, so the panel visibly detached from the space the shell had
+     already conceded. One geometry animation (the track), one paint animation
+     (this fade). */
   animation: rightbar-in var(--nova-dur-panel) var(--nova-ease-panel);
 }
 
 @keyframes rightbar-in {
   from {
-    transform: translateX(100%);
+    opacity: 0;
   }
+}
+
+/* The desktop panel rounds like the centre's (the reference resolves the panel
+   radius per platform: 6px Windows desktop, 12px web — both panels stand on
+   the same ground, so they must share one radius per platform). */
+:global([data-desktop]) .panel {
+  border-radius: var(--nova-radius-xs);
 }
 
 /* Fullscreen fills the viewport; the frame keeps its track underneath. */
@@ -49,8 +62,8 @@
   position: fixed;
   inset: 0;
   margin: 0;
-  /* Fullscreen variant covers the frame but stays under the dialogs (each owns its 1200). */
-  z-index: 60;
+  /* Fullscreen covers the frame but stays under the dialogs (the modal rung). */
+  z-index: var(--nova-layer-scrim);
   border: none;
 }
 
@@ -60,7 +73,7 @@
   position: fixed;
   inset: var(--nova-space-6);
   margin: 0;
-  z-index: 60;
+  z-index: var(--nova-layer-scrim);
 }
 
 /* The body hosts every page at once; only the one in front is laid out, so a

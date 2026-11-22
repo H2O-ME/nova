@@ -23,7 +23,6 @@ import type { ReactNode } from 'react';
 import {
   computeColumns,
   RIGHTBAR_DEFAULT_RATIO,
-  SIDEBAR_AUTO_COLLAPSE,
 } from './columns.js';
 import type { LayoutState } from './layout-store.js';
 import { sidebarCollapsed, sidebarPreference } from './layout-store.js';
@@ -216,13 +215,13 @@ export function AppFrame({
     };
   }, [onViewportWidth]);
 
-  const narrow = viewport < SIDEBAR_AUTO_COLLAPSE;
   const collapsed = sidebarCollapsed(layout);
   const preference = sidebarPreference(layout);
   // The auto-collapse is a fact about WHY the rail is drawn, and it is only true
-  // while the frame is narrow AND the rail is closed (a reader who expanded it
-  // below the breakpoint has already answered the question).
-  const autoCollapsed = narrow && collapsed;
+  // while the frame is (debounced) narrow AND the rail is closed (a reader who
+  // expanded it below the breakpoint has already answered the question). The
+  // debounced fact, not the live viewport, is what the rail answers to.
+  const autoCollapsed = layout.autoNarrow && collapsed;
   const rightbarPreference = layout.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO;
   // All three widths are solved together: the right panel now owns a real
   // track, so a narrow frame removes it exactly like any other concession
@@ -305,7 +304,13 @@ export function AppFrame({
     <div
       ref={frameRef}
       className={css.frame}
-      style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px` }}
+      style={{
+        gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px`,
+        // Published for the absolutely-positioned top drag strip: the strip
+        // starts at the sidebar's right edge, which a grid item cannot learn
+        // from the track solver on its own.
+        '--nova-frame-sidebar-width': `${cols.sidebar}px`,
+      } as React.CSSProperties}
       {...(collapsed ? { 'data-sidebar-collapsed': '' } : {})}
       {...(autoCollapsed ? { 'data-sidebar-auto-collapsed': '' } : {})}
       {...(cols.rightbar === 0 ? { 'data-rightbar-collapsed': '' } : {})}
@@ -320,6 +325,15 @@ export function AppFrame({
         <CenterColumn>{center}</CenterColumn>
         <RightbarColumn>{rightbarNode}</RightbarColumn>
       </>
+      {/* The Windows ground's top strip is the frameless window's drag bar
+          (the reference gives the content container a `w-full [app-region:drag]`
+          strip above the panel). Nova's ground reveal is the panels' 6px top
+          margin — dead, unclickable space without this. It spans the centre and
+          right tracks only (the sidebar's own logo row is the drag seat there),
+          sits under every panel (it covers margin, never chrome), and renders
+          in the desktop shell only — in a browser it would silently eat clicks
+          on the strip for nothing. */}
+      {isDesktopShell() && <div className={css.topDragStrip} data-tauri-drag-region="" aria-hidden="true" />}
       {overlay !== undefined && <div className={css.overlayLayer}>{overlay}</div>}
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
       {!collapsed && (

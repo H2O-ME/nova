@@ -1,0 +1,40 @@
+/* The reference's pill dress (`PluginStoreListView.tsx:262-289`):
+ * `rounded-full px-3 py-1 text-ui-base font-medium transition-colors` —
+ * active `bg-selected text-foreground`, idle `text-foreground-subtle
+ * hover:bg-hover hover:text-foreground`, and a 2px focus ring in the
+ * input-focus colour (`focus-visible:ring-2
+ * focus-visible:ring-input-border-focused`, no offset). ZCode's
+ * `bg-selected`/`bg-hover` map to Nova's `--nova-interactive-active` /
+ * `--nova-interactive-hover` translucent washes. */
+.pill {
+  border: none;
+  border-radius: var(--nova-radius-full);
+  padding: var(--nova-space-4) var(--nova-space-12);
+  box-sizing: border-box;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--nova-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color var(--nova-dur-fast) var(--nova-ease-inout),
+    color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.pill:hover {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+}
+
+.pill.active,
+.pill.active:hover {
+  background: var(--nova-interactive-active);
+  color: var(--nova-text-primary);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--nova-input-border-focused);
+  outline-offset: 0;
+}
