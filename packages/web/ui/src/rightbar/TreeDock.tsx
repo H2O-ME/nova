@@ -20,12 +20,13 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { MenuItem } from '../shell/Menu.js';
 import { Menu } from '../shell/Menu.js';
-import { ChevronDownIcon, ChevronRightIcon, FileIcon, FolderClosedIcon, FolderOpenIcon, RefreshIcon, SearchIcon } from '../icons.js';
+import { ChevronDownIcon, ChevronRightIcon, RefreshIcon, SearchIcon } from '../icons.js';
 import { MoreGlyph } from './panel-icons.js';
+import { FileKindIcon, fileKindOf } from './file-kind.js';
 import type { ClientFrame } from '../types.js';
 import type { GitState } from '../state.js';
 import { baseName, parentDir } from './file-refs.js';
-import { dirHasChanges, gitMarks, markFor, type GitMark } from './git-marks.js';
+import { dirTone, gitMarks, markFor, type GitMark } from './git-marks.js';
 import {
   entryPaths, filterRows, needsListing, toggleExpanded, treeRows, type TreeRow, type TreeState,
 } from './files-model.js';
@@ -225,11 +226,8 @@ export function TreeDock({
                 title={rootDir}
                 onClick={() => { toggle(rootDir); }}
               >
-                <span className={css.chevron} data-open={open.has(rootDir) ? '' : undefined}>
+                <span className={cx(css.lead, css.leadDir)}>
                   {open.has(rootDir) ? <ChevronDownIcon /> : <ChevronRightIcon />}
-                </span>
-                <span className={cx(css.rowIcon, css.rowIconDir)}>
-                  {open.has(rootDir) ? <FolderOpenIcon /> : <FolderClosedIcon />}
                 </span>
                 <span className={css.rootName}>{baseName(rootDir)}</span>
               </button>
@@ -245,7 +243,7 @@ export function TreeDock({
                     row={row}
                     current={currentFile}
                     mark={row.kind === 'entry' ? markFor(marks, rootDir, row.entry.path) : undefined}
-                    dirChanged={row.kind === 'entry' && row.entry.kind === 'dir' ? dirHasChanges(marks, rootDir, row.entry.path) : false}
+                    dirTone={row.kind === 'entry' && row.entry.kind === 'dir' ? dirTone(marks, rootDir, row.entry.path) : undefined}
                     picked={row.kind === 'entry' && isPicked(picked, row.entry.path)}
                     reference={onReferenceFile}
                     copied={copied}
@@ -359,7 +357,8 @@ interface TreeRowProps {
   row: TreeRow;
   current: string | null;
   mark: GitMark | undefined;
-  dirChanged: boolean;
+  /** The strongest tone below this directory (no letter — git has none for it). */
+  dirTone: GitMark['tone'] | undefined;
   picked: boolean;
   reference: ((path: string) => void) | undefined;
   copied: string | null;
@@ -383,7 +382,7 @@ function TreeRow({
   row,
   current,
   mark,
-  dirChanged,
+  dirTone,
   picked,
   reference,
   copied,
@@ -463,21 +462,43 @@ function TreeRow({
         }
       }}
     >
-      <span className={css.chevron} data-open={isDir && row.expanded ? '' : undefined} data-leaf={isDir ? undefined : ''}>
-        {isDir ? (row.expanded ? <ChevronDownIcon /> : <ChevronRightIcon />) : null}
-      </span>
-      <span className={cx(css.rowIcon, isDir && css.rowIconDir)}>
-        {isDir ? (row.expanded ? <FolderOpenIcon /> : <FolderClosedIcon />) : <FileIcon />}
+      {/* Depth guides (the reference's `hierarchyGuides.ts`): one 1px hairline
+          per ancestor level at 12px intervals, spanning the indented band, so a
+          deep branch reads as a column rather than as a drifting name. The
+          reference paints them with a repeating gradient at `left-2.5` and
+          -1px vertical overhang; the depth is data, so the width is inline. */}
+      {row.depth > 0 && (
+        <span
+          aria-hidden="true"
+          className={css.guides}
+          style={{ width: row.depth * 12 }}
+          data-depth={row.depth}
+        />
+      )}
+      {/* ONE 16px lead column, and what it holds is the row's whole hierarchy
+          statement (the reference's own anatomy, `WorkspaceFileTreeRowView.tsx`
+          :296-315): a directory draws a chevron and nothing else — no folder
+          glyph anywhere in the reference — while a file draws its TYPE's glyph.
+          Nova drew a folder on every directory plus one generic document
+          outline on every file, two glyphs where the reference has one. */}
+      <span className={cx(css.lead, isDir && css.leadDir)}>
+        {isDir
+          ? (row.expanded ? <ChevronDownIcon /> : <ChevronRightIcon />)
+          : <FileKindIcon kind={fileKindOf(entry.name)} />}
       </span>
       <span
         className={css.rowName}
         data-git-tone={mark?.tone}
-        data-dir-changed={dirChanged ? '' : undefined}
+        data-dir-tone={dirTone}
       >
         {entry.name}
       </span>
       {entry.hidden && <span className={css.hiddenMark}>{RIGHTBAR_COPY['files.hidden']}</span>}
       {mark !== undefined && <StatusBadge tone={toneOf(mark.tone)}>{mark.letter}</StatusBadge>}
+      {/* A changed branch ends in a 6px dot in the aggregate tone (the
+          reference's 60%-opacity git dot, `WorkspaceFileTreeRowView.tsx:330-353`):
+          the letter belongs to files, the dot to the folders that contain them. */}
+      {dirTone !== undefined && <span className={css.dirDot} data-dir-tone={dirTone} aria-hidden="true" />}
       <span className={css.rowRail} data-open={menuOpen ? '' : undefined}>
         {reference !== undefined && !isDir && (
           <button

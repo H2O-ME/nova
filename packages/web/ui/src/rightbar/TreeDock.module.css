@@ -122,18 +122,21 @@
    The verbs sit behind the name and take NO layout at rest (the reference's
    `explorerRef` is `display:none` until the row is hovered) — with them always
    in the layout, a dock at its 160px floor leaves the name one character wide.
-   The indentation is inline (it is data, one number per depth). */
+   The indentation is inline (it is data, one number per depth).
+   Geometry is the reference's own (`WorkspaceFileTreeRowView.tsx:250-260`):
+   28px row, `gap-1.5` (6px), `pr-2` (8px), 12px rounding, indentation
+   depth*12 + 8 — Nova had gap 4, pr 4 and 8px rounding. */
 .row {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--nova-space-4);
+  gap: var(--nova-space-6);
   box-sizing: border-box;
   width: 100%;
   height: 28px;
-  padding-right: var(--nova-space-4);
+  padding-right: var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-sm);
+  border-radius: var(--nova-radius-md);
   background: transparent;
   color: var(--nova-text-primary);
   font: var(--nova-font-s-14);
@@ -172,40 +175,72 @@
   color: var(--nova-color-accent);
 }
 
-.chevron {
+/* The row's ONE 16px lead column: a directory's chevron, or a file's type
+   glyph (the reference's own anatomy — `WorkspaceFileTreeRowView.tsx:296-315`
+   draws no folder icon anywhere). The chevron rides the faintest rung so the
+   name stays the row's subject. */
+.lead {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 14px;
-  height: 14px;
-  color: var(--nova-text-muted);
-  transition: transform 140ms var(--nova-ease-inout);
+  width: 16px;
+  height: 16px;
 }
 
-.chevron svg {
+.lead svg {
+  width: 16px;
+  height: 16px;
+}
+
+.leadDir {
+  color: var(--nova-text-faint);
+}
+
+.leadDir svg {
   width: 12px;
   height: 12px;
+  transition: transform var(--nova-dur-base) var(--nova-ease-inout);
 }
 
-.chevron[data-open] svg {
-  transform: rotate(0deg);
+/* File-type ink: five families, semantic like the git letters below them
+   (`--nova-color-chart-*` are the palette's non-accent hues). A file the tree
+   cannot classify keeps the muted document. */
+.lead svg[data-kind='code'] {
+  color: var(--nova-color-chart-indigo);
 }
 
-/* A leaf keeps the chevron's column so names line up with their siblings. */
-.chevron[data-leaf] {
-  visibility: hidden;
+.lead svg[data-kind='config'] {
+  color: var(--nova-color-warn-ink);
 }
 
-.rowIcon {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
+.lead svg[data-kind='markup'] {
+  color: var(--nova-color-chart-purple);
+}
+
+.lead svg[data-kind='image'] {
+  color: var(--nova-color-chart-teal);
+}
+
+.lead svg[data-kind='archive'],
+.lead svg[data-kind='document'] {
   color: var(--nova-text-muted);
 }
 
-.rowIconDir {
-  color: var(--nova-text-secondary);
+/* Depth guides: one hairline per ancestor level, 12px apart, painted over the
+   row's indented band (the reference's `hierarchyGuides.ts` — a repeating
+   gradient at `left-2.5`, 1px overhanging the row's top and bottom). */
+.guides {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: 10px;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0 11px,
+    var(--nova-border-strong) 11px 12px
+  );
 }
 
 .rowName {
@@ -231,10 +266,46 @@
   color: var(--nova-color-danger);
 }
 
-/* A directory with changes under it is tinted, never lettered: git has no status
-   for a folder, and a letter would be a claim it cannot make. */
-.rowName[data-dir-changed] {
-  color: var(--nova-color-accent);
+/* A directory with changes under it is TINTED, never lettered: git has no
+   status for a folder, and a letter would be a claim it cannot make. The tint
+   is the branch's aggregate tone (the reference's
+   `getWorkspaceFileTreeRowDisplayGitStatus`), not a fixed accent. */
+.rowName[data-dir-tone='changed'] {
+  color: var(--nova-color-warn);
+}
+
+.rowName[data-dir-tone='staged'],
+.rowName[data-dir-tone='untracked'] {
+  color: var(--nova-color-success);
+}
+
+.rowName[data-dir-tone='conflict'] {
+  color: var(--nova-color-danger);
+}
+
+/* The changed branch's dot — 6px, 60% of the same tone (the reference's
+   git dot at 60%), pinned after the name so it reads at the row's right edge
+   whether or not the verbs are revealed. */
+.dirDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  opacity: 0.6;
+}
+
+.dirDot[data-dir-tone='changed'] {
+  background: var(--nova-color-warn);
+}
+
+.dirDot[data-dir-tone='staged'],
+.dirDot[data-dir-tone='untracked'] {
+  background: var(--nova-color-success);
+}
+
+.dirDot[data-dir-tone='conflict'] {
+  background: var(--nova-color-danger);
 }
 
 .hiddenMark {

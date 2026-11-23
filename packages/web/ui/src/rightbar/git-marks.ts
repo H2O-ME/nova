@@ -72,24 +72,36 @@ export function gitMarks(git: GitState | null): ReadonlyMap<string, GitMark> {
 }
 
 /**
- * Whether anything under a directory is changed — the reference's `dirHasChanges`.
+ * The tone a directory row shows — the reference's `directoryGitStatuses[0]`.
  *
  * A directory row carries no letter (git has no status for a folder); it is
- * colored instead, so a collapsed branch still says "there is something in
- * here" — which is the whole reason the decoration exists.
+ * TINTED, and a 6px dot at its right edge carries the same tone
+ * (`WorkspaceFileTreeRowView.tsx:330-353`). The tint is the aggregate of what
+ * is below it, most urgent first, so a collapsed branch still says "there is
+ * something in here" — which is the whole reason the decoration exists.
+ *
+ * Priority matches the reference's own aggregation: a conflict outranks an
+ * edit, an edit outranks a staged entry, and an untracked file is the least
+ * urgent thing that can sit below a folder.
  * @param marks - the map from {@link gitMarks}.
  * @param root - the workspace root.
  * @param dir - the directory's absolute path.
- * @returns true when at least one changed file sits below it.
+ * @returns the strongest descendant tone, or undefined when the branch is clean.
  */
-export function dirHasChanges(marks: ReadonlyMap<string, GitMark>, root: string, dir: string): boolean {
+export function dirTone(
+  marks: ReadonlyMap<string, GitMark>,
+  root: string,
+  dir: string,
+): GitMark['tone'] | undefined {
   const rel = relativeTo(root, dir);
-  if (rel.length === 0) return marks.size > 0;
-  const prefix = `${pathKey(rel)}/`;
-  for (const key of marks.keys()) {
-    if (key.startsWith(prefix)) return true;
+  const prefix = rel.length === 0 ? '' : `${pathKey(rel)}/`;
+  const rank: Record<GitMark['tone'], number> = { conflict: 3, changed: 2, staged: 1, untracked: 0 };
+  let best: GitMark['tone'] | undefined;
+  for (const [key, mark] of marks) {
+    if (rel.length > 0 && !key.startsWith(prefix)) continue;
+    if (best === undefined || rank[mark.tone] > rank[best]) best = mark.tone;
   }
-  return false;
+  return best;
 }
 
 /**
