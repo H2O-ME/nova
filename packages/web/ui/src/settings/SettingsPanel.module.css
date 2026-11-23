@@ -401,6 +401,16 @@
   pointer-events: none;
 }
 
+/* The caption cluster is the band's one live child (the crumbs are inert
+   labels). `WindowControls` renders nothing in a browser, so the header keeps
+   its old shape on the web build. */
+.headerCaption {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  pointer-events: auto;
+}
+
 .crumbRoot {
   padding: 0 var(--nova-space-8);
   font-size: 14px;

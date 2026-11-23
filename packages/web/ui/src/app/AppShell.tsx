@@ -22,7 +22,6 @@ import { SHELL_COPY } from '../shell/copy.js';
 import { AppFrame } from '../shell/AppFrame.js';
 import { sidebarCollapsed } from '../shell/layout-store.js';
 import { TopOverlay } from '../shell/TopOverlay.js';
-import { WindowControls } from '../shell/WindowControls.js';
 import type { useLayout } from '../shell/use-layout.js';
 
 export interface AppShellProps {
@@ -67,11 +66,7 @@ export function AppShell(props: AppShellProps): JSX.Element {
   // question). The top-left cluster's toggle answers to the same fact.
   const sidebarAutoClosed = layout.layout.autoNarrow && sidebarClosed;
   return (
-    <>
-      {/* The frameless desktop window's caption buttons (nothing in a
-          browser). Fixed-position, so it costs the frame no layout. */}
-      <WindowControls />
-      <AppFrame
+    <AppFrame
       layout={layout.layout}
       dragging={layout.dragging}
       onDragChange={layout.setDragging}
@@ -158,8 +153,7 @@ export function AppShell(props: AppShellProps): JSX.Element {
           </ErrorBoundary>
         );
       }}
-      />
-    </>
+    />
   );
 }
 

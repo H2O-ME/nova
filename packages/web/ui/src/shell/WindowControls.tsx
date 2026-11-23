@@ -4,9 +4,12 @@
  * The desktop shell opens the WebUI in a Tauri window with
  * `decorations: false` (`apps/tauri-bench/src-tauri/tauri.conf.json`), so the
  * three buttons Windows would have drawn are ours: minimise, maximise/restore,
- * close, pinned to the window's own top-right corner. That is what lets the
- * column start at y=0 like the reference, instead of sitting under a 30px
- * system caption.
+ * close. They are NOT a window-level overlay — the reference renders them
+ * inline in the header of the panel that owns the window's top-right corner
+ * (conversation header while the side pane is closed, the side pane's own
+ * header while it is open, the settings page's header on that page), and this
+ * component is that same inline cluster. Whatever surface draws the corner
+ * renders it; nothing reserves space for it.
  *
  * There is no Tauri in a browser (and none in the plain `nova --web` surface),
  * so the component renders nothing unless `__TAURI_INTERNALS__` is present —

@@ -87,12 +87,9 @@
   margin-left: auto;
 }
 
-/* The desktop shell's self-drawn caption buttons live in this row's trailing
-   corner (three 28px boxes plus gaps, 6px from the window edge), so the row
-   reserves their width instead of letting the corner seat sit under them. */
-.headerDesktop {
-  padding-right: 96px;
-}
+/* (The desktop caption reserve that used to sit here is gone: the caption
+   buttons are now INLINE in the corner seat — see `WindowControls` — so the row
+   lays them out instead of making room for an overlay.) */
 
 .titleRow {
   display: flex;
@@ -182,15 +179,23 @@
 }
 
 /* The far-right corner seat reaches 16px into the header's 28px right padding,
-   so its control sits past the utilities' edge; it is laid out only while its
+   so its controls sit past the utilities' edge; it is laid out only while its
    occupant renders something. Its left margin equals the utilities' 8px gap so
-   the header's trailing controls space evenly. */
+   the header's trailing controls space evenly. The seat is a ROW (2026-11-24):
+   in the desktop shell it holds the panel-open control AND the window's caption
+   buttons, 2px apart — the reference's action run (`gap-0.5`) — and the
+   caption cluster ends 8px from the panel's edge, its `px-2`. */
 .headerCorner {
   display: flex;
   flex: none;
   align-items: center;
+  gap: 2px;
   margin-left: var(--nova-space-8);
   margin-right: -16px;
+}
+
+:global([data-desktop]) .headerCorner {
+  margin-right: -20px;
 }
 
 .headerCorner:empty {

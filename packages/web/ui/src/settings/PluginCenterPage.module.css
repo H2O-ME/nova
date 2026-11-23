@@ -5,8 +5,40 @@
    replaces, and a nested scroller with no range would swallow the wheel
    (the defect `ContextView` records). */
 
-.page {
+/* The page is a column: a 48px title band over the scrolling roster (the band
+   renders on the desktop shell only — see PluginCenterPage.tsx). */
+.root {
+  display: flex;
+  flex-direction: column;
   height: 100%;
+  min-width: 0;
+  background: var(--nova-surface-base);
+}
+
+/* The page's own header row (2026-11-24): the same 48px band and hairline the
+   session header and the right panel's strip draw, so the window's top edge
+   reads the same on every page. Its trailing seat carries the window's caption
+   buttons while this column owns the window's top-right corner. */
+.titleBand {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 48px;
+  box-sizing: border-box;
+  padding: 0 var(--nova-space-8);
+  border-bottom: 0.5px solid var(--nova-border-subtle);
+}
+
+.titleCorner {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.page {
+  flex: 1 1 auto;
+  min-height: 0;
   min-width: 0;
   overflow-y: auto;
   /* Reserve the scrollbar's width, as the reference's host does

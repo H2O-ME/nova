@@ -1,16 +1,19 @@
-/* The frameless caption's three buttons (2026-11-15, ZCode alignment): the
- * reference draws them INSIDE the workspace panel's top-right corner —
- * `absolute right-1.5 top-1.5`, each `icon-md` 28x28 with an 8px corner and a
- * 2px gap — so the panel's rounding and border stay visible around them. The
- * 46x30 Windows-native hit boxes this used to carry sat on the window corner
- * itself and covered the panel's corner. `z-index` still outranks every
- * surface, the settings page included. */
+/* The frameless caption's three buttons (2026-11-24, ZCode alignment: INLINE,
+ * not an overlay). The reference never floats these over the window: on
+ * Windows/Linux it renders `DesktopWindowControls` inside the header of
+ * whichever panel owns the window's top-right corner — the conversation header
+ * while the side pane is closed (`WorkspaceHeaderActionSection.tsx:83`), the
+ * side pane's own header while it is open (`AnimatedSidePanePanel.tsx:826`) —
+ * so the panel's own controls and the three caption buttons stand in ONE flex
+ * row: the reference's `▯ — □ ✕`. Nova's fixed overlay had to be dodged with a
+ * 94px reserve in the right panel's strip and a 96px one in the session header,
+ * which left the panel's close butted against minimise — the crowding the
+ * operator saw. Now the header that owns the corner lays them out and nobody
+ * reserves anything. Same 28px ghost boxes as the reference's `icon-md`
+ * buttons, 2px apart (its `gap-0.5`). */
 .root {
-  position: fixed;
-  top: var(--nova-space-6);
-  right: var(--nova-space-6);
-  z-index: var(--nova-layer-caption);
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--nova-space-2);
 }

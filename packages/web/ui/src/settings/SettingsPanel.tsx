@@ -24,6 +24,7 @@ import { ArrowLeftIcon, ChevronRightIcon, SearchIcon } from '../icons.js';
 import { cx } from '../composer/cx.js';
 import { UnsavedConfirmDialog } from './UnsavedConfirmDialog.js';
 import { isDesktopShell } from '../shell/desktop-shell.js';
+import { WindowControls } from '../shell/WindowControls.js';
 import { SIDEBAR_COPY } from '../sidebar/view.js';
 import css from './SettingsPanel.module.css';
 
@@ -246,6 +247,14 @@ export function SettingsDialog({
             <span className={css.crumbRoot}>{title}</span>
             <ChevronRightIcon className={css.crumbChevron} />
             {active !== undefined && <span className={css.crumbHere}>{active.label}</span>}
+            {/* This page covers the whole frame, so it owns the window's
+                top-right corner and must carry the caption buttons itself
+                (the reference's settings page renders `DesktopWindowControls`
+                in its own header, `SettingsPage.tsx:1499`). Renders nothing
+                outside the desktop shell. */}
+            <div className={css.headerCaption}>
+              <WindowControls />
+            </div>
           </div>
           <div className={css.options} ref={optionsRef}>
             {/* The section's own name over its column, the reference's

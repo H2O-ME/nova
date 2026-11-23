@@ -29,6 +29,7 @@ import { InputBar } from '../../composer/InputBar.js';
 import { ContextMeter } from '../../conversation/ContextMeter.js';
 import { composerDisabled } from '../../chrome-view.js';
 import { RightbarOpenButton } from '../../rightbar/RightbarPanel.js';
+import { WindowControls } from '../../shell/WindowControls.js';
 import { useTranscriptView } from '../../chat/transcript-view.js';
 
 /**
@@ -165,10 +166,21 @@ export function SessionRoute(props: SessionRouteProps): JSX.Element {
           tabs={state.context !== null ? [...SESSION_TABS, CONTEXT_TAB] : SESSION_TABS}
           activeTabId={state.view}
           onSelectTab={(id) => { dispatch({ type: 'select_view', view: id === 'trace' ? 'trace' : id === 'context' ? 'context' : 'chat' }); }}
-          // The corner seat, shown only while the right column is collapsed.
+          // The corner seat, shown only while the right column is collapsed —
+          // and, in the desktop shell, the window's caption buttons after it:
+          // the reference puts both in the trailing cluster of whichever header
+          // owns the window's top-right corner (`WorkspaceHeaderActionSection
+          // .tsx:75-83`), and hands them to the side pane's own header while
+          // the pane is open. `WindowControls` renders nothing outside Tauri,
+          // so a browser gets the single panel-open control.
           corner={
             !props.rightbarOpen
-              ? <RightbarOpenButton onOpen={props.onOpenRightbar} />
+              ? (
+                <>
+                  <RightbarOpenButton onOpen={props.onOpenRightbar} />
+                  <WindowControls />
+                </>
+              )
               : undefined
           }
         />

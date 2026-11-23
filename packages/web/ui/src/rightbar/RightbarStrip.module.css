@@ -1,29 +1,25 @@
 /*
- * The tab strip's own sheet: a 28px chip row with 10px of air above it, the
- * hairline slots between chips, the active chip as a filled tab whose
- * neighbours' slots go blank, and a hover-revealed 20px close inside each
- * chip. The strip draws no border: a body that wants a rule under it draws
- * its own (the reference contract).
+ * The tab strip's own sheet: a 48px header band holding the 28px chip row
+ * centred in it, the hairline slots between chips, the active chip as a filled
+ * tab whose neighbours' slots go blank, and a hover-revealed 20px close inside
+ * each chip.
  */
 
-/* The strip row: chips, the `+` control, and the panel's own chrome all centre
-   on one 28px band; the 10px top margin is inside the box so the hit area is
-   one element. Geometry verbatim (the reference's `.tabStrip`). */
+/* The strip row: chips, the panel's own chrome AND the window's caption buttons
+   on one band (2026-11-24, ZCode alignment — the reference's side-pane header
+   is `!h-12 border-b border-border/50` with 28px chips centred in it,
+   `AnimatedSidePanePanel.tsx:1021-1026`). The old 28px strip plus 10px of top
+   air put the panel's controls on a lane 4px off the caption buttons' and let
+   the two clusters butt together; one band, one hairline, one lane. */
 .strip {
   display: flex;
   flex: none;
   gap: var(--nova-space-4);
   align-items: center;
-  height: 28px;
-  padding: var(--nova-space-10) var(--nova-space-6) 0 var(--nova-space-10);
-}
-
-/* The desktop window draws its caption buttons over the panel's top-right
-   corner (`WindowControls`: 3×28px + 2×2px gaps, inset 6px). The strip must
-   stop before them or the panel's own controls sit underneath the window
-   buttons — the collision the reader saw. 94px = 6 (inset) + 88 (buttons). */
-:global([data-desktop]) .strip {
-  padding-right: 94px;
+  height: 48px;
+  box-sizing: border-box;
+  padding: 0 var(--nova-space-8) 0 var(--nova-space-10);
+  border-bottom: 0.5px solid var(--nova-border-subtle);
 }
 
 /* The chip run. Shrinks to nothing before any control after it moves; chips
@@ -206,11 +202,13 @@
   background: transparent;
 }
 
-/* The strip's END: the panel's own controls. */
+/* The strip's END: the panel's own controls followed by the window's caption
+   buttons, 4px apart (the reference's right cluster is `gap-1`,
+   `AnimatedSidePanePanel.tsx:1129`). */
 .stripEnd {
   display: flex;
   flex: none;
-  gap: var(--nova-space-8);
+  gap: var(--nova-space-4);
   align-items: center;
   height: 28px;
   margin-left: var(--nova-space-4);

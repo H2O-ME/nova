@@ -15,6 +15,7 @@ import { docAt } from '../rightbar/editor-model.js';
 import { readRecentWorkspaces, rememberWorkspace } from '../shell/workspaces.js';
 import { useEscapeToClose } from '../shell/use-escape.js';
 import { useLayout } from '../shell/use-layout.js';
+import { WindowControls } from '../shell/WindowControls.js';
 import { RIGHTBAR_COLLAPSE_BELOW_CONVERSATION } from '../shell/columns.js';
 import { useNativePick } from '../shell/native-pick.js';
 import { DocumentTitle } from '../shell/DocumentTitle.js';
@@ -266,7 +267,11 @@ export function App(): JSX.Element {
   const view = chromeView(state);
 
   const center = pluginsOpen ? (
-    <PluginCenterRoute state={state} send={send} />
+    <PluginCenterRoute
+      state={state}
+      send={send}
+      {...(!rightbarOpen ? { corner: <WindowControls /> } : {})}
+    />
   ) : (
     <SessionRoute
       state={state}

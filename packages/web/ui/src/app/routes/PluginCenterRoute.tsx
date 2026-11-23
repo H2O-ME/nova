@@ -4,12 +4,21 @@
  * shell's rule), so the route is a straight pass-through with the column's
  * disabled guard applied.
  */
+import type { ReactNode } from 'react';
 import type { ClientFrame } from '../../types.js';
 import type { UiState } from '../../state.js';
 import { modeControlsLocked } from '../../chrome-view.js';
 import { PluginCenterPage } from '../../settings/PluginCenterPage.js';
 
-export function PluginCenterRoute(props: { state: UiState; send: (frame: ClientFrame) => void }): JSX.Element {
+export interface PluginCenterRouteProps {
+  state: UiState;
+  send: (frame: ClientFrame) => void;
+  /** The page header's trailing seat — the window's caption cluster while
+   *  this column owns the window's top-right corner (see `SessionRoute`). */
+  corner?: ReactNode;
+}
+
+export function PluginCenterRoute(props: PluginCenterRouteProps): JSX.Element {
   return (
     <PluginCenterPage
       roster={props.state.roster}
@@ -17,6 +26,7 @@ export function PluginCenterRoute(props: { state: UiState; send: (frame: ClientF
       disabled={modeControlsLocked(props.state)}
       manageError={props.state.manageError}
       send={props.send}
+      {...(props.corner !== undefined ? { corner: props.corner } : {})}
     />
   );
 }

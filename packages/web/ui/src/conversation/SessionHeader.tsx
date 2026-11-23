@@ -10,9 +10,13 @@
  * source's current/last segment, with the workspace path as its tooltip), and
  * the seats render what the product has: `utilities` hosts the source's
  * "open in app" action, which this product has no counterpart for, while
- * `corner` hosts the right panel's expand control — ONE control, as in the
- * source: a second glyph beside it is indistinguishable from the first, and the
- * detail board is opened by its own tool row. **The model is NOT here** — the
+ * `corner` hosts the right panel's expand control — ONE control of ours, as in
+ * the source: a second glyph beside it is indistinguishable from the first, and
+ * the detail board is opened by its own tool row. In the desktop shell the
+ * corner ALSO carries the window's caption buttons after that control (the
+ * reference's trailing cluster is `[panel toggle] [— □ ✕]` while the side pane
+ * is closed; see `SessionRoute`), which is why the corner seat is a flex row
+ * rather than a single slot. **The model is NOT here** — the
  * source keeps it in the composer's model seat, and so do we: a model printed
  * twice has two places to disagree about what is in force. The tab row renders
  * only when more than one view exists (the source's own gate), which today
@@ -22,7 +26,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Menu } from '../shell/Menu.js';
-import { isDesktopShell } from '../shell/desktop-shell.js';
 import { FolderOpenIcon, MoreIcon } from '../icons.js';
 import { cx } from '../composer/cx.js';
 import css from './SessionHeader.module.css';
@@ -66,14 +69,7 @@ export function SessionHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header
-      className={cx(
-        css.header,
-        hidden && css.headerBlank,
-        // The desktop shell draws the caption buttons INSIDE this row's
-        // trailing corner (the reference reserves the same band in its
-        // WorkspaceHeader), so the row gives them their width back.
-        isDesktopShell() && css.headerDesktop,
-      )}
+      className={cx(css.header, hidden && css.headerBlank)}
       // The whole row is the window's drag handle. `deep` (not the bare
       // attribute) is required: Tauri's drag script only starts a drag when the
       // mousedown target IS the attributed element, and this row's children —

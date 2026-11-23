@@ -4,10 +4,16 @@
  * Two kinds of tab, and only two: the fixed 文件 page and the documents opened
  * from its tree. The strip carries the column's chrome — fullscreen and close
  * sit at its end — so no title row is drawn above it.
+ *
+ * The strip's END is also where the window's caption buttons stand while this
+ * panel is open (the reference's side-pane header carries them in its own
+ * trailing cluster, `AnimatedSidePanePanel.tsx:811-828`), so the row reads
+ * `[文件] … [⤢] [✕] [— □ ✕]` — one band, one lane.
  */
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CloseIcon, FileIcon } from '../icons.js';
 import { IconButton } from '../kit/IconButton.js';
+import { WindowControls } from '../shell/WindowControls.js';
 import { ExitFullscreenIcon, FullscreenIcon } from '../tool/icons.js';
 import { FilesTabIcon } from './panel-icons.js';
 import { RIGHTBAR_COPY } from './copy.js';
@@ -107,7 +113,10 @@ export function RightbarStrip(props: RightbarStripProps): JSX.Element {
           );
         })}
       </div>
-      {/* The strip's END: the panel's own controls. */}
+      {/* The strip's END: the panel's own controls, then the window's caption
+          buttons when the desktop shell has them — the panel owns the window's
+          top-right corner while it is open, so the cluster belongs to this
+          row, not to an overlay above it. */}
       <div className={css.stripEnd}>
         <IconButton label={modeLabel} onClick={props.onToggleFullscreen}>
           {props.fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
@@ -115,6 +124,7 @@ export function RightbarStrip(props: RightbarStripProps): JSX.Element {
         <IconButton label={RIGHTBAR_COPY['panel.close']} onClick={props.onClose}>
           <CloseIcon />
         </IconButton>
+        <WindowControls />
       </div>
     </div>
   );
