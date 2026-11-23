@@ -42,36 +42,31 @@ export const SIDEBAR_COLLAPSED = 6;
 /**
  * The CONVERSATION COLUMN width under which the sidebar auto-collapses.
  *
- * Measured from the reference, and it is the reference's own criterion: its
- * `CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX` watches the conversation
- * pane's measured width, NOT the window (`WorkspaceShellLayout.tsx:159,
- * 912-919`). Nova used the window width (1024), which conceded far too early —
- * at a 1000px window the transcript still had room, so the column was squeezed
- * into a rail that then had nothing to gain. A panel can only hurt the
- * transcript by the width it actually takes, so the transcript states the
- * budget.
+ * 360 is the reference's own number AND its own criterion:
+ * `CONVERSATION_AUTO_COLLAPSE_SIDEBAR_WIDTH_PX` (`WorkspaceShellLayout.tsx:159,
+ * 900-953`) watches the conversation pane's measured width, not the window,
+ * because a panel can only hurt the transcript by the width it actually takes.
+ * It is also exactly the transcript's floor (`CONVERSATION_MIN`): the sidebar
+ * gives way at the point where the column would fall under a readable measure.
  */
-export const SIDEBAR_COLLAPSE_BELOW_CONVERSATION = 420;
+export const SIDEBAR_COLLAPSE_BELOW_CONVERSATION = 360;
 /**
- * The re-expand threshold, deliberately above the collapse one by MORE than
- * the width the closed column hands back.
+ * The idle time a window resize must stay quiet before the auto-collapse
+ * commits — the reference's `CONVERSATION_AUTO_COLLAPSE_RESIZE_IDLE_MS`
+ * (`WorkspaceShellLayout.tsx:160`): dragging a window edge must not flip the
+ * column on every frame.
+ */
+export const AUTO_COLLAPSE_RESIZE_IDLE_MS = 300;
+/**
+ * The policy is ONE-WAY (2026-11-24, ZCode alignment): it only ever closes.
  *
- * The measured width is the thing the collapse changes: closing the column
- * gives the transcript `SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED` = 258px. A single
- * threshold therefore oscillates — "344 is narrow, collapse" immediately
- * measures 602 as "wide, expand", forever. The gap must exceed that 258, or
- * the collapse it just made reads as the reason to undo itself.
+ * The reference has no auto-expand at all — widening the window leaves the
+ * column where the reader left it, and the top-left overlay is the one way
+ * back (`DesktopTopOverlay`). Nova used to carry a second, higher threshold
+ * that re-opened the column once the window grew, so the rail popped in and
+ * out on window drags nobody asked about; the pair of thresholds that
+ * hysteresis needed is gone with it.
  */
-export const SIDEBAR_EXPAND_ABOVE_CONVERSATION = SIDEBAR_COLLAPSE_BELOW_CONVERSATION + SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED + 60;
-/**
- * The width a crossing must see, given which way it is crossing.
- * @param current - whether the sidebar is currently closed.
- * @param width - the measured conversation column width.
- * @returns the collapse state the measurement implies.
- */
-export function collapseFor(current: boolean, width: number): boolean {
-  return current ? width < SIDEBAR_EXPAND_ABOVE_CONVERSATION : width < SIDEBAR_COLLAPSE_BELOW_CONVERSATION;
-}
 /**
  * The CONVERSATION COLUMN width under which the right panel closes itself
  * (the reference's `CONVERSATION_AUTO_COLLAPSE_SIDE_PANE_WIDTH_PX`, 480).

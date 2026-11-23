@@ -60,18 +60,12 @@ export function AppShell(props: AppShellProps): JSX.Element {
 
   const pickStripTab = props.onPickStripTab;
   const sidebarClosed = sidebarCollapsed(layout.layout);
-  // The auto-collapse is a fact about WHY the column is closed, and it is only
-  // true while the frame is (debounced) narrow AND the column is closed (a
-  // reader who expanded it below the breakpoint has already answered the
-  // question). The top-left cluster's toggle answers to the same fact.
-  const sidebarAutoClosed = layout.layout.autoNarrow && sidebarClosed;
   return (
     <AppFrame
       layout={layout.layout}
       dragging={layout.dragging}
       onDragChange={layout.setDragging}
       onViewportWidth={layout.setViewportWidth}
-      onConversationWidth={layout.setConversationWidth}
       onSidebarWidth={layout.setSidebar}
       onRightbarWidth={layout.setRightbar}
       sidebar={({ collapsed, width }) => (
@@ -100,7 +94,6 @@ export function AppShell(props: AppShellProps): JSX.Element {
       topOverlay={(
         <TopOverlay
           collapsed={sidebarClosed}
-          autoCollapsed={sidebarAutoClosed}
           onToggleCollapsed={layout.toggleSidebar}
           // The same New Session gesture the sidebar's own row makes, minus the
           // sidebar: leaving the plugin page, then the frame, then the shell's

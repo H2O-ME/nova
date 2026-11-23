@@ -38,12 +38,6 @@ export const SIDEBAR_COPY = {
    */
   'plugins.entry': '插件市场',
   'toggle.open': '打开侧边栏',
-  /**
-   * The NARROW-FRAME auto-collapse. Its own words because the two rails look
-   * identical while meaning different things: this one is a state the WINDOW
-   * imposed, so the control has to say what happened and not just what it does.
-   */
-  'toggle.openAuto': '窗口较窄，侧边栏已自动收起 · 点击展开',
   'toggle.collapse': '收起侧边栏',
   'section.sessions': '会话',
   'empty.none': '暂无会话',

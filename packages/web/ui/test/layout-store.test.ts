@@ -9,7 +9,6 @@ import {
   closeRightbar,
   initialLayout,
   openRightbar,
-  setAutoCollapse,
   setRightbar,
   setSidebar,
   setViewportWidth,
@@ -38,26 +37,15 @@ describe('sidebar preference', () => {
     expect(setSidebar(setViewportWidth(wide(), 600), 9999).sidebar).toBe(420);
   });
 
-  it('a resize alone never flips the rail; the idle commit does (resize debounce)', () => {
-    // Geometry follows the live measurement immediately; the collapse waits
-    // for `setAutoCollapse` (the binding's resize-idle timer).
+  it('a resize only re-solves geometry: the preference (and so the rail) is untouched', () => {
+    // The responsive close is NOT a state transformation any more: the policy
+    // hook calls the same `toggleSidebar` a reader's click does, so a resize
+    // must leave the column exactly where it was.
     const resized = setViewportWidth(setSidebar(wide(), 400), 900);
     expect(sidebarCollapsed(resized)).toBe(false);
-    const narrow = setAutoCollapse(resized, true);
-    expect(sidebarCollapsed(narrow)).toBe(true);
-    const expanded = toggleSidebar(narrow);
-    expect(sidebarCollapsed(expanded)).toBe(false);
-    // The override expands the rail; the width preference is untouched.
-    expect(expanded.sidebar).toBe(400);
-    expect(sidebarPreference(expanded)).toBe(400);
-  });
-
-  it('the idle commit crossing in either direction drops the override', () => {
-    const expanded = toggleSidebar(setAutoCollapse(setViewportWidth(wide(), 900), true));
-    expect(sidebarCollapsed(expanded)).toBe(false);
-    const widened = setAutoCollapse(setViewportWidth(expanded, 1400), false);
-    expect(widened.narrowExpanded).toBe(false);
-    expect(sidebarCollapsed(setAutoCollapse(setViewportWidth(widened, 900), true))).toBe(true);
+    expect(sidebarPreference(resized)).toBe(400);
+    expect(sidebarCollapsed(toggleSidebar(resized))).toBe(true);
+    expect(toggleSidebar(toggleSidebar(resized)).sidebar).toBe(264);
   });
 
   it('boot clamps a restored width against the boot viewport', () => {
@@ -101,13 +89,13 @@ describe('right panel preference', () => {
     expect(setSidebar(restored, 300).rightbarInstant).toBe(false);
   });
 
-  it('opening the drawer leaves the sidebar expanded', () => {
-    // The drawer needs no concession from its neighbours: opening it must not
-    // yank the session list out from under the pointer. (The resize reaches
-    // the rail through the debounced commit, as the store now models it.)
-    const narrowExpanded = toggleSidebar(setAutoCollapse(setViewportWidth(wide(), 900), true));
-    expect(narrowExpanded.narrowExpanded).toBe(true);
-    expect(openRightbar(narrowExpanded, false).narrowExpanded).toBe(true);
+  it('opening the panel leaves the sidebar expanded', () => {
+    // The panel needs no concession from its neighbours: opening it must not
+    // yank the session list out from under the pointer. The responsive close
+    // is a window-resize policy, not a side effect of this state change.
+    const opened = openRightbar(setSidebar(wide(), 400), false);
+    expect(sidebarCollapsed(opened)).toBe(false);
+    expect(opened.sidebar).toBe(400);
   });
 
   it('a drag clamps into [300, 70% of the frame]', () => {

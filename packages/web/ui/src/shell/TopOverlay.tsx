@@ -28,13 +28,6 @@ import css from './TopOverlay.module.css';
 export interface TopOverlayProps {
   /** The sidebar is closed: the mark renames itself and New Session appears. */
   collapsed: boolean;
-  /**
-   * The close came from the narrow-frame policy rather than from the reader.
-   * The label names the reason — the reported defect was a sidebar that "just
-   * disappeared", and an affordance that looks like the reader's own choice
-   * cannot answer "where did it go, and why".
-   */
-  autoCollapsed?: boolean;
   onToggleCollapsed: () => void;
   /** The New Session seat's gesture (the shell owns the follow-up rules). */
   onStartSession: () => void;
@@ -47,13 +40,10 @@ export interface TopOverlayProps {
  */
 export function TopOverlay({
   collapsed,
-  autoCollapsed = false,
   onToggleCollapsed,
   onStartSession,
 }: TopOverlayProps): JSX.Element {
-  const toggleLabel = collapsed
-    ? autoCollapsed ? COPY['toggle.openAuto'] : COPY['toggle.open']
-    : COPY['toggle.collapse'];
+  const toggleLabel = collapsed ? COPY['toggle.open'] : COPY['toggle.collapse'];
   const newLabel = COPY['session.new.label'];
   return (
     /* `deep`, not the bare attribute: Tauri's drag script only starts a drag
@@ -68,7 +58,6 @@ export function TopOverlay({
           className={css.toggle}
           aria-label={toggleLabel}
           title={toggleLabel}
-          {...(collapsed && autoCollapsed ? { 'data-auto-collapsed': '' } : {})}
           onClick={onToggleCollapsed}
         >
           {/* The mark IS the button (the reference's own swap): it reads as the

@@ -15,8 +15,8 @@ import { docAt } from '../rightbar/editor-model.js';
 import { readRecentWorkspaces, rememberWorkspace } from '../shell/workspaces.js';
 import { useEscapeToClose } from '../shell/use-escape.js';
 import { useLayout } from '../shell/use-layout.js';
+import { useAutoCollapse } from '../shell/use-auto-collapse.js';
 import { WindowControls } from '../shell/WindowControls.js';
-import { RIGHTBAR_COLLAPSE_BELOW_CONVERSATION } from '../shell/columns.js';
 import { useNativePick } from '../shell/native-pick.js';
 import { DocumentTitle } from '../shell/DocumentTitle.js';
 import { loadBootGraph } from '../plugins/client-loader.js';
@@ -203,12 +203,22 @@ export function App(): JSX.Element {
   });
 
   const closeRightbarPanel = useCallback((): void => setRightbarOpen(false), []);
-  // Escape closes one layer per press, topmost first: the right panel. The
-  // narrow frame's sidebar expansion counts as the outermost layer.
-  useEscapeToClose([
-    ...(rightbarOpen ? [closeRightbarPanel] : []),
-    ...(layout.narrow && !layout.collapsed ? [layout.toggleSidebar] : []),
-  ]);
+  // Escape closes one layer per press, topmost first: the right panel.
+  useEscapeToClose(rightbarOpen ? [closeRightbarPanel] : []);
+
+  // The responsive collapse policy: window resizes only, panel before sidebar,
+  // never a re-expand (the reference's `WorkspaceShellLayout.tsx:890-975`; see
+  // `shell/use-auto-collapse.ts`). It is inert on the plugin center — that page
+  // owns the main column, so there is no transcript to protect — and while the
+  // settings page covers the frame.
+  useAutoCollapse({
+    active: !pluginsOpen && !settingsOpen,
+    rightbarOpen,
+    rightbarFullscreen: layout.layout.rightbarFullscreen,
+    sidebarCollapsed: layout.collapsed,
+    closeRightbar: closeRightbarPanel,
+    collapseSidebar: layout.toggleSidebar,
+  });
 
   // The right column is a track, not a box: a shown panel RESERVES its track,
   // so the centre makes room and the shell is three columns.
@@ -216,28 +226,6 @@ export function App(): JSX.Element {
     if (!rightbarOpen) closeRightbar();
     else openRightbar(layout.layout.rightbarFullscreen);
   }, [rightbarOpen, openRightbar, closeRightbar, layout.layout.rightbarFullscreen]);
-
-  /**
-   * The right panel's own auto-collapse (the reference's
-   * `CONVERSATION_AUTO_COLLAPSE_SIDE_PANE_WIDTH_PX` = 480,
-   * `WorkspaceShellLayout.tsx:153, 940-953`): once the conversation column is
-   * narrower than the panel it is standing beside, the panel closes itself
-   * rather than shrinking the transcript to a strip. It is a CLOSE, not a
-   * takeover — a panel that covers the column costs the reader what they were
-   * reading.
-   *
-   * The reference runs this only off a window resize and deliberately skips
-   * its own ResizeObserver, so a panel the reader opened is never closed by
-   * policy a moment later. Nova keeps that rule in `use-layout`: the measured
-   * width lands once the frame settles, never per drag frame. The panel is
-   * fullscreen-exempt, like the reference's full view.
-   */
-  useEffect(() => {
-    if (!rightbarOpen || layout.layout.rightbarFullscreen) return;
-    if (layout.layout.conversationWidth <= 0) return;
-    if (layout.layout.conversationWidth >= RIGHTBAR_COLLAPSE_BELOW_CONVERSATION) return;
-    setRightbarOpen(false);
-  }, [rightbarOpen, layout.layout.conversationWidth, layout.layout.rightbarFullscreen]);
 
   // The New Task row's advertised shortcut, made real: Ctrl/Cmd+N starts a
   // session (leaving the plugin center first, like every session gesture).

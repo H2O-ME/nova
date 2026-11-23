@@ -94,12 +94,6 @@
   opacity: 1;
 }
 
-/* An AUTO-collapse is not the reader's own choice: the glyph keeps the accent
-   so the way back states that the window took the column, not the reader. */
-.toggle[data-auto-collapsed] .glyph {
-  color: var(--nova-color-ink);
-}
-
 .actionIcon {
   width: 16px;
   height: 16px;

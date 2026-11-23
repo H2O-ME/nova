@@ -12,11 +12,9 @@ import {
   SIDEBAR_COLLAPSE_BELOW_CONVERSATION,
   SIDEBAR_COLLAPSED,
   SIDEBAR_DEFAULT,
-  SIDEBAR_EXPAND_ABOVE_CONVERSATION,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
   clampWidth,
-  collapseFor,
   computeColumns,
 } from '../src/shell/columns.js';
 
@@ -82,27 +80,14 @@ describe('computeColumns', () => {
     expect(computeColumns(600, 2000, 0).sidebar).toBe(420);
   });
 
-  it('the rail is narrower than the sidebar floor, and every floor sits under its collapse threshold', () => {
+  it('the rail is narrower than the sidebar floor, and the panel concedes before the rail', () => {
     expect(SIDEBAR_COLLAPSED).toBeLessThan(SIDEBAR_MIN);
-    // Both collapse thresholds are CONVERSATION widths, so they compare with
-    // the conversation floor, not with the sidebar's preference range: the
-    // panel closes first (480) and the rail follows (420).
+    // Both collapse thresholds are CONVERSATION widths, and the order is the
+    // policy's: the panel closes first (480), the rail follows (360).
     expect(RIGHTBAR_COLLAPSE_BELOW_CONVERSATION).toBeGreaterThan(SIDEBAR_COLLAPSE_BELOW_CONVERSATION);
+    // The rail's threshold IS the transcript's floor: the sidebar gives way
+    // exactly where the column would stop being readable.
+    expect(SIDEBAR_COLLAPSE_BELOW_CONVERSATION).toBe(CONVERSATION_MIN);
     expect(RIGHTBAR_MIN).toBeGreaterThan(CONVERSATION_MIN / 2);
-  });
-
-  it('the collapse pair is asymmetric, so a collapse never un-collapses itself', () => {
-    // The measured width IS what the collapse changes: the rail hands the
-    // column its 208px back. With one threshold the pair oscillates forever.
-    expect(SIDEBAR_EXPAND_ABOVE_CONVERSATION).toBeGreaterThan(SIDEBAR_COLLAPSE_BELOW_CONVERSATION);
-    // Mid-band: the state the rail is already in is the one that stands.
-    const mid = SIDEBAR_COLLAPSE_BELOW_CONVERSATION + 10;
-    expect(collapseFor(false, mid)).toBe(false);
-    expect(collapseFor(true, mid)).toBe(true);
-    // The exact case that oscillated: expanded at 344 collapses, and the 552
-    // it then measures is still short of the re-expand threshold.
-    const narrow = SIDEBAR_COLLAPSE_BELOW_CONVERSATION - 76;
-    expect(collapseFor(false, narrow)).toBe(true);
-    expect(collapseFor(true, narrow + SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED)).toBe(true);
   });
 });

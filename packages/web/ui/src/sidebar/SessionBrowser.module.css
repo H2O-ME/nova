@@ -298,7 +298,8 @@
   overflow: visible;
 }
 
-/* Relative for the bottom fade overlay. */
+/* Relative for `AnimatedRows`' exit overlay (the clones of leaving rows are
+   placed in this box's coordinates). */
 .treeBody {
   flex: 1;
   min-height: 0;
@@ -307,22 +308,18 @@
   position: relative;
 }
 
-/* Bottom fade: compact overlay pinned to the visible bottom,
-   transparent -> sidebar fill so it tracks the theme. */
-.fade {
-  position: absolute;
-  left: 0;
-  right: var(--nova-session-list-edge-inset);
-  bottom: 0;
-  height: 24px;
-  background: linear-gradient(to bottom, transparent, var(--nova-surface-sunken));
-  pointer-events: none;
-}
-
 /* List: the only scrolling region. Block children keep their design heights
    under content overflow. The 2px edge offset, stable 5px themed scrollbar,
    and remaining padding equal the shell's right inset, with or without
-   overflow, so moving the bar does not move the rows. */
+   overflow, so moving the bar does not move the rows.
+ *
+ * The bottom fade is a MASK on the list itself (the reference's
+ * `ScrollFadeViewport` formula: `black 0, black calc(100% - 24px),
+ * transparent`), NOT a painted overlay. The old overlay tinted the last 24px
+ * with `surface-sunken` while the column's floor is `surface-panel`, so in the
+ * dark theme it drew a visibly darker band that ended in a hard edge — read as
+ * a leftover ghost bar under an exhausted list. A mask fades the content and
+ * reveals the column's own floor, and it cannot disagree with the theme. */
 .list {
   flex: 1;
   min-height: 0;
@@ -335,10 +332,15 @@
     - var(--nova-session-list-scrollbar-width)
     - var(--nova-session-list-scrollbar-offset)
   );
-  /* Clears the compact bottom fade overlay: at scroll end the last row sits
-     above the gradient instead of under it. */
-  padding-bottom: var(--nova-space-16);
+  /* Clears the bottom fade mask: at scroll end the last row sits fully opaque
+     above the gradient instead of under it. The inset IS the mask's fade
+     height (24px), so an exhausted list has nothing left inside the fade zone
+     — the reference's `ScrollFadeViewport` reaches the same end by dropping
+     the mask entirely when nothing is hidden. */
+  padding-bottom: 24px;
   scrollbar-gutter: stable;
+  mask-image: linear-gradient(to bottom, black 0, black calc(100% - 24px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0, black calc(100% - 24px), transparent 100%);
 }
 
 .groupSection > * + * {

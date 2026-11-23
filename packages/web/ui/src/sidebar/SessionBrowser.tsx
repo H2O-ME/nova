@@ -255,7 +255,6 @@ export function SessionBrowser({
           >
             {rowTree.map((row) => renderRow(row))}
           </AnimatedRows>
-          <span className={css.fade} />
         </div>
       </div>
       {/* One dialog per confirmed session, keyed by the log: a second delete

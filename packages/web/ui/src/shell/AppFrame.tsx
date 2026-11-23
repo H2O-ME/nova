@@ -47,14 +47,6 @@ export interface AppFrameProps {
   layout: LayoutState;
   /** Publish the frame's own measured width (rAF-throttled ResizeObserver). */
   onViewportWidth: (width: number) => void;
-  /**
-   * Publish the CONVERSATION column's measured width. The auto-collapse
-   * policy watches this, not the frame: a panel can only hurt the transcript
-   * by the width it actually takes (the reference's own criterion,
-   * `WorkspaceShellLayout.tsx:912-919`), so a wide window whose columns are
-   * all dragged wide must collapse exactly like a narrow one.
-   */
-  onConversationWidth: (width: number) => void;
   onSidebarWidth: (px: number) => void;
   onRightbarWidth: (px: number) => void;
   /** Whether a sidebar drag is in flight (the tracks pause their transition). */
@@ -183,7 +175,6 @@ function DragHandle(props: {
 export function AppFrame({
   layout,
   onViewportWidth,
-  onConversationWidth,
   onSidebarWidth,
   onRightbarWidth,
   dragging,
@@ -198,9 +189,9 @@ export function AppFrame({
   const viewport = layout.viewportWidth;
 
   // Track the frame's own box (not the window): rAF-throttled ResizeObserver.
-  // The CONVERSATION column is observed from the same pass: it is the width the
-  // auto-collapse policy is about, and it shrinks for reasons the frame's own
-  // width never sees (a dragged sidebar, a newly opened panel).
+  // The conversation column is only MARKED here (`data-conversation-measure`);
+  // the auto-collapse policy reads it off the DOM on a window resize, so no
+  // width has to be piped through state for a timer to read later.
   const conversationRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = frameRef.current;
@@ -210,11 +201,6 @@ export function AppFrame({
     const measure = (): void => {
       const width = el.getBoundingClientRect().width;
       if (width > 0) onViewportWidth(width);
-      const column = conversationRef.current;
-      if (column !== null) {
-        const columnWidth = column.getBoundingClientRect().width;
-        if (columnWidth > 0) onConversationWidth(columnWidth);
-      }
     };
     measure();
     const observer = new ResizeObserver(() => {
@@ -230,15 +216,10 @@ export function AppFrame({
       observer.disconnect();
       if (raf !== null) cancelAnimationFrame(raf);
     };
-  }, [onViewportWidth, onConversationWidth]);
+  }, [onViewportWidth]);
 
   const collapsed = sidebarCollapsed(layout);
   const preference = sidebarPreference(layout);
-  // The auto-collapse is a fact about WHY the rail is drawn, and it is only true
-  // while the frame is (debounced) narrow AND the rail is closed (a reader who
-  // expanded it below the breakpoint has already answered the question). The
-  // debounced fact, not the live viewport, is what the rail answers to.
-  const autoCollapsed = layout.autoNarrow && collapsed;
   const rightbarPreference = layout.rightbar ?? viewport * RIGHTBAR_DEFAULT_RATIO;
   // All three widths are solved together: the right panel now owns a real
   // track, so a narrow frame removes it exactly like any other concession
@@ -323,7 +304,6 @@ export function AppFrame({
         gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px`,
       }}
       {...(collapsed ? { 'data-sidebar-collapsed': '' } : {})}
-      {...(autoCollapsed ? { 'data-sidebar-auto-collapsed': '' } : {})}
       {...(cols.rightbar === 0 ? { 'data-rightbar-collapsed': '' } : {})}
       {...(layout.rightbarFullscreen ? { 'data-rightbar-fullscreen': '' } : {})}
       {...(layout.rightbarInstant ? { 'data-rightbar-instant': '' } : {})}
