@@ -27,8 +27,18 @@ export const SIDEBAR_MAX = 420;
 export const SIDEBAR_MAX_RATIO = 0.5;
 /** Sidebar width before any user drag (the reference's 264). */
 export const SIDEBAR_DEFAULT = 264;
-/** Closed-sidebar rail: a 24px icon column between 16px horizontal paddings. */
-export const SIDEBAR_COLLAPSED = 56;
+/**
+ * The closed sidebar's track — NOT an icon rail.
+ *
+ * The reference does not fold its sidebar into a column of glyphs: the panel
+ * collapses to a 6px sliver on Windows desktop (4px on mac/Linux, 0 in its web
+ * build — `WorkspaceShellLayout.tsx:507` `collapsedSidebarWidthPx`), keeps its
+ * content mounted at `opacity-0 pointer-events-none`, and leaves the way back
+ * in a top-left overlay that never moves (`DesktopTopOverlay`). Nova's 56px
+ * rail with five stacked icons was its own invention; it read as a second
+ * layout of the column rather than as the column being closed.
+ */
+export const SIDEBAR_COLLAPSED = 6;
 /**
  * The CONVERSATION COLUMN width under which the sidebar auto-collapses.
  *
@@ -44,18 +54,18 @@ export const SIDEBAR_COLLAPSED = 56;
 export const SIDEBAR_COLLAPSE_BELOW_CONVERSATION = 420;
 /**
  * The re-expand threshold, deliberately above the collapse one by MORE than
- * the width the rail hands back.
+ * the width the closed column hands back.
  *
- * The measured width is the thing the collapse changes: closing the rail gives
- * the column `SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED` = 208px. A single
+ * The measured width is the thing the collapse changes: closing the column
+ * gives the transcript `SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED` = 258px. A single
  * threshold therefore oscillates — "344 is narrow, collapse" immediately
- * measures 552 as "wide, expand", forever. The gap must exceed that 208, or
+ * measures 602 as "wide, expand", forever. The gap must exceed that 258, or
  * the collapse it just made reads as the reason to undo itself.
  */
 export const SIDEBAR_EXPAND_ABOVE_CONVERSATION = SIDEBAR_COLLAPSE_BELOW_CONVERSATION + SIDEBAR_DEFAULT - SIDEBAR_COLLAPSED + 60;
 /**
  * The width a crossing must see, given which way it is crossing.
- * @param current - whether the rail is currently collapsed.
+ * @param current - whether the sidebar is currently closed.
  * @param width - the measured conversation column width.
  * @returns the collapse state the measurement implies.
  */

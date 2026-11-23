@@ -1,17 +1,20 @@
 /**
- * Sidebar shell: column geometry and the column's own controls.
+ * Sidebar shell: column geometry and the column's own content.
  *
- * Collapse is a slide plus crossfade: content freezes at its expanded width
- * (inline style) and fades out in place while the sliding column (AppFrame grid
- * tracks) clips it — nothing reflows mid-slide. At settle the wide-only content
- * unmounts and the upper controls enter the 56px rail from the same horizontal
- * offset on one fade that ends with the slide. The bottom-pinned foot only
- * fades.
+ * Close is a fade, not a layout swap (2026-11-23, ZCode alignment): the content
+ * stays mounted at its expanded width while the sliding column (AppFrame grid
+ * tracks) clips it, and fades to `opacity: 0` on the same
+ * `--nova-dur-panel`/`--nova-ease-panel` pair the track rides. There is no
+ * second, narrow layout — the reference has none (`WorkspaceShellLayout.tsx`
+ * collapses its panel to a 6px sliver with `pointer-events-none opacity-0`),
+ * and Nova's 56px icon rail of five stacked glyphs was its own invention: it
+ * read as a different sidebar rather than as this one being closed. The way
+ * back lives in the frame's top-left overlay (`shell/TopOverlay.tsx`), which
+ * never moves.
  *
- * The column is also the shell's one stateful owner: which controls the wide
- * layout mounts (`.logoRow` / New Session label / the session browser), whether
- * the pointer is inside (the scrollbar affordance), and the width the content
- * freezes at while it fades.
+ * The column is also the shell's one stateful owner: whether the pointer is
+ * inside (the scrollbar affordance) and the width the content holds while the
+ * column closes.
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ClientFrame, SessionListItem } from '../types.js';
@@ -19,12 +22,8 @@ import { NewSessionButton } from './NewSessionButton.js';
 import { PluginsEntryButton } from './PluginsEntryButton.js';
 import { SessionBrowser } from './SessionBrowser.js';
 import { SidebarFoot } from './SidebarFoot.js';
-import { SidebarLogoRow } from './SidebarLogoRow.js';
 import { cx } from '../composer/cx.js';
 import css from './Sidebar.module.css';
-
-/** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
-const COLLAPSE_SETTLE_MS = 150;
 
 /**
  * How long the column's scrollbars stay drawn after the pointer leaves it.
@@ -80,19 +79,11 @@ export interface SidebarProps {
    * column without the shell.
    */
   onNewSession?: () => void;
-  onToggleCollapsed: () => void;
   /**
-   * The column is collapsed because the FRAME is narrower than
-   * `SIDEBAR_AUTO_COLLAPSE` — not because the reader closed it. Passed down from
-   * the frame (`AppFrame`'s sidebar slot params) so the rail's one control can
-   * name the reason instead of reading like the reader's own choice.
-   */
-  autoCollapsed?: boolean;
-  /**
-   * The column's expanded width, for the collapse freeze: content holds this
+   * The column's expanded width, for the close freeze: content holds this
    * width while it fades and the sliding track clips it. Optional — without it
-   * the collapse is a plain slide and the content reflows as the track
-   * narrows (the reference always receives it from its layout owner).
+   * the close is a plain slide and the content reflows as the track narrows
+   * (the reference always receives it from its layout owner).
    */
   width?: number;
 }
@@ -100,7 +91,7 @@ export interface SidebarProps {
 /**
  * Render the sidebar column.
  * @param props.items - session rows to browse, grouped by workspace.
- * @param props.width - expanded width for the collapse freeze (see SidebarProps).
+ * @param props.width - expanded width for the close freeze (see SidebarProps).
  * @returns the sidebar element tree.
  */
 export function Sidebar({
@@ -118,33 +109,23 @@ export function Sidebar({
   onDeleteSession,
   onReloadSessions,
   onNewSession,
-  onToggleCollapsed,
-  autoCollapsed,
   width,
 }: SidebarProps): JSX.Element {
-  // Wide content stays mounted while the collapse animates (fading via
-  // .collapsed .wide), unmounts at settle, and remounts right away on expand.
-  const [settled, setSettled] = useState(collapsed);
-  useEffect(() => {
-    if (!collapsed) {
-      setSettled(false);
-      return;
-    }
-    const timer = window.setTimeout(() => { setSettled(true); }, COLLAPSE_SETTLE_MS);
-    return () => { window.clearTimeout(timer); };
-  }, [collapsed]);
-  const wide = !collapsed || !settled;
-
-  // Freeze the content at its expanded width while it fades out (collapsed
-  // && wide): the sliding column then clips it instead of reflowing it. The
-  // rail layout (.collapsed styles) only applies once the fade settles.
+  // Freeze the content at its expanded width while it fades out: the sliding
+  // column then clips it instead of reflowing it, which is what makes the
+  // close read as the column going away rather than as its text squashing.
   const lastWideWidth = useRef(width);
   if (!collapsed) lastWideWidth.current = width;
 
-  // Rail-in only crossfades a live collapse: a refresh straight into the
-  // collapsed state renders the rail statically (no delay-hidden icons).
-  const everWide = useRef(!collapsed);
-  if (!collapsed) everWide.current = true;
+  // Closed means "not on screen", not just "invisible": the content stays
+  // mounted (the reference keeps its sidebar mounted through the same state,
+  // so an expand never reloads the tree), so it would otherwise keep its rows
+  // and controls in the keyboard's tab order. `inert` is the HTML answer and
+  // costs no state; `aria-hidden` alone leaves them focusable.
+  const rootEl = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (rootEl.current !== null) rootEl.current.inert = collapsed;
+  }, [collapsed]);
 
   // Scrollbars in the column follow the pointer (.quietBars rebinds them
   // away): drawn while it is inside, and for SCROLLBAR_LINGER_MS after it
@@ -188,53 +169,38 @@ export function Sidebar({
 
   return (
     <div
-      className={cx(
-        css.root,
-        !wide && css.collapsed,
-        !wide && everWide.current && css.railIn,
-        collapsed && wide && css.fading,
-        !pointerInside && css.quietBars,
-      )}
-      style={wide && width !== undefined ? { width: collapsed ? lastWideWidth.current : width } : undefined}
+      ref={rootEl}
+      className={cx(css.root, collapsed && css.closed, !pointerInside && css.quietBars)}
+      style={width !== undefined ? { width: collapsed ? lastWideWidth.current : width } : undefined}
+      aria-hidden={collapsed || undefined}
       onPointerEnter={() => {
         cancelLinger();
         setPointerInside(true);
       }}
       onPointerLeave={() => { armLinger(); }}
     >
-      <SidebarLogoRow
-        wide={wide}
-        collapsed={collapsed}
-        autoCollapsed={autoCollapsed ?? false}
-        onToggleCollapsed={onToggleCollapsed}
-        onStartSession={startSession}
-      />
-      {/* New Session keeps its labelled bar in the wide layout only: in the
-          settled rail its job moves up into the brand seat (SidebarLogoRow),
-          which is the reference's own top-left cluster — logo first, new task
-          beside it, never covering the way back. The rail keeps one control
-          per row, so the pair stacks: brand (new session), then the toggle. */}
-      {wide && <NewSessionButton wide={wide} onStartSession={startSession} />}
-      <PluginsEntryButton wide={wide} active={pluginsOpen} onOpen={onOpenPlugins} />
+      {/* The band the frame's top-left overlay floats over: its own drag seat
+          (the reference gives its sidebar the same `h-12 [app-region:drag]`
+          spacer, project-sidebar/index.tsx:245). */}
+      <div className={css.topSeat} data-tauri-drag-region="" />
+      <NewSessionButton onStartSession={startSession} />
+      <PluginsEntryButton active={pluginsOpen} onOpen={onOpenPlugins} />
 
       {/* The browsing region fills the column between the controls and the
-          foot in both states; its rail control rides the same seat. */}
+          foot in both states. */}
       <div className={css.regionArea}>
         <SessionBrowser
           items={items}
           currentFile={currentFile}
-          rail={!wide}
           onOpen={openSession}
           onDelete={onDeleteSession}
           onReload={onReloadSessions}
-          onExpand={() => { if (collapsed) onToggleCollapsed(); }}
         />
       </div>
 
       <div className={css.footArea}>
         <div className={css.settingsArea}>
           <SidebarFoot
-            rail={!wide}
             connection={connection}
             onReconnect={onReconnect}
             settingsOpen={settingsOpen}

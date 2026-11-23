@@ -173,18 +173,34 @@ export function ChatView({
 
   // Dynamic height: streaming text, tool disclosures and the dock's own
   // growth all resize the flow without a scroll event of their own.
+  //
+  // ONE settle per frame, not one per observation. `settle` reads
+  // `scrollHeight`/`clientHeight` (a forced layout) and then writes `scrollTop`
+  // (a second one); during a stream the column grows on every observation, so
+  // an unthrottled observer ran that pair several times per frame — the
+  // reported 「流式卡顿」. The frame's own measurement pass (AppFrame) has had
+  // this throttle from the start; this one was missing it.
   useEffect(() => {
     const col = columnRef.current;
     const box = boxRef.current;
     const el = port();
     if (col === null || box === null || el === null || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => settle());
+    let frame: number | null = null;
+    const observer = new ResizeObserver(() => {
+      frame ??= requestAnimationFrame(() => {
+        frame = null;
+        settle();
+      });
+    });
     observer.observe(col);
     // The scrollport's own box too: a shrinking viewport (or a dock growing
     // under it) changes the floor without touching the column's height.
     observer.observe(el);
     if (el !== box) observer.observe(box);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [settle, port]);
 
   // Geometry decisions run before paint: the reader must never see a frame at

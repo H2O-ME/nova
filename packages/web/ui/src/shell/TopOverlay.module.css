@@ -1,0 +1,106 @@
+/* The top-left cluster (the reference's DesktopTopOverlay, geometry copied
+ * from its Windows branch): a 48px band starting 6px down the window, one 28px
+ * ghost button per control, 4px apart, 12px in from the window edge. The band
+ * itself is only 28px of content over a 6px ground reveal, so the offset is
+ * what aligns the buttons with the panels' top edge rather than the window's.
+ *
+ * The seat is NOT clipped to the sidebar: with the column closed the cluster
+ * floats over the conversation's top-left corner, which is precisely why the
+ * column can close to a 6px sliver without taking the way back with it. Its
+ * width tracks the sidebar's track while open (AppFrame publishes it inline),
+ * so an open column can never be covered by the cluster's hit area. */
+
+.seat {
+  position: absolute;
+  top: var(--nova-space-6);
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-4);
+  height: 48px;
+  padding-left: var(--nova-space-12);
+  /* The seat itself stays out of the way (the reference's
+     `pointer-events-none` container): only the buttons take input, and the
+     gaps between them remain the frameless window's drag seat. */
+  pointer-events: none;
+  z-index: var(--nova-layer-chrome);
+}
+
+.seat > * {
+  pointer-events: auto;
+}
+
+/* One control box for both seats (the reference's `size-7 rounded-lg` ghost
+   button). */
+.toggle,
+.action {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: var(--nova-radius-lg);
+  background: transparent;
+  color: var(--nova-text-secondary);
+  cursor: pointer;
+}
+
+.toggle:hover,
+.action:hover {
+  background: var(--nova-interactive-hover);
+}
+
+/* The mark is the button's resting face: it reads as the product until the
+   pointer (or the keyboard's focus ring) arrives, then crossfades to the panel
+   glyph that says what a press does — the reference's
+   `group-hover:opacity-0` / `group-focus-visible:opacity-0` swap. */
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-text-primary);
+  color: var(--nova-surface-base);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: opacity var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.toggle:hover .mark,
+.toggle:focus-visible .mark {
+  opacity: 0;
+}
+
+.glyph {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 16px;
+  height: 16px;
+  color: var(--nova-text-primary);
+  opacity: 0;
+  transition: opacity var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.toggle:hover .glyph,
+.toggle:focus-visible .glyph {
+  opacity: 1;
+}
+
+/* An AUTO-collapse is not the reader's own choice: the glyph keeps the accent
+   so the way back states that the window took the column, not the reader. */
+.toggle[data-auto-collapsed] .glyph {
+  color: var(--nova-color-ink);
+}
+
+.actionIcon {
+  width: 16px;
+  height: 16px;
+}

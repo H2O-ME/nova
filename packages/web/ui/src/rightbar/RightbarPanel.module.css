@@ -29,8 +29,12 @@
   /* The left edge needs no gutter: the centre's own 6px right margin is the gap
      between the two panels. */
   margin: var(--nova-space-6) var(--nova-space-6) var(--nova-space-6) 0;
-  background: var(--nova-surface-raised);
-  border: 1px solid var(--nova-border-strong);
+  /* The same seam as the centre's panel (2026-11-23): 0.5px at 10% over the
+     content plane (`base`), not `raised` — `raised` is the card/dialog white,
+     and a docked panel painted in it stops being a neighbour of the
+     conversation and reads as a layer above the whole window. */
+  background: var(--nova-surface-base);
+  border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
   /* Opacity fade-in only (2026-11-22, ZCode alignment — `AnimatedSidePanePanel`
      runs `transition-opacity duration-200 ease-out` and lets the layout carry

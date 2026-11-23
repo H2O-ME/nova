@@ -20,6 +20,8 @@ import type { StripTabId } from '../rightbar/tabs.js';
 import { ErrorBoundary } from '../shell/ErrorBoundary.js';
 import { SHELL_COPY } from '../shell/copy.js';
 import { AppFrame } from '../shell/AppFrame.js';
+import { sidebarCollapsed } from '../shell/layout-store.js';
+import { TopOverlay } from '../shell/TopOverlay.js';
 import { WindowControls } from '../shell/WindowControls.js';
 import type { useLayout } from '../shell/use-layout.js';
 
@@ -58,6 +60,12 @@ export function AppShell(props: AppShellProps): JSX.Element {
   const rootDir = state.meta?.rootDir ?? '';
 
   const pickStripTab = props.onPickStripTab;
+  const sidebarClosed = sidebarCollapsed(layout.layout);
+  // The auto-collapse is a fact about WHY the column is closed, and it is only
+  // true while the frame is (debounced) narrow AND the column is closed (a
+  // reader who expanded it below the breakpoint has already answered the
+  // question). The top-left cluster's toggle answers to the same fact.
+  const sidebarAutoClosed = layout.layout.autoNarrow && sidebarClosed;
   return (
     <>
       {/* The frameless desktop window's caption buttons (nothing in a
@@ -71,13 +79,12 @@ export function AppShell(props: AppShellProps): JSX.Element {
       onConversationWidth={layout.setConversationWidth}
       onSidebarWidth={layout.setSidebar}
       onRightbarWidth={layout.setRightbar}
-      sidebar={({ collapsed, width, auto }) => (
+      sidebar={({ collapsed, width }) => (
         <Sidebar
           items={state.sessions}
           currentFile={sessionFile}
           collapsed={collapsed}
           width={width}
-          autoCollapsed={auto}
           connection={connection}
           onReconnect={reconnect}
           send={send}
@@ -92,10 +99,24 @@ export function AppShell(props: AppShellProps): JSX.Element {
           // the shell's own rule (the reference's new task collapses its side
           // pane), not the sidebar's, so it arrives as the shell's close.
           onNewSession={props.onCloseRightbar}
-          onToggleCollapsed={layout.toggleSidebar}
         />
       )}
       center={center}
+      topOverlay={(
+        <TopOverlay
+          collapsed={sidebarClosed}
+          autoCollapsed={sidebarAutoClosed}
+          onToggleCollapsed={layout.toggleSidebar}
+          // The same New Session gesture the sidebar's own row makes, minus the
+          // sidebar: leaving the plugin page, then the frame, then the shell's
+          // right-panel rule.
+          onStartSession={() => {
+            props.onLeavePlugins();
+            send({ type: 'new_session' });
+            props.onCloseRightbar();
+          }}
+        />
+      )}
       rightbar={({ width, canShow }) => {
         // The column is guarded on its own: a panel that cannot draw must cost
         // the reader the panel, not the conversation beside it. `resetKey` is

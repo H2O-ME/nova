@@ -8,11 +8,28 @@
   box-sizing: border-box;
   min-height: 48px;
   padding: 0 28px 0 20px;
-  border-bottom: 0.5px solid var(--nova-border-strong);
+  /* One rung UNDER the panel's own seam (2026-11-23): the reference draws this
+     row's rule as `border-border/50` (5%) inside a section edged at
+     `border-border` (10%). Nova had both at 10%, so the top bar's rule weighed
+     the same as the window's panel border and the "skeleton" read flat. */
+  border-bottom: 0.5px solid var(--nova-border-subtle);
 }
 
 /* (The single-view shrink rule that used to follow is gone with the tab strip:
    the header is one 48px row at every state now.) */
+
+/* Closed sidebar (2026-11-23): the frame's top-left overlay
+   (shell/TopOverlay.tsx) no longer sits over the sidebar — the closed column is
+   a 6px sliver, so the cluster floats over THIS row's leading edge. The reserve
+   is its own band (12px inset + two 28px controls + 4px gap = 72px of window,
+   62px of it inside this panel) plus air; the reference reserves the same band
+   (`resolveTopOverlayLeadingPaddingClass`, WorkspaceHeader.tsx:25-42 — `pl-38`,
+   152px, for its four-button cluster). Deliberately NOT transitioned: the
+   reference measured a padding animation here as per-frame layout churn, and
+   the reserve has to land with the track rather than trail it. */
+:global([data-sidebar-collapsed]) .header {
+  padding-left: 72px;
+}
 
 /* The reference's header leads with a folder glyph before the title. */
 .folder {

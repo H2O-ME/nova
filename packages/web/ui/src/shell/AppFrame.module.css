@@ -1,19 +1,25 @@
-/* The window's own ground (2026-11-15, ZCode alignment). The reference paints
- * `bg-background-win-alt` across the whole window and floats the workspace
- * column on it as a rounded, bordered panel — that is why its sidebar and its
- * page read as ONE surface with a panel inside, while Nova's two flat fills
- * read as two screens standing side by side ("侧边栏和主页面分离"). */
+/* The window's own ground (2026-11-15; plane corrected 2026-11-23). The
+ * reference paints ONE window tone across the whole frame and floats the
+ * content panels on it as rounded, hairlined surfaces — that is why its
+ * sidebar and its page read as one window, while Nova's two flat fills read as
+ * two screens standing side by side ("侧边栏和主页面分离").
+ *
+ * The tone is `--nova-surface-panel`, not `base` (2026-11-23, hierarchy fix):
+ * the reference's ground is its `--background-win-alt` token and its CONTENT is
+ * `--background` — one ladder rung apart in both themes. Nova had the ground at
+ * `base` and the panels at `raised`, both from the white end, 7 points apart,
+ * with the sidebar painted base as well, so the window held three near-white
+ * planes and only the hairlines said anything. `panel` is this ladder's window
+ * tone: content `base` then sits a full step away from the ground IN BOTH
+ * THEMES, exactly as the reference's pair does, and `raised` goes back to what
+ * it names — cards, dialogs, popovers. */
 .frame {
   position: relative; /* anchors the drag handles, which straddle column borders */
   display: grid;
   grid-template-rows: 100%;
   height: 100%;
   overflow: hidden;
-  /* The ground the three columns stand on (2026-11-21): one neutral step below
-     the panels, matching the reference's window ground. `base` rather than
-     `sunken` — the old 240 read as a second panel colour beside the centre's
-     248, so the shell had three surfaces where the reference has two. */
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-panel);
 }
 
 /* Only a discrete collapse/expand toggle eases the tracks. Steady-state tracks
@@ -55,16 +61,19 @@
  * it out of the track solver entirely, which is also the honest model: this is
  * an overlay on the ground band, not something the layout reserves.
  *
- * `left` starts at the sidebar's right edge (the sidebar's own logo row is the
- * drag seat there) via the width the frame publishes inline. 6px tall over the
- * 6px ground band, so it never paints over panel chrome. Rendered
+ * Spans the WHOLE window width (2026-11-23): it used to start at the sidebar's
+ * right edge because the sidebar's logo row was the drag seat in that corner.
+ * The logo row now lives in the frame's top-left overlay, and the sidebar's own
+ * top band is a plain 48px drag seat (Sidebar.module.css `.topSeat`), so the
+ * ground reveal above the sidebar needs this strip like every other column. 6px
+ * tall over the 6px ground band, so it never paints over panel chrome. Rendered
  * desktop-only by AppFrame (in a browser it would eat clicks for nothing).
  */
 .topDragStrip {
   position: absolute;
   top: 0;
   right: 0;
-  left: var(--nova-frame-sidebar-width, 0px);
+  left: 0;
   height: var(--nova-space-6);
   /* Above the panels (they start 6px down), below every floating surface. */
   z-index: var(--nova-layer-chrome);
@@ -72,7 +81,8 @@
 
 /* The sidebar rides the window ground itself (no fill of its own): the
    reference's rail is the same plane the window is painted with, and only the
-   workspace column is lifted into a panel. */
+   content panels are lifted onto `base`. Nothing may paint here — a fill would
+   make the sidebar a THIRD plane between the ground and the panels. */
 .sidebarCol {
   min-width: 0;
   overflow: hidden;
@@ -102,12 +112,17 @@
     var(--nova-space-6)
     var(--nova-space-6)
     var(--nova-space-4);
-  border: 1px solid var(--nova-border-strong);
+  /* The panel's edge (2026-11-23): the reference's conversation frame is
+     `border-[0.5px] border-border` over `bg-background` — a HALF-pixel hairline
+     at 10%, not the 1px Nova drew. At 1px the frame read as a box drawn around
+     another box; the reference's line is a seam, and the ground step is what
+     says "panel". The fill is `base` (the content plane, matching what the
+     transcript paints inside) and NOT `raised`: `raised` is the card/dialog
+     white, so the panel had been painted in the colour of the things that float
+     ABOVE it. */
+  border: 0.5px solid var(--nova-border-strong);
   border-radius: var(--nova-radius-md);
-  /* Both panels are the same white plane over the ground (2026-11-21); the
-     right pane used to sit one step brighter than the centre, which read as a
-     layer above it instead of a neighbour. */
-  background: var(--nova-surface-raised);
+  background: var(--nova-surface-base);
 }
 
 .frame[data-desktop] .centerCol {

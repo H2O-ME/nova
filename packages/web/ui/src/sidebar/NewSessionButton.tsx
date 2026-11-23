@@ -1,13 +1,10 @@
 /**
- * The New Session bar under the logo row. Expanded it is the reference's 32px
- * nav row (`h-8`, NewTaskButtonGroup.tsx:36) carrying its own label; in the
- * rail it is the plain 36x36 icon control, and there the label has to come
- * from a tooltip (the reference passes `disabled={wide}` to the same
- * primitive).
+ * The New Session bar under the top seat: the reference's 32px nav row (`h-8`,
+ * NewTaskButtonGroup.tsx:36) carrying its own label. One shape only — the
+ * closed column has no narrow layout to fall back to (the reference's panel
+ * fades out whole), so the label never needs a tooltip stand-in.
  */
-import { Tooltip } from '../shell/Tooltip.js';
 import { SIDEBAR_COPY as COPY } from './view.js';
-import { cx } from '../composer/cx.js';
 import css from './Sidebar.module.css';
 
 /**
@@ -38,31 +35,24 @@ function MessageCirclePlusIcon({ className }: { className?: string }): JSX.Eleme
 }
 
 export function NewSessionButton({
-  wide,
   onStartSession,
 }: {
-  /** The wide layout (expanded, or still fading out of a live collapse). */
-  wide: boolean;
   onStartSession: () => void;
 }): JSX.Element {
   const label = COPY['session.new.label'];
   return (
-    <Tooltip label={label} side="right" delayMs={500} disabled={wide}>
-      <button
-        type="button"
-        className={css.newSession}
-        aria-label={label}
-        title={label}
-        onClick={onStartSession}
-      >
-        <MessageCirclePlusIcon className={css.newSessionIcon} />
-        {wide && <span className={cx(css.newSessionLabel, css.wide)}>{COPY['session.new']}</span>}
-        {wide && (
-          // The reference's trailing hint — rendered only because the shell
-          // actually binds the shortcut (a hint for a dead key is a lie).
-          <span className={css.newSessionHint}>{COPY['session.new.shortcut']}</span>
-        )}
-      </button>
-    </Tooltip>
+    <button
+      type="button"
+      className={css.newSession}
+      aria-label={label}
+      title={label}
+      onClick={onStartSession}
+    >
+      <MessageCirclePlusIcon className={css.newSessionIcon} />
+      <span className={css.newSessionLabel}>{COPY['session.new']}</span>
+      {/* The reference's trailing hint — rendered only because the shell
+          actually binds the shortcut (a hint for a dead key is a lie). */}
+      <span className={css.newSessionHint}>{COPY['session.new.shortcut']}</span>
+    </button>
   );
 }

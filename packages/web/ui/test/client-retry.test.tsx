@@ -191,7 +191,6 @@ describe('ConnectionIndicator retry affordance', () => {
         onOpenSettings={() => undefined}
         onDeleteSession={() => undefined}
         onReloadSessions={() => undefined}
-        onToggleCollapsed={() => undefined}
         pluginsOpen={false}
         onOpenPlugins={() => undefined}
         onLeavePlugins={() => undefined}

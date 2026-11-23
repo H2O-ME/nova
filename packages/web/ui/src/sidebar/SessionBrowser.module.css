@@ -14,13 +14,6 @@
   border-top: 1px solid var(--nova-border-subtle);
   padding-top: var(--nova-space-12);
 }
-
-.root.rail {
-  padding-right: 0;
-  border-top: none;
-  padding-top: 0;
-}
-
 .iconButton {
   flex: none;
   display: inline-flex;
@@ -305,12 +298,6 @@
   overflow: visible;
 }
 
-.rail .listArea {
-  margin-left: 0;
-  margin-right: 0;
-  padding-left: 0;
-}
-
 /* Relative for the bottom fade overlay. */
 .treeBody {
   flex: 1;
@@ -332,10 +319,6 @@
   pointer-events: none;
 }
 
-/* Wide-only content fades back in on expand remount (mirrors the shell). */
-.wide {
-  animation: nova-fade-in var(--nova-dur-base) var(--nova-ease-inout);
-}
 /* List: the only scrolling region. Block children keep their design heights
    under content overflow. The 2px edge offset, stable 5px themed scrollbar,
    and remaining padding equal the shell's right inset, with or without
@@ -383,7 +366,7 @@
    single-list mode and every search result list sat at 0px and read as a tighter
    block than the grouped tree beside it — the reference splits the same two
    shapes into `.flatList` / `.searchTree`. */
-.wide[data-flat] .list > * + * {
+.treeBody[data-flat] .list > * + * {
   margin-top: var(--nova-space-2);
 }
 
@@ -458,45 +441,4 @@
   width: 24px;
   height: 24px;
   color: var(--nova-text-faint);
-}
-
-/* Rail control seats: the reference stacks its search and add controls as
-   36x36 circles here (`.rail .search` / `.rail .iconButton`, 12px rhythm);
-   this app's rail carries the same pair — open the search, ask for the list
-   again — because the header that holds them is wide-only. */
-.railControls {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--nova-space-12);
-  margin-bottom: var(--nova-space-12);
-}
-
-.rail .iconButton {
-  width: 36px;
-  height: 36px;
-  /* Rail hovers share the shell rail's 12px rounding (the reference's own
-     comment): the wide header's 8px controls round up in the collapsed rail. */
-  border-radius: var(--nova-radius-lg);
-  color: var(--nova-text-primary);
-}
-
-/* The reload glyph: 16px expanded, 18px in the rail (the reference's two
-   `size` props for the same control pair). */
-.actionIcon {
-  flex: none;
-  width: 16px;
-  height: 16px;
-}
-
-.rail .actionIcon {
-  width: 18px;
-  height: 18px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .wide {
-    animation: none;
-  }
 }

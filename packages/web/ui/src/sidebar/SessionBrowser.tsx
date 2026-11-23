@@ -18,7 +18,6 @@ import { AnimatedRows } from './AnimatedRows.js';
 import { DeleteSessionDialog } from './DeleteSessionDialog.js';
 import { ListHeader } from './ListHeader.js';
 import { SessionRow, ProjectRow } from './SessionRow.js';
-import { cx } from '../composer/cx.js';
 import { readGroupMode, writeGroupMode, type GroupMode } from './list-view.js';
 import {
   SIDEBAR_COPY as COPY,
@@ -37,14 +36,10 @@ export interface SessionBrowserProps {
   items: readonly SessionListItem[] | null;
   /** The log the kernel is attached to (row highlight + the open group). */
   currentFile: string;
-  /** Rail state: the list unmounts, its controls keep the rail's seats. */
-  rail: boolean;
   onOpen: (file: string) => void;
   /** Delete one session log (`delete_session`); the listing answers. */
   onDelete: (file: string) => void;  /** Re-ask the host for the list (`list_sessions`). */
   onReload: () => void;
-  /** Rail search needs the column widened before a field can be typed in. */
-  onExpand: () => void;
 }
 
 /**
@@ -55,11 +50,9 @@ export interface SessionBrowserProps {
 export function SessionBrowser({
   items,
   currentFile,
-  rail,
   onOpen,
   onDelete,
   onReload,
-  onExpand,
 }: SessionBrowserProps): JSX.Element {
   const [mode, setMode] = useState<GroupMode>(() => readGroupMode());
   const [query, setQuery] = useState('');
@@ -225,7 +218,7 @@ export function SessionBrowser({
   };
 
   return (
-    <div className={cx(css.root, rail && css.rail)}>
+    <div className={css.root}>
       <ListHeader
         mode={mode}
         onPickMode={pickMode}
@@ -234,41 +227,36 @@ export function SessionBrowser({
         searchOpen={searchOpen}
         onSearchOpen={setSearchOpen}
         onReload={onReload}
-        rail={rail}
-        onExpand={onExpand}
       />
 
-      {/* Always-mounted seat keeps the region's flex slot while the list
-          itself is wide-only. */}
+      {/* Always-mounted seat keeps the region's flex slot. */}
       <div className={css.listArea}>
-        {!rail && (
-          // `data-flat` marks a run of top-level session rows with no group
-          // wrapper (single-list mode and search hits). The grouped tree gets its
-          // 2px row rhythm from `.groupSection > * + *`; without this hook a flat
-          // run had no rhythm at all and read as a tighter block than the tree
-          // beside it — the reference expresses the same distinction with its
-          // `.flatList` / `.searchTree` classes.
-          <div className={cx(css.treeBody, css.wide)} data-flat={flatRows ? '' : undefined}>
-            <AnimatedRows
-              className={css.list}
-              label={COPY['section.sessions']}
-              rowKeys={rowKeys}
-              // The placeholder is not a list state to animate: rows flying in
-              // on every attach would read as churn rather than as an answer.
-              ready={!loading}
-              // A view REPLACEMENT, not a reorder — the reference keys on
-              // `[animationResetKey, sessionLimits]` for exactly these three:
-              // a grouping switch, a new search, and revealing a group's
-              // remaining sessions. Each swaps the list rather than moving it,
-              // so its rows must fade in where they belong instead of gliding
-              // across the panel from whatever they replaced.
-              resetKey={`${mode}|${searching ? query : ''}|${Object.entries(sessionLimits).map(([k, v]) => `${k}:${String(v)}`).join(',')}`}
-            >
-              {rowTree.map((row) => renderRow(row))}
-            </AnimatedRows>
-            <span className={css.fade} />
-          </div>
-        )}
+        <div className={css.treeBody} data-flat={flatRows ? '' : undefined}>
+          {/* `data-flat` marks a run of top-level session rows with no group
+              wrapper (single-list mode and search hits). The grouped tree gets
+              its 2px row rhythm from `.groupSection > * + *`; without this hook
+              a flat run had no rhythm at all and read as a tighter block than
+              the tree beside it — the reference expresses the same distinction
+              with its `.flatList` / `.searchTree` classes. */}
+          <AnimatedRows
+            className={css.list}
+            label={COPY['section.sessions']}
+            rowKeys={rowKeys}
+            // The placeholder is not a list state to animate: rows flying in
+            // on every attach would read as churn rather than as an answer.
+            ready={!loading}
+            // A view REPLACEMENT, not a reorder — the reference keys on
+            // `[animationResetKey, sessionLimits]` for exactly these three:
+            // a grouping switch, a new search, and revealing a group's
+            // remaining sessions. Each swaps the list rather than moving it,
+            // so its rows must fade in where they belong instead of gliding
+            // across the panel from whatever they replaced.
+            resetKey={`${mode}|${searching ? query : ''}|${Object.entries(sessionLimits).map(([k, v]) => `${k}:${String(v)}`).join(',')}`}
+          >
+            {rowTree.map((row) => renderRow(row))}
+          </AnimatedRows>
+          <span className={css.fade} />
+        </div>
       </div>
       {/* One dialog per confirmed session, keyed by the log: a second delete
           while one is open starts a fresh dialog rather than reusing the state

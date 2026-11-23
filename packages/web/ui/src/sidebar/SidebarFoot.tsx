@@ -19,12 +19,9 @@ import { Tooltip } from '../shell/Tooltip.js';
 import { ConnectionIndicator } from '../shell/ConnectionIndicator.js';
 import { CONNECTING_MIN_VISIBLE_MS, indicatorState, type SocketState } from '../shell/connection.js';
 import { SIDEBAR_COPY as COPY } from './view.js';
-import { cx } from '../composer/cx.js';
 import css from './SidebarFoot.module.css';
 
 export interface SidebarFootProps {
-  /** Rail state: 36x36 boxes, no labels, no connection readout. */
-  rail: boolean;
   connection: SocketState;
   /** Request an immediate reconnect attempt from the connection indicator. */
   onReconnect?: (() => void) | undefined;
@@ -39,7 +36,7 @@ export interface SidebarFootProps {
  * @param props - see SidebarFootProps.
  * @returns the footer row.
  */
-export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpenSettings }: SidebarFootProps): JSX.Element {
+export function SidebarFoot({ connection, onReconnect, settingsOpen, onOpenSettings }: SidebarFootProps): JSX.Element {
   // The connecting pill's minimum-visible hold (the reference's
   // CONNECTING_MIN_VISIBLE_MS): a retry that succeeds in 40ms must not flash the
   // pill for a single frame, which reads as a glitch rather than as progress.
@@ -67,29 +64,27 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
   const settingsLabel = COPY['settings.label'];
   const identityLabel = COPY['settings.identity'];
   return (
-    <div className={cx(css.triggerRow, rail && css.railRow)}>
-      {/* The identity block: fallback avatar letter + product name. Wide it is
-          the settings dialog's big target; in the rail it shrinks to the same
-          36x36 box as every other rail control. */}
-      <Tooltip label={identityLabel} side="right" delayMs={500} disabled={!rail}>
-        <button
-          type="button"
-          className={cx(css.trigger, rail && css.rail)}
-          aria-label={identityLabel}
-          aria-haspopup="dialog"
-          aria-expanded={settingsOpen}
-          title={identityLabel}
-          onClick={onOpenSettings}
-        >
-          <span className={css.avatar} aria-hidden="true">N</span>
-          {!rail && <span className={cx(css.triggerLabel, css.wide)}>{COPY.brand}</span>}
-        </button>
-      </Tooltip>
+    <div className={css.triggerRow}>
+      {/* The identity block: fallback avatar letter + product name, the settings
+          dialog's big target. Its label is on screen, so it carries none of the
+          tooltip stand-ins a glyph-only control would need. */}
+      <button
+        type="button"
+        className={css.trigger}
+        aria-label={identityLabel}
+        aria-haspopup="dialog"
+        aria-expanded={settingsOpen}
+        title={identityLabel}
+        onClick={onOpenSettings}
+      >
+        <span className={css.avatar} aria-hidden="true">N</span>
+        <span className={css.triggerLabel}>{COPY.brand}</span>
+      </button>
       {/* No steady state: `indicatorState` on (open, not-recovered) resolves to
           undefined, so a healthy socket renders nothing here — the reference's
           foot is silent when nothing is wrong. */}
       <ConnectionIndicator
-        state={rail ? undefined : indicatorState(connection, false, holdConnecting)}
+        state={indicatorState(connection, false, holdConnecting)}
         onReconnect={onReconnect}
         disconnectedLabel={COPY['connection.error']}
         reconnectLabel={COPY['connection.retry']}
@@ -98,24 +93,21 @@ export function SidebarFoot({ rail, connection, onReconnect, settingsOpen, onOpe
         reconnectActionLabel={COPY['connection.reconnect']}
         restartActionLabel={COPY['connection.restart']}
       />
-      {/* The gear: the settings dialog's precise seat. Wide-only — in the rail
-          the identity block IS the settings seat, and a second identical 36x36
-          box beside it would be the same control twice. */}
-      {!rail && (
-        <Tooltip label={settingsLabel} side="top" delayMs={500}>
-          <button
-            type="button"
-            className={css.gear}
-            aria-label={settingsLabel}
-            aria-haspopup="dialog"
-            aria-expanded={settingsOpen}
-            title={settingsLabel}
-            onClick={onOpenSettings}
-          >
-            <SettingsIcon className={css.gearIcon} />
-          </button>
-        </Tooltip>
-      )}
+      {/* The gear: the settings dialog's precise seat beside the identity
+          block's broad one. */}
+      <Tooltip label={settingsLabel} side="top" delayMs={500}>
+        <button
+          type="button"
+          className={css.gear}
+          aria-label={settingsLabel}
+          aria-haspopup="dialog"
+          aria-expanded={settingsOpen}
+          title={settingsLabel}
+          onClick={onOpenSettings}
+        >
+          <SettingsIcon className={css.gearIcon} />
+        </button>
+      </Tooltip>
     </div>
   );
 }

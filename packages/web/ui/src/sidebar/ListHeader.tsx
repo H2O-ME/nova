@@ -18,10 +18,8 @@
  * reference's two-glyph shape.
  */
 import { useEffect, useRef } from 'react';
-import { CloseIcon, RefreshIcon, SearchIcon } from '../icons.js';
-import { Tooltip } from '../shell/Tooltip.js';
+import { CloseIcon, SearchIcon } from '../icons.js';
 import { LIST_COPY, sectionLabel, type GroupMode } from './list-view.js';
-import { SIDEBAR_COPY } from './view.js';
 import { cx } from '../composer/cx.js';
 import { ViewOptions } from './ViewOptions.js';
 import css from './SessionBrowser.module.css';
@@ -37,10 +35,6 @@ export interface ListHeaderProps {
   searchOpen: boolean;
   onSearchOpen: (open: boolean) => void;
   onReload: () => void;
-  /** Rail state: the label and the search field collapse to controls. */
-  rail: boolean;
-  /** Rail search: the column has to widen before a field can be typed in. */
-  onExpand: () => void;
 }
 
 /**
@@ -56,8 +50,6 @@ export function ListHeader({
   searchOpen,
   onSearchOpen,
   onReload,
-  rail,
-  onExpand,
 }: ListHeaderProps): JSX.Element {
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Opening the field is one gesture; focusing it is the other half, and it
@@ -65,42 +57,6 @@ export function ListHeader({
   useEffect(() => {
     if (searchOpen) inputRef.current?.focus();
   }, [searchOpen]);
-
-  if (rail) {
-    // The rail's two controls are bare glyphs with no label anywhere on screen,
-    // so each carries a real tooltip: `title` never appears for a keyboard user,
-    // and the reference wraps these seats in its Tooltip primitive for exactly
-    // that reason.
-    return (
-      <div className={cx(css.railControls)}>
-        <Tooltip label={LIST_COPY['search.sessions.aria']} side="right" delayMs={500}>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={LIST_COPY['search.sessions.aria']}
-            title={LIST_COPY['search.sessions.aria']}
-            onClick={() => {
-              onExpand();
-              onSearchOpen(true);
-            }}
-          >
-            <SearchIcon className={css.actionIcon} />
-          </button>
-        </Tooltip>
-        <Tooltip label={SIDEBAR_COPY['list.reload']} side="right" delayMs={500}>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={SIDEBAR_COPY['list.reload']}
-            title={SIDEBAR_COPY['list.reload']}
-            onClick={onReload}
-          >
-            <RefreshIcon className={css.actionIcon} />
-          </button>
-        </Tooltip>
-      </div>
-    );
-  }
 
   const expanded = searchOpen || query.length > 0;
   return (

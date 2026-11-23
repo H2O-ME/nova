@@ -7,42 +7,37 @@
  * 设置 while the reference keeps it beside 新会话 — the placement this fixes.
  *
  * Geometry is the reference's panel-list row, not the New Session bar: a plain
- * nav row (icon + label, hover fill, the ACTIVE row filled), which in the rail
- * becomes the 36×36 icon control and takes its label from a tooltip.
+ * nav row (icon + label, hover fill, the ACTIVE row filled). One shape only —
+ * the closed column has no narrow layout (the reference's panel fades out
+ * whole), so the label never needs a tooltip stand-in.
  */
 import { PluginIcon } from '../icons.js';
-import { Tooltip } from '../shell/Tooltip.js';
 import { SIDEBAR_COPY as COPY } from './view.js';
 import { cx } from '../composer/cx.js';
 import css from './Sidebar.module.css';
 
 export function PluginsEntryButton({
-  wide,
   active,
   onOpen,
 }: {
-  /** The wide layout (expanded, or still fading out of a live collapse). */
-  wide: boolean;
   /** The plugin center owns the main column: this row is the current page. */
   active: boolean;
   onOpen: () => void;
 }): JSX.Element {
   const label = COPY['plugins.entry'];
   return (
-    <Tooltip label={label} side="right" delayMs={500} disabled={wide}>
-      <button
-        type="button"
-        className={cx(css.pluginsEntry, active && css.pluginsEntryActive)}
-        aria-label={label}
-        title={label}
-        /* The row is the current page, not a link to one: `aria-current` is what
-           a screen reader announces, and it is the same fact the fill paints. */
-        aria-current={active ? 'page' : undefined}
-        onClick={onOpen}
-      >
-        <PluginIcon className={css.pluginsEntryIcon} />
-        {wide && <span className={cx(css.pluginsEntryLabel, css.wide)}>{label}</span>}
-      </button>
-    </Tooltip>
+    <button
+      type="button"
+      className={cx(css.pluginsEntry, active && css.pluginsEntryActive)}
+      aria-label={label}
+      title={label}
+      /* The row is the current page, not a link to one: `aria-current` is what
+         a screen reader announces, and it is the same fact the fill paints. */
+      aria-current={active ? 'page' : undefined}
+      onClick={onOpen}
+    >
+      <PluginIcon className={css.pluginsEntryIcon} />
+      <span className={css.pluginsEntryLabel}>{label}</span>
+    </button>
   );
 }

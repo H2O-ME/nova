@@ -33,15 +33,6 @@ import css from './AppFrame.module.css';
 export interface SidebarSlotParams {
   collapsed: boolean;
   width: number;
-  /**
-   * The collapse is the NARROW-FRAME auto-collapse rather than the reader's own
-   * choice. The two look identical in a 56px rail, and they mean different
-   * things: one is a state the reader chose, the other is a state the window
-   * imposed on them. The occupant needs the difference to make the way back
-   * discoverable (its toggle names the reason and keeps the accent), which is the
-   * defect the rail-only affordance left: a sidebar that "just disappeared".
-   */
-  auto: boolean;
 }
 
 /** What the right column occupant needs to know about its own column. */
@@ -73,6 +64,13 @@ export interface AppFrameProps {
   center: ReactNode;
   /** Right column occupant; also responsible for reporting its presentation. */
   rightbar?: (params: RightbarSlotParams) => ReactNode;
+  /**
+   * The window's top-left cluster (`TopOverlay`). It is a frame child, not a
+   * sidebar child: the way back to the column has to survive the column
+   * closing, and the reference keeps it in the shell for exactly that reason
+   * (`DesktopTopOverlay` is rendered by the layout, never by the sidebar).
+   */
+  topOverlay?: ReactNode;
   /** Shell overlays (dialogs, command palettes) above every column. */
   overlay?: ReactNode;
 }
@@ -193,6 +191,7 @@ export function AppFrame({
   sidebar,
   center,
   rightbar,
+  topOverlay,
   overlay,
 }: AppFrameProps): JSX.Element {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -309,8 +308,8 @@ export function AppFrame({
   );
 
   const sidebarNode = useMemo(
-    () => sidebar({ collapsed, width: cols.sidebar, auto: autoCollapsed }),
-    [sidebar, collapsed, cols.sidebar, autoCollapsed],
+    () => sidebar({ collapsed, width: cols.sidebar }),
+    [sidebar, collapsed, cols.sidebar],
   );
   const rightbarNode = useMemo(
     () =>
@@ -322,11 +321,7 @@ export function AppFrame({
       <div ref={frameRef} className={css.frame}
       style={{
         gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px`,
-        // Published for the absolutely-positioned top drag strip: the strip
-        // starts at the sidebar's right edge, which a grid item cannot learn
-        // from the track solver on its own.
-        '--nova-frame-sidebar-width': `${cols.sidebar}px`,
-      } as React.CSSProperties}
+      }}
       {...(collapsed ? { 'data-sidebar-collapsed': '' } : {})}
       {...(autoCollapsed ? { 'data-sidebar-auto-collapsed': '' } : {})}
       {...(cols.rightbar === 0 ? { 'data-rightbar-collapsed': '' } : {})}
@@ -358,6 +353,10 @@ export function AppFrame({
           in the desktop shell only — in a browser it would silently eat clicks
           on the strip for nothing. */}
       {isDesktopShell() && <div className={css.topDragStrip} data-tauri-drag-region="" aria-hidden="true" />}
+      {/* Above the columns, below the shell's overlay layer: the cluster floats
+          over the sidebar's seat while it is open and over the conversation's
+          top-left corner while it is closed (TopOverlay.tsx). */}
+      {topOverlay}
       {overlay !== undefined && <div className={css.overlayLayer}>{overlay}</div>}
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
       {!collapsed && (

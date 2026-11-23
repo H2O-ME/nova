@@ -15,15 +15,6 @@
   box-sizing: border-box;
 }
 
-.triggerRow.railRow {
-  width: 36px;
-  justify-content: center;
-  /* The rail centering is its own spec: the wide row's right inset would
-     offset the 32px avatar inside the 36px box. */
-  padding-right: 0;
-  margin: var(--nova-space-8) 0 var(--nova-space-10);
-}
-
 /* The identity block (ZCode WorkspaceSidebarFooter.tsx:242-253): ghost Button
    size lg — h-8 (32px), `gap-2`, `rounded-tl-2xl rounded-bl-2xl border-0 pl-0`;
    the footer's own px-4 supplies the visual left inset, so the row's padding
@@ -60,20 +51,6 @@
   outline-offset: -2px;
 }
 
-/* Rail: the same 36x36 box AND the same rounding as every other rail control.
-   A lone circle here read as a different control family from the squares
-   stacked above it — the rail is one grid. */
-.trigger.rail {
-  flex: none;
-  width: 36px;
-  height: 36px;
-  margin: 0;
-  justify-content: center;
-  gap: 0;
-  padding: 0;
-  border-radius: var(--nova-radius-lg);
-}
-
 /* The avatar (ZCode's `Avatar size="default"`, WorkspaceSidebarFooter.tsx:163):
    a 32px disc — exactly the identity row's height — with a 14px fallback
    letter (`AvatarFallback` is text-ui-base). No image exists to fill it; the
@@ -96,13 +73,9 @@
   line-height: 1;
 }
 
-.trigger.rail .avatar {
-  margin-left: 0;
-}
-
 /* The trailing gear: the reference's Button size icon-lg
    (WorkspaceSidebarFooter.tsx:476-487) — a 32x32 box with 8px rounding and a
-   16px glyph. Wide-only; the rail's identity block is the settings seat. */
+   16px glyph. */
 .gear {
   flex: none;
   display: inline-flex;
@@ -137,15 +110,4 @@
 .triggerLabel {
   overflow: hidden;
   white-space: nowrap;
-}
-
-/* Wide-only content fades back in on expand remount (the shell's rule, for
-   the seat the shell does not animate). */
-.wide {
-  animation: nova-fade-in var(--nova-dur-base) var(--nova-ease-inout);
-}
-@media (prefers-reduced-motion: reduce) {
-  .wide {
-    animation: none;
-  }
 }
