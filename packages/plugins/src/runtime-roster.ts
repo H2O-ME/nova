@@ -23,12 +23,16 @@
  */
 import {
   compaction as compactionKey,
+  registerCommand,
   sessions as sessionsKey,
   type Plugin,
 } from '@nova-agent/core';
+import { readFile } from 'node:fs/promises';
+import { packCommandDefinition } from './pack-loader.js';
 import { PluginHost, TOOLBOX_ENTRY_ID } from './host.js';
 import { kernelCommandsPlugin } from './kernel-commands.js';
 import { permissionGatePlugin } from './hooks.js';
+import { hookBridgePlugin, type HookSource } from './hook-bridge.js';
 import { kernelPlugins } from './runtime-builtins.js';
 import { skillsPlugin } from './skills.js';
 import { wrapHeadlessCompact } from './headless-compact.js';
@@ -72,6 +76,8 @@ async function runRoster(env: Environment, opts: CreateKernelOptions): Promise<v
     ...surfaceRows(env, opts),
     cachedKernelCommands(env),
     ...(skills.length > 0 ? [skillsPlugin(skills)] : []),
+    ...packCommandRow(env, opts),
+    ...configuredHookRow(env, opts),
     permissionGatePlugin,
   ];
   const rows = await buildTree(builtins, env.state.pluginEntries, opts);
@@ -118,6 +124,84 @@ function cachedBuiltins(env: Environment, opts: CreateKernelOptions): readonly P
 function cachedKernelCommands(env: Environment): Plugin {
   env.state.kernelCommands ??= kernelCommandsPlugin(env);
   return env.state.kernelCommands;
+}
+
+/**
+ * Pack-contributed slash commands, as ONE row.
+ *
+ * One row for all packs rather than a row per pack because the container keys
+ * rows by plugin identity and commands are additive: a per-pack row would make
+ * the panel list a "plugin" whose only content is a command list, which is not
+ * a thing the operator can meaningfully switch (turning it off would have to
+ * distinguish WHICH pack's commands). Pack enablement belongs to the pack
+ * loader; this row exists only to put the commands in the registry.
+ *
+ * Nothing to contribute → no row at all, so a kernel without packs has the
+ * same tree it always had.
+ */
+function packCommandRow(env: Environment, opts: CreateKernelOptions): readonly Plugin[] {
+  const packs = (opts.packs ?? []).filter((pack) => pack.commands.length > 0);
+  if (packs.length === 0) return [];
+  env.state.packCommands ??= {
+    name: 'pack-commands',
+    description: 'Slash commands contributed by loaded plugin packs.',
+    manifest: {
+      title: '插件包命令',
+      description: '目录式插件包（skills/commands/hooks）提供的斜杠命令。',
+      tier: 'core',
+    },
+    apply: (ctx) => {
+      for (const pack of packs) {
+        for (const command of pack.commands) {
+          registerCommand(ctx, packCommandDefinition(pack, command, (file) => readFile(file, 'utf8')));
+        }
+      }
+    },
+  };
+  return [env.state.packCommands];
+}
+
+/**
+ * The configured-hook row, or an empty list when there is nothing to run.
+ *
+ * Two sources feed one bridge: the operator's `hooks` config (off unless it
+ * says `enabled: true`) and every loaded pack's own `hooks/hooks.json`. They
+ * share one row because they are the same kind of thing — an external command
+ * declared in data — and one bridge is what keeps the two from dispatching
+ * differently (the second-dispatch-path defect).
+ *
+ * Cached on state for the same identity reason as the other built-ins: a pack
+ * set and a config are fixed per kernel, and rebuilding the row per roster
+ * would make every workspace switch tear down and re-register every hook.
+ */
+function configuredHookRow(env: Environment, opts: CreateKernelOptions): readonly Plugin[] {
+  const configHooks = opts.config.hooks;
+  const operatorEnabled = configHooks?.enabled === true;
+  const operatorEvents = operatorEnabled ? (configHooks?.events ?? {}) : {};
+  const sources: HookSource[] = [];
+  if (operatorEnabled && Object.keys(operatorEvents).length > 0) {
+    sources.push({ label: 'config:hooks', events: operatorEvents });
+  }
+  for (const pack of opts.packs ?? []) {
+    if (Object.keys(pack.hooks).length === 0) continue;
+    sources.push({
+      label: `pack:${pack.manifest.name}`,
+      events: pack.hooks,
+      pluginRoot: pack.root,
+      vars: pack.vars,
+    });
+  }
+  if (sources.length === 0) return [];
+  env.state.hookRow ??= hookBridgePlugin({
+    sources,
+    projectDir: () => env.state.rootDir,
+    ...(configHooks?.timeoutMs !== undefined ? { defaultTimeoutMs: configHooks.timeoutMs } : {}),
+    ...(configHooks?.maxOutputBytes !== undefined ? { maxOutputBytes: configHooks.maxOutputBytes } : {}),
+    onDiagnostic: (message) => {
+      env.root.get(sessionsKey)?.current()?.notice('hook_failed', message);
+    },
+  });
+  return [env.state.hookRow];
 }
 
 /**

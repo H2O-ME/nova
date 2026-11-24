@@ -74,6 +74,12 @@ export interface ApprovalPolicyCell {
   policy: ApprovalPolicy;
 }
 
+/** A `PermissionRequest` hook's pre-answer for one call (see the constructor's `beforeAsk`). */
+export interface PermissionPreAnswer {
+  readonly decision: 'allow' | 'deny' | 'ask';
+  readonly reason?: string;
+}
+
 export class PermissionService {
   /** Remembered grants, keyed by scope (see rememberKey). */
   private readonly remembered = new Set<string>();
@@ -97,6 +103,14 @@ export class PermissionService {
      * engine it builds — see `ApprovalPolicyCell`.
      */
     private readonly policyCell: ApprovalPolicyCell = { policy: 'ask' },
+    /**
+     * The `PermissionRequest` seam: consulted ONLY where an ask would happen,
+     * so an auto-approved read never pays for a hook process. It is a THUNK
+     * read per call (the session's hook chain is live and may be rebuilt), and
+     * a throwing seam is contained — a broken hook must not un-gate the call,
+     * so the gate falls through to the ask exactly as if it had not fired.
+     */
+    private readonly beforeAsk?: (toolName: string, kind: PermissionKind, call: ToolCall) => Promise<PermissionPreAnswer | undefined>,
   ) {
     this.mode = mode;
   }
@@ -200,6 +214,19 @@ export class PermissionService {
   async decideDetailed(toolName: string, kind: PermissionKind, call: ToolCall): Promise<DecideResult> {
     const verdict = await this.check(toolName, kind, call);
     if (verdict !== 'ask') return verdict === 'allow' ? 'allow' : { decision: 'deny' };
+
+    // PermissionRequest fires at the ask boundary only. Its verdict settles the
+    // call without publishing a card; `ask` (and a failure) falls through to the
+    // ask exactly as if no hook had spoken.
+    if (this.beforeAsk !== undefined && this.policyCell.policy !== 'never') {
+      const pre = await this.beforeAsk(toolName, kind, call).catch(() => undefined);
+      if (pre !== undefined && pre.decision !== 'ask') {
+        this.audit?.({ toolName, kind, outcome: pre.decision === 'allow' ? 'always' : 'deny' });
+        return pre.decision === 'allow'
+          ? 'allow'
+          : { decision: 'deny', ...(pre.reason !== undefined ? { reason: pre.reason } : {}) };
+      }
+    }
 
     const result = await this.enqueueAsk(call, kind);
     const answer: AskAnswer = typeof result === 'string' ? result : result.answer;

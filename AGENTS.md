@@ -111,12 +111,24 @@
 
 **不学**：体量与文档规模、平台绑定、Electron 级依赖、为对齐而过度分层。
 
+### 已落地的 ZCode 对照（2026-11-25，声明式 hooks + 插件包）
+
+对照 `apps/zcode-cli/packages/core/src/hooks/{output,runner,configured-runner-input,configured-runner-callback}.ts`、`packages/contracts/src/hooks/index.ts`、`docs/hooks-runtime-contract.md`。
+
+- **采用**：7 事件名与 matcher 三态语法（精确名列表 / 正则 / `*`）、`process`/`command` 两种执行体、Claude 兼容 stdin（camel+snake 双写、临时 `transcript.jsonl`）、stdout JSON 契约（`decision` / `continue` / `stopReason` / `additionalContext` / `hookSpecificOutput` 判别联合）、退出码 0/2/其他、`onError` 默认 fail-open 且 **`deny` 仅对 PreToolUse 生效**、多 hook **聚合**（deny>ask>allow，非首赢）、Stop 续跑上限 3 次、`hooks.enabled` 显式开启、插件目录包（`.zcode-plugin/plugin.json` + skills/commands/hooks）。
+- **放弃**：五路来源合并与 `.agents`/`.claude` legacy 兼容（本仓无生态包袱）、工作区 hooks 的 digest + Trust admission（下一批）、extension host 三级 UI 分权（ZCode 自述"按插件授权不是安全边界"，本仓不引入）、`prompt`/`agent`/`http`/`callback` 等未实现 Hook 类型。
+- **偏离并注明**：工具 hook 的 `additionalContext` 暂拼进 tool result 文本（ZCode 走独立 `tool_hook_context` 附件；本仓尚无附件通道，已在 `hook-bridge.ts` 注明）、`updatedInput` 未做工具 schema 二次校验（缺校验器，下一批）。
+- **为什么**：事件与执行器复用既有容器事件链与 fiber 生命周期，配置驱动部分只是「把外部命令接到那些键上」，不新增第二套分发机制。
+- **随产品发行的插件包默认关、且不随 `hooks.enabled` 走**（2026-11-25 第二批）：这两条都是**照 ZCode 源码定的，不是自创**。① ZCode 里「已安装插件 hooks 按现有 plugin 来源规则执行」，`hooks.enabled` 只作用于配置文件来源（`docs/hooks-runtime-contract.md` 契约 2/3；`createRuntimeHookRunner` 里任一插件带 hook 即强制启用 runner）——所以本仓 `hook-row` 的 config 源受 `enabled` 门控、pack 源不受。② ZCode 里插件必须显式 install 才存在，而 Nova 无 install 步骤，于是 `packs/`（随产品携带）用 `enabled: true` 行充当那次 install：**携带 ≠ 同意执行**，因为包的 hooks 以用户权限跑本地命令、mimosa 之类还会往扫描根旁写 `.mimosa/`，默认开就破了「工作区零写入」。三级根与两级默认值写在 `packs/README.md`。
+
 ---
 
 ## 4. 关键文件索引（定位修改直接切入）
 
 - **Agent 循环与内核状态机**：`packages/core/src/agent/`、`packages/core/src/kernel/session.ts`
-- **容器与核心能力键**：`packages/core/src/plugin/capabilities.ts`（18 个服务键唯一定义处）
+- **容器与核心能力键**：`packages/core/src/plugin/capabilities.ts`（18 个服务键 + 4 个原有事件键唯一定义处；4 个新增生命周期键在 `plugin/hook-events.ts`，由它 re-export）
+- **声明式钩子（ZCode 兼容）**：契约 `core/src/plugin/hook-contract.ts`（7 事件、`process`/`command` 两种定义、stdin/stdout 与 matcher 形状）、校验 `hook-schema.ts`、语义 `hook-output.ts`（`processHookOutput` + `mergeHookRunResult` + `exitCodeBlockOutput`，移植自 ZCode `core/src/hooks/output.ts`，Apache-2.0）、执行 `plugins/src/hook-run.ts`（spawn/变量表/transcript/超时/截断）、桥接 `plugins/src/hook-bridge.ts`（7 事件 → 容器事件键，聚合而非首赢）。配置两个入口：`~/.nova/config.json` 的 `hooks` 段（**默认关，必须 `enabled: true`**）与插件包的 `hooks/hooks.json`
+- **插件包（ZCode 目录格式）**：`plugins/src/pack-loader.ts`（`.zcode-plugin`/`.claude-plugin`/`.nova-plugin` 的 `plugin.json` + `skills/` + `commands/` + `hooks/`，所有声明路径 `resolveInside` 限制在包内）、`pack-install.ts`（三级发现 + `plugins.entries` 里 `pack:<name>` 行开关）、`packs/`（随产品发行；格式、开关与默认值见 `packs/README.md`）
 - **内置工具集**：`packages/plugins/src/builtin/`（`fs.ts`, `bash.ts`, `search.ts` 等）
 - **桌面传输与帧协议**：`packages/web/src/desktop-host.ts`（装配 + stdio 管道）、`packages/web/src/pipe.ts`（行分帧 + 尺寸豁免）、`packages/web/src/controller.ts`（内核 ↔ 帧）
 - **帧协议形状**：`packages/web/src/protocol.ts`（导出面）、`client-frames.ts` / `server-frames.ts`（两个方向）、`client-frame.ts`（不可信入站校验）、`wire-limits.ts`（全部上限）

@@ -17,6 +17,7 @@
  */
 import { OpenAICompatClient } from '@nova-agent/ai';
 import type { ApprovalMode, KernelConfig } from '@nova-agent/plugins';
+import { validateHooksConfig } from '@nova-agent/core';
 import type { Config } from './config.js';
 import { NO_PROVIDER_MESSAGE, resolveProvider } from './provider-store.js';
 import { resolveProviderModel } from './provider-model-resolve.js';
@@ -51,6 +52,14 @@ export function toKernelConfig(config: Config, approvalOverride?: ApprovalMode):
   if (config.projectDocMaxTokens !== undefined) kernel.projectDocMaxTokens = config.projectDocMaxTokens;
   if (config.plugins !== undefined) kernel.plugins = { entries: config.plugins.entries ?? [] };
   if (config.skills?.disable !== undefined) kernel.skillsDisable = config.skills.disable;
+  // The hooks table goes through core's ONE reader (the same validator a pack's
+  // hooks.json uses). A malformed table is dropped rather than thrown: a broken
+  // hooks block must not keep the agent from starting, and the operator sees
+  // the reason instead of a boot failure.
+  if (config.hooks !== undefined) {
+    const checked = validateHooksConfig(config.hooks);
+    if (checked.ok) kernel.hooks = checked.value;
+  }
   return kernel;
 }
 

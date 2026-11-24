@@ -17,8 +17,9 @@ import {
   type ToolCall,
   type ToolCallView,
   type ToolDefinition,
+  type ToolPermissionKind as PermissionKind,
 } from '@nova-agent/core';
-import { PermissionService, type ApprovalPolicyCell } from './permission.js';
+import { PermissionService, type ApprovalPolicyCell, type PermissionPreAnswer } from './permission.js';
 
 /**
  * The ask wiring for ONE session.
@@ -46,6 +47,13 @@ export function makeSessionAskWiring(p: {
   tools: () => readonly ToolDefinition[];
   policyCell: ApprovalPolicyCell;
   audit: (entry: ApprovalAudit) => void;
+  /**
+   * The `PermissionRequest` seam: consulted only where an ask would happen.
+   * Wired by the session (it owns the hook chain and the session id); absent for
+   * the kernel-level engine, whose calls belong to no conversation and therefore
+   * have no session whose hooks could speak for them.
+   */
+  beforeAsk?: (toolName: string, kind: PermissionKind, call: ToolCall) => Promise<PermissionPreAnswer | undefined>;
 }): { bridge: ApprovalBroker; questions: QuestionBroker; permission: PermissionService } {
   const findTool = (call: ToolCall): ToolDefinition | undefined =>
     p.tools().find((tool) => tool.name === call.name);
@@ -64,7 +72,13 @@ export function makeSessionAskWiring(p: {
       }
     },
   );
-  const permission = new PermissionService(p.approval, bridge.asker, p.audit, p.policyCell);
+  const permission = new PermissionService(
+    p.approval,
+    bridge.asker,
+    p.audit,
+    p.policyCell,
+    p.beforeAsk,
+  );
   return { bridge, questions: new QuestionBroker(), permission };
 }
 

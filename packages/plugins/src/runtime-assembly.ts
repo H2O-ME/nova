@@ -7,9 +7,10 @@
  * this one by whoever calls `createAgentKernel`, that one by every caller of
  * the resulting handle.
  */
-import type { ChatProvider, ModelCatalogPort, PluginEntryOptions, SubagentProgress, SurfaceRows } from '@nova-agent/core';
+import type { ChatProvider, HooksConfig, ModelCatalogPort, PluginEntryOptions, SubagentProgress, SurfaceRows } from '@nova-agent/core';
 import type { PluginEntryConfig } from './plugin-tree.js';
 import type { ApprovalMode } from './permission.js';
+import type { LoadedPack } from './pack-loader.js';
 
 /** The surface-independent slice of `~/.nova/config.json` the kernel needs. */
 export interface KernelConfig {
@@ -45,6 +46,13 @@ export interface KernelConfig {
    * rather than written as a dead entry.
    */
   skillsDisable?: readonly string[];
+  /**
+   * The operator's `hooks` config: lifecycle hooks declared in JSON that run
+   * external commands (the ZCode-compatible surface). Off unless `enabled` is
+   * true — a configured hook is an execution bypass and must be opted into.
+   * The kernel adds these as ONE hook source; packs add their own.
+   */
+  hooks?: HooksConfig;
 }
 
 export interface CreateKernelOptions {
@@ -180,5 +188,18 @@ export interface CreateKernelOptions {
    * hand.
    */
   surfaces?: SurfaceRows;
+  /**
+   * Plugin PACKS already loaded by the caller (`loadPack`): directory-shaped
+   * plugins in the ZCode format that contribute skills, commands and lifecycle
+   * hooks instead of a JS module.
+   *
+   * Loaded by the caller rather than by this library because a pack's location
+   * is a product decision (the cli reads `plugins.dirs` plus the installed
+   * roots); a kernel handed paths would do filesystem discovery inside the
+   * assembly, which is exactly the layering this package keeps out of `core`.
+   * Contributions are hoisted: skills join the skill roots, commands become
+   * registry rows, hooks become ONE hook source.
+   */
+  packs?: readonly LoadedPack[];
 }
 

@@ -37,6 +37,7 @@ import type { JobSnapshot } from '../job-types.js';
 import type { QuestionBroker, QuestionRequest, AskUserQuestionAnswer } from '../user-question.js';
 import type { Session, SessionEvent } from '../session.js';
 import { isContextFragment } from '../context-fragment.js';
+import { appendHookContext, runPromptGate, runSessionStartHook, sessionStartSource } from '../session/hook-lifecycle.js';
 import { recordSessionTitle, sessionTitleOf } from '../session/session-title.js';
 import { generateSessionTitle, titleTranscript, TITLE_REGEN_PROMPTS } from './title.js';
 import { persistMissingToolResults } from '../session/session-repair.js';
@@ -169,6 +170,8 @@ export class AgentSession {
   /** The last message this run appended (the durable stats row's anchor). */
   private lastMessageId: string | undefined;
   private closed = false;
+  /** SessionStart fires once, on the first run's entry (see `fireSessionStartOnce`). */
+  private sessionStarted = false;
 
   constructor(deps: AgentSessionDeps) {
     this.deps = deps;
@@ -456,6 +459,21 @@ export class AgentSession {
    */
   async prompt(text: string, images?: readonly ImageAttachmentRef[]): Promise<void> {
     if (this.closed) throw new Error('agent session is closed');
+    // The prompt gate fires BEFORE anything is committed, so a `block` verdict
+    // leaves the log untouched — the operator's text never reaches the model and
+    // no run is started for it. Context a hook contributes rides ahead of the
+    // prompt as a context fragment (the same mechanism the environment seed
+    // uses), which is what keeps it out of the operator's own message.
+    const hookPorts = {
+      append: (m: UserMessage) => this.deps.session.append(m),
+      messages: this.deps.messages,
+      notice: (code: 'hook_failed', text: string) => this.notice(code, text),
+    };
+    const gate = await runPromptGate(hookPorts, async () =>
+      (await this.deps.hooks().userPromptSubmit?.({ sessionId: this.deps.session.id, prompt: text })) ?? undefined,
+    );
+    if (gate.blocked) throw new Error(gate.reason);
+    if (gate.context !== undefined) await appendHookContext(hookPorts, gate.context);
     // Read BEFORE the push: whether this is the conversation's opening prompt is
     // "no real user message yet", and after the push it never is.
     const opening = !this.deps.messages.some((m) => m.role === 'user' && !isContextFragment(m));
@@ -798,10 +816,31 @@ export class AgentSession {
     }
   }
 
+  /**
+   * Fire SessionStart exactly once per session, before its first run assembles
+   * a request. The source (startup vs resume) is derived from the LOG; a hook's
+   * `additionalContext` lands as a context fragment, and a throwing hook is
+   * reported instead of failing the run. The mechanics live in
+   * `session/hook-lifecycle.ts` — this method is only the once-guard.
+   */
+  private async fireSessionStartOnce(): Promise<void> {
+    if (this.sessionStarted) return;
+    this.sessionStarted = true;
+    const ports = { append: (m: UserMessage) => this.deps.session.append(m), messages: this.deps.messages, notice: (code: 'hook_failed', text: string) => this.notice(code, text) };
+    await runSessionStartHook(ports, async () =>
+      (await this.deps.hooks().sessionStart?.({
+        source: sessionStartSource(this.deps.messages),
+        sessionId: this.deps.session.id,
+        cwd: this.deps.rootDir(),
+      })) ?? undefined,
+    );
+  }
+
   private async startRun(signal: AbortSignal, run: Run): Promise<void> {
     // Never assemble a request while a compaction is splicing the array it
     // would read (see `CompactionRunner.wait`).
     await this.compaction.wait();
+    await this.fireSessionStartOnce();
     this.meter.start();
     this.lastMessageId = undefined;
     let failed = false;

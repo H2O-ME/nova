@@ -284,10 +284,16 @@ export function makeDispatcher(opts: AgentOptions, toolByName: Map<string, ToolD
     if (verdict.kind === 'skip') return { ok: false, error: 'run is over; the call was not dispatched' };
     if (verdict.kind === 'deny') return { ok: false, error: verdict.content };
     const raw = await executeTool(tool, verdict.effective, subOpts);
-    const result = opts.hooks?.afterToolResult
-      ? await opts.hooks.afterToolResult(verdict.effective, raw)
-      : raw;
-    return { ok: true, result };
+    // Same success/failure split as the top-level path, so a nested call (PTC
+    // run_code) sees exactly the chains a native one would.
+    const chained = isFailedToolResult(raw)
+      ? opts.hooks?.postToolUseFailure === undefined
+        ? raw
+        : await opts.hooks.postToolUseFailure(verdict.effective, raw)
+      : opts.hooks?.afterToolResult === undefined
+        ? raw
+        : await opts.hooks.afterToolResult(verdict.effective, raw);
+    return { ok: true, result: chained };
   };
 }
 
@@ -395,16 +401,33 @@ async function settleToolCall(
   }
 }
 
+/**
+ * Whether a settled result is a FAILURE. The executor and the tool contract
+ * agree on one marker: a result starting with `Error:` (unknown tool, abort,
+ * timeout, thrown tool — every path in `executeTool`). Kept as one predicate so
+ * the two chains can never disagree about which results are failures.
+ */
+function isFailedToolResult(result: string): boolean {
+  return result.startsWith('Error:');
+}
+
 /** Execute one approved call and produce its log-ready result message. */
-async function completeToolCall(
-  call: ToolCall,
+async function completeToolCall(  call: ToolCall,
   opts: AgentOptions,
   maxBytes: number,
   toolByName: Map<string, ToolDefinition>,
   dispatch?: ToolDispatcher,
 ): Promise<ToolResultMessage> {
   let rawResult = await executeTool(toolByName.get(call.name), call, opts, dispatch);
-  if (opts.hooks?.afterToolResult) {
+  // Success and failure are separate chains so an observer can subscribe to one
+  // without the other. The `Error:` prefix is the executor's own failure marker
+  // (`executeTool` returns it for unknown tools, aborts, timeouts and thrown
+  // tools), so both chains key on the same convention the rest of the loop uses.
+  if (isFailedToolResult(rawResult)) {
+    if (opts.hooks?.postToolUseFailure) {
+      rawResult = await opts.hooks.postToolUseFailure(call, rawResult);
+    }
+  } else if (opts.hooks?.afterToolResult) {
     rawResult = await opts.hooks.afterToolResult(call, rawResult);
   }
   const { content, truncatedRef } = await storeToolResult(rawResult, maxBytes, opts);

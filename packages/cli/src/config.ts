@@ -153,9 +153,28 @@ const configSchema_ = z.object({
           }
         })
         .optional(),
+      /**
+       * Extra directories to discover plugin PACKS in (`<dir>/<pack>/`), on top
+       * of the installed roots (`~/.nova/plugins`). A pack is a directory with
+       * its own manifest plus `skills/`, `commands/`, `hooks/` — the ZCode
+       * plugin format. Listed here (rather than discovered from the workspace)
+       * because loading a pack runs its hook commands: that must be an explicit
+       * operator decision, never something a cloned repo can trigger by
+       * existing.
+       */
+      dirs: z.array(z.string().min(1)).optional(),
     })
     .strict()
     .optional(),
+  /**
+   * 生命周期钩子：外部命令，在七个事件上由内核执行（ZCode / Claude Code 兼容
+   * 的 hooks.json 语义）。形状与校验唯一定义在 core 的 `hook-contract.ts`；
+   * 这里只放 `unknown`，由那一份校验器裁决，避免两份 schema 分叉。
+   *
+   * **默认关闭**：`enabled` 必须显式为 true。一条 hook 就是一条写进配置的执行
+   * 旁路——它会跑配置里写的那条命令——所以开启是操作者的决定，不是默认值。
+   */
+  hooks: z.unknown().optional(),
   /**
    * Skills 开关（设置面板「Skill 中心」的可视写入面）：disable 按 skill 名全局
    * 关闭——项目级与用户级同名 skill 一律不再注入 `<available_skills>` 索引与

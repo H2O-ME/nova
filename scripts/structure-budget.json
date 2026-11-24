@@ -1,7 +1,7 @@
 {
  "ceiling": 600,
  "grandfathered": {
-  "packages/core/src/kernel/session.ts": 1015,
+  "packages/core/src/kernel/session.ts": 1054,
   "packages/plugin-context/src/fold.ts": 607,
   "packages/plugins/src/builtin/bash.ts": 636,
   "packages/plugins/src/builtin/fs.ts": 609,

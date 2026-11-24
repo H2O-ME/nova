@@ -99,6 +99,7 @@ export async function openAgentSession(
   sessionOpts?: OpenSessionOptions,
 ): Promise<AgentSession> {
   const { session, messages } = await openLog(p, sessionOpts);
+  const sessionId = session.id;
   const wiring = makeSessionAskWiring({
     approval: p.approvalDefault?.() ?? p.config.approval,
     rootDir: p.rootDir,
@@ -116,6 +117,22 @@ export async function openAgentSession(
           at: Date.now(),
         })
         .catch(() => undefined);
+    },
+    // `PermissionRequest` speaks for THIS conversation: it reaches the session's
+    // own hook chain, never a process-wide one, so a hook registered for one
+    // conversation cannot pre-answer another's call.
+    beforeAsk: async (toolName, kind, call) => {
+      const verdict = await p.hooks().permissionRequest?.({
+        sessionId,
+        toolName,
+        kind,
+        call,
+      });
+      if (verdict === undefined) return undefined;
+      return {
+        decision: verdict.decision,
+        ...(verdict.reason !== undefined ? { reason: verdict.reason } : {}),
+      };
     },
   });
   return new AgentSession({

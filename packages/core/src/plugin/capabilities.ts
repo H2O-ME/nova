@@ -592,3 +592,7 @@ export const afterToolResult: EventKey<[ToolCall, string], string | undefined> =
  * guard in the loop (`turn < maxTurns`) caps runaway steering.
  */
 export const beforeTurnEnd: EventKey<[BeforeTurnEndContext], BeforeTurnEndVerdict | undefined> = event('turn/before-end');
+
+/** The four lifecycle keys this surface added live in `hook-events.ts`, as does
+ *  their rationale; re-exported so this file stays the container's one import. */
+export { permissionRequest, postToolUseFailure, sessionStart, userPromptSubmit } from './hook-events.js';

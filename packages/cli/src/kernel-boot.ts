@@ -14,10 +14,75 @@ import {
   type Kernel,
 } from '@nova-agent/plugins';
 import type { ChatProvider, ModelCatalogPort, PluginEntryOptions, SurfaceRows } from '@nova-agent/core';
+import { discoverPacks, type LoadedPack } from '@nova-agent/plugins';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { novaHome } from '@nova-agent/core';
 import { loadConfig, type Config } from './config.js';
 import { createProvider, createTitleProvider, configuredModel, toKernelConfig } from './kernel-config.js';
 
 export { createProvider, configuredModel, toKernelConfig } from './kernel-config.js';
+
+/**
+ * The packs that SHIP with the product, as a directory of pack directories.
+ *
+ * Two layouts, both two answers away from `import.meta.url`:
+ *   - a checkout / dev run — this module is `<repo>/packages/cli/{src,dist}/`,
+ *     so the packs are three levels up at `<repo>/packs`;
+ *   - a bundled runtime — the shell ships `<resources>/runtime/dist/index.mjs`
+ *     and the same directory carries `runtime/packs`, one level up.
+ *
+ * Absent simply means "the product shipped no packs" — a normal state, not an
+ * error, so this returns `undefined` rather than throwing.
+ */
+function bundledPacksRoot(): string | undefined {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  for (const candidate of [
+    path.resolve(here, '..', '..', '..', 'packs'),
+    path.resolve(here, '..', 'packs'),
+  ]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Load every plugin pack this process may load.
+ *
+ * Three roots, two defaults: the installed packs directory (`~/.nova/plugins`)
+ * and whatever `plugins.dirs` names are ON unless a row turns them off; the
+ * bundles that ship with the product are OFF unless a row turns them on. The
+ * asymmetry is deliberate — see `packs/README.md`: a bundled pack is something
+ * the product carries, not something the operator asked to run, and its hooks
+ * execute local commands and can write beside the scan root.
+ *
+ * Failures are reported, never thrown: a malformed pack must not keep the
+ * agent from starting.
+ * @param config - the loaded config document.
+ * @param rootDir - the workspace root (relative `plugins.dirs` resolve against it).
+ * @param onDiagnostic - sink for load problems; defaults to stderr.
+ * @returns the loaded packs, ready for `createAgentKernel`.
+ */
+export async function loadConfiguredPacks(
+  config: Config,
+  rootDir: string,
+  onDiagnostic: (message: string) => void = (message) => {
+    process.stderr.write(`nova: ${message}\n`);
+  },
+): Promise<LoadedPack[]> {
+  const bundled = bundledPacksRoot();
+  const extraDirs = (config.plugins?.dirs ?? []).map((dir) => path.resolve(rootDir, dir));
+  return discoverPacks(
+    {
+      installedRoot: path.join(novaHome(), 'plugins'),
+      ...(extraDirs.length > 0 ? { extraDirs } : {}),
+      ...(bundled === undefined ? {} : { bundledDirs: [bundled] }),
+      ...(config.plugins?.entries !== undefined ? { entries: config.plugins.entries } : {}),
+    },
+    onDiagnostic,
+  );
+}
 
 /** 一个 surface 需要内核替它做的事——五种形态的全部差异就在这里。 */
 export interface BootOptions {
@@ -84,6 +149,7 @@ export async function bootKernel(opts: BootOptions): Promise<Kernel> {
       return undefined;
     }
   };
+  const packs = await loadConfiguredPacks(opts.config, opts.rootDir);
   const kernel = await createAgentKernel({
     rootDir: opts.rootDir,
     provider,
@@ -106,6 +172,7 @@ export async function bootKernel(opts: BootOptions): Promise<Kernel> {
     ...(opts.persist !== undefined ? { persist: opts.persist } : {}),
     ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
     ...(opts.userQuestions !== undefined ? { userQuestions: opts.userQuestions } : {}),
+    ...(packs.length > 0 ? { packs } : {}),
     titleProvider,
   });
   return kernel;

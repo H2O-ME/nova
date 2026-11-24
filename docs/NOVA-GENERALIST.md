@@ -36,7 +36,7 @@ Nova = 通用、轻量、本地的个人 agent（WorkBuddy 式定位，2026-11-2
 | --- | --- |
 | 工作区（workspace） | 它回答"在哪干活"，不是"代码库"。目录浏览、目录选择、会话工作区都属于它 |
 | `bash` / `fs` / `search` 工具 | 读写文件与执行命令是通用任务的地基，不是编程专属 |
-| 会话 / 审批 / 权限 / 插件 / Skills 内核 | 已经是 provider-agnostic 的通用容器（18 服务键 + 4 事件键） |
+| 会话 / 审批 / 权限 / 插件 / Skills 内核 | 已经是 provider-agnostic 的通用容器（18 服务键 + 8 事件键） |
 | 多模态附件（images / image-store / image-projection） | 通用能力，见 §3.2 |
 | 多 surface（Web / REPL / exec，及配置行加载的第三方 surface） | 同一内核事件流的不同消费者，地位平等 |
 
@@ -75,7 +75,7 @@ Session → runAgent → ToolCall → Approval → Persistence
 | --- | --- | --- |
 | `runAgent` | `packages/core/src/agent/loop.ts:29`；`runId` 在 `AgentOptions` 中**可选**，未设时由 loop **自铸**（`loop.ts:35`） | 0.5.0 Batch 2A 的"临时 runId"判据**成立** |
 | `ToolCallScope` | `packages/core/src/agent/tools.ts:154` **现场拼装** `{...}` | Batch 2A 的"每 tool call 现场拼 scope"判据**成立** |
-| 能力容器 | `packages/core/src/plugin/capabilities.ts`：**18 个服务键 + 4 个事件键**（`beforeLlmCall` / `beforeToolCall` / `afterToolResult` / `beforeTurnEnd`） | 通用容器**已经成立**，通用化不需要新建容器 |
+| 能力容器 | `packages/core/src/plugin/capabilities.ts`：**18 个服务键 + 4 个原有事件键**（`beforeLlmCall` / `beforeToolCall` / `afterToolResult` / `beforeTurnEnd`），另加 `hook-events.ts` 的 4 个生命周期键（`sessionStart` / `userPromptSubmit` / `permissionRequest` / `postToolUseFailure`，2026-11-25 为对齐 ZCode hooks 增补） | 通用容器**已经成立**，通用化不需要新建容器 |
 
 ## 3. 决策裁决
 

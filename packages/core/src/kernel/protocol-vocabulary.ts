@@ -38,7 +38,9 @@ export type NoticeCode =
   /** A surface's event consumer fell behind MAX_LAG and its window was reset. */
   | 'surface_lagged'
   /** A subscribed event listener threw. Reported instead of crashing the run. */
-  | 'listener_failed';
+  | 'listener_failed'
+  /** A lifecycle hook threw or its external process failed. The run continues. */
+  | 'hook_failed';
 
 /** A compaction pass, start → done|error, with the outcome bits a surface renders. */
 export interface CompactionProgress {

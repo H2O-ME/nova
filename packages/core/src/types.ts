@@ -1,4 +1,5 @@
 import type { ImageAttachmentRef } from './images.js';
+import type { PermissionRequestContext, PermissionRequestVerdict } from './plugin/hook-contract.js';
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -472,6 +473,31 @@ export interface AgentHooks {
    * The first plugin in the chain that steers wins; the rest do not run.
    */
   beforeTurnEnd?(ctx: BeforeTurnEndContext): Promise<BeforeTurnEndVerdict | void>;
+  /**
+   * Fired once per session before the first run starts (see `session/start`).
+   * Hook events (the ZCode-aligned surface) land here so the session layer
+   * needs no separate channel.
+   */
+  sessionStart?(ctx: SessionStartContext): Promise<SessionStartOutcome | void>;
+  /**
+   * Fired for every user prompt BEFORE it is committed to the log (see
+   * `prompt/submit`): a block verdict rejects the prompt (the run never sees
+   * it), additional context is appended ahead of it as a context fragment.
+   */
+  userPromptSubmit?(ctx: UserPromptSubmitContext): Promise<UserPromptSubmitVerdict | void>;
+  /**
+   * Fired by the approval gate right before it would ask a human (see
+   * `permission/request`): an allow/deny verdict settles the call without the
+   * ask; absent means the gate proceeds as it would have.
+   */
+  permissionRequest?(ctx: PermissionRequestContext): Promise<PermissionRequestVerdict | void>;
+  /**
+   * Failure twin of `afterToolResult`: when a call's result starts with the
+   * `Error:` convention this chain runs INSTEAD of the success chain, so an
+   * observer hook can repair or annotate failures without also firing on
+   * every healthy result.
+   */
+  postToolUseFailure?(call: ToolCall, result: string): Promise<string>;
 }
 
 /** Argument the loop passes to `beforeTurnEnd` hooks. */
@@ -482,6 +508,41 @@ export interface BeforeTurnEndContext {
    * reserved for the loop. */
   messages: readonly AgentMessage[];
 }
+
+/**
+ * Why a session started. `startup` is a fresh conversation; `resume` is a
+ * reopened log — a SessionStart hook that seeds context usually wants to know
+ * which, because a resumed conversation may already carry what it would add.
+ */
+export type SessionStartSource = 'startup' | 'resume';
+
+/** Argument the session passes to `sessionStart` hooks. */
+export interface SessionStartContext {
+  source: SessionStartSource;
+  sessionId: string;
+  cwd: string;
+}
+
+/** What a `sessionStart` hook may return. */
+export interface SessionStartOutcome {
+  /** Text appended to the conversation as a context fragment before the first run. */
+  additionalContext?: string;
+}
+
+/** Argument the session passes to `userPromptSubmit` hooks. */
+export interface UserPromptSubmitContext {
+  sessionId: string;
+  prompt: string;
+}
+
+/**
+ * Verdict a `userPromptSubmit` hook returns: `block` rejects the prompt
+ * outright (nothing is logged, the model never sees it); additional context
+ * rides along as a context fragment ahead of the prompt.
+ */
+export type UserPromptSubmitVerdict =
+  | { action: 'block'; reason?: string }
+  | { additionalContext?: string };
 
 /** Verdict a `beforeTurnEnd` hook returns. */
 export type BeforeTurnEndVerdict =

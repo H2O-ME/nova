@@ -41,6 +41,7 @@ import { PluginHost } from './host.js';
 import { composeHooks } from './hooks.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import { loadSkills, type SkillMetadata, type SkillRoot } from './skills.js';
+import type { LoadedPack } from './pack-loader.js';
 import type { CreateKernelOptions, PluginRosterEntry } from './runtime-types.js';
 import type { PluginEntryConfig } from './plugin-tree.js';
 import type { PluginRow } from './plugin-tree.js';
@@ -119,6 +120,10 @@ export interface State {
   builtins: readonly Plugin[] | undefined;
   /** The kernel's own slash commands; cached for the same identity reason. */
   kernelCommands: Plugin | undefined;
+  /** The configured-hook bridge row, built once from config + packs. */
+  hookRow: Plugin | undefined;
+  /** The pack-contributed commands, registered once on their own row. */
+  packCommands: Plugin | undefined;
   /** The configured surfaces wrapped as rows; cached for the same reason. */
   surfacePlugins: readonly Plugin[] | undefined;
   /**
@@ -126,6 +131,14 @@ export interface State {
    * `setSkillEnabled`; absent means a flip refuses rather than pretends.
    */
   persistSkills: ((name: string, enabled: boolean) => Promise<readonly string[]>) | undefined;
+  /**
+   * Skill directories contributed by loaded packs (`manifest.skills`).
+   *
+   * Held on state rather than passed through `loadWorkspace` because the
+   * workspace loader is re-run on every switch and must not have to re-load
+   * packs; a pack's root is fixed for the kernel's lifetime.
+   */
+  packSkillRoots: string[];
   /**
    * The capability providers, published through the same tree as every other
    * row (they head it, so a consumer always finds its service).
@@ -198,6 +211,26 @@ export interface Environment {
   setSkillEnabled(name: string, enabled: boolean): Promise<readonly string[]>;
 }
 
+/**
+ * The skill directories packs contribute.
+ *
+ * Derived from each discovered skill's own file (its parent directory) rather
+ * than re-reading the manifest: the loader already resolved the manifest's
+ * `skills` path and applied the containment rule, so this list is exactly the
+ * set of directories the loader proved it may read. A pack with no skills
+ * contributes nothing.
+ */
+function packSkillDirs(packs: readonly LoadedPack[]): string[] {
+  const dirs: string[] = [];
+  for (const pack of packs) {
+    for (const skill of pack.skills) {
+      const dir = path.dirname(skill.file);
+      if (!dirs.includes(dir)) dirs.push(dir);
+    }
+  }
+  return dirs;
+}
+
 /** Build the container, publish the capability providers, wire the closures. */
 export function createEnvironment(opts: CreateKernelOptions): Environment {
   const { provider, config } = opts;
@@ -216,8 +249,11 @@ export function createEnvironment(opts: CreateKernelOptions): Environment {
     rerosterQueue: Promise.resolve(),
     builtins: undefined,
     kernelCommands: undefined,
+    hookRow: undefined,
+    packCommands: undefined,
     surfacePlugins: undefined,
     persistSkills: opts.persist?.setSkillEnabled,
+    packSkillRoots: packSkillDirs(opts.packs ?? []),
     providers: [],
   };
 
@@ -389,7 +425,7 @@ async function loadWorkspace(env: Environment, maxDocTokens?: number): Promise<S
   // `process.cwd()`: the docs a session injects must follow its workspace, not
   // where the process was launched (a resumed session can root anywhere).
   env.state.projectDocs = await collectProjectDocs(dir, dir, ...(maxDocTokens !== undefined ? [maxDocTokens] : []));
-  const all = await loadSkills(skillRoots(dir));
+  const all = await loadSkills(skillRoots(dir, env.state.packSkillRoots));
   // The Skill 中心's switch subtracts by NAME here — the one filter the whole
   // product reads: the `<available_skills>` block (built from `state.skills`
   // via `buildFragment`) and the `skill` tool (registered over the same list)
@@ -417,10 +453,14 @@ async function loadWorkspace(env: Environment, maxDocTokens?: number): Promise<S
  * @param rootDir - the workspace root.
  * @returns the ordered roots to walk.
  */
-function skillRoots(rootDir: string): SkillRoot[] {
+function skillRoots(rootDir: string, packRoots: readonly string[] = []): SkillRoot[] {
   return [
     { dir: agentsSkillsRoot(rootDir), level: 'project' },
     { dir: path.join(rootDir, NOVA_DIR, 'skills'), level: 'project' },
+    // Pack skills sit with the user level: an installed pack is an operator
+    // asset, not a workspace one, so a project skill of the same name still
+    // wins (first root listing a name owns it).
+    ...packRoots.map((dir): SkillRoot => ({ dir, level: 'user' })),
     { dir: agentsSkillsRoot(), level: 'user' },
     { dir: path.join(novaHome(), 'skills'), level: 'user' },
   ];

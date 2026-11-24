@@ -23,14 +23,24 @@ import {
   beforeToolCall as beforeToolCallEvent,
   beforeTurnEnd as beforeTurnEndEvent,
   errMessage,
+  permissionRequest as permissionRequestEvent,
+  postToolUseFailure as postToolUseFailureEvent,
+  sessionStart as sessionStartEvent,
+  userPromptSubmit as userPromptSubmitEvent,
   type AgentHooks,
   type BeforeTurnEndContext,
   type BeforeTurnEndVerdict,
   type ChatRequest,
   type Context,
+  type PermissionRequestContext,
+  type PermissionRequestVerdict,
+  type SessionStartContext,
+  type SessionStartOutcome,
   type ToolCall,
   type ToolCallScope,
   type ToolCallVerdict,
+  type UserPromptSubmitContext,
+  type UserPromptSubmitVerdict,
   validateToolCallVerdict,
 } from '@nova-agent/core';
 
@@ -88,6 +98,32 @@ function buildHooks(ctx: Context): AgentHooks {
       const verdict = await ctx.serial(beforeTurnEndEvent, turnCtx);
       if (verdict === undefined || verdict === null) return;
       return verdict;
+    },
+    sessionStart: async (startCtx: SessionStartContext): Promise<SessionStartOutcome | void> => {
+      // Serial / first-decisive-wins: the first listener that contributes
+      // context answers for the session. A throwing hook is reported as a
+      // notice inside the session, which is where the run lives.
+      const outcome = await ctx.serial(sessionStartEvent, startCtx);
+      if (outcome === undefined || outcome === null) return;
+      return outcome;
+    },
+    userPromptSubmit: async (promptCtx: UserPromptSubmitContext): Promise<UserPromptSubmitVerdict | void> => {
+      // Serial / first-decisive-wins: `block` must be final for the prompt, so
+      // a chain cannot be overridden by a later contributor.
+      const verdict = await ctx.serial(userPromptSubmitEvent, promptCtx);
+      if (verdict === undefined || verdict === null) return;
+      return verdict;
+    },
+    permissionRequest: async (reqCtx: PermissionRequestContext): Promise<PermissionRequestVerdict | void> => {
+      // Serial / first-decisive-wins: one hook answers the gate; the rest are
+      // skipped so two hooks cannot disagree about the same call.
+      const verdict = await ctx.serial(permissionRequestEvent, reqCtx);
+      if (verdict === undefined || verdict === null) return;
+      return verdict;
+    },
+    postToolUseFailure: async (call: ToolCall, result: string): Promise<string> => {
+      // Waterfall over the failure text, the exact mirror of afterToolResult.
+      return (await ctx.waterfall(postToolUseFailureEvent, call, result)) ?? result;
     },
   };
 }
