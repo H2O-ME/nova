@@ -9,7 +9,8 @@
  * 的保存不会丢正在进行的编辑。
  */
 import { useState } from 'react';
-import { CloseIcon, EndpointIcon, EyeIcon, EyeOffIcon, TrashIcon } from '../icons.js';
+import { cx } from '../composer/cx.js';
+import { EndpointIcon, EyeIcon, EyeOffIcon, MoreIcon, TrashIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import type { ProviderDraft } from './provider-draft.js';
 import css from './ProviderSection.module.css';
@@ -84,18 +85,47 @@ export function ProviderCardEditor({
   onRemove,
 }: ProviderCardEditorProps): JSX.Element {
   const [keyVisible, setKeyVisible] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const needsUrl = row.baseURL.trim() === '';
   return (
     <div className={css.editor} data-provider-detail={row.id}>
-      {/* 头部：20px 图标 + 16/600 名 + 在役徽标，右缘是「设为当前」与删除。
-          对照的头部是 logo + name + Switch + more；本仓的在役是单选事实，
-          Switch 的座位给「设为当前」，more 的座位给删除。 */}
+      {/* 头部：`ProviderCardSections.tsx:105-131` 的 `flex items-center
+          justify-between gap-3` —— 左 `logo size-5` + 16/600 名，右侧 Switch
+          与 ghost `icon-sm` 的 more。名在头部**原地可编辑**（点 more → 重命名
+          进场，或直接点标题），正文里没有第二个「显示名称」字段。本仓的在役
+          是单选事实，Switch 座位给「设为当前」，more 菜单里放重命名与删除。 */}
       <header className={css.detailHead}>
-        <EndpointIcon className={css.detailIcon} />
-        <h3 className={css.detailName}>{displayName}</h3>
-        {isActive && <span className={css.activeTag}>{SETTINGS_COPY['models.providerActive']}</span>}
-        {saving && <span className={css.savingHint}>{SETTINGS_COPY['models.providerSaving']}</span>}
-        <span className={css.detailActions}>
+        <div className={css.detailIdentity}>
+          <EndpointIcon className={css.detailIcon} />
+          {editingName ? (
+            <input
+              autoFocus
+              className={css.nameInput}
+              value={row.name}
+              placeholder={SETTINGS_COPY['models.providerNamePlaceholder']}
+              aria-label={SETTINGS_COPY['models.providerName']}
+              onChange={(event) => { onEdit({ name: event.currentTarget.value }); }}
+              onBlur={() => { setEditingName(false); onCommit(); }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') { setEditingName(false); onCommit(); }
+                if (event.key === 'Escape') { setEditingName(false); setMenuOpen(false); }
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className={css.detailName}
+              title={SETTINGS_COPY['models.providerRename']}
+              onClick={() => { setEditingName(true); }}
+            >
+              {displayName}
+            </button>
+          )}
+          {isActive && <span className={css.activeTag}>{SETTINGS_COPY['models.providerActive']}</span>}
+          {saving && <span className={css.savingHint}>{SETTINGS_COPY['models.providerSaving']}</span>}
+        </div>
+        <div className={css.detailActions}>
           {!isActive && (
             <button
               type="button"
@@ -108,31 +138,47 @@ export function ProviderCardEditor({
               {SETTINGS_COPY['models.providerUse']}
             </button>
           )}
+          {/* more 菜单：`ProviderCardSections.tsx:135-160` 的 ghost `icon-sm`
+              下拉，重命名与删除都在菜单里。 */}
           <button
             type="button"
             className={css.iconButton}
-            data-provider-remove={row.id}
-            aria-label={SETTINGS_COPY['models.providerRemove']}
-            title={SETTINGS_COPY['models.providerRemoveNow']}
-            onClick={onRemove}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={SETTINGS_COPY['models.providerMore']}
+            title={SETTINGS_COPY['models.providerMore']}
+            onClick={() => { setMenuOpen(!menuOpen); }}
           >
-            <TrashIcon className={css.iconButtonGlyph} />
+            <MoreIcon className={css.iconButtonGlyph} />
           </button>
-        </span>
+          {menuOpen && (
+            <div className={css.menu} role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={css.menuItem}
+                onClick={() => { setMenuOpen(false); setEditingName(true); }}
+              >
+                {SETTINGS_COPY['models.providerRename']}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className={cx(css.menuItem, css.menuItemDanger)}
+                data-provider-remove={row.id}
+                title={SETTINGS_COPY['models.providerRemoveNow']}
+                onClick={() => { setMenuOpen(false); onRemove(); }}
+              >
+                {SETTINGS_COPY['models.providerRemove']}
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
+      {/* 正文：`InlineEditableProviderCard.tsx:810-857` 的单列 `space-y-3` ——
+          连接 / 密钥 / 模型三块之间**没有分隔线**，只有间距。 */}
       <div className={css.fields}>
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{SETTINGS_COPY['models.providerName']}</span>
-          <input
-            className={css.input}
-            value={row.name}
-            placeholder={SETTINGS_COPY['models.providerNamePlaceholder']}
-            aria-label={`${SETTINGS_COPY['models.providerName']} ${row.id}`}
-            onBlur={onCommit}
-            onChange={(event) => { onEdit({ name: event.currentTarget.value }); }}
-          />
-        </label>
         <label className={css.field}>
           <span className={css.fieldLabel}>{SETTINGS_COPY['models.providerBaseUrl']}</span>
           <input
@@ -230,19 +276,27 @@ export function ProviderCardEditor({
         <p className={css.fieldHint}>{SETTINGS_COPY['models.providerParamsHint']}</p>
       </fieldset>
 
-      {/* 该供应商名下的模型清单（`providers[].models`）：对照的模型列表是
-          `rounded-lg border bg-input` 卡，行 `px-3 py-2`、等宽字。 */}
+      {/* 该供应商名下的模型清单（`providers[].models`）。
+          对照 `ProviderCardSections.tsx:471-488`：头是 `mb-1 flex flex-wrap
+          items-center justify-between gap-3`，左边 `text-ui-base
+          text-foreground-subtle`（14px 次级色标签，**不是** 500 加粗标题），
+          右边是 secondary `size="default" rounded-lg` 的动作按钮（28px、带
+          `+` 图标）——参照里它是「添加模型」，开一个模型编辑弹窗；本仓的模型
+          是纯 id，所以这里改成「获取可用模型」（探针），添加走下方输入行。
+          清单卡是 `overflow-hidden rounded-lg border border-input-border
+          bg-input`，行 `px-3 py-2`、等宽字。 */}
       <div className={css.models}>
         <div className={css.modelsHead}>
-          <span className={css.blockTitle}>{SETTINGS_COPY['models.providerModels']}</span>
+          <span className={css.modelsLabel}>{SETTINGS_COPY['models.providerModels']}</span>
           <button
             type="button"
-            className={css.linkButton}
+            className={css.secondaryButton}
             data-provider-probe={row.id}
             disabled={probePending || needsUrl}
             title={needsUrl ? SETTINGS_COPY['models.providerProbeNeedsUrl'] : undefined}
             onClick={onProbe}
           >
+            <span className={css.plusGlyph} aria-hidden>+</span>
             {probePending ? SETTINGS_COPY['models.providerProbing'] : SETTINGS_COPY['models.providerProbe']}
           </button>
         </div>
@@ -251,6 +305,16 @@ export function ProviderCardEditor({
             {row.models.map((model) => (
               <li key={model.id} className={css.modelRow}>
                 <span className={css.modelId}>{model.id}</span>
+                {/* 上下文徽标：参照模型行在名字后跟一颗 `h-5 rounded-md
+                    bg-surface px-1.5 font-mono text-ui-sm` 的容量标
+                    （300K / 1M）。本仓的 `contextWindow` 来自线上行，缺省不印。 */}
+                {model.contextWindow !== undefined && model.contextWindow > 0 && (
+                  <span className={css.modelBadge}>
+                    {model.contextWindow >= 1_000_000
+                      ? `${String(Math.round(model.contextWindow / 100_000) / 10)}M`
+                      : `${String(Math.round(model.contextWindow / 1000))}K`}
+                  </span>
+                )}
                 <button
                   type="button"
                   className={css.iconButton}
@@ -259,7 +323,7 @@ export function ProviderCardEditor({
                   title={SETTINGS_COPY['models.providerModelsRemove']}
                   onClick={() => { onRemoveModel(model.id); }}
                 >
-                  <CloseIcon className={css.iconButtonGlyph} />
+                  <TrashIcon className={css.iconButtonGlyph} />
                 </button>
               </li>
             ))}

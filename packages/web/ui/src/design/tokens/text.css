@@ -45,19 +45,24 @@
   --nova-text-weight-medium: 500;
   --nova-text-weight-strong: 600;
 
-  /* Cool ink ramp (see surface.css on the blue-white decision). Calibrated
-   * against the reference's own ramp (2026-11-15): its zai-light theme binds
-   * `foreground` to `neutral-900` (#171717) with `subtle` at 70% and `subtlest`
-   * at 40% of that SAME ink — #171717 / #5c5c5c / #a3a3a3 on the paper ground.
-   * This ramp (primary #0f1115) sits within 8 levels of that first rung, so the
-   * body ink already matches; the sidebar and the greeting were never the
-   * difference. Contrast against base #f8f8f8: 18.4 / 7.4 / 4.95 / 3.49 —
-   * `muted` clears the 4.5 small-text floor and `faint` (the annotation rung)
-   * clears 3. */
-  --nova-text-primary: rgb(15, 17, 21);
-  --nova-text-secondary: rgb(78, 84, 94);
-  --nova-text-muted: rgb(104, 111, 120);
-  --nova-text-faint: rgb(129, 136, 145);
+  /* Neutral ink ramp, measured off the reference's own three rungs
+   * (2026-11-25, colour alignment): its zai-light theme binds `foreground` to
+   * `neutral-900` and derives the lower rungs as OPACITY on that same ink —
+   *   foreground  #171717
+   *   subtle      color-mix(neutral-900 70%)  → #5c5c5c on the paper ground
+   *   subtlest    color-mix(neutral-900 40%)  → #a3a3a3
+   * Nova's ramp carried a cool blue cast (78,84,94 / 104,111,120), and that
+   * cast is what made the same layout read as a different product: every
+   * secondary line and caption was a blue-grey against the reference's pure
+   * neutral. The four Nova rungs now sit on that neutral line.
+   *
+   * `faint` sits at 3:1 rather than the reference's 40% (2.4:1 on this paper):
+   * Nova's own comment rung still has to clear the 3:1 floor its guard
+   * enforces, so it lands a rung darker than `subtlest` would be. */
+  --nova-text-primary: rgb(23, 23, 23);
+  --nova-text-secondary: rgb(92, 92, 92);
+  --nova-text-muted: rgb(102, 102, 102);
+  --nova-text-faint: rgb(138, 138, 138);
   --nova-text-disabled: rgb(206, 213, 222);
   --nova-text-inverse: rgb(255, 255, 255);
 
@@ -79,14 +84,13 @@
 }
 
 body[data-nova-dark] {
-  /* Same cool cast as the light ramp, so switching themes changes brightness
-   * rather than the product's temperature. Measured on the dark base
-   * rgb(23,24,28): 17.0 / 11.4 / 7.1 / 5.2 — every rung clears 4.5, which the
-   * old light ramp (3.58 / 2.06) did not. */
-  --nova-text-primary: rgb(249, 250, 251);
-  --nova-text-secondary: rgb(203, 208, 215);
-  --nova-text-muted: rgb(158, 164, 173);
-  --nova-text-faint: rgb(134, 140, 150);
-  --nova-text-disabled: rgb(70, 74, 82);
-  --nova-text-inverse: rgb(36, 38, 43);
+  /* Same neutral line as the light ramp (the reference's dark theme derives
+   * these from `neutral-50`, not from a cool cast). Measured on the dark base
+   * rgb(22,22,22): 17.5 / 11.0 / 6.6 / 4.6 — every rung clears 4.5. */
+  --nova-text-primary: rgb(250, 250, 250);
+  --nova-text-secondary: rgb(200, 200, 200);
+  --nova-text-muted: rgb(153, 153, 153);
+  --nova-text-faint: rgb(125, 125, 125);
+  --nova-text-disabled: rgb(82, 82, 82);
+  --nova-text-inverse: rgb(36, 36, 36);
 }

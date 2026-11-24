@@ -37,6 +37,9 @@ export const MODELS_COPY = {
   'models.providerUse': '设为当前',
   // The add-card's own name before any text lands (nav row + detail header).
   'models.providerNew': '新供应商',
+  // 头部标题即重命名入口，more 菜单里也放同一条（对照 ProviderCardHeader）。
+  'models.providerRename': '重命名',
+  'models.providerMore': '更多操作',
   'models.providerRemove': '删除',
   // 「N 个模型」on a collapsed row (requirement: a provider's model count is
   // readable without opening it).

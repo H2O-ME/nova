@@ -107,6 +107,10 @@
   gap: var(--nova-space-8);
 }
 
+/* 组标题：`Navigation.tsx:391` 的 `text-ui-sm font-semibold
+ * text-foreground-subtlest` = 12/600 且只有 **40% 墨**（
+ * `--color-foreground-subtlest: color-mix(neutral-900 40%)`）。Nova 的
+ * text-muted（rgb 104）比它深一档，读起来像可点的标题。 */
 .navGroupTitle {
   display: flex;
   align-items: center;
@@ -116,7 +120,7 @@
   font-size: 12px;
   line-height: 16px;
   font-weight: 600;
-  color: var(--nova-text-muted);
+  color: color-mix(in srgb, var(--nova-text-primary) 40%, transparent);
 }
 
 .navList {
@@ -161,10 +165,14 @@
   border-color: color-mix(in srgb, var(--nova-border-strong) 60%, transparent);
 }
 
+/* 选中行：`.theme-zai-light` 里 `--color-card-selected` 指向 `--color-input`
+ * （即输入框那层白），边框取 `--color-border-hover`（比常态深一档，
+ * styles.css:646-651）。所以选中是「白底 + 更深边框」，不是灰填充——灰填充
+ * 会让整列读成一个列表，而不是可切换的卡。 */
 .navRowSelected,
 .navRowSelected:hover {
   border-color: var(--nova-input-border-hover);
-  background: var(--nova-interactive-hover);
+  background: var(--nova-surface-input);
 }
 
 .navRow:focus-visible {
@@ -299,8 +307,18 @@
   min-width: 0;
 }
 
-/* 头部：20px 图标 + 16/600 名，右缘动作。 */
+/* 头部：`ProviderCardSections.tsx:105-131` 的 `flex items-center
+   justify-between gap-3` —— 左 `logo size-5` + 16/600 名，右侧 Switch 与
+   ghost `icon-sm` 的 more。 */
 .detailHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nova-space-12);
+  min-width: 0;
+}
+
+.detailIdentity {
   display: flex;
   align-items: center;
   gap: var(--nova-space-8);
@@ -314,16 +332,51 @@
   color: var(--nova-text-secondary);
 }
 
+/* 标题即重命名入口：点它就换成输入框（`Input size="lg"` +
+   `text-ui-lg font-semibold`），不是正文里另开一个「显示名称」字段。 */
 .detailName {
   min-width: 0;
+  max-width: 100%;
   margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--nova-radius-xs);
+  background: transparent;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-family: inherit;
   font-size: 16px;
   line-height: 24px;
   font-weight: 600;
   color: var(--nova-text-primary);
+  text-align: left;
+  cursor: text;
+}
+
+.detailName:hover {
+  color: var(--nova-text-secondary);
+}
+
+.nameInput {
+  box-sizing: border-box;
+  min-width: 0;
+  width: auto;
+  height: var(--nova-row-lg);
+  padding: 0 var(--nova-space-8);
+  border: 1px solid var(--nova-input-border);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-input);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--nova-text-primary);
+}
+
+.nameInput:focus {
+  outline: none;
+  border-color: var(--nova-input-border-focused);
 }
 
 /* 在役徽标：ZCode `SettingsPageParts.tsx:230-236` 的 `SettingsBadge` ——
@@ -347,10 +400,10 @@
 }
 
 .detailActions {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--nova-space-4);
-  margin-left: auto;
   flex: none;
 }
 
@@ -514,13 +567,15 @@
   color: var(--nova-text-muted);
 }
 
-/* 请求参数：端点级字段，用 fieldset 圈起来，因为它们的写盘位置与模型能力不同。 */
+/* 请求参数：端点级字段，用 fieldset 圈起来，因为它们的写盘位置与模型能力不同。
+   参照的详情是单列 `space-y-3`（`InlineEditableProviderCard.tsx:810-857`），
+   三块之间**没有分隔线**，只有间距——分隔线会把一页表单切成几段，读起来像
+   三张卡。 */
 .params {
   min-width: 0;
   margin: 0;
-  padding: var(--nova-space-12) 0 0;
+  padding: 0;
   border: none;
-  border-top: 1px solid var(--nova-border-strong);
 }
 
 .paramsLegend {
@@ -532,36 +587,89 @@
   color: var(--nova-text-primary);
 }
 
-/* ── 模型清单 ──────────────────────────────────────────────── */
-
-.models {
+/* ── 模型清单 ──────────────────────────────────────────────── */.models {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
-  padding-top: var(--nova-space-12);
-  border-top: 1px solid var(--nova-border-strong);
   min-width: 0;
 }
 
 .modelsHead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--nova-space-12);
+  margin-bottom: var(--nova-space-4);
 }
 
-.blockTitle {
+/* 模型区标签：`ProviderCardSections.tsx:475` 的 `text-ui-base
+   text-foreground-subtle` —— 14px 次级色，**不是** 500 加粗标题。 */
+.modelsLabel {
   font-size: 14px;
   line-height: 20px;
-  font-weight: 500;
-  color: var(--nova-text-primary);
+  color: var(--nova-text-secondary);
 }
 
-/* 探针按钮：ghost 尺寸。 */
-.linkButton {
+/* 「获取可用模型」坐参照 `Button variant="secondary" size="default"
+   rounded-lg` 的座位（`ProviderCardSections.tsx:477-486`）：28px 高、8px 圆角、
+   secondary 填充（theme-zai-light 的 `--color-secondary` 是一档中性灰）。 */
+.secondaryButton {
   box-sizing: border-box;
-  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nova-space-4);
   height: var(--nova-row-md);
+  padding: 0 var(--nova-space-8);
+  border: none;
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-panel);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--nova-text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: var(--nova-interactive-hover-strong);
+}
+
+.secondaryButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.plusGlyph {
+  flex: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* more 菜单：`DropdownMenuContent` 的 `rounded-lg border p-1`。 */
+.menu {
+  position: absolute;
+  top: calc(var(--nova-row-lg) + var(--nova-space-4));
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 128px;
+  padding: var(--nova-space-4);
+  border: 1px solid var(--nova-input-border);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-raised);
+  box-shadow: var(--nova-elevation-panel);
+}
+
+.menuItem {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-height: var(--nova-row-md);
   padding: 0 var(--nova-space-8);
   border: none;
   border-radius: var(--nova-radius-xs);
@@ -569,22 +677,21 @@
   font-family: inherit;
   font-size: 14px;
   line-height: 20px;
-  color: var(--nova-text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    color var(--nova-dur-fast) var(--nova-ease-inout),
-    background-color var(--nova-dur-fast) var(--nova-ease-inout);
-}
-
-.linkButton:hover:not(:disabled) {
-  background: var(--nova-interactive-hover);
   color: var(--nova-text-primary);
+  text-align: left;
+  cursor: pointer;
 }
 
-.linkButton:disabled {
-  opacity: 0.4;
-  cursor: default;
+.menuItem:hover {
+  background: var(--nova-interactive-hover);
+}
+
+.menuItemDanger {
+  color: var(--nova-color-danger);
+}
+
+.menuItemDanger:hover {
+  background: var(--nova-interactive-hover-danger);
 }
 
 /* 模型清单卡：`rounded-lg border border-input-border bg-input`，行 `px-3 py-2`。 */
@@ -620,6 +727,22 @@
   font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-primary);
+}
+
+/* 上下文徽标：参照模型行的容量标 —— `h-5 rounded-md bg-surface px-1.5
+   font-mono text-ui-sm`（20px 高、6px 圆角、12px 等宽）。 */
+.modelBadge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--nova-space-6);
+  border-radius: var(--nova-radius-xs);
+  background: var(--nova-surface-card);
+  font-family: var(--nova-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--nova-text-secondary);
 }
 
 .addRow {

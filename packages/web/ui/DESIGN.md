@@ -281,12 +281,12 @@ token 层共 **181** 个变量，分布在 `src/design/tokens/` 的 12 个 sheet
 | `--nova-text-weight-normal` | `400` | — |
 | `--nova-text-weight-medium` | `500` | — |
 | `--nova-text-weight-strong` | `600` | — |
-| `--nova-text-primary` | `rgb(15, 17, 21)` | `rgb(249, 250, 251)` |
-| `--nova-text-secondary` | `rgb(78, 84, 94)` | `rgb(203, 208, 215)` |
-| `--nova-text-muted` | `rgb(104, 111, 120)` | `rgb(158, 164, 173)` |
-| `--nova-text-faint` | `rgb(129, 136, 145)` | `rgb(134, 140, 150)` |
-| `--nova-text-disabled` | `rgb(206, 213, 222)` | `rgb(70, 74, 82)` |
-| `--nova-text-inverse` | `rgb(255, 255, 255)` | `rgb(36, 38, 43)` |
+| `--nova-text-primary` | `rgb(23, 23, 23)` | `rgb(250, 250, 250)` |
+| `--nova-text-secondary` | `rgb(92, 92, 92)` | `rgb(200, 200, 200)` |
+| `--nova-text-muted` | `rgb(102, 102, 102)` | `rgb(153, 153, 153)` |
+| `--nova-text-faint` | `rgb(138, 138, 138)` | `rgb(125, 125, 125)` |
+| `--nova-text-disabled` | `rgb(206, 213, 222)` | `rgb(82, 82, 82)` |
+| `--nova-text-inverse` | `rgb(255, 255, 255)` | `rgb(36, 36, 36)` |
 | `--nova-content-font-size` | `14px` | — |
 | `--nova-content-font-delta` | `calc(var(--nova-content-font-size, 14px) - 14px)` | — |
 | `--nova-content-font-size-secondary` | `min( calc(var(--nova-content-font-size, 14px) - 1px), max(13px, calc(var(--nova-content-font-size, 14px) - 2px)) )` | — |
