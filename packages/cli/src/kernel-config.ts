@@ -26,12 +26,28 @@ import { resolveProviderModel } from './provider-model-resolve.js';
 // module keep one import for "build the client, and know its real model name".
 export { MODEL_RESOLVE_TIMEOUT_MS, resolveProviderModel, type ResolvedModel } from './provider-model-resolve.js';
 
-/** `~/.nova/config.json` → 内核需要的最小切片（审批覆盖 = --approval）。 */
+/** Share of the in-force endpoint's context window kept as the auto-compact floor. */
+export const AUTO_COMPACT_WINDOW_SHARE = 0.8;
+
+/**
+ * `~/.nova/config.json` → 内核需要的最小切片（审批覆盖 = --approval）。
+ *
+ * `autoCompactTokenLimit` 未配置时的默认：从**在役端点声明的** `contextWindow`
+ * 派生 80%（留 20% 容纳一轮工具结果与回复）。未声明窗口（自建网关常见）时维持
+ * 缺席——禁用边界门，行为与之前一致；models.dev 的运行时元数据不进这层投影
+ * （这里是纯配置面，无网络）。会话中途换窗口档位不跟随：阈值在装配时定格，
+ * 新会话重新派生。
+ */
 export function toKernelConfig(config: Config, approvalOverride?: ApprovalMode): KernelConfig {
   const kernel: KernelConfig = { approval: approvalOverride ?? config.approval ?? 'read-only' };
   if (config.systemPrompt !== undefined) kernel.userInstructions = config.systemPrompt;
   if (config.maxTurns !== undefined) kernel.maxTurns = config.maxTurns;
-  if (config.autoCompactTokenLimit !== undefined) kernel.autoCompactTokenLimit = config.autoCompactTokenLimit;
+  if (config.autoCompactTokenLimit !== undefined) {
+    kernel.autoCompactTokenLimit = config.autoCompactTokenLimit;
+  } else {
+    const window = resolveProvider(config)?.contextWindow;
+    if (window !== undefined) kernel.autoCompactTokenLimit = Math.floor(window * AUTO_COMPACT_WINDOW_SHARE);
+  }
   if (config.projectDocMaxTokens !== undefined) kernel.projectDocMaxTokens = config.projectDocMaxTokens;
   if (config.plugins !== undefined) kernel.plugins = { entries: config.plugins.entries ?? [] };
   if (config.skills?.disable !== undefined) kernel.skillsDisable = config.skills.disable;

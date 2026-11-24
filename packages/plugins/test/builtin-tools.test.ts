@@ -6,7 +6,7 @@ import { JobRegistry, shell as shellKey, typeStrippingAvailable, type TodoItem }
 import { PluginHost, builtinPlugins, READ_MAX_BYTES } from '../src/index.js';
 import { configuredRowsOf, rowsOf } from './plugin-rows.js';
 import { bashOnPath } from '../src/builtin/shell-select.js';
-import { BudgetedBuffer } from '../src/builtin/bash.js';
+import { BudgetedBuffer } from '../src/builtin/bash-buffer.js';
 import { screenContentRegex } from '../src/builtin/search.js';
 
 async function activatedHost(): Promise<{ host: PluginHost; jobs: JobRegistry; emitted: unknown[] }> {

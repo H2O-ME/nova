@@ -37,3 +37,26 @@ describe('toKernelConfig · plugin rows are the only switch', () => {
     expect(toKernelConfig({ plugins: {} }).plugins).toEqual({ entries: [] });
   });
 });
+
+describe('toKernelConfig · auto-compact limit derivation', () => {
+  it('derives 80% of the in-force endpoint contextWindow when none was configured', () => {
+    const kernel = toKernelConfig({ provider: { baseURL: 'https://x', apiKey: 'k', contextWindow: 100_000 } });
+    expect(kernel.autoCompactTokenLimit).toBe(80_000);
+  });
+
+  it('an explicit autoCompactTokenLimit always wins over the derivation', () => {
+    const kernel = toKernelConfig({
+      autoCompactTokenLimit: 12_000,
+      provider: { baseURL: 'https://x', apiKey: 'k', contextWindow: 100_000 },
+    });
+    expect(kernel.autoCompactTokenLimit).toBe(12_000);
+  });
+
+  it('no window declared means no limit: the boundary gates stay off', () => {
+    // Fail-closed: an endpoint that does not declare a window (self-hosted
+    // gateway) keeps the pre-derivation behavior of NO auto-compaction
+    // rather than guessing one.
+    expect(toKernelConfig({ provider: { baseURL: 'https://x', apiKey: 'k' } }).autoCompactTokenLimit).toBeUndefined();
+    expect(toKernelConfig({}).autoCompactTokenLimit).toBeUndefined();
+  });
+});
