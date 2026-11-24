@@ -58,6 +58,9 @@ export const NOTICE_LABELS: Record<NoticeCode, { label: string; tone: 'info' | '
   compact_failed: { label: '压缩失败', tone: 'warn' },
   surface_lagged: { label: '界面滞后', tone: 'warn' },
   listener_failed: { label: '监听异常', tone: 'warn' },
+  // core 的 SessionStart 钩子失败（`kernel/session.ts:848`）——运行起点的事，
+  // 不是本次答复的失败，所以是 warn 而非 error 色。
+  hook_failed: { label: '钩子失败', tone: 'warn' },
 };
 
 export function reduceRunState(state: UiState, event: RunStateEvent): UiState {
