@@ -26,7 +26,7 @@ import { registerTool } from '../toolbox.js';
  * are as untrusted as any other tool input), hands them to the kernel's question
  * broker, and renders the answer back as JSON. Whether anyone can answer is the
  * *assembly's* business, not this file's: `options.ask` is absent on a surface
- * with no human attached (headless `exec`, the QQ channel), and the tool then
+ * with no human attached (headless `exec`, chat channels), and the tool then
  * fails with the same typed error the asker would raise — a defined outcome the
  * model can act on rather than a hang.
  *

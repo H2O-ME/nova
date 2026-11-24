@@ -133,37 +133,37 @@ describe('setPluginEntry', () => {
   });
 
   it('stores an {env:NAME} value verbatim, and never leaks the expanded secret', async () => {
-    process.env['NOVA_CFG_TEST_QQ'] = 'the-real-secret';
+    process.env['NOVA_CFG_TEST_SECRET'] = 'the-real-secret';
     try {
       const home = await withConfig(
         JSON.stringify({
-          provider: { baseURL: 'https://x.test/v1', apiKey: '{env:NOVA_CFG_TEST_QQ}', model: 'm' },
+          provider: { baseURL: 'https://x.test/v1', apiKey: '{env:NOVA_CFG_TEST_SECRET}', model: 'm' },
         }),
       );
-      await setPluginEntry('@nova-agent/demo-channel', { config: { clientSecret: '{env:QQ_SECRET}' } }, home);
+      await setPluginEntry('@nova-agent/demo-channel', { config: { clientSecret: '{env:CHANNEL_SECRET}' } }, home);
       const text = await readFile(userConfigPath(home), 'utf8');
       // Verbatim: the field means "read this variable", so the panel must not be
       // able to have its input expanded on the way to disk. And a write to one
       // row must leave its sibling's reference byte-identical — the loaded Config
       // already holds the secret, so a round-trip through it would persist the
       // credential itself into a file the user expects to be shareable.
-      expect(text).toContain('{env:QQ_SECRET}');
-      expect(text).toContain('{env:NOVA_CFG_TEST_QQ}');
+      expect(text).toContain('{env:CHANNEL_SECRET}');
+      expect(text).toContain('{env:NOVA_CFG_TEST_SECRET}');
       expect(text).not.toContain('the-real-secret');
     } finally {
-      delete process.env['NOVA_CFG_TEST_QQ'];
+      delete process.env['NOVA_CFG_TEST_SECRET'];
     }
   });
 });
 
 describe('readPluginEntryConfig', () => {
   it('reads the row as WRITTEN, so a reference echoes by name', async () => {
-    process.env['NOVA_CFG_TEST_QQ'] = 'the-real-secret';
+    process.env['NOVA_CFG_TEST_SECRET'] = 'the-real-secret';
     try {
       const home = await withConfig(
         JSON.stringify({
           provider: { baseURL: 'https://x.test/v1', apiKey: 'sk-literal', model: 'm' },
-          plugins: { entries: [{ id: 'q', config: { appId: '1', clientSecret: '{env:NOVA_CFG_TEST_QQ}' } }] },
+          plugins: { entries: [{ id: 'q', config: { appId: '1', clientSecret: '{env:NOVA_CFG_TEST_SECRET}' } }] },
         }),
       );
       // The load path has already replaced the reference by the time a plugin is
@@ -172,11 +172,11 @@ describe('readPluginEntryConfig', () => {
       // overwrite the reference.
       expect(await readPluginEntryConfig('q', home)).toEqual({
         appId: '1',
-        clientSecret: '{env:NOVA_CFG_TEST_QQ}',
+        clientSecret: '{env:NOVA_CFG_TEST_SECRET}',
       });
       await expect(readPluginEntryConfig('absent', home)).resolves.toBeUndefined();
     } finally {
-      delete process.env['NOVA_CFG_TEST_QQ'];
+      delete process.env['NOVA_CFG_TEST_SECRET'];
     }
   });
 

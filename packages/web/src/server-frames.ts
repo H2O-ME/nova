@@ -445,7 +445,7 @@ export interface ReadyInfo {
    * pages exist from it: the `roster` frame is only asked for by the plugins
    * panel, so a client that opened 设置 first (the cold-start case, right after
    * a restart) had no row for a plugin the operator had switched OFF and drew
-   * its page anyway — the reported 「关掉 QQ BOT 后它仍在设置页显示」.
+   * its page anyway — the reported 「关掉插件后它仍在设置页显示」.
    *
    * Optional: a host that predates this field simply omits it, and the nav
    * then falls back to the flip answers it does receive.

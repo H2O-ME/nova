@@ -28,8 +28,8 @@
  *
  * A spec module is imported even when its row is off, because its manifest is
  * what draws the row. No `apply` runs and no fiber is created for a disabled
- * row, so a disabled plugin starts nothing — the rule the QQ channel violated
- * when the host dialed it from a candidate object it had kept around. A plugin
+ * row, so a disabled plugin starts nothing — the rule a channel package once
+ * violated when the host dialed it from a candidate object it had kept around. A plugin
  * module must therefore stay import-side-effect-free.
  */
 import {
@@ -54,11 +54,11 @@ import type { CreateKernelOptions, PluginOrigin } from './runtime-types.js';
  * whether each is on (`advanced` = off), so adding one is a distribution
  * statement and needs no `case` anywhere in behaviour code.
  *
- * NOT here: the QQ channel package, and deliberately. It is the THIRD-PARTY
- * authoring example (see AGENTS.md §4) — it depends on this package, not the
- * other way round, and its credentials and settings live in its own config row,
- * so an operator who wants a QQ channel writes a row either way. Listing it here
- * would make the kernel name a downstream package: a declared cycle, a gate
+ * NOT here: channel packages, and deliberately. They are the THIRD-PARTY
+ * authoring example (see AGENTS.md §4) — they depend on this package, not the
+ * other way round, and their credentials and settings live in their own config
+ * rows, so an operator who wants a channel writes a row either way. Listing one
+ * here would make the kernel name a downstream package: a declared cycle, a gate
  * exception, and a privilege no third-party plugin gets.
  *
  * Order is load order, and it is load-bearing for at least one pair: a PTC-mode

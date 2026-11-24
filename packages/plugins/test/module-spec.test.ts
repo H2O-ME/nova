@@ -87,7 +87,7 @@ describe('resolvableFromProduct', () => {
 describe('configured rows: the app anchor, and what a CLOSED row reports', () => {
   it('resolves app-only names through the anchor, and reads a row the operator closed as off', async () => {
     // A package that ships with the APPLICATION — a sibling of its executable,
-    // which this library cannot resolve at all (the QQ channel package is a cli
+    // which this library cannot resolve at all (a channel package is a cli
     // dependency, not a plugins one; that mismatch is the defect pinned here).
     const app = await mkdtemp(path.join(tmpdir(), 'nova-app-modules-'));
     const pkg = path.join(app, 'node_modules', '@someone', 'nova-app-only');

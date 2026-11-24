@@ -14,12 +14,12 @@
  *
  * Everything inside `plugins.entries[].config` belongs to the plugin whose row
  * it is, and a plugin is only started by the invocations that ask for it. Failing
- * the whole load there meant an unset `{env:QQ_SECRET}` blocked the browser UI,
+ * the whole load there meant an unset `{env:SOME_SECRET}` blocked the browser UI,
  * the REPL and `exec` — surfaces that never read that value — which is a plugin
  * taking the whole product down with it.
  *
  * This used to be a hand-kept ALLOWLIST of top-level section names
- * (`PLUGIN_OWNED_SECTIONS = new Set(['qqbot'])`), which had the defect the whole
+ * (`PLUGIN_OWNED_SECTIONS = new Set(['some-plugin'])`), which had the defect the whole
  * refactor exists to remove: giving a plugin its own config section meant editing
  * the host. Now the boundary is the ROW — a plugin's settings live in its own
  * entry, so "is this reference a plugin's problem?" is answered by where it sits,

@@ -2,9 +2,10 @@
  * `toKernelConfig` — the config document's path INTO the plugin tree.
  *
  * It is a pass-through now. The old version projected two "second doors" onto an
- * advanced plugin (`tools.code.mode` → `ptc`, a `qqbot` block → `qqbot`) and
- * merged them into `plugins.enable`, which is exactly how a switched-off plugin
- * came back on the next boot: the row read OFF and the derivation put it back.
+ * advanced plugin (`tools.code.mode` → `ptc`, an extension's own config block →
+ * that extension) and merged them into `plugins.enable`, which is exactly how a
+ * switched-off plugin came back on the next boot: the row read OFF and the
+ * derivation put it back.
  * The single switch is the row, so the only thing left to pin is that the row
  * arrives at the kernel verbatim.
  */

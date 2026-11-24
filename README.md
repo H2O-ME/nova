@@ -2,7 +2,7 @@
 
 # NovaAgent
 
-通用、轻量、本地的个人 agent（WorkBuddy 式定位）：办公、写作、资料整理、数据与日常自动化优先，编程只是可选任务之一。它在**当前工作目录**运行，通过任意 OpenAI 兼容端点对接模型；内核收拢为**插件容器 + 事件流句柄**（`Context` / `AgentSession` / `KernelEvent`），工具、斜杠命令、生命周期钩子、Skills 与**能力服务**全部经插件注册，界面只是同一内核事件流的消费者（桌面窗口 / readline / headless 地位相同；渠道型 surface 如 QQ 由独立包按配置行接入，不随本仓发行）。模型可以用 **A2UI** 在对话里生成卡片、表单与按钮；桌面右栏只保留文件目录与文件预览。所有数据（配置 / 会话 / 缓存 / 技能）集中在 `~/.nova/` 下，**运行目录零写入**。
+通用、轻量、本地的个人 agent（WorkBuddy 式定位）：办公、写作、资料整理、数据、日常自动化与编程**并列**，都是一等任务类型——通用化是「不止编程」，不是「去编程」。它在**当前工作目录**运行，通过任意 OpenAI 兼容端点对接模型；内核收拢为**插件容器 + 事件流句柄**（`Context` / `AgentSession` / `KernelEvent`），工具、斜杠命令、生命周期钩子、Skills 与**能力服务**全部经插件注册，界面只是同一内核事件流的消费者（桌面窗口 / readline / headless 地位相同；渠道型 surface 由独立包按配置行接入，不随本仓发行）。模型可以用 **A2UI** 在对话里生成卡片、表单与按钮；桌面右栏只保留文件目录与文件预览。所有数据（配置 / 会话 / 缓存 / 技能）集中在 `~/.nova/` 下，**运行目录零写入**。
 
 ![Node ≥ 20](https://img.shields.io/badge/node-%E2%89%A520-339933)
 ![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6)
@@ -56,7 +56,7 @@ nova exec "修复测试" --json         # 非交互单次执行（JSONL 事件�
 | **桌面窗口**（默认） | `nova` | Tauri 2 壳（`apps/tauri-bench`）起 `node` 子进程，**stdout/stdin 即帧通道**（逐行 JSON，`exec --json` 是同款先例）；界面由 `frontendDist` 打进 exe，因此**无端口、无 URL、无 cookie**。前端 React 18 + Next.js 静态导出（`output: 'export'`，Next 只做构建工具），状态归一处纯 reducer，视觉为 Nova 自研设计语言（三层 token / 明暗双档 / 三栏 AppFrame 几何，右栏按需展开 / composer 胶囊 / 真 diff 工具卡） |
 | readline REPL | `nova --repl` | 终端最低保障（显式指定才用）：斜杠命令、审批 y/n/a + 拒绝理由、流式进度行 |
 | headless | `nova exec --json` | 非交互单次执行，`KernelEvent` JSONL 事件流，never 审批（未放行即拒绝） |
-| 渠道面（QQ 等） | 配置行加载 | 不在本仓：渠道包自己一个仓库（QQ 通道＝ [noa](../../noa)），写一行 `surfaces` / `plugins.entries` 即接入，cli 源码不点名 |
+| 渠道面 | 配置行加载 | 不在本仓：渠道包独立成仓库，写一行 `surfaces` / `plugins.entries` 即接入，cli 源码不点名 |
 
 ![架构](assets/readme/architecture.svg)
 

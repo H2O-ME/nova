@@ -86,7 +86,7 @@ const configSchema_ = z.object({
   projectDocMaxTokens: z.number().int().positive().max(1_000_000).optional(),
   /**
    * 会话标题模型：在役端点上的一个模型 id。每段会话的**第一条真实提示词**落盘后，
-   * 用它起一个短标题（log-only 的 `title` 标记），会话清单（浏览器侧栏、QQ
+   * 用它起一个短标题（log-only 的 `title` 标记），会话清单（浏览器侧栏、聊天渠道的
    * `/sessions`）显示它而不是首条提示词原文。缺省不生成；生成失败或不在线都只是
    * 回落到首条提示词，绝不影响那一轮。
    */
@@ -116,7 +116,7 @@ const configSchema_ = z.object({
    * 每行 `{ id, enabled?, config? }`——`id` 是内置插件的名字或一个模块 spec，
    * `enabled` 是**唯一的**开关。曾经有 `disable` / `enable` 两张表加若干
    * 「推导录取口」，三处判定同一件事，于是关掉的插件会被别处复活：两张表能
-   * 互相矛盾，而配置推导（`tools.code.mode`、`qqbot` 块）又能越过两张表。
+   * 互相矛盾，而配置推导（`tools.code.mode` 等）又能越过两张表。
    * 现在只有一份真相：启动路径与设置面板写的是同一个字段。
    *
    * 行的 `config` 由**那个插件自己的** `Config` schema 校验——内核不知道

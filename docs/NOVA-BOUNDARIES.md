@@ -40,7 +40,7 @@
 | `plugin-context` | `core` | optional extension |
 | `plugin-ptc` | `core` | optional extension |
 | `web`（含 `web/ui`） | `core`、`plugins` | Web surface 后端 + 浏览器前端。**Batch 4 已摘掉 `plugin-context` 这条边**（见 §6） |
-| `cli` | `plugins`、`ai`、`core`、`web` | 产品壳 / 装配层。渠道型 surface（QQ 等）在**本仓之外**：它们是独立包，按 `surfaces` 配置行加载，cli 源码不点名、白名单无条目 |
+| `cli` | `plugins`、`ai`、`core`、`web` | 产品壳 / 装配层。渠道型 surface 在**本仓之外**：它们是独立包，按 `surfaces` 配置行加载，cli 源码不点名、白名单无条目 |
 
 **不存在反向依赖**。特别禁止：
 
@@ -141,7 +141,7 @@ test → 另一个包的 src/internal/*
 
 **负责**：Session、Run、ExecutionScope、Agent Loop、Event Model、Persistence Contracts、Tool Contracts、Approval Contracts、Provider Contracts、Permission Contracts、Plugin Contracts、Lifecycle、Cancellation。
 
-**不负责**：React、Web UI、HTTP Server、WebSocket Server、CLI、QQ、具体 Provider 实现、具体 optional plugin implementation。
+**不负责**：React、Web UI、HTTP Server、WebSocket Server、CLI、渠道面、具体 Provider 实现、具体 optional plugin implementation。
 
 **必须保持 provider-agnostic。**
 
@@ -166,11 +166,11 @@ test → 另一个包的 src/internal/*
 
 **Web Server 不是 Runtime。** 禁止在 Web Server 中复制：Session Manager、Agent Loop、Tool Executor、Provider Manager、Plugin Runtime。
 
-### 渠道型 Surface（QQ 等）—— 本仓之外
+### 渠道型 Surface —— 本仓之外
 
 **负责**：通道的全部行为都在它自己的包里。宿主不认识任何插件名；接入方式是配置行，不是改源码。
 
-**本仓现状（2026-10-14）**：原 `packages/qqbot` 已迁出为独立产品 `D:\web\noa`（内核 + 通道 + 应用壳，`~/.noa` 数据根）。本仓不再发行任何渠道实现，但通道位（`surfaces` / `plugins.entries` 行 + `userQuestions` 推导）保持不变——这是它当初作为第三方示范的意义。
+**本仓现状**：本仓不发行任何渠道实现，但通道位（`surfaces` / `plugins.entries` 行 + `userQuestions` 推导）保持不变——这是它作为第三方示范的意义。
 
 ### `cli` — Product Shell / Boot Layer
 

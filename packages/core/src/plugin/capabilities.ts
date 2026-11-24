@@ -129,11 +129,10 @@ export const pluginRpc: ServiceKey<PluginRpc> = key<PluginRpc>('plugin-rpc');
  * The durable plugin tree, as a PLUGIN is allowed to touch it.
  *
  * A plugin that owns settings has to be able to save them, and the previous
- * answer was a named writer per first-party plugin on the surface side
- * (`saveQqBotConfig`, `setPluginsEnabled`) — which is the "adding a plugin means
- * editing the host" defect in its purest form. With this port a plugin writes
- * ITS OWN row: the panel says "this row looks like that now", and the shape
- * inside `config` stays the plugin's business.
+ * answer was a named writer per first-party plugin on the surface side — which
+ * is the "adding a plugin means editing the host" defect in its purest form.
+ * With this port a plugin writes ITS OWN row: the panel says "this row looks
+ * like that now", and the shape inside `config` stays the plugin's business.
  *
  * Absent in assemblies with no durable config (headless runs, kernel tests): a
  * plugin that wants to persist then reports that it cannot, instead of pretending.

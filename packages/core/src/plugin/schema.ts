@@ -58,7 +58,7 @@ export function objectConfig<T extends object>(
           const field = raw[key];
           if (field === undefined) continue;
           // `string[]` is the one composite field, and it exists because a
-          // security-relevant LIST (whose QQ identities may control this machine)
+          // security-relevant LIST (whose channel identities may control this machine)
           // must not be stored as a delimited string: the escaping would become
           // the operator's problem and a stray separator would silently change who
           // is authorized. Copied on the way out so a caller cannot mutate the

@@ -71,9 +71,9 @@ export interface CreateKernelOptions {
    * for bare module specs in `plugins.entries` / `surfaces`.
    *
    * It has to be supplied by the caller, because the product's own packages are
-   * siblings of the EXECUTABLE, not of this library: the QQ channel package
-   * ships with `cli`, so a library-level anchor cannot resolve it and a config
-   * row naming it could never load. Omit it and the anchor stays at the library
+   * siblings of the EXECUTABLE, not of this library: a channel package ships
+   * with `cli`, so a library-level anchor cannot resolve it and a config row
+   * naming it could never load. Omit it and the anchor stays at the library
    * (`module-spec.ts`) — the behaviour embedded kernels and kernel tests keep.
    */
   appModulesUrl?: string;

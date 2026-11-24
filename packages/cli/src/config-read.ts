@@ -14,10 +14,10 @@
  * stay one rule.
  *
  * Nothing here knows any plugin: a row is `{ id, enabled?, config? }`, and what
- * lives inside `config` is the owning plugin's business. The QQ-specific readers
- * this file used to export (`readQqBotSecretRef`, `qqBotConfigProblem`) are gone
- * because a plugin reports its own misconfiguration through its own operations —
- * which is the whole point of the row being its own.
+ * lives inside `config` is the owning plugin's business. Plugin-specific readers
+ * used to live here; they are gone because a plugin reports its own
+ * misconfiguration through its own operations — which is the whole point of the
+ * row being its own.
  */
 import { docFile, plainMember, readDoc } from './config-doc.js';
 

@@ -435,7 +435,7 @@ export interface ExecutionScope {
   runId?: string;
   /**
    * The permission subject in force — the principal whose tier decides. A
-   * channel that constrains its sessions (a QQ caller cap) stamps it here so a
+   * channel that constrains its sessions (a channel caller cap) stamps it here so a
    * nested run cannot inherit a broader engine than its caller had.
    */
   principal?: string;

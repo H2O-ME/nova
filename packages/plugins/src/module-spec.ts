@@ -26,7 +26,7 @@
  *
  * `appModulesUrl` is the HOST APPLICATION's own module URL (`cli` passes its
  * `import.meta.url` at kernel assembly), and it has to come from the caller: the
- * product's packages are siblings of the EXECUTABLE, not of this library (the QQ
+ * product's packages are siblings of the EXECUTABLE, not of this library (a
  * channel package ships with `cli`), so a library-level anchor cannot see them —
  * a config row naming one could never load, while the channel surface tells the
  * operator to write exactly that row. This package's tree is consulted FIRST

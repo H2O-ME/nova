@@ -6,12 +6,13 @@
  * deliberately not in the conversation — it neither knows the plugin nor
  * validates the operation — so a new plugin ships a page without a host change.
  *
- * This replaced a hand-written family per first-party plugin (`qqbot` /
- * `save_qqbot` / `test_qqbot` plus a typed snapshot, a runtime interface and a
- * persister threaded through the controller). Those three frames were the reason
- * "add a plugin" meant editing `web`, `cli` and the browser: each new plugin's
- * page needed its own frame name, its own validator case, its own host port and
- * its own section in the settings nav. The generic pair below has none of that.
+ * This replaced a hand-written family per first-party plugin (a
+ * `save_<plugin>` / `test_<plugin>` pair plus a typed snapshot, a runtime
+ * interface and a persister threaded through the controller). Those per-plugin
+ * frames were the reason "add a plugin" meant editing `web`, `cli` and the
+ * browser: each new plugin's page needed its own frame name, its own validator
+ * case, its own host port and its own section in the settings nav. The generic
+ * pair below has none of that.
  *
  * ## Failure is an answer, not a transport error
  *

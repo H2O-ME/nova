@@ -170,7 +170,7 @@ describe('parseQuestions — the model\'s arguments are untrusted input', () => 
 
 describe('ask-user plugin, no answerer (the headless surfaces)', () => {
   it('registers the tool and reports NO_PROVIDER without hanging the run', async () => {
-    // `nova exec` and the QQ channel call exactly this: the tool is present, and
+    // `nova exec` and chat channels call exactly this: the tool is present, and
     // the run's defined outcome is the typed refusal — never a parked ask.
     const dir = await tmp();
     const kernel = await createAgentKernel({

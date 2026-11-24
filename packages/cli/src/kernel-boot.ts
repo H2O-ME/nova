@@ -74,7 +74,7 @@ export async function bootKernel(opts: BootOptions): Promise<Kernel> {
   // Deliberately NOT gated on the boot config's `titleModel`: gating here made
   // the per-open read a lie — a title model configured from the settings page
   // during the run was never seen, so every conversation opened afterwards (the
-  // QQ channel's included) stayed untitled until a restart. `createTitleProvider`
+  // channel surfaces' included) stayed untitled until a restart. `createTitleProvider`
   // already answers `undefined` when the file names none, which is the honest
   // place for that decision: it is re-made on every read.
   const titleProvider = async (): Promise<ChatProvider | undefined> => {

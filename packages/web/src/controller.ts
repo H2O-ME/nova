@@ -181,9 +181,9 @@ export class WebController {
   /**
    * The session THIS surface serves — pinned when followed, NOT a live read of
    * `kernel.agent` (the kernel's `current`). The kernel's current moves for
-   * reasons that are not this surface's business: a QQ relay activating its
+   * reasons that are not this surface's business: a chat surface activating its
    * bound conversation per turn flips `current()`, and a live read here made
-   * every webui client broadcast the QQ session's events — the two
+   * every webui client broadcast that surface's session events — the two
    * conversations cross-contaminating each other's transcripts. The pin is
    * (re)taken only where the webui itself decides which session is open
    * (create / switch / replace / abandon), so a relay's activation never moves
@@ -484,7 +484,7 @@ export class WebController {
    * whether something replaced the session.
    *
    * Deliberately NOT a live read of the kernel's current: that moves for reasons
-   * which are not this surface's business (a QQ relay activates its bound
+   * which are not this surface's business (a chat surface activates its bound
    * conversation per turn), and re-reading it here made every later frame
    * re-point the browser at that other conversation — the transcript showed
    * somebody else's session and the next prompt landed in it. The pin moves only
@@ -529,8 +529,9 @@ export class WebController {
    * Move the workspace for the session THIS surface serves.
    *
    * `kernel.setWorkspace` acts on the kernel's current session, which another
-   * surface may have moved (a QQ relay activates its bound conversation on every
-   * inbound message). Pointing the kernel at this surface's session first keeps
+   * surface may have moved (a chat surface activates its bound conversation on
+   * every inbound message). Pointing the kernel at this surface's session first
+   * keeps
    * the move — and the blank-session re-seed that rides it — on the conversation
    * the operator is looking at, instead of re-seeding somebody else's.
    *

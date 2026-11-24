@@ -4,7 +4,7 @@
  * Split from `session-workspace.ts` for the same reason that file split from
  * `session-index.ts`: the marker format moves on its own. A title answers
  * "what is this conversation about" and is WRITTEN by the title model
- * (`kernel/title.ts`) — a listing (`session-peek.ts`, the QQ relay) reads it;
+ * (`kernel/title.ts`) — a listing (`session-peek.ts`, a chat surface) reads it;
  * nothing in the model surface ever does.
  *
  * The marker never joins the model surface — it exists so a session list can

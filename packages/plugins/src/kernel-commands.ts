@@ -44,7 +44,7 @@ export function hasCommand(registry: CommandRegistry | undefined, name: string):
  *
  * The one implementation of "execute a catalog command". `commandRunner.run`
  * (every interactive surface) and a programmatic caller that needs the text
- * rather than an announcement (the QQ channel, which has to send it back over
+ * rather than an announcement (a chat surface, which has to send it back over
  * chat) both come through here, so a command cannot behave one way in the
  * browser and another in a chat window.
  *

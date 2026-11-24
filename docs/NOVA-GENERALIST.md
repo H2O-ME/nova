@@ -6,13 +6,14 @@
 > **仍然有效的只剩两份细则文档**：依赖边界见 `docs/NOVA-BOUNDARIES.md`；测试纪律见本文件 §8 与 `AGENTS.md` §0.4/§5（`NOVA-TESTING.md` 的规则已并入，不再单列）。
 > **权威关系**：本文件的批次表取代旧 0.5.0 总纲 §7，其未完成批次已映射进本文件 §5。
 > **执行纪律（原 0.5.0 §4–§6、§12 中仍然有效的部分，已内联于此）**：命令语义以 `AGENTS.md` §2 为准；git 纪律 = 每批独立、路径限定提交，绝不 `git add -A`；测试表述纪律 = 不得把"测试全绿"表述为"证明行为未变"；开工前必须完成 Scope Protocol（依赖核对 + 文件所有权核对，现算，不引用过期清单）。
-> **渠道面出仓（2026-10-14）**：`packages/qqbot` 已迁出为独立产品 `D:\web\noa`。本文件证据表中把 `qqbot` 当作**本仓包**列出的行（§3 依赖审计、G1 消费者普查、`principal` 说明等）自此只作**历史记录**读；通道位本身（`surfaces` / `plugins.entries` 行、`userQuestions` 推导）不变。
 
 ---
 
 ## 0. 核心目标
 
 > **不是让 Nova 看起来不像编程 Agent，而是让编程成为 Nova 可以可靠执行的一类任务，而不再成为它组织整个产品的默认假设。**
+>
+> **通用化 ≠ 去编程**：编程与办公、写作、数据等任务**并列**，都是它要可靠执行的一类任务（类似 ZCode 的编程 / 办公双模式）。被降级的是「编程作为组织整个产品的默认假设」，不是编程本身。
 
 这句话是本纲领全部裁决的判据。任何改动若无法回答"它是否让编程从默认假设降为可选能力之一"，就不属于本纲领范围。
 
@@ -24,7 +25,7 @@ Nova = 通用、轻量、本地的个人 agent（WorkBuddy 式定位，2026-11-2
 不是：AI 聊天应用
 不是：编程专用 IDE
 不是：DeepSeek Harness 的复刻
-是：  在当前工作目录运行的通用任务 agent —— 办公、写作、资料整理、数据、日常自动化优先，编程是可选能力之一
+是：  在当前工作目录运行的通用任务 agent —— 办公、写作、资料整理、数据、日常自动化与编程并列，编程不是唯一的组织假设
 ```
 
 > **2026-11-22 定位收敛**：右栏的变更 / 任务 / 终端 / 起始页已删除，宿主侧同步移除 PTY（`node-pty`）与 git 变更帧，右栏只留**文件目录 + 文件预览**；模型用 **A2UI v1.0**（`render_ui`）在对话里生成卡片、表单与按钮，用户操作作为下一条用户消息回到 agent。这是 §1.2「降级」表的落地，不是新方向。
@@ -124,7 +125,7 @@ Session → runAgent → ToolCall → Approval → Persistence
 | 事实 | 证据 |
 | --- | --- |
 | **git 不是模型可用的工具** | `packages/plugins/src/builtin/` 的工具清单里没有 `git_*`；全仓唯一的 `git_status` / `git_diff` / … 名字出现在 `web/src/client-frames.ts:315-333`、`web/src/frame-router.ts:118-137` —— 它们是**客户端帧**，不是工具定义 |
-| `core/src/git.ts`（229 行，8 个导出）与 `core/src/git-clone.ts`（52 行）的消费者**只有 `web`** | `web/src/git-frames.ts:27`、`web/src/session-frames.ts:13`；`ai` / `plugins` / `plugin-*` / `qqbot` / `cli` **零引用** |
+| `core/src/git.ts`（229 行，8 个导出）与 `core/src/git-clone.ts`（52 行）的消费者**只有 `web`** | `web/src/git-frames.ts:27`、`web/src/session-frames.ts:13`；`ai` / `plugins` / `plugin-*` / `cli` **零引用** |
 | 两者是**一体**，不能只搬一个 | `core/src/git-clone.ts:10` → `import { git } from './git.js'`（`git()` 是 `git.ts:75` 的 spawn 封装） |
 | `git.ts` 存在的**唯一理由**是右栏"变更"页 | 该面板是 §3.4 的删除目标（G6）；`git-clone.ts` 的理由是"从 URL 建会话"（`session-frames.ts:98`） |
 
@@ -273,7 +274,7 @@ G8  封板         版本 + changeset + verify + smoke
 | `ToolCallScope` | `extends ExecutionScope`，纯别名 | `core/src/types.ts:418` |
 | scope 生产 | 从 `AgentOptions` 三字段**投影**（不是"现场拼"） | `core/src/agent/tools.ts:154` |
 | `runId` 生产 | `runAgent` 未设时**自铸** | `core/src/agent/loop.ts:35` |
-| `runId` 消费 | **零** —— 全仓（core/web/cli/qqbot/plugins）无读取者 | 见下 |
+| `runId` 消费 | **零** —— 全仓（core/web/cli/plugins）无读取者 | 见下 |
 | `AgentStatus` | `'idle' \| 'running' \| 'compacting'`，**非** 0.5.0 期望的六态生命周期 | `core/src/kernel/session.ts:142` |
 | Protocol | 无 `PROTOCOL_VERSION` / `eventId` / 帧级 `runId` | `web/src/protocol.ts` |
 
@@ -315,7 +316,7 @@ G1d  Protocol Contract：PROTOCOL_VERSION + 帧级 eventId + 帧级 runId + 握�
 | `principal` | **无** —— 全仓无人给 `AgentOptions.principal` 赋值 | **无** | 保留为**声明契约**（见下） |
 | `parentRunId` / `channel` / `workspace` / `provider` / `permissions` | 无 | 无 | **本次不新增** |
 
-`principal` 的设计用途（让 QQ 中继会话按"随调用者走的主体"钳制档位）在当前通道**不存在**：`qqbot/src/peers.ts:454 capOwnedTier` 改用**会话创建时钳制**达成同一目的，而 `peers.ts:451` 自己写明中继路径"does not have yet"这个主体。按 `NOVA-GENERALIST.md` §2 的"契约进 Core ≠ 实现进 Core"，它**留作声明契约**，不删；将来 QQ 中继接通时**必须与生产者同批**加回消费者，否则按缺陷族 #3 删除。
+`principal` 的设计用途（让渠道面按"随调用者走的主体"钳制档位）在当前实现里**不存在**生产者：应用侧改用**会话创建时钳制**达成同一目的，而那条中继路径本身也写明还没有这个主体。按 `NOVA-GENERALIST.md` §2 的"契约进 Core ≠ 实现进 Core"，它**留作声明契约**，不删；将来渠道中继接通时**必须与生产者同批**加回消费者，否则按缺陷族 #3 删除。
 
 **因此 G1b 的交付改为"所有权归位"，不含字段扩张**：`Run` 在创建时构造并冻结一份 `ExecutionScope`（`Run.scope`），`AgentOptions` 的三个扁平字段合并为 `scope?: ExecutionScope`，`agent/tools.ts` 删除现场投影改为直接读取。字段扩张留给**每个字段各自接入时**同批完成（生产者 + 消费者一起），判据与 G1a/G1c 同一条。
 

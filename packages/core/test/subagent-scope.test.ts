@@ -42,7 +42,7 @@ describe('runAgent / scope threading', () => {
         rootDir: '.',
         tools: [probe()],
         maxTurns: 2,
-        scope: { sessionId: 'sess-1', principal: 'qq:cap:read-only' },
+        scope: { sessionId: 'sess-1', principal: 'channel:cap:read-only' },
         hooks: {
           beforeToolCall: async (_call, scope) => {
             scopes.push(scope ?? {});
@@ -53,7 +53,7 @@ describe('runAgent / scope threading', () => {
     );
     expect(events.some((e: AgentEvent) => e.type === 'tool_call_result')).toBe(true);
     expect(scopes.length).toBe(1);
-    expect(scopes[0]).toMatchObject({ sessionId: 'sess-1', principal: 'qq:cap:read-only' });
+    expect(scopes[0]).toMatchObject({ sessionId: 'sess-1', principal: 'channel:cap:read-only' });
     expect(typeof scopes[0]?.runId).toBe('string');
     expect(scopes[0]?.runId?.length).toBeGreaterThan(0);
   });

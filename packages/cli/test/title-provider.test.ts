@@ -3,9 +3,9 @@
  *
  * The operator configures it from the settings page, which writes the config
  * file while the process runs — so a boot-time snapshot means a title model
- * chosen in a running `nova --web` (the same process that runs the QQ channel)
- * has no effect until a restart, and every conversation opened in between —
- * the QQ channel's included — stays untitled.
+ * chosen in a running surface has no effect until a restart, and every
+ * conversation opened in between — the channel surfaces' included — stays
+ * untitled.
  *
  * Observable only end to end: the title client is built from the CONFIG FILE,
  * so the fake endpoint has to be a real one the loader can dial.

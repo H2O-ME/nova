@@ -15,8 +15,8 @@
  * X's config is this object", and the shape inside `config` belongs to the
  * plugin whose schema validates it. That is what lets a third-party plugin keep
  * settings without a host change — the previous design had a named writer per
- * first-party plugin (`saveQqBotConfig`), which is exactly the "adding a plugin
- * means editing the host" defect.
+ * first-party plugin, which is exactly the "adding a plugin means editing the
+ * host" defect.
  *
  * One invariant is local to this file: strings the operator typed into a text
  * field are stored VERBATIM — even an `{env:NAME}`-shaped value — because the

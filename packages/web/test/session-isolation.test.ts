@@ -121,8 +121,8 @@ describe('session isolation', () => {
         await settle(conn, (f) => f.some((x) => x.type === 'event' && (x.event.type === 'done' || x.event.type === 'run_failed')));
         const mine = controller.agent.session.file;
         // Another surface opens its OWN conversation and makes it the kernel's
-        // current one — exactly what the QQ channel's `agentFor` does on every
-        // inbound message.
+        // current one — exactly what another surface does on every inbound
+        // message.
         const theirs = await kernel.newAgentSession();
         expect(theirs.session.file).not.toBe(mine);
         // Any later frame on THIS surface...
