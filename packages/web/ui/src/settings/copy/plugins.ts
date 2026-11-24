@@ -13,6 +13,9 @@ export const PLUGINS_COPY = {
   'pluginPage.confirmDanger': '再次点击确认',
   'pluginPage.copy': '复制',
   'pluginPage.copied': '已复制',
+  /* 敏感字段的眼睛（对照 `PluginConfigControls.tsx:120-150` 的 show/hide secret）。 */
+  'pluginPage.showSecret': '显示密钥',
+  'pluginPage.hideSecret': '隐藏密钥',
   'plugins.nav': '插件管理',
   'plugins.title': '插件市场',
   'plugins.refresh': '刷新插件列表',

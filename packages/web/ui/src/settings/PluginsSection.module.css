@@ -118,9 +118,9 @@
   height: 36px;
   /* The reference's `pl-9` (36px): the icon's column plus its own left inset. */
   padding: 0 var(--nova-space-12) 0 36px;
-  border: 1px solid var(--nova-border-strong);
+  border: 1px solid var(--nova-input-border);
   border-radius: var(--nova-radius-md);
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-input);
   font-family: inherit;
   font-size: 14px;
   line-height: 20px;

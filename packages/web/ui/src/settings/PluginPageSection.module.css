@@ -1,27 +1,28 @@
-/* A plugin's own settings page, rendered from its descriptor. The page head
- * (`.heading` / `.intro`) is the reference pair at this section column's scale;
- * the rest is the settings cell rhythm every other section uses, so a plugin
- * page and a built-in page read as the same product. */
+/* A plugin's own settings page, rendered from its descriptor.
+ *
+ * 2026-11-25 对齐 ZCode 源码（只读参照 `D:\web\zcode-desktop-ui-study`）：
+ *  - 字段区 = `settings/PluginConfigControls.tsx:61-188`：`grid gap-2
+ *    sm:grid-cols-2` 的双列格、label `mb-1 text-ui-base text-foreground-subtle`、
+ *    输入 `h-8 rounded-lg`（32px / 8px 圆角）、boolean 走 32px 行上的 Switch、
+ *    sensitive 走密码框 + 眼睛 ghost 按钮（`size="icon-sm"` = 24px）。
+ *  - 提交行 = `mt-2 flex justify-end`（:173-185）：保存是 outline `size="lg"`
+ *    （32px / 8px 圆角 / 14px 字 + `Save` 图标），右对齐，不是贴着滚动列
+ *    出血的 sticky 条。
+ *  - 参照的配置区没有页级 h2 —— 页名由设置壳的导航承担。
+ *
+ * 本页独有的块（guide / status / copy / note）是 Nova 描述符的扩展面，参照
+ * 没有对应物，按本页的节奏保留。 */
 
 .page {
   display: flex;
   flex-direction: column;
 }
 
-.heading {
-  margin: 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
-  color: var(--nova-text-primary);
-}
-
 .intro {
   margin: 0;
-  padding-top: var(--nova-space-4);
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--nova-text-muted);
+  font-size: 14px;
+  line-height: 24px;
+  color: var(--nova-text-secondary);
 }
 
 /* A refused operation: the plugin's own sentence, not a generic apology. It is
@@ -33,9 +34,9 @@
   gap: var(--nova-space-4);
   margin-top: var(--nova-space-12);
   padding: var(--nova-space-10) var(--nova-space-12);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: var(--nova-color-danger-soft);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-primary);
 }
@@ -51,7 +52,7 @@
   gap: var(--nova-space-4);
   margin: var(--nova-space-8) 0 0;
   padding: var(--nova-space-10) var(--nova-space-12);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: var(--nova-surface-panel);
 }
 
@@ -67,7 +68,7 @@
 }
 
 .guideTitle {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   font-weight: 500;
   color: var(--nova-text-primary);
@@ -76,7 +77,7 @@
 .guideList {
   margin: 0;
   padding-left: 18px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-secondary);
 }
@@ -100,86 +101,158 @@
   gap: var(--nova-space-6);
   min-width: 96px;
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-muted);
 }
 
 .statusValue {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-primary);
+}
+
+/* ── 字段区：参照的双列网格 ─────────────────────────────────── */
+
+.fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--nova-space-8);
+  margin-top: var(--nova-space-16);
+}
+
+@media (min-width: 640px) {
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--nova-space-6);
-  margin-top: var(--nova-space-12);
+  min-width: 0;
 }
 
+/* Label 行：`mb-1 text-ui-base text-foreground-subtle`。 */
 .label {
-  font-size: 13px;
+  margin-bottom: var(--nova-space-4);
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-secondary);
 }
 
+/* 输入：`h-8 rounded-lg border border-input-border bg-input px-3`。 */
 .input {
-  width: 100%;
   box-sizing: border-box;
-  padding: var(--nova-space-8) var(--nova-space-10);
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-sunken);
+  width: 100%;
+  min-width: 0;
+  height: var(--nova-row-lg);
+  padding: 0 var(--nova-space-12);
+  border: 1px solid var(--nova-input-border);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-input);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-primary);
+}
+
+.input::placeholder {
+  color: var(--nova-text-disabled);
+}
+
+.input:hover {
+  border-color: var(--nova-input-border-hover);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--nova-input-border-focused);
 }
 
 .input:disabled {
   opacity: 0.6;
 }
 
+/* Boolean 格：32px 高的一行，Switch 与相邻输入同高对齐。 */
+.switchSeat {
+  display: flex;
+  align-items: center;
+  height: var(--nova-row-lg);
+}
+
+/* Secret 格：输入 + 眼睛（`flex items-center gap-1`）。 */
+.secretRow {
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-4);
+}
+
+.secretRow .input {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+/* 24px ghost 图标按钮（参照 `size="icon-sm"`）。 */
+.iconButton {
+  box-sizing: border-box;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--nova-row-sm);
+  height: var(--nova-row-sm);
+  padding: 0;
+  border: none;
+  border-radius: var(--nova-radius-xs);
+  background: transparent;
+  color: var(--nova-text-muted);
+  cursor: pointer;
+  transition:
+    color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+}
+
+.iconGlyph {
+  width: 14px;
+  height: 14px;
+}
+
 .fieldHint {
-  margin: 0;
+  margin: var(--nova-space-4) 0 0;
   font-size: 12px;
   line-height: 18px;
   color: var(--nova-text-muted);
 }
 
-/* The page's commit row: the reference's `editorActions` — a plain row at the
- * end of the form, committed to the right, secondary before primary.
- *
- * It used to be `position: sticky; bottom: -24px` with a negative bottom margin
- * so its fill and top rule bled to the scroll column's edges. That pinned it
- * over the page's own note: the note's line box was pulled up by the negative
- * margin and then covered by the bar's opaque fill, so the last line of every
- * plugin page was half-hidden behind its own footer. A pinned row also covers
- * whatever it is committing while the reader scrolls the fields past it, and
- * there is no version of that which is not a defect on a form this short. The
- * bar ends the page instead; the note above it is what explains the buttons. */
+/* ── 提交行 ─────────────────────────────────────────────────── */
+
+/* `mt-2 flex justify-end`（`PluginConfigControls.tsx:173-175`）：一行普通按钮，
+ * 右对齐，不出血、不吸底。 */
 .actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--nova-space-8);
-  margin: var(--nova-space-16) -24px 0;
-  padding: var(--nova-space-12) var(--nova-space-24) var(--nova-space-16);
-  border-top: 0.5px solid var(--nova-border-strong);
+  margin-top: var(--nova-space-8);
 }
 
 .actionSuccess,
 .actionFailure {
   margin-top: var(--nova-space-12);
   padding: var(--nova-space-10) var(--nova-space-12);
-  border-radius: var(--nova-radius-lg);
-  font-size: 13px;
+  border-radius: var(--nova-radius-md);
+  font-size: 14px;
   line-height: 20px;
 }
 
 .actionSuccess {
-  background: var(--nova-color-success);
+  background: var(--nova-color-success-soft);
   color: var(--nova-text-primary);
 }
 
@@ -188,15 +261,25 @@
   color: var(--nova-text-primary);
 }
 
+/* 按钮几何：参照 button `size="lg"` —— 32px 高、`rounded-lg` 8px、
+ * `px-2.5` 10px、字号 14、图标 16px。 */
 .primary,
-.plain {
-  padding: 7px var(--nova-space-14);
-  border-radius: var(--nova-radius-lg);
+.plain,
+.outline {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nova-space-4);
+  height: var(--nova-row-lg);
+  padding: 0 var(--nova-space-10);
   border: 1px solid transparent;
+  border-radius: var(--nova-radius-sm);
   font: inherit;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .primary {
@@ -210,8 +293,31 @@
   color: var(--nova-text-primary);
 }
 
+/* 保存键的 outline 装扮（参照的 `variant="outline"`）。 */
+.outline {
+  border-color: var(--nova-border-strong);
+  background: transparent;
+  color: var(--nova-text-primary);
+}
+
+.outline:hover:not(:disabled),
+.plain:hover:not(:disabled) {
+  background: var(--nova-interactive-hover);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--nova-color-ink-hover);
+}
+
+.buttonGlyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
 .primary:disabled,
-.plain:disabled {
+.plain:disabled,
+.outline:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -232,12 +338,12 @@
   gap: var(--nova-space-6);
   margin-top: var(--nova-space-12);
   padding: var(--nova-space-10) var(--nova-space-12);
-  border-radius: var(--nova-radius-lg);
+  border-radius: var(--nova-radius-md);
   background: var(--nova-surface-panel);
 }
 
 .copyLabel {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   font-weight: 500;
   color: var(--nova-text-primary);

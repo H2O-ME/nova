@@ -25,7 +25,9 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SETTINGS_COPY } from './copy.js';
+import { EyeIcon, EyeOffIcon, SaveIcon } from '../icons.js';
 import { StateDot, type StateDotState } from '../tool/StateDot.js';
+import { Switch } from './Switch.js';
 import { parsePageDescriptor } from './page-descriptor.js';
 import { nextPluginRequestId } from './plugin-request-id.js';
 import { draftDirty, nextArmedDanger } from './plugin-state.js';
@@ -144,6 +146,9 @@ export function PluginPageSection({
   // label becomes the confirm sentence), the second commits. Any other click,
   // and the action's own answer, disarm it.
   const [armedDanger, setArmedDanger] = useState<string | null>(null);
+  // Per-field reveal state for `secret` inputs — the reference's
+  // `revealedSecrets` map (`PluginConfigControls.tsx:103`).
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
   // The copy block's feedback: the button says 已复制 for a beat, then reverts.
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<number | undefined>(undefined);
@@ -215,7 +220,10 @@ export function PluginPageSection({
 
   return (
     <div className={css.page}>
-      <h2 className={css.heading}>{page?.title ?? plugin}</h2>
+      {/* NO page-level title: the settings shell already renders the page title
+          from the nav entry (`SettingsPanel`'s `.pageTitle`), and the reference's
+          own config area carries no second title either
+          (`PluginConfigControls.tsx` opens straight into its fields). */}
       {page?.intro !== undefined && <p className={css.intro}>{page.intro}</p>}
 
       {/* An answer that is not a descriptor is still an answer: a plugin that is
@@ -289,53 +297,94 @@ export function PluginPageSection({
         </div>
       )}
 
-      {(page?.fields ?? []).map((field) => (
-        <div className={css.field} key={field.key}>
-          <label className={css.label} htmlFor={`${plugin}-${field.key}`}>{field.label}</label>
-          {field.kind === 'select' ? (
-            <select
-              id={`${plugin}-${field.key}`}
-              className={css.input}
-              value={draft[field.key] ?? ''}
-              disabled={disabled || busy}
-              onChange={(event) => {
-                onEdit();
-                setDraft((current) => ({ ...current, [field.key]: event.target.value }));
-              }}
-            >
-              {(field.options ?? []).map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          ) : field.kind === 'switch' ? (
-            <input
-              id={`${plugin}-${field.key}`}
-              type="checkbox"
-              checked={draft[field.key] === 'true'}
-              disabled={disabled || busy}
-              onChange={(event) => {
-                onEdit();
-                setDraft((current) => ({ ...current, [field.key]: String(event.target.checked) }));
-              }}
-            />
-          ) : (
-            <input
-              id={`${plugin}-${field.key}`}
-              className={css.input}
-              type={field.kind === 'secret' ? 'password' : 'text'}
-              value={draft[field.key] ?? ''}
-              placeholder={field.placeholder ?? ''}
-              autoComplete="off"
-              disabled={disabled || busy}
-              onChange={(event) => {
-                onEdit();
-                setDraft((current) => ({ ...current, [field.key]: event.target.value }));
-              }}
-            />
-          )}
-          {field.hint !== undefined && <p className={css.fieldHint}>{field.hint}</p>}
+      {/* 字段区：对照 `PluginConfigControls.tsx:61-188` —— `grid gap-2
+          sm:grid-cols-2` 的两列网格，每格 label 14 次级色 + mb-1，输入
+          `h-8 rounded-lg`；switch 是 32px 行上的 Switch（不是裸 checkbox），
+          secret 是密码框 + 眼睛 ghost 按钮。 */}
+      {(page?.fields ?? []).length > 0 && (
+        <div className={css.fields}>
+          {(page?.fields ?? []).map((field) => {
+            const fieldId = `${plugin}-${field.key}`;
+            const setValue = (value: string): void => {
+              onEdit();
+              setDraft((current) => ({ ...current, [field.key]: value }));
+            };
+            return (
+              <div className={css.field} key={field.key}>
+                {field.kind === 'switch' ? (
+                  <span className={css.label}>{field.label}</span>
+                ) : (
+                  <label className={css.label} htmlFor={fieldId}>{field.label}</label>
+                )}
+                {field.kind === 'select' ? (
+                  <select
+                    id={fieldId}
+                    className={css.input}
+                    value={draft[field.key] ?? ''}
+                    disabled={disabled || busy}
+                    onChange={(event) => { setValue(event.target.value); }}
+                  >
+                    {(field.options ?? []).map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                ) : field.kind === 'switch' ? (
+                  <div className={css.switchSeat}>
+                    <Switch
+                      checked={draft[field.key] === 'true'}
+                      disabled={disabled || busy}
+                      label={field.label}
+                      onChange={(next) => { setValue(String(next)); }}
+                    />
+                  </div>
+                ) : field.kind === 'secret' ? (
+                  <div className={css.secretRow}>
+                    <input
+                      id={fieldId}
+                      className={css.input}
+                      type={revealedSecrets[field.key] === true ? 'text' : 'password'}
+                      value={draft[field.key] ?? ''}
+                      placeholder={field.placeholder ?? ''}
+                      autoComplete="off"
+                      disabled={disabled || busy}
+                      onChange={(event) => { setValue(event.target.value); }}
+                    />
+                    <button
+                      type="button"
+                      className={css.iconButton}
+                      aria-label={revealedSecrets[field.key] === true
+                        ? SETTINGS_COPY['pluginPage.hideSecret']
+                        : SETTINGS_COPY['pluginPage.showSecret']}
+                      title={revealedSecrets[field.key] === true
+                        ? SETTINGS_COPY['pluginPage.hideSecret']
+                        : SETTINGS_COPY['pluginPage.showSecret']}
+                      onClick={() => {
+                        setRevealedSecrets((current) => ({ ...current, [field.key]: current[field.key] !== true }));
+                      }}
+                    >
+                      {revealedSecrets[field.key] === true
+                        ? <EyeOffIcon className={css.iconGlyph} />
+                        : <EyeIcon className={css.iconGlyph} />}
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    id={fieldId}
+                    className={css.input}
+                    type="text"
+                    value={draft[field.key] ?? ''}
+                    placeholder={field.placeholder ?? ''}
+                    autoComplete="off"
+                    disabled={disabled || busy}
+                    onChange={(event) => { setValue(event.target.value); }}
+                  />
+                )}
+                {field.hint !== undefined && <p className={css.fieldHint}>{field.hint}</p>}
+              </div>
+            );
+          })}
         </div>
-      ))}
+      )}
 
       {/* The note explains what the buttons below DO ("saving re-mounts this
           row"), so it belongs on their side of the form, not below them — and
@@ -376,9 +425,11 @@ export function PluginPageSection({
           </button>
         ))}
         {(page?.fields ?? []).length > 0 && (
+          /* 保存是对照的 outline `size="lg"` 按钮（32px / 8px 圆角 /
+             `Save` 图标，`PluginConfigControls.tsx:173-185`），不是主色实心。 */
           <button
             type="button"
-            className={css.primary}
+            className={css.outline}
             disabled={disabled || busy}
             aria-busy={busy && pendingAction === SAVE_ACTION}
             onClick={() => {
@@ -386,6 +437,7 @@ export function PluginPageSection({
               ask('save', { fields: draft });
             }}
           >
+            <SaveIcon className={css.buttonGlyph} />
             {/* The label tracks THIS button's own write. Reading `busy` alone
                 made a running 测试连接 relabel the save control too, so the page
                 said two different things were being saved. */}

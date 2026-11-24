@@ -37,9 +37,11 @@
   width: 100%;
   height: 32px;
   padding: 0 var(--nova-space-10) 0 30px;
-  border: 0.5px solid var(--nova-border-strong);
-  border-radius: var(--nova-radius-lg);
-  background: var(--nova-surface-base);
+  /* The reference's search field surface (`border-input-border bg-input`,
+     `rounded-xl` = 12px) — the same white field the settings rows ride. */
+  border: 1px solid var(--nova-input-border);
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-input);
   color: var(--nova-text-primary);
   font-size: 13px;
   line-height: 20px;

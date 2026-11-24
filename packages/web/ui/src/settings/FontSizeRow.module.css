@@ -17,9 +17,9 @@
   width: 100%;
   height: 28px;
   padding: 0 var(--nova-space-32) 0 var(--nova-space-8);
-  border: 1px solid var(--nova-border-strong);
+  border: 1px solid var(--nova-input-border);
   border-radius: var(--nova-radius-xs);
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-input);
   font-family: inherit;
   font-size: 14px;
   line-height: 20px;

@@ -124,6 +124,14 @@ export const EyeIcon = (p: P): JSX.Element => (
   </Svg>
 );
 
+/** The commit glyph: the reference's `Save` beside a config page's save label. */
+export const SaveIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M8 2.75v6.5M5.25 6.5 8 9.25l2.75-2.75" />
+    <path d="M2.75 10.5v1.25a1.5 1.5 0 0 0 1.5 1.5h7.5a1.5 1.5 0 0 0 1.5-1.5V10.5" />
+  </Svg>
+);
+
 /** …and its pressed state (the field shows plaintext). */
 export const EyeOffIcon = (p: P): JSX.Element => (
   <Svg {...p}>
