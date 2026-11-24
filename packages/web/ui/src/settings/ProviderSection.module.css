@@ -1,24 +1,43 @@
-/* 供应商 sheet：设置页「模型」页的供应商清单 + 编辑卡。
+/* 模型页（供应商 BYOK）主从卡 sheet。
  *
- * 2026-11-15 对齐 ZCode（只读参照仓 `D:\web\zcode-desktop-ui-study`）：
- *  - 页面说明在卡外，一行 14/24 次级色 —— `settings/ModelProviderSection.tsx:1131`
- *    的 `description` 经 `model-provider-section/SectionLayout.tsx:54-56` 渲染成
- *    `text-ui-base leading-6 text-foreground-subtle`。
- *  - 清单是一张卡：`SectionLayout.tsx:67` 的
- *    `overflow-clip rounded-xl border border-border bg-card`。本仓 `rounded-xl`
- *    对应 `--nova-radius-md`（12px），卡面由 `Section.module.css` 提供。
- *  - 组标题 16/600 + 一组一句 14/24 —— 与 `SettingsGroup.module.css` 同一节奏
- *    （ZCode 的 `SettingsPage.tsx` 每个设置组都是这个头）。
- *  - 行是设置行的节奏：`px-4 py-3` + 顶部 1px 分隔线（`SettingsPageParts.tsx:196-201`
- *    的 `border-t border-border px-4 py-3 first:border-t-0`），标题 14/500。
- *  - 动作按钮是 ZCode `components/ui/button.tsx:33-37` 的尺寸：default 28px /
- *    `rounded-md`（6px）/ 14px；切到本仓就是 `--nova-row-md` + `--nova-radius-xs`。 */
+ * 2026-11-24 对齐 ZCode（只读参照仓 `D:\web\zcode-desktop-ui-study`）：
+ *  - `model-provider-section/SectionLayout.tsx:54-89`：说明句左 / 资源动作右，
+ *    下面一张 `overflow-clip rounded-xl border border-border bg-card` 的卡，
+ *    内部 `grid min-h-[36rem] grid-cols-[56px_1fr] md:grid-cols-[224px_1fr]`——
+ *    左栏 `border-r` 供应商导航，右栏详情，各自滚动。
+ *  - 导航行（`Navigation.tsx:112`）：`h-8 w-full rounded-lg border px-2 py-1
+ *    gap-2`，未选 `border-transparent`、选中 `border-border-hover
+ *    bg-card-selected`（边框常驻透明，选中只换色，行高不跳）；窄栏（<768px）
+ *    收成 32px 图标行（`max-md:size-8`），名字 sr-only，点绝对定位到右下
+ *    （`max-md:right-1 max-md:bottom-1`）。
+ *  - 分组头（`Navigation.tsx:386-391`）：`px-1.5 py-3 md:px-2 md:py-2` 的根、
+ *    组间 `gap-3`、组内 `gap-2`、行间 `gap-1`，标题 `h-7 px-2 text-ui-sm
+ *    font-semibold text-foreground-subtlest`（12/600）。
+ *  - 状态点（`ProviderStatusIndicator.tsx:32`）：`size-2` 实心圆，success /
+ *    warning / subtlest 三态，只做展示映射。
+ *  - 详情（`SectionLayout.tsx:85`）：`p-4 pb-20 sm:p-6 sm:pb-24`；头部 20px
+ *    图标 + `text-ui-lg font-semibold`（16/600）；字段 `space-y-3`、标签
+ *    `mb-1 text-ui-base text-foreground-subtle`；输入 `h-8 rounded-lg
+ *    border-input-border bg-input px-3`（8px 圆角 = `--nova-radius-sm`）；
+ *    密钥框 `h-9 pr-10`（`ApiKeyInput.tsx:38`）配 14px 眼睛按钮。
+ *  - 模型清单：`rounded-lg border bg-input` 的卡，行 `px-3 py-2`，模型名
+ *    `font-mono text-ui-base`；行尾是 24px 的 ghost 图标按钮
+ *    （`icon-sm` = 24 / `rounded-md` 6px）。
+ *  - 参照没有保存/取消页脚——详情即改即存。 */
 
-/* 卡外的页面说明（SectionLayout 的 description）。 */
+/* 卡外的页面说明 + 新建动作（SectionLayout 的 description / actions 一行）。 */
 .page {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-16);
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nova-space-12);
   min-width: 0;
 }
 
@@ -29,44 +48,8 @@
   color: var(--nova-text-secondary);
 }
 
-/* 一个组：16/600 的组标题 + 一行说明 + 一张卡（同 SettingsGroup 的 12px 间距）。 */
-.group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nova-space-12);
-  min-width: 0;
-}
-
-.groupHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--nova-space-12);
-  min-width: 0;
-}
-
-.groupText {
-  min-width: 0;
-}
-
-.groupTitle {
-  margin: 0;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 600;
-  color: var(--nova-text-primary);
-}
-
-.groupDesc {
-  margin: var(--nova-space-4) 0 0;
-  font-size: 14px;
-  line-height: 24px;
-  color: var(--nova-text-secondary);
-}
-
-/* 组头的资源动作：ZCode `SettingsResourceHeaderActions.tsx:113-124` 的
- * 「新建」是 `variant="default" size="default" className="rounded-lg"` ——
- * 28px 高、8px 圆角、主色底。 */
+/* 「新建」是 `SettingsResourceHeaderActions.tsx:113-124` 的 `variant="default"
+ * size="default" className="rounded-lg"` —— 28px 高、8px 圆角、主色底。 */
 .addButton {
   box-sizing: border-box;
   flex: none;
@@ -98,79 +81,254 @@
   height: 14px;
 }
 
+/* ── 主从卡：一张卡两栏，各自滚动 ─────────────────────────────── */
+
+.splitCard {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr);
+  min-height: 576px;
+  border: 1px solid var(--nova-border-strong);
+  border-radius: var(--nova-radius-md);
+  background: var(--nova-surface-raised);
+  overflow: hidden;
+}
+
+/* 导航列：`border-r` + 自身滚动；`md:px-2 md:py-2`，窄栏 `px-1.5 py-3`。 */
+.nav {
+  min-width: 0;
+  border-right: 1px solid var(--nova-border-strong);
+  padding: var(--nova-space-8);
+  overflow-y: auto;
+}
+
+.navGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-8);
+}
+
+.navGroupTitle {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--nova-space-8);
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--nova-text-muted);
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.navItem {
+  margin: 0;
+  padding: 0;
+}
+
+/* 一行：32px 高，边框常驻透明（选中只换色，行高不跳），8px 圆角。 */
+.navRow {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-8);
+  width: 100%;
+  height: var(--nova-row-lg);
+  padding: var(--nova-space-4) var(--nova-space-8);
+  border: 1px solid transparent;
+  border-radius: var(--nova-radius-sm);
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--nova-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.navRow:hover {
+  border-color: color-mix(in srgb, var(--nova-border-strong) 60%, transparent);
+}
+
+.navRowSelected,
+.navRowSelected:hover {
+  border-color: var(--nova-input-border-hover);
+  background: var(--nova-interactive-hover);
+}
+
+.navRow:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--nova-focus-ring-color, var(--nova-color-accent));
+}
+
+.navIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+
+.navName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 状态点：8px 实心圆三态（success / warn / idle），纯展示映射。 */
+.dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.dotActive {
+  background: var(--nova-color-success);
+}
+
+.dotMissingKey {
+  background: var(--nova-color-warn);
+}
+
+.dotIdle {
+  background: var(--nova-color-idle);
+}
+
+.navStatus {
+  padding: var(--nova-space-8);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--nova-text-secondary);
+}
+
+/* 窄栏（<768px 视口）：56px 图标轨——行收成 32px 方块，名字进 sr-only，
+   分组头隐藏，点绝对定位到右下并带一圈卡底描边（对照的 `max-md:` 变体）。 */
+@media (max-width: 767px) {
+  .splitCard {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .nav {
+    padding: 12px var(--nova-space-6);
+  }
+
+  .navGroupTitle {
+    display: none;
+  }
+
+  .navRow {
+    position: relative;
+    justify-content: center;
+    width: var(--nova-row-lg);
+    padding: 0;
+    gap: 0;
+  }
+
+  .navName {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .dot {
+    position: absolute;
+    right: var(--nova-space-4);
+    bottom: var(--nova-space-4);
+    box-shadow: 0 0 0 2px var(--nova-surface-raised);
+  }
+}
+
+/* ── 详情栏 ─────────────────────────────────────────────────── */
+
+.detail {
+  position: relative;
+  min-width: 0;
+  /* p-4 pb-20: the 80px bottom room is scroll runway (the ladder stops at 48,
+     so the literal rides with a name, like every other off-ladder value). */
+  padding: var(--nova-space-16) var(--nova-space-16) 80px;
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .detail {
+    /* sm:p-6 sm:pb-24 (96px runway). */
+    padding: var(--nova-space-24) var(--nova-space-24) 96px;
+  }
+}
+
 .status {
-  padding: var(--nova-space-12) var(--nova-space-16);
   font-size: 14px;
   line-height: 24px;
   color: var(--nova-text-secondary);
 }
 
-/* 被拒的保存：卡内的一条说明行，不是页级横幅。 */
+/* 被拒的保存：详情里的一条说明行，不是页级横幅。 */
 .notice {
-  margin: 0;
-  padding: var(--nova-space-8) var(--nova-space-16);
+  margin: 0 0 var(--nova-space-16);
+  padding: var(--nova-space-8) var(--nova-space-12);
+  border-radius: var(--nova-radius-sm);
   background: var(--nova-color-danger-soft);
   font-size: 14px;
   line-height: 24px;
   color: var(--nova-color-danger);
 }
 
-.rows {
+.editor {
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* 一行供应商：与设置行同一节奏（`border-t px-4 py-3 first:border-t-0`）。
- * 旧稿把每张卡做成独立面板，一列框套框；参照里只有一张卡，行之间是一条线。 */
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--nova-space-4);
-  padding: var(--nova-space-12) var(--nova-space-16);
-  border-top: 1px solid var(--nova-border-strong);
-  background: transparent;
-}
-
-.card:first-child {
-  border-top: none;
-}
-
-/* 在役的端点：一行填充，加上「当前使用」这个词，两个信号说同一件事。 */
-.cardActive {
-  background: var(--nova-surface-card);
-}
-
-.rowHead {
-  display: flex;
-  align-items: center;
-  gap: var(--nova-space-8);
-}
-
-.rowIdentity {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--nova-space-6);
+  gap: var(--nova-space-24);
   min-width: 0;
 }
 
-.rowName {
-  font-size: 14px;
-  line-height: 22px;
-  font-weight: 500;
-  color: var(--nova-text-primary);
+/* 头部：20px 图标 + 16/600 名，右缘动作。 */
+.detailHead {
+  display: flex;
+  align-items: center;
+  gap: var(--nova-space-8);
+  min-width: 0;
+}
+
+.detailIcon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--nova-text-secondary);
+}
+
+.detailName {
+  min-width: 0;
+  margin: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--nova-text-primary);
 }
 
-/* 状态词：ZCode `SettingsPageParts.tsx:230-236` 的 `SettingsBadge` ——
- * `rounded-md bg-surface px-2.5 py-1 text-ui-base font-medium text-foreground-subtle`。
- * 6px 圆角是 `--nova-radius-xs`；填充用 `surface-panel`（ZCode 的 `bg-surface`）。 */
-.activeTag,
-.keyMissing {
+/* 在役徽标：ZCode `SettingsPageParts.tsx:230-236` 的 `SettingsBadge` ——
+ * `rounded-md bg-surface px-2.5 py-1`。 */
+.activeTag {
   flex: none;
   padding: var(--nova-space-2) var(--nova-space-10);
   border-radius: var(--nova-radius-xs);
@@ -181,114 +339,86 @@
   color: var(--nova-text-secondary);
 }
 
-.keyMissing {
-  color: var(--nova-color-danger);
+.savingHint {
+  flex: none;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--nova-text-muted);
 }
 
-.rowActions {
+.detailActions {
   display: inline-flex;
   align-items: center;
   gap: var(--nova-space-4);
   margin-left: auto;
+  flex: none;
 }
 
-/* 行内动作 = ZCode 的 ghost 按钮（`button.tsx:20` 的
- * `text-foreground hover:bg-hover`，尺寸 default 28px / `rounded-md`）：
- * 没有边框，靠悬停的填充表态。 */
-.rowButton {
+/* 「设为当前」是这张详情的主动作，坐参照 Switch 的座位：ink 配方同 `.addButton`。 */
+.useButton {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--nova-space-4);
   height: var(--nova-row-md);
   padding: 0 var(--nova-space-8);
   border: none;
-  border-radius: var(--nova-radius-xs);
-  background: transparent;
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-color-ink);
   font-family: inherit;
   font-size: 14px;
   line-height: 20px;
-  color: var(--nova-text-secondary);
+  font-weight: 500;
+  color: var(--nova-text-inverse);
   cursor: pointer;
   white-space: nowrap;
-  transition:
-      color var(--nova-dur-fast) var(--nova-ease-inout),
-      background-color var(--nova-dur-fast) var(--nova-ease-inout);
+  transition: background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
-.rowButton:hover:not(:disabled) {
-  background: var(--nova-interactive-hover);
-  color: var(--nova-text-primary);
+.useButton:hover:not(:disabled) {
+  background: var(--nova-color-ink-hover);
 }
 
-.rowButton:disabled {
+.useButton:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.rowButtonDanger {
-  color: var(--nova-color-danger);
+/* 24px ghost 图标按钮（参照 `icon-sm`）：无边框，悬停填充表态。 */
+.iconButton {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--nova-row-sm);
+  height: var(--nova-row-sm);
+  padding: 0;
+  border: none;
+  border-radius: var(--nova-radius-xs);
+  background: transparent;
+  color: var(--nova-text-secondary);
+  cursor: pointer;
+  transition:
+    color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
-.rowButtonDanger:hover:not(:disabled) {
-  background: var(--nova-interactive-hover-danger);
-  color: var(--nova-color-danger);
+.iconButton:hover:not(:disabled) {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
 }
 
-.rowButtonIcon {
-  flex: none;
+.iconButtonGlyph {
   width: 14px;
   height: 14px;
 }
 
-/* 行的第二行：地址与模型数，都是读数，14/24 次级色（同设置行的描述）。 */
-.rowMeta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--nova-space-12);
-  min-width: 0;
-}
+/* ── 字段区 ─────────────────────────────────────────────────── */
 
-.rowUrl {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--nova-font-mono);
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--nova-text-secondary);
-}
-
-.rowUrlEmpty {
-  font-family: inherit;
-  color: var(--nova-text-disabled);
-}
-
-.rowCount {
-  flex: none;
-  font-size: 14px;
-  line-height: 24px;
-  color: var(--nova-text-secondary);
-}
-
-/* 编辑区：卡内的内嵌模块，填充 `surface-panel`（卡的填充是 raised，两层靠填充分开）。 */
-.editor {
+.fields {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-12);
-  margin-top: var(--nova-space-8);
-  padding: var(--nova-space-16);
-  border-radius: var(--nova-radius-md);
-  background: var(--nova-surface-panel);
-}
-
-.fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--nova-space-8) var(--nova-space-12);
 }
 
 .field {
@@ -298,25 +428,24 @@
   min-width: 0;
 }
 
-/* 字段标签：ZCode `model-provider-section/ProviderCardSections.tsx:214` 的
- * `mb-1 block text-ui-base text-foreground-subtle` —— 14px 次级色。 */
+/* 字段标签：`ProviderCardSections.tsx:214` 的 `mb-1 block text-ui-base
+ * text-foreground-subtle` —— 14px 次级色。 */
 .fieldLabel {
   font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-secondary);
 }
 
-/* 输入框：ZCode `ProviderCardSections.tsx:215` 的
- * `rounded-lg border border-input-border bg-input` —— 8px 圆角是 `--nova-radius-sm`。 */
+/* 输入框：`h-8 rounded-lg border border-input-border bg-input px-3`。 */
 .input {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   height: var(--nova-row-lg);
-  padding: 0 var(--nova-space-8);
-  border: 1px solid var(--nova-border-strong);
+  padding: 0 var(--nova-space-12);
+  border: 1px solid var(--nova-input-border);
   border-radius: var(--nova-radius-sm);
-  background: var(--nova-surface-raised);
+  background: var(--nova-surface-input);
   font-family: inherit;
   font-size: 14px;
   line-height: 20px;
@@ -327,9 +456,55 @@
   color: var(--nova-text-disabled);
 }
 
+.input:hover {
+  border-color: var(--nova-input-border-hover);
+}
+
 .input:focus-visible {
   outline: none;
   border-color: var(--nova-input-border-focused);
+}
+
+/* 密钥框：详情里唯一的 36px 输入（`ApiKeyInput.tsx:38` 的 `h-9 pr-10`）。 */
+.keySeat {
+  position: relative;
+  min-width: 0;
+}
+
+.inputKey {
+  height: 36px;
+  padding-right: var(--nova-space-40);
+}
+
+.eyeButton {
+  position: absolute;
+  top: 50%;
+  right: var(--nova-space-6);
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--nova-row-sm);
+  height: var(--nova-row-sm);
+  padding: 0;
+  border: none;
+  border-radius: var(--nova-radius-xs);
+  background: transparent;
+  color: var(--nova-text-muted);
+  cursor: pointer;
+  transition:
+    color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout);
+}
+
+.eyeButton:hover {
+  background: var(--nova-interactive-hover);
+  color: var(--nova-text-primary);
+}
+
+.eyeGlyph {
+  width: 14px;
+  height: 14px;
 }
 
 .fieldHint {
@@ -357,12 +532,15 @@
   color: var(--nova-text-primary);
 }
 
+/* ── 模型清单 ──────────────────────────────────────────────── */
+
 .models {
   display: flex;
   flex-direction: column;
   gap: var(--nova-space-8);
   padding-top: var(--nova-space-12);
   border-top: 1px solid var(--nova-border-strong);
+  min-width: 0;
 }
 
 .modelsHead {
@@ -379,7 +557,7 @@
   color: var(--nova-text-primary);
 }
 
-/* 探针按钮：ghost 尺寸（同 `.rowButton`）。 */
+/* 探针按钮：ghost 尺寸。 */
 .linkButton {
   box-sizing: border-box;
   flex: none;
@@ -393,9 +571,10 @@
   line-height: 20px;
   color: var(--nova-text-secondary);
   cursor: pointer;
+  white-space: nowrap;
   transition:
-      color var(--nova-dur-fast) var(--nova-ease-inout),
-      background-color var(--nova-dur-fast) var(--nova-ease-inout);
+    color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .linkButton:hover:not(:disabled) {
@@ -408,58 +587,39 @@
   cursor: default;
 }
 
-.modelChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--nova-space-6);
+/* 模型清单卡：`rounded-lg border border-input-border bg-input`，行 `px-3 py-2`。 */
+.modelList {
   margin: 0;
   padding: 0;
+  border: 1px solid var(--nova-input-border);
+  border-radius: var(--nova-radius-sm);
+  background: var(--nova-surface-input);
+  overflow: hidden;
   list-style: none;
 }
 
-/* 一个已记录的模型 id：id 是要复制的 token，保留等宽字形。 */
-.modelChip {
-  display: inline-flex;
+.modelRow {
+  display: flex;
   align-items: center;
-  gap: var(--nova-space-4);
-  max-width: 100%;
-  padding: var(--nova-space-2) var(--nova-space-4) var(--nova-space-2) var(--nova-space-8);
-  border-radius: var(--nova-radius-xs);
-  background: var(--nova-surface-raised);
+  gap: var(--nova-space-8);
+  padding: var(--nova-space-8) var(--nova-space-12);
 }
 
-.modelChipId {
+.modelRow + .modelRow {
+  border-top: 1px solid var(--nova-input-border);
+}
+
+/* 模型 ID 是要复制的 token：等宽字形（对照的 `font-mono text-ui-base`）。 */
+.modelId {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-family: var(--nova-font-mono);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 20px;
   color: var(--nova-text-primary);
-}
-
-.chipRemove {
-  box-sizing: border-box;
-  flex: none;
-  height: 20px;
-  padding: 0 var(--nova-space-6);
-  border: none;
-  border-radius: var(--nova-radius-xs);
-  background: transparent;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--nova-text-muted);
-  cursor: pointer;
-  transition:
-      color var(--nova-dur-fast) var(--nova-ease-inout),
-      background-color var(--nova-dur-fast) var(--nova-ease-inout);
-}
-
-.chipRemove:hover {
-  background: var(--nova-interactive-hover-danger);
-  color: var(--nova-color-danger);
 }
 
 .addRow {
@@ -468,8 +628,12 @@
   gap: var(--nova-space-8);
 }
 
-/* 次要按钮（outline）：ZCode `button.tsx:19` 的
- * `border-border text-foreground hover:bg-input/50`，尺寸 default。 */
+.addRow .input {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+/* 次要按钮（outline）：`border-border text-foreground hover:bg-input/50`。 */
 .button {
   box-sizing: border-box;
   flex: none;
@@ -484,16 +648,21 @@
   color: var(--nova-text-primary);
   cursor: pointer;
   transition:
-      color var(--nova-dur-fast) var(--nova-ease-inout),
-      background-color var(--nova-dur-fast) var(--nova-ease-inout),
-      border-color var(--nova-dur-fast) var(--nova-ease-inout);
+    color var(--nova-dur-fast) var(--nova-ease-inout),
+    background-color var(--nova-dur-fast) var(--nova-ease-inout),
+    border-color var(--nova-dur-fast) var(--nova-ease-inout);
 }
 
 .button:hover:not(:disabled) {
   background: var(--nova-interactive-hover);
 }
 
-/* 探针失败的那一行：答案没来就没有可挑的东西，卡里只说「没问成」。 */
+.button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 探针失败的那一行：答案没来就没有可挑的东西，详情里只说「没问成」。 */
 .poolFail {
   display: flex;
   flex-direction: column;
@@ -509,60 +678,10 @@
   color: var(--nova-color-danger);
 }
 
+/* 读不出来的字段：即改即存被拒的原因写在字段区末尾，草稿仍在。 */
 .problem {
-  margin: 0 auto 0 0;
+  margin: 0;
   font-size: 14px;
   line-height: 20px;
   color: var(--nova-color-danger);
-}
-
-/* 卡脚（参考实现的 `EditorFooter`）：取消居左、提交居右。 */
-.cardFooter {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: var(--nova-space-8);
-  padding-top: var(--nova-space-4);
-}
-
-.cancelButton,
-.saveButton {
-  box-sizing: border-box;
-  height: var(--nova-row-md);
-  padding: 0 var(--nova-space-8);
-  border-radius: var(--nova-radius-xs);
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 20px;
-  cursor: pointer;
-  transition:
-      color var(--nova-dur-fast) var(--nova-ease-inout),
-      background-color var(--nova-dur-fast) var(--nova-ease-inout),
-      border-color var(--nova-dur-fast) var(--nova-ease-inout);
-}
-
-.cancelButton {
-  border: 1px solid var(--nova-border-strong);
-  background: transparent;
-  color: var(--nova-text-primary);
-}
-
-.cancelButton:hover {
-  background: var(--nova-interactive-hover);
-}
-
-.saveButton {
-  border: none;
-  background: var(--nova-color-ink);
-  color: var(--nova-text-inverse);
-}
-
-.saveButton:hover:not(:disabled) {
-  background: var(--nova-color-ink-hover);
-}
-
-.saveButton:disabled,
-.cancelButton:disabled {
-  opacity: 0.5;
-  cursor: default;
 }

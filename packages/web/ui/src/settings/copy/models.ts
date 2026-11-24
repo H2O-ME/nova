@@ -35,8 +35,8 @@ export const MODELS_COPY = {
   'models.providerKeyMissing': 'API 密钥缺失',
   'models.providerActive': '当前使用',
   'models.providerUse': '设为当前',
-  'models.providerEdit': '编辑',
-  'models.providerCollapse': '收起',
+  // The add-card's own name before any text lands (nav row + detail header).
+  'models.providerNew': '新供应商',
   'models.providerRemove': '删除',
   // 「N 个模型」on a collapsed row (requirement: a provider's model count is
   // readable without opening it).
@@ -62,11 +62,11 @@ export const MODELS_COPY = {
   'models.providerProbeNeedsUrl': '请先填写 API 地址，再获取。',
   'models.providerProbeFail': '获取失败',
   'models.providerNoReachable': '该提供商没有列出任何模型，请手动添加。',
-  'models.providerSave': '保存',
-  'models.providerCancel': '取消',
-  // A card's own footer refuses to commit when a field is unreadable; the
-  // sentence lands on the card, not in a page-level alert.
-  'models.providerSaveFirst': '请先保存供应商，再切换。',
+  /* 详情即改即存（参照无保存/取消页脚）；这些词只服务密钥的眼睛与写盘瞬态。 */
+  'models.providerKeyShow': '显示密钥',
+  'models.providerKeyHide': '隐藏密钥',
+  'models.providerSaving': '保存中…',
+  'models.providerSaveFirst': '请先把 API 地址与密钥填好，再切换。',
   'models.providerRemoveNow': '删除立刻生效（重新添加即可恢复）。',
   'models.providerSwitchNote': '「设为当前」立刻把本进程指向该端点。',
   /* ── 取模弹窗（「获取可用模型」） ─────────────────────────────── */

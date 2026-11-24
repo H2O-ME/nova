@@ -167,18 +167,24 @@ describe('shape language', () => {
     );
   });
 
-  it('provider rows carry no frame; the group is divided by rules instead', () => {
-    // Re-baselined 2026-11-15 (ZCode alignment): the reference's model page is
-    // ONE card with `border-t px-4 py-3 first:border-t-0` rows
-    // (`settings/SettingsPageParts.tsx:196`), so a row draws a top rule and no
-    // box of its own.
+  it('the model page is the reference master-detail card, not an accordion', () => {
+    // Re-baselined 2026-11-24 (ZCode split-panel alignment): the reference wraps
+    // a `min-h-[36rem]` two-column grid in one card
+    // (`model-provider-section/SectionLayout.tsx:67-89`) — a 224px provider nav
+    // rail and a scrolling detail pane. Invariants that keep it from drifting
+    // back: the nav row RESERVES a transparent border (selection must not jump
+    // the row's height), and the detail's fields ride the input surface (white
+    // field + hairline), not the page floor.
     const sheet = read('settings/ProviderSection.module.css');
-    const card = /^\.card \{([^}]*)\}/m.exec(sheet)?.[1] ?? '';
-    expect(card, 'provider row must not draw a box of its own').not.toMatch(/border:\s*1px/);
-    expect(card, 'provider row must not carry its own fill').toContain('background: transparent');
-    // Separation lives on the row's own top edge; without it the rows run together.
-    expect(sheet, 'the row group needs a hairline divider').toContain('.card:first-child');
-    // The add affordance is a secondary action, not a dashed drop target.
+    const split = /^\.splitCard \{([^}]*)\}/m.exec(sheet)?.[1] ?? '';
+    expect(split, 'the split card is 224px nav + detail').toContain('grid-template-columns: 224px minmax(0, 1fr)');
+    expect(split, 'the split card carries the reference min height').toContain('min-height: 576px');
+    const navRow = /^\.navRow \{([^}]*)\}/m.exec(sheet)?.[1] ?? '';
+    expect(navRow, 'nav row reserves its border so selection cannot jump height').toContain('border: 1px solid transparent');
+    const input = /^\.input \{([^}]*)\}/m.exec(sheet)?.[1] ?? '';
+    expect(input, 'detail fields ride the input surface').toContain('var(--nova-surface-input)');
+    expect(input, 'detail fields draw the input hairline').toContain('var(--nova-input-border)');
+    // The add affordance is a primary action, not a dashed drop target.
     const add = /^\.addButton \{([^}]*)\}/m.exec(sheet)?.[1] ?? '';
     expect(add, 'add button must not be a dashed slab').not.toContain('dashed');
   });

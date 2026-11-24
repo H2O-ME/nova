@@ -104,6 +104,35 @@ export const CloseIcon = (p: P): JSX.Element => (
   </Svg>
 );
 
+/**
+ * An OpenAI-compatible endpoint's glyph: a link whose two halves reach for each
+ * other — the connection a Base URL + key pair makes. The model settings page
+ * uses it wherever the reference shows a provider logo (Nova has none).
+ */
+export const EndpointIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M6.5 9.5 4 12a2 2 0 0 0 2.83 2.83l2.5-2.5" />
+    <path d="M9.5 6.5 12 4a2 2 0 0 0-2.83-2.83l-2.5 2.5" />
+  </Svg>
+);
+
+/** The API-key field's reveal toggle (model settings detail). */
+export const EyeIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M1.75 8S4 3.75 8 3.75 14.25 8 14.25 8 12 12.25 8 12.25 1.75 8 1.75 8z" />
+    <circle cx="8" cy="8" r="2.1" />
+  </Svg>
+);
+
+/** …and its pressed state (the field shows plaintext). */
+export const EyeOffIcon = (p: P): JSX.Element => (
+  <Svg {...p}>
+    <path d="M2.6 5.7C1.7 6.8 1.25 8 1.25 8s2.4 4.25 6.75 4.25c1 0 1.9-.24 2.68-.62" />
+    <path d="M6.2 3.9c.57-.1 1.18-.15 1.8-.15 4.4 0 6.75 4.25 6.75 4.25s-.68 1.27-1.9 2.36" />
+    <path d="M2.75 2.75l10.5 10.5" />
+  </Svg>
+);
+
 /** Three tiles and a plus: one plugin among a roster (the plugin list row). */
 export const PluginIcon = (p: P): JSX.Element => (
   <Svg {...p}>

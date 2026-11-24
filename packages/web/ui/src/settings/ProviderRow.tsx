@@ -1,121 +1,74 @@
 /**
- * 供应商清单里的一行：身份、状态词、行内动作、第二行读数（地址 / 模型数），
- * 展开后的编辑器作为 `children` 挂在行内。
+ * 供应商导航里的一行（主从卡的左栏）：16px 端点字形 + 截断名 + 8px 状态点。
  *
- * 从 `ProviderSection` 拆出来的是**职责**，不是行数：那边管草稿、保存回执与探针
- * 归属（一整台状态机），这一边只把一行的值画成 ZCode 的设置行
- * （`SettingsPageParts.tsx:196` 的行节奏；`model-provider-section/SectionLayout.tsx:67`
- * 的卡由列表外层提供）。两者共用 `ProviderSection.module.css`，不另开一份样式。
+ * 对照 `model-provider-section/Navigation.tsx:112`：`h-8 w-full rounded-lg
+ * border px-2 py-1 gap-2`，选中 `border-border-hover bg-card-selected`，未选
+ * `border-transparent`（边框常驻但透明——选中只换色，行高不跳）。状态点对照
+ * `ProviderStatusIndicator.tsx:32`：8px 实心圆，success（在役）/ warn（缺
+ * 密钥）/ idle（其余）。
+ *
+ * 行内没有动作按钮：编辑就是选中（右栏即编辑面），删除在详情头部——对照的
+ * 导航行同样只是选择器。窄栏（<768px 视口）收成 32px 图标行，名字进
+ * sr-only，点挂到右下角（对照的 `max-md:` 变体）。
  */
-import type { ReactNode } from 'react';
-import { ChevronDownIcon, ChevronRightIcon } from '../icons.js';
+import { EndpointIcon } from '../icons.js';
 import { SETTINGS_COPY } from './copy.js';
 import { cx } from '../composer/cx.js';
 import css from './ProviderSection.module.css';
 
+/** 状态点三态：在役（success）/ 缺密钥（warn）/ 其余（idle）。 */
+export type ProviderNavStatus = 'active' | 'missing-key' | 'idle';
+
+const DOT_CLASS: Record<ProviderNavStatus, string | undefined> = {
+  active: css.dotActive,
+  'missing-key': css.dotMissingKey,
+  idle: css.dotIdle,
+};
+
+const DOT_LABEL: Record<ProviderNavStatus, string | undefined> = {
+  active: SETTINGS_COPY['models.providerActive'],
+  'missing-key': SETTINGS_COPY['models.providerKeyMissing'],
+  idle: undefined,
+};
+
 export interface ProviderRowProps {
-  /** The stored row's id (`data-provider` — the roster's key). */
+  /** The row's id (`data-provider` — the roster's key). */
   id: string;
   /** The display name: the typed one, or the endpoint's host (`hostLabel`). */
   name: string;
-  /** The endpoint address, verbatim (empty renders as 「尚未填写」). */
-  baseURL: string;
-  /** How many model ids this endpoint records. */
-  modelCount: number;
-  /** The endpoint in force right now. */
-  isActive: boolean;
-  /** A key is already stored for this row. */
-  hasKey: boolean;
-  /** This row's editor is unfolded. */
-  open: boolean;
-  /** 「设为当前」 may be pressed (stored + key + not already active). */
-  canActivate: boolean;
-  /** Why 「设为当前」 cannot be pressed — shown as its title. */
-  blockedReason: string;
-  onToggle: () => void;
-  onUse: () => void;
-  onRemove: () => void;
-  /** The row's editor, rendered under the second line when open. */
-  children?: ReactNode;
+  /** The status dot's state. */
+  status: ProviderNavStatus;
+  /** This row is the selected nav item (its detail is on the right). */
+  selected: boolean;
+  onSelect: () => void;
 }
 
 /**
- * Render one provider row.
+ * Render one provider nav row.
  * @param props - see ProviderRowProps.
  * @returns the row element tree.
  */
-export function ProviderRow({
-  id,
-  name,
-  baseURL,
-  modelCount,
-  isActive,
-  hasKey,
-  open,
-  canActivate,
-  blockedReason,
-  onToggle,
-  onUse,
-  onRemove,
-  children,
-}: ProviderRowProps): JSX.Element {
+export function ProviderRow({ id, name, status, selected, onSelect }: ProviderRowProps): JSX.Element {
+  const dotLabel = DOT_LABEL[status];
   return (
-    <li className={cx(css.card, isActive && css.cardActive)} data-provider={id} data-active={isActive ? 'true' : undefined}>
-      <div className={css.rowHead}>
-        <span className={css.rowIdentity}>
-          <span className={css.rowName}>{name}</span>
-          {/* 活动项：一个词，不靠顺序暗示。 */}
-          {isActive && <span className={css.activeTag}>{SETTINGS_COPY['models.providerActive']}</span>}
-          {/* 密钥状态只在**缺**的时候说，且用词说：缺密钥正是「设为当前」按不动的
-              那个原因，所以这句话解释的是它旁边那颗灰按钮。配好了则一个字都不印
-              ——那颗按钮能按，本身就是读数。 */}
-          {!hasKey && <span className={css.keyMissing}>{SETTINGS_COPY['models.providerKeyMissing']}</span>}
-        </span>
-        <span className={css.rowActions}>
-          <button
-            type="button"
-            className={css.rowButton}
-            data-provider-edit={id}
-            aria-expanded={open}
-            onClick={onToggle}
-          >
-            {open ? <ChevronDownIcon className={css.rowButtonIcon} /> : <ChevronRightIcon className={css.rowButtonIcon} />}
-            {open ? SETTINGS_COPY['models.providerCollapse'] : SETTINGS_COPY['models.providerEdit']}
-          </button>
-          {!isActive && (
-            <button
-              type="button"
-              className={css.rowButton}
-              data-provider-use={id}
-              disabled={!canActivate}
-              title={canActivate ? SETTINGS_COPY['models.providerSwitchNote'] : blockedReason}
-              onClick={onUse}
-            >
-              {SETTINGS_COPY['models.providerUse']}
-            </button>
-          )}
-          <button
-            type="button"
-            className={cx(css.rowButton, css.rowButtonDanger)}
-            data-provider-remove={id}
-            title={SETTINGS_COPY['models.providerRemoveNow']}
-            onClick={onRemove}
-          >
-            {SETTINGS_COPY['models.providerRemove']}
-          </button>
-        </span>
-      </div>
-      <div className={css.rowMeta}>
-        <span className={cx(css.rowUrl, baseURL.trim() === '' && css.rowUrlEmpty)}>
-          {baseURL.trim() === '' ? SETTINGS_COPY['models.providerNoUrl'] : baseURL}
-        </span>
-        <span className={css.rowCount}>
-          {modelCount === 0
-            ? SETTINGS_COPY['models.providerModelCountZero']
-            : `${String(modelCount)} ${SETTINGS_COPY['models.providerModelCount']}`}
-        </span>
-      </div>
-      {children}
+    <li className={css.navItem}>
+      <button
+        type="button"
+        className={cx(css.navRow, selected && css.navRowSelected)}
+        data-provider={id}
+        data-state={selected ? 'selected' : 'idle'}
+        aria-current={selected ? 'true' : undefined}
+        title={name}
+        onClick={onSelect}
+      >
+        <EndpointIcon className={css.navIcon} />
+        <span className={css.navName}>{name}</span>
+        <span
+          className={cx(css.dot, DOT_CLASS[status])}
+          data-provider-status={status}
+          {...(dotLabel !== undefined ? { title: dotLabel, 'aria-label': dotLabel } : {})}
+        />
+      </button>
     </li>
   );
 }
