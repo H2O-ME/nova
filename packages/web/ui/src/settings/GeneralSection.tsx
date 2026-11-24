@@ -1,9 +1,18 @@
 /**
- * The 通用设置 section: the reference's general column (figma 501:29980's
- * Options area) carrying this product's real execution axes — the permission
- * tier and the work-details mode — under the reference's 行为与工具 subject
- * line. Every control writes through the host the same way its composer seat
- * does, so a pick here and a pick there are one fact, not two.
+ * The 通用设置 section: this product's real execution axes — the permission
+ * tier and the work-details mode — as settings rows. Every control writes
+ * through the host the same way its composer seat does, so a pick here and a
+ * pick there are one fact, not two.
+ *
+ * SHAPE (2026-11-24, second ZCode pass): the reference's general page is a
+ * plain `space-y-4` column of `SettingsGroupCard`s with NO subject line over
+ * them, and each setting gets its OWN single-row card
+ * (`settingsPageHelpers.tsx:344-416`: 界面语言 / 界面模式 are two separate
+ * cards, not two rows in one). Nova carried a self-invented 行为与工具 heading plus a
+ * one-sentence explanation over the card; that is the APPEARANCE page's shape
+ * (`settingsCodePreview.tsx:107-117`), and over two rows it made them read as
+ * a documented feature area rather than as settings. The heading layer is
+ * gone.
  *
  * Appearance (theme + interface font size) moved to its own 外观 page
  * (2026-11-15, the reference's `appearance` nav entry).
@@ -21,7 +30,7 @@
 import { PermissionSelect } from '../conversation/PermissionSelect.js';
 import { SETTINGS_COPY } from './copy.js';
 import { SettingsRow } from './SettingsRow.js';
-import { SettingsGroup } from './SettingsGroup.js';
+import { SettingsSection } from './Section.js';
 import { TranscriptViewRow } from './TranscriptViewRow.js';
 import type { ApprovalMode } from '../types.js';
 import type { TranscriptViewMode } from '../chat/transcript-view.js';
@@ -51,24 +60,30 @@ export function GeneralSection({
   onPickTranscriptView,
 }: GeneralSectionProps): JSX.Element {
   return (
-    <SettingsGroup
-      title={SETTINGS_COPY['general.groupRun']}
-      description={SETTINGS_COPY['general.groupRunDesc']}
-    >
-      <SettingsRow title={SETTINGS_COPY['permission.title']} description={SETTINGS_COPY['permission.description']}>
-        {/* Upward + right-edge aligned (the reference's settings row recipe):
-            the card covers the text rows above, never the controls below. */}
-        <PermissionSelect
-          value={approvalMode}
-          onPick={onPickApproval}
-          side="above"
-          align="end"
-          disabled={disabled}
-          variant="field"
-          className={css.field}
-        />
-      </SettingsRow>
-      <TranscriptViewRow mode={transcriptView} onPick={onPickTranscriptView} />
-    </SettingsGroup>
+    /* The reference's general column: `space-y-4` (16px) between the page's
+       cards, and ONE CARD PER SETTING — `settingsPageHelpers.tsx:345-416`
+       wraps 界面语言 and 界面模式 each in its own `SettingsGroupCard`.
+       Nova had both rows sharing one card, which reads as a grouped feature
+       area; the reference's general page is a stack of single-row cards. */
+    <div className={css.page}>
+      <SettingsSection>
+        <SettingsRow title={SETTINGS_COPY['permission.title']} description={SETTINGS_COPY['permission.description']}>
+          {/* Upward + right-edge aligned (the reference's settings row recipe):
+              the card covers the text rows above, never the controls below. */}
+          <PermissionSelect
+            value={approvalMode}
+            onPick={onPickApproval}
+            side="above"
+            align="end"
+            disabled={disabled}
+            variant="field"
+            className={css.field}
+          />
+        </SettingsRow>
+      </SettingsSection>
+      <SettingsSection>
+        <TranscriptViewRow mode={transcriptView} onPick={onPickTranscriptView} />
+      </SettingsSection>
+    </div>
   );
 }

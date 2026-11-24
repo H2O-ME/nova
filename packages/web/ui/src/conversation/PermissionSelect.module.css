@@ -123,9 +123,12 @@
   height: 32px;
   padding: 0 var(--nova-space-8) 0 var(--nova-space-12);
   box-sizing: border-box;
-  border: 1px solid var(--nova-border-strong);
+  /* The reference's trigger is `border-input-border bg-input`
+     (`components/ui/select.tsx:18`) — a white field with a hairline in light
+     theme, not the page-floor gray Nova used to paint here. */
+  border: 1px solid var(--nova-input-border);
   border-radius: var(--nova-radius-sm);
-  background: var(--nova-surface-base);
+  background: var(--nova-surface-input);
   color: var(--nova-text-primary);
   font-family: inherit;
   font-size: 14px;

@@ -82,14 +82,17 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
     feedback.settle((done) => done.name);
   }, [skills]);
 
-  const group = (title: string, rows: typeof items, root: string): JSX.Element | null => {
+  const group = (title: string, rows: typeof items): JSX.Element | null => {
     if (rows.length === 0) return null;
     return (
       <section role="group" aria-label={title} className={css.group}>
         {/* 资源组头：对齐 ZCode `settings/SettingsResourceGroup.tsx:17-22`
             （`flex h-7 items-center gap-1.5 text-ui-base font-medium`，计数是
-            `text-ui-sm font-normal text-foreground-subtle`）。发现根目录走在
-            同一个头里（参照的 hint 槽），标题本身回答不了「我该放哪」。 */}
+            `text-ui-sm font-normal text-foreground-subtle`）。第二遍复核
+            （2026-11-24）：参照的组头只有 标题 + 计数 + 右侧动作三样，
+            **没有**发现根目录路径（它的 `SkillsSection.tsx:824-830` 只传
+            `actions` / `count` / `title`）。Nova 曾在头里挂一串等宽路径 ——
+            那是本仓自己的加项，一行里两个焦点、还会把标题挤到省略号，故删除。 */}
         <div className={css.groupHead}>
           <h3 className={css.groupTitle}>
             {title}
@@ -97,7 +100,6 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
               {SETTINGS_COPY['skills.rootCount'].replace('{count}', String(rows.length))}
             </span>
           </h3>
-          <span className={css.groupRoot} title={root}>{root}</span>
         </div>
         {/* 资源列表：ZCode 的 `SettingsResourceList` —— 一张
             `overflow-hidden rounded-xl bg-surface` 的卡，行间 1px 分隔。 */}
@@ -129,9 +131,13 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
 
   return (
     <div className={css.page}>
-      {/* 页面说明：ZCode 的 `text-ui-base leading-6 text-foreground-subtle`
-          （`SectionLayout.tsx:54-56`）。页名由设置壳的页标题承担，这里不再重复。 */}
-      <p className={css.intro}>{SETTINGS_COPY['skills.intro']}</p>
+      {/* NO page intro (2026-11-24, second ZCode pass): the reference's skills
+          page opens straight into its groups — `settings.skills.description`
+          exists in its locale file but no component renders it, and its
+          `SkillsSection` root starts at `space-y-6` over the group list
+          (`SkillsSection.tsx:821`). Nova's one-sentence 简介 was its own
+          addition; a page whose rows already say what each one is does not
+          need a paragraph above them. */}
       <ManageError message={feedback.error} />
       {skills === null && <div className={css.status}>{SETTINGS_COPY['skills.loading']}</div>}
       {skills !== null && items.length > 0 && (
@@ -168,8 +174,8 @@ export function SkillsSection({ skills, disabled, manageError, send, onClose }: 
           ? SETTINGS_COPY['plugins.switching']
           : feedback.applied ?? (disabled ? SETTINGS_COPY['plugins.lockNote'] : '')}
       </div>
-      {group(SETTINGS_COPY['skills.projectGroup'], project, SETTINGS_COPY['skills.projectRoot'])}
-      {group(SETTINGS_COPY['skills.userGroup'], user, SETTINGS_COPY['skills.userRoot'])}
+      {group(SETTINGS_COPY['skills.projectGroup'], project)}
+      {group(SETTINGS_COPY['skills.userGroup'], user)}
       {skills !== null && items.length > 0 && (
         <p className={css.hint}>{SETTINGS_COPY['skills.hint']}</p>
       )}

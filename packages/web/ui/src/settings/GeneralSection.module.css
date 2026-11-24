@@ -1,8 +1,18 @@
-/* The 常规 page's select width: the reference gives a settings row's value
- * select 260px (`w-[260px] min-w-0 justify-between`), and every row here that
- * carries one shares that trailing edge. `max-width: 100%` lets a narrow
- * column shrink it instead of overflowing. */
+/* The 常规 page's own stack: the reference's `space-y-4` between its
+ * cards (`settingsPageHelpers.tsx:344`). Each card is one group — no subject
+ * line above it — so this 16px is the only rhythm the page adds between them;
+ * the page-level 32px belongs to `.options` in `SettingsPanel.module.css`. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nova-space-16);
+  min-width: 0;
+}
 
+/* The select width: the reference gives a settings row's value select 260px
+ * (`w-[260px] min-w-0 justify-between`), and every row here that carries one
+ * shares that trailing edge. `max-width: 100%` lets a narrow column shrink it
+ * instead of overflowing. */
 .field {
   width: 260px;
   max-width: 100%;

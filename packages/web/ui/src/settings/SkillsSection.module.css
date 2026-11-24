@@ -20,16 +20,10 @@
 .page {
   display: flex;
   flex-direction: column;
-  /* The reference's `space-y-6` between skill source groups. */
+  /* The reference's `space-y-6` between skill source groups
+     (`SkillsSection.tsx:821`). */
   gap: var(--nova-space-24);
   min-width: 0;
-}
-
-.intro {
-  margin: 0;
-  font-size: 14px;
-  line-height: 24px;
-  color: var(--nova-text-secondary);
 }
 
 .hint {
@@ -122,18 +116,6 @@
   font-size: 12px;
   line-height: 16px;
   font-weight: 400;
-  color: var(--nova-text-muted);
-}
-
-/* 发现根目录：参照的 head 里是右侧的 hint 槽；路径是等宽的，因为读者会照抄它。 */
-.groupRoot {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-family: var(--nova-font-mono);
-  font-size: 12px;
-  line-height: 16px;
   color: var(--nova-text-muted);
 }
 

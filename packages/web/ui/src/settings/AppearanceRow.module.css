@@ -1,10 +1,10 @@
-/* The theme pills' row: the reference's segment container
- * (`flex items-center gap-1.5`, `SettingsPage.tsx:210-221`) — 6px between
- * pills, all riding the `wide` control seat (280px from `sm` up) the row now
- * reserves. */
+/* The theme row's field: the reference's `w-[260px] min-w-0 justify-between`
+ * (`settingsCodePreview.tsx:128`) — the same 260px trailing seat the 权限 and
+ * 工作步骤展示 rows use, so every select on the settings pages shares one
+ * right edge. `max-width: 100%` lets a narrow column shrink it instead of
+ * overflowing. */
 
-.modes {
-  display: flex;
-  align-items: center;
-  gap: var(--nova-space-6);
+.field {
+  width: 260px;
+  max-width: 100%;
 }
